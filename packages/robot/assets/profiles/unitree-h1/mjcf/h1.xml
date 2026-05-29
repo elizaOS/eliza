@@ -94,9 +94,9 @@
                   diaginertia="0.00220848 0.00218961 0.000214202"/>
                 <joint name="left_ankle" axis="0 1 0" range="-0.87 0.52"/>
                 <geom class="visual" mesh="left_ankle_link"/>
-                <geom class="foot1"/>
-                <geom class="foot2"/>
-                <geom class="foot3"/>
+                <geom name="left_foot1" class="foot1"/>
+                <geom name="left_foot2" class="foot2"/>
+                <geom name="left_foot3" class="foot3"/>
               </body>
             </body>
           </body>
@@ -134,9 +134,9 @@
                   diaginertia="0.00220848 0.00218961 0.000214202"/>
                 <joint name="right_ankle" axis="0 1 0" range="-0.87 0.52"/>
                 <geom class="visual" mesh="right_ankle_link"/>
-                <geom class="foot1"/>
-                <geom class="foot2"/>
-                <geom class="foot3"/>
+                <geom name="right_foot1" class="foot1"/>
+                <geom name="right_foot2" class="foot2"/>
+                <geom name="right_foot3" class="foot3"/>
               </body>
             </body>
           </body>

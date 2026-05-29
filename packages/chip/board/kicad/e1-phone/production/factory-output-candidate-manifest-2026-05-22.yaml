@@ -3,7 +3,7 @@ date: '2026-05-22'
 status: blocked_local_factory_output_candidates_not_release
 claim_boundary: Generated local production/factory output candidates. These reduce missing-file inventory
   only and do not prove fabrication, assembly, factory, first-article, enclosure, or end-to-end readiness.
-artifact_count: 44
+artifact_count: 46
 release_credit: false
 routed_release_provenance:
   kicad_project_revision: development_real_footprint_snapshot
@@ -1157,6 +1157,9 @@ artifacts:
 - path: board/kicad/e1-phone/production/bom
   kind: directory
   metadata: board/kicad/e1-phone/production/bom/release-manifest.yaml
+- path: board/kicad/e1-phone/production/fab-quote
+  kind: directory
+  metadata: board/kicad/e1-phone/production/fab-quote/release-manifest.yaml
 - path: board/kicad/e1-phone/production/first-article
   kind: directory
   metadata: board/kicad/e1-phone/production/first-article/release-manifest.yaml

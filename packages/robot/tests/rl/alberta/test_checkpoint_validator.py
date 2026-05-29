@@ -10,8 +10,105 @@ import numpy as np
 from eliza_robot.curriculum.loader import load_curriculum
 from eliza_robot.profiles.schema import load_profile
 from eliza_robot.rl.alberta.agent import AlbertaContinualController, AlbertaControllerConfig
+from eliza_robot.rl.alberta.cbp_agent import (
+    AlbertaCBPController,
+    CBPControllerConfig,
+    RetentionConfig,
+)
+from eliza_robot.rl.alberta.checkpoint import save_state_npz
 from eliza_robot.rl.alberta.features import FeatureConfig
 from scripts.validate_alberta_robot_checkpoint import validate_alberta_robot_checkpoint
+
+
+def _task_physical_checks(task: str) -> dict[str, bool]:
+    locomotion_support = {
+        "min_swing_foot_clearance_m": True,
+        "max_foot_slip_m_s": True,
+        "max_self_collision_count": True,
+    }
+    if task == "stand_up":
+        return {
+            "hold_s": True,
+            "torso_height_gain": True,
+            "tracked_height_gain": True,
+        }
+    if task == "walk_forward":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_x_forward": True,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "walk_backward":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_x_backward": True,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "sidestep_left":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_y_left": True,
+            "tracked_forward_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "sidestep_right":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_y_right": True,
+            "tracked_forward_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "turn_left":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "tracked_height_present": True,
+            "delta_yaw_left": True,
+            "tracked_translation_drift_bound": True,
+        }
+    if task == "turn_right":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "tracked_height_present": True,
+            "delta_yaw_right": True,
+            "tracked_translation_drift_bound": True,
+        }
+    return {}
+
+
+def _task_motion(task: str) -> tuple[float, float, float]:
+    if task == "walk_forward":
+        return 0.4, 0.0, 0.0
+    if task == "walk_backward":
+        return -0.3, 0.0, 0.0
+    if task == "sidestep_left":
+        return 0.0, 0.3, 0.0
+    if task == "sidestep_right":
+        return 0.0, -0.3, 0.0
+    if task == "turn_left":
+        return 0.02, 0.01, 0.8
+    if task == "turn_right":
+        return 0.02, -0.01, -0.8
+    return 0.0, 0.0, 0.0
 
 
 def _write_alberta_checkpoint(
@@ -50,6 +147,7 @@ def _write_alberta_checkpoint(
     tasks = tasks or ["stand_up"]
     manifest = {
         "regime": "alberta_streaming",
+        "phase_promotion_schema": "alberta-phase-promotion-v1",
         "curriculum_version": load_curriculum().version,
         "pca_dim": 32,
         "active_tasks": tasks,
@@ -65,6 +163,41 @@ def _write_alberta_checkpoint(
         "steps_per_task": total_steps // len(tasks),
         "total_steps": total_steps,
         "episode_steps": 200,
+        "action_scale": 0.3,
+        "action_scale_schedule": {
+            "schema": "alberta-action-scale-schedule-v1",
+            "mode": "no_fall_physical_gate_ramp",
+            "enabled": True,
+            "initial_scale": 0.15,
+            "target_scale": 0.3,
+            "increment": 0.05,
+            "final_scale": 0.3,
+            "criteria": {
+                "failure_rate_lte": 0.0,
+                "physical_success": True,
+                "success_rate_gte": 1.0,
+            },
+            "events": [
+                {
+                    "phase": None,
+                    "task": None,
+                    "step": 0,
+                    "from_scale": None,
+                    "to_scale": 0.15,
+                    "reason": "initial_stability_scale",
+                    "gate_passed": True,
+                },
+                {
+                    "phase": 0,
+                    "task": tasks[0],
+                    "step": total_steps // len(tasks),
+                    "from_scale": 0.15,
+                    "to_scale": 0.3,
+                    "reason": "no_fall_physical_gate_passed",
+                    "gate_passed": True,
+                },
+            ],
+        },
         "eval_episodes": 3,
         "seed": 0,
         "domain_rand": domain_rand,
@@ -102,9 +235,120 @@ def _write_alberta_checkpoint(
                 "train_episodes": 1,
                 "train_mean_return": -1.0,
                 "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "promotion_passed": True,
             }
             for phase, task in enumerate(tasks)
         ],
+    }
+    cumulative = 0
+    phases = []
+    steps_per_task = total_steps // len(tasks)
+    for phase, task in enumerate(tasks):
+        cumulative += steps_per_task
+        delta_x, delta_y, delta_yaw = _task_motion(task)
+        phases.append(
+            {
+                "phase": phase,
+                "task": task,
+                "attempt": 1,
+                "steps_trained": steps_per_task,
+                "cumulative_steps": cumulative,
+                "eval_episodes": 3,
+                "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "failure_rate": 0.0,
+                "physical_success": True,
+                "physical_checks": _task_physical_checks(task),
+                "tracked_body_name": "body_link",
+                "mean_final_delta_yaw_rad": delta_yaw,
+                "mean_final_torso_z_m": 1.0,
+                "mean_final_torso_z_delta_m": 0.1 if task == "stand_up" else 0.0,
+                "mean_final_tracked_delta_x_m": delta_x,
+                "mean_final_tracked_delta_y_m": delta_y,
+                "mean_final_tracked_delta_z_m": 0.1 if task == "stand_up" else 0.0,
+                "mean_final_tracked_z_m": 1.0,
+                "eval_failures": 0,
+                "promotion_passed": True,
+                "promotion_reason": "success_rate_gte_threshold",
+            }
+        )
+    manifest["phase_promotion"] = {
+        "gate": "curriculum_goal_checker",
+        "status": "completed",
+        "success_threshold": 1.0,
+        "eval_episodes": 3,
+        "eval_interval_steps": steps_per_task,
+        "max_phase_attempts": 1,
+        "promoted_phase_count": len(tasks),
+        "requested_phase_count": len(tasks),
+        "failed_phase": None,
+        "phases": phases,
+    }
+    (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _rewrite_checkpoint_as_cbp(path: Path) -> None:
+    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    controller_cfg = CBPControllerConfig(
+        obs_dim=int(manifest["obs_dim"]),
+        action_dim=int(manifest["action_dim"]),
+        hidden_sizes=(8,),
+        gamma=0.5,
+        actor_step_size=1e-3,
+        critic_step_size=2e-3,
+        log_sigma_init=-1.0,
+        normalize=False,
+        obgd_kappa=2.0,
+        retention=RetentionConfig(
+            mode="multihead",
+            n_slots=4,
+            embed_dim=int(manifest["pca_dim"]),
+            trunk_step_scale=0.5,
+            proto_seed=123,
+        ),
+        seed=0,
+    )
+    controller = AlbertaCBPController(controller_cfg)
+    save_state_npz(path / "alberta_policy.npz", controller.state_dict())
+    manifest["controller_type"] = "cbp"
+    manifest["controller"] = {
+        "type": "cbp_stream_ac_v1",
+        "obs_dim": controller_cfg.obs_dim,
+        "action_dim": controller_cfg.action_dim,
+        "hidden_sizes": list(controller_cfg.hidden_sizes),
+        "gamma": controller_cfg.gamma,
+        "actor_step_size": controller_cfg.actor_step_size,
+        "critic_step_size": controller_cfg.critic_step_size,
+        "actor_lamda": controller_cfg.actor_lamda,
+        "critic_lamda": controller_cfg.critic_lamda,
+        "log_sigma_init": controller_cfg.log_sigma_init,
+        "log_sigma_min": controller_cfg.log_sigma_min,
+        "log_sigma_max": controller_cfg.log_sigma_max,
+        "learn_log_sigma": controller_cfg.learn_log_sigma,
+        "action_low": controller_cfg.action_low,
+        "action_high": controller_cfg.action_high,
+        "obgd_kappa": controller_cfg.obgd_kappa,
+        "sparsity": controller_cfg.sparsity,
+        "leaky_relu_slope": controller_cfg.leaky_relu_slope,
+        "use_layer_norm": controller_cfg.use_layer_norm,
+        "normalize": controller_cfg.normalize,
+        "normalizer_decay": controller_cfg.normalizer_decay,
+        "seed": controller_cfg.seed,
+        "cbp": {
+            "enabled": controller_cfg.cbp.enabled,
+            "decay_rate": controller_cfg.cbp.decay_rate,
+            "replacement_rate": controller_cfg.cbp.replacement_rate,
+            "maturity_threshold": controller_cfg.cbp.maturity_threshold,
+        },
+        "retention": {
+            "mode": controller_cfg.retention.mode,
+            "n_slots": controller_cfg.retention.n_slots,
+            "embed_dim": controller_cfg.retention.embed_dim,
+            "trunk_step_scale": controller_cfg.retention.trunk_step_scale,
+            "trunk_freeze_after": controller_cfg.retention.trunk_freeze_after,
+            "proto_seed": controller_cfg.retention.proto_seed,
+        },
     }
     (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -126,6 +370,26 @@ def test_alberta_checkpoint_validator_accepts_complete_checkpoint(tmp_path: Path
     assert report["inference_report"]["ok"] is True
 
 
+def test_alberta_checkpoint_validator_accepts_cbp_checkpoint_with_inference(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    _rewrite_checkpoint_as_cbp(tmp_path)
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        profile_id="hiwonder-ainex",
+        required_tasks=["stand_up"],
+        min_steps=10,
+        require_domain_rand=True,
+        require_inference=True,
+    )
+
+    assert report["ok"] is True
+    assert report["checks"]["controller"] is True
+    assert report["inference_report"]["ok"] is True
+
+
 def test_alberta_checkpoint_validator_rejects_undertrained_checkpoint(tmp_path: Path) -> None:
     _write_alberta_checkpoint(tmp_path, total_steps=9)
 
@@ -134,6 +398,114 @@ def test_alberta_checkpoint_validator_rejects_undertrained_checkpoint(tmp_path: 
     assert report["ok"] is False
     assert report["checks"]["total_steps"] is False
     assert report["checks"]["requested_total_steps"] is False
+
+
+def test_alberta_checkpoint_validator_can_require_phase_promotion(tmp_path: Path) -> None:
+    _write_alberta_checkpoint(tmp_path)
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is True
+    assert report["checks"]["phase_promotion"] is True
+
+
+def test_alberta_checkpoint_validator_rejects_failed_phase_promotion(tmp_path: Path) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["status"] = "failed"
+    manifest["phase_promotion"]["failed_phase"] = 0
+    manifest["phase_promotion"]["phases"][0]["promotion_passed"] = False
+    manifest["phase_promotion"]["phases"][0]["eval_success_rate"] = 0.0
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_requires_physical_phase_evidence(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0].pop("tracked_body_name")
+    manifest["phase_promotion"]["phases"][0]["physical_checks"] = {}
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_rejects_stale_tracked_body(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path, profile_id="hiwonder-ainex")
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0]["tracked_body_name"] = "head_tilt_link"
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_recomputes_phase_signed_motion(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path, tasks=["walk_backward"])
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0]["mean_final_tracked_delta_x_m"] = 0.4
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        profile_id="hiwonder-ainex",
+        required_tasks=["walk_backward"],
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_rejects_extra_failed_physical_check(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0]["physical_checks"][
+        "unexpected_extra_check"
+    ] = False
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
 
 
 def test_alberta_checkpoint_validator_rejects_missing_required_task(

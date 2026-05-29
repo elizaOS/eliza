@@ -578,6 +578,11 @@ class MemoryEvidenceTemplateTest(unittest.TestCase):
                 "claim_boundary": "DRAMSim3 behavioural simulation only; not physical LPDDR, silicon, phone, or release evidence.",
                 "phone_claim_allowed": False,
                 "release_claim_allowed": False,
+                "linux_memory_claim_allowed": False,
+                "memory_bandwidth_claim_allowed": False,
+                "lpddr_phy_claim_allowed": False,
+                "silicon_capacity_claim_allowed": False,
+                "uma_claim_allowed": False,
                 "raw_log_path": str(raw_log.relative_to(templates.ROOT)),
                 "raw_stats_path": str(raw_stats.relative_to(templates.ROOT)),
                 "raw_artifacts": [

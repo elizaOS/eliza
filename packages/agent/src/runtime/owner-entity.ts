@@ -1,5 +1,6 @@
 import {
   type IAgentRuntime,
+  logger,
   resolveCanonicalOwnerId,
   stringToUuid,
 } from "@elizaos/core";
@@ -36,9 +37,21 @@ export async function resolveOwnerEntityId(
         if (metadata.ownership?.ownerId) {
           return metadata.ownership.ownerId;
         }
-      } catch {}
+      } catch (error) {
+        logger.debug(
+          `[owner-entity] World ownership lookup failed for room ${roomId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
-  } catch {}
+  } catch (error) {
+    logger.warn(
+      `[owner-entity] Failed to resolve owner from world metadata; falling back to synthetic owner id: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
   return resolveFallbackOwnerEntityId(runtime);
 }

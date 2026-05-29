@@ -500,11 +500,17 @@ export function InstallSheet({
         const source = new EventSource(`/api/secrets/manager/install/${jobId}`);
         sourceRef.current = source;
         source.onmessage = (event) => {
-          const data = JSON.parse(event.data) as
+          let data:
             | { type: "log"; stream: "stdout" | "stderr"; line: string }
             | { type: "status"; status: string }
             | { type: "done"; exitCode: number }
             | { type: "error"; message: string };
+          try {
+            data = JSON.parse(event.data);
+          } catch {
+            // Ignore malformed frames (heartbeats / proxy noise).
+            return;
+          }
           if (data.type === "log") {
             setLogs((prev) => [...prev.slice(-199), data.line]);
           } else if (data.type === "done") {

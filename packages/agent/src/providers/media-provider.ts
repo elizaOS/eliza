@@ -58,6 +58,32 @@ async function withProviderErrorBoundary<T>(
 const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://elizacloud.ai/api/v1";
 const DEFAULT_AUDIO_TIMEOUT_MS = 120_000;
 
+const VEO_OPERATION_POLL_INTERVAL_MS = 10_000;
+const VEO_OPERATION_TIMEOUT_MS = 300_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface VeoOperation {
+  name?: string;
+  done?: boolean;
+  error?: { code?: number; message?: string };
+  response?: {
+    predictions?: Array<{ videoUri?: string }>;
+    generateVideoResponse?: {
+      generatedSamples?: Array<{ video?: { uri?: string } }>;
+    };
+  };
+}
+
+function extractVeoVideoUri(operation: VeoOperation): string | undefined {
+  return (
+    operation.response?.predictions?.[0]?.videoUri ??
+    operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri
+  );
+}
+
 function normalizeAudioKind(value: unknown): AudioKind | undefined {
   switch (value) {
     case "music":
@@ -897,34 +923,60 @@ export class GoogleVideoProvider implements VideoGenerationProvider {
         return { success: false, error: `Google Veo error: ${text}` };
       }
 
-      // Veo returns a long-running operation - for now we return the operation name
-      // In production, you'd poll the operation until it completes
-      const data = (await response.json()) as {
-        name?: string;
-        done?: boolean;
-        response?: {
-          predictions?: Array<{ videoUri?: string }>;
-        };
-      };
-
-      if (data.done && data.response?.predictions?.[0]?.videoUri) {
+      // Veo returns a long-running operation; poll it to completion.
+      const started = (await response.json()) as VeoOperation;
+      if (!started.name) {
         return {
-          success: true,
-          data: {
-            videoUrl: data.response.predictions[0].videoUri,
-          },
+          success: false,
+          error: "Google Veo error: operation response missing name",
         };
       }
 
-      // Operation started but not complete - return operation reference
-      // Client should poll the operation endpoint
-      return {
-        success: true,
-        data: {
-          videoUrl: `pending:${data.name}`,
-        },
-      };
+      const completed = await this.pollOperation(started);
+      const videoUri = extractVeoVideoUri(completed);
+      if (!videoUri) {
+        return {
+          success: false,
+          error:
+            "Google Veo error: operation completed without a video URI in the response",
+        };
+      }
+      return { success: true, data: { videoUrl: videoUri } };
     });
+  }
+
+  private async pollOperation(started: VeoOperation): Promise<VeoOperation> {
+    if (started.done) return started;
+    const deadline = Date.now() + VEO_OPERATION_TIMEOUT_MS;
+    let operation = started;
+    while (!operation.done) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Google Veo error: video generation did not complete within ${Math.round(
+            VEO_OPERATION_TIMEOUT_MS / 1000,
+          )}s`,
+        );
+      }
+      await delay(VEO_OPERATION_POLL_INTERVAL_MS);
+      const pollResponse = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/${operation.name}`,
+        {
+          method: "GET",
+          headers: { "x-goog-api-key": this.apiKey },
+        },
+      );
+      if (!pollResponse.ok) {
+        const text = await pollResponse.text();
+        throw new Error(`Google Veo error: ${text}`);
+      }
+      operation = (await pollResponse.json()) as VeoOperation;
+      if (operation.error) {
+        throw new Error(
+          `Google Veo error: ${operation.error.message ?? "operation failed"}`,
+        );
+      }
+    }
+    return operation;
   }
 }
 

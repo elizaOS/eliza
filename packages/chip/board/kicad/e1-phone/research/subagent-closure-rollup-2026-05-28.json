@@ -1,0 +1,60 @@
+{
+  "schema": "eliza.e1_phone_subagent_closure_rollup.v1",
+  "date": "2026-05-28",
+  "claim_boundary": "Traceable subagent research and local execution rollup; not production release evidence.",
+  "lane_reports": {
+    "supplier_step_sourcing": "board/kicad/e1-phone/research/supplier-step-sourcing-agent-report-2026-05-28.md",
+    "routing_drc_erc": "board/kicad/e1-phone/research/routing-drc-erc-agent-report-2026-05-28.md",
+    "mechanical_clearance": "mechanical/e1-phone/review/clearance-agent-review-2026-05-28.md",
+    "release_intake_bom": "board/kicad/e1-phone/research/release-intake-bom-agent-report-2026-05-28.md",
+    "local_execution": "board/kicad/e1-phone/research/local-execution-report-2026-05-28.md"
+  },
+  "locally_completed": {
+    "concept_cad_boolean_pass": true,
+    "parts_loaded": 258,
+    "brep_pair_evaluations": 989,
+    "unintentional_clashes": 0,
+    "passing_scope_results": 11,
+    "scope_result_count": 11,
+    "rear_camera_back_aperture_present": true,
+    "screen_cover_scope_clear": true,
+    "split_interconnect_side_loop_clearance_mm": 0.56,
+    "split_interconnect_tail_clearance_mm": 0.25,
+    "battery_pmic_fpc_deferred_until_main_pcb_present": true,
+    "cell_adjacent_bosses_driven_before_battery": true
+  },
+  "blocked_not_locally_completable": [
+    "kicad_cli_absent_for_real_drc_erc",
+    "routed_candidate_sha_identical_to_development_board_not_production_promotion",
+    "supplier_approved_step_land_pattern_pin_order_missing",
+    "physical_routed_board_clearance_results_0_of_12",
+    "supplier_response_packs_missing",
+    "factory_lab_first_article_release_evidence_missing",
+    "release_approval_signatures_missing"
+  ],
+  "package_conflicts_found": [
+    {
+      "footprint": "BACKLIGHT_BIAS_POWER_DEV",
+      "conflict": "QFN24 support placeholder likely conflicts with public phone backlight-driver package classes such as TI LM3697 DSBGA12"
+    },
+    {
+      "footprint": "SENSOR_HUB_QFN_DEV",
+      "conflict": "QFN24 support placeholder likely conflicts with Bosch BMI270/ST LSM6DSO32 LGA14-class sensor candidates"
+    },
+    {
+      "footprint": "FUEL_GAUGE_WLCSP_DEV",
+      "conflict": "WLCSP12 assumption is not bound to an exact selected fuel gauge"
+    }
+  ],
+  "public_sources_worth_intake": [
+    "https://gct.co/connector/usb4105",
+    "https://www.digikey.com/en/products/detail/gct/USB4105-GF-A-120/14559037",
+    "https://www.hirose.com/product/series/BM28?lang=en",
+    "https://www.hirose.com/product/p/CL0673-5049-0-53",
+    "https://www.murata.com/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea",
+    "https://www.quectel.com/product/5g-redcap-rg255c-series/",
+    "https://www.chenghaolcd.com/sale-26717023-5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.html",
+    "https://www.sincerefirst.com/sincerefirst-solution/6009.html"
+  ],
+  "release_credit": false
+}

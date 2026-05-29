@@ -1,97 +1,101 @@
-schema: eliza.rot_bootrom_magic_contract_blocker.v1
-status: blocked_rot_swarm_owned
-claim_boundary: platform_contract_bootrom_magic_check_cannot_parse_new_secure_boot_rom_rtl
-owner: rot_secure_boot_swarm
-summary: >
-  scripts/check_platform_contract.py::check_bootrom_against_rtl reports the four
-  boot-ROM identity words (magic0/magic1/contract_version/boot_vector_placeholder
-  at 0x00/0x04/0x08/0x0C) as 0x00000000 against the contract. This is NOT a
-  contract error and NOT a missing-magic regression: the identity words are
-  present in rtl/bootrom/e1_bootrom.sv and match the contract exactly. The
-  failure is a checker-vs-RTL representation mismatch introduced when the RoT
-  secure-boot rewrite changed the boot-ROM read path from a case-statement read
-  mux to a $readmemh-loaded memory array with the identity header overlaid via
-  mem[0..3] assignments. The contract side is correct and must not be changed to
-  match a false 0x0 reading.
-
-evidence_of_correct_magic:
-  rtl_module: rtl/bootrom/e1_bootrom.sv
-  overlay_block: |
-    // initial block, after $readmemh(rom_path, mem):
-    mem[0] = 32'h4F50_534F;   // magic0  "OSPO"
-    mem[1] = 32'h4348_4950;   // magic1  "CHIP"
-    mem[2] = 32'h0000_0001;   // contract_version
-    mem[3] = 32'h0000_1000;   // boot_vector_placeholder
-  effective_rom_words:
-    "0x00": "0x4F50534F"
-    "0x04": "0x43484950"
-    "0x08": "0x00000001"
-    "0x0C": "0x00001000"
-  contract_words_match: true
-  module_intent: >
-    The module header comment states the first four words "remain a stable,
-    debug-visible identity/version header ... overlaid after the image load and
-    are part of the published ROM contract." The magic is intended to be present.
-
-root_cause:
-  where: scripts/check_platform_contract.py
-  function: check_bootrom_against_rtl
-  detail: >
-    The function extracts boot-ROM words with the regex
-    "6'h([0-9A-Fa-f]+):\s*rdata\s*=\s*(?:32'h)?([A-Za-z0-9_]+)", which only
-    matches a case-statement read mux of the form "6'h00: rdata = 32'h...". The
-    new secure-boot ROM has no such case statement; it loads an image via
-    $readmemh into a memory array, drives "assign rdata = mem[mem_addr];", and
-    overlays the identity header through mem[0..3] = 32'h... in the initial
-    block. The regex finds zero matches, rtl_words is empty, and every contract
-    word resolves to None, which is then reported as 0x00000000.
-
-decision:
-  contract_action: none
-  rationale: >
-    The contract identity values are the correct intended truth and already
-    match the RTL overlay. Editing the contract to "match" the 0x0 reading would
-    delete a real, present security-relevant identity check (fail-open). This
-    cannot be closed by editing sw/platform/e1_platform_contract.json, which is
-    the only file in this work item's edit scope.
-
-required_rot_swarm_fix:
-  summary: >
-    Teach check_bootrom_against_rtl to read the identity header from the new
-    boot-ROM RTL form (and/or keep the four identity words emitted in a
-    checker-parseable manner), so the magic words resolve to their real values.
-  options:
-    - id: extend_checker_parser
-      description: >
-        Update check_bootrom_against_rtl to also extract identity words from the
-        memory-array overlay form, e.g. match "mem\[(\d+)\]\s*=\s*32'h([0-9A-Fa-f_]+)"
-        and map index -> index*4 byte offset, in addition to the existing
-        case-statement regex.
-      owner: rot_secure_boot_swarm
-      touches: scripts/check_platform_contract.py
-    - id: emit_parseable_localparams
-      description: >
-        Alternatively, expose the four identity words in the boot-ROM RTL as
-        named localparams that the existing localparam+case regex already
-        resolves, keeping the overlay values and the static contract fingerprint
-        in one place.
-      owner: rot_secure_boot_swarm
-      touches: rtl/bootrom/e1_bootrom.sv
-  must_preserve:
-    - The four identity words at 0x00/0x04/0x08/0x0C must remain 0x4F50534F,
-      0x43484950, 0x00000001, 0x00001000 in the synthesized/simulated ROM.
-    - The check must fail closed if any identity word is absent or wrong.
-  pass_requires:
-    - python3 scripts/check_platform_contract.py prints no "boot ROM magic*"
-      findings and exits 0.
-
-out_of_scope_for_this_workitem:
-  - rtl/bootrom/e1_bootrom.sv (RoT/NPU swarm owned; read-only here)
-  - scripts/check_platform_contract.py (not the contract; not in edit scope)
-
 checker:
   command: python3 scripts/check_platform_contract.py
   inspected:
-    - rtl/bootrom/e1_bootrom.sv
-    - sw/platform/e1_platform_contract.json
-    - build/boot-rom/e1_secure_boot_rom.hex
+  - rtl/bootrom/e1_bootrom.sv
+  - sw/platform/e1_platform_contract.json
+  - build/boot-rom/e1_secure_boot_rom.hex
+claim_boundary: platform_contract_bootrom_magic_check_cannot_parse_new_secure_boot_rom_rtl
+decision:
+  contract_action: none
+  rationale: 'The contract identity values are the correct intended truth and already
+    match the RTL overlay. Editing the contract to "match" the 0x0 reading would delete
+    a real, present security-relevant identity check (fail-open). This cannot be closed
+    by editing sw/platform/e1_platform_contract.json, which is the only file in this
+    work item''s edit scope.
+
+    '
+evidence_of_correct_magic:
+  contract_words_match: true
+  effective_rom_words:
+    '0x00': '0x4F50534F'
+    '0x04': '0x43484950'
+    '0x08': '0x00000001'
+    '0x0C': '0x00001000'
+  module_intent: 'The module header comment states the first four words "remain a
+    stable, debug-visible identity/version header ... overlaid after the image load
+    and are part of the published ROM contract." The magic is intended to be present.
+
+    '
+  overlay_block: '// initial block, after $readmemh(rom_path, mem):
+
+    mem[0] = 32''h4F50_534F;   // magic0  "OSPO"
+
+    mem[1] = 32''h4348_4950;   // magic1  "CHIP"
+
+    mem[2] = 32''h0000_0001;   // contract_version
+
+    mem[3] = 32''h0000_1000;   // boot_vector_placeholder
+
+    '
+  rtl_module: rtl/bootrom/e1_bootrom.sv
+generated_utc: '2026-05-22T17:26:01Z'
+out_of_scope_for_this_workitem:
+- rtl/bootrom/e1_bootrom.sv (RoT/NPU swarm owned; read-only here)
+- scripts/check_platform_contract.py (not the contract; not in edit scope)
+owner: rot_secure_boot_swarm
+required_rot_swarm_fix:
+  must_preserve:
+  - The four identity words at 0x00/0x04/0x08/0x0C must remain 0x4F50534F, 0x43484950,
+    0x00000001, 0x00001000 in the synthesized/simulated ROM.
+  - The check must fail closed if any identity word is absent or wrong.
+  options:
+  - description: 'Update check_bootrom_against_rtl to also extract identity words
+      from the memory-array overlay form, e.g. match "mem\[(\d+)\]\s*=\s*32''h([0-9A-Fa-f_]+)"
+      and map index -> index*4 byte offset, in addition to the existing case-statement
+      regex.
+
+      '
+    id: extend_checker_parser
+    owner: rot_secure_boot_swarm
+    touches: scripts/check_platform_contract.py
+  - description: 'Alternatively, expose the four identity words in the boot-ROM RTL
+      as named localparams that the existing localparam+case regex already resolves,
+      keeping the overlay values and the static contract fingerprint in one place.
+
+      '
+    id: emit_parseable_localparams
+    owner: rot_secure_boot_swarm
+    touches: rtl/bootrom/e1_bootrom.sv
+  pass_requires:
+  - python3 scripts/check_platform_contract.py prints no "boot ROM magic*" findings
+    and exits 0.
+  summary: 'Teach check_bootrom_against_rtl to read the identity header from the new
+    boot-ROM RTL form (and/or keep the four identity words emitted in a checker-parseable
+    manner), so the magic words resolve to their real values.
+
+    '
+root_cause:
+  detail: 'The function extracts boot-ROM words with the regex "6''h([0-9A-Fa-f]+):\s*rdata\s*=\s*(?:32''h)?([A-Za-z0-9_]+)",
+    which only matches a case-statement read mux of the form "6''h00: rdata = 32''h...".
+    The new secure-boot ROM has no such case statement; it loads an image via $readmemh
+    into a memory array, drives "assign rdata = mem[mem_addr];", and overlays the
+    identity header through mem[0..3] = 32''h... in the initial block. The regex finds
+    zero matches, rtl_words is empty, and every contract word resolves to None, which
+    is then reported as 0x00000000.
+
+    '
+  function: check_bootrom_against_rtl
+  where: scripts/check_platform_contract.py
+schema: eliza.rot_bootrom_magic_contract_blocker.v1
+status: blocked_rot_swarm_owned
+summary: 'scripts/check_platform_contract.py::check_bootrom_against_rtl reports the
+  four boot-ROM identity words (magic0/magic1/contract_version/boot_vector_placeholder
+  at 0x00/0x04/0x08/0x0C) as 0x00000000 against the contract. This is NOT a contract
+  error and NOT a missing-magic regression: the identity words are present in rtl/bootrom/e1_bootrom.sv
+  and match the contract exactly. The failure is a checker-vs-RTL representation mismatch
+  introduced when the RoT secure-boot rewrite changed the boot-ROM read path from
+  a case-statement read mux to a $readmemh-loaded memory array with the identity header
+  overlaid via mem[0..3] assignments. The contract side is correct and must not be
+  changed to match a false 0x0 reading.
+
+  '

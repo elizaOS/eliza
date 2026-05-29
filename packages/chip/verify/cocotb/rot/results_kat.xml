@@ -1,6 +1,6 @@
 <testsuites name="results">
   <testsuite name="all" package="all">
-    <property name="random_seed" value="1779405743" />
-    <testcase name="hmac_sha256_kat_through_xbar" classname="test_e1_rot_kat" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/rot/test_e1_rot_kat.py" lineno="111" time="0.0051119327545166016" sim_time_ns="1160.001" ratio_time="226920.23852917308" />
+    <property name="random_seed" value="1780018370" />
+    <testcase name="hmac_sha256_kat_through_xbar" classname="test_e1_rot_kat" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/rot/test_e1_rot_kat.py" lineno="109" time="0.023566007614135742" sim_time_ns="1160.001" ratio_time="49223.48405353945" />
   </testsuite>
 </testsuites>

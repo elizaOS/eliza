@@ -363,7 +363,7 @@
     "docs/evidence/android/eliza_ai_soc_lunch.log": {
       "blocker_code": "missing_aosp_lunch_log",
       "claim_boundary": "external_aosp_product_selection_only_not_boot_or_compatibility_evidence",
-      "producer_command": "source build/envsetup.sh && lunch eliza_ai_soc-trunk_staging-userdebug",
+      "producer_command": "source build/envsetup.sh && lunch eliza_openagent_ai_soc_phone-trunk_staging-userdebug",
       "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP lunch transcript",
       "required_metadata": [
         "EXTERNAL_TREE=",
@@ -374,8 +374,8 @@
         "COMPATIBILITY_CLAIM=none"
       ],
       "required_any": [
-        "eliza_ai_soc-trunk_staging-userdebug",
-        "TARGET_PRODUCT=eliza_ai_soc"
+        "eliza_openagent_ai_soc_phone-trunk_staging-userdebug",
+        "TARGET_PRODUCT=eliza_openagent_ai_soc_phone"
       ],
       "required_all": [
         "TARGET_ARCH=riscv64"
@@ -537,8 +537,8 @@
     "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log": {
       "blocker_code": "missing_aosp_cts_vts_intake_log",
       "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
-      "producer_command": "m cts vts && cts-tradefed list modules && vts-tradefed list modules",
-      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append CTS/VTS build or list-module output, selected smoke scope, excluded modules, and result directory path if any",
+      "producer_command": "bounded CTS/VTS smoke-scope intake and optional Tradefed module listing",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append selected smoke scope, excluded modules, result directory path, and optional Tradefed module-list output if tools are already present",
       "required_metadata": [
         "EXTERNAL_TREE=",
         "COMMAND=",

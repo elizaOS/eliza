@@ -6,8 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import yaml
 
@@ -21,8 +22,27 @@ ROUTED_CLEARANCE = MECH_REVIEW / "routed-board-clearance.json"
 STEP_VALIDATION = MECH_REVIEW / "step-validation.json"
 FULL_CAD_BOOLEAN = MECH_REVIEW / "full-cad-boolean-interference.json"
 CAD_CONNECTION_COVERAGE = MECH_REVIEW / "cad-connection-coverage.json"
+SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL = (
+    MECH_REVIEW / "supplier-step-surrogate-intake-detail.json"
+)
+PUBLIC_CAD_SOURCE_INTAKE = (
+    ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+)
+PUBLIC_BOM_MARKET_COST_BANDS = (
+    MECH_REVIEW / "bom-public-market-cost-bands-2026-05-28.yaml"
+)
 ROUTED_CLEARANCE_EXECUTION = ROOT / "board/kicad/e1-phone/routed-clearance-release-execution.yaml"
+COMPONENT_MODEL_DIR_MANIFEST = (
+    ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+)
+COMPONENT_3D_MODEL_MANIFEST = (
+    ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+)
+CANDIDATE_MANIFEST = (
+    ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
+)
 EXPECTED_SCHEMA = "eliza.e1_phone_enclosure_mechanical_release_burndown.v1"
+CLAIM_BOUNDARY = "release_gate_blocker_report_only_not_release_evidence"
 RELEASE_POLICY_FLAGS = {
     "ready_for_enclosure",
     "ready_for_routed_step_export",
@@ -77,13 +97,63 @@ CLEARANCE_NEXT_COMMANDS = [
     "python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report",
     (
         "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-        "--report build/reports/phone-release-readiness-current.json"
+        "--report build/reports/phone-release-readiness.json"
     ),
 ]
 
 
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
+
+
+def present_unique(items: list[Any]) -> list[Any]:
+    return list(dict.fromkeys(item for item in items if item))
+
+
+def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id"),
+        "connection_type": record.get("connection_type"),
+        "physical_medium": record.get("physical_medium"),
+        "electrical_class": record.get("electrical_class"),
+        "cad_part": record.get("cad_part"),
+        "from": record.get("from"),
+        "to": record.get("to"),
+        "represented_nets": record.get("represented_nets", []),
+        "represented_route_ids": record.get("represented_route_ids", []),
+        "represented_net_count": int(record.get("represented_net_count") or 0),
+        "represented_route_count": int(record.get("represented_route_count") or 0),
+        "represented_route_record_count": int(
+            record.get("represented_route_record_count") or 0
+        ),
+        "represented_route_records_with_layer_count": int(
+            record.get("represented_route_records_with_layer_count") or 0
+        ),
+        "represented_route_records_with_source_domain_count": int(
+            record.get("represented_route_records_with_source_domain_count") or 0
+        ),
+        "represented_route_records_with_route_class_count": int(
+            record.get("represented_route_records_with_route_class_count") or 0
+        ),
+        "represented_route_classification_gap_count": int(
+            record.get("represented_route_classification_gap_count") or 0
+        ),
+        "solid_step_part_names": record.get("solid_step_part_names", []),
+        "solid_step_part_count": int(record.get("solid_step_part_count") or 0),
+        "terminal_marker_count": int(record.get("terminal_marker_count") or 0),
+        "cad_step_bytes": int(record.get("cad_step_bytes") or 0),
+        "solid_step_part_bytes_total": int(record.get("solid_step_part_bytes_total") or 0),
+        "cad_part_present": record.get("cad_part_present") is True,
+        "terminal_markers_present": record.get("terminal_markers_present") is True,
+        "solid_step_parts_present": record.get("solid_step_parts_present") is True,
+        "all_represented_nets_have_route_trace": (
+            record.get("all_represented_nets_have_route_trace") is True
+        ),
+        "all_represented_routes_have_layer_source_and_class": (
+            record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "release_credit": record.get("release_credit") is True,
+    }
 
 
 def repo_path(path_text: str) -> Path:
@@ -127,6 +197,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def write_report(payload: dict[str, Any], report_path: Path) -> None:
+    payload.setdefault("generated_utc", datetime.now(UTC).isoformat())
+    payload.setdefault("claim_boundary", CLAIM_BOUNDARY)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -430,7 +502,7 @@ def routed_step_release_generation_plan(
             "python3 scripts/check_e1_phone_enclosure_mechanical_content.py",
             (
                 "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-                "--report build/reports/phone-release-readiness-current.json"
+                "--report build/reports/phone-release-readiness.json"
             ),
         ],
         "next_external_inputs": [
@@ -722,14 +794,16 @@ def clearance_case_diagnostics(
                 "required_release_report": release_case.get("required_release_report"),
                 "required_inputs": routed_inputs,
                 "supplier_geometry_families": supplier_families_for_case(case_id, supplier_index),
-                "next_artifacts": [
-                    release_case.get("required_release_report"),
-                    routed_inputs.get("required_production_routed_step"),
-                    routed_inputs.get("required_routed_kicad_pcb"),
-                    routed_inputs.get("required_drc_report"),
-                    routed_inputs.get("required_erc_report"),
-                    *routed_inputs.get("next_artifacts", []),
-                ],
+                "next_artifacts": present_unique(
+                    [
+                        release_case.get("required_release_report"),
+                        routed_inputs.get("required_production_routed_step"),
+                        routed_inputs.get("required_routed_kicad_pcb"),
+                        routed_inputs.get("required_drc_report"),
+                        routed_inputs.get("required_erc_report"),
+                        *routed_inputs.get("next_artifacts", []),
+                    ]
+                ),
                 "next_commands": CLEARANCE_NEXT_COMMANDS,
                 "required_min_gap_mm": row.get("required_min_gap_mm"),
                 "measured_min_gap_mm": row.get("measured_min_gap_mm"),
@@ -851,7 +925,14 @@ def handoff_packet_failures(packet: dict[str, Any]) -> list[str]:
         "executed_pass",
     }:
         failures.append(f"{packet_id}:unapproved_release_credit:{expected_path}")
-    for field in cast("list[Any]", required_fields):
+    unpopulated = data.get("required_fields_unpopulated")
+    if isinstance(unpopulated, list) and unpopulated:
+        failures.append(f"{packet_id}:template_intake_not_executed:{expected_path}")
+        failures.extend(
+            f"{packet_id}:required_field_unpopulated:{field}" for field in unpopulated
+        )
+        return failures
+    for field in required_fields:
         if str(field) not in data or data.get(str(field)) in (None, "", []):
             failures.append(f"{packet_id}:missing_field:{field}")
     return failures
@@ -868,11 +949,15 @@ def handoff_packet_action(packet: dict[str, Any]) -> dict[str, Any]:
     if present and evidence_path is not None:
         data = yaml.safe_load(evidence_path.read_text(encoding="utf-8"))
         if isinstance(data, dict):
-            missing_required_fields = [
-                str(field)
-                for field in required_fields
-                if str(field) not in data or data.get(str(field)) in (None, "", [])
-            ]
+            unpopulated = data.get("required_fields_unpopulated")
+            if isinstance(unpopulated, list) and unpopulated:
+                missing_required_fields = [str(field) for field in unpopulated]
+            else:
+                missing_required_fields = [
+                    str(field)
+                    for field in required_fields
+                    if str(field) not in data or data.get(str(field)) in (None, "", [])
+                ]
         else:
             missing_required_fields = [str(field) for field in required_fields]
     else:
@@ -890,6 +975,7 @@ def handoff_packet_action(packet: dict[str, Any]) -> dict[str, Any]:
         "present": present,
         "release_credit": packet.get("release_credit") is True,
         "missing_required_fields": missing_required_fields,
+        "template_intake_not_executed": present and bool(missing_required_fields),
     }
 
 
@@ -899,7 +985,7 @@ def first_article_physical_fit_action_inventory(paths: list[str]) -> list[dict[s
         "python3 scripts/check_e1_phone_first_article_content.py",
         (
             "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-            "--report build/reports/phone-release-readiness-current.json"
+            "--report build/reports/phone-release-readiness.json"
         ),
     ]
     required_inputs = {
@@ -953,6 +1039,114 @@ def first_article_physical_fit_action_inventory(paths: list[str]) -> list[dict[s
     return rows
 
 
+def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "reference": record.get("reference"),
+        "footprint": record.get("footprint"),
+        "pinout_bound": record.get("pinout_bound") is True,
+        "support_pattern_has_explicit_provenance": (
+            record.get("support_pattern_has_explicit_provenance") is True
+        ),
+        "terminal_contract_count": int(record.get("terminal_contract_count") or 0),
+        "terminal_contract_matches_pad_visuals": (
+            record.get("terminal_contract_matches_pad_visuals") is True
+        ),
+        "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
+        "all_pad_visuals_have_contract": (
+            record.get("all_pad_visuals_have_contract") is True
+        ),
+        "non_signal_pad_contract_count": int(
+            record.get("non_signal_pad_contract_count") or 0
+        ),
+        "non_signal_pad_contract_matches_pad_visuals": (
+            record.get("non_signal_pad_contract_matches_pad_visuals") is True
+        ),
+        "npth_mechanical_feature_contract_count": int(
+            record.get("npth_mechanical_feature_contract_count") or 0
+        ),
+        "npth_mechanical_feature_contract_matches_footprint": (
+            record.get("npth_mechanical_feature_contract_matches_footprint") is True
+        ),
+        "combined_step_assembly_name": record.get("combined_step_assembly_name"),
+        "local_discrete_step_file": record.get("local_discrete_step_file"),
+        "local_discrete_step_sha256": record.get("local_discrete_step_sha256"),
+        "local_discrete_step_bytes": int(record.get("local_discrete_step_bytes") or 0),
+        "local_discrete_step_imported_as_solid": (
+            record.get("local_discrete_step_imported_as_solid") is True
+        ),
+        "local_discrete_step_bbox_matches_envelope": (
+            record.get("local_discrete_step_bbox_matches_envelope") is True
+        ),
+        "expected_supplier_step_file": record.get("expected_supplier_step_file"),
+        "supplier_sourcing_lane": record.get("supplier_sourcing_lane"),
+        "supplier_step_intake_status": record.get("supplier_step_intake_status"),
+        "supplier_step_intake_file": record.get("supplier_step_intake_file"),
+        "supplier_step_intake_release_credit": (
+            record.get("supplier_step_intake_release_credit") is True
+        ),
+        "source_routed_step": record.get("source_routed_step"),
+        "release_credit": record.get("release_credit") is True,
+    }
+
+
+def compact_step_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "reference": record.get("reference"),
+        "footprint": record.get("footprint"),
+        "visual_package_class": record.get("visual_package_class"),
+        "pinout_file": record.get("pinout_file"),
+        "pinout_bound": bool(record.get("pinout_file")),
+        "support_pattern_has_explicit_provenance": (
+            record.get("support_pattern_has_explicit_provenance") is True
+        ),
+        "terminal_contract_count": int(record.get("terminal_contract_count") or 0),
+        "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
+        "all_pad_visuals_have_contract": (
+            record.get("all_pad_visuals_have_contract") is True
+        ),
+        "local_step_status": record.get("local_discrete_step_status"),
+        "local_step_file": record.get("local_discrete_step_file"),
+        "local_step_sha256": record.get("local_discrete_step_sha256"),
+        "local_step_bytes": int(record.get("local_discrete_step_bytes") or 0),
+        "local_step_imported_as_solid": (
+            record.get("local_discrete_step_imported_as_solid") is True
+        ),
+        "local_step_bbox_matches_envelope": (
+            record.get("local_discrete_step_bbox_matches_envelope") is True
+        ),
+        "release_credit": record.get("release_credit") is True,
+    }
+
+
+def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record.get("id"),
+        "connection_type": record.get("connection_type"),
+        "physical_medium": record.get("physical_medium"),
+        "electrical_class": record.get("electrical_class"),
+        "cad_part": record.get("cad_part"),
+        "from": record.get("from"),
+        "to": record.get("to"),
+        "represented_nets": record.get("represented_nets", []),
+        "represented_route_ids": record.get("represented_route_ids", []),
+        "represented_net_count": int(record.get("represented_net_count") or 0),
+        "represented_route_count": int(record.get("represented_route_count") or 0),
+        "represented_route_record_count": int(
+            record.get("represented_route_record_count") or 0
+        ),
+        "cad_step_bytes": int(record.get("cad_step_bytes") or 0),
+        "terminal_marker_count": int(record.get("terminal_marker_count") or 0),
+        "solid_step_part_count": int(record.get("solid_step_part_count") or 0),
+        "cad_part_present": record.get("cad_part_present") is True,
+        "terminal_markers_present": record.get("terminal_markers_present") is True,
+        "solid_step_parts_present": record.get("solid_step_parts_present") is True,
+        "all_represented_routes_have_layer_source_and_class": (
+            record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "release_credit": record.get("release_credit") is True,
+    }
+
+
 def main() -> int:
     args = parse_args()
     try:
@@ -964,8 +1158,14 @@ def main() -> int:
         routed_clearance = load_json_mapping(ROUTED_CLEARANCE)
         step_validation = load_json_mapping(STEP_VALIDATION)
         full_cad_boolean = load_json_mapping(FULL_CAD_BOOLEAN)
+        supplier_surrogate_detail = load_json_mapping(SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL)
+        public_cad_intake = load_yaml_mapping(PUBLIC_CAD_SOURCE_INTAKE)
+        public_bom_cost_bands = load_yaml_mapping(PUBLIC_BOM_MARKET_COST_BANDS)
         routed_clearance_execution = load_yaml_mapping(ROUTED_CLEARANCE_EXECUTION)
         connection_coverage = load_json_mapping(CAD_CONNECTION_COVERAGE)
+        component_model_manifest = load_yaml_mapping(COMPONENT_MODEL_DIR_MANIFEST)
+        component_3d_model_manifest = load_yaml_mapping(COMPONENT_3D_MODEL_MANIFEST)
+        candidate_manifest = load_yaml_mapping(CANDIDATE_MANIFEST)
 
         release_policy = burndown.get("release_policy")
         if not isinstance(release_policy, dict):
@@ -1001,9 +1201,64 @@ def main() -> int:
         concept_assets = mechanical.get("concept_generated_assets", {})
         if not isinstance(concept_assets, dict):
             raise ValueError("mechanical inventory concept_generated_assets must be a mapping")
+        solid_handoff_gate = mechanical.get("review_gate_inventory", {}).get(
+            "solid_cad_handoff", {}
+        )
+        if not isinstance(solid_handoff_gate, dict):
+            raise ValueError("mechanical inventory missing solid CAD handoff gate")
+        solid_handoff_generated = solid_handoff_gate.get("status") == "generated"
+        expected_fallback_count = int(
+            solid_handoff_gate.get("ocp_terminal_step_fallback_count") or 0
+        )
+        expected_fallback_error = solid_handoff_gate.get("ocp_terminal_step_fallback_error")
+        expected_terminal_marker_count = int(
+            connection_coverage.get("required_connection_terminal_marker_count") or 0
+        )
+        expected_fallback_required = not solid_handoff_generated
+        expected_fallback_complete = (
+            expected_fallback_required
+            and expected_fallback_count == expected_terminal_marker_count
+            and expected_fallback_error in ("", None)
+        )
+        expected_terminal_step_coverage_complete = (
+            solid_handoff_generated or expected_fallback_complete
+        )
+        connection_records = [
+            item
+            for item in connection_coverage.get("connections", [])
+            if isinstance(item, dict)
+        ]
+        expected_connection_record_manifest = [
+            compact_connection_record(item)
+            for item in sorted(
+                connection_records,
+                key=lambda record: str(record.get("id") or ""),
+            )
+        ]
+        expected_connection_record_ids = {
+            str(item.get("id")) for item in expected_connection_record_manifest
+        }
+        if solid_handoff_generated:
+            if not solid_handoff_gate.get("assembly_step"):
+                raise ValueError("generated solid CAD handoff missing assembly STEP")
+            if int(solid_handoff_gate.get("assembly_step_bytes") or 0) <= 0:
+                raise ValueError("generated solid CAD handoff assembly STEP is empty")
+        else:
+            if (
+                expected_terminal_marker_count <= 0
+                or expected_fallback_count != expected_terminal_marker_count
+            ):
+                raise ValueError("mechanical inventory lost OCP terminal STEP fallback count")
+            if expected_fallback_error not in ("", None):
+                raise ValueError("mechanical inventory OCP terminal STEP fallback has error")
         expected_connection_asset_fields = {
-            "solid_handoff_ocp_terminal_step_fallback_count": 42,
-            "solid_handoff_ocp_terminal_step_fallback_error": "",
+            "solid_handoff_native_terminal_step_export": solid_handoff_generated,
+            "solid_handoff_terminal_step_coverage_complete": (
+                expected_terminal_step_coverage_complete
+            ),
+            "solid_handoff_ocp_terminal_step_fallback_required": expected_fallback_required,
+            "solid_handoff_ocp_terminal_step_fallback_count": expected_fallback_count,
+            "solid_handoff_ocp_terminal_step_fallback_error": expected_fallback_error,
             "cad_connection_coverage_status": connection_coverage.get("status"),
             "cad_connection_required_count": connection_coverage.get("required_connection_count"),
             "cad_connection_passing_count": connection_coverage.get("passing_connection_count"),
@@ -1025,6 +1280,35 @@ def main() -> int:
             "cad_connection_represented_net_count_total": connection_coverage.get(
                 "represented_net_count_total"
             ),
+            "cad_connection_represented_route_count_total": connection_coverage.get(
+                "represented_route_count_total"
+            ),
+            "cad_connection_represented_route_record_count_total": connection_coverage.get(
+                "represented_route_record_count_total"
+            ),
+            "cad_connection_represented_route_records_with_layer_count_total": (
+                connection_coverage.get("represented_route_records_with_layer_count_total")
+            ),
+            "cad_connection_represented_route_records_with_source_domain_count_total": (
+                connection_coverage.get(
+                    "represented_route_records_with_source_domain_count_total"
+                )
+            ),
+            "cad_connection_represented_route_records_with_route_class_count_total": (
+                connection_coverage.get("represented_route_records_with_route_class_count_total")
+            ),
+            "cad_connection_represented_route_classification_gap_count": (
+                connection_coverage.get("represented_route_classification_gap_count")
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": (
+                connection_coverage.get("all_represented_routes_have_layer_source_and_class")
+            ),
+            "cad_connection_represented_route_length_total_mm": connection_coverage.get(
+                "represented_route_length_total_mm"
+            ),
+            "cad_connection_represented_controlled_impedance_route_count_total": (
+                connection_coverage.get("represented_controlled_impedance_route_count_total")
+            ),
             "cad_connection_record_count": len(
                 [
                     item
@@ -1032,13 +1316,25 @@ def main() -> int:
                     if isinstance(item, dict)
                 ]
             ),
+            "cad_connection_record_manifest_id_count": len(expected_connection_record_ids),
+            "cad_connection_record_manifest": expected_connection_record_manifest,
             "cad_connection_represented_net_list_total": sum(
                 len(item.get("represented_nets", []))
                 for item in connection_coverage.get("connections", [])
                 if isinstance(item, dict)
             ),
+            "cad_connection_represented_route_id_list_total": sum(
+                len(item.get("represented_route_ids", []))
+                for item in connection_coverage.get("connections", [])
+                if isinstance(item, dict)
+            ),
             "cad_connection_all_records_have_represented_nets": all(
                 bool(item.get("represented_nets"))
+                for item in connection_coverage.get("connections", [])
+                if isinstance(item, dict)
+            ),
+            "cad_connection_all_records_have_represented_routes": all(
+                bool(item.get("represented_route_ids"))
                 for item in connection_coverage.get("connections", [])
                 if isinstance(item, dict)
             ),
@@ -1048,6 +1344,30 @@ def main() -> int:
                 == len(item.get("represented_nets", []))
                 for item in connection_coverage.get("connections", [])
                 if isinstance(item, dict)
+            ),
+            "cad_connection_all_represented_routes_match_counts": all(
+                int(item.get("represented_route_count") or 0)
+                == len(item.get("represented_route_ids", []))
+                for item in connection_coverage.get("connections", [])
+                if isinstance(item, dict)
+            ),
+            "cad_connection_all_records_have_terminal_markers": all(
+                item.get("terminal_markers_present") is True for item in connection_records
+            ),
+            "cad_connection_all_records_have_solid_step_parts": all(
+                item.get("solid_step_parts_present") is True for item in connection_records
+            ),
+            "cad_connection_all_records_have_cad_step_bytes": all(
+                int(item.get("cad_step_bytes") or 0) > 1000 for item in connection_records
+            ),
+            "cad_connection_all_records_have_cad_parts": all(
+                item.get("cad_part_present") is True for item in connection_records
+            ),
+            "cad_connection_all_records_release_credit_false": all(
+                item.get("release_credit") is False for item in connection_records
+            ),
+            "cad_connection_all_represented_nets_have_route_trace": (
+                connection_coverage.get("all_represented_nets_have_route_trace")
             ),
             "cad_connection_visual_route_span_total_mm": connection_coverage.get(
                 "visual_route_span_total_mm"
@@ -1075,19 +1395,69 @@ def main() -> int:
         for key, value in expected_connection_asset_fields.items():
             if concept_assets.get(key) != value:
                 raise ValueError(f"mechanical inventory CAD connection asset field stale: {key}")
-        solid_handoff_gate = mechanical.get("review_gate_inventory", {}).get(
-            "solid_cad_handoff", {}
-        )
-        if not isinstance(solid_handoff_gate, dict):
-            raise ValueError("mechanical inventory missing solid CAD handoff gate")
-        if int(solid_handoff_gate.get("ocp_terminal_step_fallback_count") or 0) != 42:
-            raise ValueError("mechanical inventory lost OCP terminal STEP fallback count")
-        if solid_handoff_gate.get("ocp_terminal_step_fallback_error") not in ("", None):
-            raise ValueError("mechanical inventory OCP terminal STEP fallback has error")
-        if local_ready.get("solid_handoff_ocp_terminal_step_fallback_count") != 42:
+        if local_ready.get("solid_handoff_ocp_terminal_step_fallback_count") != (
+            expected_fallback_count
+        ):
             raise ValueError("local enclosure CAD ready lost terminal STEP fallback count")
-        if local_ready.get("solid_handoff_ocp_terminal_step_fallback_complete") is not True:
+        local_ready_terminal_step_fields = {
+            "solid_handoff_native_terminal_step_export": solid_handoff_generated,
+            "solid_handoff_terminal_step_coverage_complete": (
+                expected_terminal_step_coverage_complete
+            ),
+            "solid_handoff_ocp_terminal_step_fallback_required": expected_fallback_required,
+        }
+        for key, value in local_ready_terminal_step_fields.items():
+            if local_ready.get(key) is not value:
+                raise ValueError(f"local enclosure CAD ready terminal STEP field stale: {key}")
+        if (
+            local_ready.get("solid_handoff_ocp_terminal_step_fallback_complete")
+            is not expected_fallback_complete
+        ):
             raise ValueError("local enclosure CAD ready terminal STEP fallback incomplete")
+        expected_local_connection_fields = {
+            "cad_connection_record_count": len(connection_records),
+            "cad_connection_record_manifest_id_count": len(expected_connection_record_ids),
+            "cad_connection_record_manifest": expected_connection_record_manifest,
+            "cad_connection_all_records_have_represented_nets": all(
+                bool(item.get("represented_nets")) for item in connection_records
+            ),
+            "cad_connection_all_records_have_represented_routes": all(
+                bool(item.get("represented_route_ids")) for item in connection_records
+            ),
+            "cad_connection_all_represented_nets_match_routed_nets": all(
+                item.get("represented_nets") == item.get("nets", [])
+                and int(item.get("represented_net_count") or 0)
+                == len(item.get("represented_nets", []))
+                for item in connection_records
+            ),
+            "cad_connection_all_represented_routes_match_counts": all(
+                int(item.get("represented_route_count") or 0)
+                == len(item.get("represented_route_ids", []))
+                for item in connection_records
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": all(
+                item.get("all_represented_routes_have_layer_source_and_class") is True
+                for item in connection_records
+            ),
+            "cad_connection_all_records_have_terminal_markers": all(
+                item.get("terminal_markers_present") is True for item in connection_records
+            ),
+            "cad_connection_all_records_have_solid_step_parts": all(
+                item.get("solid_step_parts_present") is True for item in connection_records
+            ),
+            "cad_connection_all_records_have_cad_step_bytes": all(
+                int(item.get("cad_step_bytes") or 0) > 1000 for item in connection_records
+            ),
+            "cad_connection_all_records_have_cad_parts": all(
+                item.get("cad_part_present") is True for item in connection_records
+            ),
+            "cad_connection_all_records_release_credit_false": all(
+                item.get("release_credit") is False for item in connection_records
+            ),
+        }
+        for key, expected in expected_local_connection_fields.items():
+            if local_ready.get(key) != expected:
+                raise ValueError(f"local enclosure CAD ready connection field stale: {key}")
         step_validation_status = step_validation.get("status")
         step_validation_passed = step_validation_status == "pass"
         if step_validation_status not in {"pass", "blocked"}:
@@ -1116,6 +1486,206 @@ def main() -> int:
             raise ValueError(
                 "mechanical inventory local_routed_step_candidate_ready must be a mapping"
             )
+        component_model_directory_ready = mechanical.get("component_model_directory_ready", {})
+        if not isinstance(component_model_directory_ready, dict):
+            raise ValueError(
+                "mechanical inventory component_model_directory_ready must be a mapping"
+            )
+        expected_supplier_lane_counts = {
+            "audio_speaker_microphone_flexes": 8,
+            "battery_pack": 2,
+            "board_support_passives_mechanicals": 42,
+            "cellular": 8,
+            "charger_power_path": 1,
+            "display_touch": 3,
+            "front_camera": 2,
+            "pmic": 9,
+            "rear_camera": 2,
+            "side_buttons": 3,
+            "top_bottom_interconnect": 2,
+            "usb_c_receptacle_evt0": 1,
+            "usb_pd_controller": 1,
+            "wifi_bluetooth": 5,
+        }
+        expected_component_model_directory_fields = {
+            "ready": True,
+            "scope": "local_component_model_directory_not_supplier_steps",
+            "manifest": "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml",
+            "supplier_step_surrogate_intake_detail": (
+                "mechanical/e1-phone/review/supplier-step-surrogate-intake-detail.json"
+            ),
+            "model_record_count": 89,
+            "combined_step_locator_count": 89,
+            "local_discrete_step_file_count": 89,
+            "local_discrete_step_imported_solid_count": 89,
+            "local_discrete_step_bbox_match_count": 89,
+            "expected_supplier_step_file_count": 89,
+            "missing_supplier_discrete_model_count": 89,
+            "supplier_step_intake_placeholder_count": 0,
+            "supplier_step_intake_local_surrogate_count": 47,
+            "supplier_step_intake_missing_count": 0,
+            "supplier_step_intake_not_applicable_count": 42,
+            "supplier_step_intake_release_candidate_count": 0,
+            "supplier_step_intake_lane_counts": expected_supplier_lane_counts,
+            "supplier_lane_surrogate_step_count": 13,
+            "all_lane_surrogates_present": True,
+            "all_lane_surrogate_hashes_match": True,
+            "all_lane_surrogate_sizes_match": True,
+            "all_lane_surrogates_release_credit_false": True,
+            "all_lane_component_reference_counts_match_manifest": True,
+            "all_lane_component_records_release_credit_false": True,
+            "all_lane_component_records_reference_surrogate": True,
+            "all_model_records_source_routed_step_bound": True,
+            "all_model_records_have_combined_step_locator": True,
+            "all_model_records_have_local_discrete_step_file": True,
+            "all_local_discrete_step_files_import_as_solids": True,
+            "all_local_discrete_step_bboxes_match_envelopes": True,
+            "all_model_records_have_expected_supplier_step_file": True,
+            "release_claim_allowed": False,
+        }
+        for key, expected in expected_component_model_directory_fields.items():
+            if component_model_directory_ready.get(key) != expected:
+                raise ValueError(
+                    f"mechanical inventory component model directory field stale: {key}"
+                )
+        if int(component_model_directory_ready.get("local_discrete_step_bytes_total") or 0) <= 0:
+            raise ValueError("mechanical inventory component local STEP byte count is empty")
+        expected_surrogate_detail_fields = {
+            "schema": "eliza.e1_phone_supplier_step_surrogate_intake_detail.v1",
+            "present": True,
+            "source_manifest": (
+                "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+            ),
+            "status": "blocked_local_surrogate_steps_not_supplier_approved",
+            "supplier_lane_surrogate_step_count": 13,
+            "supplier_step_intake_local_surrogate_count": 47,
+            "supplier_step_intake_not_applicable_count": 42,
+            "supplier_step_intake_missing_count": 0,
+            "supplier_step_intake_release_candidate_count": 0,
+            "supplier_step_intake_lane_counts": expected_supplier_lane_counts,
+            "component_model_record_count": 89,
+            "all_lane_surrogates_present": True,
+            "all_lane_surrogate_hashes_match": True,
+            "all_lane_surrogate_sizes_match": True,
+            "all_lane_surrogates_release_credit_false": True,
+            "all_lane_component_reference_counts_match_manifest": True,
+            "all_lane_component_records_release_credit_false": True,
+            "all_lane_component_records_reference_surrogate": True,
+            "release_credit": False,
+            "release_allowed": False,
+        }
+        for key, expected in expected_surrogate_detail_fields.items():
+            if supplier_surrogate_detail.get(key) != expected:
+                raise ValueError(f"supplier surrogate intake detail field stale: {key}")
+        supplier_lane_records = supplier_surrogate_detail.get("lane_records")
+        if not isinstance(supplier_lane_records, list):
+            raise ValueError("supplier surrogate intake detail lane_records must be a list")
+        if component_model_directory_ready.get(
+            "supplier_lane_surrogate_records"
+        ) != supplier_lane_records:
+            raise ValueError("mechanical inventory supplier surrogate lane records stale")
+        if len(supplier_lane_records) != 13:
+            raise ValueError("supplier surrogate intake detail lane count stale")
+        if not all(
+            record.get("file_present") is True
+            and record.get("hash_matches_file") is True
+            and record.get("size_matches_file") is True
+            and record.get("release_credit") is False
+            and record.get("component_reference_count")
+            == record.get("manifest_model_reference_count")
+            for record in supplier_lane_records
+            if isinstance(record, dict)
+        ):
+            raise ValueError("supplier surrogate intake detail has stale lane evidence")
+        component_model_records = component_model_manifest.get("model_records")
+        if not isinstance(component_model_records, list):
+            raise ValueError("component model directory manifest model_records must be a list")
+        expected_component_model_record_manifest = [
+            compact_component_model_record(record)
+            for record in component_model_records
+            if isinstance(record, dict)
+        ]
+        actual_component_model_record_manifest = component_model_directory_ready.get(
+            "component_model_record_manifest"
+        )
+        if not isinstance(actual_component_model_record_manifest, list):
+            raise ValueError(
+                "mechanical inventory component model record manifest must be a list"
+            )
+        if actual_component_model_record_manifest != expected_component_model_record_manifest:
+            raise ValueError(
+                "mechanical inventory component model record manifest is stale"
+            )
+        if len(actual_component_model_record_manifest) != 89:
+            raise ValueError("mechanical inventory component model record count is stale")
+        if not all(
+            record.get("local_discrete_step_file")
+            and int(record.get("local_discrete_step_bytes") or 0) > 0
+            and record.get("local_discrete_step_imported_as_solid") is True
+            and record.get("release_credit") is False
+            for record in actual_component_model_record_manifest
+        ):
+            raise ValueError(
+                "mechanical inventory component model records are missing local STEP detail"
+            )
+        public_sourcing_intake = mechanical.get("public_sourcing_intake_ready", {})
+        if not isinstance(public_sourcing_intake, dict):
+            raise ValueError("mechanical inventory public_sourcing_intake_ready must be a mapping")
+        public_cad_records = public_cad_intake.get("records", [])
+        public_bom_records = public_bom_cost_bands.get("records", [])
+        if not isinstance(public_cad_records, list) or not isinstance(public_bom_records, list):
+            raise ValueError("public CAD/BOM intake records must be lists")
+        public_cad_summary = public_cad_intake.get("summary", {})
+        public_bom_summary = public_bom_cost_bands.get("summary", {})
+        if not isinstance(public_cad_summary, dict) or not isinstance(public_bom_summary, dict):
+            raise ValueError("public CAD/BOM intake summaries must be mappings")
+        expected_public_sourcing_intake = {
+            "ready": True,
+            "scope": "public_cad_and_market_cost_intake_not_release_evidence",
+            "public_cad_source_intake": rel(PUBLIC_CAD_SOURCE_INTAKE),
+            "public_market_bom_cost_bands": rel(PUBLIC_BOM_MARKET_COST_BANDS),
+            "public_cad_source_record_count": len(public_cad_records),
+            "public_cad_source_step_or_3d_observed_count": int(
+                public_cad_summary.get("public_step_or_3d_observed_count") or 0
+            ),
+            "public_cad_source_footprint_or_eda_observed_count": int(
+                public_cad_summary.get("public_footprint_or_eda_observed_count") or 0
+            ),
+            "public_cad_source_local_downloaded_hashed_count": int(
+                public_cad_summary.get("local_downloaded_hashed_count") or 0
+            ),
+            "public_cad_source_release_credit_record_count": int(
+                public_cad_summary.get("release_credit_record_count") or 0
+            ),
+            "public_market_bom_cost_category_count": len(public_bom_records),
+            "public_market_bom_cost_volume_count": int(
+                public_bom_summary.get("volume_count") or 0
+            ),
+            "public_market_bom_cost_avl_quote_count": int(
+                public_bom_summary.get("avl_quote_count") or 0
+            ),
+            "public_market_bom_cost_signed_supplier_quote_count": int(
+                public_bom_summary.get("signed_supplier_quote_count") or 0
+            ),
+            "public_market_bom_cost_subtotal_researched_categories_usd": (
+                public_bom_cost_bands.get("subtotal_researched_categories_usd", {})
+            ),
+            "release_credit": False,
+            "release_allowed": False,
+        }
+        for key, expected in expected_public_sourcing_intake.items():
+            if public_sourcing_intake.get(key) != expected:
+                raise ValueError(f"mechanical inventory public sourcing intake stale: {key}")
+        if public_cad_intake.get("release_credit") is not False:
+            raise ValueError("public CAD source intake cannot grant release credit")
+        if public_cad_intake.get("release_allowed") is not False:
+            raise ValueError("public CAD source intake cannot allow release")
+        if public_bom_summary.get("release_credit") is not False:
+            raise ValueError("public market BOM cost bands cannot grant release credit")
+        if int(public_bom_summary.get("avl_quote_count") or 0) != 0:
+            raise ValueError("public market BOM cost bands cannot contain AVL quotes")
+        if int(public_bom_summary.get("signed_supplier_quote_count") or 0) != 0:
+            raise ValueError("public market BOM cost bands cannot contain signed supplier quotes")
         supplier_families = burndown.get("required_supplier_geometry_inputs")
         if not isinstance(supplier_families, list):
             raise ValueError("required_supplier_geometry_inputs must be a list")
@@ -1178,12 +1748,8 @@ def main() -> int:
         ]
         handoff_external_items = list(handoff_required_items)
         handoff_present = present_count(handoff_paths)
-        handoff_present = present_count(
-            [
-                str(path)
-                for path in handoff_outputs
-                if str(path).startswith(("board/", "mechanical/"))
-            ]
+        handoff_output_path_present = present_count(
+            [str(path) for path in handoff_outputs if str(path).startswith(("board/", "mechanical/"))]
         )
 
         production_step_files = board_step.get("production_step_files")
@@ -1215,6 +1781,108 @@ def main() -> int:
                 raise ValueError(
                     "detailed routed STEP candidate hash does not match development source"
                 )
+            routed_visual_detail = candidate_manifest.get("routed_step_visual_detail", {})
+            if not isinstance(routed_visual_detail, dict):
+                raise ValueError("candidate manifest routed STEP visual detail missing")
+            component_models = component_3d_model_manifest.get("models", [])
+            if not isinstance(component_models, list):
+                raise ValueError("component 3D model manifest models must be a list")
+            expected_connection_records = [
+                compact_step_connection_record(record)
+                for record in sorted(
+                    (
+                        record
+                        for record in connection_coverage.get("connections", [])
+                        if isinstance(record, dict)
+                    ),
+                    key=lambda record: str(record.get("id") or ""),
+                )
+            ]
+            expected_component_records = [
+                compact_step_component_model_record(record)
+                for record in component_models
+                if isinstance(record, dict)
+            ]
+            expected_detailed_lists = {
+                "route_visual_records": routed_visual_detail.get("route_visual_records", []),
+                "via_visual_records": routed_visual_detail.get("via_visual_records", []),
+                "filled_copper_zone_records": routed_visual_detail.get(
+                    "filled_copper_zone_records", []
+                ),
+                "component_model_record_manifest": expected_component_records,
+                "cad_connection_record_manifest": expected_connection_records,
+            }
+            for key, expected in expected_detailed_lists.items():
+                if detailed_routed_step_candidate.get(key) != expected:
+                    raise ValueError(f"detailed routed STEP candidate record list stale: {key}")
+            expected_detailed_counts = {
+                "route_visual_record_count": len(expected_detailed_lists["route_visual_records"]),
+                "via_visual_record_count": len(expected_detailed_lists["via_visual_records"]),
+                "filled_copper_zone_record_count": len(
+                    expected_detailed_lists["filled_copper_zone_records"]
+                ),
+                "component_model_record_count": len(expected_component_records),
+                "cad_connection_record_count": len(expected_connection_records),
+            }
+            for key, expected in expected_detailed_counts.items():
+                if int(detailed_routed_step_candidate.get(key) or 0) != expected:
+                    raise ValueError(f"detailed routed STEP candidate record count stale: {key}")
+            expected_detailed_flags = {
+                "all_route_records_have_net_layer_class_and_source": True,
+                "all_component_records_have_local_step": True,
+                "all_connection_records_have_cad_step": True,
+            }
+            for key, expected in expected_detailed_flags.items():
+                if detailed_routed_step_candidate.get(key) is not expected:
+                    raise ValueError(f"detailed routed STEP candidate detail flag stale: {key}")
+            intake_detail_rel = board_step.get("routed_board_step_intake_detail")
+            if (
+                intake_detail_rel
+                != "mechanical/e1-phone/review/routed-board-step-intake-detail.json"
+            ):
+                raise ValueError("board-step routed-board intake detail path stale")
+            intake_detail = load_json_mapping(repo_path(str(intake_detail_rel)))
+            if not isinstance(intake_detail, dict):
+                raise ValueError("routed-board STEP intake detail must be a mapping")
+            expected_intake_detail_fields = {
+                "schema": "eliza.e1_phone_routed_board_step_intake_detail.v1",
+                "csv_intake": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
+                "release_id": "LOCAL-ROUTED-CANDIDATE-2026-05-22",
+                "evidence_class": "blocked_local_candidate_outputs_not_release",
+                "routed_step_artifact": detailed_routed_step_candidate.get("path"),
+                "routed_step_sha256": detailed_routed_step_candidate.get("sha256"),
+                "release_credit": False,
+            }
+            for key, expected in expected_intake_detail_fields.items():
+                if intake_detail.get(key) != expected:
+                    raise ValueError(f"routed-board STEP intake detail stale: {key}")
+            for key, expected in expected_detailed_lists.items():
+                if intake_detail.get(key) != expected:
+                    raise ValueError(f"routed-board STEP intake detail record list stale: {key}")
+            for key, expected in expected_detailed_counts.items():
+                if int(intake_detail.get(key) or 0) != expected:
+                    raise ValueError(f"routed-board STEP intake detail record count stale: {key}")
+            for key, expected in expected_detailed_flags.items():
+                if intake_detail.get(key) is not expected:
+                    raise ValueError(f"routed-board STEP intake detail flag stale: {key}")
+            kicad_preflight_rel = board_step.get("routed_board_kicad_cli_preflight")
+            if (
+                kicad_preflight_rel
+                != "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
+            ):
+                raise ValueError("board-step routed-board KiCad CLI preflight path stale")
+            kicad_preflight = load_json_mapping(repo_path(str(kicad_preflight_rel)))
+            expected_kicad_preflight = {
+                "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
+                "tool": "kicad-cli",
+                "available": False,
+                "drc_status": "blocked_tool_unavailable",
+                "erc_status": "blocked_tool_unavailable",
+                "release_credit": False,
+            }
+            for key, expected in expected_kicad_preflight.items():
+                if kicad_preflight.get(key) != expected:
+                    raise ValueError(f"routed-board KiCad CLI preflight stale: {key}")
         blocked_candidate_step_files = board_step.get("blocked_candidate_step_files", [])
         if not isinstance(blocked_candidate_step_files, list):
             raise ValueError("board-step blocked_candidate_step_files must be a list")
@@ -1237,6 +1905,14 @@ def main() -> int:
             != detailed_routed_step_candidate
         ):
             raise ValueError("mechanical inventory detailed routed STEP candidate stale")
+        if inventory_board_step_gate.get("routed_board_step_intake_detail") != board_step.get(
+            "routed_board_step_intake_detail"
+        ):
+            raise ValueError("mechanical inventory routed-board intake detail path stale")
+        if inventory_board_step_gate.get("routed_board_kicad_cli_preflight") != board_step.get(
+            "routed_board_kicad_cli_preflight"
+        ):
+            raise ValueError("mechanical inventory routed-board KiCad CLI preflight path stale")
         if local_routed_step_candidate_ready.get("release_claim_allowed") is not False:
             raise ValueError("local routed STEP candidate inventory cannot allow release")
         if (
@@ -1260,6 +1936,31 @@ def main() -> int:
             local_routed_step_candidate_ready.get("detailed_routed_step_candidate_bytes") or 0
         ) != int(detailed_routed_step_candidate.get("size_bytes") or 0):
             raise ValueError("local routed STEP detailed candidate byte count stale")
+        routed_source_binding = local_routed_step_candidate_ready.get(
+            "routed_candidate_source_binding"
+        )
+        if not isinstance(routed_source_binding, dict):
+            raise ValueError("local routed STEP source binding must be a mapping")
+        expected_routed_source_binding = {
+            "manifest": "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+            "source_board": "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb",
+            "candidate_board": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+            "candidate_matches_source_board": True,
+            "source_is_zero_placeholder_real_footprint_board": True,
+            "candidate_is_zero_placeholder_real_footprint_board": True,
+            "source_placeholder_marker_count": 0,
+            "candidate_placeholder_marker_count": 0,
+            "candidate_legacy_e1phone_footprint_ref_count": 0,
+            "candidate_footprint_count": 89,
+            "candidate_segment_count": 306,
+            "candidate_via_count": 24,
+            "candidate_zone_count": 13,
+            "candidate_filled_zone_count": 6,
+            "release_credit": False,
+        }
+        for key, expected in expected_routed_source_binding.items():
+            if routed_source_binding.get(key) != expected:
+                raise ValueError(f"local routed STEP source binding stale: {key}")
         if (
             detailed_routed_step_candidate
             and local_routed_step_candidate_ready.get(
@@ -1392,10 +2093,23 @@ def main() -> int:
         connections = connection_coverage.get("connections")
         if not isinstance(connections, list):
             raise ValueError("CAD connection coverage connections must be a list")
-        if connection_coverage.get("required_connection_count") != 21:
+        if connection_coverage.get("required_connection_count") != 32:
             raise ValueError("CAD connection coverage required count stale")
-        if connection_coverage.get("passing_connection_count") != 21:
+        if connection_coverage.get("passing_connection_count") != 32:
             raise ValueError("CAD connection coverage passing count stale")
+        if connection_coverage.get("represented_route_count_total") != 153:
+            raise ValueError("CAD connection coverage represented route count stale")
+        if connection_coverage.get("represented_route_record_count_total") != 153:
+            raise ValueError("CAD connection coverage represented route record count stale")
+        if connection_coverage.get("represented_route_classification_gap_count") != 0:
+            raise ValueError("CAD connection coverage represented route classification gaps remain")
+        if connection_coverage.get("all_represented_nets_have_route_trace") is not True:
+            raise ValueError("CAD connection coverage lost routed-trace binding")
+        if (
+            connection_coverage.get("all_represented_routes_have_layer_source_and_class")
+            is not True
+        ):
+            raise ValueError("CAD connection coverage lost route layer/source/class binding")
         required_connection_ids = {
             "display_touch_fpc",
             "rear_camera_csi_fpc",
@@ -1403,14 +2117,25 @@ def main() -> int:
             "side_key_flex",
             "battery_lead_flex",
             "usb_c_escape_tail",
+            "usb_c_to_pd_controller_escape",
+            "pd_controller_to_charger_control",
+            "charger_to_battery_power_sense",
+            "display_bias_power_flex",
+            "rear_camera_power_flex",
+            "front_camera_power_flex",
+            "wifi_bt_host_control",
+            "cellular_host_control",
             "bottom_speaker_lead_pair",
             "bottom_microphone_flex",
             "top_microphone_flex",
             "earpiece_receiver_lead_flex",
             "haptic_flex",
+            "sensor_hub_i2c_flex",
             "sim_esim_signal_flex",
             "nfc_loop_antenna_flex",
             "compute_som_sodimm_carrier",
+            "soc_shield_ground_spring",
+            "radio_shield_ground_spring",
             "cellular_main_rf_feed",
             "cellular_diversity_rf_feed",
             "cellular_antenna_aperture_tuner",
@@ -1430,6 +2155,13 @@ def main() -> int:
             or row.get("cad_part_present") is not True
             or row.get("endpoints_present") is not True
             or row.get("all_nets_in_routed_development_board") is not True
+            or row.get("all_represented_nets_have_route_trace") is not True
+            or row.get("all_represented_routes_have_layer_source_and_class") is not True
+            or int(row.get("represented_route_classification_gap_count") or 0) != 0
+            or int(row.get("represented_route_count") or 0) <= 0
+            or len(row.get("represented_route_ids", [])) != int(
+                row.get("represented_route_count") or 0
+            )
             or int(row.get("cad_step_bytes") or 0) <= 1000
             or row.get("release_credit") is not False
         ]
@@ -1463,7 +2195,8 @@ def main() -> int:
             {
                 "schema": "eliza.e1_phone_enclosure_mechanical_content_report.v1",
                 "status": "fail",
-                "summary": {"release_ready": False},
+                "release_credit": False,
+                "summary": {"release_ready": False, "release_credit": False},
                 "findings": [
                     {
                         "code": "enclosure_mechanical_contract_invalid",
@@ -1486,13 +2219,14 @@ def main() -> int:
         or complete_clearance != expected_clearance
         or failed_clearance_cases
         or first_article_present != len(first_article_outputs)
-        or handoff_present != len(handoff_outputs)
+        or handoff_present != len(handoff_packet_maps)
         or invalid_handoff_packets
         or not full_cad_boolean_passed
         or blockers
     ):
         summary = {
             "release_ready": False,
+            "release_credit": False,
             "missing_release_evidence": len(missing_release_evidence),
             "missing_release_evidence_categories": count_by_field(
                 release_evidence_blockers, "category"
@@ -1571,7 +2305,15 @@ def main() -> int:
             "first_article_outputs_present": first_article_present,
             "first_article_outputs_required": len(first_article_outputs),
             "handoff_outputs_present": handoff_present,
-            "handoff_outputs_required": len(handoff_outputs),
+            "handoff_outputs_required": len(handoff_packet_maps),
+            "handoff_output_path_items_present": handoff_output_path_present,
+            "handoff_output_path_items_required": len(
+                [
+                    str(path)
+                    for path in handoff_outputs
+                    if str(path).startswith(("board/", "mechanical/"))
+                ]
+            ),
             "handoff_packet_files_present": handoff_present,
             "handoff_packet_files_required": len(handoff_packet_maps),
             "handoff_external_deliverables_missing": len(handoff_external_items),
@@ -1580,6 +2322,7 @@ def main() -> int:
             "missing_first_article_output_paths": missing_first_article_paths,
             "missing_handoff_output_paths": missing_handoff_paths,
             "missing_handoff_output_items": missing_handoff_items,
+            "handoff_deliverables_unexecuted": handoff_external_items,
             "missing_handoff_repo_paths": missing_handoff_paths,
             "missing_handoff_external_items": handoff_external_items,
             "handoff_packet_count": len(handoff_packet_maps),
@@ -1598,6 +2341,28 @@ def main() -> int:
             "routed_clearance_release_action_count": len(clearance_release_actions),
             "first_article_physical_fit_action_count": len(first_article_physical_fit_actions),
         }
+        blocking_summary_keys = {
+            "missing_release_evidence",
+            "supplier_families_blocked",
+            "supplier_required_geometry_input_count",
+            "supplier_required_release_input_count",
+            "physical_interfaces_blocked",
+            "physical_interface_required_check_count",
+            "physical_interface_required_evidence_count",
+            "routed_step_files",
+            "repo_generatable_release_step_count",
+            "repo_generatable_missing_release_evidence_count",
+            "blocked_missing_release_evidence_generation_count",
+            "clearance_results_complete",
+            "clearance_results_expected",
+            "cad_connection_release_credit",
+            "step_validation_release_blocked",
+            "full_cad_boolean_release_ready",
+            "full_cad_boolean_release_blocked",
+            "failed_clearance_cases",
+            "handoff_external_deliverables_missing",
+            "release_blockers",
+        }
         findings: list[dict[str, Any]] = [
             {
                 "code": "enclosure_mechanical_release_blocked",
@@ -1606,27 +2371,7 @@ def main() -> int:
                 "evidence": rel(BURNDOWN),
             }
             for key, value in summary.items()
-            if key
-            not in {
-                "release_ready",
-                "candidate_routed_step_files",
-                "candidate_clearance_cases_mapped",
-                "candidate_release_credit",
-                "candidate_routed_step_paths",
-                "missing_first_article_output_paths",
-                "missing_handoff_output_paths",
-                "missing_handoff_repo_paths",
-                "missing_handoff_external_items",
-                "missing_handoff_packet_ids",
-                "handoff_packet_actions",
-                "invalid_handoff_packet_evidence",
-                "failed_clearance_case_ids",
-                "missing_release_evidence_categories",
-                "supplier_family_blocker_categories",
-                "physical_interface_blocker_categories",
-                "clearance_result_blocker_categories",
-            }
-            and value
+            if key in blocking_summary_keys and value
         ]
         diagnostic_findings: list[dict[str, Any]] = []
         if present_candidate_step_paths:
@@ -1656,11 +2401,11 @@ def main() -> int:
         if missing_handoff_items:
             diagnostic_findings.append(
                 {
-                    "code": "production_enclosure_handoff_outputs_missing",
+                    "code": "production_enclosure_handoff_deliverables_not_executed",
                     "severity": "blocker",
                     "message": (
                         f"{len(missing_handoff_items)} production enclosure handoff "
-                        "outputs are missing"
+                        "deliverables are present only as blocked intake packets"
                     ),
                     "evidence": missing_handoff_items,
                 }
@@ -1699,12 +2444,98 @@ def main() -> int:
                     "evidence": rel(BURNDOWN),
                 }
             )
+        repo_artifact_generation_count = (
+            summary["repo_generatable_release_step_count"]
+            + summary["repo_generatable_missing_release_evidence_count"]
+        )
+        blocker_dependency_counts = {
+            "repo_artifact_generation": repo_artifact_generation_count,
+            "live_device_validation": 0,
+            "actionable_external_dependency": max(
+                0,
+                summary["missing_release_evidence"]
+                + summary["supplier_families_blocked"]
+                + summary["physical_interfaces_blocked"]
+                + summary["failed_clearance_cases"]
+                + summary["release_blockers"]
+                - repo_artifact_generation_count,
+            ),
+        }
+        validation_commands = [
+            "python3 scripts/check_e1_phone_enclosure_mechanical_content.py",
+            "python3 scripts/check_e1_phone_first_article_content.py",
+            "python3 scripts/check_e1_phone_supplier_return_content.py",
+            "python3 scripts/check_e1_phone_routed_output_content.py",
+        ]
+        source_inputs = [
+            rel(BURNDOWN),
+            rel(MECH_INVENTORY),
+            rel(PUBLIC_CAD_SOURCE_INTAKE),
+            rel(PUBLIC_BOM_MARKET_COST_BANDS),
+            rel(BOARD_STEP),
+            rel(ROUTED_CLEARANCE),
+            rel(CAD_CONNECTION_COVERAGE),
+            rel(STEP_VALIDATION),
+            rel(FULL_CAD_BOOLEAN),
+            rel(SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL),
+            rel(ROUTED_CLEARANCE_EXECUTION),
+            rel(COMPONENT_MODEL_DIR_MANIFEST),
+        ]
+        blocked_evidence_inventory = [
+            *release_generation_plan,
+            routed_step_generation_plan,
+            *clearance_release_actions,
+            *handoff_packet_actions,
+        ]
         write_report(
             {
                 "schema": "eliza.e1_phone_enclosure_mechanical_content_report.v1",
                 "status": "blocked",
+                "release_credit": False,
                 "summary": summary,
                 "findings": findings,
+                "blocked_evidence_inventory": blocked_evidence_inventory,
+                "blocker_dependency_counts": blocker_dependency_counts,
+                "source_inputs": source_inputs,
+                "next_command_by_dependency": {
+                    "actionable_external_dependency": validation_commands,
+                    **(
+                        {
+                            "repo_artifact_generation": [
+                                "python3 scripts/generate_e1_phone_cad.py",
+                                "python3 scripts/check_e1_phone_enclosure_mechanical_content.py",
+                            ]
+                        }
+                        if repo_artifact_generation_count > 0
+                        else {}
+                    ),
+                },
+                "validation_commands": validation_commands,
+                "next_unblock_actions": blocked_evidence_inventory[:20],
+                "primary_blocker": {
+                    "dependency": "actionable_external_dependency"
+                    if blocker_dependency_counts["actionable_external_dependency"] > 0
+                    else "repo_artifact_generation",
+                    "blocked_rows": blocker_dependency_counts[
+                        "actionable_external_dependency"
+                    ],
+                    "actionable_external_dependency_rows": blocker_dependency_counts[
+                        "actionable_external_dependency"
+                    ],
+                    "repo_artifact_generation_rows": blocker_dependency_counts[
+                        "repo_artifact_generation"
+                    ],
+                    "total_blocked_rows": sum(blocker_dependency_counts.values()),
+                    "required_action": (
+                        "Collect supplier geometry, measured routed-board clearance, "
+                        "first-article physical-fit evidence, and approved enclosure "
+                        "handoff packets; local CAD candidates do not grant release credit."
+                    ),
+                    "validation_command": (
+                        "python3 scripts/check_e1_phone_enclosure_mechanical_content.py"
+                    ),
+                    "release_credit": False,
+                },
                 "production_enclosure_handoff_unblock_actions": handoff_packet_actions,
                 "routed_step_inventory": {
                     "production_release": production_step_inventory,
@@ -1732,8 +2563,8 @@ def main() -> int:
                         "status": full_cad_boolean.get("overall_status"),
                         "evidence_class": full_cad_boolean.get("evidence_class"),
                         "local_concept_passed": full_cad_boolean_passed,
-                        "release_blocked": True,
-                        "release_blocker_category": summary[
+                        "release_credit": False,
+                        "release_gap": summary[
                             "full_cad_boolean_release_blocker_category"
                         ],
                         "required_release_evidence_class": (
@@ -1747,9 +2578,9 @@ def main() -> int:
                         "unintentional_clash_count": len(
                             full_cad_boolean.get("unintentional_clashes") or []
                         ),
-                        "release_credit": False,
                     },
                 },
+                "public_sourcing_intake_context": public_sourcing_intake,
                 "missing_release_evidence_blockers": release_evidence_blockers,
                 "supplier_family_blockers": supplier_blocker_inventory,
                 "physical_interface_blockers": physical_interface_blocker_inventory_rows,
@@ -1780,6 +2611,7 @@ def main() -> int:
                 "missing_production_enclosure_handoff_outputs": {
                     "repo_paths": missing_handoff_paths,
                     "external_items": handoff_external_items,
+                    "deliverables_unexecuted": handoff_external_items,
                     "all_items": missing_handoff_items,
                 },
             },
@@ -1803,7 +2635,8 @@ def main() -> int:
         {
             "schema": "eliza.e1_phone_enclosure_mechanical_content_report.v1",
             "status": "pass",
-            "summary": {"release_ready": True},
+            "release_credit": True,
+            "summary": {"release_ready": True, "release_credit": True},
             "findings": [],
         },
         args.report,

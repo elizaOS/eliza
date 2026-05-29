@@ -85,7 +85,7 @@ def test_generate_nebius_training_report_reads_complete_artifacts(tmp_path: Path
                         "commands_match": True,
                         "combined_recording_match": True,
                         "require_combined": True,
-                        "manifest": "/tmp/agent_videos/manifest.json",
+                        "manifest": "/tmp/multi_robot_smoke_videos/manifest.json",
                         "manifest_ok_field": True,
                         "profiles": [
                             {
@@ -236,6 +236,18 @@ def test_generate_nebius_training_report_reads_complete_artifacts(tmp_path: Path
                         "combined_video": True,
                     },
                 },
+                "curriculum_eval": {
+                    "ok": True,
+                    "programmatic_pass_rate": 1.0,
+                    "min_programmatic_pass_rate": 1.0,
+                    "task_checks": {"stand_up": True, "walk_forward": True},
+                    "checks": {
+                        "present": True,
+                        "checkpoint_bound": True,
+                        "all_requested_tasks_programmatic_success": True,
+                        "programmatic_pass_rate": True,
+                    },
+                },
                 "instance_launch_hygiene": {
                     "ok": True,
                     "checks": {
@@ -285,6 +297,27 @@ def test_generate_nebius_training_report_reads_complete_artifacts(tmp_path: Path
                     "ok": True,
                     "visual_progress": 0.5,
                     "mean_frame_delta": 4.0,
+                },
+            ],
+        },
+    )
+    _write_json(
+        run / "evidence" / "multi_robot_smoke_review" / "video_review.json",
+        {
+            "ok": False,
+            "video_count": 40,
+            "videos": [
+                {
+                    "profile": "hiwonder-ainex",
+                    "ok": True,
+                    "visual_progress": 0.2,
+                    "mean_frame_delta": 1.0,
+                },
+                {
+                    "profile": "unitree-g1",
+                    "ok": False,
+                    "visual_progress": 0.1,
+                    "mean_frame_delta": 2.0,
                 },
             ],
         },
@@ -370,6 +403,14 @@ def test_generate_nebius_training_report_reads_complete_artifacts(tmp_path: Path
     assert report["video_review"]["action_progress"]["min_visual_progress"] == 0.25
     assert report["video_review"]["action_progress"]["mean_visual_progress"] == 0.375
     assert report["video_review"]["action_progress"]["mean_frame_delta"] == 3.0
+    assert report["multi_robot_smoke_review"]["present"] is True
+    assert report["multi_robot_smoke_review"]["ok"] is False
+    assert report["multi_robot_smoke_review"]["video_count"] == 40
+    assert report["multi_robot_smoke_review"]["action_progress"]["profiles"] == [
+        "hiwonder-ainex",
+        "unitree-g1",
+    ]
+    assert report["multi_robot_smoke_review"]["action_progress"]["ok_video_count"] == 1
     assert report["alberta_end_to_end_report"]["present"] is True
     assert report["alberta_end_to_end_report"]["ok"] is True
     assert report["alberta_end_to_end_report"]["production_complete"] is True
@@ -501,6 +542,17 @@ def test_generate_nebius_training_report_reads_complete_artifacts(tmp_path: Path
         ]
         is True
     )
+    assert report["completion_requirements"]["curriculum_eval_ok"] is True
+    assert report["completion_requirements"]["curriculum_eval_present"] is True
+    assert (
+        report["completion_requirements"]["curriculum_eval_checkpoint_bound"]
+        is True
+    )
+    assert (
+        report["completion_requirements"]["curriculum_eval_all_tasks_success"]
+        is True
+    )
+    assert report["completion_requirements"]["curriculum_eval_pass_rate"] is True
     assert report["completion_requirements"]["instance_launch_hygiene_ok"] is True
     assert (
         report["completion_requirements"]["instance_launch_no_inline_credentials"]
@@ -529,7 +581,20 @@ def test_generate_nebius_training_report_reads_complete_artifacts(tmp_path: Path
     )
     assert (
         report["completion_requirements"][
-            "obstacle_course_alberta_acc_gte_ppo"
+            "obstacle_course_observed_alberta_acc_gte_ppo"
+        ]
+        is True
+    )
+    assert "obstacle_course_alberta_acc_gte_ppo" not in report["completion_requirements"]
+    assert (
+        report["completion_requirements"][
+            "obstacle_course_alberta_acc_gte_ppo_gate_passed"
+        ]
+        is True
+    )
+    assert (
+        report["completion_requirements"][
+            "obstacle_course_required_delta_gates_ok"
         ]
         is True
     )
@@ -621,7 +686,127 @@ def test_generate_nebius_training_report_marks_missing_artifacts(tmp_path: Path)
     assert "asimov1_alberta_production" in markdown
     assert "brax_production_checkpoint" in markdown
     assert "production_policy_videos" in markdown
+    assert "curriculum_eval" in markdown
     assert "Completion Requirements" in markdown
+
+
+def test_generate_nebius_training_report_rejects_stale_finalization_success(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    _write_json(run / "monitor_status.json", {"run_id": "robot-full-test", "state": "complete"})
+    _write_json(
+        run / "validation_report.json",
+        {
+            "run_id": "robot-full-test",
+            "ok": False,
+            "checks": {
+                "stage_status": False,
+                "production_policy_videos": False,
+                "curriculum_eval": False,
+            },
+        },
+    )
+    _write_json(run / "finalization_report.json", {"ok": True, "missing_gates": []})
+
+    report = generate_nebius_training_report(run)
+
+    assert report["ok"] is False
+    assert report["finalization_report_ok"] is True
+    assert report["finalization_ok"] is False
+    assert report["finalization_matches_current_validation"] is False
+    assert report["missing_gates"] == [
+        "stage_status",
+        "production_policy_videos",
+        "curriculum_eval",
+    ]
+    assert (
+        report["completion_requirements"][
+            "finalization_report_matches_current_validation"
+        ]
+        is False
+    )
+
+
+def test_generate_nebius_training_report_uses_current_failed_validation_gates(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    _write_json(run / "monitor_status.json", {"run_id": "robot-full-test", "state": "invalid"})
+    _write_json(
+        run / "validation_report.json",
+        {
+            "run_id": "robot-full-test",
+            "ok": False,
+            "checks": {
+                "stage_status": True,
+                "production_contract": False,
+                "status_consistency": True,
+                "curriculum_eval": False,
+            },
+        },
+    )
+    _write_json(
+        run / "finalization_report.json",
+        {
+            "ok": False,
+            "missing_gates": [
+                "stage_status",
+                "production_contract",
+                "status_consistency",
+                "curriculum_eval",
+            ],
+        },
+    )
+
+    report = generate_nebius_training_report(run)
+
+    assert report["ok"] is False
+    assert report["missing_gates"] == ["production_contract", "curriculum_eval"]
+    assert report["stale_finalization_missing_gates"] == [
+        "stage_status",
+        "status_consistency",
+    ]
+    assert report["finalization_matches_current_validation"] is False
+
+
+def test_generate_nebius_training_report_requires_curriculum_eval(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    _write_json(run / "monitor_status.json", {"run_id": "robot-full-test"})
+    _write_json(
+        run / "validation_report.json",
+        {
+            "run_id": "robot-full-test",
+            "ok": False,
+            "reports": {
+                "curriculum_eval": {
+                    "ok": False,
+                    "programmatic_pass_rate": 0.5,
+                    "min_programmatic_pass_rate": 1.0,
+                    "task_checks": {"stand_up": True, "walk_forward": False},
+                    "checks": {
+                        "present": True,
+                        "checkpoint_bound": True,
+                        "all_requested_tasks_programmatic_success": False,
+                        "programmatic_pass_rate": False,
+                    },
+                }
+            },
+        },
+    )
+
+    report = generate_nebius_training_report(run)
+
+    assert report["validation_gates"]["curriculum_eval"]["ok"] is False
+    assert report["completion_requirements"]["curriculum_eval_ok"] is False
+    assert report["completion_requirements"]["curriculum_eval_present"] is True
+    assert (
+        report["completion_requirements"]["curriculum_eval_all_tasks_success"]
+        is False
+    )
+    assert report["completion_requirements"]["curriculum_eval_pass_rate"] is False
 
 
 def test_generate_nebius_training_report_does_not_treat_booleans_as_numbers(

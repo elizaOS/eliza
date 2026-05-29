@@ -58,6 +58,40 @@ def _delta(left: Any, right: Any) -> float | None:
     return None
 
 
+def _observed_delta_comparisons(deltas: dict[str, Any]) -> dict[str, bool]:
+    acc_delta = deltas.get("alberta_acc_minus_ppo")
+    forgetting_delta = deltas.get("alberta_forgetting_minus_ppo")
+    observed: dict[str, bool] = {}
+    if _finite_number(acc_delta):
+        observed["alberta_acc_gte_ppo"] = float(acc_delta) >= 0.0
+    if _finite_number(forgetting_delta):
+        observed["alberta_forgetting_lte_ppo"] = float(forgetting_delta) <= 0.0
+    return observed
+
+
+def _enforced_delta_gates(
+    observed: dict[str, bool],
+    required_deltas: dict[str, Any],
+    fallback_checks: dict[str, Any],
+) -> dict[str, bool]:
+    return {
+        "alberta_acc_gte_ppo": (
+            observed.get("alberta_acc_gte_ppo") is True
+            if required_deltas.get("require_alberta_acc_gte_ppo") is True
+            else True
+        )
+        if "alberta_acc_gte_ppo" in observed
+        else fallback_checks.get("alberta_acc_gte_ppo") is True,
+        "alberta_forgetting_lte_ppo": (
+            observed.get("alberta_forgetting_lte_ppo") is True
+            if required_deltas.get("require_alberta_forgetting_lte_ppo") is True
+            else True
+        )
+        if "alberta_forgetting_lte_ppo" in observed
+        else fallback_checks.get("alberta_forgetting_lte_ppo") is True,
+    }
+
+
 def _video_metric_summary(video_review: dict[str, Any]) -> dict[str, Any]:
     videos = video_review.get("videos")
     if not isinstance(videos, list):
@@ -150,8 +184,12 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
     joint_reach = _benchmark_summary(evidence / "alberta_joint_reach")
     obstacle = _benchmark_summary(evidence / "alberta_obstacle_course")
     video_review = _load_json(evidence / "video_review_production" / "video_review.json")
+    multi_robot_smoke_review = _load_json(
+        evidence / "multi_robot_smoke_review" / "video_review.json"
+    )
     alberta_end_to_end_report = _load_json(evidence / "ALBERTA_END_TO_END_REPORT.json")
     video_metrics = _video_metric_summary(video_review)
+    multi_robot_smoke_metrics = _video_metric_summary(multi_robot_smoke_review)
     training_inputs = _load_json(
         evidence / "full_training_preflight" / "training_inputs_report.json"
     )
@@ -223,6 +261,45 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
     obstacle_forgetting_delta = _delta(
         obstacle_alberta_forgetting, obstacle_ppo_forgetting
     )
+    validation_checks = (
+        validation.get("checks") if isinstance(validation.get("checks"), dict) else {}
+    )
+    current_failed_validation_gates = [
+        name for name, value in validation_checks.items() if not value
+    ]
+    finalization_missing_gates = (
+        finalization.get("missing_gates")
+        if isinstance(finalization.get("missing_gates"), list)
+        else []
+    )
+    missing_gates = list(
+        dict.fromkeys(
+            current_failed_validation_gates
+            if validation_checks
+            else finalization_missing_gates
+        )
+    )
+    stale_finalization_missing_gates = [
+        gate for gate in finalization_missing_gates if gate not in missing_gates
+    ]
+    finalization_report_ok = finalization.get("ok") is True
+    validation_report_ok = validation.get("ok") is True
+    finalization_missing_gate_set = set(finalization_missing_gates)
+    current_failed_validation_gate_set = set(current_failed_validation_gates)
+    finalization_matches_current_validation = (
+        finalization_report_ok
+        and validation_report_ok
+        and not current_failed_validation_gates
+    ) or (
+        not finalization_report_ok
+        and not validation_report_ok
+        and finalization_missing_gate_set == current_failed_validation_gate_set
+    )
+    effective_finalization_ok = (
+        finalization_report_ok
+        and validation_report_ok
+        and finalization_matches_current_validation
+    )
     report = {
         "schema": "robot-nebius-training-comparison-report-v1",
         "ok": False,
@@ -230,9 +307,12 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
         "run_id": monitor.get("run_id") or validation.get("run_id"),
         "run_root": str(run_root),
         "monitor_state": monitor.get("state"),
-        "finalization_ok": finalization.get("ok"),
+        "finalization_ok": effective_finalization_ok,
+        "finalization_report_ok": finalization.get("ok"),
+        "finalization_matches_current_validation": finalization_matches_current_validation,
         "validation_ok": validation.get("ok"),
-        "missing_gates": finalization.get("missing_gates", []),
+        "missing_gates": missing_gates,
+        "stale_finalization_missing_gates": stale_finalization_missing_gates,
         "backend_comparison": {
             "present": bool(comparison),
             "profile_id": comparison.get("profile_id"),
@@ -294,6 +374,12 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
             "ok": video_review.get("ok"),
             "video_count": video_review.get("video_count"),
             "action_progress": video_metrics,
+        },
+        "multi_robot_smoke_review": {
+            "present": bool(multi_robot_smoke_review),
+            "ok": multi_robot_smoke_review.get("ok"),
+            "video_count": multi_robot_smoke_review.get("video_count"),
+            "action_progress": multi_robot_smoke_metrics,
         },
         "alberta_end_to_end_report": {
             "present": bool(alberta_end_to_end_report),
@@ -417,6 +503,20 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
                     validation, "reports", "joint_reach_benchmark", "required_deltas"
                 )
                 or {},
+                "observed_comparisons": _check(
+                    validation,
+                    "reports",
+                    "joint_reach_benchmark",
+                    "observed_comparisons",
+                )
+                or {},
+                "enforced_delta_gates": _check(
+                    validation,
+                    "reports",
+                    "joint_reach_benchmark",
+                    "enforced_delta_gates",
+                )
+                or {},
             },
             "obstacle_course_benchmark": {
                 "ok": _check(validation, "reports", "obstacle_course_benchmark", "ok"),
@@ -433,6 +533,20 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
                     "reports",
                     "obstacle_course_benchmark",
                     "required_deltas",
+                )
+                or {},
+                "observed_comparisons": _check(
+                    validation,
+                    "reports",
+                    "obstacle_course_benchmark",
+                    "observed_comparisons",
+                )
+                or {},
+                "enforced_delta_gates": _check(
+                    validation,
+                    "reports",
+                    "obstacle_course_benchmark",
+                    "enforced_delta_gates",
                 )
                 or {},
             },
@@ -499,6 +613,27 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
                     validation, "reports", "production_policy_videos", "checkpoint"
                 ),
             },
+            "curriculum_eval": {
+                "ok": _check(validation, "reports", "curriculum_eval", "ok"),
+                "checks": _check(validation, "reports", "curriculum_eval", "checks")
+                or {},
+                "programmatic_pass_rate": _check(
+                    validation,
+                    "reports",
+                    "curriculum_eval",
+                    "programmatic_pass_rate",
+                ),
+                "min_programmatic_pass_rate": _check(
+                    validation,
+                    "reports",
+                    "curriculum_eval",
+                    "min_programmatic_pass_rate",
+                ),
+                "task_checks": _check(
+                    validation, "reports", "curriculum_eval", "task_checks"
+                )
+                or {},
+            },
             "instance_launch_hygiene": {
                 "ok": _check(validation, "reports", "instance_launch_hygiene", "ok"),
                 "checks": _check(
@@ -518,6 +653,50 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
     backend_checks = report["validation_gates"]["backend_comparison"]["checks"]
     joint_checks = report["validation_gates"]["joint_reach_benchmark"]["checks"]
     obstacle_checks = report["validation_gates"]["obstacle_course_benchmark"]["checks"]
+    joint_deltas = report["validation_gates"]["joint_reach_benchmark"]["deltas"]
+    obstacle_deltas = report["validation_gates"]["obstacle_course_benchmark"]["deltas"]
+    joint_observed = report["validation_gates"]["joint_reach_benchmark"][
+        "observed_comparisons"
+    ]
+    joint_enforced = report["validation_gates"]["joint_reach_benchmark"][
+        "enforced_delta_gates"
+    ]
+    obstacle_observed = report["validation_gates"]["obstacle_course_benchmark"][
+        "observed_comparisons"
+    ]
+    obstacle_enforced = report["validation_gates"]["obstacle_course_benchmark"][
+        "enforced_delta_gates"
+    ]
+    obstacle_required = report["validation_gates"]["obstacle_course_benchmark"][
+        "required_deltas"
+    ]
+    joint_required = report["validation_gates"]["joint_reach_benchmark"][
+        "required_deltas"
+    ]
+    if not joint_observed:
+        joint_observed = _observed_delta_comparisons(joint_deltas)
+        report["validation_gates"]["joint_reach_benchmark"][
+            "observed_comparisons"
+        ] = joint_observed
+    if not obstacle_observed:
+        obstacle_observed = _observed_delta_comparisons(obstacle_deltas)
+        report["validation_gates"]["obstacle_course_benchmark"][
+            "observed_comparisons"
+        ] = obstacle_observed
+    if not joint_enforced:
+        joint_enforced = _enforced_delta_gates(
+            joint_observed, joint_required, joint_checks
+        )
+        report["validation_gates"]["joint_reach_benchmark"][
+            "enforced_delta_gates"
+        ] = joint_enforced
+    if not obstacle_enforced:
+        obstacle_enforced = _enforced_delta_gates(
+            obstacle_observed, obstacle_required, obstacle_checks
+        )
+        report["validation_gates"]["obstacle_course_benchmark"][
+            "enforced_delta_gates"
+        ] = obstacle_enforced
     alberta_checkpoint_gate = report["validation_gates"]["alberta_checkpoint"]
     alberta_checkpoint_checks = alberta_checkpoint_gate["checks"]
     asimov1_alberta_gate = report["validation_gates"]["asimov1_alberta_production"]
@@ -537,6 +716,8 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
     )
     production_video_gate = report["validation_gates"]["production_policy_videos"]
     production_video_checks = production_video_gate["checks"]
+    curriculum_eval_gate = report["validation_gates"]["curriculum_eval"]
+    curriculum_eval_checks = curriculum_eval_gate["checks"]
     stage_status_gate = report["validation_gates"]["stage_status"]
     stage_status_checks = stage_status_gate["checks"]
     stage_status_runner = stage_status_gate["runner"]
@@ -547,8 +728,25 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
         video_gate.get("thresholds") if isinstance(video_gate.get("thresholds"), dict) else {}
     )
     video_action = report["video_review"]["action_progress"]
+    report["benchmark_delta_evidence"] = {
+        "joint_reach": {
+            "observed_comparisons": joint_observed,
+            "enforced_delta_gates": joint_enforced,
+            "required_deltas": report["validation_gates"]["joint_reach_benchmark"][
+                "required_deltas"
+            ],
+        },
+        "obstacle_course": {
+            "observed_comparisons": obstacle_observed,
+            "enforced_delta_gates": obstacle_enforced,
+            "required_deltas": obstacle_required,
+        },
+    }
     report["completion_requirements"] = {
         "finalization_ok": bool(report["finalization_ok"]),
+        "finalization_report_matches_current_validation": (
+            report["finalization_matches_current_validation"] is True
+        ),
         "validation_ok": bool(report["validation_ok"]),
         "stage_status_ok": stage_status_gate.get("ok") is True,
         "runner_status_complete": (
@@ -584,12 +782,16 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
         "backend_eval_rollout_depth_ok": backend_checks.get("eval_rollout_depth")
         is True,
         "joint_reach_benchmark_present": bool(joint_reach),
-        "joint_reach_alberta_acc_gte_ppo": joint_checks.get(
-            "alberta_acc_gte_ppo"
+        "joint_reach_alberta_acc_gte_ppo": (
+            joint_observed.get("alberta_acc_gte_ppo")
+            if joint_observed
+            else joint_checks.get("alberta_acc_gte_ppo")
         )
         is True,
-        "joint_reach_alberta_forgetting_lte_ppo": joint_checks.get(
-            "alberta_forgetting_lte_ppo"
+        "joint_reach_alberta_forgetting_lte_ppo": (
+            joint_observed.get("alberta_forgetting_lte_ppo")
+            if joint_observed
+            else joint_checks.get("alberta_forgetting_lte_ppo")
         )
         is True,
         "joint_reach_task_matrix_ok": (
@@ -604,14 +806,32 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
         )
         is True,
         "obstacle_course_benchmark_present": bool(obstacle),
-        "obstacle_course_alberta_acc_gte_ppo": obstacle_checks.get(
-            "alberta_acc_gte_ppo"
+        "obstacle_course_observed_alberta_acc_gte_ppo": (
+            obstacle_observed.get("alberta_acc_gte_ppo")
+            if obstacle_observed
+            else obstacle_checks.get("alberta_acc_gte_ppo")
         )
         is True,
-        "obstacle_course_alberta_forgetting_lte_ppo": obstacle_checks.get(
-            "alberta_forgetting_lte_ppo"
+        "obstacle_course_alberta_acc_gte_ppo_gate_passed": (
+            obstacle_enforced.get("alberta_acc_gte_ppo")
+            if obstacle_enforced
+            else obstacle_checks.get("alberta_acc_gte_ppo")
         )
         is True,
+        "obstacle_course_alberta_forgetting_lte_ppo": (
+            obstacle_observed.get("alberta_forgetting_lte_ppo")
+            if obstacle_observed
+            else obstacle_checks.get("alberta_forgetting_lte_ppo")
+        )
+        is True,
+        "obstacle_course_required_delta_gates_ok": all(
+            value is True for value in obstacle_enforced.values()
+        )
+        if obstacle_enforced
+        else (
+            obstacle_checks.get("alberta_acc_gte_ppo") is True
+            and obstacle_checks.get("alberta_forgetting_lte_ppo") is True
+        ),
         "obstacle_course_task_matrix_ok": (
             obstacle_checks.get("tasks") is True
             and obstacle_checks.get("matrix_shapes") is True
@@ -764,6 +984,21 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
             and production_video_checks.get("telemetry_sizes") is True
             and production_video_checks.get("combined_video") is True
         ),
+        "curriculum_eval_ok": curriculum_eval_gate.get("ok") is True,
+        "curriculum_eval_present": curriculum_eval_checks.get("present") is True,
+        "curriculum_eval_checkpoint_bound": (
+            curriculum_eval_checks.get("checkpoint_bound") is True
+        ),
+        "curriculum_eval_all_tasks_success": (
+            curriculum_eval_checks.get("all_requested_tasks_programmatic_success")
+            is True
+        ),
+        "curriculum_eval_pass_rate": (
+            _finite_number(curriculum_eval_gate.get("programmatic_pass_rate"))
+            and _finite_number(curriculum_eval_gate.get("min_programmatic_pass_rate"))
+            and float(curriculum_eval_gate["programmatic_pass_rate"])
+            >= float(curriculum_eval_gate["min_programmatic_pass_rate"])
+        ),
         "instance_launch_hygiene_ok": launch_hygiene_gate.get("ok") is True,
         "instance_launch_no_inline_credentials": launch_hygiene_checks.get(
             "no_inline_object_storage_credentials"
@@ -793,6 +1028,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
     obstacle = report["continual_learning"]["obstacle_course"]
     sota = report["sota_baseline"]
     video = report["video_review"]
+    smoke_video = report.get("multi_robot_smoke_review", {})
     alberta_e2e = report.get("alberta_end_to_end_report", {})
     multi_robot_video = report.get("multi_robot_video_manifest", {})
     production_video = (
@@ -879,6 +1115,16 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         f"Production policy video gate ok: `{production_video.get('ok')}`",
         f"Production video checkpoint: `{production_video.get('checkpoint') or 'missing'}`",
         "",
+        "## Multi-Robot Smoke Video Evidence",
+        "",
+        f"Smoke review present: `{smoke_video.get('present')}`",
+        f"Smoke review ok: `{smoke_video.get('ok')}`",
+        f"Smoke video count: `{_fmt(smoke_video.get('video_count'))}`",
+        "Smoke reviewed profiles: "
+        f"`{', '.join(smoke_video.get('action_progress', {}).get('profiles') or []) or 'missing'}`",
+        "Smoke OK reviewed videos: "
+        f"`{_fmt(smoke_video.get('action_progress', {}).get('ok_video_count'))}`",
+        "",
         "## Alberta End-to-End Evidence Bundle",
         "",
         f"Report present: `{alberta_e2e.get('present')}`",
@@ -945,11 +1191,11 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         ("backend_comparison", "alberta_vs_ppo_delta, winner_consistent"),
         (
             "joint_reach_benchmark",
-            "alberta_acc_gte_ppo, alberta_forgetting_lte_ppo, learner_seed_pairs",
+            "observed ACC/forgetting deltas, enforced delta gates, learner_seed_pairs",
         ),
         (
             "obstacle_course_benchmark",
-            "alberta_acc_gte_ppo, alberta_forgetting_lte_ppo, learner_seed_pairs",
+            "observed ACC/forgetting deltas, required delta gates, learner_seed_pairs",
         ),
         ("alberta_checkpoint", "regime, profile, tasks, domain_rand, inference"),
         (
@@ -960,6 +1206,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         ("brax_production_checkpoint", "policy artifact, inference_check"),
         ("video_review", "action_progress, min_visual_progress"),
         ("production_policy_videos", "checkpoint-bound manifest, expected actions"),
+        ("curriculum_eval", "checkpoint-bound per-task programmatic success"),
         (
             "instance_launch_hygiene",
             "no inline credentials, repo stage runner, heartbeat uploads",

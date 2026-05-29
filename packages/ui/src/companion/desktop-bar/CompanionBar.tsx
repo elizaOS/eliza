@@ -168,15 +168,6 @@ export function CompanionBar(props: CompanionBarProps) {
             onSubmit={handleSend}
             onKeyDown={handleComposerKeyDown}
           >
-            <button
-              type="button"
-              className="companion-bar-btn"
-              aria-label="Attach"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </button>
             <input
               type="text"
               className="companion-bar-input"

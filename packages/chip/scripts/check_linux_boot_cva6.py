@@ -39,6 +39,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from provenance_sanitize import sanitize_log_file
+
 ROOT = Path(__file__).resolve().parents[1]
 COCOTB_DIR = ROOT / "verify/cocotb/integration"
 RESULTS_XML = COCOTB_DIR / "results.xml"
@@ -50,6 +52,19 @@ EVIDENCE_DIR = ROOT / "docs/evidence/cpu_ap"
 GATE = "linux_boot_cva6"
 SUBSYSTEM = "cpu_ap"
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
+CLAIM_BOUNDARY = (
+    "cva6_verilator_boot_marker_evidence_only_not_phone_release_silicon_"
+    "android_timing_or_complete_linux_boot_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "complete_linux_boot_claim_allowed": False,
+    "userland_boot_claim_allowed": False,
+    "timing_performance_claim_allowed": False,
+}
 
 # Ordered boot markers, earliest -> furthest (mirrors test_linux_boot_cva6.py).
 MARKERS = [
@@ -79,6 +94,8 @@ def _write(status: str, blocker_id, reason, evidence, extra=None, stage: str | N
         "evidence_paths": evidence,
         "as_of": _now(),
         "subsystem": SUBSYSTEM,
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
     if extra:
         payload["detail"] = extra
@@ -93,7 +110,7 @@ def _run(cmd, cwd, env, log, timeout):
         proc = subprocess.run(
             cmd, cwd=str(cwd), env=env, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout
         )
-    return proc.returncode, log.read_text(encoding="utf-8", errors="replace")
+    return proc.returncode, sanitize_log_file(log)
 
 
 def _furthest(text: str) -> str:

@@ -1,0 +1,136 @@
+== bmc ==
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_bmc'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_bmc/src/axi_lite_protocol.sv'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/chip/rtl/memory/e1_axi_lite_dram.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_bmc/src/e1_axi_lite_dram.sv'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] Copy '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_axi_lite_dram_bind.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_bmc/src/e1_axi_lite_dram_bind.sv'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: smtbmc z3
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] base: starting process "cd build/formal/e1_axi_lite_dram.1014868_bmc/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] base: Warning: Replacing memory \mem with list of registers. See e1_axi_lite_dram.sv:86
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] base: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] prep: starting process "cd build/formal/e1_axi_lite_dram.1014868_bmc/model; yosys -ql design_prep.log design_prep.ys"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] prep: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] smt2: starting process "cd build/formal/e1_axi_lite_dram.1014868_bmc/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] smt2: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: starting process "cd build/formal/e1_axi_lite_dram.1014868_bmc; yosys-smtbmc -s z3 --presat --noprogress -t 24  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Solver: z3
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 0..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 1..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 1..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 2..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 2..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 3..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 3..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 4..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 4..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 5..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 5..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 6..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 6..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 7..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 7..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 8..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 8..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 9..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 9..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 10..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 10..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 11..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 11..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 12..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 12..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 13..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 13..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 14..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 14..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 15..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 15..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 16..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 16..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 17..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 17..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 18..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 18..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 19..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 19..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 20..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 20..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 21..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 21..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 22..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 22..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assumptions in step 23..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Checking assertions in step 23..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: ##   0:00:00  Status: passed
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] engine_0: Status returned by engine: pass
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] summary: engine_0 (smtbmc z3) returned pass
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] summary: engine_0 did not produce any traces
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] DONE (PASS, rc=0)
+== prove ==
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_bmc] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_bmc'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_prove'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_prove/src/axi_lite_protocol.sv'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] Copy '/home/shaw/milady/eliza/packages/chip/rtl/memory/e1_axi_lite_dram.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_prove/src/e1_axi_lite_dram.sv'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] Copy '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_axi_lite_dram_bind.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.1014868_prove/src/e1_axi_lite_dram_bind.sv'.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0: smtbmc z3
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] base: starting process "cd build/formal/e1_axi_lite_dram.1014868_prove/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] base: Warning: Replacing memory \mem with list of registers. See e1_axi_lite_dram.sv:86
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] base: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] prep: starting process "cd build/formal/e1_axi_lite_dram.1014868_prove/model; yosys -ql design_prep.log design_prep.ys"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] prep: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] smt2: starting process "cd build/formal/e1_axi_lite_dram.1014868_prove/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] smt2: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: starting process "cd build/formal/e1_axi_lite_dram.1014868_prove; yosys-smtbmc -s z3 --presat --noprogress -t 16  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.induction: starting process "cd build/formal/e1_axi_lite_dram.1014868_prove; yosys-smtbmc -s z3 --presat -i --noprogress -t 16  --append 0 --dump-vcd engine_0/trace_induct.vcd --dump-yw engine_0/trace_induct.yw --dump-vlogtb engine_0/trace_induct_tb.v --dump-smtc engine_0/trace_induct.smtc model/design_smt2.smt2"
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Solver: z3
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 0..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 1..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 1..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 2..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 2..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 3..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 3..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 4..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 4..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 5..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 5..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 6..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 6..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 7..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 7..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 8..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 8..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 9..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 9..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 10..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 10..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 11..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 11..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 12..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 12..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 13..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 13..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 14..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 14..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.induction: ##   0:00:00  Solver: z3
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 15..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 15..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.induction: ##   0:00:00  Trying induction in step 16..
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: ##   0:00:00  Status: passed
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.basecase: Status returned by engine for basecase: pass
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.induction: ##   0:00:00  Temporal induction successful.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.induction: ##   0:00:00  Status: passed
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.induction: finished (returncode=0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] engine_0.induction: Status returned by engine for induction: pass
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] summary: engine_0 (smtbmc z3) returned pass for basecase
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] summary: engine_0 (smtbmc z3) returned pass for induction
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] summary: engine_0 did not produce any traces
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] summary: successful proof by k-induction.
+SBY 19:48:04 [build/formal/e1_axi_lite_dram.1014868_prove] DONE (PASS, rc=0)

@@ -1,5 +1,5 @@
 schema: eliza.e1_phone_production_factory_required_output_presence_inventory.v1
-status: blocked_fail_closed_required_outputs_missing
+status: blocked_fail_closed_source_burndown_still_blocks_release
 date: '2026-05-22'
 claim_boundary: Presence-only inventory for production/factory required output paths in production-factory-output-burndown-2026-05-22.yaml.
   Existing files or directories are not validated for correctness, signatures, freshness, supplier acceptance,
@@ -14,10 +14,10 @@ inputs:
   source_date: 2026-05-22
 summary:
   required_output_path_count: 56
-  present_required_output_path_count: 34
-  missing_required_output_path_count: 22
-  candidate_present_blocked_required_output_path_count: 29
-  truly_missing_required_output_path_count: 22
+  present_required_output_path_count: 56
+  missing_required_output_path_count: 0
+  candidate_present_blocked_required_output_path_count: 44
+  truly_missing_required_output_path_count: 0
   candidate_manifest_cad_connection_assembly_manifest_part_count: 222
   candidate_manifest_cad_connection_assembly_manifest_terminal_marker_count: 42
   candidate_manifest_cad_connection_assembly_manifest_solid_step_part_count: 63
@@ -26,7 +26,7 @@ summary:
   manufacturing_closure_release_output_count: 0
   manufacturing_closure_has_blocked_candidate_outputs: true
   manufacturing_closure_blocked_candidate_output_file_count: 47
-  all_required_output_paths_present: false
+  all_required_output_paths_present: true
   release_state: blocked_fail_closed
 fail_closed_policy:
   production_fabrication_or_end_to_end_claims_allowed: false
@@ -243,9 +243,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[1]
   resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
@@ -256,9 +256,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[4]
   resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
@@ -282,9 +282,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[0]
   resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/drc.json
@@ -295,9 +295,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[1].required_outputs[2]
   resolved_path: board/kicad/e1-phone/production/reports/drc.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/erc.json
@@ -308,9 +308,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[1].required_outputs[1]
   resolved_path: board/kicad/e1-phone/production/reports/erc.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
@@ -321,8 +321,8 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[6].required_outputs[9]
   resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  present: false
-  artifact_kind: missing
+  present: true
+  artifact_kind: file
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -373,9 +373,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[6].required_outputs[11]
   resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
@@ -399,8 +399,8 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[1].required_outputs[8]
   resolved_path: board/kicad/e1-phone/production/reports/rf
-  present: false
-  artifact_kind: missing
+  present: true
+  artifact_kind: directory
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -425,9 +425,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[6]
   resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
@@ -438,8 +438,8 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[6].required_outputs[14]
   resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  present: false
-  artifact_kind: missing
+  present: true
+  artifact_kind: file
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -451,8 +451,8 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[6].required_outputs[13]
   resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  present: false
-  artifact_kind: missing
+  present: true
+  artifact_kind: file
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -464,9 +464,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[7]
   resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
@@ -493,9 +493,9 @@ required_output_presence:
   - $.execution_burndown[5].required_common_outputs[4]
   - $.execution_burndown[6].required_outputs[15]
   resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
@@ -506,8 +506,8 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[6].required_outputs[8]
   resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  present: false
-  artifact_kind: missing
+  present: true
+  artifact_kind: file
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -519,9 +519,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[6].required_outputs[5]
   resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/si-pi
@@ -532,8 +532,8 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[1].required_outputs[7]
   resolved_path: board/kicad/e1-phone/production/reports/si-pi
-  present: false
-  artifact_kind: missing
+  present: true
+  artifact_kind: directory
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -545,9 +545,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[5]
   resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
@@ -558,9 +558,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[2]
   resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
@@ -571,9 +571,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[6].required_outputs[1]
   resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
@@ -584,9 +584,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[3]
   resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
@@ -597,9 +597,9 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[5].required_functional_transcripts[8]
   resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/zone-fill.json
@@ -610,8 +610,8 @@ required_output_presence:
   source_pointers:
   - $.execution_burndown[1].required_outputs[3]
   resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
-  present: false
-  artifact_kind: missing
+  present: true
+  artifact_kind: file
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -788,296 +788,7 @@ required_output_presence:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
-missing_required_outputs:
-- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[1]
-  resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[4]
-  resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[0]
-  resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/drc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/reports/drc.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/erc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/erc.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[9]
-  resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[11]
-  resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/rf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/rf
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[6]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[14]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[13]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[7]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  source_fields:
-  - required_common_outputs
-  - required_outputs
-  source_ids:
-  - first_article_transcript_and_traveler
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[5].required_common_outputs[4]
-  - $.execution_burndown[6].required_outputs[15]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/si-pi
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/reports/si-pi
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[5]
-  resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[2]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[3]
-  resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[8]
-  resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/zone-fill.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
+missing_required_outputs: []
 candidate_present_blocked_required_outputs:
 - path: board/kicad/e1-phone/production/bom
   source_fields:
@@ -1235,6 +946,32 @@ candidate_present_blocked_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[1]
+  resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[4]
+  resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
   source_fields:
   - required_outputs
@@ -1243,6 +980,45 @@ candidate_present_blocked_required_outputs:
   source_pointers:
   - $.execution_burndown[6].required_outputs[0]
   resolved_path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[0]
+  resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/drc.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - fabrication_outputs
+  source_pointers:
+  - $.execution_burndown[1].required_outputs[2]
+  resolved_path: board/kicad/e1-phone/production/reports/drc.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/erc.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - fabrication_outputs
+  source_pointers:
+  - $.execution_burndown[1].required_outputs[1]
+  resolved_path: board/kicad/e1-phone/production/reports/erc.json
   present: true
   artifact_kind: file
   candidate_present_blocked: true
@@ -1287,6 +1063,19 @@ candidate_present_blocked_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[11]
+  resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
   source_fields:
   - required_outputs
@@ -1313,6 +1102,32 @@ candidate_present_blocked_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[6]
+  resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[7]
+  resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
   source_fields:
   - required_outputs
@@ -1321,6 +1136,100 @@ candidate_present_blocked_required_outputs:
   source_pointers:
   - $.execution_burndown[6].required_outputs[7]
   resolved_path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  source_fields:
+  - required_common_outputs
+  - required_outputs
+  source_ids:
+  - first_article_transcript_and_traveler
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[5].required_common_outputs[4]
+  - $.execution_burndown[6].required_outputs[15]
+  resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[5]
+  resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[5]
+  resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[2]
+  resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[1]
+  resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[3]
+  resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[8]
+  resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
   present: true
   artifact_kind: file
   candidate_present_blocked: true
@@ -1468,296 +1377,7 @@ candidate_present_blocked_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
-truly_missing_required_outputs:
-- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[1]
-  resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[4]
-  resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[0]
-  resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/drc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/reports/drc.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/erc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/erc.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[9]
-  resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[11]
-  resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/rf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/rf
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[6]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[14]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[13]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[7]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  source_fields:
-  - required_common_outputs
-  - required_outputs
-  source_ids:
-  - first_article_transcript_and_traveler
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[5].required_common_outputs[4]
-  - $.execution_burndown[6].required_outputs[15]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/si-pi
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/reports/si-pi
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
-- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[5]
-  resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[2]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[3]
-  resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[8]
-  resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
-  candidate_release_credit: false
-- path: board/kicad/e1-phone/production/reports/zone-fill.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
-  present: false
-  artifact_kind: missing
-  candidate_present_blocked: false
-  candidate_manifest: ''
-  candidate_release_credit: null
+truly_missing_required_outputs: []
 present_required_outputs:
 - path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
   source_fields:
@@ -1954,6 +1574,32 @@ present_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[1]
+  resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[4]
+  resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
   source_fields:
   - required_outputs
@@ -1967,6 +1613,58 @@ present_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[0]
+  resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/drc.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - fabrication_outputs
+  source_pointers:
+  - $.execution_burndown[1].required_outputs[2]
+  resolved_path: board/kicad/e1-phone/production/reports/drc.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/erc.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - fabrication_outputs
+  source_pointers:
+  - $.execution_burndown[1].required_outputs[1]
+  resolved_path: board/kicad/e1-phone/production/reports/erc.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[9]
+  resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: false
+  candidate_manifest: ''
+  candidate_release_credit: null
 - path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
   source_fields:
   - required_outputs
@@ -2006,6 +1704,19 @@ present_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[11]
+  resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
 - path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
   source_fields:
   - required_outputs
@@ -2019,6 +1730,19 @@ present_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/rf
+  source_fields:
+  - required_outputs
+  source_ids:
+  - fabrication_outputs
+  source_pointers:
+  - $.execution_burndown[1].required_outputs[8]
+  resolved_path: board/kicad/e1-phone/production/reports/rf
+  present: true
+  artifact_kind: directory
+  candidate_present_blocked: false
+  candidate_manifest: ''
+  candidate_release_credit: null
 - path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
   source_fields:
   - required_outputs
@@ -2027,6 +1751,58 @@ present_required_outputs:
   source_pointers:
   - $.execution_burndown[6].required_outputs[12]
   resolved_path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[6]
+  resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[14]
+  resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: false
+  candidate_manifest: ''
+  candidate_release_credit: null
+- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[13]
+  resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: false
+  candidate_manifest: ''
+  candidate_release_credit: null
+- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[7]
+  resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
   present: true
   artifact_kind: file
   candidate_present_blocked: true
@@ -2045,6 +1821,139 @@ present_required_outputs:
   candidate_present_blocked: true
   candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  source_fields:
+  - required_common_outputs
+  - required_outputs
+  source_ids:
+  - first_article_transcript_and_traveler
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[5].required_common_outputs[4]
+  - $.execution_burndown[6].required_outputs[15]
+  resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[8]
+  resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: false
+  candidate_manifest: ''
+  candidate_release_credit: null
+- path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[5]
+  resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/si-pi
+  source_fields:
+  - required_outputs
+  source_ids:
+  - fabrication_outputs
+  source_pointers:
+  - $.execution_burndown[1].required_outputs[7]
+  resolved_path: board/kicad/e1-phone/production/reports/si-pi
+  present: true
+  artifact_kind: directory
+  candidate_present_blocked: false
+  candidate_manifest: ''
+  candidate_release_credit: null
+- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[5]
+  resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[2]
+  resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+  source_fields:
+  - required_outputs
+  source_ids:
+  - production_release_reports
+  source_pointers:
+  - $.execution_burndown[6].required_outputs[1]
+  resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[3]
+  resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  source_fields:
+  - required_functional_transcripts
+  source_ids:
+  - first_article_transcript_and_traveler
+  source_pointers:
+  - $.execution_burndown[5].required_functional_transcripts[8]
+  resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: true
+  candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  candidate_release_credit: false
+- path: board/kicad/e1-phone/production/reports/zone-fill.json
+  source_fields:
+  - required_outputs
+  source_ids:
+  - fabrication_outputs
+  source_pointers:
+  - $.execution_burndown[1].required_outputs[3]
+  resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
+  present: true
+  artifact_kind: file
+  candidate_present_blocked: false
+  candidate_manifest: ''
+  candidate_release_credit: null
 - path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
   source_fields:
   - required_outputs

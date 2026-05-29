@@ -4,8 +4,11 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from scripts import record_agent_videos
 from scripts.validate_multi_robot_training_readiness import (
+    DEFAULT_COMMANDS,
     DEFAULT_PROFILES,
     _check_video_evidence,
     _manifest_entry_exit_ok,
@@ -45,6 +48,11 @@ def _write_manifest(
             commands,
             record_combined=combined,
         )
+        expected_contact_sheets = record_agent_videos.expected_contact_sheet_names(
+            profile,
+            commands,
+            record_combined=combined,
+        )
         entries.append(
             {
                 "profile": profile,
@@ -52,6 +60,7 @@ def _write_manifest(
                 "telemetry": expected_telemetry,
                 "expected_videos": expected,
                 "expected_telemetry": expected_telemetry,
+                "expected_contact_sheets": expected_contact_sheets,
                 "missing_videos": [],
                 "missing_telemetry": [],
                 "combined_video": f"{profile}_combined_actions.mp4" if combined else None,
@@ -69,6 +78,9 @@ def _write_manifest(
             {
                 "ok": True,
                 "commands": commands,
+                "production_command_coverage": record_agent_videos.production_command_coverage(
+                    commands
+                ),
                 "record_combined": combined,
                 "profiles": entries,
             }
@@ -235,11 +247,67 @@ def test_default_profiles_include_unitree_r1() -> None:
     assert "unitree-r1" in DEFAULT_PROFILES
 
 
+def test_default_commands_cover_full_production_curriculum() -> None:
+    assert DEFAULT_COMMANDS == (
+        "stand up",
+        "walk forward",
+        "walk backward",
+        "sidestep left",
+        "sidestep right",
+        "turn left",
+        "turn right",
+    )
+    assert record_agent_videos.PRODUCTION_REQUIRED_COMMANDS == DEFAULT_COMMANDS
+
+
+def test_record_agent_videos_expected_contact_sheets_cover_all_commands() -> None:
+    names = record_agent_videos.expected_contact_sheet_names(
+        "asimov-1",
+        list(record_agent_videos.PRODUCTION_REQUIRED_COMMANDS),
+        record_combined=True,
+    )
+
+    assert names == [
+        "asimov-1_asimov-1_stand_up_contact.jpg",
+        "asimov-1_asimov-1_walk_forward_contact.jpg",
+        "asimov-1_asimov-1_walk_backward_contact.jpg",
+        "asimov-1_asimov-1_sidestep_left_contact.jpg",
+        "asimov-1_asimov-1_sidestep_right_contact.jpg",
+        "asimov-1_asimov-1_turn_left_contact.jpg",
+        "asimov-1_asimov-1_turn_right_contact.jpg",
+        "asimov-1_asimov-1_combined_actions_contact.jpg",
+    ]
+
+
+def test_record_agent_videos_rejects_incomplete_checkpoint_command_set(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        record_agent_videos.main(
+            [
+                "--profiles",
+                "asimov-1",
+                "--commands",
+                "stand up",
+                "walk forward",
+                "turn left",
+                "turn right",
+                "--out",
+                str(tmp_path),
+                "--max-steps",
+                "1",
+                "--policy-checkpoint",
+                str(tmp_path / "checkpoint"),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert not (tmp_path / "manifest.json").exists()
+
+
 def test_record_agent_videos_preserves_existing_profile_manifest_entries(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    commands = ["stand up", "walk forward", "turn left", "turn right"]
+    commands = list(record_agent_videos.PRODUCTION_REQUIRED_COMMANDS)
     old_expected = record_agent_videos.expected_video_names(
         "unitree-g1",
         commands,
@@ -284,6 +352,8 @@ def test_record_agent_videos_preserves_existing_profile_manifest_entries(
             str(tmp_path),
             "--max-steps",
             "1",
+            "--scripted-smoke",
+            "--allow-existing-files",
         ]
     )
 
@@ -298,7 +368,7 @@ def test_record_agent_videos_preserves_existing_entries_with_policy_checkpoint(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    commands = ["stand up", "walk forward", "turn left", "turn right"]
+    commands = list(record_agent_videos.PRODUCTION_REQUIRED_COMMANDS)
     old_expected = record_agent_videos.expected_video_names(
         "unitree-g1",
         commands,
@@ -360,6 +430,7 @@ def test_record_agent_videos_preserves_existing_entries_with_policy_checkpoint(
             "1",
             "--policy-checkpoint",
             str(checkpoint),
+            "--allow-existing-files",
         ]
     )
 
@@ -367,7 +438,19 @@ def test_record_agent_videos_preserves_existing_entries_with_policy_checkpoint(
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     entries = {entry["profile"]: entry for entry in manifest["profiles"]}
     assert manifest["policy_checkpoint"] == str(checkpoint.resolve())
+    assert manifest["production_command_coverage"]["ok"] is True
+    assert manifest["production_command_coverage"]["missing"] == []
     assert entries["asimov-1"]["policy_checkpoint"] == str(checkpoint.resolve())
+    assert entries["asimov-1"]["expected_telemetry"] == record_agent_videos.expected_telemetry_names(
+        "asimov-1",
+        commands,
+        record_combined=True,
+    )
+    assert entries["asimov-1"]["expected_contact_sheets"] == record_agent_videos.expected_contact_sheet_names(
+        "asimov-1",
+        commands,
+        record_combined=True,
+    )
     assert entries["unitree-g1"]["manifest_source"] == "existing_files"
     assert entries["unitree-g1"]["policy_checkpoint"] == str(old_checkpoint.resolve())
 

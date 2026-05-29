@@ -271,12 +271,21 @@ for arg in "$@"; do
     esac
 done
 if [ "$compile_only" = "1" ]; then
+    # Include the libstdc++ C++ header paths so this C-driver wrapper also
+    # compiles C++ sources correctly when invoked with `-x c++` (bun builds
+    # mimalloc that way via $BUN_CC). clang's --gcc-toolchain auto-detection
+    # doesn't find Alpine's c++/14.2.0 layout for this target triple, so the
+    # paths are explicit, mirroring the clang++ wrapper. -Qunused-arguments
+    # makes -stdlib a no-op for pure-C compiles.
     exec /usr/local/bin/clang \
         --target=riscv64-unknown-linux-musl \
         --sysroot=/sysroot \
         --gcc-toolchain=/sysroot/usr \
         -Qunused-arguments \
         -B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+        -stdlib=libstdc++ \
+        -isystem /sysroot/usr/include/c++/14.2.0 \
+        -isystem /sysroot/usr/include/c++/14.2.0/riscv64-alpine-linux-musl \
         -march=rv64gc \
         -mabi=lp64d \
         "$@"
@@ -361,7 +370,18 @@ ARG BUILDER_GID=1000
 RUN groupadd -g ${BUILDER_GID} builder && \
     useradd -m -u ${BUILDER_UID} -g ${BUILDER_GID} -s /bin/bash builder && \
     mkdir -p /work /artifact /home/builder/.cache /home/builder/.cargo && \
-    chown -R builder:builder /work /artifact /home/builder
+    chown -R builder:builder /work /artifact /home/builder && \
+    # rustup's proxy writes temp files under RUSTUP_HOME (/usr/local/rustup),
+    # which is root-owned. The build runs as `builder`; the lolhtml Rust crate
+    # build invokes the rustup proxy, which fails with EACCES on
+    # /usr/local/rustup/tmp otherwise. Make rustup's mutable dirs writable.
+    mkdir -p /usr/local/rustup/tmp /usr/local/rustup/downloads && \
+    chmod a+rwx /usr/local/rustup /usr/local/rustup/tmp /usr/local/rustup/downloads && \
+    # bun-v1.3.14's rust-toolchain.toml lists Android/FreeBSD targets; rustup
+    # auto-installs them when cargo runs in the bun tree. Pre-bake them here as
+    # root so the build (as `builder`) never has to write the root-owned
+    # toolchains dir (riscv64gc is already installed in the rust layer above).
+    rustup target add aarch64-linux-android x86_64-linux-android x86_64-unknown-freebsd
 
 USER builder
 WORKDIR /work

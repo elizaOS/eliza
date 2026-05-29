@@ -241,6 +241,117 @@
       "timeout_seconds": 60
     },
     {
+      "name": "e1x_wafer_mesh_defect_sim",
+      "suite": "Eliza E1X wafer-mesh architecture simulator",
+      "version": "local/e1x-wafer-mesh-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x_wafer_mesh_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic core/link defect map plus mesh GEMM/stencil/sparse-attention workloads",
+      "primary_metric": "modeled E1X minimum observed INT8 TOPS after repair",
+      "units": "TOPS",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "e1x_scaled_8gb_model_load_sim",
+      "suite": "Eliza E1X scaled SRAM and model-load simulator",
+      "version": "local/e1x-scaled-8gb-model-load-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x_scaled_model_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "13B 4-bit static graph over normal and high-failure deterministic wafer defect maps",
+      "primary_metric": "resident quantized model execution under high-failure repair",
+      "units": "pass",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "local_sram_mib",
+        "model_total_required_mib",
+        "model_loaded_under_normal_defects",
+        "model_loaded_under_high_failure",
+        "high_failure_repaired_logical_mesh",
+        "model_run_successful",
+        "high_failure_prefill_ms",
+        "high_failure_decode_tokens_per_second",
+        "high_failure_output_checksum",
+        "high_failure_repair_manifest_remaps",
+        "high_failure_repair_manifest_sampled_routes",
+        "high_failure_repair_rom_words",
+        "high_failure_model_shard_sample_checksum",
+        "high_failure_execution_trace_total_cycles",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 120
+    },
+    {
+      "name": "e1x3d_wafer_stack_defect_sim",
+      "suite": "Eliza E1X3D 3D-stacked wafer-mesh architecture simulator",
+      "version": "local/e1x3d-wafer-stack-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x3d_wafer_stack_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic 3D core/in-plane-link/Z-link defect map over a stacked logic-tier mesh",
+      "primary_metric": "modeled E1X3D 3D-mesh repair feasibility and thermal/yield gates",
+      "units": "pass",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 60
+    },
+    {
+      "name": "e1x3d_scaled_model_load_sim",
+      "suite": "Eliza E1X3D scaled stacked SRAM and model-load simulator",
+      "version": "local/e1x3d-scaled-16gb-model-load-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x3d_scaled_model_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "13B 4-bit static graph over normal, high-failure, and dead-tier-region 3D wafer defect maps",
+      "primary_metric": "resident quantized model load and run under 3D high-failure repair with thermal/yield gates",
+      "units": "pass",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "local_sram_mib",
+        "model_loaded_under_normal_defects",
+        "model_loaded_under_high_failure",
+        "model_loaded_under_dead_tier",
+        "high_failure_repaired_logical_mesh",
+        "model_run_successful",
+        "thermal_peak_junction_c",
+        "stack_bond_yield",
+        "dead_tier_z_paths_checked",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 240
+    },
+    {
       "name": "tflite_cpu",
       "suite": "TensorFlow Lite benchmark_model",
       "version": "upstream/local",
@@ -344,7 +455,7 @@
           "blocked_reason": "missing_e1_npu_nnapi_accelerator",
           "pipeline_visible": true,
           "release_blocking": true,
-          "resolution": "Run this benchmark only on an Android/Linux target exposing a real e1-npu NNAPI accelerator or delegate; create the proof JSON and transcripts from the hardware validation job, not by hand.",
+          "resolution": "Run scripts/android/capture_e1_npu_nnapi_evidence.sh on an Android/Linux target exposing a real e1-npu NNAPI accelerator or delegate. Set E1_NPU_WRITE_PROOF_JSON=1 plus measured counter env vars so the hardware validation job creates the proof JSON and transcripts together, not by hand.",
           "proof": {
             "schema": "eliza.e1_npu_nnapi_capability.v1",
             "accelerator_name": "e1-npu",

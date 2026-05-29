@@ -20,10 +20,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime, timedelta
+from itertools import combinations
 from pathlib import Path
 from typing import Any, TypeGuard
 
@@ -87,6 +90,31 @@ EXPECTED_COHERENCE_TESTCASES = {
         "test_invalidate_miss_no_data",
     },
 }
+
+L1D_CACHE_RTL = ROOT / "rtl/cache/l1d/e1_l1d_cache.sv"
+
+# L1D (72,64) SEC-DED Hsiao injection proof. The codec is exercised by an
+# executable cocotb test; the gate runs it and validates the result XML so a
+# broken H-matrix or no-op corrector fails the gate instead of passing on
+# string presence alone.
+L1D_ECC_COCOTB = {
+    "dir": "verify/cocotb/l1d_ecc",
+    "top": "e1_l1d_ecc_codec_tb",
+    "module": "test_l1d_ecc",
+    "expected": {
+        "ecc_check_bits_match_golden_model",
+        "ecc_round_trips_clean_words",
+        "ecc_corrects_every_single_bit_flip",
+        "ecc_detects_double_bit_flips_without_miscorrection",
+        "ecc_exhaustive_double_pairs_one_pattern",
+        "ecc_status_counters_track_events",
+    },
+}
+L1D_ECC_RESULT = (
+    ROOT
+    / "verify/cocotb/results"
+    / f"{L1D_ECC_COCOTB['top']}_{L1D_ECC_COCOTB['module']}.xml"
+)
 
 REQUIRED_DOC_TOKENS = [
     "Cache hierarchy contract",
@@ -153,6 +181,10 @@ def parse_utc_timestamp(value: Any) -> datetime | None:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None
     return parsed.astimezone(UTC)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def sha256_file(path: Path) -> str:
@@ -603,20 +635,169 @@ def check_pkg_minimums(gate: dict, errors: list[str]) -> dict[str, int]:
     if line_bytes is not None:
         actual["LINE_BYTES_DEFAULT"] = line_bytes
 
-    # SECDED helpers must exist on L1D
+    # SECDED helpers must exist on L1D, including the real corrector.
     for token in (
         "function automatic logic [7:0] secded_encode",
         "function automatic logic secded_is_single",
         "function automatic logic secded_is_double",
+        "function automatic logic [63:0] secded_correct",
+        "function automatic logic [7:0] secded_data_col",
     ):
         if token not in text:
             errors.append(f"cache_pkg.sv missing SECDED helper: {token}")
+
+    # The declared H-matrix must actually be a valid (72,64) SEC-DED Hsiao
+    # code: 64 distinct odd-weight data columns whose pairwise XORs are
+    # nonzero and even-weight and never alias a single-bit syndrome.
+    check_secded_hsiao_matrix(text, errors)
 
     # MESI enum must exist
     for token in ("MESI_I", "MESI_S", "MESI_E", "MESI_M"):
         if token not in text:
             errors.append(f"cache_pkg.sv missing MESI state: {token}")
     return actual
+
+
+def parse_secded_data_cols(text: str) -> dict[int, int] | None:
+    """Extract the H-matrix data columns from secded_data_col() in cache_pkg.sv.
+
+    Returns a map of data-bit index -> 8-bit syndrome column, or None if the
+    function body cannot be located.
+    """
+    match = re.search(
+        r"function automatic logic \[7:0\] secded_data_col.*?endfunction",
+        text,
+        re.DOTALL,
+    )
+    if match is None:
+        return None
+    body = match.group(0)
+    cols: dict[int, int] = {}
+    for entry in re.finditer(
+        r"32'd(\d+)\s*:\s*secded_data_col\s*=\s*8'h([0-9A-Fa-f]+)", body
+    ):
+        cols[int(entry.group(1))] = int(entry.group(2), 16)
+    return cols
+
+
+def check_secded_hsiao_matrix(text: str, errors: list[str]) -> None:
+    cols = parse_secded_data_cols(text)
+    if cols is None:
+        errors.append("cache_pkg.sv secded_data_col() body not found")
+        return
+    missing = sorted(set(range(64)) - set(cols))
+    if missing:
+        errors.append(
+            "cache_pkg.sv secded_data_col() missing data columns: "
+            + ", ".join(str(idx) for idx in missing)
+        )
+        return
+
+    data_cols = [cols[idx] for idx in range(64)]
+    check_cols = [1 << k for k in range(8)]
+    all_cols = data_cols + check_cols
+
+    popcount = lambda value: bin(value).count("1")  # noqa: E731
+    for idx, col in enumerate(all_cols):
+        if col == 0:
+            errors.append(f"cache_pkg.sv SECDED column {idx} is zero (uncorrectable)")
+        elif popcount(col) % 2 != 1:
+            errors.append(
+                f"cache_pkg.sv SECDED column {idx}=0x{col:02X} is even-weight; "
+                "single-bit errors would not yield an odd syndrome"
+            )
+    if len(set(all_cols)) != 72:
+        errors.append(
+            "cache_pkg.sv SECDED H-matrix columns are not distinct; "
+            f"only {len(set(all_cols))}/72 unique syndromes (no unique SEC location)"
+        )
+    single_syndromes = set(all_cols)
+    for a, b in combinations(range(72), 2):
+        syndrome = all_cols[a] ^ all_cols[b]
+        if syndrome == 0:
+            errors.append(
+                f"cache_pkg.sv SECDED columns {a},{b} are equal; a double error "
+                "would alias a clean codeword (undetectable)"
+            )
+            break
+        if popcount(syndrome) % 2 != 0:
+            errors.append(
+                f"cache_pkg.sv SECDED double-error syndrome for bits {a},{b} is "
+                "odd-weight; double errors are not distinguishable from single"
+            )
+            break
+        if syndrome in single_syndromes:
+            errors.append(
+                f"cache_pkg.sv SECDED double error at bits {a},{b} aliases a "
+                "single-bit syndrome and would be miscorrected"
+            )
+            break
+
+
+def check_l1d_ecc_injection(errors: list[str]) -> None:
+    """Run the L1D SEC-DED injection cocotb test and validate the result XML.
+
+    This is the executable replacement for the old string-match SECDED check:
+    it drives the RTL codec, flips every codeword bit (must correct + restore
+    data), flips many double-bit pairs (must detect, never miscorrect), and
+    only lets the gate pass when every expected testcase passed.
+    """
+    expected = L1D_ECC_COCOTB["expected"]
+    assert isinstance(expected, set)
+    env = os.environ.copy()
+    env["COCOTB_DIR"] = str(L1D_ECC_COCOTB["dir"])
+    env["COCOTB_TOPLEVEL"] = str(L1D_ECC_COCOTB["top"])
+    env["COCOTB_MODULE"] = str(L1D_ECC_COCOTB["module"])
+    proc = subprocess.run(
+        ["scripts/run_cocotb.sh"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr.strip() or proc.stdout.strip())[-800:]
+        errors.append(f"L1D SECDED injection cocotb run failed: {detail}")
+        return
+
+    if not L1D_ECC_RESULT.is_file():
+        errors.append(
+            f"L1D SECDED injection result missing: {L1D_ECC_RESULT.relative_to(ROOT)}"
+        )
+        return
+    try:
+        root = ET.parse(L1D_ECC_RESULT).getroot()
+    except ET.ParseError as exc:
+        errors.append(f"L1D SECDED injection result is not valid XML: {exc}")
+        return
+    testcases = root.findall(".//testcase")
+    seen = {tc.get("name") or "<unnamed>" for tc in testcases}
+    missing = sorted(expected - seen)
+    if missing:
+        errors.append(
+            "L1D SECDED injection missing expected testcases: " + ", ".join(missing)
+        )
+    for tc in testcases:
+        name = tc.get("name") or "<unnamed>"
+        for tag in ("failure", "error", "skipped"):
+            if tc.find(tag) is not None:
+                errors.append(f"L1D SECDED injection testcase {name} has <{tag}>")
+
+
+def check_l1d_corrector_not_stub(errors: list[str]) -> None:
+    """The L1D module must call the real Hsiao corrector, not return data as-is."""
+    if not L1D_CACHE_RTL.is_file():
+        errors.append("missing rtl/cache/l1d/e1_l1d_cache.sv")
+        return
+    text = L1D_CACHE_RTL.read_text()
+    if "secded_correct(" not in text:
+        errors.append(
+            "e1_l1d_cache.sv ecc_correct() must invoke secded_correct(); "
+            "the no-op corrector stub is not allowed"
+        )
+    if "the corrector is a stub that returns d" in text:
+        errors.append("e1_l1d_cache.sv still contains the no-op ECC corrector stub")
 
 
 def check_packages(errors: list[str]) -> None:
@@ -929,6 +1110,8 @@ def main() -> int:
     gate = check_gate_yaml(errors)
     check_rtl_present(errors)
     actual = check_pkg_minimums(gate, errors) if gate else {}
+    check_l1d_corrector_not_stub(errors)
+    check_l1d_ecc_injection(errors)
     check_packages(errors)
     check_doc(errors)
     check_coherence_report(errors)
@@ -944,6 +1127,7 @@ def main() -> int:
     report = {
         "schema": "eliza.cache_hierarchy_gate.v1",
         "status": "pass",
+        "generated_utc": utc_now(),
         "claim_boundary": (
             "Local cache RTL/scaffold gate only; not phone-class IPC, bandwidth, "
             "silicon, Linux, Android, DRAM, LPDDR, or release evidence."
@@ -952,6 +1136,7 @@ def main() -> int:
         "release_claim_allowed": False,
         "rtl_module_count": len(REQUIRED_RTL),
         "coherence_report": "build/reports/cache_coherence.json",
+        "l1d_secded_injection_result": str(L1D_ECC_RESULT.relative_to(ROOT)),
         "phone_2028_minimums": gate["phone_2028_minimums"],
         "cache_pkg_actuals": actual,
         "blocked_claim_count": len(REQUIRED_BLOCKED_IDS),
@@ -960,6 +1145,7 @@ def main() -> int:
     (out_dir / "cache_hierarchy_gate.json").write_text(json.dumps(report, indent=2) + "\n")
     print("Cache hierarchy claim gate passed.")
     print(f"  rtl_modules: {len(REQUIRED_RTL)}")
+    print(f"  l1d_secded_injection: {L1D_ECC_RESULT.relative_to(ROOT)}")
     print(
         f"  l1i={actual.get('L1I_SIZE_BYTES')} B "
         f"l1d={actual.get('L1D_SIZE_BYTES')} B "

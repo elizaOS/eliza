@@ -45,16 +45,22 @@ from eliza_robot.rl.skills.base import BaseSkill, SkillParams, SkillStatus
 
 logger = logging.getLogger(__name__)
 
-# Observation layout (matches joystick.py):
-# gyro(3) + gravity(3) + command(3) + leg_pos(12) + leg_vel(12) + last_act(12) = 45
-SINGLE_OBS_DIM = 45
+# Observation layout (matches joystick._get_obs EXACTLY):
+# gyro(3) + gravity(3) + command(3) + cos(phase)[L,R](2) + sin(phase)[L,R](2)
+# + leg_pos(12) + leg_vel(12) + last_act(12) = 49, stacked obs_history(3) = 147.
+# The 4-dim gait-phase block sits BETWEEN command and leg_pos; omitting it (the
+# old 45/135 layout) shifted every downstream field and fed the policy garbage.
+# Per-instance dims are derived from the profile leg count in __init__.
 OBS_HISTORY_SIZE = 3
-TOTAL_OBS_DIM = SINGLE_OBS_DIM * OBS_HISTORY_SIZE  # 135
+_NON_LEG_OBS = 3 + 3 + 3 + 4  # gyro, gravity, command, gait-phase(cos2, sin2)
+SINGLE_OBS_DIM = _NON_LEG_OBS + 3 * 12  # 49 (12-leg default; re-exported)
+TOTAL_OBS_DIM = SINGLE_OBS_DIM * OBS_HISTORY_SIZE  # 147
 
 DEFAULT_NUM_LEG_JOINTS = 12
 NUM_LEG_JOINTS = DEFAULT_NUM_LEG_JOINTS  # back-compat re-export
 ACTION_SCALE = 0.3
 CTRL_DT = 0.02  # 50 Hz
+DEFAULT_GAIT_FREQ_HZ = 1.5  # joystick training randomized 1.25–1.75; midpoint
 
 DEFAULT_WALK_CHECKPOINT_NAME = "mujoco_locomotion_v13_flat_feet"
 
@@ -132,9 +138,20 @@ class BraxWalkSkill(BaseSkill):
                 resized[:copy_n] = self._default_pose[:copy_n]
                 self._default_pose = resized
 
+        # Per-instance observation dims (derived from the profile leg count so
+        # this matches whatever joystick env the checkpoint was trained in).
+        self._single_obs_dim = _NON_LEG_OBS + 3 * self.action_dim
+        self._total_obs_dim = self._single_obs_dim * OBS_HISTORY_SIZE
+
+        # Bipedal gait phase [left, right] = [0, pi], advanced each control step
+        # exactly as joystick.step does, so cos/sin(phase) match the training obs.
+        self._gait_freq = self._resolve_gait_freq(profile_id)
+        self._phase_dt = 2.0 * np.pi * CTRL_DT * self._gait_freq
+        self._phase = np.array([0.0, np.pi], dtype=np.float32)
+
         # State buffers (must come after _default_pose is set)
         self._last_action = np.zeros(self.action_dim, dtype=np.float32)
-        self._obs_history = np.zeros(TOTAL_OBS_DIM, dtype=np.float32)
+        self._obs_history = np.zeros(self._total_obs_dim, dtype=np.float32)
         self._last_positions = self._default_pose.copy()
 
         self._params = SkillParams()
@@ -150,11 +167,55 @@ class BraxWalkSkill(BaseSkill):
                     resolved,
                     exc_info=True,
                 )
+        else:
+            # No checkpoint on disk: the skill will HOLD THE DEFAULT POSE, not
+            # walk. Surface this loudly — a "walk" skill that silently stands is
+            # the exact larp this stack is being cleaned of. Callers can load a
+            # checkpoint later via load_checkpoint(); is_loaded reports the truth.
+            logger.warning(
+                "BraxWalkSkill: no checkpoint at %s — skill will hold the default "
+                "pose and NOT walk until load_checkpoint() is called with a trained "
+                "policy (train one via scripts/train_playground_locomotion.py).",
+                resolved,
+            )
+
+    @staticmethod
+    def _resolve_gait_freq(profile_id: str) -> float:
+        """Gait frequency (Hz) for phase advance; profile.gait.cycle_hz or default."""
+        try:
+            from eliza_robot.profiles import load_profile
+
+            cyc = getattr(load_profile(profile_id).gait, "cycle_hz", None)
+            return float(cyc) if cyc else DEFAULT_GAIT_FREQ_HZ
+        except Exception:  # noqa: BLE001 — best-effort profile resolution.
+            return DEFAULT_GAIT_FREQ_HZ
+
+    def _advance_phase(self) -> None:
+        """Advance the bipedal gait phase one step (matches joystick.step wrap)."""
+        self._phase = np.fmod(self._phase + self._phase_dt + np.pi, 2.0 * np.pi) - np.pi
+
+    def _phase_block(self) -> np.ndarray:
+        """[cos(phase_L), cos(phase_R), sin(phase_L), sin(phase_R)] — joystick order."""
+        return np.concatenate([np.cos(self._phase), np.sin(self._phase)]).astype(np.float32)
 
     def load_checkpoint(self, path: str) -> None:
-        """Load Brax checkpoint via ``eliza_robot.sim.mujoco.inference``."""
+        """Load Brax checkpoint via ``eliza_robot.sim.mujoco.inference``.
+
+        Fails loud when the checkpoint's observation size does not match the obs
+        this skill builds — a mismatch means the policy receives misaligned
+        fields and cannot walk (this previously passed silently).
+        """
         from eliza_robot.sim.mujoco.inference import load_policy
         self._inference_fn, self._config = load_policy(path)
+        ckpt_obs = int(self._config.get("obs_size", 0) or 0)
+        if ckpt_obs and ckpt_obs != self._total_obs_dim:
+            self._inference_fn = None
+            raise ValueError(
+                f"BraxWalkSkill obs mismatch: checkpoint expects obs_size={ckpt_obs} "
+                f"but this skill builds {self._total_obs_dim} "
+                f"({OBS_HISTORY_SIZE}x{self._single_obs_dim}). The skill obs layout "
+                f"(incl. the 4-dim gait-phase block) must match the training env."
+            )
 
     def set_command(self, vx: float = 0.0, vy: float = 0.0, vyaw: float = 0.0) -> None:
         """Set velocity command for the walking policy.
@@ -172,8 +233,9 @@ class BraxWalkSkill(BaseSkill):
         self._params = params or SkillParams()
         self._step = 0
         self._last_action = np.zeros(self.action_dim, dtype=np.float32)
-        self._obs_history = np.zeros(TOTAL_OBS_DIM, dtype=np.float32)
+        self._obs_history = np.zeros(self._total_obs_dim, dtype=np.float32)
         self._last_positions = self._default_pose.copy()
+        self._phase = np.array([0.0, np.pi], dtype=np.float32)
 
         # Map skill params to velocity command
         speed = self._params.speed
@@ -203,10 +265,7 @@ class BraxWalkSkill(BaseSkill):
         if self._inference_fn is None:
             return self._default_pose.copy(), SkillStatus.RUNNING
 
-        if obs.shape[0] == TOTAL_OBS_DIM:
-            full_obs = obs
-        else:
-            full_obs = self._build_obs_from_bridge(obs)
+        full_obs = obs if obs.shape[0] == self._total_obs_dim else self._build_obs_from_bridge(obs)
 
         action = self._inference_fn(full_obs)
         action = np.clip(action, -1.0, 1.0)
@@ -263,14 +322,16 @@ class BraxWalkSkill(BaseSkill):
             leg_pos = np.zeros(self.action_dim, dtype=np.float32)
             leg_vel = np.zeros(self.action_dim, dtype=np.float32)
 
+        self._advance_phase()
         single_obs = np.concatenate([
             gyro,                   # 3
             gravity,                # 3
             self._command,          # 3
-            leg_pos,                # 12
-            leg_vel,                # 12
-            self._last_action,      # 12
-        ]).astype(np.float32)       # 45
+            self._phase_block(),    # 4 (cos[L,R], sin[L,R]) — matches joystick
+            leg_pos,                # n
+            leg_vel,                # n
+            self._last_action,      # n
+        ]).astype(np.float32)       # _single_obs_dim
 
         full_obs = self._stack_history(single_obs)
 
@@ -283,7 +344,7 @@ class BraxWalkSkill(BaseSkill):
         return joint_targets, SkillStatus.RUNNING
 
     def _build_obs_from_bridge(self, obs: np.ndarray) -> np.ndarray:
-        """Build 135-dim obs from a partial bridge observation."""
+        """Build the stacked obs from a partial bridge observation."""
         gyro = np.zeros(3, dtype=np.float32)
         gravity = np.array([0.0, 0.0, 1.0], dtype=np.float32)
 
@@ -295,10 +356,12 @@ class BraxWalkSkill(BaseSkill):
             gravity[1] = np.sin(imu_pitch)
             gravity[2] = np.cos(imu_roll) * np.cos(imu_pitch)
 
+        self._advance_phase()
         single_obs = np.concatenate([
             gyro,
             gravity,
             self._command,
+            self._phase_block(),                          # 4 (cos[L,R], sin[L,R])
             np.zeros(self.action_dim, dtype=np.float32),  # leg_pos (no feedback)
             np.zeros(self.action_dim, dtype=np.float32),  # leg_vel (no feedback)
             self._last_action,

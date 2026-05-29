@@ -3,8 +3,6 @@ export type {
   ApiParameterSelectProps,
 } from "./api-parameter-select";
 export { ApiParameterSelect } from "./api-parameter-select";
-export { ApiRouteExplorer } from "./api-route-explorer";
-export { ApiRouteExplorerClient } from "./api-route-explorer-client";
 export type { DocsLayoutProps } from "./docs-layout";
 export { DocsLayout } from "./docs-layout";
 export type { DocsFrontmatter, MdxModule, NavItem } from "./docs-types";

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -251,6 +252,12 @@ ALLOWLIST = (
         "placeholder",
         "PMC RPMI test payload uses a non-release rail id marker.",
     ),
+    AllowedFinding(
+        "verify/cocotb/e1x_boot_fw/native_repair_model.c",
+        "modelled, not implemented",
+        "Native repair-ROM harness documents the silicon OTP/fuse boundary; "
+        "the executable test covers firmware parsing and route-table programming only.",
+    ),
 )
 
 
@@ -292,7 +299,7 @@ def check_placeholder_terms() -> tuple[list[str], list[str]]:
     for path in iter_files():
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
-        except UnicodeDecodeError:
+        except (FileNotFoundError, UnicodeDecodeError):
             continue
         if path == ROOT / "verify/rtl_gap_work_order.yaml":
             continue
@@ -442,8 +449,12 @@ def check_gap_work_order() -> list[str]:
                         errors,
                     )
                     if isinstance(affected, str) and affected:
+                        has_glob = any(marker in affected for marker in "*?[")
+                        affected_exists = (
+                            any(ROOT.glob(affected)) if has_glob else (ROOT / affected).exists()
+                        )
                         require(
-                            (ROOT / affected).exists(),
+                            affected_exists,
                             f"{area}:{gap_id} affected path does not exist: {affected}.",
                             errors,
                         )
@@ -464,6 +475,9 @@ def build_report(errors: list[str], inventory: list[str]) -> dict[str, object]:
     return {
         "schema": "eliza.stub_audit.v1",
         "status": "pass" if not errors else "fail",
+        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
         "claim_boundary": "stub_inventory_only_not_rtl_completion_or_os_boot_evidence",
         "summary": {
             "errors": len(errors),

@@ -128,6 +128,7 @@ def test_autodetected_clang_without_lld_is_blocked() -> None:
                 "RISCV_CC": "",
                 "RISCV_CLANG_CANDIDATES": "clang",
                 "REQUIRE_QEMU": "0",
+                "ELIZA_RUN_QEMU_DISABLE_REPO_TOOLS": "1",
             }
         )
     if result.returncode != 0:
@@ -179,6 +180,11 @@ def test_fake_toolchain_and_qemu_pass() -> None:
     assert_contains(manifest, "status=PASS")
     assert_contains(manifest, "check=qemu.run")
     assert_contains(manifest, "evidence_kind=qemu-executable-transcript")
+    assert_contains(manifest, "phone_claim_allowed=false")
+    assert_contains(manifest, "release_claim_allowed=false")
+    assert_contains(manifest, "hardware_boot_claim_allowed=false")
+    assert_contains(manifest, "silicon_evidence_claim_allowed=false")
+    assert_contains(manifest, "linux_boot_claim_allowed=false")
     assert_contains(manifest, "banner=eliza e1 qemu")
 
 
@@ -210,6 +216,15 @@ def test_os_boot_check_blocks_without_payloads() -> None:
         raise AssertionError(f"unexpected OS attempt schema: {manifest}")
     if manifest["claim_boundary"] != "qemu_virt_reference_only_not_e1_chip_rtl":
         raise AssertionError(f"unexpected OS attempt claim boundary: {manifest}")
+    for key in (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "hardware_boot_claim_allowed",
+        "silicon_evidence_claim_allowed",
+        "linux_boot_claim_allowed",
+    ):
+        if manifest.get(key) is not False:
+            raise AssertionError(f"{key} must be false in OS attempt manifest: {manifest}")
     if manifest["status"] != "BLOCKED":
         raise AssertionError(f"unexpected OS attempt status: {manifest}")
     if manifest["kernel"] != "/no/such/eliza/Image":

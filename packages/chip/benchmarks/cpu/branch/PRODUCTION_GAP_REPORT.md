@@ -151,18 +151,67 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      `test_workload_class_partitions_model_target_predictions` proves the same
      PC can retain separate general and GPU-phase targets.
 
-5b. **Target-array parity poison protection**
+5b. **Predictor SRAM parity poison protection**
    - Gap: production predictor SRAMs need at least lightweight data-integrity
      protection. A corrupted uFTB/FTB/L2 FTB entry should be treated as a miss
-     and retrained, not used to steer fetch to a bogus target.
+     and retrained, not used to steer fetch to a bogus target; corrupted
+     direction-provider entries likewise must not steer conditional direction.
    - RTL change: uFTB and FTB entries now store one parity bit over the context,
      tag, target payload, branch kind, confidence, and slot metadata. Lookup
      accepts only parity-clean entries; a matching corrupted entry is
      invalidated locally. The same FTB module instance also covers the delayed
      L2 FTB tier.
+   - RTL change: conditional TAGE tagged-table entries now store payload parity
+     over valid/tag/counter/useful state. Lookup and update both require clean
+     parity before accepting a provider hit; a corrupted entry is treated as a
+     miss and invalidated before retraining can allocate clean state.
+   - RTL change: the base bimodal TAGE fallback now stores parity over each
+     direction counter. A corrupt counter reads as the reset weak-taken seed
+     instead of steering from poisoned state, and the next update repairs the
+     entry with clean parity.
+   - RTL change: the statistical-corrector signed-counter tables and optional
+     bias bank now store parity. Corrupted SC entries contribute a neutral zero
+     vote, preventing poisoned SC state from forcing a low-confidence TAGE
+     override before ordinary training rewrites the entry.
+   - RTL change: ITTAGE indirect-target entries now store parity over
+     valid/tag/target/counter/useful payloads. Lookup and update matching
+     require clean parity, useful aging invalidates corrupted entries instead
+     of repairing poisoned targets, and misprediction allocation can replace a
+     corrupted way as an invalid victim.
+   - RTL change: loop-predictor entries now store parity over the loop steering
+     payload. Lookup and update require clean parity, corrupted entries are
+     cleared fail-closed by the sequential scrub, and replacement picks
+     invalid/corrupted entries before evicting live trained loops.
+   - RTL change: default-on H2P weight-bank entries now store parity next to
+     every signed weight. Lookup and update scoring treat corrupted weights as
+     neutral zero contribution, so poisoned perceptron state cannot force an
+     override, and ordinary training rewrites both the weight and clean parity.
+   - RTL change: default-on local-direction state now stores parity for the
+     per-PC local history, local PHT counters, and learned local-meta counters.
+     Corrupted lookup state disables local override confidence/meta allow, and
+     update-side repair starts corrupted counters from neutral weak state.
    - Test: `uftb_parity_error_invalidates_entry` and
      `ftb_parity_error_invalidates_entry` inject a packed-entry parity fault
-     and prove the lookup misses instead of redirecting.
+     and prove the lookup misses instead of redirecting. The new
+     `tage_parity_error_invalidates_tagged_provider` test flips a TAGE entry's
+     parity bit and proves the tagged provider disappears instead of steering
+     the branch. `tage_bimodal_parity_error_uses_reset_seed` injects a
+     bimodal parity fault and proves the fallback uses the safe reset seed
+     before update-side repair. `sc_parity_error_contributes_neutral_vote`
+     injects a positive SC counter parity fault, proves it cannot force an
+     override, then proves the next low-confidence update retrains clean
+     negative state. `ittage_parity_error_invalidates_indirect_target` flips
+     ITTAGE entry parity using an RTL-computed PC/history corruption hook and
+     proves the indirect target misses until clean reallocation.
+     `loop_parity_error_invalidates_confident_override` flips a trained loop
+     entry through an RTL-computed PC/path corruption hook and proves the
+     confident loop override disappears instead of steering from poisoned
+     state. `h2p_parity_error_neutralizes_poisoned_weights` flips every H2P
+     feature weight for one trained PC through an RTL-computed PC hash hook,
+     proves the override disappears, then proves normal updates retrain clean
+     parity. `bpu_local_direction_parity_errors_disable_confidence` corrupts
+     the integrated local-direction PHT and history parity and proves local
+     confidence drops instead of exposing a poisoned override.
 
 5c. **Defined FTB/uFTB read-during-write collision semantics**
    - Gap: production BTB/FTB SRAM macros differ on same-cycle read/write
@@ -340,6 +389,15 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      The expanded 50K capped sweep over local real traces, expanded synthetics,
      and CBP5 samples shows the chooser is load-bearing: disabling it regressed
      weighted MPKI to `19.1681` (`+0.1901`).
+   - Implemented conditional TAGE path-history mixing in RTL and model with
+     independent `TAGE_PATH_HISTORY_BITS`, `TAGE_PATH_HISTORY_TOKEN_BITS`, and
+     `TAGE_PATH_HISTORY_SHIFT` geometry. The top-level RTL keeps this stream
+     separate from direction history, stores it in FTQ prediction snapshots,
+     restores it on redirects, and rebases it for delayed L2 FTB patches so
+     update-time TAGE training uses the same path context as lookup. The
+     branch-prediction gate now requires a 64-bit path stream with 8-bit
+     tokens, and model tests prove same-PC/same-direction histories can split
+     by path.
 
 7. **SC/local-history variants**
    - Already modelled: static threshold, adaptive threshold, wider SC tables,
@@ -566,13 +624,13 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      `pred_redirect_valid_o[]`/`pred_redirect_pc_o[]` and the delayed
      late-redirect lane vectors at the structural SoC boundary instead of
      discarding them as unused BPU internals. It also exposes the ordered
-   `fetch_stream_*_o` two-lane fetch-control stream with
-   `fetch_stream_ready_i`; `bpu_fetch_stream_backpressures_soc_ftq_pop`
-   proves SoC-level backpressure holds the FTQ head, preserves lane 1, and
-   prevents the scalar L1I prefetch shim from consuming a stalled stream.
-    `bpu_fetch_stream_drives_soc_l1i_demand_lanes` proves the integrated SoC
-    now also exposes lane-0/lane-1 L1I IFU demand ports with FTQ/segment/kind
-    provenance and demand-ready backpressure.
+     `fetch_stream_*_o` two-lane fetch-control stream with
+     `fetch_stream_ready_i`; `bpu_fetch_stream_backpressures_soc_ftq_pop`
+     proves SoC-level backpressure holds the FTQ head, preserves lane 1, and
+     prevents the scalar L1I prefetch shim from consuming a stalled stream.
+     `bpu_fetch_stream_drives_soc_l1i_demand_lanes` proves the integrated SoC
+     now also exposes lane-0/lane-1 L1I IFU demand ports with FTQ/segment/kind
+     provenance and demand-ready backpressure.
 
 ## Ranked remaining RTL-facing gaps
 
@@ -591,12 +649,17 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    `e1_soc_integrated` now surfaces the widened prediction and late-redirect
    lanes plus the ordered fetch-control stream and lane-0/lane-1 L1I demand
    ports at the SoC boundary, with ready inputs that backpressure FTQ pop until
-   downstream fetch logic can accept both lanes. `e1_l1i_dual_miss_to_l2`
-   now bridges the scalar and lane-1 L1I miss/refill pipes onto the production
-   L2 L1I acquire/grant channel, with focused cocotb coverage for lane-1
-   demux, scalar priority, and flush. The remaining integration gap is
-   SoC-level instantiation of the production fetch/cache hierarchy behind
-   `e1_soc_integrated`, not a missing lane-1 miss-to-L2 mechanism.
+   downstream fetch logic can accept both lanes. It also instantiates the
+   production fetch-cache chain behind that boundary: `e1_l1i_cache` consumes
+   the demand and FTQ prefetch streams, `e1_l1i_dual_miss_to_l2` arbitrates
+   scalar and lane-1 misses, and `e1_l2_cache` services the L1I acquire/grant
+   path through the integration SLC, line-to-CHI shim, CHI-to-AXI bridge, AXI4
+   fabric, and DRAM controller. Focused cocotb now covers lane-1 demux, scalar
+   priority, flush, and the SoC-level BPU fetch-stream -> L1I -> dual-miss
+   bridge -> L2 -> SLC/CHI/DRAM -> L1I-response path
+   (`bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path`). The remaining
+   integration gap is real core-driven fetch through the production cluster
+   wrappers, not a BPU-to-L1I/L2/shared-cache/DRAM top-level wiring hole.
 2. **Speculative history recovery survivor replay**: redirect recovery now
    restores speculative direction and target histories from the resolved FTQ
    snapshot and applies the actual resolved outcome. The remaining precision
@@ -633,6 +696,29 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    `100,000` replayed branches out of `25,574,792` source branches
    (`replay_fraction=0.003910`), with per-workload replay fractions and
    `full_trace_replay=false` required by the branch-prediction gate.
+   A new checked full RTL replay shard,
+   `docs/evidence/cpu_ap/mpki_results_workload_proxy_rtl.json`, replays the
+   five GPU/mobile/NN/WASM proxy traces without a branch cap through
+   `bpu_top`: `245,163` replayed branches out of `245,163`
+   (`replay_fraction=1.0`, aggregate RTL MPKI `68.193`). That proves the
+   harness can carry uncapped workload replay for bounded trace groups. The
+   follow-on `docs/evidence/cpu_ap/mpki_results_workload_io_media_rtl.json`
+   shard replays the full HTTP/text/file/video/audio group through RTL:
+   `2,414,579` replayed branches out of `2,414,579`
+   (`replay_fraction=1.0`, aggregate RTL MPKI `29.228`). The
+   `docs/evidence/cpu_ap/mpki_results_workload_system_gpu_rtl.json` shard now
+   replays the full GPU-control, GC/runtime, kernel/syscall, and database/B-tree
+   group through RTL: `1,676,661` replayed branches out of `1,676,661`
+   (`replay_fraction=1.0`, aggregate RTL MPKI `53.744`). The browser/build/
+   crypto shard replays `5,379,205` branches out of `5,379,205`
+   (`replay_fraction=1.0`, aggregate RTL MPKI `56.309`), the compression shard
+   replays `5,396,802` branches out of `5,396,802`
+   (`replay_fraction=1.0`, aggregate RTL MPKI `87.759`), and the agent shard
+   replays `10,462,382` branches out of `10,462,382`
+   (`replay_fraction=1.0`, aggregate RTL MPKI `3.667`). Together the checked
+   full RTL replay shards now cover all 20 local QEMU RV64 workload traces; the
+   monolithic all-workload uncapped RTL replay remains a convenience/performance
+   gap rather than a missing checked-trace coverage gap.
    `docs/evidence/cpu_ap/bpu-workload-trace-manifest.json` now makes that
    boundary machine-checkable: it hashes all twenty staged `.btrace.json`
    traces, records `152,035,912` source instructions and `25,574,792` source
@@ -651,11 +737,17 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    RTL workload replay exposes the same phase-sampling control through
    `make mpki-eval-rtl WORKLOAD_WINDOW_MODE=stratified`; the
    `mpki-eval-rtl-stratified` shortcut is available for capped early/middle/late
-   replay without editing environment variables. `make mpki-eval-rtl-full` and
-   `make bpu-sweep-full` are now explicit uncapped aliases, and the Makefile
-   forwards `WORKLOAD_MAXBR`, `WORKLOAD_WINDOW_MODE`, `MAXBR`, `WINDOW_MODE`,
-   and `CONFIGS` to the underlying harnesses so long validation runs are
-   reproducible from command logs. `make bpu-sweep-full-proxy-shard` now records
+   replay without editing environment variables. `make mpki-eval-rtl-full`,
+   `make mpki-eval-rtl-full-proxy-shard`,
+   `make mpki-eval-rtl-full-io-media-shard`,
+   `make mpki-eval-rtl-full-system-gpu-shard`,
+   `make mpki-eval-rtl-full-browser-build-crypto-shard`,
+   `make mpki-eval-rtl-full-compression-shard`,
+   `make mpki-eval-rtl-full-agent-shard`, and `make bpu-sweep-full` are now
+   explicit uncapped aliases, and the Makefile forwards `WORKLOAD_MAXBR`,
+   `WORKLOAD_WINDOW_MODE`, `MAXBR`, `WINDOW_MODE`, and `CONFIGS` to the
+   underlying harnesses so long validation runs are reproducible from command
+   logs. `make bpu-sweep-full-proxy-shard` now records
    an uncapped five-trace GPU/mobile/NN/WASM proxy shard; baseline beats
    `h2p_off` there (`49.5413` versus `49.5932` weighted MPKI). The companion
    `make bpu-sweep-full-io-media-shard` records the uncapped HTTP/text/file/
@@ -674,10 +766,10 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    versus baseline `103.6911`) while `h2p_off` regresses (`103.8983`). `make
    bpu-sweep-full-agent-shard` records the uncapped agent-loop and agent-decode
    traces; `h2p_lowconf_only` and `h2p_off` tie at `3.0128`, both ahead of
-   baseline `4.1193`. The checked full-trace shards now cover all 20 local QEMU
-   RV64 workload traces; the monolithic twenty-trace model sweep remains a
-   convenience/performance gap, while uncapped RTL replay and real external
-   production traces remain open production evidence gaps.
+   baseline `4.1193`. The checked full-trace model and RTL shards now cover all
+   20 local QEMU RV64 workload traces; the monolithic twenty-trace model/RTL
+   runs remain convenience/performance gaps, while real external production
+   traces remain an open production evidence gap.
 6. **Downstream widened IFU/L1I consumption**: `ftq_to_l1i_shim` now exposes a
    widened two-lane prefetch bundle. The scalar compatibility path has an
    eight-entry ordered prefetch FIFO, so younger FTQ pops are retained while an
@@ -693,5 +785,8 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    (`target_block_two_ahead_fetch_stream_accepts_cold_lane_one_miss`).
    `e1_l1i_dual_miss_to_l2` then arbitrates scalar and lane-1 misses onto the
    L2 L1I acquire/grant channel and demuxes returned line beats back to the
-   originating refill lane. The remaining non-BPU work is full SoC/core/cache
-   top instantiation behind the already-exposed demand ports.
+   originating refill lane. `e1_soc_integrated` now wires that path through an
+   internal L1I + dual-miss bridge + L2 + SLC/CHI/DRAM path, and `make
+   cocotb-cross-domain` proves both scalar and lane-1 demand fills return
+   through the integrated cache and memory hierarchy. The remaining non-BPU
+   work is real core-wrapper fetch into that path.

@@ -19,6 +19,8 @@ TAGE_HIST_LEN_MAX = 195
 TAGE_HIST_LEN = (8, 16, 44, 90, 195)
 TAGE_ALT_ON_NA_ENTRIES = 1024
 TAGE_ALT_ON_NA_IDX_W = 10
+BIM_IDX_W = 14
+BIM_CTR_W = 2
 
 
 def _fold(value, width, out_width):
@@ -52,10 +54,37 @@ def alt_on_na_index(pc, provider):
     return ((pc >> 2) ^ (provider * 131)) & (TAGE_ALT_ON_NA_ENTRIES - 1)
 
 
+def bimodal_index(pc):
+    mask = (1 << BIM_IDX_W) - 1
+    low = (pc >> 1) & mask
+    high = (pc >> (1 + BIM_IDX_W)) & mask
+    return low ^ high
+
+
+def _parity(value):
+    return value.bit_count() & 1
+
+
+def bimodal_entry(ctr):
+    return (ctr << 1) | _parity(ctr)
+
+
+def bimodal_entry_ctr(entry_value):
+    return entry_value >> 1
+
+
 def tage_entry(valid, tag, ctr, useful):
-    return (
-        (valid << (TAGE_TAG_W + TAGE_CTR_W + 2)) | (tag << (TAGE_CTR_W + 2)) | (ctr << 2) | useful
+    payload = (
+        (valid << (TAGE_TAG_W + TAGE_CTR_W + 2))
+        | (tag << (TAGE_CTR_W + 2))
+        | (ctr << 2)
+        | useful
     )
+    return (payload << 1) | _parity(payload)
+
+
+def tage_entry_useful(entry_value):
+    return (entry_value >> 1) & 0b11
 
 
 async def reset(dut):
@@ -247,7 +276,7 @@ async def tage_allocation_pressure_decrements_useful_victims(dut):
     await Timer(1, units="ps")
 
     for entry in entries:
-        assert int(entry.value) & 0b11 == 2
+        assert tage_entry_useful(int(entry.value)) == 2
     assert int(dut.pmu_alloc.value) == 0
 
 
@@ -270,10 +299,71 @@ async def tage_useful_reset_strobes_age_lsb_then_msb(dut):
     await RisingEdge(dut.clk)
     dut.useful_reset_lsb.value = 0
     await Timer(1, units="ps")
-    assert int(entry.value) & 0b11 == 2
+    assert tage_entry_useful(int(entry.value)) == 2
 
     dut.useful_reset_msb.value = 1
     await RisingEdge(dut.clk)
     dut.useful_reset_msb.value = 0
     await Timer(1, units="ps")
-    assert int(entry.value) & 0b11 == 0
+    assert tage_entry_useful(int(entry.value)) == 0
+
+
+@cocotb.test()
+async def tage_parity_error_invalidates_tagged_provider(dut):
+    """A corrupted TAGE entry must miss instead of steering direction."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_8C00
+    hist = 0xB7
+    table = 1
+    provider = table + 1
+    idx = tage_index(table, pc, hist)
+    tag = tage_tag(table, pc, hist)
+    entry = dut.u_tage.g_tab[table].u_tab.storage_q[idx]
+    entry.value = tage_entry(valid=1, tag=tag, ctr=1 << (TAGE_CTR_W - 1), useful=0)
+    await Timer(1, units="ps")
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    dut.lkp_hist.value = hist
+    await Timer(1, units="ps")
+    assert int(dut.lkp_provider.value) == provider
+
+    entry.value = int(entry.value) ^ 1
+    await Timer(1, units="ps")
+    assert int(dut.lkp_provider.value) == 0
+
+
+@cocotb.test()
+async def tage_bimodal_parity_error_uses_reset_seed(dut):
+    """A corrupted bimodal counter must not steer the fallback direction."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_8D00
+    idx = bimodal_index(pc)
+    entry = dut.u_tage.u_bimodal.table_q[idx]
+    entry.value = bimodal_entry(ctr=0)
+    await Timer(1, units="ps")
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    await Timer(1, units="ps")
+    assert int(dut.lkp_provider.value) == 0
+    assert int(dut.lkp_taken.value) == 0
+
+    entry.value = int(entry.value) ^ 1
+    await Timer(1, units="ps")
+    assert int(dut.lkp_provider.value) == 0
+    assert int(dut.lkp_taken.value) == 1
+
+    dut.lkp_valid.value = 0
+    dut.upd_valid.value = 1
+    dut.upd_pc.value = pc
+    dut.upd_taken.value = 0
+    await RisingEdge(dut.clk)
+    dut.upd_valid.value = 0
+    await Timer(1, units="ps")
+    assert bimodal_entry_ctr(int(entry.value)) == 1
+    assert int(entry.value) == bimodal_entry(ctr=1)

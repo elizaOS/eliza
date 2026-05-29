@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -258,6 +259,8 @@ def write_report(entries: list[dict[str, Any]], errors: list[str]) -> None:
     lanes: list[dict[str, Any]] = []
     summary: dict[str, Any] = {
         "schema": "eliza.process_pdk_portability_report.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": "pdk_portability_index_only_not_production_pdk_or_tapeout_signoff",
         "evidence_class": "real_open_pdk_methodology_index_with_advanced_node_blocked_gates",
         "checked_index": rel(INDEX),
         "total_entries": len(entries),

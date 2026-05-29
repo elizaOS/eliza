@@ -43,43 +43,61 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
         assert isinstance(finding, dict)
         assert isinstance(finding.get("next_command"), str)
         assert finding["next_command"].startswith("python3 ")
+    dependency_counts = report.get("blocker_dependency_counts")
+    assert isinstance(dependency_counts, dict)
     repo_groups = report.get("repo_artifact_generation_groups")
     assert isinstance(repo_groups, list)
-    assert repo_groups
+    if dependency_counts.get("repo_artifact_generation") == 0:
+        assert repo_groups == []
+    else:
+        assert repo_groups
     group_map = {group.get("family"): group for group in repo_groups if isinstance(group, dict)}
-    for family in (
-        "manufacturing_release_artifacts",
-        "kicad_fabrication_artifacts",
-        "package_vendor_cross_probe_release",
-        "fpga_bitstream_artifacts",
-        "pd_signoff_artifacts",
-    ):
-        assert family in group_map
-        group = group_map[family]
-        assert group.get("name") == family
-        assert isinstance(group.get("count"), int)
-        assert group["count"] > 0
-        assert isinstance(group.get("generation_commands"), list)
-        assert group["generation_commands"]
-        assert all(
-            isinstance(command, str) and command.startswith("python3 ")
-            for command in group["generation_commands"]
-        )
-        assert isinstance(group.get("primary_paths"), list)
-        assert group["primary_paths"]
-        assert isinstance(group.get("sample_messages"), list)
-        assert group["sample_messages"]
-        category_counts = group.get("repo_generation_category_counts")
-        assert isinstance(category_counts, dict)
-        assert set(category_counts) == {
-            "repo_generatable_now",
-            "blocked_by_external_evidence",
-            "blocked_by_live_hardware",
-            "blocked_by_release_approval",
-        }
-        assert sum(category_counts.values()) == group["count"]
-        nested_summaries = group.get("nested_report_generation_summaries")
-        assert isinstance(nested_summaries, list)
+    if group_map:
+        for family in (
+            "manufacturing_release_artifacts",
+            "kicad_fabrication_artifacts",
+            "package_vendor_cross_probe_release",
+            "fpga_bitstream_artifacts",
+            "pd_signoff_artifacts",
+            "openlane_run_artifacts",
+        ):
+            assert family in group_map
+            group = group_map[family]
+            assert group.get("name") == family
+            assert isinstance(group.get("count"), int)
+            assert group["count"] > 0
+            assert isinstance(group.get("generation_commands"), list)
+            assert group["generation_commands"]
+            assert all(
+                isinstance(command, str) and command.startswith("python3 ")
+                for command in group["generation_commands"]
+            )
+            assert isinstance(group.get("primary_paths"), list)
+            assert group["primary_paths"]
+            assert isinstance(group.get("sample_messages"), list)
+            assert group["sample_messages"]
+            category_counts = group.get("repo_generation_category_counts")
+            assert isinstance(category_counts, dict)
+            assert set(category_counts) == {
+                "repo_generatable_now",
+                "blocked_by_external_evidence",
+                "blocked_by_live_hardware",
+                "blocked_by_release_approval",
+            }
+            assert sum(category_counts.values()) == group["count"]
+            nested_summaries = group.get("nested_report_generation_summaries")
+            assert isinstance(nested_summaries, list)
+            if family in (
+                "manufacturing_release_artifacts",
+                "kicad_fabrication_artifacts",
+                "fpga_bitstream_artifacts",
+            ):
+                assert nested_summaries
+                assert all(isinstance(summary, dict) for summary in nested_summaries)
+                assert all(
+                    isinstance(summary.get("report_path"), str)
+                    for summary in nested_summaries
+                )
     assert "python3_scripts_product_check_py_release" not in group_map
     assert "python3_scripts_check_package_cross_probe_py_release" not in group_map
     assert not any(str(family).startswith("python3_scripts_") for family in group_map)
@@ -87,6 +105,22 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
     release_plan = report.get("release_execution_plan")
     assert isinstance(release_plan, list)
     phase_map = {phase.get("phase"): phase for phase in release_plan if isinstance(phase, dict)}
+    next_release_action = report.get("next_release_action")
+    assert isinstance(next_release_action, dict)
+    assert next_release_action.get("release_credit") is False
+    assert next_release_action.get("phase") in {
+        "chip_pd_signoff",
+        "end_to_end_runtime_release",
+        "fpga_board_bitstream_release",
+        "manufacturing_package_release",
+        "package_vendor_cross_probe_release",
+        "phone_fabrication_enclosure_release",
+    }
+    assert next_release_action.get("claim_boundary") == (
+        "operator_release_action_only_not_release_evidence"
+    )
+    assert next_release_action.get("primary_commands")
+    assert next_release_action.get("acceptance_commands")
     for phase in (
         "chip_pd_signoff",
         "fpga_board_bitstream_release",
@@ -107,9 +141,11 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
             "blocked_by_live_hardware",
             "blocked_by_release_approval",
         }
-        assert sum(repo_generation_counts.values()) == row["blocker_dependency_counts"].get(
+        assert sum(repo_generation_counts.values()) >= row["blocker_dependency_counts"].get(
             "repo_artifact_generation", 0
         )
+        if repo_generation_counts["repo_generatable_now"] == 0:
+            assert row["blocker_dependency_counts"].get("repo_artifact_generation", 0) == 0
         assert row["primary_commands"]
         assert row["primary_paths"]
         assert row["acceptance_commands"]
@@ -118,6 +154,11 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
             for command in row["acceptance_commands"]
         )
         assert row["sample_findings"]
+        nested_summaries = row.get("nested_report_generation_summaries")
+        assert isinstance(nested_summaries, list)
+        assert nested_summaries
+        assert all(isinstance(summary, dict) for summary in nested_summaries)
+        assert all(isinstance(summary.get("report_path"), str) for summary in nested_summaries)
     assert (
         "python3 scripts/check_package_cross_probe.py --release"
         in phase_map["package_vendor_cross_probe_release"]["acceptance_commands"]
@@ -126,6 +167,29 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
         "python3 scripts/check_phone_runtime_readiness_contract.py"
         in phase_map["end_to_end_runtime_release"]["acceptance_commands"]
     )
+    if release_mode:
+        runtime_nested = {
+            summary.get("report_path"): summary
+            for summary in phase_map["end_to_end_runtime_release"][
+                "nested_report_generation_summaries"
+            ]
+            if isinstance(summary, dict)
+        }
+        runtime_summary = runtime_nested.get("build/reports/phone_runtime_readiness_contract.json")
+        assert isinstance(runtime_summary, dict)
+        next_runtime_action = runtime_summary.get("next_runtime_capture_action")
+        assert isinstance(next_runtime_action, dict)
+        assert next_runtime_action.get("release_credit") is False
+        assert next_runtime_action.get("capture_area")
+        assert next_runtime_action.get("next_commands")
+        runtime_summary_fields = runtime_summary.get("summary_generation_fields")
+        assert isinstance(runtime_summary_fields, dict)
+        assert runtime_summary_fields.get("next_runtime_capture_area")
+        top_runtime_action = report.get("next_runtime_capture_action")
+        assert isinstance(top_runtime_action, dict)
+        assert top_runtime_action.get("release_credit") is False
+        assert top_runtime_action.get("capture_area") == next_runtime_action.get("capture_area")
+        assert top_runtime_action.get("next_commands")
     assert (
         "python3 scripts/check_e1_phone_fabrication_release.py"
         in phase_map["phone_fabrication_enclosure_release"]["primary_commands"]
@@ -138,11 +202,43 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
         "python3 scripts/check_pd_release_evidence.py"
         in phase_map["chip_pd_signoff"]["acceptance_commands"]
     )
+    chip_nested = {
+        summary.get("report_path"): summary
+        for summary in phase_map["chip_pd_signoff"]["nested_report_generation_summaries"]
+        if isinstance(summary, dict)
+    }
+    assert "build/reports/pd_signoff.json" in chip_nested
+    assert "build/reports/pd_signoff_status.json" not in chip_nested
+    openlane_release_summary = chip_nested.get(
+        "build/reports/openlane_run_release_preflight.json"
+    )
+    assert isinstance(openlane_release_summary, dict)
+    summary_fields = openlane_release_summary.get("summary_generation_fields")
+    assert isinstance(summary_fields, dict)
+    assert summary_fields.get("release_mode") is True
     assert (
         "python3 scripts/check_kicad_artifacts.py --release"
         in phase_map["manufacturing_package_release"]["acceptance_commands"]
     )
     if release_mode:
+        assert dependency_counts["repo_artifact_generation"] == 0
+        assert dependency_counts["actionable_external_dependency"] > 0
+        assert dependency_counts["live_device_validation"] > 0
+        for finding in findings:
+            assert finding.get("effective_blocker_dependency") in {
+                "repo_artifact_generation",
+                "live_device_validation",
+                "actionable_external_dependency",
+            }
+            assert finding.get("blocker_dependency") == finding.get(
+                "effective_blocker_dependency"
+            )
+            assert finding.get("original_blocker_dependency") in {
+                "repo_artifact_generation",
+                "live_device_validation",
+                "actionable_external_dependency",
+            }
+
         manufacturing_phase = phase_map["manufacturing_package_release"]
         manufacturing_generation_counts = manufacturing_phase["repo_generation_category_counts"]
         assert manufacturing_generation_counts["repo_generatable_now"] == 0
@@ -174,6 +270,13 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
             and row["primary_paths"]
             for row in manifest_matrix
         )
+        nested_summaries = manufacturing_phase["nested_report_generation_summaries"]
+        manufacturing_nested = next(
+            summary
+            for summary in nested_summaries
+            if summary.get("report_path") == "build/reports/manufacturing_artifacts.json"
+        )
+        assert manufacturing_nested.get("artifact_state_summary") == artifact_state_summary
 
         top_level_manufacturing = report.get("manufacturing_artifact_details")
         assert isinstance(top_level_manufacturing, dict)
@@ -187,6 +290,14 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
             + phone_generation_counts["blocked_by_release_approval"]
             + phone_generation_counts["blocked_by_live_hardware"]
         ) > 0
+        phone_nested_paths = {
+            summary.get("report_path")
+            for summary in phone_phase["nested_report_generation_summaries"]
+            if isinstance(summary, dict)
+        }
+        assert "build/reports/e1_phone_routed_output_content.json" in phone_nested_paths
+        assert "build/reports/e1_phone_first_article_content.json" in phone_nested_paths
+        assert "build/reports/e1_phone_enclosure_mechanical_content.json" in phone_nested_paths
 
     detail_checks = report["detail_checks"]
     assert isinstance(detail_checks, dict)

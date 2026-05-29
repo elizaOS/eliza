@@ -28,7 +28,6 @@ export function useApp(): AppContextValue {
           if (prop === "companionHalfFramerateMode") return "when_saving_power";
           if (prop === "navigation") {
             return {
-              subscribeTabCommitted: () => () => {},
               scheduleAfterTabCommit: (fn: () => void) => {
                 queueMicrotask(fn);
               },

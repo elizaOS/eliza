@@ -44,6 +44,10 @@ properties:
 required:
   - compatible
   - reg
+  - interrupt-names
+  - eliza,mode
+  - eliza,format
+  - eliza,fb-base
 
 additionalProperties: false
 
@@ -53,7 +57,7 @@ examples:
         compatible = "eliza,e1-display";
         reg = <0x10030000 0x1000>;
         interrupt-names = "IRQ_VSYNC";
-        eliza,mode = <0x01E00280>;
+        eliza,mode = <0x050002d0>;
         eliza,format = <0x34325258>;
         eliza,fb-base = <0x80000000>;
     };

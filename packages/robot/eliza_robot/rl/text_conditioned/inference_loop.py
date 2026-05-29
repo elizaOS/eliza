@@ -58,27 +58,47 @@ def _proprio_from_telemetry(
     profile: RobotProfile,
     *,
     proprio_dim: int,
+    last_action: np.ndarray | None = None,
+    velocity_command: np.ndarray | None = None,
 ) -> np.ndarray:
     """Convert telemetry.basic into the profile-env proprio layout.
 
-    Layout matches `TextConditionedProfileEnv`:
-    gyro(3), gravity(3), velocity_command(3), leg qpos, leg qvel, last_action.
-    Only the trained action joints are included; full-body policy output is
-    handled separately by `TextConditionedPolicy.act(..., output_dim=...)`.
+    Layout matches `TextConditionedProfileEnv._build_obs` exactly::
+
+        gyro(3), gravity(3), velocity_command(3), root_linvel(3),
+        foot_telemetry(8), joint_qpos(n), joint_qvel(n), last_action(n)
+
+    where ``n`` is the number of LEG joints. Fields the real backend does
+    not supply (commanded velocity, base linear velocity, foot contact /
+    slip / gait phase) are left zero — the policy was trained with
+    observation noise + domain randomization, so a zero-filled boundary is
+    tolerated, but the joint positions/velocities MUST land at the indices
+    the policy expects or the deployed behaviour is garbage.
     """
 
     proprio = np.zeros(proprio_dim, dtype=np.float32)
     if latest is None:
         return proprio
 
+    # gyro(3) — angular velocity proxy from IMU.
     if proprio_dim >= 1:
-        proprio[0] = float(latest.get("imu_roll", 0.0))
+        proprio[0] = float(latest.get("imu_roll_rate", latest.get("imu_roll", 0.0)))
     if proprio_dim >= 2:
-        proprio[1] = float(latest.get("imu_pitch", 0.0))
+        proprio[1] = float(latest.get("imu_pitch_rate", latest.get("imu_pitch", 0.0)))
     if proprio_dim >= 3:
         proprio[2] = float(latest.get("imu_yaw_rate", 0.0))
+    # gravity(3) at [3:6] — world up in the body frame; default upright.
     if proprio_dim >= 6:
         proprio[3:6] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    # velocity_command(3) at [6:9] — the matched task's commanded
+    # [vx, vy, vyaw]. The policy is conditioned on this during training
+    # (TextConditionedProfileEnv._build_obs writes target_velocity_* here), so
+    # zeroing it is out-of-distribution on the primary locomotion signal and
+    # makes the deployed policy under-track. Inject the real command.
+    if velocity_command is not None and proprio_dim >= 9:
+        proprio[6:9] = np.asarray(velocity_command, dtype=np.float32).reshape(-1)[:3]
+    # root_linvel(3) at [9:12] and foot_telemetry(8) at [12:20] are not
+    # available from telemetry.basic and remain zero-filled.
 
     action_joints = [j.name for j in profile.kinematics.joints if j.group == "LEG"]
     joint_positions = latest.get("joint_positions") or {}
@@ -88,8 +108,11 @@ def _proprio_from_telemetry(
     if not isinstance(joint_velocities, dict):
         joint_velocities = {}
 
-    qpos_start = 9
+    # joint_qpos / joint_qvel begin after gyro+gravity+vel_cmd+root_linvel
+    # +foot_telemetry = 3+3+3+3+8 = 20 (see TextConditionedProfileEnv).
+    qpos_start = 20
     qvel_start = qpos_start + len(action_joints)
+    last_action_start = qvel_start + len(action_joints)
     for i, name in enumerate(action_joints):
         qpos_idx = qpos_start + i
         qvel_idx = qvel_start + i
@@ -97,6 +120,16 @@ def _proprio_from_telemetry(
             proprio[qpos_idx] = float(joint_positions.get(name, 0.0))
         if qvel_idx < proprio_dim:
             proprio[qvel_idx] = float(joint_velocities.get(name, 0.0))
+    # last_action(n): the policy was trained with its own previous normalized
+    # action as the final proprio block. Feeding zeros here is an out-of-
+    # distribution input every step, so we thread the prior step's leg action
+    # back in (zeros only on the first tick).
+    if last_action is not None:
+        la = np.asarray(last_action, dtype=np.float32).reshape(-1)
+        for i in range(len(action_joints)):
+            idx = last_action_start + i
+            if idx < proprio_dim and i < la.shape[0]:
+                proprio[idx] = float(la[i])
     return proprio
 
 
@@ -105,6 +138,8 @@ async def _read_proprio(
     profile: RobotProfile,
     *,
     proprio_dim: int,
+    last_action: np.ndarray | None = None,
+    velocity_command: np.ndarray | None = None,
 ) -> np.ndarray:
     """Pull the latest telemetry.basic and convert to a proprio vector
     that's roughly compatible with the profile-driven text-conditioned env.
@@ -115,7 +150,13 @@ async def _read_proprio(
     for e in events:
         if e.event == "telemetry.basic":
             latest = e.data
-    return _proprio_from_telemetry(latest, profile, proprio_dim=proprio_dim)
+    return _proprio_from_telemetry(
+        latest,
+        profile,
+        proprio_dim=proprio_dim,
+        last_action=last_action,
+        velocity_command=velocity_command,
+    )
 
 
 async def run_inference(
@@ -135,7 +176,7 @@ async def run_inference(
     joint_names = [j.name for j in profile.kinematics.joints]
     home_rad = np.array([j.home_rad for j in profile.kinematics.joints], dtype=np.float32)
 
-    policy = TextConditionedPolicy(Path(checkpoint_dir))
+    policy = TextConditionedPolicy(Path(checkpoint_dir), strict_manifest=True)
     if policy.manifest.profile_id != config.profile_id:
         raise ValueError(
             "checkpoint profile mismatch: "
@@ -154,6 +195,36 @@ async def run_inference(
         text, matched_task, similarity, config.max_steps, config.hz,
     )
 
+    # The policy is conditioned on the task's commanded velocity (the env writes
+    # target_velocity_* into proprio[6:9]). Resolve it from the curriculum so the
+    # deployed policy sees the same locomotion signal it trained on.
+    from eliza_robot.curriculum.loader import load_curriculum
+
+    velocity_command = np.zeros(3, dtype=np.float32)
+    for task in load_curriculum().tasks:
+        if task.id == matched_task:
+            reward = getattr(task, "reward", {}) or {}
+            velocity_command = np.array([
+                float(reward.get("target_velocity_x_m_s", 0.0)),
+                float(reward.get("target_velocity_y_m_s", 0.0)),
+                float(reward.get("target_yaw_rate_rad_s", 0.0)),
+            ], dtype=np.float32)
+            break
+
+    # Honour the checkpoint's own action scale when recorded; the 0.3 default is
+    # only a fallback for legacy manifests that omit it.
+    action_scale = (
+        float(policy.manifest.action_scale)
+        if policy.manifest.action_scale is not None
+        else config.action_scale
+    )
+
+    # Indices of the LEG action joints within the full joint list, so we can
+    # feed the policy's own previous (normalized) leg action back in as the
+    # last_action proprio block — matching how the env builds observations.
+    leg_idx = [i for i, j in enumerate(profile.kinematics.joints) if j.group == "LEG"]
+    prev_action_legs = np.zeros(len(leg_idx), dtype=np.float32)
+
     period = 1.0 / config.hz
     steps = 0
     try:
@@ -163,6 +234,8 @@ async def run_inference(
                 backend,
                 profile,
                 proprio_dim=int(policy.manifest.proprio_dim or 45),
+                last_action=prev_action_legs,
+                velocity_command=velocity_command,
             )
             action, _ = policy.act(
                 text,
@@ -170,8 +243,11 @@ async def run_inference(
                 deterministic=True,
                 output_dim=len(joint_names),
             )
+            action_clipped = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
+            if leg_idx:
+                prev_action_legs = action_clipped[leg_idx]
             # Joint-target = home + scaled action, clipped to safety window.
-            targets = home_rad + np.clip(action, -1.0, 1.0) * config.action_scale
+            targets = home_rad + np.clip(action, -1.0, 1.0) * action_scale
             targets = np.clip(
                 targets, home_rad - config.safety_clip_rad,
                 home_rad + config.safety_clip_rad,

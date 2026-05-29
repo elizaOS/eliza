@@ -105,6 +105,7 @@ export {
   isAuthorized,
   isSafeResetStateDir,
   normalizeWsClientId,
+  type PluginConfigMutationRejection,
   persistConversationRoomTitle,
   resolveCorsOrigin,
   resolveMcpServersRejection,
@@ -119,16 +120,6 @@ export {
   streamResponseBodyWithByteLimit,
   validateMcpServerConfig,
 } from "./api/server.ts";
-// Re-export non-colliding helpers from `./api/server-auth.js`. Names that
-// `./api/server.js` already re-exports are intentionally omitted here so the
-// canonical `server.js` definitions remain authoritative.
-export {
-  getConfiguredApiToken,
-  isLoopbackBindHost,
-  isTrustedLocalRequest,
-  type PluginConfigMutationRejection,
-  tokenMatches,
-} from "./api/server-auth.ts";
 // `server-helpers.ts` exposes auth/conversation/wallet helpers that the
 // canonical `server.ts` already re-exports for backwards compat. Re-exporting
 // the entire file would clash with those re-exports, so only surface helpers
@@ -143,6 +134,15 @@ export {
   requireCoreManager,
   requirePluginManager,
 } from "./api/server-helpers.ts";
+// Loopback-trust + token helpers. These come from the canonical
+// `./api/server-helpers-auth.js` (the same module the live server uses), not a
+// divergent copy. `isLoopbackBindHost`/`tokenMatches` live in `@elizaos/shared`
+// and are not re-surfaced here; the `PluginConfigMutationRejection` type is
+// exported through `./api/server.js`.
+export {
+  getConfiguredApiToken,
+  isTrustedLocalRequest,
+} from "./api/server-helpers-auth.ts";
 // `server-types.ts` is the canonical source for conversation/server type
 // shapes. `server.ts` already re-exports the bulk of these (see line ~520
 // over there); the additional exports below cover names that aren't already

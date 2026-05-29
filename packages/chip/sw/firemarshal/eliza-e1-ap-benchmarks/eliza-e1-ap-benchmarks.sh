@@ -2,11 +2,12 @@
 set -eu
 
 REPORT=/tmp/eliza-e1-ap-benchmarks.report
+BENCH=/usr/bin/ap-bench-lite
+FIO_JOB=/root/ufs-dram-contention.fio
 COREMARK=/usr/bin/coremark
 STREAM=/usr/bin/stream_c.exe
 LAT_MEM_RD=/usr/bin/lat_mem_rd
 FIO=/usr/bin/fio
-FIO_JOB=/root/ufs-dram-contention.fio
 
 emit() {
 	echo "$1"
@@ -15,7 +16,7 @@ emit() {
 missing=0
 emit "eliza-evidence: target=generated_chipyard_ap artifact=eliza-e1-ap-benchmarks"
 
-for item in "$COREMARK" "$STREAM" "$LAT_MEM_RD" "$FIO" "$FIO_JOB"; do
+for item in "$BENCH" "$COREMARK" "$STREAM" "$LAT_MEM_RD" "$FIO" "$FIO_JOB"; do
 	if [ ! -e "$item" ]; then
 		emit "ap-benchmarks: BLOCKED missing_target_artifact=$item"
 		missing=1
@@ -40,14 +41,8 @@ fi
 	echo "frequency derate: none, simulator-only"
 	echo "pdk signoff claim=none"
 	echo "CoreMark/MHz:"
-	"$COREMARK" 2>&1
 	echo "STREAM Triad:"
-	"$STREAM" 2>&1
-	echo "lat_mem_rd:"
-	"$LAT_MEM_RD" 32M 128 2>&1
-	echo "fio:"
-	mkdir -p /data/local/tmp /tmp
-	"$FIO" --output-format=json "$FIO_JOB" 2>&1
+	"$BENCH" "$FIO_JOB" 2>&1
 } > "$REPORT"
 
 sha="$(sha256sum "$REPORT" | awk '{print $1}')"

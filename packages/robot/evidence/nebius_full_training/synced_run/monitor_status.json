@@ -1,0 +1,87 @@
+{
+  "schema": "robot-nebius-full-training-monitor-v1",
+  "ok": false,
+  "state": "invalid",
+  "run_id": "robot-full-clean-1779556360",
+  "bucket": "robot-rl-results-1779358330",
+  "dest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
+  "observed_at": "2026-05-27T22:10:57.922857Z",
+  "sync": {
+    "ok": true,
+    "skipped": true,
+    "dest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run"
+  },
+  "validation_report": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/validation_report.json",
+  "validation_summary": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/validation_summary.md",
+  "checks": {
+    "run_root": true,
+    "success_marker": true,
+    "failure_marker_absent": true,
+    "stage_logs": true,
+    "stage_status": false,
+    "production_contract": false,
+    "instance_launch_hygiene": true,
+    "training_inputs": true,
+    "multi_robot_readiness": true,
+    "alberta_checkpoint": true,
+    "asimov1_alberta_production": true,
+    "backend_comparison": true,
+    "joint_reach_benchmark": true,
+    "obstacle_course_benchmark": false,
+    "brax_full_training_run": true,
+    "brax_production_checkpoint": true,
+    "video_review": false,
+    "production_policy_videos": false,
+    "curriculum_eval_native": true,
+    "curriculum_eval": false,
+    "status_consistency": false
+  },
+  "stage_checks": {
+    "00_local_preflight": true,
+    "10_nebius_train_alberta": true,
+    "20_nebius_compare_backends": true,
+    "30_nebius_continual_benchmarks": true,
+    "40_nebius_brax_baseline": true,
+    "50_post_train_validation": true
+  },
+  "summary": {
+    "completed_stage_count": 6,
+    "total_stage_count": 6,
+    "completed_stages": [
+      "00_local_preflight",
+      "10_nebius_train_alberta",
+      "20_nebius_compare_backends",
+      "30_nebius_continual_benchmarks",
+      "40_nebius_brax_baseline",
+      "50_post_train_validation"
+    ],
+    "pending_stages": [],
+    "passed_gates": [
+      "run_root",
+      "success_marker",
+      "failure_marker_absent",
+      "stage_logs",
+      "instance_launch_hygiene",
+      "training_inputs",
+      "multi_robot_readiness",
+      "alberta_checkpoint",
+      "asimov1_alberta_production",
+      "backend_comparison",
+      "joint_reach_benchmark",
+      "brax_full_training_run",
+      "brax_production_checkpoint",
+      "curriculum_eval_native"
+    ],
+    "missing_gates": [
+      "stage_status",
+      "production_contract",
+      "obstacle_course_benchmark",
+      "video_review",
+      "production_policy_videos",
+      "curriculum_eval",
+      "status_consistency"
+    ],
+    "next_action": "inspect_failed_validation_gates"
+  },
+  "monitor_summary": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/monitor_summary.md"
+}

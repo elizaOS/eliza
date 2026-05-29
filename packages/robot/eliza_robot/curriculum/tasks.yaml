@@ -52,8 +52,19 @@ tasks:
       ja: ["立て", "立ち上がれ", "じっとして"]
       zh: ["站起来", "站好", "保持站立"]
     description: "Return to and maintain the calibrated standing pose."
-    init_state: "sit"
-    init_torso_height_ratio: 0.65
+    # Generic crouch remains conservative until each profile has authored
+    # seated keyframes; HiWonder overrides below use a deeper validated crouch.
+    init_state: "crouch"
+    init_torso_height_ratio: 0.90
+    init_foot_clearance_m: 0.002
+    min_init_stand_height_drop_m: 0.03
+    profile_init:
+      hiwonder-ainex:
+        init_torso_height_ratio: 0.65
+        init_hip_pitch_rad: -0.80
+        init_knee_rad: 1.60
+        init_ankle_pitch_rad: 0.80
+        min_init_stand_height_drop_ratio: 0.15
     reward:
       torso_height_target_ratio: 1.0
       torso_height_tolerance_ratio: 0.12
@@ -64,6 +75,7 @@ tasks:
     success:
       torso_z_min_ratio: 0.90
       torso_z_max_ratio: 1.25
+      torso_z_delta_min_ratio: 0.12
       hold_s: 2.0
       fall_pitch_rad: 0.5
       fall_roll_rad: 0.5
@@ -85,6 +97,10 @@ tasks:
     success:
       torso_z_min_m: 0.13
       torso_z_max_m: 0.20
+      max_abs_delta_x_m: 0.10
+      max_abs_delta_y_m: 0.10
+      max_abs_delta_yaw_rad: 0.35
+      no_fall: true
       hold_s: 1.0
     max_episode_s: 4.0
 
@@ -99,16 +115,30 @@ tasks:
     description: "Walk in the +x body direction without falling."
     reward:
       target_velocity_x_m_s: 0.10
-      velocity_track_weight: 8.0
-      upright_weight: 1.5
-      gait_phase_weight: 0.5
+      velocity_track_weight: 6.0
+      movement_progress_weight: 4.0
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
       action_rate_weight: -0.01
     success:
       torso_z_min_ratio: 0.75
       delta_x_m_min: 0.30
       window_s: 5.0
       max_lateral_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
+      hold_s: 1.0
+      min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: walk_backward
@@ -121,14 +151,30 @@ tasks:
     description: "Walk in the -x body direction without falling."
     reward:
       target_velocity_x_m_s: -0.08
-      velocity_track_weight: 8.0
-      upright_weight: 1.5
+      velocity_track_weight: 6.0
+      movement_progress_weight: 4.0
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
       action_rate_weight: -0.01
     success:
       torso_z_min_ratio: 0.75
       delta_x_m_max: -0.20
       window_s: 5.0
+      max_lateral_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
+      hold_s: 1.0
+      min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: sidestep_left
@@ -140,13 +186,29 @@ tasks:
     description: "Translate in the +y body direction (robot's left)."
     reward:
       target_velocity_y_m_s: 0.06
-      velocity_track_weight: 8.0
-      upright_weight: 1.5
+      velocity_track_weight: 6.0
+      movement_progress_weight: 4.0
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
     success:
       torso_z_min_ratio: 0.75
       delta_y_m_min: 0.20
       window_s: 5.0
+      max_forward_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
+      hold_s: 1.0
+      min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: sidestep_right
@@ -158,13 +220,29 @@ tasks:
     description: "Translate in the -y body direction (robot's right)."
     reward:
       target_velocity_y_m_s: -0.06
-      velocity_track_weight: 8.0
-      upright_weight: 1.5
+      velocity_track_weight: 6.0
+      movement_progress_weight: 4.0
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
     success:
       torso_z_min_ratio: 0.75
       delta_y_m_max: -0.20
       window_s: 5.0
+      max_forward_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
+      hold_s: 1.0
+      min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: turn_left
@@ -178,12 +256,15 @@ tasks:
     reward:
       target_yaw_rate_rad_s: 0.6
       yaw_track_weight: 6.0
+      movement_progress_weight: 3.0
       upright_weight: 1.5
     success:
       torso_z_min_ratio: 0.75
       delta_yaw_rad_min: 0.7   # ~40°
       window_s: 4.0
+      max_translation_drift_m: 0.25
       no_fall: true
+      hold_s: 1.0
     max_episode_s: 8.0
 
   - id: turn_right
@@ -197,12 +278,15 @@ tasks:
     reward:
       target_yaw_rate_rad_s: -0.6
       yaw_track_weight: 6.0
+      movement_progress_weight: 3.0
       upright_weight: 1.5
     success:
       torso_z_min_ratio: 0.75
       delta_yaw_rad_max: -0.7
       window_s: 4.0
+      max_translation_drift_m: 0.25
       no_fall: true
+      hold_s: 1.0
     max_episode_s: 8.0
 
   - id: turn_around
@@ -220,6 +304,7 @@ tasks:
     success:
       torso_z_min_ratio: 0.75
       abs_delta_yaw_rad_min: 2.6
+      max_translation_drift_m: 0.35
       hold_s: 0.5
       no_fall: true
     max_episode_s: 8.0
@@ -282,6 +367,10 @@ tasks:
       progress_weight: 1.5
     success:
       torso_z_min_m: 0.24
+      torso_z_delta_min_ratio: 0.45
+      fall_pitch_rad: 0.5
+      fall_roll_rad: 0.5
+      no_fall: true
       hold_s: 1.0
     max_episode_s: 10.0
     init_state: "prone"

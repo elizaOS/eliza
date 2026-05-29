@@ -26,6 +26,16 @@ REPORT = ROOT / "build/reports/chip_os_bringup_workflow_contract.json"
 
 SCHEMA = "eliza.chip_os_bringup_workflow_contract.v1"
 CLAIM_BOUNDARY = "static_workflow_contract_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 TARGET = "chip-os-bring-up-status"
 DEDICATED_REPORT = "build/reports/chip-os-bring-up-status.json"
 OBJECTIVE_CRITICAL_GATES = {
@@ -209,6 +219,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,26 @@ SENSORS_BOM = ROOT / "package/sensors/v0-sensors.yaml"
 PMIC_BINDING = ROOT / "package/pmic/da9063.yaml"
 CHARGER_BINDING = ROOT / "package/charger/max77860.yaml"
 OUT = ROOT / "build/reports/radio_sensor_pmic_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "wifi_claim_allowed": False,
+    "bluetooth_claim_allowed": False,
+    "gnss_claim_allowed": False,
+    "nfc_claim_allowed": False,
+    "cellular_claim_allowed": False,
+    "sensor_runtime_claim_allowed": False,
+    "pmic_runtime_claim_allowed": False,
+    "battery_safety_claim_allowed": False,
+    "android_hal_claim_allowed": False,
+    "regulatory_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def rel(path: Path) -> str:
@@ -233,6 +254,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.radio_sensor_pmic_scope.v1",
         "status": "radio_sensor_pmic_scope_release_blocked",
+        "generated_utc": utc_now(),
         "claim_boundary": (
             "Radio, sensor, battery, PMIC, charger, and thermal scope audit only; "
             "not Wi-Fi, not Bluetooth, not GNSS, not NFC, not cellular, not sensors, "
@@ -240,6 +262,7 @@ def build_report() -> dict[str, Any]:
             "Android Health/Power/Thermal/Sensors/Wi-Fi/Bluetooth HAL evidence, "
             "not regulatory evidence, and not phone product readiness."
         ),
+        **FALSE_CLAIM_FLAGS,
         "current_scaffolds": {
             "wifi": rel(WIFI_INTERFACE),
             "wifi_evidence_gate": rel(WIFI_EVIDENCE),
@@ -278,6 +301,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not regulatory evidence",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

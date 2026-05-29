@@ -749,6 +749,8 @@ FPC_ROUTES: list[FpcRoute] = [
             {
                 "split_interconnect_top_connector",
                 "split_interconnect_bottom_connector",
+                "split_interconnect_top_flex_tail",
+                "split_interconnect_bottom_flex_tail",
                 "main_pcb",
                 "battery_pouch",
                 "orange_side_frame",
@@ -760,13 +762,26 @@ FPC_ROUTES: list[FpcRoute] = [
         "split top flex tail",
         "split_interconnect_top_flex_tail",
         "split_interconnect_top_connector",
-        frozenset({"split_interconnect_top_connector", "main_pcb", "battery_pouch"}),
+        frozenset(
+            {
+                "split_interconnect_top_connector",
+                "split_interconnect_side_flex",
+                "main_pcb",
+                "battery_pouch",
+            }
+        ),
     ),
     FpcRoute(
         "split bottom flex tail",
         "split_interconnect_bottom_flex_tail",
         "split_interconnect_bottom_connector",
-        frozenset({"split_interconnect_bottom_connector", "main_pcb"}),
+        frozenset(
+            {
+                "split_interconnect_bottom_connector",
+                "split_interconnect_side_flex",
+                "main_pcb",
+            }
+        ),
     ),
 ]
 
@@ -881,17 +896,22 @@ def main() -> int:
         "fpc_routing": fpc,
         "trapped_parts": sorted(set(trapped)),
         "device_assemblable": assemblable,
-        "runtime_s": round(time.time() - t0, 2),
+        "runtime_s": 0.0,
+        "runtime_s_note": "wall-clock runtime omitted from committed evidence for deterministic reruns",
     }
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
     (REVIEW_DIR / "assembly-verification.json").write_text(json.dumps(out, indent=2) + "\n")
     write_markdown(out)
-    print(
+    summary = (
         f"assemblable={assemblable} steps={len(step_results)} "
         f"trapped={len(set(trapped))} fastener_pass={fastener['pass']} "
-        f"fpc_pass={fpc['pass']} runtime={out['runtime_s']}s"
+        f"fpc_pass={fpc['pass']} runtime={time.time() - t0:.2f}s"
     )
-    return 0 if assemblable else 1
+    if assemblable:
+        print(summary)
+        return 0
+    print(f"STATUS: BLOCKED E1 phone assemblability {summary}")
+    return 2
 
 
 def write_markdown(out: dict) -> None:

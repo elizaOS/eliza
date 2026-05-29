@@ -1,7 +1,7 @@
-diff --git a/src/bun.js/modules/BunJSCModule.h b/src/bun.js/modules/BunJSCModule.h
-index 038fbe1..118d7db 100644
---- a/src/bun.js/modules/BunJSCModule.h
-+++ b/src/bun.js/modules/BunJSCModule.h
+diff --git a/src/jsc/modules/BunJSCModule.h b/src/jsc/modules/BunJSCModule.h
+index deb683b..61e54ce 100644
+--- a/src/jsc/modules/BunJSCModule.h
++++ b/src/jsc/modules/BunJSCModule.h
 @@ -437,6 +437,11 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
      (JSC::JSGlobalObject * globalObject,
          JSC::CallFrame* callFrame))

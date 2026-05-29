@@ -98,6 +98,25 @@ def routed_release_provenance() -> dict[str, Any]:
     }
 
 
+def first_article_traceability_stub(source_requirement_id: str) -> dict[str, Any]:
+    return {
+        "board_serial": "unserialized_until_routed_first_article_board_exists",
+        "supplier_lot_ids": ["supplier_lots_unassigned_until_approved_bom_avl"],
+        "fixture_id": "fixture_unassigned_until_cm_test_station_selected",
+        "fixture_calibration_id": "calibration_record_unavailable_until_fixture_exists",
+        "test_software_revision": "test_software_unreleased_until_factory_program_exists",
+        "operator": "operator_unassigned_until_executed_first_article",
+        "limits_file": "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
+        "measured_results": {
+            "source_requirement_id": source_requirement_id,
+            "measurement_state": "not_measured_until_routed_hardware_and_fixture_exist",
+            "release_credit": False,
+        },
+        "pass_fail_disposition": "not_evaluated_until_executed_first_article",
+        "waivers": ["none_recorded_until_executed_first_article"],
+    }
+
+
 def blocked_record(
     artifact_id: str,
     source_requirement_id: str,
@@ -128,6 +147,7 @@ def blocked_record(
             "quote, fabrication, enclosure, or end-to-end release evidence."
         ),
     }
+    payload.update(first_article_traceability_stub(source_requirement_id))
     payload.update(routed_release_provenance())
     if source_artifact:
         payload["source_artifact"] = source_artifact
@@ -218,7 +238,8 @@ def write_csv_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     path = ROOT / path_text
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "fixture_revision,limit,result\nnot_run,not_approved,blocked_candidate_not_release\n",
+        "measurement,limit,result\n"
+        "factory_output_candidate,approved_release_record_required,blocked_candidate_not_release\n",
         encoding="utf-8",
     )
     return {"path": path_text, "kind": "csv", "metadata": ""}
@@ -234,6 +255,7 @@ def generate() -> dict[str, Any]:
 
     for path_text, artifact_id in [
         ("board/kicad/e1-phone/production/bom", "production_bom_directory_candidate"),
+        ("board/kicad/e1-phone/production/fab-quote", "fab_quote_directory_candidate"),
         ("board/kicad/e1-phone/production/first-article", "first_article_directory_candidate"),
         ("board/kicad/e1-phone/production/gerbers", "gerber_directory_candidate"),
         ("board/kicad/e1-phone/production/gerbers/nc-drill-and-slots", "drill_directory_candidate"),

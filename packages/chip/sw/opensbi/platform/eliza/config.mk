@@ -19,7 +19,7 @@ FW_TEXT_START=0x80000000
 # fw_payload: pack the Linux kernel right after the SBI image
 FW_PAYLOAD=y
 FW_PAYLOAD_OFFSET=0x200000     # kernel_entry = 0x80200000 (0x80000000 + 0x200000)
-# FW_PAYLOAD_FDT_ADDR=0x82200000  # optional explicit DTB load address
+# FW_PAYLOAD_FDT_ADDR=0x80b00000  # optional explicit DTB load address
 # FW_PAYLOAD_FDT_PATH=...          # set at build time if a DTB is provided
 
 # Per-contract: rv64gc, 1 hart

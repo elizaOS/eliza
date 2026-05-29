@@ -1,0 +1,482 @@
+schema: eliza.e1_phone_public_cad_source_intake.v1
+date: '2026-05-28'
+status: public_cad_sources_observed_not_release_evidence
+claim_boundary: >
+  Public manufacturer, distributor, and EDA-library CAD/source links are recorded
+  for off-the-shelf component intake triage only. These records do not replace
+  supplier-return drawings, approved pad maps, lifecycle/quote evidence, sample
+  inspection, or signed release approval.
+release_credit: false
+release_allowed: false
+source_policy:
+  preferred_source_order:
+    - manufacturer_product_page
+    - manufacturer_document_or_download
+    - authorized_distributor_product_page
+    - authorized_eda_library_link
+  release_grade_requires:
+    - exact orderable MPN selected in AVL
+    - supplier-return or manufacturer-approved drawing package captured locally
+    - STEP or native CAD file downloaded, hashed, reviewed, and license-cleared
+    - land pattern and pinout reconciled to KiCad symbol/footprint
+    - sample lot and lifecycle/stock/quote evidence accepted
+records:
+  - id: gct_usb4105_gf_a
+    category: usb_c_receptacle
+    exact_mpn: USB4105-GF-A
+    manufacturer: GCT
+    board_footprints:
+      - GCT_USB4105_GF_A_DEV
+    local_candidate_refs:
+      - J_USB_C
+    official_or_authorized_sources:
+      - type: authorized_distributor_product_page
+        url: https://www.digikey.com/en/products/detail/gct/USB4105-GF-A/11198441
+        observed_evidence:
+          - datasheet
+          - cad_models_link
+          - product_drawing_link
+      - type: manufacturer_specification
+        url: https://gct.co/files/specs/usb4105-spec.pdf
+        observed_evidence:
+          - product_specification
+      - type: authorized_eda_library_link
+        url: https://www.snapeda.com/parts/USB4105-GF-A/GCT/view-part/
+        observed_evidence:
+          - symbol
+          - footprint
+          - 3d_model
+    public_step_or_3d_status: public_or_distributor_cad_link_observed_not_downloaded
+    public_footprint_status: public_or_distributor_eda_link_observed_not_verified
+    drawing_status: public_product_drawing_link_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: unknown_for_final_cad_download
+    release_credit: false
+    required_next_actions:
+      - download authorized CAD package and hash it into the supplier intake area
+      - reconcile shell stakes, shield tabs, and electrical pads to the KiCad footprint
+      - verify license and supplier approval before using it as release evidence
+  - id: hirose_bm28b0_6_24dp_2_0_35v_53
+    category: board_to_board_or_fpc_connector
+    exact_mpn: BM28B0.6-24DP/2-0.35V(53)
+    manufacturer: Hirose
+    board_footprints:
+      - CAMERA_24P_0P50_DEV
+      - BM28_CLASS_SPLIT_INTERCONNECT_DEV
+    local_candidate_refs:
+      - J_REAR_CAMERA
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.hirose.com/product/p/CL0673-5024-0-53
+        observed_evidence:
+          - 3d_model_step
+          - 3d_model_iges
+          - footprint_allegro
+          - footprint_altium
+          - product_drawing
+      - type: manufacturer_series_page
+        url: https://www.hirose.com/product/series/BM28?lang=en
+        observed_evidence:
+          - series_catalog
+          - mated_height_step
+          - product_number_table
+    public_step_or_3d_status: manufacturer_step_download_link_observed_not_downloaded
+    public_footprint_status: manufacturer_allegro_and_altium_links_observed_not_verified
+    drawing_status: manufacturer_product_drawing_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: not_required_for_page_observation_unknown_for_download_terms
+    release_credit: false
+    required_next_actions:
+      - choose plug/receptacle pair and plating/package suffixes for each interface
+      - download and hash both mating STEP models from Hirose
+      - regenerate KiCad connector footprints from official land pattern data
+  - id: hirose_df40c_80dp_0_4v_51
+    category: board_to_board_connector
+    exact_mpn: DF40C-80DP-0.4V(51)
+    manufacturer: Hirose
+    board_footprints:
+      - HIROSE_DF40C_80DP_DEV
+    local_candidate_refs:
+      - J_DISPLAY_TOUCH
+      - J_TOP_BOTTOM_FLEX_TOP
+      - J_TOP_BOTTOM_FLEX_BOTTOM
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.hirose.com/product/p/CL0684-4036-7-51
+        observed_evidence:
+          - 2d_drawing
+          - 3d_model_step
+          - 3d_model_iges
+          - footprint_allegro_member_only
+          - footprint_altium
+      - type: authorized_distributor_eda_page
+        url: https://www.digikey.com/en/models/4284205
+        observed_evidence:
+          - symbol
+          - footprint
+          - model_page
+    public_step_or_3d_status: manufacturer_step_download_link_observed_not_downloaded
+    public_footprint_status: manufacturer_or_distributor_eda_link_observed_not_verified
+    drawing_status: manufacturer_2d_drawing_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: membership_required_for_some_footprint_formats
+    release_credit: false
+    required_next_actions:
+      - confirm whether DF40 or BM28 is the final stack connector family per interface
+      - download and hash exact plug and receptacle CAD models under accepted terms
+      - bind mating height and insertion envelope into the split-board clearance model
+  - id: murata_type_2ea_lbee5xv2ea_802
+    category: wifi_bluetooth_module
+    exact_mpn: LBEE5XV2EA-802
+    manufacturer: Murata
+    board_footprints:
+      - MURATA_TYPE2EA_LGA_DEV
+    local_candidate_refs:
+      - U_WIFI_BT
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
+        observed_evidence:
+          - product_status
+          - order_number
+          - documents_section
+          - software_section
+          - purchase_section
+      - type: manufacturer_datasheet
+        url: https://www.murata.com/products/productdata/8821679357982/type2ea.pdf
+        observed_evidence:
+          - datasheet
+          - mechanical_and_pinout_reference_candidate
+      - type: authorized_distributor_product_page
+        url: https://www.mouser.com/new/murata/murata-lbee5xv2ea-802-module/
+        observed_evidence:
+          - distributor_product_overview
+    public_step_or_3d_status: no_public_step_confirmed_in_local_intake
+    public_footprint_status: datasheet_land_pattern_candidate_requires_download_review
+    drawing_status: datasheet_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: unknown_for_full_hardware_design_pack
+    release_credit: false
+    required_next_actions:
+      - download current Murata hardware design pack if available under accepted terms
+      - bind LGA pad map to KiCad footprint and RF keepouts
+      - request supplier approval for antenna/coexistence layout review
+  - id: panasonic_evq_p7a01p
+    category: side_push_tactile_switch
+    exact_mpn: EVQ-P7A01P
+    manufacturer: Panasonic Industry
+    board_footprints:
+      - PANASONIC_EVQ_P7_DEV
+    local_candidate_refs:
+      - SW_POWER_VOL
+    official_or_authorized_sources:
+      - type: authorized_distributor_product_page
+        url: https://www.futureelectronics.com/p/electromechanical--switches--tactile/evq-p7a01p-panasonic-industry-7042350
+        observed_evidence:
+          - product_page
+          - ecad_model_link
+      - type: authorized_eda_library_link
+        url: https://app.ultralibrarian.com/details/61252631-757a-11ec-9033-0a34d6323d74/Panasonic/EVQ-P7A01P
+        observed_evidence:
+          - symbol
+          - footprint
+          - 3d_step_model
+      - type: authorized_distributor_eda_page
+        url: https://www.digikey.jp/ja/models/4429447
+        observed_evidence:
+          - footprint_model_page
+    public_step_or_3d_status: authorized_eda_step_link_observed_not_downloaded
+    public_footprint_status: authorized_eda_footprint_link_observed_not_verified
+    drawing_status: public_distributor_model_page_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: likely_required_for_eda_package_download
+    release_credit: false
+    required_next_actions:
+      - download authorized CAD/EDA package under accepted terms and hash locally
+      - verify actuator height, force variant, and side-key load path against enclosure
+      - confirm exact orderable force and packaging suffix for AVL
+  - id: adi_max77860ewg
+    category: charger_power_path
+    exact_mpn: MAX77860EWG+T
+    manufacturer: Analog Devices
+    board_footprints:
+      - ADI_MAX77860_WLP81_DEV
+    local_candidate_refs:
+      - U_CHARGER
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.analog.com/en/products/max77860.html
+        observed_evidence:
+          - datasheet
+          - package_drawing
+          - cad_symbols_footprints_3d_model_links
+    public_step_or_3d_status: manufacturer_cad_vendor_link_observed_not_downloaded
+    public_footprint_status: manufacturer_cad_vendor_link_observed_not_verified
+    drawing_status: package_drawing_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: likely_required_for_cad_vendor_package_download
+    release_credit: false
+    required_next_actions:
+      - download ADI-linked CAD package under accepted terms and hash locally
+      - reconcile WLP ball map, charger thermals, and keepouts to KiCad
+      - validate schematic configuration and thermal operation before release
+  - id: ti_tps65987ddh
+    category: usb_pd_controller
+    exact_mpn: TPS65987DDHRSHR
+    manufacturer: Texas Instruments
+    board_footprints:
+      - TI_TPS65987_QFN_DEV
+    local_candidate_refs:
+      - U_USB_PD
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.ti.com/product/TPS65987D
+        observed_evidence:
+          - datasheet
+          - package_information
+          - lifecycle_warning_not_recommended_for_new_designs
+    public_step_or_3d_status: no_public_step_confirmed_in_local_intake
+    public_footprint_status: package_information_observed_eda_not_verified
+    drawing_status: package_information_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: unknown_for_cad_package_download
+    release_credit: false
+    recommended_disposition: replace_or_requalify_because_not_recommended_for_new_designs
+    required_next_actions:
+      - select a USB-PD controller recommended for new designs before AVL lock
+      - regenerate symbol, footprint, pinout, and STEP binding for the selected controller
+      - rerun USB-C/PD schematic, routing, and factory-test coverage
+  - id: chenghao_ch550fh01a_ct
+    category: display_touch
+    exact_mpn: CH550FH01A-CT
+    manufacturer: Shenzhen ChengHao Optoelectronic
+    board_footprints:
+      - CHENGHAO_CH550FH01A_CT_DEV
+    local_candidate_refs:
+      - J_DISPLAY_TOUCH
+    official_or_authorized_sources:
+      - type: manufacturer_listing
+        url: https://chenghaolcd.en.made-in-china.com/product/pmFUBTZDnXVH/China-LCD-Manufacturer-1080-1920-Pixels-5-5inch-Pcap-Capacitive-Touch-Display-TFT-Module.html
+        observed_evidence:
+          - model_number
+          - mipi_interface
+          - marketplace_supplier_listing
+      - type: manufacturer_pdf_listing
+        url: https://www.chenghaolcd.com/doc/13611930/5-5-inch-1080-1920-mipi-interface-lcd-capacitive-screen-full-viewing-angle.pdf
+        observed_evidence:
+          - model_number
+          - display_specification_summary
+    public_step_or_3d_status: no_public_step_confirmed_in_public_search
+    public_footprint_status: public_supplier_drawing_candidate_observed_not_verified
+    drawing_status: public_pdf_listing_observed_not_signed_release_drawing
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: likely_required_for_full_drawing_step_touch_fpc_and_init_sequence
+    release_credit: false
+    required_next_actions:
+      - request signed display outline, FPC pinout, touch-controller data, and STEP from ChengHao or final display vendor
+      - verify active area, cover-glass stack, FPC bend, and connector pinout against the enclosure and KiCad footprint
+      - replace local display envelope only after downloaded files are hashed and reviewed
+  - id: sincerefirst_sf_g5035s60fy
+    category: front_camera
+    exact_mpn: SF-G5035S60FY
+    manufacturer: Sincere First
+    board_footprints:
+      - CAMERA_24P_0P50_DEV
+    local_candidate_refs:
+      - J_FRONT_CAMERA
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.sincerefirst.com/sincerefirst-solution/6053.html
+        observed_evidence:
+          - gc5035_camera_module
+          - mipi_interface
+          - product_images
+      - type: manufacturer_marketplace_listing
+        url: https://sincerefirst.en.made-in-china.com/product/rTVRCQFcfvhZ/China-5MP-Gc5035-Sensor-Camera-Module-Auto-Focus-Fixed-Focus-Mipl-Small-Size.html
+        observed_evidence:
+          - model_number
+          - supplier_listing
+    public_step_or_3d_status: no_public_step_confirmed_in_public_search
+    public_footprint_status: public_module_pinout_or_connector_candidate_observed_not_verified
+    drawing_status: public_supplier_listing_observed_not_signed_release_drawing
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: likely_required_for_module_drawing_step_lens_stack_and_fpc_pinout
+    release_credit: false
+    required_next_actions:
+      - request signed module drawing, lens stack datum, FPC pinout, and STEP from Sincere First
+      - verify camera connector pin count and FPC orientation against the KiCad camera footprint
+      - rerun front-camera aperture and screen-side clearance after supplier geometry is accepted
+  - id: quectel_rg255c_gl
+    category: cellular_module
+    exact_mpn: RG255C-GL
+    manufacturer: Quectel
+    board_footprints:
+      - QUECTEL_RG255C_LGA_DEV
+    local_candidate_refs:
+      - U_CELL
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.quectel.com/library/new-product-intro-rg255c-5g-redcap-module/
+        observed_evidence:
+          - rg255c_series
+          - 5g_redcap_release_17
+          - interface_summary
+      - type: manufacturer_product_page
+        url: https://www.quectel.com/blog/document/5g-redcap-rg255c-series/
+        observed_evidence:
+          - rg255c_series_document_page
+    public_step_or_3d_status: no_public_step_confirmed_in_public_search
+    public_footprint_status: datasheet_land_pattern_candidate_requires_supplier_document_review
+    drawing_status: public_product_page_observed_full_package_requires_quectel_document_access
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: likely_required_for_full_hardware_design_package_step_and_carrier_sku_docs
+    release_credit: false
+    required_next_actions:
+      - select exact regional RG255C SKU and obtain Quectel hardware design package under accepted terms
+      - reconcile LGA pad map, keepouts, RF launch, GNSS, antenna matching, and thermal pads to KiCad
+      - require Quectel or module-channel RF/layout review before fabrication release
+  - id: displaymodule_dm_tft55_370
+    category: display_touch_alternate
+    exact_mpn: DM-TFT55-370
+    manufacturer: DisplayModule
+    board_footprints:
+      - DISPLAYMODULE_DM_TFT55_370_DEV
+    local_candidate_refs:
+      - J_DISPLAY_TOUCH
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.displaymodule.com/ko/products/5-5-inch-ips-display-720x1280-capacitive-with-mipi
+        observed_evidence:
+          - sample_order_page
+          - volume_discount_schedule
+          - mipi_interface
+          - product_images
+    public_step_or_3d_status: no_public_step_confirmed_in_public_search
+    public_footprint_status: public_product_dimensions_candidate_observed_not_verified
+    drawing_status: public_product_page_observed_not_signed_release_drawing
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: likely_required_for_full_mechanical_drawing_fpc_pinout_and_step
+    release_credit: false
+    required_next_actions:
+      - treat as purchasable alternate or sample source only until signed drawing and FPC pinout are received
+      - compare 720x1280 outline and active-area dimensions against the selected enclosure/display window
+      - do not mix this alternate with CH550FH01A-CT without rerunning display connector, cover, and clearance evidence
+  - id: ti_tps25751
+    category: usb_pd_controller_replacement_candidate
+    exact_mpn: TPS25751
+    manufacturer: Texas Instruments
+    board_footprints:
+      - TI_TPS25751_DEV
+    local_candidate_refs:
+      - U_USB_PD
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.ti.com/product/TPS25751
+        observed_evidence:
+          - active_product_page
+          - datasheet
+          - cad_symbols_footprints_3d_model_links
+    public_step_or_3d_status: manufacturer_cad_3d_link_observed_not_downloaded
+    public_footprint_status: manufacturer_eda_link_observed_not_verified
+    drawing_status: package_information_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: unknown_for_cad_package_download
+    release_credit: false
+    recommended_disposition: evaluate_as_replacement_for_tps65987d_nrnd_binding
+    required_next_actions:
+      - compare TPS25751 firmware, PD policy, charger-path, and Linux integration against the current TPS65987D placeholder binding
+      - download and hash TI CAD/EDA package under accepted terms before replacing KiCad footprints
+      - rerun USB-C/PD schematic, route, thermal, and factory-test evidence after selection
+  - id: knowles_sph0641lm4h
+    category: mems_microphone
+    exact_mpn: SPH0641LM4H
+    manufacturer: Knowles
+    board_footprints:
+      - KNOWLES_SPH0641LM4H_DEV
+    local_candidate_refs:
+      - D_MIC
+    official_or_authorized_sources:
+      - type: authorized_eda_library_link
+        url: https://app.ultralibrarian.com/details/375322ad-4198-11e9-ab3a-0a3560a4cccc/Knowles/SPH0641LM4H-1
+        observed_evidence:
+          - symbol
+          - footprint
+          - 3d_step_model
+    public_step_or_3d_status: authorized_eda_step_link_observed_not_downloaded
+    public_footprint_status: authorized_eda_footprint_link_observed_not_verified
+    drawing_status: public_eda_model_page_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: likely_required_for_eda_package_download
+    release_credit: false
+    required_next_actions:
+      - freeze microphone choice, port orientation, acoustic gasket, and keepout before CAD replacement
+      - download and hash CAD/EDA package under accepted terms
+      - reconcile acoustic-port datum and solder land pattern with the audio flex/board model
+  - id: te_spring_finger_contacts
+    category: antenna_or_ground_spring_contact_candidate
+    exact_mpn: exact_mpn_unselected
+    manufacturer: TE Connectivity
+    board_footprints:
+      - TE_SPRING_FINGER_DEV
+    local_candidate_refs:
+      - RFTP_CELL_MAIN
+      - RFTP_CELL_DIV
+      - RFTP_WIFI0
+      - RFTP_WIFI1
+      - RFTP_GNSS
+    official_or_authorized_sources:
+      - type: manufacturer_product_family_page
+        url: https://www.te.com/usa-en/products/connectors/contacts/spring-finger-contacts.html
+        observed_evidence:
+          - spring_finger_contact_family
+          - product_selection_table
+          - cad_expected_by_exact_mpn
+    public_step_or_3d_status: family_cad_availability_expected_exact_mpn_not_selected
+    public_footprint_status: family_land_pattern_candidate_requires_exact_mpn
+    drawing_status: family_page_observed_exact_drawing_not_selected
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: exact_mpn_selection_required
+    release_credit: false
+    required_next_actions:
+      - select exact spring-contact MPNs for antenna feeds, chassis ground, and shielding contacts
+      - download exact STEP/drawing files and bind compression height to enclosure datums
+      - rerun RF feed clearance and antenna contact tolerance stack
+  - id: harwin_spring_contacts
+    category: antenna_or_ground_spring_contact_candidate
+    exact_mpn: exact_mpn_unselected
+    manufacturer: Harwin
+    board_footprints:
+      - HARWIN_SPRING_CONTACT_DEV
+    local_candidate_refs:
+      - RFTP_CELL_MAIN
+      - RFTP_CELL_DIV
+      - RFTP_WIFI0
+      - RFTP_WIFI1
+      - RFTP_GNSS
+    official_or_authorized_sources:
+      - type: manufacturer_product_family_page
+        url: https://www.harwin.com/spring-contacts/
+        observed_evidence:
+          - spring_contact_family
+          - product_selection_table
+          - cad_expected_by_exact_mpn
+    public_step_or_3d_status: family_cad_availability_expected_exact_mpn_not_selected
+    public_footprint_status: family_land_pattern_candidate_requires_exact_mpn
+    drawing_status: family_page_observed_exact_drawing_not_selected
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: exact_mpn_selection_required
+    release_credit: false
+    required_next_actions:
+      - select exact spring-contact MPNs only after antenna/chassis compression heights are known
+      - download exact STEP/drawing files and hash them into supplier intake
+      - validate compressed/free-height states in the enclosure clearance model
+summary:
+  record_count: 15
+  public_step_or_3d_observed_count: 5
+  public_footprint_or_eda_observed_count: 15
+  manufacturer_step_link_observed_count: 2
+  local_downloaded_hashed_count: 0
+  release_credit_record_count: 0
+  externally_blocked_record_count: 15

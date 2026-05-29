@@ -177,6 +177,7 @@ def _write_asimov_alberta_checkpoint(path: Path, *, steps: int = 2_000_000) -> N
     np.savez(path / "alberta_policy.npz", **controller.state_dict())
     manifest = {
         "regime": "alberta_streaming",
+        "phase_promotion_schema": "alberta-phase-promotion-v1",
         "curriculum_version": load_curriculum().version,
         "pca_dim": 32,
         "active_tasks": TASKS,
@@ -234,10 +235,78 @@ def _write_asimov_alberta_checkpoint(path: Path, *, steps: int = 2_000_000) -> N
                 "task": task,
                 "train_episodes": 1,
                 "train_mean_return": -1.0,
+                "pre_eval_mean_return": -2.0,
+                "pre_eval_success_rate": 0.0,
                 "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "pre_mean_final_delta_x_m": 0.0,
+                "eval_mean_final_delta_x_m": 0.4,
+                "pre_mean_final_delta_y_m": 0.0,
+                "eval_mean_final_delta_y_m": 0.0,
+                "pre_mean_final_delta_yaw_rad": 0.0,
+                "eval_mean_final_delta_yaw_rad": 0.0,
+                "pre_mean_final_torso_z_m": 0.2,
+                "eval_mean_final_torso_z_m": 0.3,
+                "learning_return_delta": 1.5,
+                "learning_success_rate_delta": 1.0,
+                "learning_delta_x_m": 0.4,
+                "learning_delta_y_m": 0.0,
+                "learning_delta_yaw_rad": 0.0,
+                "promotion_passed": True,
             }
             for phase, task in enumerate(TASKS)
         ],
+    }
+    cumulative = 0
+    phases = []
+    steps_per_task = steps // len(TASKS)
+    for phase, task in enumerate(TASKS):
+        cumulative += steps_per_task
+        phases.append(
+            {
+                "phase": phase,
+                "task": task,
+                "attempt": 1,
+                "steps_trained": steps_per_task,
+                "cumulative_steps": cumulative,
+                "eval_episodes": 3,
+                "pre_eval_mean_return": -2.0,
+                "pre_eval_success_rate": 0.0,
+                "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "failure_rate": 0.0,
+                "mean_final_delta_x_m": 0.4,
+                "mean_final_delta_y_m": 0.0,
+                "mean_final_delta_yaw_rad": 0.0,
+                "mean_final_torso_z_m": 0.3,
+                "physical_success": True,
+                "physical_checks": {"tracked_goal": True},
+                "tracked_body_name": "pelvis_link",
+                "mean_final_tracked_delta_x_m": 0.4,
+                "mean_final_tracked_delta_y_m": 0.0,
+                "mean_final_tracked_delta_z_m": 0.1,
+                "mean_final_tracked_z_m": 1.0,
+                "learning_return_delta": 1.5,
+                "learning_success_rate_delta": 1.0,
+                "learning_delta_x_m": 0.4,
+                "learning_delta_y_m": 0.0,
+                "learning_delta_yaw_rad": 0.0,
+                "eval_failures": 0,
+                "promotion_passed": True,
+                "promotion_reason": "success_rate_gte_threshold",
+            }
+        )
+    manifest["phase_promotion"] = {
+        "gate": "curriculum_goal_checker",
+        "status": "completed",
+        "success_threshold": 1.0,
+        "eval_episodes": 3,
+        "eval_interval_steps": steps_per_task,
+        "max_phase_attempts": 1,
+        "promoted_phase_count": len(TASKS),
+        "requested_phase_count": len(TASKS),
+        "failed_phase": None,
+        "phases": phases,
     }
     (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 

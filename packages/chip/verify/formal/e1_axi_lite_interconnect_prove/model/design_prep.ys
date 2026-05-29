@@ -1,0 +1,16 @@
+# running in verify/formal/e1_axi_lite_interconnect_prove/model/
+read_rtlil design.il
+scc -select; simplemap; select -clear
+memory_nordff
+async2sync
+chformal -assume -early
+opt_clean
+formalff -setundef -clk2ff -ff2anyinit -hierarchy
+chformal -live -fair -cover -remove
+opt_clean
+check
+setundef -undriven -anyseq
+opt -fast
+rename -witness
+opt_clean
+write_rtlil ../model/design_prep.il

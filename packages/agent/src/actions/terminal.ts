@@ -27,10 +27,9 @@ import {
   logger,
   stringToUuid,
 } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.ts";
 
-/** API port for posting terminal requests. */
-const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
 const TERMINAL_ACTION_NAME = "SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
 
@@ -330,7 +329,7 @@ export const terminalAction: Action = {
       }
 
       const response = await fetch(
-        `http://localhost:${API_PORT}/api/terminal/run`,
+        `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
         {
           method: "POST",
           headers,

@@ -183,7 +183,7 @@ release_blockers:
   - production concept placeholders have local development-footprint replacements, but supplier-approved land patterns, courtyards, paste, and STEP models are still missing
   - footprint pad numbering has not been checked against supplier pinouts
   - ERC report and symbol electrical-type waivers are missing
-  - PCB has no routed tracks or filled zones
+  - production concept source has no release-approved routed tracks or filled zones
 forbidden_claims:
   - schematic_ready
   - symbols_ready

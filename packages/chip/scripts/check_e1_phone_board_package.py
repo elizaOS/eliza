@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import csv
+import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -10,6 +12,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "board/kicad/e1-phone/artifact-manifest.yaml"
+REPORT = ROOT / "build/reports/e1_phone_board_package.json"
 PUBLIC_SOURCE_STATUS_RE = re.compile(r"^(public_listing|vendor_page)_observed_20\d{2}_\d{2}_\d{2}$")
 BOARD_PACKAGE_PATH_RE = re.compile(r"board/kicad/e1-phone/[^\"'\s),\]}]+")
 BLOCKED_CANDIDATE_INLINE_MARKERS = (
@@ -20,6 +23,33 @@ BLOCKED_CANDIDATE_INLINE_MARKERS = (
     "not_approved,blocked",
     "blocked,not_approved",
 )
+LINKED_EVIDENCE_REPORTS = (
+    (
+        "sourcing",
+        "python3 scripts/check_e1_phone_supplier_return_content.py",
+        "build/reports/e1_phone_supplier_return_content.json",
+    ),
+    (
+        "layout_fabrication",
+        "python3 scripts/check_e1_phone_routed_output_content.py",
+        "build/reports/e1_phone_routed_output_content.json",
+    ),
+    (
+        "manufacturing",
+        "python3 scripts/check_e1_phone_factory_output_content.py",
+        "build/reports/e1_phone_factory_output_content.json",
+    ),
+    (
+        "manufacturing_validation",
+        "python3 scripts/check_e1_phone_first_article_content.py",
+        "build/reports/e1_phone_first_article_content.json",
+    ),
+    (
+        "release_owner",
+        "python3 scripts/check_e1_phone_fabrication_release.py",
+        "build/reports/e1_phone_fabrication_release.json",
+    ),
+)
 
 
 def load_yaml(path: Path):
@@ -27,9 +57,21 @@ def load_yaml(path: Path):
         return yaml.safe_load(handle)
 
 
+def load_json_file(path: Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def require_path(path: Path) -> None:
     if not path.exists():
         raise SystemExit(f"missing required artifact: {path}")
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def is_blocked_candidate_artifact(path: Path) -> bool:
@@ -43,7 +85,8 @@ def is_blocked_candidate_artifact(path: Path) -> bool:
                 probe = candidate
                 break
         else:
-            return False
+            children = [child for child in path.rglob("*") if child.is_file()]
+            return bool(children) and all(is_blocked_candidate_artifact(child) for child in children)
     if probe.is_file() and probe.suffix not in {".yaml", ".yml", ".json"}:
         for suffix in (".metadata.yaml", ".metadata.yml", ".metadata.json"):
             sidecar = probe.with_name(probe.name + suffix)
@@ -89,6 +132,32 @@ def is_blocked_candidate_artifact(path: Path) -> bool:
 
 def is_release_artifact_present(path: Path) -> bool:
     return path.exists() and not is_blocked_candidate_artifact(path)
+
+
+def collect_board_file_references(value: object) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(value, dict):
+        for nested in value.values():
+            refs.update(collect_board_file_references(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            refs.update(collect_board_file_references(nested))
+    elif isinstance(value, str):
+        normalized = value.removeprefix("packages/chip/")
+        for match in re.findall(r"board/kicad/e1-phone/[^\"'\s,)\]]+", normalized):
+            refs.add(match.rstrip(".,:;"))
+    return refs
+
+
+def load_structured_file(path: Path) -> object | None:
+    try:
+        if path.suffix in {".yaml", ".yml"}:
+            return load_yaml(path)
+        if path.suffix == ".json":
+            return json.loads(path.read_text())
+    except Exception:
+        return None
+    return None
 
 
 def is_public_source_status(value: object) -> bool:
@@ -3226,7 +3295,10 @@ def check_usb_sidekey_integration() -> None:
             )
         if output == "mechanical/e1-phone/review/routed-board-clearance.json":
             routed_clearance = load_yaml(ROOT / output)
-            if routed_clearance["status"] != "blocked_waiting_for_routed_board_step":
+            if routed_clearance["status"] not in {
+                "blocked_waiting_for_routed_board_step",
+                "blocked_waiting_for_physical_routed_board_clearance_result",
+            }:
                 raise SystemExit(
                     "USB/side-key integration routed clearance output unexpectedly open"
                 )
@@ -5562,6 +5634,9 @@ def check_supplier_drawing_intake() -> None:
 def check_supplier_sample_release_gate() -> None:
     gate = load_yaml(ROOT / "board/kicad/e1-phone/supplier-sample-release-gate.yaml")
     manifest = load_yaml(MANIFEST)
+    component_models = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+    )
     rfq = load_yaml(ROOT / "board/kicad/e1-phone/supplier-rfq-intake.yaml")
     rfq_drafts = load_yaml(ROOT / "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml")
     supplier_map = load_yaml(ROOT / "board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml")
@@ -5647,6 +5722,12 @@ def check_supplier_sample_release_gate() -> None:
     records = {item["function"]: item for item in gate["handoff_records"]}
     evidence_records = {item["function"]: item for item in supplier_map["evidence_records"]}
     drawing_records = {item["function"]: item for item in drawing_intake["intake_records"]}
+    supplier_lane_surrogate_paths = {
+        item["file"]
+        for item in component_models.get("supplier_lane_surrogate_steps", {}).values()
+        if item.get("status") == "present_local_surrogate_step_not_supplier_approved"
+        and item.get("release_credit") is False
+    }
     if set(records) != set(evidence_records) or set(records) != set(drawing_records):
         raise SystemExit(
             "supplier sample release gate functions diverge from supplier evidence maps"
@@ -5654,8 +5735,9 @@ def check_supplier_sample_release_gate() -> None:
     if len(records) != 10:
         raise SystemExit(f"supplier sample release gate expected 10 records, got {len(records)}")
 
-    present_paths: list[str] = []
-    placeholder_paths: list[str] = []
+    release_present_paths: list[str] = []
+    blocked_or_local_candidate_paths: list[str] = []
+    local_surrogate_step_paths: list[str] = []
     missing_paths: list[str] = []
     for function, record in records.items():
         evidence = evidence_records[function]
@@ -5681,7 +5763,7 @@ def check_supplier_sample_release_gate() -> None:
         if record["required_evidence_key_count"] != len(evidence_required_keys):
             raise SystemExit(f"supplier sample release record {function} key count stale")
         if record["present_evidence_key_count"] != 0:
-            raise SystemExit(f"supplier sample release record {function} has present evidence")
+            raise SystemExit(f"supplier sample release record {function} has release evidence")
         if record["missing_evidence_key_count"] != len(evidence_required_keys):
             raise SystemExit(f"supplier sample release record {function} missing count stale")
         if record["sample_required_before_layout"] is not True:
@@ -5693,10 +5775,13 @@ def check_supplier_sample_release_gate() -> None:
 
         for evidence_path in evidence["required_production_evidence"].values():
             path = ROOT / evidence_path
-            if is_release_artifact_present(path):
-                present_paths.append(evidence_path)
+            if evidence_path in supplier_lane_surrogate_paths:
+                local_surrogate_step_paths.append(evidence_path)
+                blocked_or_local_candidate_paths.append(evidence_path)
+            elif is_release_artifact_present(path):
+                release_present_paths.append(evidence_path)
             elif path.exists():
-                placeholder_paths.append(evidence_path)
+                blocked_or_local_candidate_paths.append(evidence_path)
             else:
                 missing_paths.append(evidence_path)
 
@@ -5708,27 +5793,39 @@ def check_supplier_sample_release_gate() -> None:
         raise SystemExit("supplier sample release inventory per-function count stale")
     if inventory["required_evidence_path_count"] != expected_total:
         raise SystemExit("supplier sample release inventory required path count stale")
-    if inventory["present_evidence_path_count"] != len(present_paths):
+    if inventory["present_evidence_path_count"] != len(release_present_paths):
         raise SystemExit("supplier sample release inventory present path count stale")
-    release_missing_evidence_path_count = len(missing_paths) + len(placeholder_paths)
+    if inventory.get("blocked_or_local_candidate_evidence_path_count") != len(
+        blocked_or_local_candidate_paths
+    ):
+        raise SystemExit("supplier sample release inventory blocked path count stale")
+    if inventory.get("local_surrogate_step_path_count") != len(local_surrogate_step_paths):
+        raise SystemExit("supplier sample release inventory local surrogate step count stale")
+    release_missing_evidence_path_count = len(missing_paths) + len(
+        blocked_or_local_candidate_paths
+    )
     if inventory["missing_evidence_path_count"] != release_missing_evidence_path_count:
         raise SystemExit("supplier sample release inventory missing path count stale")
-    if present_paths:
+    if release_present_paths:
         raise SystemExit(
-            f"supplier sample release production evidence unexpectedly exists: {present_paths}"
+            "supplier sample release approved production evidence unexpectedly exists: "
+            f"{release_present_paths}"
         )
-    if inventory["every_required_production_path_absent"] is not True:
-        raise SystemExit("supplier sample release gate must remain absent-evidence fail-closed")
+    if inventory["every_required_production_path_absent"] is not False:
+        raise SystemExit("supplier sample release absent-path flag stale")
+    if inventory.get("every_required_production_path_absent_or_blocked") is not True:
+        raise SystemExit("supplier sample release gate must remain fail-closed")
 
     for key, value in gate["release_coupling"].items():
         if value is not True:
             raise SystemExit(f"supplier sample release coupling unexpectedly open: {key}")
     for name, value in gate["cross_checks"].items():
-        if value is not True:
+        expected_value = False if name == "every_required_evidence_path_is_absent" else True
+        if value is not expected_value:
             raise SystemExit(f"supplier sample release cross-check failed: {name}")
     for blocker in [
         "RFQ transmittals are drafts and have not been sent or archived as production evidence",
-        "supplier response packs, signed drawings, exact pinouts, land patterns, STEP models, and samples are missing",
+        "supplier response packs, signed drawings, exact pinouts, land patterns, supplier-approved STEP models, and samples are missing",
         "incoming sample inspection and compliance packs are missing",
         "pinout, symbol, footprint, and 3D binding reviews are missing",
         "routed layout, factory release, and enclosure clearance cannot close without supplier evidence",
@@ -5753,7 +5850,8 @@ def check_supplier_sample_release_gate() -> None:
             raise SystemExit(f"supplier sample release gate missing forbidden claim {claim}")
     print(
         "supplier sample release gate ok: "
-        f"{len(records)} functions, {len(missing_paths)} production evidence paths absent"
+        f"{len(records)} functions, {len(missing_paths)} production evidence paths absent, "
+        f"{len(blocked_or_local_candidate_paths)} blocked/local candidates"
     )
 
 
@@ -10304,6 +10402,7 @@ def check_factory_probe_map() -> None:
         "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
         "board/kicad/e1-phone/production/test/probe-coordinates.csv",
         "board/kicad/e1-phone/production/test/ict-or-flying-probe-program",
+        "board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf",
         "board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf",
         "board/kicad/e1-phone/production/test/first-article-test-transcript.json",
     ]:
@@ -11040,7 +11139,7 @@ def check_pcb_implementation_audit() -> None:
         if output not in audit["required_release_outputs"]:
             raise SystemExit(f"PCB implementation audit missing release output {output}")
     for blocker in [
-        "no routed copper segments or filled zones are present in the KiCad PCB",
+        "production concept source has no release-approved routed copper segments or filled zones",
         "supplier connector/module land patterns and STEP models have not replaced placeholders",
         "DRC, ERC, SI/PI, RF, fabrication, assembly, and routed enclosure clearance evidence are missing",
     ]:
@@ -11912,10 +12011,95 @@ def check_routed_board_step_export_contract() -> None:
         if state[key] != value:
             raise SystemExit(f"routed board STEP export state stale: {key}")
     board_state = board_step["board_state_detected"]
+    detailed_step_candidate = board_step.get("detailed_routed_step_candidate", {})
+    if not isinstance(detailed_step_candidate, dict):
+        raise SystemExit("routed board STEP export missing detailed candidate context")
     if state["concept_pcb_only"] is not True or state["production_step_present"]:
         raise SystemExit("routed board STEP export contract must remain fail-closed")
     if state["placeholder_footprints_present"] != (board_state["placeholder_marker_count"] > 0):
         raise SystemExit("routed board STEP export placeholder state stale")
+    local_step_context = state.get("local_development_step_context")
+    if not isinstance(local_step_context, dict):
+        raise SystemExit("routed board STEP export local development STEP context missing")
+    expected_local_step_context = {
+        "source_step": detailed_step_candidate.get("source_step"),
+        "candidate_production_step_copy": detailed_step_candidate.get("path"),
+        "candidate_production_step_present_but_blocked": detailed_step_candidate.get("present"),
+        "source_step_sha256": detailed_step_candidate.get("source_step_sha256"),
+        "source_step_size_bytes": detailed_step_candidate.get("source_step_size_bytes"),
+        "candidate_step_sha256": detailed_step_candidate.get("sha256"),
+        "candidate_step_size_bytes": detailed_step_candidate.get("size_bytes"),
+        "footprint_envelope_count": detailed_step_candidate.get("footprint_envelope_count"),
+        "pad_contact_visual_count": detailed_step_candidate.get("pad_contact_visual_count"),
+        "route_segment_visual_count": detailed_step_candidate.get("route_segment_visual_count"),
+        "route_segment_net_name_count": detailed_step_candidate.get("route_segment_net_name_count"),
+        "route_segment_trace_bound_count": detailed_step_candidate.get(
+            "route_segment_trace_bound_count"
+        ),
+        "route_segment_trace_unbound_count": detailed_step_candidate.get(
+            "route_segment_trace_unbound_count"
+        ),
+        "controlled_impedance_segment_visual_count": detailed_step_candidate.get(
+            "controlled_impedance_segment_visual_count"
+        ),
+        "board_segment_count": detailed_step_candidate.get("segment_count"),
+        "via_net_name_count": detailed_step_candidate.get("via_net_name_count"),
+        "route_visual_record_count": detailed_step_candidate.get("route_visual_record_count"),
+        "via_visual_record_count": detailed_step_candidate.get("via_visual_record_count"),
+        "filled_copper_zone_record_count": detailed_step_candidate.get(
+            "filled_copper_zone_record_count"
+        ),
+        "filled_copper_zone_filled_polygon_count": detailed_step_candidate.get(
+            "filled_copper_zone_filled_polygon_count"
+        ),
+        "component_model_record_count": detailed_step_candidate.get(
+            "component_model_record_count"
+        ),
+        "cad_connection_record_count": detailed_step_candidate.get(
+            "cad_connection_record_count"
+        ),
+        "all_route_records_have_net_layer_class_and_source": detailed_step_candidate.get(
+            "all_route_records_have_net_layer_class_and_source"
+        ),
+        "all_component_records_have_local_step": detailed_step_candidate.get(
+            "all_component_records_have_local_step"
+        ),
+        "all_connection_records_have_cad_step": detailed_step_candidate.get(
+            "all_connection_records_have_cad_step"
+        ),
+    }
+    for key, expected in expected_local_step_context.items():
+        if local_step_context.get(key) != expected:
+            raise SystemExit(f"routed board STEP export local candidate context stale: {key}")
+    for required_flag in [
+        "candidate_matches_routed_output_manifest",
+        "candidate_matches_development_source",
+    ]:
+        if detailed_step_candidate.get(required_flag) is not True:
+            raise SystemExit(f"routed board STEP export candidate linkage failed: {required_flag}")
+    full_cad_state_map = {
+        "full_cad_boolean_parts_loaded": "parts_loaded",
+        "full_cad_boolean_pair_count_brep_evaluated": "pair_count_brep_evaluated",
+        "full_cad_boolean_unintentional_clash_count": "unintentional_clash_count",
+        "full_cad_boolean_scope_result_count": "scope_result_count",
+        "full_cad_boolean_passing_scope_result_count": "passing_scope_result_count",
+    }
+    full_cad_expected = {
+        "parts_loaded": int(full_cad_boolean.get("parts_loaded") or 0),
+        "pair_count_brep_evaluated": int(
+            full_cad_boolean.get("pair_count_brep_evaluated") or 0
+        ),
+        "unintentional_clash_count": len(full_cad_boolean.get("unintentional_clashes") or []),
+        "scope_result_count": len(full_cad_boolean.get("scope_results") or []),
+        "passing_scope_result_count": sum(
+            1
+            for result in full_cad_boolean.get("scope_results") or []
+            if result.get("status") == "pass"
+        ),
+    }
+    for state_key, expected_key in full_cad_state_map.items():
+        if int(state[state_key]) != full_cad_expected[expected_key]:
+            raise SystemExit(f"routed board STEP export full-CAD state stale: {state_key}")
 
     export = contract["export_contract"]
     release_outputs = routed_release["required_release_output_manifest"]
@@ -12041,6 +12225,121 @@ def check_routed_board_step_export_contract() -> None:
         "routed board STEP export contract ok: "
         f"{len(export['required_3d_model_families'])} model families, "
         f"{len(required_checks)} post-export checks fail-closed"
+    )
+
+
+def check_screen_back_camera_collision_review() -> None:
+    full_cad = load_yaml(ROOT / "mechanical/e1-phone/review/full-cad-boolean-interference.json")
+    camera = load_yaml(ROOT / "mechanical/e1-phone/review/camera-validation.json")
+    for path in [
+        "mechanical/e1-phone/out/screen_cover_glass.step",
+        "mechanical/e1-phone/out/display_lcm.step",
+        "mechanical/e1-phone/out/orange_side_frame.step",
+        "mechanical/e1-phone/out/rear_camera_shell_aperture.step",
+        "mechanical/e1-phone/out/rear_camera_lens_window.step",
+        "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step",
+        "mechanical/e1-phone/out/rear_camera_module.step",
+        "mechanical/e1-phone/out/rear_camera_cover_glass.step",
+        "mechanical/e1-phone/out/front_camera_module.step",
+    ]:
+        require_path(ROOT / path)
+
+    required_scope_ids = {
+        "screen_stack_to_orange_rails",
+        "front_camera_earpiece_under_glass_stack",
+        "rear_camera_window_baffle_adhesive_stack",
+    }
+    required_pairs = [
+        ("screen_stack_to_orange_rails", ("display_lcm", "screen_cover_glass")),
+        ("screen_stack_to_orange_rails", ("display_lcm", "orange_side_frame")),
+        ("screen_stack_to_orange_rails", ("screen_cover_glass", "orange_side_frame")),
+        ("front_camera_earpiece_under_glass_stack", ("front_camera_module", "earpiece_receiver")),
+        ("front_camera_earpiece_under_glass_stack", ("front_camera_module", "screen_cover_glass")),
+        ("rear_camera_window_baffle_adhesive_stack", ("rear_camera_module", "orange_back_shell")),
+        (
+            "rear_camera_window_baffle_adhesive_stack",
+            ("rear_camera_module", "rear_camera_cover_glass"),
+        ),
+    ]
+    if full_cad.get("concept_aabb_interference_count") is not None:
+        if full_cad.get("concept_aabb_interference_count") != 0:
+            raise SystemExit("full CAD concept AABB scan still reports interference")
+        if int(full_cad.get("concept_aabb_pair_check_count") or 0) < 16:
+            raise SystemExit("full CAD concept AABB scan is missing screen/back coverage")
+        scope_by_id = {scope["id"]: scope for scope in full_cad.get("scope_cases", [])}
+        if not required_scope_ids.issubset(scope_by_id):
+            raise SystemExit("full CAD review missing screen/front/rear camera scopes")
+        for scope_id in required_scope_ids:
+            scope = scope_by_id[scope_id]
+            for flag in ["required_parts_present", "concept_clearance_pass", "early_aabb_fit_pass"]:
+                if scope.get(flag) is not True:
+                    raise SystemExit(f"full CAD review scope {scope_id} failed {flag}")
+
+        pair_results = {
+            (check["scope_id"], tuple(check["pair"])): check
+            for scope in full_cad.get("scope_cases", [])
+            for check in scope.get("concept_aabb_pair_checks", [])
+        }
+        for key in required_pairs:
+            result = pair_results.get(key)
+            if not result:
+                raise SystemExit(f"full CAD review missing required AABB pair: {key}")
+            if result.get("pass") is not True or int(result.get("interference_count") or 0) != 0:
+                raise SystemExit(f"full CAD review AABB pair collision remains: {key}")
+    else:
+        if full_cad.get("overall_status") != "pass" or full_cad.get("release_blocked") is not False:
+            raise SystemExit("full CAD B-rep boolean interference report is not passing")
+        if full_cad.get("unintentional_clashes"):
+            raise SystemExit("full CAD B-rep boolean report still has unintentional clashes")
+        if int(full_cad.get("parts_loaded") or 0) < 200:
+            raise SystemExit("full CAD B-rep boolean report is missing part coverage")
+        if int(full_cad.get("pair_count_brep_evaluated") or 0) < 900:
+            raise SystemExit("full CAD B-rep boolean report is missing pair coverage")
+        scope_by_id = {scope["case"]: scope for scope in full_cad.get("scope_results", [])}
+        if not required_scope_ids.issubset(scope_by_id):
+            raise SystemExit("full CAD B-rep review missing screen/front/rear camera scopes")
+        for scope_id in required_scope_ids:
+            scope = scope_by_id[scope_id]
+            if scope.get("status") != "pass" or scope.get("parts_missing"):
+                raise SystemExit(f"full CAD B-rep review scope {scope_id} is not passing")
+        pair_results = {}
+        for scope in full_cad.get("scope_results", []):
+            scope_id = scope.get("case")
+            for sample in scope.get("sample_pairs", []):
+                pair = tuple(sample.get("parts", []))
+                pair_results[(scope_id, pair)] = sample
+                pair_results[(scope_id, tuple(reversed(pair)))] = sample
+        for key in required_pairs:
+            result = pair_results.get(key)
+            if not result:
+                raise SystemExit(f"full CAD B-rep review missing required pair: {key}")
+            if float(result.get("interference_volume_mm3") or 0.0) != 0.0:
+                raise SystemExit(f"full CAD B-rep pair collision remains: {key}")
+
+    camera_cases = {case["id"]: case for case in camera.get("cases", [])}
+    for case_id in [
+        "rear_camera_back_shell_aperture",
+        "rear_flash_back_shell_aperture",
+        "front_under_glass_margin",
+        "camera_interface_strategy",
+        "rear_camera_z_stack",
+    ]:
+        if camera_cases.get(case_id, {}).get("pass") is not True:
+            raise SystemExit(f"camera validation case not passing: {case_id}")
+    rear_aperture = camera_cases["rear_camera_back_shell_aperture"]["actual"]
+    if rear_aperture.get("optical_sight_tunnel_present") is not True:
+        raise SystemExit("rear camera back aperture lacks optical sight tunnel")
+    if int(rear_aperture.get("bezel_part_count") or 0) != 4:
+        raise SystemExit("rear camera back aperture bezel is incomplete")
+    interface = camera_cases["camera_interface_strategy"]["actual"]
+    if interface.get("rear_flush_buried_window") is not True:
+        raise SystemExit("rear camera is not validated as flush and buried")
+    if interface.get("front_under_cover_glass") is not True:
+        raise SystemExit("front camera is not validated under cover glass")
+
+    print(
+        "screen/back camera collision review ok: "
+        f"{len(required_pairs)} required AABB pairs, rear aperture through-window present"
     )
 
 
@@ -12171,6 +12470,33 @@ def check_routed_pcb_implementation_execution() -> None:
         raise SystemExit("routed PCB implementation must remain blocked with no route")
     if state["has_tracks"] or state["has_filled_zones"] or state["has_production_outputs"]:
         raise SystemExit("routed PCB implementation cannot claim routed/manufacturing state")
+    routed_candidate = execution.get("local_routed_kicad_candidate_state")
+    if not isinstance(routed_candidate, dict):
+        raise SystemExit("routed PCB implementation missing local routed KiCad candidate state")
+    routed_candidate_path = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+    routed_candidate_text = routed_candidate_path.read_text(encoding="utf-8")
+    expected_routed_candidate_counts = {
+        "present": True,
+        "footprint_count": routed_candidate_text.count('(footprint "'),
+        "placeholder_marker_count": routed_candidate_text.count(
+            "placeholder_not_fabrication_footprint"
+        ),
+        "segment_count": routed_candidate_text.count("\n  (segment "),
+        "via_count": routed_candidate_text.count("\n  (via "),
+        "zone_count": routed_candidate_text.count("\n  (zone "),
+        "filled_zone_count": routed_candidate_text.count("(filled_polygon"),
+    }
+    for key, value in expected_routed_candidate_counts.items():
+        if routed_candidate.get(key) != value:
+            raise SystemExit(f"routed PCB implementation candidate count stale: {key}")
+    if routed_candidate["release_credit"] is not False:
+        raise SystemExit("routed PCB implementation candidate cannot claim release credit")
+    if (
+        routed_candidate["segment_count"] <= 0
+        or routed_candidate["via_count"] <= 0
+        or routed_candidate["placeholder_marker_count"] != 0
+    ):
+        raise SystemExit("routed PCB implementation candidate must show routed local copper")
 
     pressure = execution["routing_pressure_snapshot"]
     route_summary = routing_acceptance["routing_summary"]
@@ -12535,6 +12861,21 @@ def check_routed_layout_readiness_binding() -> None:
     supplier_rfq_responses = load_yaml(
         ROOT / "board/kicad/e1-phone/supplier-rfq-response-normalization.yaml"
     )
+    component_models = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+    )
+    supplier_lane_surrogate_paths = {
+        item["file"]
+        for item in component_models.get("supplier_lane_surrogate_steps", {}).values()
+        if item.get("status") == "present_local_surrogate_step_not_supplier_approved"
+        and item.get("release_credit") is False
+    }
+
+    def phase_release_artifact_present(path: Path) -> bool:
+        rel_path = path.relative_to(ROOT).as_posix()
+        if rel_path in supplier_lane_surrogate_paths:
+            return False
+        return is_release_artifact_present(path)
 
     if binding["schema"] != "eliza.e1_phone_routed_layout_readiness_binding.v1":
         raise SystemExit(f"unexpected routed layout readiness schema: {binding['schema']}")
@@ -12655,10 +12996,10 @@ def check_routed_layout_readiness_binding() -> None:
         raise SystemExit("routed layout readiness STEP presence stale")
     if enclosure_gate["production_step_present"] or enclosure_gate["routed_clearance_passed"]:
         raise SystemExit("routed layout readiness enclosure gate unexpectedly open")
-    if (
-        step_contract["current_state"]["routed_board_clearance_status"]
-        != "blocked_waiting_for_routed_board_step"
-    ):
+    if step_contract["current_state"]["routed_board_clearance_status"] not in {
+        "blocked_waiting_for_routed_board_step",
+        "blocked_waiting_for_physical_routed_board_clearance_result",
+    }:
         raise SystemExit("routed layout readiness routed clearance status stale")
 
     factory_gate = binding["factory_gate"]
@@ -12679,10 +13020,10 @@ def check_routed_layout_readiness_binding() -> None:
         if value is not True:
             raise SystemExit(f"routed layout readiness cross-check failed: {key}")
     for blocker in [
-        "routed KiCad PCB source is missing",
-        "no routed copper segments or filled zones are present in the KiCad PCB",
-        "PCB has no routed copper, filled zones, or DRC evidence",
-        "production STEP export is missing",
+        "production routed KiCad PCB source is present only as non-release local candidate evidence",
+        "local routed KiCad candidate has copper segments but no release-approved zones, DRC, or signoff",
+        "no release-approved routed copper, filled zones, or DRC evidence",
+        "candidate routed board STEP exists for review only; supplier-approved production STEP export is missing",
         "routed-board clearance rerun is blocked",
     ]:
         if blocker not in binding["release_blockers"]:
@@ -12734,6 +13075,21 @@ def check_first_article_route_execution_order() -> None:
     supplier_rfq_responses = load_yaml(
         ROOT / "board/kicad/e1-phone/supplier-rfq-response-normalization.yaml"
     )
+    component_models = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+    )
+    supplier_lane_surrogate_paths = {
+        item["file"]
+        for item in component_models.get("supplier_lane_surrogate_steps", {}).values()
+        if item.get("status") == "present_local_surrogate_step_not_supplier_approved"
+        and item.get("release_credit") is False
+    }
+
+    def phase_release_artifact_present(path: Path) -> bool:
+        rel_path = path.relative_to(ROOT).as_posix()
+        if rel_path in supplier_lane_surrogate_paths:
+            return False
+        return is_release_artifact_present(path)
 
     if order["schema"] != "eliza.e1_phone_first_article_route_execution_order.v1":
         raise SystemExit(f"unexpected first-article route order schema: {order['schema']}")
@@ -12812,9 +13168,9 @@ def check_first_article_route_execution_order() -> None:
         for evidence in phase["required_exit_evidence"]:
             if "*" in evidence:
                 present += sum(
-                    1 for candidate in ROOT.glob(evidence) if is_release_artifact_present(candidate)
+                    1 for path in ROOT.glob(evidence) if phase_release_artifact_present(path)
                 )
-            elif is_release_artifact_present(ROOT / evidence):
+            elif phase_release_artifact_present(ROOT / evidence):
                 present += 1
         if phase["present_exit_evidence_count"] != present:
             raise SystemExit(f"first-article route phase evidence count stale: {phase['id']}")
@@ -13183,7 +13539,9 @@ def check_post_route_validation_binding() -> None:
         if len(item["required_evidence"]) < 3:
             raise SystemExit(f"post-route selected hardware evidence too weak: {function}")
         present_evidence = [
-            path for path in item["required_evidence"] if is_release_artifact_present(ROOT / path)
+            path
+            for path in item["required_evidence"]
+            if is_release_artifact_present(ROOT / path)
         ]
         if present_evidence:
             raise SystemExit(
@@ -14186,16 +14544,18 @@ def check_supplier_pinout_evidence() -> None:
     if not captured:
         raise SystemExit("supplier pinout manifest captured nothing")
     allowed_evidence_classes = set(manifest["cross_checks"]["captured_files_evidence_class"])
-    if not allowed_evidence_classes <= {
+    public_pinout_evidence_classes = {
         "public_supplier_datasheet",
         "public_som_connector_pinout",
         "public_hardware_design_pdf",
-    }:
+    }
+    if not allowed_evidence_classes <= public_pinout_evidence_classes:
         raise SystemExit(
             "supplier pinout manifest declares a non-public evidence class: "
             f"{sorted(allowed_evidence_classes)}"
         )
     seen_files = set()
+    complete_pin_table_files = 0
     for entry in captured:
         rel = pinout_dir / entry["file"]
         require_path(rel)
@@ -14222,6 +14582,21 @@ def check_supplier_pinout_evidence() -> None:
             urls = []
         if not any(str(url).startswith("http") for url in urls):
             raise SystemExit(f"supplier pinout {entry['file']} lacks a public source_doc URL")
+        pins = pinout.get("pins")
+        mechanical = pinout.get("mechanical", {})
+        expected_pin_count = (
+            mechanical.get("electrical_pad_count_with_exposed_pads")
+            or mechanical.get("pin_count")
+            or mechanical.get("bump_count")
+        )
+        if isinstance(pins, list) and expected_pin_count and len(pins) == int(expected_pin_count):
+            complete_pin_table_files += 1
+            completeness = str(entry.get("completeness", ""))
+            if "interface_groups_only" in completeness:
+                raise SystemExit(
+                    "supplier pinout manifest completeness is stale for a full pin table: "
+                    f"{entry['file']}"
+                )
 
     on_disk = {p.name for p in pinout_dir.glob("*-pinout.yaml")}
     if on_disk != seen_files:
@@ -14239,6 +14614,8 @@ def check_supplier_pinout_evidence() -> None:
         raise SystemExit(
             "supplier pinout manifest must keep every captured file public-source-cited"
         )
+    if cross_checks.get("complete_pin_table_file_count") != complete_pin_table_files:
+        raise SystemExit("supplier pinout manifest complete_pin_table_file_count stale")
     if cross_checks["pinout_footprint_freeze_yaml_untouched"] is not True:
         raise SystemExit(
             "supplier pinout capture must not promote the pinout-footprint-freeze gate"
@@ -14367,6 +14744,24 @@ def check_no_orphaned_board_files() -> None:
         consumed.add(f"board/kicad/e1-phone/supplier-pinouts/{entry['file']}")
     consumed = collect_referenced_board_paths(consumed)
 
+    # Follow explicit file references from already-owned YAML/JSON artifacts.
+    # This lets generated candidate manifests own their fail-closed placeholder
+    # outputs without forcing every generated path into this checker as a literal.
+    while True:
+        discovered: set[str] = set()
+        for rel in list(consumed):
+            path = ROOT / rel
+            if not path.is_file():
+                continue
+            data = load_structured_file(path)
+            if data is None:
+                continue
+            discovered.update(collect_board_file_references(data))
+        new_refs = discovered - consumed
+        if not new_refs:
+            break
+        consumed.update(new_refs)
+
     orphans = []
     for path in sorted(board_dir.rglob("*")):
         if not path.is_file() or path.suffix not in {".yaml", ".yml", ".csv"}:
@@ -14392,9 +14787,232 @@ def check_no_orphaned_board_files() -> None:
 def check_release_gates_fail_closed(manifest: dict) -> None:
     gates = manifest["release_gates"]
     for name, gate in gates.items():
-        if gate["status"] != "missing":
-            raise SystemExit(f"release gate {name} unexpectedly not fail-closed: {gate['status']}")
+        status = str(gate["status"])
+        if status == "missing":
+            continue
+        if not status.startswith("blocked_"):
+            raise SystemExit(f"release gate {name} unexpectedly open: {status}")
+        if gate.get("release_allowed") is not False:
+            raise SystemExit(f"release gate {name} must explicitly keep release_allowed=false")
+    routed_pcb = gates["routed_pcb"]
+    enclosure = gates["enclosure"]
+    if routed_pcb["status"] != "blocked_local_routed_candidate_not_release":
+        raise SystemExit("routed_pcb release gate status must track local non-release candidate")
+    if routed_pcb.get("local_candidate_evidence", {}).get("release_credit") is not False:
+        raise SystemExit("routed_pcb local candidate evidence cannot grant release credit")
+    if int(routed_pcb.get("local_candidate_evidence", {}).get("segment_count") or 0) != 306:
+        raise SystemExit("routed_pcb release gate local route segment count stale")
+    if enclosure["status"] != (
+        "blocked_local_cad_passes_but_release_requires_supplier_models_routed_clearance_and_first_article"
+    ):
+        raise SystemExit("enclosure release gate status must track local CAD/release blocker split")
+    if enclosure.get("local_candidate_evidence", {}).get("release_credit") is not False:
+        raise SystemExit("enclosure local candidate evidence cannot grant release credit")
+    if enclosure.get("local_candidate_evidence", {}).get("full_cad_boolean_status") != "pass":
+        raise SystemExit("enclosure release gate full CAD boolean status stale")
     print("release gates ok: fabrication/enclosure readiness remains fail-closed")
+
+
+def category_counts_from_report(report: dict) -> dict[str, int]:
+    summary = report.get("summary")
+    if not isinstance(summary, dict):
+        return {
+            "external_supplier_dependencies": 0,
+            "missing_approval_metadata": 0,
+            "present_blocked_placeholders": 0,
+            "true_missing_artifacts": 0,
+        }
+
+    fabrication_categories = summary.get("fabrication_release_blocker_categories")
+    if isinstance(fabrication_categories, dict):
+        return {
+            "external_supplier_dependencies": int(
+                fabrication_categories.get("external_supplier_dependencies")
+                or fabrication_categories.get("external_supplier_dependency")
+                or 0
+            ),
+            "missing_approval_metadata": int(
+                fabrication_categories.get("missing_approval_metadata") or 0
+            ),
+            "present_blocked_placeholders": int(
+                fabrication_categories.get("present_blocked_placeholders")
+                or fabrication_categories.get("present_blocked_placeholder")
+                or 0
+            ),
+            "true_missing_artifacts": int(fabrication_categories.get("true_missing_artifacts") or 0),
+        }
+
+    external_supplier = summary.get("external_supplier_dependencies")
+    supplier_external_count = 0
+    if isinstance(external_supplier, dict):
+        supplier_external_count = int(external_supplier.get("external_supplier_return_rows") or 0)
+
+    supplier_categories = summary.get("supplier_return_blocker_categories")
+    if isinstance(supplier_categories, dict):
+        return {
+            "external_supplier_dependencies": supplier_external_count,
+            "missing_approval_metadata": int(
+                supplier_categories.get("missing_approval_metadata") or 0
+            ),
+            "present_blocked_placeholders": int(
+                supplier_categories.get("candidate_present_but_blocked") or 0
+            )
+            + int(supplier_categories.get("present_unapproved_or_placeholder") or 0),
+            "true_missing_artifacts": int(
+                supplier_categories.get("true_missing_supplier_return_artifacts") or 0
+            ),
+        }
+
+    return {
+        "external_supplier_dependencies": 0,
+        "missing_approval_metadata": int(summary.get("missing_approval_metadata_count") or 0),
+        "present_blocked_placeholders": int(
+            summary.get("candidate_present_blocked_count")
+            or summary.get("candidate_present_but_blocked_count")
+            or summary.get("blocked_present_count")
+            or summary.get("blocked_required_present_count")
+            or summary.get("blocked")
+            or 0
+        ),
+        "true_missing_artifacts": int(
+            summary.get("true_missing_generated_output_count")
+            or summary.get("true_missing_factory_output_count")
+            or summary.get("missing_artifact_count")
+            or summary.get("missing_outputs")
+            or summary.get("missing")
+            or 0
+        ),
+    }
+
+
+def linked_report_inventory() -> list[dict]:
+    inventory = []
+    for owner, command, report_rel in LINKED_EVIDENCE_REPORTS:
+        report_path = ROOT / report_rel
+        entry = {
+            "owner": owner,
+            "report": report_rel,
+            "report_present": report_path.is_file(),
+            "validation_command": command,
+            "release_credit": False,
+        }
+        if report_path.is_file():
+            try:
+                report = load_json_file(report_path)
+            except Exception as exc:
+                entry.update({"status": "unreadable", "error": str(exc)})
+            else:
+                if isinstance(report, dict):
+                    entry.update(
+                        {
+                            "status": report.get("status", "unknown"),
+                            "report_summary": report.get("summary", {}),
+                            "report_generated_utc": report.get("generated_utc"),
+                            "report_mtime_ns": report_path.stat().st_mtime_ns,
+                            "blocker_categories": category_counts_from_report(report),
+                            "action": (
+                                "Resolve this linked production evidence report with real approved "
+                                "artifacts; board-package structural consistency alone cannot unlock "
+                                "fabrication."
+                            ),
+                        }
+                    )
+        inventory.append(entry)
+    return inventory
+
+
+def write_board_package_report(manifest: dict) -> None:
+    inventory = linked_report_inventory()
+    linked_categories = {
+        "external_supplier_dependencies": 0,
+        "missing_approval_metadata": 0,
+        "present_blocked_placeholders": 0,
+        "true_missing_artifacts": 0,
+    }
+    for item in inventory:
+        categories = item.get("blocker_categories")
+        if not isinstance(categories, dict):
+            continue
+        for key in linked_categories:
+            linked_categories[key] += int(categories.get(key) or 0)
+
+    fabrication_report = ROOT / "build/reports/e1_phone_fabrication_release.json"
+    fabrication_summary = {}
+    fabrication_payload = {}
+    if fabrication_report.is_file():
+        loaded = load_json_file(fabrication_report)
+        if isinstance(loaded, dict):
+            fabrication_payload = loaded
+            if isinstance(loaded.get("summary"), dict):
+                fabrication_summary = loaded["summary"]
+
+    manifest_blocked_gate_ids = [
+        name
+        for name, gate in manifest["release_gates"].items()
+        if str(gate.get("status", "")).startswith("blocked_")
+    ]
+    fabrication_blocked_gate_ids = []
+    blocked_inventory = fabrication_payload.get("blocked_evidence_inventory")
+    if isinstance(blocked_inventory, list):
+        fabrication_blocked_gate_ids = sorted(
+            {
+                str(item.get("gate"))
+                for item in blocked_inventory
+                if isinstance(item, dict) and item.get("gate")
+            }
+        )
+    blocked_gate_ids = fabrication_blocked_gate_ids or manifest_blocked_gate_ids
+    report = {
+        "schema": "eliza.e1_phone_board_package_report.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "status": "blocked",
+        "claim_boundary": "board_package_structural_check_only_not_fabrication_release_evidence",
+        "summary": {
+            "structural_package_checks": "pass",
+            "fabrication_ready": False,
+            "release_evidence_complete": False,
+            "release_state": fabrication_summary.get("release_state", "blocked_fail_closed"),
+            "blocked_gate_ids": blocked_gate_ids,
+            "manifest_blocked_gate_ids": manifest_blocked_gate_ids,
+            "blocked_release_gate_count": int(
+                fabrication_summary.get("blocked_release_gate_count") or len(blocked_gate_ids)
+            ),
+            "total_blocker_count": int(fabrication_summary.get("total_blocker_count") or 0),
+            "unique_blocker_count": int(fabrication_summary.get("unique_blocker_count") or 0),
+            "linked_evidence_blocker_categories": linked_categories,
+        },
+        "source_inputs": [
+            "board/kicad/e1-phone/artifact-manifest.yaml",
+            "board/kicad/e1-phone/production/readiness/fabrication-enclosure-e2e-release-gate-2026-05-22.yaml",
+            *[report_rel for _, _, report_rel in LINKED_EVIDENCE_REPORTS],
+        ],
+        "validation_commands": [
+            "python3 scripts/check_e1_phone_board_package.py",
+            *[command for _, command, _ in LINKED_EVIDENCE_REPORTS],
+        ],
+        "next_unblock_commands": [command for _, command, _ in LINKED_EVIDENCE_REPORTS],
+        "blocked_evidence_inventory": inventory,
+        "findings": [
+            {
+                "severity": "blocker",
+                "code": "e1_phone_fabrication_enclosure_e2e_release_evidence_incomplete",
+                "evidence": (
+                    "board/kicad/e1-phone/production/readiness/"
+                    "fabrication-enclosure-e2e-release-gate-2026-05-22.yaml"
+                ),
+                "message": (
+                    "Structural package checks passed, but fabrication/enclosure/e2e release "
+                    "evidence remains incomplete."
+                ),
+                "next_step": (
+                    "Collect real routed PCB, fabrication, supplier, enclosure, first-article, "
+                    "and factory release evidence before claiming fabrication readiness."
+                ),
+            }
+        ],
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def check_release_evidence_manufacturing_candidate_propagation() -> None:
@@ -14412,6 +15030,12 @@ def check_release_evidence_manufacturing_candidate_propagation() -> None:
     )
     unblock = load_yaml(
         ROOT / "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml"
+    )
+    public_cad_intake = load_yaml(
+        ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+    )
+    public_bom_cost = load_yaml(
+        ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
     )
 
     manufacturing_state = manufacturing["board_state_detected"]
@@ -14486,10 +15110,1767 @@ def check_release_evidence_manufacturing_candidate_propagation() -> None:
     if unblock_summary["production_presence_has_blocked_candidate_outputs"] is not True:
         raise SystemExit("unblock register must show blocked candidate outputs")
 
+    public_cad_summary = public_cad_intake["summary"]
+    public_bom_summary = public_bom_cost["summary"]
+    expected_public_sourcing = {
+        "public_sourcing_intake_ready": True,
+        "public_cad_source_record_count": int(public_cad_summary.get("record_count") or 0),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_cad_summary.get("public_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_cad_summary.get("public_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_cad_summary.get("local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_release_credit_record_count": int(
+            public_cad_summary.get("release_credit_record_count") or 0
+        ),
+        "public_market_bom_cost_category_count": int(
+            public_bom_summary.get("category_count") or 0
+        ),
+        "public_market_bom_cost_volume_count": int(public_bom_summary.get("volume_count") or 0),
+        "public_market_bom_cost_avl_quote_count": int(
+            public_bom_summary.get("avl_quote_count") or 0
+        ),
+        "public_market_bom_cost_signed_supplier_quote_count": int(
+            public_bom_summary.get("signed_supplier_quote_count") or 0
+        ),
+        "public_sourcing_release_credit": False,
+        "public_sourcing_release_allowed": False,
+    }
+    for report_name, summary in (
+        ("release content", content_summary),
+        ("unblock register", unblock_summary),
+    ):
+        for key, expected_value in expected_public_sourcing.items():
+            if summary.get(key) != expected_value:
+                raise SystemExit(f"{report_name} public sourcing summary stale: {key}")
+    if content["content_acceptance_policy"].get(
+        "public_cad_and_market_bom_intake_is_release_evidence"
+    ) is not False:
+        raise SystemExit("release content must reject public CAD/BOM intake as release evidence")
+
     print(
         "release evidence manufacturing candidate propagation ok: "
         f"{expected['manufacturing_closure_blocked_candidate_output_file_count']} "
         "blocked candidate files, 0 release outputs"
+    )
+
+
+def check_objective_completion_trace_manifests() -> None:
+    objective = load_yaml(
+        ROOT / "board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml"
+    )
+    routed_matrix = load_yaml(
+        ROOT
+        / "board/kicad/e1-phone/production/readiness/"
+        "routed-board-release-acceptance-matrix-2026-05-22.yaml"
+    )
+    mechanical = load_yaml(
+        ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
+    )
+    detail = objective.get("detailed_trace_manifests", {})
+    if not isinstance(detail, dict):
+        raise SystemExit("objective audit detailed trace manifests missing")
+    context = routed_matrix["candidate_end_to_end_context"]
+    visual = context["routed_step_visual_detail"]
+    component_summary = context["component_model_manifest_summary"]
+    mechanical_component = mechanical["component_model_directory_ready"]
+    local_cad = mechanical["local_enclosure_cad_ready"]
+    supplier_lane_surrogates = mechanical_component["supplier_lane_surrogate_records"]
+    expected_lists = {
+        "route_visual_records": visual["route_visual_records"],
+        "via_visual_records": visual["via_visual_records"],
+        "filled_copper_zone_records": visual["filled_copper_zone_records"],
+        "component_model_record_manifest": component_summary[
+            "component_model_record_manifest"
+        ],
+        "mechanical_component_model_record_manifest": mechanical_component[
+            "component_model_record_manifest"
+        ],
+        "supplier_lane_surrogate_records": supplier_lane_surrogates,
+        "cad_connection_record_manifest": local_cad["cad_connection_record_manifest"],
+    }
+    for key, expected in expected_lists.items():
+        if detail.get(key) != expected:
+            raise SystemExit(f"objective audit detailed trace manifest stale: {key}")
+        count_key = key.removesuffix("s") + "_count"
+        if key.endswith("_manifest"):
+            count_key = key.removesuffix("_manifest") + "_count"
+        if detail.get(count_key) != len(expected):
+            raise SystemExit(f"objective audit detailed trace count stale: {count_key}")
+    expected_flags = {
+        "all_route_records_have_net_layer_class_and_source": all(
+            record.get("net")
+            and record.get("layer")
+            and record.get("route_classes")
+            and record.get("source_domains")
+            for record in visual["route_visual_records"]
+        ),
+        "all_component_records_have_local_step_and_release_credit_false": all(
+            record.get("local_discrete_step_file")
+            and int(record.get("local_discrete_step_bytes") or 0) > 0
+            and record.get("release_credit") is False
+            for record in component_summary["component_model_record_manifest"]
+        ),
+        "all_connection_records_have_cad_step_and_release_credit_false": all(
+            record.get("cad_part")
+            and int(record.get("cad_step_bytes") or 0) > 0
+            and record.get("release_credit") is False
+            for record in local_cad["cad_connection_record_manifest"]
+        ),
+        "all_supplier_lane_surrogates_have_hash_size_components_and_release_credit_false": all(
+            record.get("file")
+            and record.get("file_present") is True
+            and record.get("hash_matches_file") is True
+            and record.get("size_matches_file") is True
+            and record.get("release_credit") is False
+            and int(record.get("component_reference_count") or 0) > 0
+            and record.get("component_reference_count")
+            == record.get("manifest_model_reference_count")
+            and record.get("all_component_records_release_credit_false") is True
+            and record.get("all_component_records_reference_this_surrogate") is True
+            for record in supplier_lane_surrogates
+        ),
+        "release_credit": False,
+    }
+    for key, expected in expected_flags.items():
+        if detail.get(key) is not expected:
+            raise SystemExit(f"objective audit detailed trace flag stale: {key}")
+    print(
+        "objective detailed trace manifests ok: "
+        f"{len(visual['route_visual_records'])} routes, "
+        f"{len(component_summary['component_model_record_manifest'])} component models, "
+        f"{len(supplier_lane_surrogates)} supplier surrogate lanes, "
+        f"{len(local_cad['cad_connection_record_manifest'])} CAD connections"
+    )
+
+
+def check_development_pattern_pinout_step_coverage() -> None:
+    board_path = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
+    routed_board_path = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+    step_intake_path = ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+    routed_intake_path = ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
+    component_manifest_path = ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+    pad_audit_path = ROOT / "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml"
+    traceability_path = ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
+    public_cad_intake_path = ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+    public_bom_cost_path = ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
+
+    for path in [
+        board_path,
+        routed_board_path,
+        step_intake_path,
+        routed_intake_path,
+        component_manifest_path,
+        pad_audit_path,
+        traceability_path,
+        public_cad_intake_path,
+        public_bom_cost_path,
+    ]:
+        require_path(path)
+
+    board_text = board_path.read_text(encoding="utf-8")
+    routed_board_text = routed_board_path.read_text(encoding="utf-8")
+    step_intake = load_yaml(step_intake_path)
+    routed_intake = load_yaml(routed_intake_path)
+    component_manifest = load_yaml(component_manifest_path)
+    pad_audit = load_yaml(pad_audit_path)
+    traceability = load_yaml(traceability_path)
+    public_cad_intake = load_yaml(public_cad_intake_path)
+    public_bom_cost = load_yaml(public_bom_cost_path)
+    trace_summary = traceability.get("summary", {})
+    if not isinstance(trace_summary, dict):
+        raise SystemExit("KiCad/CAD traceability summary missing")
+    if public_cad_intake.get("schema") != "eliza.e1_phone_public_cad_source_intake.v1":
+        raise SystemExit("public CAD source intake schema stale")
+    if public_cad_intake.get("release_credit") is not False or public_cad_intake.get("release_allowed") is not False:
+        raise SystemExit("public CAD source intake must remain non-release evidence")
+    public_cad_records = public_cad_intake.get("records", [])
+    if not isinstance(public_cad_records, list) or not public_cad_records:
+        raise SystemExit("public CAD source intake records missing")
+    public_cad_summary = public_cad_intake.get("summary", {})
+    if not isinstance(public_cad_summary, dict):
+        raise SystemExit("public CAD source intake summary missing")
+    if int(public_cad_summary.get("record_count") or 0) != len(public_cad_records):
+        raise SystemExit("public CAD source intake record count stale")
+    if int(public_cad_summary.get("release_credit_record_count") or 0) != sum(
+        1 for record in public_cad_records if isinstance(record, dict) and record.get("release_credit") is True
+    ):
+        raise SystemExit("public CAD source intake release-credit count stale")
+    if int(public_cad_summary.get("release_credit_record_count") or 0) != 0:
+        raise SystemExit("public CAD source intake may not grant release credit")
+    if int(public_cad_summary.get("local_downloaded_hashed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and record.get("local_download_status") == "downloaded_and_hashed"
+    ):
+        raise SystemExit("public CAD source intake local download count stale")
+    if int(public_cad_summary.get("public_step_or_3d_observed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and "observed" in str(record.get("public_step_or_3d_status") or "")
+    ):
+        raise SystemExit("public CAD source intake STEP/3D observed count stale")
+    if int(public_cad_summary.get("public_footprint_or_eda_observed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and (
+            "observed" in str(record.get("public_footprint_status") or "")
+            or "candidate" in str(record.get("public_footprint_status") or "")
+        )
+    ):
+        raise SystemExit("public CAD source intake footprint/EDA observed count stale")
+    if int(public_cad_summary.get("manufacturer_step_link_observed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and "manufacturer_step" in str(record.get("public_step_or_3d_status") or "")
+    ):
+        raise SystemExit("public CAD source intake manufacturer STEP count stale")
+    for record in public_cad_records:
+        if not isinstance(record, dict):
+            raise SystemExit("public CAD source intake record must be a mapping")
+        for key in [
+            "id",
+            "category",
+            "exact_mpn",
+            "manufacturer",
+            "official_or_authorized_sources",
+            "public_step_or_3d_status",
+            "public_footprint_status",
+            "local_download_status",
+            "release_credit",
+            "required_next_actions",
+        ]:
+            if key not in record:
+                raise SystemExit(f"public CAD source intake record missing {key}")
+        if record.get("release_credit") is not False:
+            raise SystemExit(f"public CAD source intake record grants release credit: {record['id']}")
+        if not isinstance(record.get("official_or_authorized_sources"), list) or not record.get("official_or_authorized_sources"):
+            raise SystemExit(f"public CAD source intake record lacks sources: {record['id']}")
+        if not isinstance(record.get("required_next_actions"), list) or not record.get("required_next_actions"):
+            raise SystemExit(f"public CAD source intake record lacks next actions: {record['id']}")
+    if public_bom_cost.get("schema") != "eliza.e1_phone_public_market_bom_cost_bands.v1":
+        raise SystemExit("public market BOM cost band schema stale")
+    if public_bom_cost.get("status") != "public_market_cost_bands_not_avl_quote":
+        raise SystemExit("public market BOM cost bands must remain non-AVL")
+    public_bom_summary = public_bom_cost.get("summary", {})
+    public_bom_records = public_bom_cost.get("records", [])
+    if not isinstance(public_bom_summary, dict) or not isinstance(public_bom_records, list):
+        raise SystemExit("public market BOM cost band summary/records missing")
+    if int(public_bom_summary.get("category_count") or 0) != len(public_bom_records):
+        raise SystemExit("public market BOM cost category count stale")
+    if public_bom_summary.get("release_credit") is not False:
+        raise SystemExit("public market BOM cost bands may not grant release credit")
+    if int(public_bom_summary.get("avl_quote_count") or 0) != 0:
+        raise SystemExit("public market BOM cost bands may not count AVL quotes")
+    if int(public_bom_summary.get("signed_supplier_quote_count") or 0) != 0:
+        raise SystemExit("public market BOM cost bands may not count signed supplier quotes")
+    expected_volumes = [100, 1000, 10000, 100000, 1000000]
+    if public_bom_cost.get("volume_columns") != expected_volumes:
+        raise SystemExit("public market BOM cost volume columns stale")
+    if int(public_bom_summary.get("volume_count") or 0) != len(expected_volumes):
+        raise SystemExit("public market BOM cost volume count stale")
+    subtotal = public_bom_cost.get("subtotal_researched_categories_usd", {})
+    discount = public_bom_cost.get("discount_vs_100_unit_baseline_pct", {})
+    if not isinstance(subtotal, dict) or not isinstance(discount, dict):
+        raise SystemExit("public market BOM cost subtotal/discount mappings missing")
+    for volume in expected_volumes:
+        if volume not in subtotal or volume not in discount:
+            raise SystemExit(f"public market BOM cost missing volume rollup: {volume}")
+    for record in public_bom_records:
+        if not isinstance(record, dict):
+            raise SystemExit("public market BOM cost record must be a mapping")
+        for key in [
+            "category",
+            "supplier_examples",
+            "public_evidence_summary",
+            "cost_band_usd",
+            "release_caveat",
+        ]:
+            if key not in record:
+                raise SystemExit(f"public market BOM cost record missing {key}")
+        cost_band = record.get("cost_band_usd")
+        if not isinstance(cost_band, dict):
+            raise SystemExit(f"public market BOM cost record lacks cost bands: {record['category']}")
+        for volume in expected_volumes:
+            band = cost_band.get(volume)
+            if not isinstance(band, list) or len(band) != 2 or float(band[0]) > float(band[1]):
+                raise SystemExit(
+                    f"public market BOM cost invalid band for {record['category']} @ {volume}"
+                )
+
+    footprint_refs = re.findall(r'\(footprint "([^"]+)"', board_text)
+    routed_footprint_refs = re.findall(r'\(footprint "([^"]+)"', routed_board_text)
+    if len(footprint_refs) != 89:
+        raise SystemExit(f"real-footprint development board footprint count stale: {len(footprint_refs)}")
+    if footprint_refs != routed_footprint_refs:
+        raise SystemExit("routed board and real-footprint board footprint lists diverge")
+    if any(ref.startswith("E1Phone:") for ref in footprint_refs):
+        raise SystemExit("real-footprint development board still references E1Phone placeholders")
+    if not all(ref.startswith("e1-phone-dev:") for ref in footprint_refs):
+        raise SystemExit("real-footprint development board has non-development footprint references")
+    for forbidden in [
+        "placeholder_not_fabrication_footprint",
+        "E1_PHONE_PLACEHOLDER",
+        "PLACEHOLDER",
+        "TO" + "DO",
+        "FIX" + "ME",
+    ]:
+        if forbidden in board_text or forbidden in routed_board_text:
+            raise SystemExit(f"development routed board contains forbidden marker: {forbidden}")
+    development_pattern_tag_count = board_text.count("NON_RELEASE_DEVELOPMENT_PATTERN")
+    if development_pattern_tag_count != len(footprint_refs):
+        raise SystemExit("every development footprint must carry explicit non-release pattern provenance")
+
+    footprints = step_intake.get("footprints", [])
+    models = component_manifest.get("models", [])
+    pad_records = pad_audit.get("records", [])
+    if not isinstance(footprints, list) or not isinstance(models, list) or not isinstance(pad_records, list):
+        raise SystemExit("development pattern/pinout inputs must contain lists")
+    if len(footprints) != len(footprint_refs) or len(models) != len(footprint_refs):
+        raise SystemExit("footprint STEP intake, model manifest, and KiCad board counts diverge")
+    footprint_refs_from_intake = {item["reference"] for item in footprints}
+    model_refs = {item["reference"] for item in models}
+    if len(footprint_refs_from_intake) != len(footprints) or len(model_refs) != len(models):
+        raise SystemExit("development footprint/model references must be unique")
+    if footprint_refs_from_intake != model_refs:
+        raise SystemExit("development STEP intake and component model references diverge")
+    trace_footprint_records = traceability.get("footprint_traceability", [])
+    if not isinstance(trace_footprint_records, list):
+        raise SystemExit("KiCad/CAD traceability footprint records missing")
+    trace_step_instances_by_footprint = {
+        record["footprint"]: int(record.get("step_instance_count") or 0)
+        for record in trace_footprint_records
+    }
+    if len(trace_step_instances_by_footprint) != len(trace_footprint_records):
+        raise SystemExit("KiCad/CAD traceability footprint records contain duplicates")
+    model_instances_by_footprint: dict[str, int] = {}
+    for model in models:
+        model_instances_by_footprint[model["footprint"]] = (
+            model_instances_by_footprint.get(model["footprint"], 0) + 1
+        )
+    if trace_step_instances_by_footprint != model_instances_by_footprint:
+        raise SystemExit("traceability STEP instance distribution diverges from component models")
+    if int(trace_summary.get("step_footprint_instance_count") or 0) != len(models):
+        raise SystemExit("KiCad/CAD traceability STEP instance count stale")
+
+    pad_record_by_footprint = {record["footprint"]: record for record in pad_records}
+    if len(pad_record_by_footprint) != len(pad_records):
+        raise SystemExit("development pad/pin coverage audit has duplicate footprint records")
+    pending_pad_records = pad_audit.get("pending_supplier_pad_map_or_order_records", [])
+    if not isinstance(pending_pad_records, list):
+        raise SystemExit("development pad/pin audit pending supplier records missing")
+    expected_pending_pad_records = [
+        {
+            "footprint": record["footprint"],
+            "footprint_file": record["footprint_file"],
+            "footprint_status": record["footprint_status"],
+            "pinout_file": record["pinout_file"],
+            "pinout_status": record["pinout_status"],
+            "coverage": record["coverage"],
+            "expected_pin_count": record["expected_pin_count"],
+            "electrical_pad_count": record["electrical_pad_count"],
+            "missing_expected_pads": record["missing_expected_pads"],
+            "extra_footprint_pads": record["extra_footprint_pads"],
+            "land_pattern_basis": record["land_pattern_basis"],
+            "local_terminal_contract_source": record["local_terminal_contract_source"],
+            "step_binding_status": record["step_binding_status"],
+            "release_allowed": record["release_allowed"],
+        }
+        for record in pad_records
+        if "pending" in str(record.get("coverage") or "")
+        or record.get("footprint_status") == "geometry_only_pending_supplier_pad_map"
+    ]
+    if pending_pad_records != expected_pending_pad_records:
+        raise SystemExit("development pad/pin audit pending supplier records stale")
+    if int(pad_audit.get("pending_supplier_pad_map_or_order_count") or 0) != len(
+        pending_pad_records
+    ):
+        raise SystemExit("development pad/pin audit pending supplier count stale")
+    package_conflict_records = pad_audit.get("public_candidate_package_conflict_records", [])
+    if not isinstance(package_conflict_records, list):
+        raise SystemExit("development pad/pin audit package conflict records missing")
+    expected_package_conflict_records = [
+        {
+            "footprint": record["footprint"],
+            "footprint_file": record["footprint_file"],
+            "footprint_status": record["footprint_status"],
+            "pinout_file": record["pinout_file"],
+            "coverage": record["coverage"],
+            "electrical_pad_count": record["electrical_pad_count"],
+            "manifest_pin_count": record["manifest_pin_count"],
+            **record["package_conflict_detail"],
+            "release_allowed": record["release_allowed"],
+        }
+        for record in pad_records
+        if record.get("package_conflict")
+    ]
+    if package_conflict_records != expected_package_conflict_records:
+        raise SystemExit("development pad/pin audit package conflict records stale")
+    if int(pad_audit.get("public_candidate_package_conflict_count") or 0) != len(
+        package_conflict_records
+    ):
+        raise SystemExit("development pad/pin audit package conflict count stale")
+
+    total_pad_visual_count = 0
+    pinout_bound_model_count = 0
+    support_pattern_model_count = 0
+    terminal_contract_or_no_electrical_count = 0
+    total_pad_contract_visual_count = 0
+    uncovered_pad_visual_count = 0
+    for model in models:
+        reference = model["reference"]
+        footprint = model["footprint"]
+        if footprint not in pad_record_by_footprint:
+            raise SystemExit(f"component model missing pad audit footprint record: {reference}")
+        pad_record = pad_record_by_footprint[footprint]
+        if int(model.get("pad_count") or 0) != int(model.get("pad_visual_count") or 0):
+            raise SystemExit(f"component model pad visual count stale: {reference}")
+        if len(model.get("pad_contract_records", [])) != int(model.get("pad_visual_count") or 0):
+            raise SystemExit(f"component model pad contract record count stale: {reference}")
+        if model.get("all_pad_visuals_have_contract") is not True:
+            raise SystemExit(f"component model has uncovered pad visuals: {reference}")
+        if int(model.get("pad_contract_covered_count") or 0) != int(
+            model.get("pad_visual_count") or 0
+        ):
+            raise SystemExit(f"component model pad contract coverage stale: {reference}")
+        if model.get("uncovered_pad_visuals"):
+            raise SystemExit(f"component model lists uncovered pad visuals: {reference}")
+        if int(model.get("electrical_pad_count") or 0) != int(pad_record.get("electrical_pad_count") or 0):
+            raise SystemExit(f"component model electrical pad count diverges: {reference}")
+        if int(model.get("mechanical_pad_count") or 0) != int(pad_record.get("mechanical_pad_count") or 0):
+            raise SystemExit(f"component model mechanical pad count diverges: {reference}")
+        if bool(model.get("pinout_file")) != bool(pad_record.get("pinout_file")):
+            raise SystemExit(f"component model pinout binding diverges: {reference}")
+        if model.get("pinout_file") and int(model.get("terminal_contract_count") or 0) <= 0:
+            raise SystemExit(f"pinout-bound component model lacks terminal contract: {reference}")
+        if model.get("support_pattern_has_explicit_provenance") and not model.get("land_pattern_basis"):
+            raise SystemExit(f"support pattern model lacks land-pattern basis: {reference}")
+        if int(model.get("electrical_pad_count") or 0) == 0 or int(model.get("terminal_contract_count") or 0) > 0:
+            terminal_contract_or_no_electrical_count += 1
+        pinout_bound_model_count += 1 if model.get("pinout_file") else 0
+        support_pattern_model_count += 1 if model.get("support_pattern_has_explicit_provenance") else 0
+        total_pad_visual_count += int(model.get("pad_visual_count") or 0)
+        total_pad_contract_visual_count += int(model.get("pad_contract_covered_count") or 0)
+        uncovered_pad_visual_count += len(model.get("uncovered_pad_visuals", []))
+
+    model_binding = component_manifest["model_to_footprint_binding"]
+    package_summary = component_manifest["package_visual_summary"]
+    terminal_binding = component_manifest["terminal_contract_binding"]
+    for key in [
+        "all_models_have_reference",
+        "all_models_have_footprint",
+        "all_models_have_layer",
+        "all_models_have_at_mm",
+        "all_model_pad_counts_match_visuals",
+    ]:
+        if model_binding.get(key) is not True:
+            raise SystemExit(f"component model footprint binding flag not closed: {key}")
+    for key in [
+        "all_models_have_visual_package_class",
+        "all_package_visual_counts_match_step_intake",
+    ]:
+        if package_summary.get(key) is not True:
+            raise SystemExit(f"component package visual summary flag not closed: {key}")
+    for key in [
+        "all_pinout_bound_models_have_terminal_contract",
+        "all_pinout_bound_model_contracts_match_pad_visuals",
+        "all_support_pattern_models_have_explicit_provenance",
+        "all_model_pad_visuals_have_contract",
+        "all_non_signal_pad_contracts_match_pad_visuals",
+        "all_npth_mechanical_features_have_contract",
+    ]:
+        if terminal_binding.get(key) is not True:
+            raise SystemExit(f"component terminal binding flag not closed: {key}")
+    expected_summary = {
+        "component_model_count": len(models),
+        "pad_contact_visual_count": total_pad_visual_count,
+        "pinout_bound_model_count": pinout_bound_model_count,
+        "support_pattern_model_count": support_pattern_model_count,
+        "models_with_terminal_contract_or_no_electrical_pads_count": (
+            terminal_contract_or_no_electrical_count
+        ),
+        "total_pad_contract_visual_count": total_pad_contract_visual_count,
+        "uncovered_pad_visual_count": uncovered_pad_visual_count,
+    }
+    if component_manifest["component_model_count"] != expected_summary["component_model_count"]:
+        raise SystemExit("component model manifest component count stale")
+    if component_manifest["pad_contact_visual_count"] != expected_summary["pad_contact_visual_count"]:
+        raise SystemExit("component model manifest pad visual count stale")
+    for key in [
+        "pinout_bound_model_count",
+        "support_pattern_model_count",
+        "models_with_terminal_contract_or_no_electrical_pads_count",
+        "total_pad_contract_visual_count",
+        "uncovered_pad_visual_count",
+    ]:
+        if terminal_binding[key] != expected_summary[key]:
+            raise SystemExit(f"component terminal binding summary stale: {key}")
+
+    if int(step_intake.get("footprint_envelope_count") or 0) != len(footprint_refs):
+        raise SystemExit("real-footprint STEP intake footprint count stale")
+    if int(step_intake.get("pad_contact_visual_count") or 0) != total_pad_visual_count:
+        raise SystemExit("real-footprint STEP intake pad visual count stale")
+    if int(step_intake.get("e1phone_footprint_refs") or 0) != 0:
+        raise SystemExit("real-footprint STEP intake still reports E1Phone refs")
+    if int(step_intake.get("development_footprint_refs") or 0) != len(footprint_refs):
+        raise SystemExit("real-footprint STEP intake development footprint count stale")
+    if int(routed_intake.get("segment_count") or 0) <= 0 or int(routed_intake.get("via_count") or 0) <= 0:
+        raise SystemExit("routed development board lacks routed segments or vias")
+    if int(routed_intake.get("local_copper_zone_filled_polygon_count") or 0) <= 0:
+        raise SystemExit("routed development board lacks local filled copper zones")
+    for key in [
+        "incomplete_footprint_count",
+        "incomplete_cad_connection_count",
+        "missing_captured_pinout_file_count",
+        "incomplete_captured_pinout_detail_count",
+    ]:
+        if int(trace_summary.get(key) or 0) != 0:
+            raise SystemExit(f"KiCad/CAD traceability still has local gap: {key}")
+    if trace_summary.get("all_support_patterns_have_explicit_provenance") is not True:
+        raise SystemExit("KiCad/CAD traceability support patterns lack explicit provenance")
+
+    print(
+        "development pattern/pinout/STEP coverage ok: "
+        f"{len(models)} model instances, {pinout_bound_model_count} pinout-bound, "
+        f"{support_pattern_model_count} support patterns, {total_pad_visual_count} pad visuals"
+    )
+
+
+def check_enclosure_readiness_gap_map_consistency() -> None:
+    gap_path = (
+        ROOT
+        / "board/kicad/e1-phone/production/readiness/enclosure-readiness-gap-map-2026-05-22.yaml"
+    )
+    gap = load_yaml(gap_path)
+    board_step = json.loads((ROOT / "mechanical/e1-phone/review/board-step-readiness.json").read_text())
+    routed_clearance = json.loads(
+        (ROOT / "mechanical/e1-phone/review/routed-board-clearance.json").read_text()
+    )
+    routed_matrix = load_yaml(
+        ROOT
+        / "board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
+    )
+    supplier_matrix = load_yaml(
+        ROOT
+        / "board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
+    )
+    first_article = load_yaml(
+        ROOT
+        / "board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
+    )
+    factory_inventory = load_yaml(
+        ROOT
+        / "board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml"
+    )
+
+    if gap["schema"] != "eliza.e1_phone_enclosure_readiness_gap_map.v1":
+        raise SystemExit("enclosure readiness gap map schema diverges")
+    if gap["status"] != "blocked_fail_closed_diagnostic_only":
+        raise SystemExit(f"unexpected enclosure readiness gap map status: {gap['status']}")
+    for rel in gap["inputs"].values():
+        require_path(ROOT / rel)
+    policy = gap["fail_closed_policy"]
+    for key in [
+        "release_allowed",
+        "release_credit",
+        "candidate_or_concept_cad_counts_as_release_evidence",
+        "presence_only_counts_as_release_evidence",
+    ]:
+        if policy.get(key) is not False:
+            raise SystemExit(f"enclosure readiness gap policy unexpectedly open: {key}")
+    if policy.get("external_supplier_and_physical_fit_evidence_required") is not True:
+        raise SystemExit("enclosure readiness gap map must require external/physical evidence")
+
+    summary = gap["summary"]
+    supplier_summary = supplier_matrix["summary"]
+    routed_summary = routed_matrix["summary"]
+    first_article_summary = first_article["summary"]
+    factory_summary = factory_inventory["summary"]
+    expected_summary = {
+        "release_allowed": False,
+        "release_credit": False,
+        "production_routed_step_release_count": len(
+            board_step.get("approved_production_step_files", [])
+        ),
+        "candidate_routed_step_count": len(
+            gap["routed_board_clearance_gap"].get("candidate_routed_step_paths", [])
+        ),
+        "clearance_results_complete": routed_clearance["complete_clearance_result_count"],
+        "clearance_results_expected": routed_clearance["expected_clearance_case_count"],
+        "blocked_clearance_case_count": len(
+            gap["routed_board_clearance_gap"].get("blocked_clearance_cases", [])
+        ),
+        "supplier_return_blocked_lane_count": supplier_summary.get(
+            "blocked_supplier_return_lane_count",
+            supplier_summary["supplier_lane_or_function_count"],
+        ),
+        "supplier_return_present_but_not_release_evidence_count": (
+            supplier_summary["present_supplier_return_evidence_count"]
+        ),
+        "first_article_missing_required_non_template_count": first_article_summary[
+            "missing_required_non_template_row_count"
+        ],
+        "first_article_template_row_count": first_article_summary["template_row_count"],
+        "first_article_present_unvalidated_count": first_article_summary[
+            "present_required_non_template_row_count"
+        ],
+    }
+    for key, expected in expected_summary.items():
+        if summary.get(key) != expected:
+            raise SystemExit(f"enclosure readiness gap summary stale: {key}")
+
+    routed_gap = gap["routed_board_clearance_gap"]
+    if routed_gap["board_step_status"] != board_step["status"]:
+        raise SystemExit("enclosure readiness gap board-step status stale")
+    if routed_gap["routed_clearance_status"] != routed_clearance["status"]:
+        raise SystemExit("enclosure readiness gap routed-clearance status stale")
+    if routed_gap["production_routed_step_release_count"] != 0:
+        raise SystemExit("enclosure readiness gap cannot count candidate STEP as release")
+    if routed_gap["clearance_results_complete"] != routed_clearance["complete_clearance_result_count"]:
+        raise SystemExit("enclosure readiness gap clearance completion count stale")
+    if len(routed_gap["blocked_clearance_cases"]) != routed_clearance["expected_clearance_case_count"]:
+        raise SystemExit("enclosure readiness gap blocked clearance case count stale")
+
+    detailed_candidate = board_step["detailed_routed_step_candidate"]
+    missing_evidence = {row["gate"]: row for row in gap["mechanical_missing_release_evidence"]}
+    intake = missing_evidence.get("routed_board_step_intake", {})
+    intake_candidate = intake.get("detailed_routed_step_candidate", {})
+    for key in [
+        "path",
+        "present",
+        "sha256",
+        "size_bytes",
+        "source_step",
+        "source_step_sha256",
+        "source_step_size_bytes",
+        "route_count",
+        "segment_count",
+        "footprint_envelope_count",
+        "pad_contact_visual_count",
+        "route_segment_visual_count",
+        "route_segment_net_name_count",
+        "route_segment_trace_bound_count",
+        "route_segment_trace_unbound_count",
+        "controlled_impedance_segment_visual_count",
+        "via_net_name_count",
+    ]:
+        if intake_candidate.get(key) != detailed_candidate.get(key):
+            raise SystemExit(f"enclosure readiness gap detailed STEP candidate stale: {key}")
+    if intake_candidate.get("release_credit") is not False:
+        raise SystemExit("enclosure readiness gap candidate STEP cannot grant release credit")
+
+    release_unblock_rows = gap.get("fabrication_enclosure_unblock_action_inventory", [])
+    approval_rows = gap.get("approval_metadata_action_inventory", [])
+    if summary["release_unblock_blocked_row_count"] != sum(
+        int(row.get("blocked_rows") or 0) for row in release_unblock_rows
+    ):
+        raise SystemExit("enclosure readiness gap unblock row count stale")
+    routed_release_row = {
+        row["id"]: row for row in release_unblock_rows if isinstance(row, dict) and row.get("id")
+    }.get("routed_board_release_outputs")
+    if not routed_release_row:
+        raise SystemExit("enclosure readiness gap missing routed release action row")
+    if routed_release_row["blocked_rows"] != (
+        routed_summary["candidate_present_blocked_required_output_path_count"]
+        + routed_summary["missing_required_output_path_count"]
+    ):
+        raise SystemExit("enclosure readiness gap routed release blocked row count stale")
+    routed_approval_row = {
+        row["family"]: row for row in approval_rows if isinstance(row, dict) and row.get("family")
+    }.get("routed_release_approvals")
+    if not routed_approval_row:
+        raise SystemExit("enclosure readiness gap missing routed approval action row")
+    if routed_approval_row["blocked_rows"] != routed_release_row["blocked_rows"]:
+        raise SystemExit("enclosure readiness gap routed approval count diverges")
+    if factory_summary["missing_required_output_path_count"] != 0:
+        raise SystemExit("factory output inventory unexpectedly missing generated candidate paths")
+
+    print(
+        "enclosure readiness gap map ok: "
+        f"{summary['blocked_clearance_case_count']} clearance cases, "
+        f"{summary['release_unblock_blocked_row_count']} blocked release rows"
+    )
+
+
+def check_component_model_directory_filesystem_coverage() -> None:
+    manifest_path = (
+        ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+    )
+    surrogate_detail_path = (
+        ROOT / "mechanical/e1-phone/review/supplier-step-surrogate-intake-detail.json"
+    )
+    component_dir = manifest_path.parent
+    manifest = load_yaml(manifest_path)
+    require_path(surrogate_detail_path)
+    surrogate_detail = json.loads(surrogate_detail_path.read_text(encoding="utf-8"))
+
+    if manifest["schema"] != "eliza.e1_phone_local_component_model_directory.v1":
+        raise SystemExit("component model directory manifest schema diverges")
+    if manifest["status"] != "blocked_local_component_model_directory_not_supplier_steps":
+        raise SystemExit(f"unexpected component model directory status: {manifest['status']}")
+    if manifest["release_allowed"] is not False:
+        raise SystemExit("component model directory cannot be release-allowed")
+
+    records = manifest.get("model_records")
+    if not isinstance(records, list):
+        raise SystemExit("component model directory records must be a list")
+    if manifest["model_record_count"] != len(records):
+        raise SystemExit("component model directory record count stale")
+    if manifest["component_model_count"] != len(records):
+        raise SystemExit("component model directory model count stale")
+
+    filesystem_steps = {
+        child.relative_to(ROOT).as_posix()
+        for child in component_dir.glob("*.local-envelope.step")
+        if child.is_file()
+    }
+    filesystem_metadata = {
+        child.name for child in component_dir.glob("*.local-model.json") if child.is_file()
+    }
+    record_steps = {str(record.get("local_discrete_step_file") or "") for record in records}
+    record_metadata = {str(record.get("metadata") or "") for record in records}
+    if "" in record_steps or "" in record_metadata:
+        raise SystemExit("component model directory contains blank record file references")
+    if filesystem_steps != record_steps:
+        missing = sorted(record_steps - filesystem_steps)
+        extra = sorted(filesystem_steps - record_steps)
+        raise SystemExit(
+            "component model directory STEP filesystem drift: "
+            f"missing={missing[:3]} extra={extra[:3]}"
+        )
+    if filesystem_metadata != record_metadata:
+        missing = sorted(record_metadata - filesystem_metadata)
+        extra = sorted(filesystem_metadata - record_metadata)
+        raise SystemExit(
+            "component model directory metadata filesystem drift: "
+            f"missing={missing[:3]} extra={extra[:3]}"
+        )
+
+    local_step_bytes_total = 0
+    imported_solid_count = 0
+    bbox_match_count = 0
+    pinout_bound_count = 0
+    support_pattern_count = 0
+    terminal_contract_model_count = 0
+    terminal_contract_total = 0
+    total_pad_contract_visual_count = 0
+    uncovered_pad_visual_count = 0
+    non_signal_pad_contract_total = 0
+    npth_contract_total = 0
+    npth_contract_model_count = 0
+    release_credit_false_count = 0
+    supplier_approved_count = 0
+    references: set[str] = set()
+
+    for record in records:
+        reference = str(record.get("reference") or "")
+        if not reference:
+            raise SystemExit("component model directory record missing reference")
+        if reference in references:
+            raise SystemExit(f"duplicate component model directory reference: {reference}")
+        references.add(reference)
+
+        local_step = ROOT / str(record["local_discrete_step_file"])
+        metadata_path = component_dir / str(record["metadata"])
+        require_path(local_step)
+        require_path(metadata_path)
+        if record.get("local_discrete_step_sha256") != file_sha256(local_step):
+            raise SystemExit(f"component model local STEP hash stale: {reference}")
+        local_step_bytes = local_step.stat().st_size
+        if int(record.get("local_discrete_step_bytes") or 0) != local_step_bytes:
+            raise SystemExit(f"component model local STEP size stale: {reference}")
+        if record.get("metadata_sha256") != file_sha256(metadata_path):
+            raise SystemExit(f"component model metadata hash stale: {reference}")
+
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("schema") != "eliza.e1_phone_local_component_model_record.v1":
+            raise SystemExit(f"component model metadata schema stale: {reference}")
+        for key in [
+            "reference",
+            "footprint",
+            "source_routed_step",
+            "source_routed_step_sha256",
+            "source_routed_step_bytes",
+            "combined_step_assembly_name",
+            "local_discrete_step_file",
+            "local_discrete_step_sha256",
+            "local_discrete_step_bytes",
+            "local_discrete_step_import_status",
+            "local_discrete_step_solid_type",
+            "local_discrete_step_imported_as_solid",
+            "local_discrete_step_bbox_matches_envelope",
+            "expected_supplier_step_file",
+            "supplier_sourcing_lane",
+            "supplier_step_intake_status",
+            "supplier_approved",
+            "pad_contract_covered_count",
+            "all_pad_visuals_have_contract",
+            "release_credit",
+        ]:
+            if metadata.get(key) != record.get(key):
+                raise SystemExit(f"component model metadata diverges for {reference}: {key}")
+        if metadata.get("status") != "blocked_local_development_envelope_not_supplier_step":
+            raise SystemExit(f"component model metadata unexpectedly open: {reference}")
+        if metadata.get("supplier_approved") is not False:
+            raise SystemExit(f"component model metadata supplier approved unexpectedly: {reference}")
+        if metadata.get("release_credit") is not False or metadata.get("release_allowed") is not False:
+            raise SystemExit(f"component model metadata has release credit: {reference}")
+        if record.get("local_discrete_step_import_status") == "pass":
+            imported_solid_count += 1
+        if record.get("local_discrete_step_solid_type") != "Solid":
+            raise SystemExit(f"component model local STEP not a solid: {reference}")
+        if record.get("local_discrete_step_imported_as_solid") is not True:
+            raise SystemExit(
+                f"component model local STEP imported-as-solid flag stale: {reference}"
+            )
+        if record.get("local_discrete_step_bbox_matches_envelope") is True:
+            bbox_match_count += 1
+        local_step_bytes_total += local_step_bytes
+        pinout_bound_count += 1 if record.get("pinout_bound") else 0
+        support_pattern_count += (
+            1 if record.get("support_pattern_has_explicit_provenance") else 0
+        )
+        terminal_count = int(record.get("terminal_contract_count") or 0)
+        if terminal_count > 0:
+            terminal_contract_model_count += 1
+        terminal_contract_total += terminal_count
+        total_pad_contract_visual_count += int(record.get("pad_contract_covered_count") or 0)
+        if record.get("all_pad_visuals_have_contract") is not True:
+            raise SystemExit(f"component model directory has uncovered pad visuals: {reference}")
+        uncovered_pad_visual_count += len(metadata.get("uncovered_pad_visuals") or [])
+        non_signal_pad_contract_total += int(record.get("non_signal_pad_contract_count") or 0)
+        npth_count = int(record.get("npth_mechanical_feature_contract_count") or 0)
+        npth_contract_total += npth_count
+        if npth_count:
+            npth_contract_model_count += 1
+        release_credit_false_count += 1 if record.get("release_credit") is False else 0
+        supplier_approved_count += 1 if record.get("supplier_approved") is True else 0
+
+    expected_counts = {
+        "local_discrete_step_file_count": len(filesystem_steps),
+        "local_discrete_step_imported_solid_count": imported_solid_count,
+        "local_discrete_step_bbox_match_count": bbox_match_count,
+        "local_discrete_step_bytes_total": local_step_bytes_total,
+        "pinout_bound_model_record_count": pinout_bound_count,
+        "support_pattern_model_record_count": support_pattern_count,
+        "terminal_contract_model_record_count": terminal_contract_model_count,
+        "terminal_contract_total_count": terminal_contract_total,
+        "total_pad_contract_visual_count": total_pad_contract_visual_count,
+        "uncovered_pad_visual_count": uncovered_pad_visual_count,
+        "non_signal_pad_contract_total_count": non_signal_pad_contract_total,
+        "npth_mechanical_feature_contract_total_count": npth_contract_total,
+        "models_with_npth_mechanical_feature_contract_count": npth_contract_model_count,
+        "supplier_approved_model_count": supplier_approved_count,
+    }
+    for key, expected in expected_counts.items():
+        if manifest[key] != expected:
+            raise SystemExit(f"component model directory summary stale: {key}")
+    if release_credit_false_count != len(records):
+        raise SystemExit("component model directory records must all have release_credit=false")
+    for key in [
+        "all_model_records_present",
+        "all_model_records_source_routed_step_bound",
+        "all_model_records_have_combined_step_locator",
+        "all_model_records_have_local_discrete_step_file",
+        "all_local_discrete_step_files_import_as_solids",
+        "all_local_discrete_step_bboxes_match_envelopes",
+        "all_model_records_have_expected_supplier_step_file",
+        "all_records_release_credit_false",
+        "all_record_local_step_hashes_match_files",
+        "all_record_local_step_sizes_match_files",
+        "all_record_metadata_hashes_match_files",
+        "all_model_pad_visuals_have_contract",
+    ]:
+        if manifest.get(key) is not True:
+            raise SystemExit(f"component model directory boolean not closed: {key}")
+
+    lane_surrogates = manifest.get("supplier_lane_surrogate_steps")
+    if not isinstance(lane_surrogates, dict):
+        raise SystemExit("component model directory surrogate lane map must be a mapping")
+    if manifest["supplier_lane_surrogate_step_count"] != len(lane_surrogates):
+        raise SystemExit("component model directory surrogate lane count stale")
+    if not isinstance(surrogate_detail, dict):
+        raise SystemExit("supplier surrogate intake detail must be a JSON object")
+    expected_surrogate_header = {
+        "schema": "eliza.e1_phone_supplier_step_surrogate_intake_detail.v1",
+        "present": True,
+        "source_manifest": "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml",
+        "status": "blocked_local_surrogate_steps_not_supplier_approved",
+        "supplier_lane_surrogate_step_count": len(lane_surrogates),
+        "supplier_step_intake_local_surrogate_count": manifest[
+            "supplier_step_intake_local_surrogate_count"
+        ],
+        "supplier_step_intake_not_applicable_count": manifest[
+            "supplier_step_intake_not_applicable_count"
+        ],
+        "supplier_step_intake_missing_count": manifest["supplier_step_intake_missing_count"],
+        "supplier_step_intake_release_candidate_count": manifest[
+            "supplier_step_intake_release_candidate_count"
+        ],
+        "supplier_step_intake_lane_counts": manifest["supplier_step_intake_lane_counts"],
+        "component_model_record_count": len(records),
+        "all_lane_surrogates_present": True,
+        "all_lane_surrogate_hashes_match": True,
+        "all_lane_surrogate_sizes_match": True,
+        "all_lane_surrogates_release_credit_false": True,
+        "all_lane_component_reference_counts_match_manifest": True,
+        "all_lane_component_records_release_credit_false": True,
+        "all_lane_component_records_reference_surrogate": True,
+        "release_credit": False,
+        "release_allowed": False,
+    }
+    for key, expected in expected_surrogate_header.items():
+        if surrogate_detail.get(key) != expected:
+            raise SystemExit(f"supplier surrogate intake detail stale: {key}")
+    detail_lane_records = surrogate_detail.get("lane_records")
+    if not isinstance(detail_lane_records, list):
+        raise SystemExit("supplier surrogate intake detail lane records must be a list")
+    detail_lane_by_name = {
+        str(record.get("lane") or ""): record
+        for record in detail_lane_records
+        if isinstance(record, dict)
+    }
+    if set(detail_lane_by_name) != set(lane_surrogates):
+        raise SystemExit("supplier surrogate intake detail lane set stale")
+
+    records_by_intake_file: dict[str, list[dict]] = {}
+    for record in records:
+        records_by_intake_file.setdefault(
+            str(record.get("supplier_step_intake_file") or ""), []
+        ).append(record)
+    for lane, item in lane_surrogates.items():
+        if item.get("status") != "present_local_surrogate_step_not_supplier_approved":
+            raise SystemExit(f"component model surrogate lane unexpectedly open: {lane}")
+        if item.get("release_credit") is not False:
+            raise SystemExit(f"component model surrogate lane has release credit: {lane}")
+        surrogate_path = ROOT / str(item.get("file") or "")
+        require_path(surrogate_path)
+        if item.get("sha256") != file_sha256(surrogate_path):
+            raise SystemExit(f"component model surrogate lane hash stale: {lane}")
+        if int(item.get("bytes") or 0) != surrogate_path.stat().st_size:
+            raise SystemExit(f"component model surrogate lane size stale: {lane}")
+        lane_record = detail_lane_by_name[lane]
+        lane_components = sorted(
+            records_by_intake_file.get(str(item.get("file") or ""), []),
+            key=lambda record: str(record.get("reference") or ""),
+        )
+        expected_lane_record = {
+            "lane": lane,
+            "status": item.get("status"),
+            "file": item.get("file"),
+            "file_present": True,
+            "sha256": item.get("sha256"),
+            "actual_sha256": file_sha256(surrogate_path),
+            "bytes": int(item.get("bytes") or 0),
+            "actual_bytes": surrogate_path.stat().st_size,
+            "hash_matches_file": True,
+            "size_matches_file": True,
+            "release_credit": False,
+            "component_reference_count": len(lane_components),
+            "manifest_model_reference_count": int(item.get("model_reference_count") or 0),
+            "component_references": [
+                str(record.get("reference") or "") for record in lane_components
+            ],
+            "expected_supplier_step_files": sorted(
+                {
+                    str(record.get("expected_supplier_step_file") or "")
+                    for record in lane_components
+                    if record.get("expected_supplier_step_file")
+                }
+            ),
+            "footprints": sorted(
+                {
+                    str(record.get("footprint") or "")
+                    for record in lane_components
+                    if record.get("footprint")
+                }
+            ),
+            "supplier_step_intake_statuses": sorted(
+                {
+                    str(record.get("supplier_step_intake_status") or "")
+                    for record in lane_components
+                    if record.get("supplier_step_intake_status")
+                }
+            ),
+            "all_component_records_release_credit_false": all(
+                record.get("release_credit") is False for record in lane_components
+            ),
+            "all_component_records_reference_this_surrogate": all(
+                record.get("supplier_step_intake_file") == item.get("file")
+                for record in lane_components
+            ),
+        }
+        if lane_record != expected_lane_record:
+            raise SystemExit(f"supplier surrogate intake detail lane stale: {lane}")
+
+    print(
+        "component model directory filesystem coverage ok: "
+        f"{len(records)} records, {len(filesystem_steps)} local STEP files, "
+        f"{len(lane_surrogates)} surrogate supplier lanes fail-closed"
+    )
+
+
+def check_routed_board_step_intake_template() -> None:
+    intake_path = ROOT / "mechanical/e1-phone/review/routed-board-step-intake-template.csv"
+    intake_detail_path = ROOT / "mechanical/e1-phone/review/routed-board-step-intake-detail.json"
+    kicad_preflight_path = ROOT / "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
+    coverage_path = ROOT / "mechanical/e1-phone/review/cad-connection-coverage.json"
+    board_step_path = ROOT / "mechanical/e1-phone/review/board-step-readiness.json"
+    traceability_path = (
+        ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
+    )
+    candidate_manifest_path = (
+        ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
+    )
+    step_intake_path = (
+        ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+    )
+    component_manifest_path = (
+        ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+    )
+    for path in [
+        intake_path,
+        intake_detail_path,
+        kicad_preflight_path,
+        coverage_path,
+        board_step_path,
+        traceability_path,
+        candidate_manifest_path,
+        step_intake_path,
+        component_manifest_path,
+    ]:
+        require_path(path)
+
+    rows = list(csv.DictReader(intake_path.read_text(encoding="utf-8").splitlines()))
+    if len(rows) != 1:
+        raise SystemExit("routed-board STEP intake template must contain one local candidate row")
+    row = rows[0]
+    intake_detail = json.loads(intake_detail_path.read_text(encoding="utf-8"))
+    kicad_preflight = json.loads(kicad_preflight_path.read_text(encoding="utf-8"))
+    coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+    board_step = load_yaml(board_step_path)
+    traceability = load_yaml(traceability_path)
+    candidate_manifest = load_yaml(candidate_manifest_path)
+    step_intake = load_yaml(step_intake_path)
+    component_manifest = load_yaml(component_manifest_path)
+    if not isinstance(coverage, dict):
+        raise SystemExit("CAD connection coverage must be a JSON object")
+    if not isinstance(traceability, dict) or not isinstance(traceability.get("summary"), dict):
+        raise SystemExit("KiCad/CAD traceability matrix summary missing")
+    if not isinstance(candidate_manifest, dict):
+        raise SystemExit("routed output candidate manifest must be a YAML mapping")
+    if not isinstance(component_manifest, dict):
+        raise SystemExit("component 3D model manifest must be a YAML mapping")
+    if not isinstance(intake_detail, dict):
+        raise SystemExit("routed-board STEP intake detail must be a JSON object")
+    if not isinstance(kicad_preflight, dict):
+        raise SystemExit("routed-board KiCad CLI preflight must be a JSON object")
+    if not isinstance(board_step, dict):
+        raise SystemExit("board STEP readiness must be a JSON object")
+    detailed_candidate = board_step.get("detailed_routed_step_candidate", {})
+    if not isinstance(detailed_candidate, dict):
+        raise SystemExit("board STEP detailed routed candidate must be a mapping")
+    if (
+        board_step.get("routed_board_step_intake_detail")
+        != "mechanical/e1-phone/review/routed-board-step-intake-detail.json"
+    ):
+        raise SystemExit("board STEP readiness missing routed-board intake detail path")
+    if (
+        board_step.get("routed_board_kicad_cli_preflight")
+        != "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
+    ):
+        raise SystemExit("board STEP readiness missing routed-board KiCad CLI preflight path")
+    expected_preflight = {
+        "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
+        "tool": "kicad-cli",
+        "available": False,
+        "drc_status": "blocked_tool_unavailable",
+        "erc_status": "blocked_tool_unavailable",
+        "release_credit": False,
+    }
+    for field, expected in expected_preflight.items():
+        if kicad_preflight.get(field) != expected:
+            raise SystemExit(
+                f"routed-board KiCad CLI preflight stale: {field} "
+                f"expected {expected!r} got {kicad_preflight.get(field)!r}"
+            )
+
+    visual_detail = candidate_manifest.get("routed_step_visual_detail", {})
+    if not isinstance(visual_detail, dict):
+        raise SystemExit("routed output candidate manifest visual detail missing")
+    route_visual_records = visual_detail.get("route_visual_records")
+    via_visual_records = visual_detail.get("via_visual_records")
+    filled_zone_records = visual_detail.get("filled_copper_zone_records")
+    if (
+        not isinstance(route_visual_records, list)
+        or len(route_visual_records) != int(step_intake.get("route_segment_visual_count") or 0)
+        or not isinstance(via_visual_records, list)
+        or len(via_visual_records) != int(step_intake.get("via_visual_count") or 0)
+        or not isinstance(filled_zone_records, list)
+        or len(filled_zone_records) != int(step_intake.get("filled_copper_zone_visual_count") or 0)
+    ):
+        raise SystemExit("routed output candidate visual record manifests are stale")
+    routed_visual_flags = {
+        "route_visual_all_records_have_route_id": True,
+        "route_visual_all_records_have_net": True,
+        "route_visual_all_records_have_layer": True,
+        "route_visual_all_records_have_route_class": True,
+        "route_visual_all_records_have_source_domain": True,
+        "via_visual_all_records_have_net": True,
+        "via_visual_all_records_have_layers": True,
+        "filled_copper_zone_all_records_have_net": True,
+        "filled_copper_zone_all_records_have_bbox": True,
+        "release_credit": False,
+    }
+    for key, expected in routed_visual_flags.items():
+        if visual_detail.get(key) != expected:
+            raise SystemExit(f"routed output candidate visual detail stale: {key}")
+    if int(visual_detail.get("route_visual_record_count") or 0) != len(route_visual_records):
+        raise SystemExit("routed output candidate route visual count stale")
+    if int(visual_detail.get("via_visual_record_count") or 0) != len(via_visual_records):
+        raise SystemExit("routed output candidate via visual count stale")
+    if int(visual_detail.get("filled_copper_zone_record_count") or 0) != len(
+        filled_zone_records
+    ):
+        raise SystemExit("routed output candidate filled-zone visual count stale")
+    expected_filled_polygon_count = sum(
+        int(record.get("filled_polygon_count") or 0) for record in filled_zone_records
+    )
+    if expected_filled_polygon_count != int(
+        step_intake.get("filled_copper_zone_polygon_count") or 0
+    ):
+        raise SystemExit("routed output candidate filled-zone polygon source count stale")
+    if int(visual_detail.get("filled_copper_zone_filled_polygon_count") or 0) != (
+        expected_filled_polygon_count
+    ):
+        raise SystemExit("routed output candidate filled-zone polygon count stale")
+    models = component_manifest.get("models", [])
+    if not isinstance(models, list):
+        raise SystemExit("component 3D model manifest models must be a list")
+    trace_summary = traceability["summary"]
+    expected_fields = {
+        "release_id": "LOCAL-ROUTED-CANDIDATE-2026-05-22",
+        "kicad_pcb_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+        "routed_step_artifact": (
+            "board/kicad/e1-phone/production/step/routed-board-with-components.step"
+        ),
+        "source_board_sha256": str(candidate_manifest.get("source_board_sha256") or ""),
+        "source_step_artifact": str(candidate_manifest.get("source_step") or ""),
+        "source_step_sha256": str(candidate_manifest.get("source_step_sha256") or ""),
+        "kicad_cli_preflight_artifact": (
+            "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
+        ),
+        "kicad_cli_available": "false",
+        "drc_status": "blocked_tool_unavailable",
+        "erc_status": "blocked_tool_unavailable",
+        "component_3d_model_manifest": (
+            "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+        ),
+        "component_model_count": str(len(models)),
+        "pad_contact_visual_count": str(
+            int(visual_detail.get("pad_contact_visual_count") or 0)
+        ),
+        "route_segment_visual_count": str(
+            int(visual_detail.get("route_segment_visual_count") or 0)
+        ),
+        "route_segment_net_name_count": str(
+            int(visual_detail.get("route_segment_net_name_count") or 0)
+        ),
+        "route_segment_trace_bound_count": str(
+            int(visual_detail.get("route_segment_trace_bound_count") or 0)
+        ),
+        "route_segment_trace_unbound_count": str(
+            int(visual_detail.get("route_segment_trace_unbound_count") or 0)
+        ),
+        "controlled_impedance_segment_visual_count": str(
+            int(visual_detail.get("controlled_impedance_segment_visual_count") or 0)
+        ),
+        "via_net_name_count": str(int(visual_detail.get("via_net_name_count") or 0)),
+        "cad_connection_count": str(int(coverage.get("passing_connection_count") or 0)),
+        "kicad_cad_traceability_matrix": (
+            "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
+        ),
+        "traceability_status": str(traceability.get("status") or ""),
+        "traceability_gap_count": str(
+            sum(
+                int(trace_summary.get(field) or 0)
+                for field in [
+                    "incomplete_footprint_count",
+                    "incomplete_cad_connection_count",
+                    "missing_captured_pinout_file_count",
+                    "incomplete_captured_pinout_detail_count",
+                ]
+            )
+        ),
+        "enclosure_clearance_rerun_artifact": (
+            "mechanical/e1-phone/review/routed-board-clearance.json"
+        ),
+        "evidence_class": "blocked_local_candidate_outputs_not_release",
+        "release_credit": "false",
+    }
+    for field, expected in expected_fields.items():
+        if str(row.get(field, "")).strip() != expected:
+            raise SystemExit(
+                f"routed-board STEP intake template stale: {field} "
+                f"expected {expected!r} got {row.get(field)!r}"
+            )
+
+    routed_step_path = ROOT / row["routed_step_artifact"]
+    require_path(routed_step_path)
+    if row.get("routed_step_sha256", "").strip() != file_sha256(routed_step_path):
+        raise SystemExit("routed-board STEP intake template routed STEP hash stale")
+    if row.get("release_credit", "").strip().lower() != "false":
+        raise SystemExit("local routed-board STEP intake must remain fail-closed")
+
+    detail_expected_fields = {
+        "schema": "eliza.e1_phone_routed_board_step_intake_detail.v1",
+        "csv_intake": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
+        "release_id": row["release_id"],
+        "evidence_class": row["evidence_class"],
+        "routed_step_artifact": row["routed_step_artifact"],
+        "routed_step_sha256": row["routed_step_sha256"],
+        "kicad_cli_preflight": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
+        "kicad_cli_available": False,
+        "drc_status": "blocked_tool_unavailable",
+        "erc_status": "blocked_tool_unavailable",
+        "release_credit": False,
+        "route_visual_record_count": int(row["route_segment_visual_count"]),
+        "component_model_record_count": int(row["component_model_count"]),
+        "cad_connection_record_count": int(row["cad_connection_count"]),
+    }
+    for field, expected in detail_expected_fields.items():
+        if intake_detail.get(field) != expected:
+            raise SystemExit(
+                f"routed-board STEP intake detail stale: {field} "
+                f"expected {expected!r} got {intake_detail.get(field)!r}"
+            )
+    detailed_record_keys = [
+        "route_visual_records",
+        "via_visual_records",
+        "filled_copper_zone_records",
+        "component_model_record_manifest",
+        "cad_connection_record_manifest",
+    ]
+    for key in detailed_record_keys:
+        if intake_detail.get(key) != detailed_candidate.get(key):
+            raise SystemExit(f"routed-board STEP intake detail record list stale: {key}")
+    detailed_count_keys = [
+        "route_visual_record_count",
+        "via_visual_record_count",
+        "filled_copper_zone_record_count",
+        "filled_copper_zone_filled_polygon_count",
+        "component_model_record_count",
+        "cad_connection_record_count",
+    ]
+    for key in detailed_count_keys:
+        if int(intake_detail.get(key) or 0) != int(detailed_candidate.get(key) or 0):
+            raise SystemExit(f"routed-board STEP intake detail count stale: {key}")
+    detailed_flag_keys = [
+        "all_route_records_have_net_layer_class_and_source",
+        "all_component_records_have_local_step",
+        "all_connection_records_have_cad_step",
+    ]
+    for key in detailed_flag_keys:
+        if intake_detail.get(key) is not True or detailed_candidate.get(key) is not True:
+            raise SystemExit(f"routed-board STEP intake detail flag stale: {key}")
+
+    print(
+        "routed-board STEP intake template ok: "
+        f"{row['cad_connection_count']} CAD connections, "
+        f"{row['component_model_count']} component models, "
+        f"{intake_detail['route_visual_record_count']} detailed route records"
+    )
+
+
+def check_kicad_cad_stub_audit() -> None:
+    audit_rel = "board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml"
+    audit = load_yaml(ROOT / audit_rel)
+    manifest = load_yaml(MANIFEST)
+    coverage = json.loads(
+        (ROOT / "mechanical/e1-phone/review/cad-connection-coverage.json").read_text()
+    )
+    assembly = json.loads((ROOT / "mechanical/e1-phone/out/assembly-manifest.json").read_text())
+    traceability = load_yaml(
+        ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
+    )
+    candidate = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
+    )
+    component_manifest = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+    )
+    mechanical_inventory = load_yaml(
+        ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
+    )
+    public_cad_intake = load_yaml(
+        ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+    )
+    public_bom_cost = load_yaml(
+        ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
+    )
+    step_intake = load_yaml(
+        ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+    )
+    board_step = load_yaml(ROOT / "mechanical/e1-phone/review/board-step-readiness.json")
+    full_cad_boolean = load_yaml(
+        ROOT / "mechanical/e1-phone/review/full-cad-boolean-interference.json"
+    )
+
+    if audit_rel not in manifest["current_artifacts"]["planning"]:
+        raise SystemExit("manifest missing KiCad/CAD end-to-end stub audit")
+    if audit["schema"] != "eliza.e1_phone_kicad_cad_end_to_end_stub_audit.v1":
+        raise SystemExit("KiCad/CAD stub audit schema diverges")
+    if audit["status"] != "blocked_external_evidence_required_after_local_cad_geometry_fix":
+        raise SystemExit(f"unexpected KiCad/CAD stub audit status: {audit['status']}")
+
+    state = audit["kicad_package_state"]
+    trace_summary = traceability["summary"]
+    candidate_coverage = candidate["cad_connection_coverage"]
+    candidate_trace = candidate["kicad_cad_traceability"]
+    candidate_source_binding = candidate["routed_candidate_source_binding"]
+    component_coverage = component_manifest["cad_connection_coverage"]
+
+    routed_candidate_text = (
+        ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+    ).read_text(encoding="utf-8")
+    concept_text = (
+        ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    ).read_text(encoding="utf-8")
+    expected_live_state = {
+        "footprint_count": concept_text.count('(footprint "'),
+        "placeholder_not_fabrication_footprint_markers": concept_text.count(
+            "placeholder_not_fabrication_footprint"
+        ),
+        "local_routed_kicad_candidate_segment_count": routed_candidate_text.count(
+            "\n  (segment "
+        ),
+        "local_routed_kicad_candidate_via_count": routed_candidate_text.count("\n  (via "),
+        "local_routed_kicad_candidate_matches_real_footprint_source": candidate_source_binding[
+            "candidate_matches_source_board"
+        ],
+        "local_routed_kicad_candidate_zero_placeholder_real_footprint_board": candidate_source_binding[
+            "candidate_is_zero_placeholder_real_footprint_board"
+        ],
+        "local_routed_kicad_candidate_placeholder_markers": routed_candidate_text.count(
+            "placeholder_not_fabrication_footprint"
+        ),
+        "local_routed_kicad_candidate_legacy_e1phone_footprint_refs": routed_candidate_text.count(
+            '(footprint "E1Phone:'
+        ),
+        "local_routed_kicad_candidate_footprint_count": routed_candidate_text.count(
+            '(footprint "'
+        ),
+        "local_routed_kicad_candidate_zone_count": routed_candidate_text.count("\n  (zone "),
+        "local_routed_kicad_candidate_filled_zone_count": routed_candidate_text.count(
+            "(filled_polygon"
+        ),
+        "detailed_routed_step_candidate_bytes": candidate["source_step_size_bytes"],
+        "detailed_routed_step_candidate_release_credit": candidate["release_credit"],
+        "real_footprint_development_step_envelope_count": step_intake[
+            "footprint_envelope_count"
+        ],
+        "real_footprint_development_step_pad_contact_visual_count": step_intake[
+            "pad_contact_visual_count"
+        ],
+        "real_footprint_development_step_route_segment_visual_count": step_intake[
+            "route_segment_visual_count"
+        ],
+        "real_footprint_development_step_route_segment_net_name_count": step_intake[
+            "route_segment_net_name_count"
+        ],
+        "real_footprint_development_step_route_segment_trace_bound_count": step_intake[
+            "route_segment_trace_bound_count"
+        ],
+        "real_footprint_development_step_route_segment_trace_unbound_count": step_intake[
+            "route_segment_trace_unbound_count"
+        ],
+        "real_footprint_development_step_controlled_impedance_segment_visual_count": step_intake[
+            "controlled_impedance_segment_visual_count"
+        ],
+        "real_footprint_development_step_via_net_name_count": step_intake["via_net_name_count"],
+        "board_step_readiness_status": board_step["status"],
+        "full_cad_boolean_status": full_cad_boolean["overall_status"],
+        "full_cad_boolean_parts_loaded": int(full_cad_boolean.get("parts_loaded") or 0),
+        "full_cad_boolean_pair_count_brep_evaluated": int(
+            full_cad_boolean.get("pair_count_brep_evaluated") or 0
+        ),
+        "full_cad_boolean_unintentional_clash_count": len(
+            full_cad_boolean.get("unintentional_clashes") or []
+        ),
+        "full_cad_boolean_scope_result_count": len(
+            full_cad_boolean.get("scope_results") or []
+        ),
+        "full_cad_boolean_passing_scope_result_count": sum(
+            1
+            for result in full_cad_boolean.get("scope_results") or []
+            if result.get("status") == "pass"
+        ),
+        "full_cad_boolean_release_credit": False,
+    }
+    for key, expected in expected_live_state.items():
+        if state[key] != expected:
+            raise SystemExit(f"KiCad/CAD stub audit live state stale: {key}")
+
+    public_sourcing = mechanical_inventory.get("public_sourcing_intake_ready", {})
+    public_cad_summary = public_cad_intake.get("summary", {})
+    public_bom_summary = public_bom_cost.get("summary", {})
+    if not isinstance(public_sourcing, dict):
+        raise SystemExit("KiCad/CAD stub audit missing mechanical public sourcing context")
+    if not isinstance(public_cad_summary, dict) or not isinstance(public_bom_summary, dict):
+        raise SystemExit("KiCad/CAD stub audit public sourcing summaries missing")
+    expected_public_sourcing_state = {
+        "public_sourcing_intake_ready": public_sourcing.get("ready") is True,
+        "public_sourcing_intake_scope": public_sourcing.get("scope"),
+        "public_cad_source_record_count": int(
+            public_sourcing.get("public_cad_source_record_count") or 0
+        ),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_sourcing.get("public_cad_source_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_sourcing.get("public_cad_source_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_sourcing.get("public_cad_source_local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_release_credit_record_count": int(
+            public_sourcing.get("public_cad_source_release_credit_record_count") or 0
+        ),
+        "public_market_bom_cost_category_count": int(
+            public_sourcing.get("public_market_bom_cost_category_count") or 0
+        ),
+        "public_market_bom_cost_volume_count": int(
+            public_sourcing.get("public_market_bom_cost_volume_count") or 0
+        ),
+        "public_market_bom_cost_avl_quote_count": int(
+            public_sourcing.get("public_market_bom_cost_avl_quote_count") or 0
+        ),
+        "public_market_bom_cost_signed_supplier_quote_count": int(
+            public_sourcing.get("public_market_bom_cost_signed_supplier_quote_count") or 0
+        ),
+        "public_sourcing_intake_release_credit": public_sourcing.get("release_credit") is True,
+        "public_sourcing_intake_release_allowed": public_sourcing.get("release_allowed") is True,
+    }
+    for key, expected in expected_public_sourcing_state.items():
+        if state[key] != expected:
+            raise SystemExit(f"KiCad/CAD stub audit public sourcing state stale: {key}")
+    if state["public_cad_source_record_count"] != int(public_cad_summary.get("record_count") or 0):
+        raise SystemExit("KiCad/CAD stub audit public CAD record count stale")
+    if state["public_market_bom_cost_category_count"] != int(
+        public_bom_summary.get("category_count") or 0
+    ):
+        raise SystemExit("KiCad/CAD stub audit public BOM category count stale")
+    if state["public_sourcing_intake_release_credit"] is not False:
+        raise SystemExit("KiCad/CAD stub audit cannot grant public sourcing release credit")
+    if state["public_sourcing_intake_release_allowed"] is not False:
+        raise SystemExit("KiCad/CAD stub audit cannot allow public sourcing release")
+
+    assembly_terminal_count = sum(
+        1 for part in assembly if part.get("role") == "connection terminal"
+    )
+    connection_solid_names = {
+        connection["cad_part"]
+        for connection in coverage["connections"]
+        if connection.get("cad_part_present")
+    }
+    assembly_connection_solid_count = sum(
+        1 for part in assembly if part.get("name") in connection_solid_names
+    )
+    expected_connection_state = {
+        "cad_connection_coverage_required_count": coverage["required_connection_count"],
+        "cad_connection_coverage_passing_count": coverage["passing_connection_count"],
+        "cad_connection_coverage_required_terminal_marker_count": coverage[
+            "required_connection_terminal_marker_count"
+        ],
+        "cad_connection_coverage_passing_terminal_pair_count": coverage[
+            "passing_connection_terminal_pair_count"
+        ],
+        "cad_connection_coverage_required_solid_step_part_count": coverage[
+            "required_connection_solid_step_part_count"
+        ],
+        "cad_connection_coverage_passing_solid_step_part_set_count": coverage[
+            "passing_connection_solid_step_part_set_count"
+        ],
+        "cad_connection_coverage_solid_step_part_bytes_total": coverage[
+            "connection_solid_step_part_bytes_total"
+        ],
+        "cad_connection_coverage_assembly_manifest_part_count": len(assembly),
+        "cad_connection_coverage_assembly_manifest_terminal_marker_count": assembly_terminal_count,
+        "cad_connection_coverage_assembly_manifest_solid_step_part_count": (
+            assembly_connection_solid_count + assembly_terminal_count
+        ),
+        "cad_connection_coverage_assembly_manifest_missing_solid_step_part_count": 0,
+        "cad_connection_coverage_represented_net_count_total": coverage[
+            "represented_net_count_total"
+        ],
+        "cad_connection_coverage_represented_route_record_count_total": coverage[
+            "represented_route_record_count_total"
+        ],
+        "cad_connection_coverage_represented_route_records_with_layer_count_total": coverage[
+            "represented_route_records_with_layer_count_total"
+        ],
+        "cad_connection_coverage_represented_route_records_with_source_domain_count_total": (
+            coverage["represented_route_records_with_source_domain_count_total"]
+        ),
+        "cad_connection_coverage_represented_route_records_with_route_class_count_total": (
+            coverage["represented_route_records_with_route_class_count_total"]
+        ),
+        "cad_connection_coverage_represented_route_classification_gap_count": coverage[
+            "represented_route_classification_gap_count"
+        ],
+        "cad_connection_coverage_all_represented_routes_have_layer_source_and_class": coverage[
+            "all_represented_routes_have_layer_source_and_class"
+        ],
+        "cad_connection_coverage_record_count": len(coverage["connections"]),
+        "cad_connection_coverage_record_manifest_id_count": len(
+            {str(connection.get("id")) for connection in coverage["connections"]}
+        ),
+        "cad_connection_coverage_represented_net_list_total": sum(
+            len(connection.get("represented_nets") or [])
+            for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_represented_route_id_list_total": sum(
+            len(connection.get("represented_route_ids") or [])
+            for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_records_have_represented_nets": all(
+            connection.get("represented_nets") for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_records_have_represented_routes": all(
+            connection.get("represented_route_ids") for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_represented_nets_match_routed_nets": coverage[
+            "all_represented_nets_have_route_trace"
+        ],
+        "cad_connection_coverage_all_represented_routes_match_counts": all(
+            int(connection.get("represented_route_count") or 0)
+            == len(connection.get("represented_route_ids") or [])
+            for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_records_have_terminal_markers": all(
+            connection.get("terminal_markers_present") is True
+            for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_records_have_solid_step_parts": all(
+            connection.get("solid_step_parts_present") is True
+            for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_records_have_cad_step_bytes": all(
+            int(connection.get("cad_step_bytes") or 0) > 1000
+            for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_records_have_cad_parts": all(
+            connection.get("cad_part_present") is True for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_all_records_release_credit_false": all(
+            connection.get("release_credit") is False for connection in coverage["connections"]
+        ),
+        "cad_connection_coverage_physical_medium_counts": coverage["physical_medium_counts"],
+        "cad_connection_coverage_electrical_class_counts": coverage["electrical_class_counts"],
+        "cad_connection_coverage_controlled_impedance_count": coverage[
+            "controlled_impedance_connection_count"
+        ],
+        "cad_connection_coverage_controlled_impedance_requirement_defined_count": coverage[
+            "controlled_impedance_requirement_defined_count"
+        ],
+        "cad_connection_coverage_bend_radius_requirement_defined_count": coverage[
+            "bend_radius_requirement_defined_count"
+        ],
+        "cad_connection_coverage_supplier_release_required_count": coverage[
+            "supplier_release_required_connection_count"
+        ],
+        "cad_connection_coverage_release_credit": coverage["release_credit"],
+    }
+    for key, expected in expected_connection_state.items():
+        if state[key] != expected:
+            raise SystemExit(f"KiCad/CAD stub audit connection state stale: {key}")
+
+    for key in [
+        "required_connection_count",
+        "passing_connection_count",
+        "required_connection_terminal_marker_count",
+        "passing_connection_terminal_pair_count",
+        "required_connection_solid_step_part_count",
+        "passing_connection_solid_step_part_set_count",
+        "connection_solid_step_part_bytes_total",
+        "represented_net_count_total",
+        "represented_route_record_count_total",
+        "represented_route_records_with_layer_count_total",
+        "represented_route_records_with_source_domain_count_total",
+        "represented_route_records_with_route_class_count_total",
+        "represented_route_classification_gap_count",
+        "all_represented_routes_have_layer_source_and_class",
+        "controlled_impedance_connection_count",
+        "controlled_impedance_requirement_defined_count",
+        "bend_radius_requirement_defined_count",
+        "supplier_release_required_connection_count",
+        "physical_medium_counts",
+        "electrical_class_counts",
+        "release_credit",
+    ]:
+        if candidate_coverage[key] != coverage[key]:
+            raise SystemExit(f"routed-output candidate CAD coverage stale: {key}")
+        if component_coverage[key] != coverage[key]:
+            raise SystemExit(f"component manifest CAD coverage stale: {key}")
+    if candidate_coverage["assembly_manifest_part_count"] != len(assembly):
+        raise SystemExit("routed-output candidate assembly part count stale")
+    if component_coverage["assembly_manifest_part_count"] != len(assembly):
+        raise SystemExit("component manifest assembly part count stale")
+
+    traceability_key_map = {
+        "routed_output_candidate_traceability_footprint_library_count": (
+            "footprint_library_count"
+        ),
+        "routed_output_candidate_traceability_board_instance_count": (
+            "board_bound_instance_count"
+        ),
+        "routed_output_candidate_traceability_step_instance_count": (
+            "step_footprint_instance_count"
+        ),
+        "routed_output_candidate_traceability_captured_pinout_file_count": (
+            "captured_pinout_file_count"
+        ),
+        "routed_output_candidate_traceability_pinout_bound_footprint_count": (
+            "pinout_bound_footprint_count"
+        ),
+        "routed_output_candidate_traceability_cad_connection_count": "cad_connection_count",
+        "routed_output_candidate_traceability_cad_connection_represented_route_count_total": (
+            "cad_connection_represented_route_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_record_count_total": (
+            "cad_connection_represented_route_record_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_records_with_layer_count_total": (
+            "cad_connection_represented_route_records_with_layer_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_records_with_source_domain_count_total": (
+            "cad_connection_represented_route_records_with_source_domain_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_records_with_route_class_count_total": (
+            "cad_connection_represented_route_records_with_route_class_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_classification_gap_count": (
+            "cad_connection_represented_route_classification_gap_count"
+        ),
+        "routed_output_candidate_traceability_explicit_support_pattern_count": (
+            "explicit_support_pattern_count"
+        ),
+    }
+    traceability_gap_count = sum(
+        int(trace_summary.get(field) or 0)
+        for field in [
+            "incomplete_footprint_count",
+            "incomplete_cad_connection_count",
+            "missing_captured_pinout_file_count",
+            "incomplete_captured_pinout_detail_count",
+        ]
+    )
+    if state["routed_output_candidate_traceability_gap_count"] != traceability_gap_count:
+        raise SystemExit("KiCad/CAD stub audit aggregate traceability gap count stale")
+    if candidate_trace.get("status") != traceability.get("status"):
+        raise SystemExit("routed-output candidate traceability status stale")
+    if traceability_gap_count == 0 and traceability.get("status") != "local_traceability_complete_not_release":
+        raise SystemExit("KiCad/CAD traceability status must reflect zero local gaps")
+    if traceability_gap_count != 0 and not str(traceability.get("status", "")).startswith("blocked_"):
+        raise SystemExit("KiCad/CAD traceability status must remain blocked while gaps exist")
+    for audit_key, trace_key in traceability_key_map.items():
+        if state[audit_key] != trace_summary[trace_key]:
+            raise SystemExit(f"KiCad/CAD stub audit traceability stale: {audit_key}")
+        if trace_key in candidate_trace and candidate_trace[trace_key] != trace_summary[trace_key]:
+            raise SystemExit(f"routed-output candidate traceability stale: {trace_key}")
+    for audit_key, trace_key in [
+        (
+            "routed_output_candidate_traceability_all_pinout_bound_footprints_have_terminal_contract",
+            "all_pinout_bound_footprints_have_terminal_contract",
+        ),
+        (
+            "routed_output_candidate_traceability_all_support_patterns_have_explicit_provenance",
+            "all_support_patterns_have_explicit_provenance",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_all_represented_routes_have_layer_source_and_class",
+            "cad_connection_all_represented_routes_have_layer_source_and_class",
+        ),
+    ]:
+        if state[audit_key] != trace_summary[trace_key]:
+            raise SystemExit(f"KiCad/CAD stub audit traceability flag stale: {audit_key}")
+
+    for audit_key, trace_key in [
+        (
+            "routed_output_candidate_traceability_cad_connection_physical_medium_counts",
+            "cad_connection_physical_medium_counts",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_controlled_impedance_count",
+            "cad_connection_controlled_impedance_count",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_controlled_impedance_requirement_defined_count",
+            "cad_connection_controlled_impedance_requirement_defined_count",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_bend_radius_requirement_defined_count",
+            "cad_connection_bend_radius_requirement_defined_count",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_supplier_release_required_count",
+            "cad_connection_supplier_release_required_count",
+        ),
+    ]:
+        if state[audit_key] != trace_summary[trace_key]:
+            raise SystemExit(f"KiCad/CAD stub audit CAD traceability stale: {audit_key}")
+
+    sweep = audit["literal_todo_stub_sweep"]
+    scanned_files = sweep["scanned_code_files"]
+    if sweep["scanned_code_file_count"] != len(scanned_files):
+        raise SystemExit("KiCad/CAD stub audit scanned file count stale")
+    task_marker = "TO" + "DO"
+    fix_marker = "FIX" + "ME"
+    literal_marker_hits = []
+    for rel in scanned_files:
+        path = ROOT / rel
+        require_path(path)
+        text = path.read_text(encoding="utf-8")
+        if task_marker in text or fix_marker in text:
+            literal_marker_hits.append(rel)
+    if literal_marker_hits or sweep["local_code_todo_or_fixme_count"] != 0:
+        raise SystemExit(
+            "KiCad/CAD stub audit found actionable code task markers: "
+            + ", ".join(literal_marker_hits)
+        )
+    if sweep["local_code_actionable_marker_count"] != 0:
+        raise SystemExit("KiCad/CAD stub audit cannot claim actionable marker closure")
+    for hit in sweep["remaining_hits_are_fail_closed_evidence_placeholders"]:
+        require_path(ROOT / hit["path"])
+        if not hit.get("disposition"):
+            raise SystemExit(f"KiCad/CAD stub audit placeholder hit lacks disposition: {hit}")
+
+    blockers = {item["id"]: item for item in audit["remaining_blockers"]}
+    for blocker_id in [
+        "supplier_land_patterns_and_3d_models",
+        "routed_kicad_release_board",
+        "routed_board_release_intake",
+        "physical_routed_board_clearance_results",
+    ]:
+        if blockers[blocker_id]["local_action_available"] is not False:
+            raise SystemExit(f"KiCad/CAD stub audit blocker unexpectedly local: {blocker_id}")
+    if audit["decision"]["current_cad_is_not_valid_for"] != (
+        "fabrication_release_or_final_routed_board_clearance"
+    ):
+        raise SystemExit("KiCad/CAD stub audit decision boundary is stale")
+
+    print(
+        "KiCad/CAD stub audit ok: "
+        f"{coverage['required_connection_count']} connections, "
+        f"{len(assembly)} CAD parts, {len(scanned_files)} code files swept"
     )
 
 
@@ -14570,6 +16951,7 @@ def main() -> int:
     check_pcb_text()
     check_routed_release_plan()
     check_routed_board_step_export_contract()
+    check_screen_back_camera_collision_review()
     check_routed_pcb_implementation_execution()
     check_routed_layout_readiness_binding()
     check_first_article_route_execution_order()
@@ -14579,10 +16961,18 @@ def main() -> int:
     check_end_to_end_readiness()
     check_supplier_pinout_evidence()
     check_release_evidence_manufacturing_candidate_propagation()
+    check_objective_completion_trace_manifests()
+    check_development_pattern_pinout_step_coverage()
+    check_enclosure_readiness_gap_map_consistency()
+    check_component_model_directory_filesystem_coverage()
+    check_routed_board_step_intake_template()
+    check_kicad_cad_stub_audit()
     check_release_gates_fail_closed(manifest)
     check_no_orphaned_board_files()
-    print("E1 phone board package structurally consistent; not fabrication ready")
-    return 0
+    write_board_package_report(manifest)
+    raise SystemExit(
+        "E1 phone board package structurally consistent; fabrication release remains blocked"
+    )
 
 
 if __name__ == "__main__":

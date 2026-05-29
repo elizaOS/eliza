@@ -1,6 +1,6 @@
 {
   "schema": "robot-end-to-end-full-training-preflight-v1",
-  "created_at": "2026-05-24T07:04:47Z",
+  "created_at": "2026-05-29T03:03:20Z",
   "ok": true,
   "package_root": "/home/shaw/milady/eliza/packages/robot",
   "out_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight",
@@ -21,6 +21,15 @@
     "turn_left",
     "turn_right"
   ],
+  "video_commands": [
+    "stand up",
+    "walk forward",
+    "walk backward",
+    "sidestep left",
+    "sidestep right",
+    "turn left",
+    "turn right"
+  ],
   "budgets": {
     "alberta_steps": 150000000,
     "alberta_episode_steps": 200,
@@ -38,6 +47,7 @@
     "training_inputs_valid": true,
     "brax_job_valid": true,
     "multi_robot_readiness": true,
+    "video_commands_cover_production": true,
     "scripts_executable": true,
     "launch_template_hygiene": true
   },
@@ -82,7 +92,7 @@
     "curriculum": {
       "version": 2,
       "task_count": 22,
-      "content_sha256": "fd2996d54679cc2ce62e2ae4d04707f2942975a455b60248eb7426f43c890b58",
+      "content_sha256": "9cde5492edee337f55adef9e77df844bdc48a71252f7dcdc3c5a91b58c2ec3c2",
       "duplicate_ids": [],
       "text_variant_collisions": []
     },
@@ -90,7 +100,7 @@
     "imitation_training_ready": false,
     "offline_datasets_block_current_plan": false,
     "dataset_warning_count": 1,
-    "unsupported_future_task_count": 13
+    "unsupported_future_task_count": 12
   },
   "multi_robot_readiness": null,
   "launch_order": [

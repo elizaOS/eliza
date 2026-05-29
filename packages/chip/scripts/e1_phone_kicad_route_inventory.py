@@ -259,6 +259,16 @@ def development_route_snapshot(root: Path, intake_path: Path) -> dict[str, Any]:
         "intake_segment_count": intake.get("segment_count", 0),
         "footprint_count": board.get("footprint_count", 0),
         "via_count": board.get("via_count", 0),
+        "route_length_total_mm": intake.get("route_length_total_mm", 0),
+        "controlled_impedance_route_count": intake.get("controlled_impedance_route_count", 0),
+        "route_classification_gap_count": intake.get("route_classification_gap_count", 0),
+        "route_classification_gaps": intake.get("route_classification_gaps", []),
+        "route_segment_trace_bound_count": (
+            intake.get("development_step_visual_detail", {}).get("route_segments", 0)
+            if isinstance(intake.get("development_step_visual_detail"), dict)
+            else 0
+        ),
+        "route_traceability_summary": intake.get("route_traceability_summary", {}),
         "missing_nets": intake.get("missing_nets", []),
         "release_credit": False,
         "reason_not_release": "development_routing_visualization_not_release",
@@ -332,6 +342,15 @@ def build_report(
         or missing_output_count > 0
         or board["placeholder_footprint_count"] > 0
     )
+    local_routed_development_complete = (
+        development_snapshot["present"] is True
+        and int(development_snapshot.get("route_count") or 0) > 0
+        and int(development_snapshot.get("segment_count") or 0)
+        == int(development_snapshot.get("intake_segment_count") or -1)
+        and int(development_snapshot.get("via_count") or 0) > 0
+        and int(development_snapshot.get("route_classification_gap_count") or 0) == 0
+        and not development_snapshot.get("missing_nets")
+    )
 
     return {
         "schema": "eliza.e1_phone_kicad_route_readiness_inventory.v1",
@@ -394,6 +413,16 @@ def build_report(
             "development_placeholder_footprints_present": (
                 real_footprint_snapshot.get("placeholder_footprint_count", 0) > 0
             ),
+            "development_routed_tracks_present": development_snapshot["present"] is True
+            and int(development_snapshot.get("segment_count") or 0) > 0,
+            "development_route_count": development_snapshot.get("route_count", 0),
+            "development_segment_count": development_snapshot.get("segment_count", 0),
+            "development_via_count": development_snapshot.get("via_count", 0),
+            "development_route_classification_gap_count": development_snapshot.get(
+                "route_classification_gap_count", 0
+            ),
+            "development_missing_net_count": len(development_snapshot.get("missing_nets", [])),
+            "local_routed_development_complete_not_release": local_routed_development_complete,
             "missing_required_output_count": missing_output_count,
             "routing_evidence_absent_or_incomplete": routing_evidence_absent,
             "release_state": "blocked_fail_closed",
@@ -420,6 +449,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path, default=root / DEFAULT_REPORT)
     parser.add_argument(
         "--write-report",
+        "--write",
         action="store_true",
         help="Write the YAML report to --report instead of printing to stdout.",
     )

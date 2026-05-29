@@ -139,9 +139,12 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
         out_dir,
         *,
         pca_dim,
-        episode_steps,
-        eval_episodes,
-        seed,
+            episode_steps,
+            action_scale,
+            action_scale_initial,
+            action_scale_increment,
+            eval_episodes,
+            seed,
         requested_total_steps=None,
         domain_rand=True,
     ):
@@ -153,6 +156,9 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
                 "out_dir": out_dir,
                 "pca_dim": pca_dim,
                 "episode_steps": episode_steps,
+                "action_scale": action_scale,
+                "action_scale_initial": action_scale_initial,
+                "action_scale_increment": action_scale_increment,
                 "eval_episodes": eval_episodes,
                 "seed": seed,
                 "requested_total_steps": requested_total_steps,
@@ -170,6 +176,9 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
         include_tasks=("stand_up", "walk_forward", "turn_left"),
         pca_dim=16,
         episode_steps=11,
+        action_scale=0.3,
+        action_scale_initial=0.15,
+        action_scale_increment=0.05,
         eval_episodes=2,
         domain_rand=False,
     )
@@ -178,6 +187,9 @@ def test_unified_train_alberta_splits_total_steps_across_tasks(
     assert captured["steps_per_task"] == 4
     assert captured["requested_total_steps"] == 10
     assert captured["episode_steps"] == 11
+    assert captured["action_scale"] == 0.3
+    assert captured["action_scale_initial"] == 0.15
+    assert captured["action_scale_increment"] == 0.05
     assert captured["eval_episodes"] == 2
     assert captured["domain_rand"] is False
     assert captured["tasks"] == ["stand_up", "walk_forward", "turn_left"]
@@ -256,8 +268,18 @@ def test_module_train_uses_mode_specific_default_outputs(
         episode_steps,
         eval_episodes,
         domain_rand,
+        action_scale,
+        action_scale_initial,
+        action_scale_increment,
+        gamma,
+        normalize,
+        require_phase_success,
+        min_phase_success_rate,
+        phase_eval_interval_steps,
     ):
         captured["alberta"] = out_dir
+        captured["alberta_gamma"] = gamma
+        captured["alberta_normalize"] = normalize
         return {}
 
     monkeypatch.setattr(module_train_cli, "_write_manifest_dry_run", fake_dry_run)
@@ -274,6 +296,8 @@ def test_module_train_uses_mode_specific_default_outputs(
     assert captured["smoke"].name == "text_conditioned_smoke"
     assert captured["full"].name == "asimov_1_brax_mjx_baseline"
     assert captured["alberta"].name == "alberta_text_conditioned"
+    assert captured["alberta_gamma"] == 0.97
+    assert captured["alberta_normalize"] is True
     assert captured["smoke"] != captured["alberta"]
     assert captured["full"] != captured["alberta"]
     assert captured["dry_run"] != captured["alberta"]

@@ -46,6 +46,10 @@ class PhysicalGateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("STATUS: BLOCKED openlane_run_preflight", result.stdout)
         self.assertIn("run/image evidence is still blocked", result.stdout)
+        payload = json.loads((ROOT / "build/reports/openlane_run_preflight.json").read_text())
+        self.assertFalse(payload["summary"]["preflight_ready"])
+        self.assertFalse(payload["summary"]["release_ready"])
+        self.assertIn("release_unblock_action_inventory", payload)
 
     def test_openlane_preflight_writes_mode_specific_reports(self) -> None:
         normal_report = ROOT / "build/reports/openlane_run_preflight.json"
@@ -64,7 +68,10 @@ class PhysicalGateTests(unittest.TestCase):
         release_payload = json.loads(release_report.read_text(encoding="utf-8"))
         self.assertFalse(normal_payload["summary"]["release_mode"])
         self.assertTrue(release_payload["summary"]["release_mode"])
+        self.assertFalse(normal_payload["summary"]["preflight_ready"])
+        self.assertFalse(normal_payload["summary"]["release_ready"])
         self.assertIn("blocker_category_counts", release_payload["summary"])
+        self.assertIn("release_unblock_action_inventory", release_payload)
         self.assertIn("blocked_release_gates", release_payload["diagnostics"])
         self.assertFalse(
             any(

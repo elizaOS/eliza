@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,17 @@ REPORT = REPORT_DIR / "chip-os-objective-evidence-matrix.json"
 
 SCHEMA = "eliza.chip_os_objective_evidence_matrix.v1"
 CLAIM_BOUNDARY = "objective_evidence_matrix_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 PROVEN = "proven"
 BLOCKED = "blocked"
@@ -59,9 +71,9 @@ REQUIREMENTS: tuple[Requirement, ...] = (
     Requirement(
         "cpu_ap_completion_scope",
         "chip",
-        "CPU/AP completion scope allows a real Linux/AOSP-capable AP claim instead of a scaffold or incomplete transcript claim.",
+        "CPU/AP completion scope allows the generated Rocket AP Linux/NPU/AP-benchmark bring-up claim instead of a scaffold or incomplete transcript claim.",
         "cpu_ap_scope.json",
-        closure_evidence="CPU/AP scope report must reach status=pass with release_claim_allowed=true, completion claimed, required generated AP transcripts present, and no missing Linux/RV64GC/AP benchmark/power/process-corner evidence.",
+        closure_evidence="CPU/AP scope report must reach status=pass with generated_ap_scope_claim_allowed=true, release_claim_allowed=false, completion claimed, required generated AP transcripts present, and no missing Linux/RV64GC/AP benchmark evidence; phone-class, Android, power, thermal, process-corner, silicon, and release claims remain blocked separately.",
     ),
     Requirement(
         "cpu_ap_boot_readiness",
@@ -474,7 +486,8 @@ def evaluate_requirement(req: Requirement, report_dir: Path) -> dict[str, Any]:
 
     findings: list[str] = []
     status = data.get("status")
-    if status != req.required_status:
+    normalized_status = status.lower() if isinstance(status, str) else status
+    if normalized_status != req.required_status:
         findings.append(f"report status is {status!r}, expected {req.required_status!r}")
     for field, expected in req.required_fields:
         observed = nested(data, field)
@@ -520,7 +533,9 @@ def build_matrix(report_dir: Path) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "requirements": len(rows),
             "proven": counts.get(PROVEN, 0),

@@ -39,12 +39,45 @@ module e1_chip_top (
     logic msip_unused;
     logic mtip_unused;
 
+    // ── IEEE 1149.1 JTAG TAP (rtl/dft/e1_jtag_tap.sv) ───────────────────────
+    // The pad-facing JTAG port now drives a real TAP controller. TRST_N is
+    // derived from the chip reset (no dedicated TRST pad in the v0 boundary).
+    // TDO is driven from the TAP output and gated by tdo_oe so it is only
+    // active in the Shift-DR/Shift-IR states, matching IEEE 1149.1 tri-state
+    // pad behaviour (driven low otherwise to keep the simulated pad defined).
+    // The decoded controller status (IR / capture/shift/update) is surfaced
+    // for on-chip DFT consumers; only IDCODE/BYPASS data registers are live
+    // until the boundary-scan register is generated from the final pad list
+    // (see rtl/dft/e1_jtag_tap.sv and docs/pd/dft-strategy.md).
+    logic jtag_tdo;
+    logic jtag_tdo_oe;
     /* verilator lint_off UNUSEDSIGNAL */
-    logic unused_test_jtag;
+    logic        jtag_test_logic_reset;
+    logic        jtag_capture_dr;
+    logic        jtag_shift_dr;
+    logic        jtag_update_dr;
+    logic [4:0]  jtag_ir;
+    logic        unused_test_jtag;
     /* verilator lint_on UNUSEDSIGNAL */
 
-    assign unused_test_jtag = ^{TEST_MODE, JTAG_TCK, JTAG_TMS, JTAG_TDI, msip_unused, mtip_unused};
-    assign JTAG_TDO = 1'b0;
+    e1_jtag_tap u_jtag_tap (
+        .tck              (JTAG_TCK),
+        .tms              (JTAG_TMS),
+        .tdi              (JTAG_TDI),
+        .trst_n           (rst_n_sync),
+        .tdo              (jtag_tdo),
+        .tdo_oe           (jtag_tdo_oe),
+        .test_logic_reset (jtag_test_logic_reset),
+        .capture_dr       (jtag_capture_dr),
+        .shift_dr         (jtag_shift_dr),
+        .update_dr        (jtag_update_dr),
+        .ir               (jtag_ir)
+    );
+
+    assign unused_test_jtag = ^{TEST_MODE, msip_unused, mtip_unused,
+                                jtag_test_logic_reset, jtag_capture_dr,
+                                jtag_shift_dr, jtag_update_dr, jtag_ir};
+    assign JTAG_TDO = jtag_tdo_oe ? jtag_tdo : 1'b0;
 
     e1_reset_sync u_reset_sync (
         .clk(CLK_IN),

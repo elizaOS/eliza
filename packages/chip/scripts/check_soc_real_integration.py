@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -65,7 +66,10 @@ INTEGRATED_SOURCES = [
     "rtl/display/e1_display.sv",
     "rtl/cpu/e1_cva6_wrapper.sv",
     "rtl/cpu/e1_cpu_axi_bridge.sv",
+    "rtl/cpu/e1_tiny_cpu_contract.sv",
     "rtl/cpu/e1_cpu_subsystem_stub.sv",
+    "rtl/interconnect/e1_axil_to_mmio.sv",
+    "rtl/interconnect/e1_mmio_arb2.sv",
     "rtl/memory/e1_weight_buffer_sram.sv",
     "rtl/interrupts/e1_clint.sv",
     "rtl/interrupts/e1_plic.sv",
@@ -126,7 +130,11 @@ def _python() -> str:
 
 
 def _now() -> str:
-    return _dt.datetime.now(_dt.UTC).isoformat()
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def repo_safe(text: str) -> str:
+    return text.replace(str(ROOT), ".")
 
 
 def check_lint(verilator: str) -> dict:
@@ -150,36 +158,41 @@ def check_lint(verilator: str) -> dict:
     return {
         "id": "verilator_elaborate_integrated",
         "status": "fail",
-        "detail": "integrated elaboration failed: " + "\n".join(diags[:8]),
+        "detail": repo_safe("integrated elaboration failed: " + "\n".join(diags[:8])),
     }
 
 
 def run_cocotb(verilator: str) -> dict:
-    results = COCOTB_DIR / str(SMOKE["results"])
+    results = ROOT / "verify/cocotb/results" / f"{SMOKE['toplevel']}_{SMOKE['module']}.xml"
     if results.exists():
         results.unlink()
     env_python = _python()
+    env = dict(os.environ)
+    verilator_bin = Path(verilator).parent
+    env["PATH"] = f"{verilator_bin}:{env.get('PATH', '')}"
+    env.update(
+        {
+            "PYTHON": env_python,
+            "COCOTB_TOPLEVEL": str(SMOKE["toplevel"]),
+            "COCOTB_MODULE": str(SMOKE["module"]),
+            "COCOTB_DIR": "verify/cocotb/soc",
+        }
+    )
     rc = subprocess.run(
-        [
-            "make",
-            "-C",
-            str(COCOTB_DIR),
-            f"PYTHON={env_python}",
-            f"TOPLEVEL={SMOKE['toplevel']}",
-            f"MODULE={SMOKE['module']}",
-            f"SIM_BUILD={SMOKE['sim_build']}",
-            f"COCOTB_RESULTS_FILE={SMOKE['results']}",
-        ],
+        ["scripts/run_cocotb.sh"],
         capture_output=True,
         text=True,
         cwd=ROOT,
+        env=env,
     )
     if not results.is_file():
         last = rc.stderr.splitlines()[-1] if rc.stderr else ""
         return {
             "id": SMOKE["id"],
             "status": "blocked",
-            "detail": f"no {SMOKE['results']}; cocotb/verilator unavailable. {last}",
+            "detail": repo_safe(
+                f"no {results.relative_to(ROOT)}; cocotb/verilator unavailable. {last}"
+            ),
         }
     tree = ET.parse(results)
     seen, failed = set(), []
@@ -252,7 +265,13 @@ def main() -> int:
             "verify/cocotb/soc/Makefile",
         ],
         "as_of": _now(),
+        "generated_utc": _now(),
         "subsystem": "soc-integration",
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "linux_boot_claim_allowed": False,
+        "production_cpu_claim_allowed": False,
+        "real_cpu_execution_claim_allowed": False,
         "claim_boundary": (
             "Behind +define+E1_SOC_REAL_IRQ / +define+E1_SOC_REAL_DRAM, "
             "e1_soc_top composes the production RISC-V CLINT (@0x0200_0000, "

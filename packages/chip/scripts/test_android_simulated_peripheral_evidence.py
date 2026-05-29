@@ -17,6 +17,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_android_simulated_peripheral_evidence as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -131,6 +137,7 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
                     )
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("peripheral_evidence_blocked:rear_camera", codes)
         self.assertIn("peripheral_result_not_pass:wifi", codes)
@@ -140,6 +147,26 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
         self.assertIn("peripheral_capture_probe_wifi_disabled", codes)
         self.assertIn("aosp_chip_product_declares_no_audio_hal", codes)
         self.assertIn("cuttlefish_e1_missing_phone_hals", codes)
+        self.assertEqual(
+            report["summary"]["blocker_dependency_counts"],
+            report["blocker_dependency_counts"],
+        )
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
+        self.assertGreater(report["blocker_dependency_counts"]["live_device_validation"], 0)
+        self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 3)
+        command_ids = {item["id"] for item in report["next_command_plan"]}
+        self.assertIn("capture_android_simulated_peripheral_evidence", command_ids)
+        self.assertIn("repair_android_peripheral_product_wiring", command_ids)
+        capture_batch = next(
+            item
+            for item in report["next_command_plan"]
+            if item["id"] == "capture_android_simulated_peripheral_evidence"
+        )
+        self.assertIn("rear_camera", capture_batch["components"])
+        self.assertIn(
+            "capture_simulated_peripheral_evidence.py",
+            " ".join(capture_batch["commands"]),
+        )
 
     def test_all_pass_logs_and_consistent_sources_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,7 +210,11 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertEqual(report["next_command_plan"], [])
+        self.assertEqual(report["blocker_dependency_counts"], {})
+        self.assertEqual(report["summary"]["next_command_batch_count"], 0)
+        assert_false_claim_flags(self, report)
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
     def test_pass_log_from_env_override_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -232,6 +263,7 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
                 report = gate.run_check(Namespace())
         codes = {finding["code"] for finding in report["findings"]}
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertIn("peripheral_log_provenance_missing:wifi", codes)
         self.assertIn("peripheral_log_not_canonical_probe:wifi", codes)
 

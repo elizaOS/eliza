@@ -14,35 +14,41 @@ modules under this directory if needed.
 
 ## Active adapters
 
-### `CHI bridge ID 6 → Fabric ID 4`
+### `CHI bridge ID 6 → Fabric ID 8`
 
 ```
-chi_m_awid[3:0]      → fab_m_awid[0][3:0]
-fab_m_bid[0][3:0]    → chi_m_bid[5:0]  = {2'b00, fab_m_bid[0]}
-chi_m_arid[3:0]      → fab_m_arid[0][3:0]
-fab_m_rid[0][3:0]    → chi_m_rid[5:0]  = {2'b00, fab_m_rid[0]}
+{2'b00, chi_m_awid}  → fab_m_awid[0][7:0]
+fab_m_bid[0][5:0]    → chi_m_bid[5:0]
+{2'b00, chi_m_arid}  → fab_m_arid[0][7:0]
+fab_m_rid[0][5:0]    → chi_m_rid[5:0]
 ```
 
 Reason: `e1_chi_to_axi4_bridge` declares `parameter ID_WIDTH=6` to
 carry AMBA CHI's source-id field; `e1_axi4_interconnect` runs with
-`ID_WIDTH=4` because the cluster + IOMMU emit 4-bit IDs at the fabric
-attach point.  The two high bits of the CHI ID are reserved for the
-future multi-cluster cluster-id and are currently zero.
+`ID_WIDTH=8` to preserve the production cluster AXI4 ID contract.  The
+two high fabric bits are zero for CHI traffic.
 
-### `IOMMU downstream ID 6 → Fabric ID 4`
+### `IOMMU downstream ID 6 → Fabric ID 8`
 
 Same pattern as the CHI bridge.  The IOMMU's `d_*id` ports are 6-bit;
-the fabric attach drops to 4 bits.  Reserved high 2 bits become zero
-on the way back.
+the fabric attach zero-pads to 8 bits and slices response IDs back to
+6 bits.
+
+### `CVA6 slot-0 ID 4 → Fabric ID 8`
+
+The optional `+define+E1_CLUSTER_SLOT0_CVA6` path drives a 4-bit-ID,
+64-bit-data AXI4 master.  `e1_axi4_width_converter` upsizes data to
+128 bits; the SoC attach point zero-pads CVA6 request IDs to the
+8-bit fabric contract and slices response IDs back to 4 bits.
+
+### `Cluster AXI4 ID 8 → Fabric ID 8`
+
+No ID adapter is needed.  The default `e1_cluster_top` instance exposes
+eight production-shape per-core AXI4 master ports, all directly attached
+to fabric masters 3..10.  In lite mode those ports remain quiet until
+production per-core wrappers land.
 
 ## Pending adapters (BLOCKED on domain RTL landing)
-
-### `Cluster AXI4 ID 8 → Fabric ID 4`
-
-Will be needed once `e1_cluster_top` exits lite tie-off mode and
-actually drives its AXI4 master ports.  Plan: drop the high 4 bits
-(cluster + cluster-local hart bits) at the attach point; rebuild on
-the response side from the fabric's `m_idx` prefix.
 
 ### `LSU L1D 128-bit data ↔ L1D module 2R/2W port pair`
 

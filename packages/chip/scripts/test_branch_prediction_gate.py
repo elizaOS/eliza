@@ -510,6 +510,258 @@ def write_valid_evidence_set(root: Path) -> None:
             },
         },
     )
+    proxy_names = sorted(branch.REQUIRED_FULL_PROXY_SHARD_TRACES)
+    workload_index = {name: index for index, name in enumerate(workload_names)}
+    proxy_source_branch_total = sum(10 + workload_index[name] for name in proxy_names)
+    proxy_source_instruction_total = sum(1000 + workload_index[name] for name in proxy_names)
+    write_json(
+        root / branch.FULL_PROXY_RTL_REPLAY_REL,
+        {
+            "schema": "eliza.bpu_mpki.v1",
+            "generated_at_utc": "2026-05-23T12:00:00+00:00",
+            "harness": "cocotb-rtl-bpu_top",
+            "evidence_class": "qemu_rv64_workload",
+            "claim_boundary": (
+                "qemu_rv64_workload evidence is full RTL replay coverage for local "
+                "duty-cycle traces; it is not SPEC2017, Android, JavaScript-engine, "
+                "phone, or release evidence."
+            ),
+            "phone_claim_allowed": False,
+            "release_claim_allowed": False,
+            "branch_replay_cap": None,
+            "branch_replay_window_mode": "prefix",
+            "source_branch_count": proxy_source_branch_total,
+            "replayed_branch_count": proxy_source_branch_total,
+            "source_instruction_count": proxy_source_instruction_total,
+            "replayed_instruction_count": proxy_source_instruction_total,
+            "replay_fraction": 1.0,
+            "instruction_replay_fraction": 1.0,
+            "full_trace_replay": True,
+            "aggregate": {
+                "branch_count": proxy_source_branch_total,
+                "instruction_count": proxy_source_instruction_total,
+                "misprediction_count": 1,
+                "mpki": 1.0,
+            },
+            "claim_policy": {
+                "spec2017_claim": False,
+                "android_claim": False,
+                "v8_claim": False,
+                "cbp5_claim": False,
+                "agent_mpki_claim": False,
+                "decode_mpki_claim": False,
+                "workload_mpki_claim": False,
+                "reason": "Proxy workload evidence is not external production trace evidence.",
+            },
+            "workloads": {
+                name: {
+                    "trace_class": "qemu_rv64_workload",
+                    "branch_count": 10 + workload_index[name],
+                    "instruction_count": 1000 + workload_index[name],
+                    "source_instruction_count": 1000 + workload_index[name],
+                    "source_branch_count": 10 + workload_index[name],
+                    "replay_fraction": 1.0,
+                    "instruction_replay_fraction": 1.0,
+                    "full_trace_replay": True,
+                }
+                for name in proxy_names
+            },
+        },
+    )
+    io_media_names = sorted(branch.REQUIRED_FULL_IO_MEDIA_SHARD_TRACES)
+    io_media_source_branch_total = sum(10 + workload_index[name] for name in io_media_names)
+    io_media_source_instruction_total = sum(1000 + workload_index[name] for name in io_media_names)
+    write_json(
+        root / branch.FULL_IO_MEDIA_RTL_REPLAY_REL,
+        {
+            "schema": "eliza.bpu_mpki.v1",
+            "generated_at_utc": "2026-05-23T12:00:00+00:00",
+            "harness": "cocotb-rtl-bpu_top",
+            "evidence_class": "qemu_rv64_workload",
+            "claim_boundary": (
+                "qemu_rv64_workload evidence is full RTL replay coverage for local "
+                "duty-cycle traces; it is not SPEC2017, Android, JavaScript-engine, "
+                "phone, or release evidence."
+            ),
+            "phone_claim_allowed": False,
+            "release_claim_allowed": False,
+            "branch_replay_cap": None,
+            "branch_replay_window_mode": "prefix",
+            "source_branch_count": io_media_source_branch_total,
+            "replayed_branch_count": io_media_source_branch_total,
+            "source_instruction_count": io_media_source_instruction_total,
+            "replayed_instruction_count": io_media_source_instruction_total,
+            "replay_fraction": 1.0,
+            "instruction_replay_fraction": 1.0,
+            "full_trace_replay": True,
+            "aggregate": {
+                "branch_count": io_media_source_branch_total,
+                "instruction_count": io_media_source_instruction_total,
+                "misprediction_count": 1,
+                "mpki": 1.0,
+            },
+            "claim_policy": {
+                "spec2017_claim": False,
+                "android_claim": False,
+                "v8_claim": False,
+                "cbp5_claim": False,
+                "agent_mpki_claim": False,
+                "decode_mpki_claim": False,
+                "workload_mpki_claim": False,
+                "reason": "IO/media workload evidence is not external production trace evidence.",
+            },
+            "workloads": {
+                name: {
+                    "trace_class": "qemu_rv64_workload",
+                    "branch_count": 10 + workload_index[name],
+                    "instruction_count": 1000 + workload_index[name],
+                    "source_instruction_count": 1000 + workload_index[name],
+                    "source_branch_count": 10 + workload_index[name],
+                    "replay_fraction": 1.0,
+                    "instruction_replay_fraction": 1.0,
+                    "full_trace_replay": True,
+                }
+                for name in io_media_names
+            },
+        },
+    )
+    system_gpu_names = sorted(branch.REQUIRED_FULL_SYSTEM_GPU_SHARD_TRACES)
+    system_gpu_source_branch_total = sum(10 + workload_index[name] for name in system_gpu_names)
+    system_gpu_source_instruction_total = sum(
+        1000 + workload_index[name] for name in system_gpu_names
+    )
+    write_json(
+        root / branch.FULL_SYSTEM_GPU_RTL_REPLAY_REL,
+        {
+            "schema": "eliza.bpu_mpki.v1",
+            "generated_at_utc": "2026-05-23T12:00:00+00:00",
+            "harness": "cocotb-rtl-bpu_top",
+            "evidence_class": "qemu_rv64_workload",
+            "claim_boundary": (
+                "qemu_rv64_workload evidence is full RTL replay coverage for local "
+                "duty-cycle traces; it is not SPEC2017, Android, JavaScript-engine, "
+                "phone, or release evidence."
+            ),
+            "phone_claim_allowed": False,
+            "release_claim_allowed": False,
+            "branch_replay_cap": None,
+            "branch_replay_window_mode": "prefix",
+            "source_branch_count": system_gpu_source_branch_total,
+            "replayed_branch_count": system_gpu_source_branch_total,
+            "source_instruction_count": system_gpu_source_instruction_total,
+            "replayed_instruction_count": system_gpu_source_instruction_total,
+            "replay_fraction": 1.0,
+            "instruction_replay_fraction": 1.0,
+            "full_trace_replay": True,
+            "aggregate": {
+                "branch_count": system_gpu_source_branch_total,
+                "instruction_count": system_gpu_source_instruction_total,
+                "misprediction_count": 1,
+                "mpki": 1.0,
+            },
+            "claim_policy": {
+                "spec2017_claim": False,
+                "android_claim": False,
+                "v8_claim": False,
+                "cbp5_claim": False,
+                "agent_mpki_claim": False,
+                "decode_mpki_claim": False,
+                "workload_mpki_claim": False,
+                "reason": "System/GPU workload evidence is not external production trace evidence.",
+            },
+            "workloads": {
+                name: {
+                    "trace_class": "qemu_rv64_workload",
+                    "branch_count": 10 + workload_index[name],
+                    "instruction_count": 1000 + workload_index[name],
+                    "source_instruction_count": 1000 + workload_index[name],
+                    "source_branch_count": 10 + workload_index[name],
+                    "replay_fraction": 1.0,
+                    "instruction_replay_fraction": 1.0,
+                    "full_trace_replay": True,
+                }
+                for name in system_gpu_names
+            },
+        },
+    )
+    def write_full_rtl_shard(
+        relpath: str,
+        names: set[str],
+        reason: str,
+    ) -> None:
+        shard_names = sorted(names)
+        source_branch_total = sum(10 + workload_index[name] for name in shard_names)
+        source_instruction_total = sum(1000 + workload_index[name] for name in shard_names)
+        write_json(
+            root / relpath,
+            {
+                "schema": "eliza.bpu_mpki.v1",
+                "generated_at_utc": "2026-05-23T12:00:00+00:00",
+                "harness": "cocotb-rtl-bpu_top",
+                "evidence_class": "qemu_rv64_workload",
+                "claim_boundary": (
+                    "qemu_rv64_workload evidence is full RTL replay coverage for local "
+                    "duty-cycle traces; it is not SPEC2017, Android, JavaScript-engine, "
+                    "phone, or release evidence."
+                ),
+                "phone_claim_allowed": False,
+                "release_claim_allowed": False,
+                "branch_replay_cap": None,
+                "branch_replay_window_mode": "prefix",
+                "source_branch_count": source_branch_total,
+                "replayed_branch_count": source_branch_total,
+                "source_instruction_count": source_instruction_total,
+                "replayed_instruction_count": source_instruction_total,
+                "replay_fraction": 1.0,
+                "instruction_replay_fraction": 1.0,
+                "full_trace_replay": True,
+                "aggregate": {
+                    "branch_count": source_branch_total,
+                    "instruction_count": source_instruction_total,
+                    "misprediction_count": 1,
+                    "mpki": 1.0,
+                },
+                "claim_policy": {
+                    "spec2017_claim": False,
+                    "android_claim": False,
+                    "v8_claim": False,
+                    "cbp5_claim": False,
+                    "agent_mpki_claim": False,
+                    "decode_mpki_claim": False,
+                    "workload_mpki_claim": False,
+                    "reason": reason,
+                },
+                "workloads": {
+                    name: {
+                        "trace_class": "qemu_rv64_workload",
+                        "branch_count": 10 + workload_index[name],
+                        "instruction_count": 1000 + workload_index[name],
+                        "source_instruction_count": 1000 + workload_index[name],
+                        "source_branch_count": 10 + workload_index[name],
+                        "replay_fraction": 1.0,
+                        "instruction_replay_fraction": 1.0,
+                        "full_trace_replay": True,
+                    }
+                    for name in shard_names
+                },
+            },
+        )
+
+    write_full_rtl_shard(
+        branch.FULL_BROWSER_BUILD_CRYPTO_RTL_REPLAY_REL,
+        branch.REQUIRED_FULL_BROWSER_BUILD_CRYPTO_SHARD_TRACES,
+        "Browser/build/crypto workload evidence is not external production trace evidence.",
+    )
+    write_full_rtl_shard(
+        branch.FULL_COMPRESSION_RTL_REPLAY_REL,
+        branch.REQUIRED_FULL_COMPRESSION_SHARD_TRACES,
+        "Compression workload evidence is not external production trace evidence.",
+    )
+    write_full_rtl_shard(
+        branch.FULL_AGENT_RTL_REPLAY_REL,
+        branch.REQUIRED_FULL_AGENT_SHARD_TRACES,
+        "Agent workload evidence is not external production trace evidence.",
+    )
 
 
 class BranchPredictionEvidenceGateTest(unittest.TestCase):

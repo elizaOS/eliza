@@ -44,8 +44,14 @@ SUPPORTED_REWARD_KEYS = {
     "torso_height_tolerance_ratio",
     "upright_weight",
     "velocity_track_weight",
+    "movement_progress_weight",
     "yaw_track_weight",
     "gait_phase_weight",
+    "stance_contact_weight",
+    "foot_clearance_weight",
+    "foot_slip_weight",
+    "foot_spacing_weight",
+    "self_collision_weight",
     "action_rate_weight",
     "energy_weight",
     "progress_weight",
@@ -56,6 +62,8 @@ SUPPORTED_SUCCESS_KEYS = {
     "torso_z_max_m",
     "torso_z_min_ratio",
     "torso_z_max_ratio",
+    "torso_z_delta_min_m",
+    "torso_z_delta_min_ratio",
     "hold_s",
     "fall_pitch_rad",
     "fall_roll_rad",
@@ -67,8 +75,17 @@ SUPPORTED_SUCCESS_KEYS = {
     "delta_yaw_rad_max",
     "abs_delta_yaw_rad_min",
     "window_s",
+    "max_abs_delta_x_m",
+    "max_abs_delta_y_m",
     "max_lateral_drift_m",
+    "max_forward_drift_m",
+    "max_translation_drift_m",
+    "max_abs_delta_yaw_rad",
     "no_fall",
+    "min_alternating_foot_contacts",
+    "min_swing_foot_clearance_m",
+    "max_foot_slip_m_s",
+    "max_self_collision_count",
 }
 
 
@@ -82,7 +99,7 @@ def _task_support(task) -> tuple[bool, list[str]]:
         reasons.append(f"unsupported_reward_keys={unsupported_reward}")
     if unsupported_success:
         reasons.append(f"unsupported_success_keys={unsupported_success}")
-    if task.init_state not in (None, "stand", "sit", "crouch"):
+    if task.init_state not in (None, "stand", "sit", "crouch", "prone"):
         reasons.append(f"unsupported_init_state={task.init_state!r}")
     return not reasons, reasons
 
@@ -97,6 +114,63 @@ def _text_variant_collisions(curriculum) -> list[dict[str, Any]]:
         for variant, task_ids in sorted(seen.items())
         if len(set(task_ids)) > 1
     ]
+
+
+def _start_state_smoke(
+    env, task_ids: tuple[str, ...], launch_tasks: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    reports: list[dict[str, Any]] = []
+    task_by_id = {task.id: task for task in env.active_tasks}
+    original_tasks = env.active_tasks
+    for task_id in task_ids:
+        task = task_by_id.get(task_id)
+        if task is None:
+            continue
+        row: dict[str, Any] = {
+            "task_id": task_id,
+            "in_launch_tasks": task_id in launch_tasks,
+            "init_state": task.init_state or "stand",
+        }
+        env.active_tasks = [task]
+        try:
+            _, info = env.reset(seed=0)
+            action = env.action_space.sample()
+            action[...] = 0.0
+            _, _, terminated, truncated, step_info = env.step(action)
+            foot = getattr(env, "_last_foot_telemetry", None)
+            is_launch_task = task_id in launch_tasks
+            expects_foot_support = (task.init_state or "stand") in ("stand", "crouch")
+            has_biped_support = bool(
+                step_info.get("left_foot_contact", False)
+            ) and bool(step_info.get("right_foot_contact", False))
+            row.update(
+                {
+                    "ok": (
+                        (not bool(terminated))
+                        and (has_biped_support if expects_foot_support else True)
+                    )
+                    if is_launch_task
+                    else True,
+                    "init_torso_z": info.get("init_torso_z"),
+                    "stand_height_m": info.get("stand_height_m"),
+                    "init_upright_proj": info.get("init_upright_proj"),
+                    "ncon": int(getattr(env._data, "ncon", 0)),  # noqa: SLF001
+                    "left_foot_contact": bool(step_info.get("left_foot_contact", False)),
+                    "right_foot_contact": bool(step_info.get("right_foot_contact", False)),
+                    "requires_biped_support": expects_foot_support,
+                    "biped_support": has_biped_support,
+                    "min_foot_z": float(min(foot[2], foot[3])) if foot is not None else None,
+                    "first_step_terminated": bool(terminated),
+                    "first_step_truncated": bool(truncated),
+                    "done_reason": step_info.get("done_reason"),
+                }
+            )
+        except Exception as exc:  # pragma: no cover - integration diagnostic
+            row.update({"ok": False, "error": str(exc)})
+        finally:
+            env.active_tasks = original_tasks
+        reports.append(row)
+    return reports
 
 
 def _profile_report(profile_id: str, *, launch_tasks: tuple[str, ...]) -> dict[str, Any]:
@@ -115,10 +189,12 @@ def _profile_report(profile_id: str, *, launch_tasks: tuple[str, ...]) -> dict[s
         if value is not None and not Path(value).exists()
     ]
 
+    smoke_tasks = tuple(dict.fromkeys((*launch_tasks, "sit_down", "get_up")))
     env = make_text_conditioned_env(
         profile_id,
         config=ProfileEnvConfig(
-            include_tasks=launch_tasks,
+            tier_subset=(1, 2),
+            include_tasks=smoke_tasks,
             exclude_tasks=(),
             pca_dim=DEFAULT_PCA_DIM,
             episode_steps=4,
@@ -127,7 +203,9 @@ def _profile_report(profile_id: str, *, launch_tasks: tuple[str, ...]) -> dict[s
     )
     obs_dim = int(env.observation_space.shape[0])
     action_dim = int(env.action_space.shape[0])
-    expected_proprio_dim = 3 + 3 + 3 + 3 * len(leg_joints)
+    # gyro + gravity + command + root_linvel + foot/contact telemetry
+    # + joint qpos/qvel/last_action.
+    expected_proprio_dim = 3 + 3 + 3 + 3 + 8 + 3 * len(leg_joints)
 
     mujoco_compile_ok = None
     mujoco_compile_error = None
@@ -137,6 +215,43 @@ def _profile_report(profile_id: str, *, launch_tasks: tuple[str, ...]) -> dict[s
     except Exception as exc:  # pragma: no cover - exercised in integration use
         mujoco_compile_ok = False
         mujoco_compile_error = str(exc)
+    start_state_smoke = (
+        _start_state_smoke(env, smoke_tasks, launch_tasks)
+        if mujoco_compile_ok is True
+        else []
+    )
+    contact_geom_counts = (
+        {
+            "floor": int(env._floor_geom_ids.size),  # noqa: SLF001
+            "left_foot": int(env._foot_geom_ids["left"].size),  # noqa: SLF001
+            "right_foot": int(env._foot_geom_ids["right"].size),  # noqa: SLF001
+            "declared": profile.contact is not None,
+            "declared_exact_geoms": bool(
+                profile.contact
+                and profile.contact.floor_geom_names
+                and profile.contact.left_foot_geom_names
+                and profile.contact.right_foot_geom_names
+            ),
+        }
+        if mujoco_compile_ok is True
+        else {
+            "floor": 0,
+            "left_foot": 0,
+            "right_foot": 0,
+            "declared": profile.contact is not None,
+            "declared_exact_geoms": bool(
+                profile.contact
+                and profile.contact.floor_geom_names
+                and profile.contact.left_foot_geom_names
+                and profile.contact.right_foot_geom_names
+            ),
+        }
+    )
+    launch_reset_ok = all(
+        bool(row.get("ok", False))
+        for row in start_state_smoke
+        if row.get("in_launch_tasks") is True
+    )
 
     return {
         "profile_id": profile_id,
@@ -150,9 +265,17 @@ def _profile_report(profile_id: str, *, launch_tasks: tuple[str, ...]) -> dict[s
         "missing_assets": missing_assets,
         "mujoco_compile_ok": mujoco_compile_ok,
         "mujoco_compile_error": mujoco_compile_error,
+        "contact_geom_counts": contact_geom_counts,
+        "start_state_smoke": start_state_smoke,
         "ok": (
             not missing_assets
             and mujoco_compile_ok is True
+            and contact_geom_counts["declared"] is True
+            and contact_geom_counts["declared_exact_geoms"] is True
+            and contact_geom_counts["floor"] >= 1
+            and contact_geom_counts["left_foot"] >= 1
+            and contact_geom_counts["right_foot"] >= 1
+            and launch_reset_ok
             and action_dim == len(leg_joints)
             and obs_dim == expected_proprio_dim + DEFAULT_PCA_DIM
         ),

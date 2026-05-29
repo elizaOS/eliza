@@ -188,6 +188,144 @@ def test_video_review_accepts_combined_boundary_step_commands(tmp_path: Path) ->
     assert report["videos"][0]["telemetry"]["failed_commands"] == []
 
 
+def test_video_review_rejects_walk_without_physical_progress(tmp_path: Path) -> None:
+    video = tmp_path / "evidence" / "robot-a" / "robot-a_walk_forward.mp4"
+    _write_video(video, frames=8, moving=True)
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps(
+            {
+                "rollout_ok": True,
+                "task_id": "walk_forward",
+                "delta_x_m": {"final": None},
+                "delta_yaw_rad": {"final": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = review_videos(
+        tmp_path / "evidence",
+        out_dir=tmp_path / "review",
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+
+    assert report["ok"] is False
+    assert report["videos"][0]["checks"]["telemetry_action_progress"] is False
+    assert report["videos"][0]["telemetry"]["action_progress_ok"] is False
+
+
+def test_video_review_accepts_walk_with_physical_progress(tmp_path: Path) -> None:
+    video = tmp_path / "evidence" / "robot-a" / "robot-a_walk_forward.mp4"
+    _write_video(video, frames=8, moving=True)
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps(
+            {
+                "rollout_ok": True,
+                "task_id": "walk_forward",
+                "delta_x_m": {"final": 0.20},
+                "delta_yaw_rad": {"final": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = review_videos(
+        tmp_path / "evidence",
+        out_dir=tmp_path / "review",
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+
+    assert report["ok"] is True
+    assert report["videos"][0]["checks"]["telemetry_action_progress"] is True
+
+
+def test_video_review_shuffle_below_threshold_fails(tmp_path: Path) -> None:
+    # 0.08 m of forward drift is a shuffle, not walking — must fail the 0.15 m bar.
+    video = tmp_path / "evidence" / "robot-a" / "robot-a_walk_forward.mp4"
+    _write_video(video, frames=8, moving=True)
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps(
+            {
+                "rollout_ok": True,
+                "task_id": "walk_forward",
+                "delta_x_m": {"final": 0.08},
+                "delta_yaw_rad": {"final": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    report = review_videos(
+        tmp_path / "evidence",
+        out_dir=tmp_path / "review",
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+    assert report["ok"] is False
+    assert report["videos"][0]["checks"]["telemetry_action_progress"] is False
+
+
+def test_manual_good_cannot_upgrade_failing_clip(tmp_path: Path) -> None:
+    # A hand-written "good" annotation must NOT make a clip that fails the
+    # physical-progress check count toward all_videos_reviewed_good.
+    evidence = tmp_path / "evidence"
+    video = evidence / "robot-a" / "robot-a_walk_forward.mp4"
+    _write_video(video, frames=8, moving=True)
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps(
+            {
+                "rollout_ok": True,
+                "task_id": "walk_forward",
+                "delta_x_m": {"final": None},  # no real forward progress
+                "delta_yaw_rad": {"final": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    review_dir = tmp_path / "review"
+    review_dir.mkdir(parents=True, exist_ok=True)
+    (review_dir / "manual_frame_review.json").write_text(
+        json.dumps(
+            {
+                "videos": [
+                    {
+                        "video": "robot-a/robot-a_walk_forward.mp4",
+                        "verdict": "good",
+                        "review_notes": "looks upright to me",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    report = review_videos(
+        evidence,
+        out_dir=review_dir,
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+    assert report["ok"] is False
+    assert report["all_videos_reviewed_good"] is False
+    assert report["videos"][0]["ok"] is False
+
+
 def test_video_review_can_require_telemetry(tmp_path: Path) -> None:
     _write_video(tmp_path / "evidence" / "robot-a" / "robot-a_walk.mp4", frames=8, moving=True)
 

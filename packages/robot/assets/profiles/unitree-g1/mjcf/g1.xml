@@ -105,10 +105,10 @@
                     diaginertia="0.00167218 0.0016161 0.000217621"/>
                   <joint name="left_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-50 50"/>
                   <geom class="visual" material="black" mesh="left_ankle_roll_link"/>
-                  <geom class="foot" pos="-0.05 0.025 -0.03"/>
-                  <geom class="foot" pos="-0.05 -0.025 -0.03"/>
-                  <geom class="foot" pos="0.12 0.03 -0.03"/>
-                  <geom class="foot" pos="0.12 -0.03 -0.03"/>
+                  <geom name="left_foot_rear_outer" class="foot" pos="-0.05 0.025 -0.03"/>
+                  <geom name="left_foot_rear_inner" class="foot" pos="-0.05 -0.025 -0.03"/>
+                  <geom name="left_foot_front_outer" class="foot" pos="0.12 0.03 -0.03"/>
+                  <geom name="left_foot_front_inner" class="foot" pos="0.12 -0.03 -0.03"/>
                   <site name="left_foot"/>
                 </body>
               </body>
@@ -151,10 +151,10 @@
                     diaginertia="0.00167218 0.0016161 0.000217621"/>
                   <joint name="right_ankle_roll_joint" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-50 50"/>
                   <geom class="visual" material="black" mesh="right_ankle_roll_link"/>
-                  <geom class="foot" pos="-0.05 0.025 -0.03"/>
-                  <geom class="foot" pos="-0.05 -0.025 -0.03"/>
-                  <geom class="foot" pos="0.12 0.03 -0.03"/>
-                  <geom class="foot" pos="0.12 -0.03 -0.03"/>
+                  <geom name="right_foot_rear_inner" class="foot" pos="-0.05 0.025 -0.03"/>
+                  <geom name="right_foot_rear_outer" class="foot" pos="-0.05 -0.025 -0.03"/>
+                  <geom name="right_foot_front_inner" class="foot" pos="0.12 0.03 -0.03"/>
+                  <geom name="right_foot_front_outer" class="foot" pos="0.12 -0.03 -0.03"/>
                   <site name="right_foot"/>
                 </body>
               </body>

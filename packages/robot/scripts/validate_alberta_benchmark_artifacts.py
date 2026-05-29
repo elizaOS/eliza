@@ -79,6 +79,346 @@ def _matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
     return all(_finite_number(value) for value in baseline)
 
 
+def _motion_matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
+    matrix = result.get("motion_matrix")
+    baseline = result.get("motion_baseline")
+    if not isinstance(matrix, list) or not isinstance(baseline, list):
+        return False
+    if len(matrix) != n_tasks or len(baseline) != n_tasks:
+        return False
+    required = (
+        "success_rate",
+        "collision_rate",
+        "passed_obstacle_rate",
+        "mean_forward_progress_m",
+        "mean_goal_dist",
+        "min_obstacle_clearance_m",
+    )
+    for row in matrix:
+        if not isinstance(row, list) or len(row) != n_tasks:
+            return False
+        for item in row:
+            if not isinstance(item, dict):
+                return False
+            if not all(_finite_number(item.get(key)) for key in required):
+                return False
+    for item in baseline:
+        if not isinstance(item, dict):
+            return False
+        if not all(_finite_number(item.get(key)) for key in required):
+            return False
+    return True
+
+
+def _trajectory_matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
+    matrix = result.get("trajectory_matrix")
+    if not isinstance(matrix, list) or len(matrix) != n_tasks:
+        return False
+    for row in matrix:
+        if not isinstance(row, list) or len(row) != n_tasks:
+            return False
+        for item in row:
+            if not isinstance(item, dict):
+                return False
+            steps = item.get("steps")
+            summary = item.get("summary")
+            if not isinstance(steps, list) or len(steps) < 2:
+                return False
+            if not isinstance(summary, dict):
+                return False
+            if not _finite_number(summary.get("mean_forward_progress_m")):
+                return False
+            endpoints = (steps[0], steps[-1])
+            if not all(isinstance(step, dict) for step in endpoints):
+                return False
+            if not all(
+                _finite_number(step.get("x")) and _finite_number(step.get("y"))
+                for step in endpoints
+            ):
+                return False
+    return True
+
+
+def _average_motion(items: Any) -> dict[str, float] | None:
+    if not isinstance(items, list) or not items:
+        return None
+    required = (
+        "success_rate",
+        "passed_obstacle_rate",
+        "mean_forward_progress_m",
+        "mean_return",
+    )
+    rows = [item for item in items if isinstance(item, dict)]
+    if len(rows) != len(items):
+        return None
+    out: dict[str, float] = {}
+    for key in required:
+        values = [item.get(key) for item in rows]
+        if not all(_finite_number(value) for value in values):
+            return None
+        out[key] = float(sum(float(value) for value in values) / len(values))
+    return out
+
+
+def _final_motion_row_average(result: dict[str, Any]) -> dict[str, float] | None:
+    matrix = result.get("motion_matrix")
+    if not isinstance(matrix, list) or not matrix:
+        return None
+    return _average_motion(matrix[-1])
+
+
+def _obstacle_baseline_comparisons(
+    results: list[Any],
+) -> dict[str, Any]:
+    by_learner: dict[str, dict[str, float]] = {}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        name = result.get("name")
+        if name not in REQUIRED_LEARNERS:
+            continue
+        baseline = _average_motion(result.get("motion_baseline"))
+        final = _final_motion_row_average(result)
+        if baseline is None or final is None:
+            continue
+        by_learner[str(name)] = {
+            "baseline_success_rate": baseline["success_rate"],
+            "baseline_passed_obstacle_rate": baseline["passed_obstacle_rate"],
+            "baseline_forward_progress_m": baseline["mean_forward_progress_m"],
+            "baseline_return": baseline["mean_return"],
+            "final_success_rate": final["success_rate"],
+            "final_passed_obstacle_rate": final["passed_obstacle_rate"],
+            "final_forward_progress_m": final["mean_forward_progress_m"],
+            "final_return": final["mean_return"],
+            "delta_success_rate": final["success_rate"] - baseline["success_rate"],
+            "delta_passed_obstacle_rate": (
+                final["passed_obstacle_rate"] - baseline["passed_obstacle_rate"]
+            ),
+            "delta_forward_progress_m": (
+                final["mean_forward_progress_m"] - baseline["mean_forward_progress_m"]
+            ),
+            "delta_return": final["mean_return"] - baseline["mean_return"],
+        }
+    baseline_is_control = all(
+        learner in by_learner
+        and by_learner[learner]["baseline_forward_progress_m"] <= 0.5
+        and by_learner[learner]["baseline_passed_obstacle_rate"] <= 0.25
+        and by_learner[learner]["baseline_success_rate"] <= 0.25
+        for learner in REQUIRED_LEARNERS
+    )
+    learning_beats_baseline = any(
+        learner in by_learner
+        and by_learner[learner]["delta_forward_progress_m"] >= 1.0
+        and by_learner[learner]["delta_passed_obstacle_rate"] >= 0.5
+        and by_learner[learner]["delta_success_rate"] >= 0.5
+        for learner in REQUIRED_LEARNERS
+    )
+    return {
+        "by_learner": by_learner,
+        "baseline_is_control": baseline_is_control,
+        "learning_beats_baseline": learning_beats_baseline,
+    }
+
+
+def _trace_bool(value: Any) -> bool:
+    return bool(value) if isinstance(value, bool) else False
+
+
+def _trace_float(value: Any) -> float | None:
+    return float(value) if _finite_number(value) else None
+
+
+def _trace_summary_consistent(trace: dict[str, Any]) -> bool:
+    steps = trace.get("steps")
+    summary = trace.get("summary")
+    obstacle = trace.get("obstacle")
+    goal = trace.get("goal")
+    if not isinstance(steps, list) or len(steps) < 2:
+        return False
+    if not isinstance(summary, dict) or not isinstance(obstacle, dict):
+        return False
+    if not isinstance(goal, list) or len(goal) != 2:
+        return False
+    if not all(_finite_number(value) for value in goal):
+        return False
+    if not all(
+        _finite_number(obstacle.get(key)) for key in ("x", "y", "radius")
+    ):
+        return False
+    rows = [step for step in steps if isinstance(step, dict)]
+    if len(rows) != len(steps):
+        return False
+    if not all(_finite_number(step.get("x")) and _finite_number(step.get("y")) for step in rows):
+        return False
+    final = rows[-1]
+    xs = [float(step["x"]) for step in rows]
+    obstacle_x = float(obstacle["x"])
+    obstacle_radius = float(obstacle["radius"])
+    passed_ever = any(_trace_bool(step.get("passed_obstacle")) for step in rows)
+    collision_ever = any(_trace_bool(step.get("collision")) for step in rows)
+    goal_reached = _trace_bool(final.get("goal_reached"))
+    final_progress = _trace_float(final.get("forward_progress_m"))
+    summary_progress = _trace_float(summary.get("mean_forward_progress_m"))
+    summary_passed = _trace_float(summary.get("passed_obstacle_rate"))
+    summary_collision = _trace_float(summary.get("collision_rate"))
+    summary_success = _trace_float(summary.get("success_rate"))
+    summary_clearance = _trace_float(summary.get("min_obstacle_clearance_m"))
+    if None in (
+        final_progress,
+        summary_progress,
+        summary_passed,
+        summary_collision,
+        summary_success,
+        summary_clearance,
+    ):
+        return False
+    step_clearances = [_trace_float(step.get("obstacle_clearance_m")) for step in rows]
+    if any(clearance is None for clearance in step_clearances):
+        return False
+    min_step_clearance = min(float(clearance) for clearance in step_clearances)
+    if abs(float(summary_clearance) - min_step_clearance) > 1e-5:
+        return False
+    if abs(float(summary_progress) - float(final_progress)) > 1e-5:
+        return False
+    expected_passed = 1.0 if _trace_bool(final.get("passed_obstacle")) else 0.0
+    expected_collision = 1.0 if collision_ever else 0.0
+    expected_success = 1.0 if goal_reached else 0.0
+    if abs(float(summary_passed) - expected_passed) > 1e-5:
+        return False
+    if abs(float(summary_collision) - expected_collision) > 1e-5:
+        return False
+    if abs(float(summary_success) - expected_success) > 1e-5:
+        return False
+    if float(summary_passed) > 0.0 and not (
+        passed_ever and max(xs) > obstacle_x + obstacle_radius
+    ):
+        return False
+    return not (
+        float(summary_success) > 0.0
+        and not (goal_reached and passed_ever and max(xs) > obstacle_x + obstacle_radius)
+    )
+
+
+def _obstacle_trace_rollout_evidence(results: list[Any]) -> dict[str, Any]:
+    by_learner: dict[str, dict[str, Any]] = {}
+    all_trace_summaries_consistent = True
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        learner = result.get("name")
+        if not isinstance(learner, str):
+            continue
+        matrix = result.get("trajectory_matrix")
+        if not isinstance(matrix, list) or not matrix:
+            continue
+        consistent_count = 0
+        inconsistent_count = 0
+        final_successful_clear_count = 0
+        final_pass_count = 0
+        final_collision_count = 0
+        final_trace_count = 0
+        for row_index, row in enumerate(matrix):
+            if not isinstance(row, list):
+                all_trace_summaries_consistent = False
+                continue
+            for trace in row:
+                if not isinstance(trace, dict):
+                    all_trace_summaries_consistent = False
+                    inconsistent_count += 1
+                    continue
+                consistent = _trace_summary_consistent(trace)
+                if consistent:
+                    consistent_count += 1
+                else:
+                    inconsistent_count += 1
+                    all_trace_summaries_consistent = False
+                if row_index != len(matrix) - 1:
+                    continue
+                final_trace_count += 1
+                steps = trace.get("steps") if isinstance(trace.get("steps"), list) else []
+                rows = [step for step in steps if isinstance(step, dict)]
+                summary = trace.get("summary") if isinstance(trace.get("summary"), dict) else {}
+                obstacle = trace.get("obstacle") if isinstance(trace.get("obstacle"), dict) else {}
+                xs = [
+                    float(step["x"])
+                    for step in rows
+                    if _finite_number(step.get("x"))
+                ]
+                obstacle_x = _trace_float(obstacle.get("x"))
+                obstacle_radius = _trace_float(obstacle.get("radius")) or 0.0
+                physically_cleared = (
+                    obstacle_x is not None
+                    and bool(xs)
+                    and max(xs) > obstacle_x + obstacle_radius
+                )
+                passed = _trace_float(summary.get("passed_obstacle_rate")) == 1.0
+                success = _trace_float(summary.get("success_rate")) == 1.0
+                collision = _trace_float(summary.get("collision_rate")) == 1.0
+                clearance = _trace_float(summary.get("min_obstacle_clearance_m"))
+                final_pass_count += int(passed and physically_cleared)
+                final_collision_count += int(collision)
+                final_successful_clear_count += int(
+                    consistent
+                    and success
+                    and passed
+                    and physically_cleared
+                    and not collision
+                    and clearance is not None
+                    and clearance >= 0.0
+                )
+        by_learner[learner] = {
+            "consistent_trace_count": consistent_count,
+            "inconsistent_trace_count": inconsistent_count,
+            "final_trace_count": final_trace_count,
+            "final_pass_count": final_pass_count,
+            "final_collision_count": final_collision_count,
+            "final_successful_clear_count": final_successful_clear_count,
+            "final_successful_clear_rate": (
+                float(final_successful_clear_count / final_trace_count)
+                if final_trace_count > 0
+                else 0.0
+            ),
+            "has_successful_final_clear": final_successful_clear_count > 0,
+        }
+    any_required_learner_clears = any(
+        by_learner.get(learner, {}).get("has_successful_final_clear") is True
+        for learner in REQUIRED_LEARNERS
+    )
+    alberta_final_clears = int(
+        by_learner.get("alberta", {}).get("final_successful_clear_count") or 0
+    )
+    ppo_final_clears = int(
+        by_learner.get("ppo", {}).get("final_successful_clear_count") or 0
+    )
+    alberta_successful_final_clear = alberta_final_clears > 0
+    alberta_final_trace_count = int(
+        by_learner.get("alberta", {}).get("final_trace_count") or 0
+    )
+    alberta_successful_final_clear_rate = (
+        float(alberta_final_clears / alberta_final_trace_count)
+        if alberta_final_trace_count > 0
+        else 0.0
+    )
+    alberta_majority_final_clear = alberta_successful_final_clear_rate >= 0.5
+    alberta_final_clear_advantage = alberta_final_clears > ppo_final_clears
+    return {
+        "by_learner": by_learner,
+        "all_trace_summaries_consistent": all_trace_summaries_consistent,
+        "any_required_learner_successful_final_clear": any_required_learner_clears,
+        "alberta_successful_final_clear": alberta_successful_final_clear,
+        "alberta_successful_final_clear_rate": alberta_successful_final_clear_rate,
+        "alberta_majority_final_clear": alberta_majority_final_clear,
+        "alberta_final_clear_advantage": alberta_final_clear_advantage,
+        "ok": (
+            all_trace_summaries_consistent
+            and any_required_learner_clears
+            and alberta_successful_final_clear
+            and alberta_majority_final_clear
+            and alberta_final_clear_advantage
+        ),
+    }
+
+
 def _learner_seed_coverage(results: list[Any], learners: tuple[str, ...]) -> dict[str, list[int]]:
     coverage: dict[str, set[int]] = {name: set() for name in learners}
     for result in results:
@@ -133,6 +473,7 @@ def validate_alberta_benchmark_artifacts(
     demo = _load(demo_json_path)
     config = bundle.get("config") if isinstance(bundle.get("config"), dict) else {}
     summary = bundle.get("summary") if isinstance(bundle.get("summary"), dict) else {}
+    motion = bundle.get("motion") if isinstance(bundle.get("motion"), dict) else {}
     results = bundle.get("results") if isinstance(bundle.get("results"), list) else []
     learner_names = {
         result.get("name")
@@ -165,6 +506,36 @@ def validate_alberta_benchmark_artifacts(
         if alberta_forgetting is not None and ppo_forgetting is not None
         else None
     )
+    observed_comparisons = {
+        "alberta_acc_gte_ppo": acc_delta is not None and acc_delta >= 0.0,
+        "alberta_forgetting_lte_ppo": (
+            forgetting_delta is not None and forgetting_delta <= 0.0
+        ),
+    }
+    obstacle_baseline = _obstacle_baseline_comparisons(results)
+    obstacle_trace_rollouts = _obstacle_trace_rollout_evidence(results)
+    enforced_delta_gates = {
+        "alberta_acc_gte_ppo": (
+            observed_comparisons["alberta_acc_gte_ppo"]
+            if require_alberta_acc_gte_ppo
+            else True
+        ),
+        "alberta_forgetting_lte_ppo": (
+            observed_comparisons["alberta_forgetting_lte_ppo"]
+            if require_alberta_forgetting_lte_ppo
+            else True
+        ),
+    }
+    demo_learner_results = (
+        demo.get("learner_results", {})
+        if isinstance(demo.get("learner_results"), dict)
+        else {}
+    )
+    demo_required_learners_have_traces = all(
+        isinstance(demo_learner_results.get(name), dict)
+        and demo_learner_results[name].get("has_trajectory_traces") is True
+        for name in REQUIRED_LEARNERS
+    )
     checks = {
         "benchmark_dir": benchmark_dir.is_dir(),
         "json": json_path.is_file(),
@@ -174,6 +545,7 @@ def validate_alberta_benchmark_artifacts(
             demo_json_path.is_file()
             and demo.get("schema") == "robot-alberta-obstacle-demo-v1"
             and demo.get("ok") is True
+            and demo_required_learners_have_traces
         )
         if require_demo_video
         else True,
@@ -222,14 +594,78 @@ def validate_alberta_benchmark_artifacts(
         )
         if results and n_tasks > 0
         else False,
+        "motion_matrix_shapes": True
+        if expected_env != "obstacle_course"
+        else (
+            bool(results)
+            and n_tasks > 0
+            and all(
+                isinstance(result, dict)
+                and result.get("name") in configured_learners
+                and _motion_matrix_shape_ok(result, n_tasks)
+                for result in results
+            )
+        ),
+        "trajectory_matrix_shapes": True
+        if expected_env != "obstacle_course"
+        else (
+            bool(results)
+            and n_tasks > 0
+            and all(
+                isinstance(result, dict)
+                and result.get("name") in configured_learners
+                and _trajectory_matrix_shape_ok(result, n_tasks)
+                for result in results
+            )
+        ),
+        "obstacle_motion_summary": True
+        if expected_env != "obstacle_course"
+        else all(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_forward_progress_m_mean"))
+            and _finite_number(motion[name].get("final_passed_obstacle_rate_mean"))
+            and _finite_number(motion[name].get("final_collision_rate_mean"))
+            for name in REQUIRED_LEARNERS
+        ),
+        "obstacle_forward_progress": True
+        if expected_env != "obstacle_course"
+        else any(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_forward_progress_m_mean"))
+            and float(motion[name]["final_forward_progress_m_mean"]) >= 1.0
+            for name in REQUIRED_LEARNERS
+        ),
+        "obstacle_passes_obstacle": True
+        if expected_env != "obstacle_course"
+        else any(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_passed_obstacle_rate_mean"))
+            and float(motion[name]["final_passed_obstacle_rate_mean"]) >= 0.5
+            for name in REQUIRED_LEARNERS
+        ),
+        "obstacle_collision_rate": True
+        if expected_env != "obstacle_course"
+        else all(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_collision_rate_mean"))
+            and float(motion[name]["final_collision_rate_mean"]) <= 0.25
+            for name in REQUIRED_LEARNERS
+        ),
+        "obstacle_passive_baseline_control": True
+        if expected_env != "obstacle_course"
+        else bool(obstacle_baseline["baseline_is_control"]),
+        "obstacle_beats_passive_baseline": True
+        if expected_env != "obstacle_course"
+        else bool(obstacle_baseline["learning_beats_baseline"]),
+        "obstacle_trace_rollouts": True
+        if expected_env != "obstacle_course"
+        else bool(obstacle_trace_rollouts["ok"]),
         "metrics": required_learners_present
         and all(_metric_block_ok(summary, name) for name in configured_learners),
-        "alberta_acc_gte_ppo": True
-        if not require_alberta_acc_gte_ppo
-        else acc_delta is not None and acc_delta >= 0.0,
-        "alberta_forgetting_lte_ppo": True
-        if not require_alberta_forgetting_lte_ppo
-        else forgetting_delta is not None and forgetting_delta <= 0.0,
+        "alberta_acc_gte_ppo": enforced_delta_gates["alberta_acc_gte_ppo"],
+        "alberta_forgetting_lte_ppo": enforced_delta_gates[
+            "alberta_forgetting_lte_ppo"
+        ],
     }
     return {
         "ok": all(checks.values()),
@@ -243,6 +679,8 @@ def validate_alberta_benchmark_artifacts(
             "alberta_acc_minus_ppo": acc_delta,
             "alberta_forgetting_minus_ppo": forgetting_delta,
         },
+        "observed_comparisons": observed_comparisons,
+        "enforced_delta_gates": enforced_delta_gates,
         "required_deltas": {
             "require_alberta_acc_gte_ppo": bool(require_alberta_acc_gte_ppo),
             "require_alberta_forgetting_lte_ppo": bool(
@@ -256,6 +694,9 @@ def validate_alberta_benchmark_artifacts(
         "demo": demo,
         "config": config,
         "summary": summary,
+        "motion": motion,
+        "obstacle_baseline": obstacle_baseline,
+        "obstacle_trace_rollouts": obstacle_trace_rollouts,
         "seed_coverage": seed_coverage,
         "configured_learners": list(configured_learners),
         "required_learners": list(REQUIRED_LEARNERS),

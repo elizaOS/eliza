@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,20 @@ COMMAND_WIRING = ROOT / "scripts/wire_cpu_ap_capture_commands.py"
 CAPTURE_WRAPPER = ROOT / "scripts/capture_chipyard_linux_evidence.sh"
 COMPLETION_GATE = ROOT / "scripts/check_cpu_ap_completion_gate.py"
 EVIDENCE_CHECKER = ROOT / "scripts/check_cpu_ap_evidence.py"
+CPU_CONTRACT_RTL = ROOT / "rtl/cpu/e1_tiny_cpu_contract.sv"
+CPU_LEGACY_ALIAS_RTL = ROOT / "rtl/cpu/e1_cpu_subsystem_stub.sv"
+CPU_SOURCE_LISTS = (
+    ROOT / "Makefile",
+    ROOT / "scripts/run_rtl_check.sh",
+    ROOT / "scripts/run_verilator.sh",
+    ROOT / "scripts/yosys_e1_soc.ys",
+    ROOT / "scripts/yosys_formal_top.ys",
+    ROOT / "scripts/yosys_formal_top_structural.ys",
+    ROOT / "verify/cocotb/Makefile",
+    ROOT / "verify/cocotb/soc/Makefile",
+    ROOT / "verify/cocotb/jtag_tap/Makefile",
+    ROOT / "verify/formal/e1_soc_top.sby",
+)
 
 REQUIRED_TRANSCRIPTS = {
     "opensbi_boot_log",
@@ -64,6 +79,10 @@ REQUIRED_PHONE_BLOCKERS = {
     "process_14a_corner_benchmark_derate_evidence",
     "android_cts_vts_and_userspace_evidence",
 }
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def rel(path: Path) -> str:
@@ -182,13 +201,14 @@ def selected_manifest_is_bringup_only(selected: dict[str, Any], platform: dict[s
     selected_path = mapping(selected.get("selected_path"))
     claim_policy = mapping(selected.get("claim_policy"))
     phone_boundary = mapping(selected.get("phone_2028_target_boundary"))
+    status = selected.get("status")
     return (
-        selected.get("status") == "selected_not_generated"
+        status in {"selected_not_generated", "linux_complete"}
         and selected_path.get("core") == "Rocket"
         and selected_path.get("isa") == "RV64GC"
         and selected_path.get("harts") == 1
         and selected_path.get("claim_level") == "initial_linux_bringup_only"
-        and claim_policy.get("linux_capable_cpu_claim") is False
+        and claim_policy.get("linux_capable_cpu_claim") is (status == "linux_complete")
         and claim_policy.get("platform_contract_has_cpu_may_flip_to_true") is False
         and platform.get("e1_chip", {}).get("has_cpu") is False
         and phone_boundary.get("status") == "blocked_not_selected_for_product_claims"
@@ -261,11 +281,20 @@ def capture_helpers_cover_all_transcripts(manifest: dict[str, Any]) -> bool:
     )
 
 
-def completion_gate_blocks_without_claim() -> bool:
-    return check_cpu_ap_completion_gate.completion_claimed() is False and contains_all(
-        COMPLETION_GATE.read_text(encoding="utf-8"),
+def completion_gate_accepts_generated_ap_claim() -> bool:
+    gate = subprocess.run(
+        [sys.executable, "scripts/check_cpu_ap_completion_gate.py", "--require-complete"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    source = COMPLETION_GATE.read_text(encoding="utf-8")
+    return gate.returncode == 0 and contains_all(
+        source,
         (
-            "no real RV64GC/Linux AP completion claim",
+            "generated Rocket RV64GC AP artifacts and boot evidence are present",
             "scripts/check_cpu_ap_evidence.py",
             "--require-evidence",
             "--require-generated",
@@ -304,12 +333,36 @@ def linux_contract_covers_release_requirements() -> bool:
     )
 
 
+def legacy_cpu_alias_is_compatibility_only() -> bool:
+    alias = CPU_LEGACY_ALIAS_RTL.read_text(encoding="utf-8")
+    alias_ok = (
+        "module e1_cpu_subsystem_stub" in alias
+        and "Compatibility alias for legacy source lists" in alias
+        and alias.count("e1_tiny_cpu_contract #(") == 1
+        and "always_ff" not in alias
+        and "always_comb" not in alias
+    )
+    if not alias_ok:
+        return False
+
+    contract_token = "rtl/cpu/e1_tiny_cpu_contract.sv"
+    alias_token = "rtl/cpu/e1_cpu_subsystem_stub.sv"
+    for source_list in CPU_SOURCE_LISTS:
+        text = source_list.read_text(encoding="utf-8")
+        contract_index = text.find(contract_token)
+        alias_index = text.find(alias_token)
+        if contract_index < 0 or alias_index < 0 or contract_index > alias_index:
+            return False
+    return True
+
+
 def build_report() -> dict[str, Any]:
     manifest = load_evidence_manifest([])
     selected = load_json_object(SELECTED_MANIFEST)
     platform = load_json_object(PLATFORM_CONTRACT)
     target = load_yaml_object(CPU_TARGET)
     evidence = evidence_status()
+    completion_gate_passes = completion_gate_accepts_generated_ap_claim()
     checks = [
         {
             "id": "cpu_ap_evidence_manifest_is_fail_closed",
@@ -332,8 +385,8 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(CAPTURE_HELPER),
         },
         {
-            "id": "completion_gate_blocks_without_generated_ap_claim",
-            "status": "pass" if completion_gate_blocks_without_claim() else "fail",
+            "id": "completion_gate_accepts_generated_ap_claim",
+            "status": "pass" if completion_gate_passes else "fail",
             "evidence": rel(COMPLETION_GATE),
         },
         {
@@ -342,14 +395,26 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(LINUX_CONTRACT),
         },
         {
-            "id": "cpu_ap_scaffold_passes_while_evidence_blocks_release",
+            "id": "legacy_cpu_alias_is_compatibility_only",
+            "status": "pass" if legacy_cpu_alias_is_compatibility_only() else "fail",
+            "evidence": rel(CPU_LEGACY_ALIAS_RTL),
+        },
+        {
+            "id": "cpu_ap_evidence_bundle_complete",
             "status": "pass"
-            if cpu_scaffold_passes() and evidence["evidence_status"] != "PASS"
+            if cpu_scaffold_passes() and evidence["evidence_status"] == "PASS"
             else "fail",
             "evidence": rel(EVIDENCE_CHECKER),
         },
     ]
     findings = structured_findings(evidence, checks)
+    status = (
+        "pass"
+        if evidence["evidence_status"] == "PASS"
+        and completion_gate_passes
+        and all(check["status"] == "pass" for check in checks)
+        else "cpu_ap_scope_release_blocked"
+    )
     transcript_paths = [
         str(spec.get("path"))
         for spec in transcript_specs(manifest).values()
@@ -357,12 +422,14 @@ def build_report() -> dict[str, Any]:
     ]
     return {
         "schema": "eliza.cpu_ap_scope.v1",
-        "status": "cpu_ap_scope_release_blocked",
+        "status": status,
+        "generated_utc": utc_now(),
         "claim_boundary": (
-            "CPU/AP scope audit only; not generated Chipyard AP RTL evidence, not OpenSBI "
-            "handoff evidence, not Linux boot evidence, not RV64GC compliance evidence, "
-            "not AP benchmark evidence, not power/thermal/process-corner evidence, not "
-            "Android compatibility evidence, and not a 2028 phone-class AP claim."
+            "Generated Chipyard Rocket RV64GC AP scope only; accepts generated AP artifacts, "
+            "OpenSBI handoff, Linux boot, RV64GC smoke, and AP benchmark transcripts for "
+            "initial Linux/NPU/AP-benchmark bring-up. This is not power/thermal/process-corner "
+            "evidence, not Android compatibility evidence, not production silicon evidence, "
+            "not a 2028 phone-class AP claim, and not a product release claim."
         ),
         "current_scaffolds": {
             "cpu_target": rel(CPU_TARGET),
@@ -376,20 +443,19 @@ def build_report() -> dict[str, Any]:
             "command_wiring": rel(COMMAND_WIRING),
             "completion_gate": rel(COMPLETION_GATE),
             "evidence_checker": rel(EVIDENCE_CHECKER),
+            "cpu_contract_rtl": rel(CPU_CONTRACT_RTL),
+            "cpu_legacy_alias_rtl": rel(CPU_LEGACY_ALIAS_RTL),
+            "cpu_source_lists": [rel(path) for path in CPU_SOURCE_LISTS],
         },
         "required_transcripts": transcript_paths,
         "missing_transcripts": evidence["missing_transcripts"],
         "invalid_transcript_problems": evidence["invalid_transcript_problems"],
         "findings": findings,
         "blocked_until_real_evidence": [
-            "pinned Chipyard main-2026-05-20 checkout generates ElizaRocketConfig artifacts and manifest hashes",
-            "generated Rocket AP Verilog, DTS, source tree, and simulator artifact exist and hash-match",
-            "generated AP DTS compiles and contains CPU, memory, timer, interrupt-controller, UART, and chosen stdout nodes",
-            "OpenSBI transcript proves next-stage handoff, timer, console, DRAM base, and boot hart ISA",
-            "Linux boot transcript proves early console, MMU-enabled initramfs smoke, generated DTS hash, and E1 MMIO smoke",
-            "trap/timer/interrupt transcript proves mcause/mepc/mtval, CLINT/ACLINT timer/software IRQ, and PLIC claim/complete",
-            "ISA/cache/MMU transcript proves RV64GC, Zicsr/Zifencei, Sv39, cache hierarchy, TLB, and page table behavior",
-            "AP benchmark transcript links schema-valid benchmark report hashes, CoreMark, STREAM, lmbench/fio, run counts, power method, thermal state, and process-corner derates",
+            "multi-hart phone-class application CPU topology or documented equivalent",
+            "RVA23/Android profile and extension matrix for the selected phone AP path",
+            "silicon or cycle-calibrated power/thermal/voltage/frequency evidence",
+            "process 14A corner benchmark derate evidence",
             "Android userspace/CTS/VTS evidence proves the generated AP path is sufficient for Android-class software, not just Linux smoke",
             "reviewer approval that single-hart Rocket remains Linux bring-up only and is not promoted to a 2028 phone-class AP",
         ],
@@ -399,7 +465,10 @@ def build_report() -> dict[str, Any]:
             "missing_transcript_count": len(evidence["missing_transcripts"]),
             "invalid_transcript_problem_count": len(evidence["invalid_transcript_problems"]),
             "generated_manifest_present": GENERATED_MANIFEST.is_file(),
-            "completion_claimed": check_cpu_ap_completion_gate.completion_claimed(),
+            "completion_claimed": completion_gate_passes,
+            "platform_contract_cpu_claimed": check_cpu_ap_completion_gate.completion_claimed(),
+            "generated_ap_scope_claim_allowed": status == "pass",
+            "phone_2028_ap_claim_allowed": False,
             "release_claim_allowed": False,
         },
         "checks": checks,
@@ -409,21 +478,21 @@ def build_report() -> dict[str, Any]:
 def validate_report(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     require(data.get("schema") == "eliza.cpu_ap_scope.v1", "schema mismatch", errors)
+    require(isinstance(data.get("generated_utc"), str), "generated_utc missing", errors)
     require(
-        data.get("status") == "cpu_ap_scope_release_blocked",
-        "status must remain cpu_ap_scope_release_blocked",
+        data.get("status") in {"pass", "cpu_ap_scope_release_blocked"},
+        "status must be pass or cpu_ap_scope_release_blocked",
         errors,
     )
     boundary = str(data.get("claim_boundary", ""))
     for token in (
-        "not generated Chipyard AP RTL evidence",
-        "not OpenSBI handoff evidence",
-        "not Linux boot evidence",
-        "not RV64GC compliance evidence",
-        "not AP benchmark evidence",
+        "Generated Chipyard Rocket RV64GC AP scope only",
+        "initial Linux/NPU/AP-benchmark bring-up",
         "not power/thermal/process-corner evidence",
         "not Android compatibility evidence",
+        "not production silicon evidence",
         "not a 2028 phone-class AP claim",
+        "not a product release claim",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
     summary = data.get("summary")
@@ -436,19 +505,46 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors,
     )
     require(
-        summary.get("completion_claimed") is False, "completion_claimed must remain false", errors
-    )
-    require(
-        isinstance(summary.get("missing_transcript_count"), int)
-        and summary.get("missing_transcript_count", 0) > 0,
-        "missing_transcript_count must show AP evidence blockers",
+        summary.get("phone_2028_ap_claim_allowed") is False,
+        "phone_2028_ap_claim_allowed must stay false",
         errors,
     )
+    if data.get("status") == "pass":
+        require(summary.get("completion_claimed") is True, "completion_claimed must be true", errors)
+        require(
+            summary.get("generated_ap_scope_claim_allowed") is True,
+            "generated_ap_scope_claim_allowed must be true",
+            errors,
+        )
+        require(
+            summary.get("missing_transcript_count") == 0,
+            "missing_transcript_count must be zero for pass",
+            errors,
+        )
+        require(
+            summary.get("invalid_transcript_problem_count") == 0,
+            "invalid_transcript_problem_count must be zero for pass",
+            errors,
+        )
+    else:
+        require(
+            summary.get("completion_claimed") is False,
+            "completion_claimed must remain false while release-blocked",
+            errors,
+        )
+        require(
+            isinstance(summary.get("missing_transcript_count"), int)
+            and summary.get("missing_transcript_count", 0) > 0,
+            "missing_transcript_count must show AP evidence blockers",
+            errors,
+        )
     transcripts = data.get("required_transcripts")
     if not isinstance(transcripts, list) or len(transcripts) < len(REQUIRED_TRANSCRIPTS):
         errors.append("required_transcripts must list all CPU/AP transcript paths")
     findings = data.get("findings")
-    if not isinstance(findings, list) or not findings:
+    if not isinstance(findings, list):
+        errors.append("findings must be a list")
+    elif data.get("status") != "pass" and not findings:
         errors.append("findings must list structured CPU/AP blockers")
     checks = data.get("checks")
     if not isinstance(checks, list) or not checks:
@@ -461,8 +557,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         if check.get("status") != "pass":
             errors.append(f"{check.get('id')}: must pass structural scope check")
     blocked = data.get("blocked_until_real_evidence")
-    if not isinstance(blocked, list) or len(blocked) < 9:
-        errors.append("CPU/AP scope must enumerate blocked real-evidence items")
+    if not isinstance(blocked, list) or len(blocked) < 6:
+        errors.append("CPU/AP scope must enumerate remaining phone/release evidence items")
     scaffolds = data.get("current_scaffolds")
     if not isinstance(scaffolds, dict):
         errors.append("current_scaffolds must be a mapping")
@@ -479,8 +575,22 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             "command_wiring",
             "completion_gate",
             "evidence_checker",
+            "cpu_contract_rtl",
+            "cpu_legacy_alias_rtl",
+            "cpu_source_lists",
         ):
-            require(isinstance(scaffolds.get(key), str), f"current_scaffolds missing {key}", errors)
+            if key == "cpu_source_lists":
+                require(
+                    isinstance(scaffolds.get(key), list) and bool(scaffolds.get(key)),
+                    f"current_scaffolds missing {key}",
+                    errors,
+                )
+            else:
+                require(
+                    isinstance(scaffolds.get(key), str),
+                    f"current_scaffolds missing {key}",
+                    errors,
+                )
     return errors
 
 
@@ -493,7 +603,12 @@ def main() -> int:
         for error in errors:
             print(f"FAIL: {error}", file=sys.stderr)
         return 1
-    print(f"CPU/AP scope check passed: {rel(OUT)} remains release-blocked.")
+    if report["status"] == "pass":
+        print(
+            f"CPU/AP scope check passed: {rel(OUT)} allows generated AP bring-up scope only."
+        )
+    else:
+        print(f"CPU/AP scope check passed: {rel(OUT)} remains release-blocked.")
     return 0
 
 

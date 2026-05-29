@@ -17,6 +17,7 @@
   },
   "evidence_class": "synthetic_planning_only",
   "generated_at_utc": "2026-05-24T04:15:34.221566+00:00",
+  "generated_utc": "2026-05-24T05:26:41Z",
   "harness": "cocotb-rtl-bpu_top",
   "instructions_per_branch_assumption": 5,
   "phone_claim_allowed": false,

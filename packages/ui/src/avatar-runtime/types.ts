@@ -15,7 +15,7 @@ export interface AvatarHandle {
   unmount(): void;
 }
 
-export type AvatarKind = "canvas" | "webgl" | "react" | "vrm";
+export type AvatarKind = "canvas" | "webgl" | "react";
 
 export interface AvatarModule {
   id: string;

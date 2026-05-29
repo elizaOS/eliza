@@ -1,8 +1,8 @@
-diff --git a/src/bun.js/bindings/CPUFeatures.cpp b/src/bun.js/bindings/CPUFeatures.cpp
-index 6afec73..2f4927d 100644
---- a/src/bun.js/bindings/CPUFeatures.cpp
-+++ b/src/bun.js/bindings/CPUFeatures.cpp
-@@ -135,6 +135,8 @@ extern "C" uint8_t bun_cpu_features()
+diff --git a/src/jsc/bindings/CPUFeatures.cpp b/src/jsc/bindings/CPUFeatures.cpp
+index d1b1560..6f43bcf 100644
+--- a/src/jsc/bindings/CPUFeatures.cpp
++++ b/src/jsc/bindings/CPUFeatures.cpp
+@@ -136,6 +136,8 @@ extern "C" uint8_t bun_cpu_features()
      return x86_cpu_features();
  #elif CPU(ARM64)
      return aarch64_cpu_features();

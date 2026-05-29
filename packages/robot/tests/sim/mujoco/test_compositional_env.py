@@ -13,7 +13,9 @@ from eliza_robot.sim.mujoco.compositional_env import (
     NUM_UPPER_JOINTS,
     WALK_TOTAL_OBS_DIM,
 )
-from eliza_robot.sim.mujoco.wave_env import WaveEnv, default_config as wave_default_config
+# NOTE: the standalone WaveEnv MJX training env was removed; waving is now
+# handled by the composite skill (eliza_robot/rl/skills/composite_skill.py).
+# Only the CompositionalEnv (frozen legs + trainable upper body) survives here.
 
 
 # Skip all tests if v13 checkpoint doesn't exist
@@ -39,23 +41,6 @@ def comp_env():
 def comp_state(comp_env):
     rng = jax.random.PRNGKey(0)
     return jax.jit(comp_env.reset)(rng)
-
-
-@pytest.fixture(scope="module")
-def wave_env():
-    """Create a WaveEnv with the frozen walking policy."""
-    config = wave_default_config()
-    config.episode_length = 50
-    return WaveEnv(
-        walking_checkpoint=WALKING_CHECKPOINT,
-        config=config,
-    )
-
-
-@pytest.fixture(scope="module")
-def wave_state(wave_env):
-    rng = jax.random.PRNGKey(0)
-    return jax.jit(wave_env.reset)(rng)
 
 
 @requires_checkpoint
@@ -151,53 +136,3 @@ class TestCompositionalRewardKeys:
         ]
         for key in expected_keys:
             assert key in next_state.metrics, f"Missing metric: {key}"
-
-
-@requires_checkpoint
-class TestWaveReset:
-    def test_obs_shape(self, wave_env, wave_state):
-        obs_size = wave_env._config.obs_history_size * wave_env._single_obs_size
-        assert wave_state.obs.shape == (obs_size,)
-
-    def test_action_size(self, wave_env):
-        assert wave_env.action_size == NUM_UPPER_JOINTS  # 12
-
-    def test_wave_phase_initialized(self, wave_state):
-        assert float(wave_state.info["wave_phase"]) == 0.0
-
-    def test_task_obs_size(self, wave_env):
-        # Task obs: sin(1) + cos(1) + wave_target(4) = 6
-        assert wave_env._single_task_obs_size == 6
-
-
-@requires_checkpoint
-class TestWaveStep:
-    def test_step_valid(self, wave_env, wave_state):
-        action = jp.zeros(wave_env.action_size)
-        next_state = jax.jit(wave_env.step)(wave_state, action)
-        obs_size = wave_env._config.obs_history_size * wave_env._single_obs_size
-        assert next_state.obs.shape == (obs_size,)
-
-    def test_wave_phase_advances(self, wave_env, wave_state):
-        action = jp.zeros(wave_env.action_size)
-        next_state = jax.jit(wave_env.step)(wave_state, action)
-        assert float(next_state.info["wave_phase"]) > 0.0
-
-    def test_wave_rewards_present(self, wave_env, wave_state):
-        action = jp.zeros(wave_env.action_size)
-        next_state = jax.jit(wave_env.step)(wave_state, action)
-        assert "reward/wave_tracking" in next_state.metrics
-        assert "reward/arm_raised" in next_state.metrics
-        assert "reward/left_arm_still" in next_state.metrics
-        assert "reward/head_still" in next_state.metrics
-
-    def test_multiple_steps(self, wave_env, wave_state):
-        """Run 20 steps of wave env."""
-        step_fn = jax.jit(wave_env.step)
-        state = wave_state
-        for _ in range(20):
-            action = jp.zeros(wave_env.action_size)
-            state = step_fn(state, action)
-        assert float(state.info["step"]) == 20
-        torso_z = float(state.data.xpos[wave_env._torso_body_id, 2])
-        assert torso_z > 0.15, f"Robot fell: torso_z={torso_z}"

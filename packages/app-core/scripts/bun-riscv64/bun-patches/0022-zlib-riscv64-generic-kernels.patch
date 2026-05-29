@@ -1,0 +1,25 @@
+Subject: [PATCH] zlib: generic-only kernels for riscv64 (no SIMD table)
+
+bun-v1.3.14's zlib.ts selects per-arch zlib-ng SIMD kernels and throws
+for arches without a table. riscv64 has no RVV kernels wired up here, so
+build the portable generic C fallbacks (WITH_ALL_FALLBACKS) like a
+no-SIMD target. Required for --arch=riscv64 configure to succeed.
+
+diff --git a/scripts/build/deps/zlib.ts b/scripts/build/deps/zlib.ts
+index 2ee3470..d05a4f4 100644
+--- a/scripts/build/deps/zlib.ts
++++ b/scripts/build/deps/zlib.ts
+@@ -203,6 +203,13 @@ export const zlib: Dependency = {
+       }
+       sources.push(...GENERIC.map(s => `arch/generic/${s}.c`));
+       sources.push("arch/arm/arm_features.c");
++    } else if (cfg.riscv64) {
++      // No RVV SIMD kernels are wired up here; build the portable generic C
++      // fallbacks only (zlib-ng selects them via WITH_ALL_FALLBACKS).
++      kernels = [];
++      archDir = "generic";
++      defines.WITH_ALL_FALLBACKS = true;
++      sources.push(...GENERIC.map(s => `arch/generic/${s}.c`));
+     } else {
+       throw new Error(`zlib: no SIMD kernel table for arch ${cfg.arch}`);
+     }

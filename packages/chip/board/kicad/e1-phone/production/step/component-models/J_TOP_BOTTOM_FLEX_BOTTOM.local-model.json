@@ -1,10 +1,13 @@
 {
+  "all_pad_visuals_have_contract": true,
   "at_mm": {
     "rotation": 0.0,
     "x": 54.0,
     "y": 118.5
   },
   "claim_boundary": "Per-reference local model metadata only. This is not a discrete supplier-approved STEP/B-rep model and cannot satisfy routed-board release or enclosure clearance.",
+  "combined_step_assembly_name": "14_J_TOP_BOTTOM_FLEX_BOTTOM_HIROSE_DF40_80P_0P4_DEV",
+  "combined_step_locator_status": "development_envelope_named_subshape_in_combined_routed_step",
   "coverage": "mechanical_numbering_public_signal_assignment_local",
   "discrete_supplier_step_file": "",
   "discrete_supplier_step_status": "missing_supplier_approved_component_step",
@@ -14,9 +17,29 @@
     "height": 1.0,
     "width": 18.5
   },
+  "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
+  "expected_supplier_step_file": "J_TOP_BOTTOM_FLEX_BOTTOM.step",
   "footprint": "HIROSE_DF40_80P_0P4_DEV",
   "land_pattern_basis": "",
   "layer": "F.Cu",
+  "local_discrete_step_bbox_matches_envelope": true,
+  "local_discrete_step_bbox_mm": {
+    "depth": 4.2000002,
+    "height": 1.0000002,
+    "width": 18.5000002
+  },
+  "local_discrete_step_bytes": 15546,
+  "local_discrete_step_expected_bbox_mm": {
+    "depth": 4.2,
+    "height": 1.0,
+    "width": 18.5
+  },
+  "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step",
+  "local_discrete_step_import_status": "pass",
+  "local_discrete_step_imported_as_solid": true,
+  "local_discrete_step_sha256": "6e16415df13c5f5c3a0f900a344b43bc772c3c47c4bb571467833dbc0bde8b01",
+  "local_discrete_step_solid_type": "Solid",
+  "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
   "local_terminal_contract": [
     "A1",
@@ -113,6 +136,489 @@
   "npth_mechanical_feature_contract_source": "",
   "npth_mechanical_feature_count": 0,
   "npth_mechanical_features": [],
+  "pad_contract_covered_count": 80,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A10"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B10"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A11"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B11"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A12"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B12"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A13"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B13"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A14"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B14"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A15"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B15"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A16"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B16"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A17"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B17"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A18"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B18"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A19"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B19"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A20"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B20"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A21"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B21"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A22"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B22"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A23"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B23"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A24"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B24"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A25"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B25"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A26"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B26"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A27"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B27"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A28"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B28"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A29"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B29"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A30"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B30"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A31"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B31"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A32"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B32"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A33"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B33"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A34"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B34"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A35"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B35"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A36"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B36"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A37"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B37"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A38"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B38"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A39"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B39"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "A40"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/hirose-bm28-pinout.yaml",
+      "covered": true,
+      "pad": "B40"
+    }
+  ],
   "pad_count": 80,
   "pad_names": [
     "A1",
@@ -204,13 +710,20 @@
   "schema": "eliza.e1_phone_local_component_model_record.v1",
   "source_assembly_item": "J_TOP_BOTTOM_FLEX_BOTTOM",
   "source_routed_step": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
-  "source_routed_step_bytes": 32959460,
-  "source_routed_step_sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+  "source_routed_step_bytes": 33644081,
+  "source_routed_step_sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
   "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
   "status": "blocked_local_development_envelope_not_supplier_step",
   "supplier_approved": false,
+  "supplier_sourcing_lane": "top_bottom_interconnect",
+  "supplier_step_intake_bytes": 15546,
+  "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step",
+  "supplier_step_intake_release_credit": false,
+  "supplier_step_intake_sha256": "a724d696f4ffcfe32039785dd8b15e233df5cc4c97415e3cbc7ca6722802908e",
+  "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 80,
   "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
   "visual_package_class": "pinout_bound_package_or_connector"
 }

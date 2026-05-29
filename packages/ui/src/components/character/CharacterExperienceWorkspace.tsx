@@ -13,9 +13,16 @@ type SortMode = "priority" | "newest" | "confidence" | "importance";
 type LocalExperienceGraphLink = {
   sourceId: string;
   targetId: string;
-  type: "similar" | "supports" | "supersedes" | "co_occurs";
+  type: "similar" | "supersedes";
   strength: number;
   keywords: string[];
+};
+
+// Per-relationship-type display weights (drive stroke width / sort order).
+// Not data magnitudes — `supersedes` is drawn heavier than `similar`.
+const LINK_DISPLAY_WEIGHT: Record<LocalExperienceGraphLink["type"], number> = {
+  supersedes: 0.95,
+  similar: 0.7,
 };
 type GraphPosition = {
   x: number;
@@ -134,6 +141,9 @@ function buildLocalGraphLinks(
     experiences.map((experience) => [experience.id, experience]),
   );
 
+  // Only render edges backed by relationships the server actually recorded
+  // (`supersedes` and `relatedExperienceIds`). `strength` is a type-derived
+  // display weight for stroke width, not a fabricated per-edge data value.
   for (const experience of experiences) {
     const supersededExperience = experience.supersedes
       ? byId.get(experience.supersedes)
@@ -143,7 +153,7 @@ function buildLocalGraphLinks(
         sourceId: experience.id,
         targetId: experience.supersedes,
         type: "supersedes",
-        strength: 0.95,
+        strength: LINK_DISPLAY_WEIGHT.supersedes,
         keywords: sharedValues(
           experienceKeywords(experience),
           experienceKeywords(supersededExperience),
@@ -157,48 +167,11 @@ function buildLocalGraphLinks(
           sourceId: experience.id,
           targetId: relatedId,
           type: "similar",
-          strength: 0.7,
+          strength: LINK_DISPLAY_WEIGHT.similar,
           keywords: sharedValues(
             experienceKeywords(experience),
             experienceKeywords(relatedExperience),
           ),
-        });
-      }
-    }
-  }
-
-  for (let index = 0; index < experiences.length; index++) {
-    const left = experiences[index];
-    if (!left) continue;
-    for (
-      let nextIndex = index + 1;
-      nextIndex < experiences.length;
-      nextIndex++
-    ) {
-      const right = experiences[nextIndex];
-      if (!right) continue;
-      const keywords = sharedValues(
-        experienceKeywords(left),
-        experienceKeywords(right),
-      );
-      const sharedEntity = (left.associatedEntityIds ?? []).some((entityId) =>
-        (right.associatedEntityIds ?? []).includes(entityId),
-      );
-      if (keywords.length >= 2 && left.domain === right.domain) {
-        addLink({
-          sourceId: left.id,
-          targetId: right.id,
-          type: "supports",
-          strength: Math.min(0.85, 0.4 + keywords.length * 0.1),
-          keywords,
-        });
-      } else if (sharedEntity && left.domain === right.domain) {
-        addLink({
-          sourceId: left.id,
-          targetId: right.id,
-          type: "co_occurs",
-          strength: 0.55,
-          keywords,
         });
       }
     }
@@ -286,10 +259,6 @@ function graphLinkColor(type: LocalExperienceGraphLink["type"]): string {
   switch (type) {
     case "supersedes":
       return "rgba(245,158,11,0.9)";
-    case "co_occurs":
-      return "rgba(56,189,248,0.72)";
-    case "supports":
-      return "rgba(34,197,94,0.64)";
     default:
       return "rgba(148,163,184,0.56)";
   }

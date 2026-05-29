@@ -2,8 +2,8 @@
   "aggregate": {
     "branch_count": 330600,
     "instruction_count": 1995042,
-    "misprediction_count": 49907,
-    "mpki": 25.015513
+    "misprediction_count": 49906,
+    "mpki": 25.015012
   },
   "cbp5_tage_sc_l_64kb_reference_mpki_by_class": {
     "compress": 2.799,
@@ -27,7 +27,8 @@
     "v8_claim": false
   },
   "evidence_class": "cbp5_train_traces_only",
-  "generated_at_utc": "2026-05-24T04:19:18.820305+00:00",
+  "generated_at_utc": "2026-05-29T02:14:44.549962+00:00",
+  "generated_utc": "2026-05-29T02:14:44Z",
   "geometry": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -137,6 +138,9 @@
       90,
       195
     ],
+    "TAGE_PATH_HISTORY_BITS": 64,
+    "TAGE_PATH_HISTORY_SHIFT": 2,
+    "TAGE_PATH_HISTORY_TOKEN_BITS": 8,
     "TAGE_TABLES": 5,
     "TAGE_TAG_W": 8,
     "TAGE_UBIT_RESET_PERIOD": 100000,
@@ -171,20 +175,20 @@
         "direct": 16279,
         "fetch_slot_blocked": 5293,
         "fetch_slot_misp": 5293,
-        "h2p_override": 447,
+        "h2p_override": 467,
         "ind": 1,
         "ind_misp": 1588,
         "ittage_allocations": 1588,
         "ittage_hit": 9002,
         "ittage_target_used": 9002,
         "ittage_updates": 10590,
-        "local_dir_override": 271,
-        "meta_train": 829,
+        "local_dir_override": 307,
+        "meta_train": 846,
         "misp": 21030,
         "pred": 148723,
         "ret": 10589,
         "ret_misp": 1,
-        "sc_override": 3820
+        "sc_override": 3897
       },
       "instruction_count": 997741,
       "mpki": 21.077614,
@@ -205,11 +209,11 @@
       "counters": {
         "call": 12900,
         "cond": 128874,
-        "cond_misp": 16674,
+        "cond_misp": 16673,
         "direct": 20966,
         "fetch_slot_blocked": 2592,
         "fetch_slot_misp": 1728,
-        "h2p_override": 142,
+        "h2p_override": 159,
         "ind": 6235,
         "ind_misp": 310,
         "ittage_allocations": 306,
@@ -217,16 +221,16 @@
         "ittage_target_used": 16991,
         "ittage_updates": 19135,
         "ittage_weak_yield_to_ftb": 24,
-        "local_dir_override": 21,
-        "meta_train": 1418,
-        "misp": 28877,
+        "local_dir_override": 40,
+        "meta_train": 1469,
+        "misp": 28876,
         "pred": 181877,
         "ret": 12902,
         "ret_misp": 16,
-        "sc_override": 417
+        "sc_override": 353
       },
       "instruction_count": 997301,
-      "mpki": 28.95515,
+      "mpki": 28.954147,
       "trace_class": "cbp5_train_traces_only"
     }
   }

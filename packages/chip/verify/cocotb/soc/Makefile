@@ -21,6 +21,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/display/e1_display.sv \
 	$(REPO)/rtl/cpu/e1_cva6_wrapper.sv \
 	$(REPO)/rtl/cpu/e1_cpu_axi_bridge.sv \
+	$(REPO)/rtl/cpu/e1_tiny_cpu_contract.sv \
 	$(REPO)/rtl/cpu/e1_cpu_subsystem_stub.sv \
 	$(REPO)/rtl/memory/e1_weight_buffer_sram.sv \
 	$(REPO)/rtl/interrupts/e1_clint.sv \
@@ -28,6 +29,8 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/memory/dram_ctrl/e1_dram_ctrl.sv \
 	$(REPO)/rtl/security/rot/e1_rot_reset_seq.sv \
 	$(REPO)/rtl/top/adapters/e1_soc_real_subsys.sv \
+	$(REPO)/rtl/interconnect/e1_axil_to_mmio.sv \
+	$(REPO)/rtl/interconnect/e1_mmio_arb2.sv \
 	$(REPO)/rtl/top/e1_soc_top.sv
 
 TOPLEVEL ?= e1_soc_top

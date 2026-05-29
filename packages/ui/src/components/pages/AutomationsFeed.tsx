@@ -73,11 +73,6 @@ export interface AutomationsFeedProps {
    * stays a pure display component.
    */
   connectedCredTypes?: ReadonlySet<string>;
-  /**
-   * Render the in-shell chat sidebar. Default: false (host opts in).
-   * Hidden on narrow viewports via the layout regardless.
-   */
-  showChatPane?: boolean;
 }
 
 const FILTER_LABELS: Record<FeedFilter, string> = {
@@ -137,7 +132,6 @@ function automationToRow(item: AutomationItem): FeedRow {
 
 export function AutomationsFeed({
   connectedCredTypes,
-  showChatPane: _showChatPane = false,
 }: AutomationsFeedProps = {}) {
   const [data, setData] = useState<AutomationListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -394,8 +388,12 @@ export function AutomationsFeed({
                       row.source.workflowId,
                     );
                     await refresh();
-                  } catch {
-                    /* error surfaced on next refresh */
+                  } catch (e) {
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Failed to run automation.",
+                    );
                   }
                 }}
               />

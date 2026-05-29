@@ -10,7 +10,6 @@ prove: depth 12
 multiclock off
 
 [engines]
-smtbmc z3
 smtbmc bitwuzla
 
 [script]

@@ -212,7 +212,8 @@ class GetUp(ainex_base.AiNexEnv):
             k: jp.nan_to_num(v * self._config.reward_config.scales[k], nan=0.0)
             for k, v in rewards.items()
         }
-        reward = jp.clip(jp.nan_to_num(sum(rewards.values()) * self.dt, nan=0.0), 0.0, 10000.0)
+        # Negative lower bound so penalty terms survive (see joystick.py).
+        reward = jp.clip(jp.nan_to_num(sum(rewards.values()) * self.dt, nan=0.0), -10.0, 10000.0)
 
         # Bookkeeping
         state.info["last_last_act"] = state.info["last_act"]

@@ -598,7 +598,7 @@ def test_blocked_side_result_blocks_claim() -> None:
     print("PASS blocked side-result blocks phone CPU claim")
 
 
-def test_blocked_side_result_requires_blocked_placeholder_provenance() -> None:
+def test_blocked_side_result_requires_blocked_missing_target_evidence_provenance() -> None:
     tmp, root = with_temp_root()
     with tmp:
         report_path = populate_valid_root(root)
@@ -1651,7 +1651,7 @@ def test_dhrystone_and_jetstream_side_results_require_binary_assets() -> None:
 def main() -> None:
     test_valid_claim_passes()
     test_blocked_side_result_blocks_claim()
-    test_blocked_side_result_requires_blocked_placeholder_provenance()
+    test_blocked_side_result_requires_blocked_missing_target_evidence_provenance()
     test_blocked_side_result_requires_explicit_false_claim_flags()
     test_blocked_side_result_requires_specific_blockers()
     test_blocked_side_result_requires_reason_and_requirement_shape()

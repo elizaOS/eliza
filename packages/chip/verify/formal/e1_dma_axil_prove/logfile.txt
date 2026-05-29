@@ -1,0 +1,63 @@
+SBY 18:38:11 [verify/formal/e1_dma_axil_bmc] Removing directory '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_dma_axil_bmc'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Removing directory '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_dma_axil_prove'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_dma_axil_prove/src/axi_lite_protocol.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/milady/eliza/packages/chip/rtl/dma/e1_dma.sv' to '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_dma_axil_prove/src/e1_dma.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/dma_axil_bind.sv' to '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_dma_axil_prove/src/dma_axil_bind.sv'.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0: smtbmc bitwuzla
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] base: starting process "cd verify/formal/e1_dma_axil_prove/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] base: finished (returncode=0)
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] prep: starting process "cd verify/formal/e1_dma_axil_prove/model; yosys -ql design_prep.log design_prep.ys"
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] prep: finished (returncode=0)
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] smt2: starting process "cd verify/formal/e1_dma_axil_prove/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] smt2: finished (returncode=0)
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: starting process "cd verify/formal/e1_dma_axil_prove; yosys-smtbmc -s bitwuzla --presat --unroll --noprogress -t 16  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.induction: starting process "cd verify/formal/e1_dma_axil_prove; yosys-smtbmc -s bitwuzla --presat --unroll -i --noprogress -t 16  --append 0 --dump-vcd engine_0/trace_induct.vcd --dump-yw engine_0/trace_induct.yw --dump-vlogtb engine_0/trace_induct_tb.v --dump-smtc engine_0/trace_induct.smtc model/design_smt2.smt2"
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Solver: bitwuzla
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.induction: ##   0:00:00  Solver: bitwuzla
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 0..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 0..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.induction: ##   0:00:00  Trying induction in step 16..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.induction: ##   0:00:00  Temporal induction successful.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.induction: ##   0:00:00  Status: passed
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 1..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 1..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.induction: finished (returncode=0)
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.induction: Status returned by engine for induction: pass
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 2..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 2..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 3..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 3..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 4..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 4..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 5..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 5..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 6..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 6..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 7..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 7..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 8..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 8..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 9..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 9..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 10..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 10..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 11..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 11..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 12..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 12..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 13..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 13..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 14..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 14..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assumptions in step 15..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Checking assertions in step 15..
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: ##   0:00:00  Status: passed
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: finished (returncode=0)
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] engine_0.basecase: Status returned by engine for basecase: pass
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] summary: engine_0 (smtbmc bitwuzla) returned pass for basecase
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] summary: engine_0 (smtbmc bitwuzla) returned pass for induction
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] summary: engine_0 did not produce any traces
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] summary: successful proof by k-induction.
+SBY 18:38:11 [verify/formal/e1_dma_axil_prove] DONE (PASS, rc=0)

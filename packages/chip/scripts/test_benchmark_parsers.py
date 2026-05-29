@@ -473,7 +473,7 @@ def test_strict_missing_exits_two_and_preserves_blockers() -> None:
     assert_equal(blocked[0]["release_blocking"], True, "tflite release blocker")
 
 
-def test_blocked_results_require_blocked_placeholder_provenance() -> None:
+def test_blocked_results_require_blocked_missing_target_evidence_provenance() -> None:
     temp_parent = ROOT / "benchmarks/results/test-temp"
     temp_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=temp_parent) as td:
@@ -500,7 +500,7 @@ def test_blocked_results_require_blocked_placeholder_provenance() -> None:
         blocked_result = next(row for row in report["results"] if row["status"] == "blocked")
         blocked_result["provenance"] = provenance
         errors = run_benchmarks.validate_report(report)
-        if not any("blocked result provenance must be blocked_placeholder" in e for e in errors):
+        if not any("blocked result provenance must be blocked_missing_target_evidence" in e for e in errors):
             raise AssertionError((provenance, errors))
 
 
@@ -535,7 +535,7 @@ def test_l5_l6_blocked_report_does_not_require_target_execution() -> None:
     result.pop("metrics")
     result.pop("run_metadata")
     result["status"] = "blocked"
-    result["provenance"] = "blocked_placeholder"
+    result["provenance"] = "blocked_missing_target_evidence"
     result["blocked_requirements"] = [
         {
             "name": "target.runner",
@@ -567,7 +567,7 @@ def test_report_status_and_claim_flags_match_results() -> None:
     blocked_result = json.loads(json.dumps(report))
     result = blocked_result["results"][0]
     result["status"] = "blocked"
-    result["provenance"] = "blocked_placeholder"
+    result["provenance"] = "blocked_missing_target_evidence"
     result.pop("metrics", None)
     result.pop("run_metadata", None)
     result["blocked_requirements"] = [
@@ -607,7 +607,7 @@ def test_blocked_requirements_require_shape() -> None:
     report = valid_l5_l6_report()
     result = report["results"][0]
     result["status"] = "blocked"
-    result["provenance"] = "blocked_placeholder"
+    result["provenance"] = "blocked_missing_target_evidence"
     result.pop("metrics", None)
     result.pop("run_metadata", None)
     result["blocked_requirements"] = [{"name": "target.runner", "reason": ""}]
@@ -827,7 +827,7 @@ def main() -> int:
         test_mlperf_inference_parser_accepts_modeled_npu_output,
         test_mlperf_inference_parser_rejects_claim_and_power_drift,
         test_strict_missing_exits_two_and_preserves_blockers,
-        test_blocked_results_require_blocked_placeholder_provenance,
+        test_blocked_results_require_blocked_missing_target_evidence_provenance,
         test_l5_l6_passed_results_require_target_execution,
         test_l5_l6_blocked_report_does_not_require_target_execution,
         test_report_status_and_claim_flags_match_results,

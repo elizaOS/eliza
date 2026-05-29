@@ -125,7 +125,7 @@ route_phases:
       - mechanical/e1-phone/review/board-step-readiness.json passes with production STEP
       - mechanical/e1-phone/review/routed-board-clearance.json rerun with measured routed-board clearances
       - no routed component intersects display, battery, USB-C aperture, side buttons, acoustic paths, antennas, or interconnect
-    current_status: blocked_waiting_for_routed_board_step
+    current_status: blocked_waiting_for_physical_routed_board_clearance_result
 
 netclass_to_release_mapping:
   usb2:
@@ -291,7 +291,7 @@ cross_checks:
 release_blockers:
   - supplier pinouts, footprints, mating connector data, and STEP models are not frozen
   - KiCad schematic remains scaffold text and has no ERC release report
-  - production concept PCB has placeholder footprints, no routed tracks, and no filled zones; local routed real-footprint development board is non-release
+  - production concept PCB has placeholder footprints, no release-approved routed tracks, and no filled zones; local routed real-footprint development board is non-release
   - route feasibility and escape density are not proven with supplier footprints and a trial route
   - module host integration closure is blocked on supplier pinouts, real schematic capture, routed host interfaces, firmware, RF, and bring-up evidence
   - external interface design review is blocked on supplier drawings, routed STEP clearance, and measured USB-C, display, camera, and side-key validation

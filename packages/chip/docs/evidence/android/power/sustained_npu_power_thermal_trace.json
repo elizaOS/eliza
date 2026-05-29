@@ -1,22 +1,24 @@
 {
-  "schema": "eliza.runtime_evidence_template.sustained_npu_power_thermal_trace.v1",
-  "status": "DRAFT",
-  "result": 2,
-  "release_credit": false,
   "capture_status": "planned_incomplete",
-  "required_capture": "calibrated sustained NPU workload power, thermal, frequency, and throttle trace from a booted riscv64 target",
-  "expected_command": "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND --output docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "device": {
     "cpu_abi": "pending_live_target_capture"
   },
-  "workload": {
-    "npu_sustained": false
-  },
+  "expected_command": "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND --output docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
+  "generated_utc": "2026-05-24T01:43:34Z",
   "instrumentation": {
     "calibrated": false
   },
+  "operator_note": "Replace this template only with calibrated capture output that satisfies the runtime readiness checker.",
+  "release_credit": false,
+  "required_capture": "calibrated sustained NPU workload power, thermal, frequency, and throttle trace from a booted riscv64 target",
+  "result": 2,
+  "schema": "eliza.runtime_evidence_template.sustained_npu_power_thermal_trace.v1",
+  "status": "DRAFT",
   "thermal": {
     "throttling_observed": null
   },
-  "operator_note": "Replace this template only with calibrated capture output that satisfies the runtime readiness checker."
+  "workload": {
+    "npu_sustained": false
+  }
 }

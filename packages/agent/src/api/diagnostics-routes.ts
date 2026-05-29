@@ -56,14 +56,6 @@ export interface DiagnosticsRouteContext
   eventBuffer: StreamEventEnvelopeLike[];
   relayPort?: number;
   checkRelayReachable?: (relayPort: number) => Promise<boolean>;
-  resolveExtensionPath?: () => string | null;
-  resolveExtensionArtifacts?: () => {
-    chromeBuildPath?: string | null;
-    chromePackagePath?: string | null;
-    safariWebExtensionPath?: string | null;
-    safariAppPath?: string | null;
-    safariPackagePath?: string | null;
-  };
   initSse?: DiagnosticsSseInit;
   writeSseJson?: DiagnosticsSseWriteJson;
   auditEventTypes: readonly string[];
@@ -90,20 +82,6 @@ async function defaultCheckRelayReachable(relayPort: number): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function defaultResolveExtensionPath(): string | null {
-  return null;
-}
-
-function defaultResolveExtensionArtifacts(): {
-  chromeBuildPath?: string | null;
-  chromePackagePath?: string | null;
-  safariWebExtensionPath?: string | null;
-  safariAppPath?: string | null;
-  safariPackagePath?: string | null;
-} {
-  return {};
 }
 
 function isAutonomyEvent(event: StreamEventEnvelopeLike): boolean {
@@ -260,8 +238,6 @@ export async function handleDiagnosticsRoutes(
     eventBuffer,
     relayPort: relayPortOverride,
     checkRelayReachable,
-    resolveExtensionPath,
-    resolveExtensionArtifacts,
     initSse,
     writeSseJson,
     auditEventTypes,
@@ -544,22 +520,18 @@ export async function handleDiagnosticsRoutes(
     const relayReachable = await (
       checkRelayReachable ?? defaultCheckRelayReachable
     )(relayPort);
-    const extensionPath = (
-      resolveExtensionPath ?? defaultResolveExtensionPath
-    )();
-    const extensionArtifacts = (
-      resolveExtensionArtifacts ?? defaultResolveExtensionArtifacts
-    )();
 
+    // The headless agent only knows whether the browser-bridge relay is
+    // reachable. Extension build artifacts (chromeBuildPath, packaged Safari
+    // app, etc.) live inside the desktop bundle and are resolved by the
+    // desktop RPC `getExtensionStatus` handler, which the UI prefers. When the
+    // client falls back to this HTTP route there is no desktop bundle to probe,
+    // so the artifact fields are genuinely unavailable here rather than null
+    // file paths.
     json(res, {
       relayReachable,
       relayPort,
-      extensionPath,
-      chromeBuildPath: extensionArtifacts.chromeBuildPath ?? null,
-      chromePackagePath: extensionArtifacts.chromePackagePath ?? null,
-      safariWebExtensionPath: extensionArtifacts.safariWebExtensionPath ?? null,
-      safariAppPath: extensionArtifacts.safariAppPath ?? null,
-      safariPackagePath: extensionArtifacts.safariPackagePath ?? null,
+      extensionPath: null,
     });
     return true;
   }

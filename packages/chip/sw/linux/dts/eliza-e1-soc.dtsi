@@ -28,10 +28,10 @@
 
 		e1_framebuffer: framebuffer@80000000 {
 			compatible = "simple-framebuffer";
-			reg = <0x0 0x80000000 0x0 0x00177000>;
-			width = <640>;
-			height = <480>;
-			stride = <2560>;
+			reg = <0x0 0x80000000 0x0 0x00384000>;
+			width = <720>;
+			height = <1280>;
+			stride = <2880>;
 			format = "x8r8g8b8";
 			status = "disabled";
 			/* Enable from the board .dts once /reserved-memory

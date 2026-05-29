@@ -147,10 +147,21 @@ def _candidate_default_policy_checkpoints(
     root: Path = PKG_ROOT,
 ) -> list[Path]:
     profile_slug = profile_id.replace("-", "_")
-    return [
+    candidates: list[Path] = []
+    env_checkpoint = os.environ.get("ROBOT_POLICY_CHECKPOINT")
+    if env_checkpoint:
+        candidates.append(Path(env_checkpoint))
+    candidates.extend([
         root / "checkpoints" / f"{profile_slug}_alberta_full",
+        root
+        / "evidence"
+        / "nebius_full_training"
+        / "synced_run"
+        / "checkpoints"
+        / f"{profile_slug}_alberta_full",
         root / "checkpoints" / "alberta_text_conditioned",
-    ]
+    ])
+    return candidates
 
 
 def _resolve_default_policy_checkpoint(
@@ -167,7 +178,7 @@ def _resolve_default_policy_checkpoint(
 def _load_checkpoint_policy(profile_id: str, checkpoint_dir: Path):
     """Return a callable `policy(label, obs)->action` for any policy backend."""
 
-    policy = TextConditionedPolicy(checkpoint_dir)
+    policy = TextConditionedPolicy(checkpoint_dir, strict_manifest=True)
     if policy.manifest.profile_id != profile_id:
         raise ValueError(
             "checkpoint profile mismatch: "
@@ -295,6 +306,7 @@ def run(
     policy_checkpoint: Path | None = None,
     preserve_state_between_commands: bool = False,
     scripted_smoke: bool = False,
+    allow_zero_action_fallback: bool = False,
 ) -> int:
     import mujoco
 
@@ -342,6 +354,13 @@ def run(
             policy = _load_sb3_policy(profile_id)
             policy_source = "sb3_smoke" if policy is not None else "zero_action"
     if policy is None and not scripted_smoke:
+        if not allow_zero_action_fallback:
+            raise FileNotFoundError(
+                "no trained policy checkpoint found for "
+                f"profile={profile_id!r}. Pass --policy-checkpoint, set "
+                "ROBOT_POLICY_CHECKPOINT, use --scripted-smoke for wiring "
+                "evidence, or pass --allow-zero-action-fallback explicitly."
+            )
         print(
             "[viewer] no matching Alberta checkpoint or SB3 policy at "
             f"checkpoints/text_conditioned_{profile_id}_smoke/; "
@@ -408,7 +427,23 @@ def run(
             torso_y_m=_finite_float(info.get("root_y")),
             torso_z_m=_finite_float(info.get("torso_z")),
             yaw_rad=_finite_float(info.get("root_yaw")),
-            extra={"stand_height_m": info.get("stand_height_m")},
+            imu_roll_rad=float(info.get("imu_roll", 0.0) or 0.0),
+            imu_pitch_rad=float(info.get("imu_pitch", 0.0) or 0.0),
+            extra={
+                "stand_height_m": info.get("stand_height_m"),
+                "left_foot_contact": info.get("left_foot_contact"),
+                "right_foot_contact": info.get("right_foot_contact"),
+                "left_foot_z_m": info.get("left_foot_z"),
+                "right_foot_z_m": info.get("right_foot_z"),
+                "left_foot_slip_m_s": info.get("left_foot_slip_m_s"),
+                "right_foot_slip_m_s": info.get("right_foot_slip_m_s"),
+                "max_swing_foot_clearance_m": info.get("max_swing_foot_clearance_m"),
+                "max_foot_slip_m_s": info.get("max_foot_slip_m_s"),
+                "self_collision_count": info.get("self_collision_count"),
+                "tracked_x_m": info.get("tracked_x"),
+                "tracked_y_m": info.get("tracked_y"),
+                "tracked_z_m": info.get("tracked_z"),
+            },
         )
 
     def _tick(label: str, task_id: str, writers: list) -> dict:
@@ -423,6 +458,10 @@ def run(
         delta_x: list[float] = []
         delta_y: list[float] = []
         delta_yaw: list[float] = []
+        tracked_z: list[float] = []
+        tracked_delta_x: list[float] = []
+        tracked_delta_y: list[float] = []
+        tracked_delta_z: list[float] = []
         action_norms: list[float] = []
         nonzero_action_steps = 0
         terminated = False
@@ -469,6 +508,18 @@ def run(
             dyaw_value = _finite_float(info.get("delta_yaw"))
             if dyaw_value is not None:
                 delta_yaw.append(dyaw_value)
+            tracked_z_value = _finite_float(info.get("tracked_z"))
+            if tracked_z_value is not None:
+                tracked_z.append(tracked_z_value)
+            tracked_dx_value = _finite_float(info.get("tracked_delta_x"))
+            if tracked_dx_value is not None:
+                tracked_delta_x.append(tracked_dx_value)
+            tracked_dy_value = _finite_float(info.get("tracked_delta_y"))
+            if tracked_dy_value is not None:
+                tracked_delta_y.append(tracked_dy_value)
+            tracked_dz_value = _finite_float(info.get("tracked_delta_z"))
+            if tracked_dz_value is not None:
+                tracked_delta_z.append(tracked_dz_value)
             final_result = checker.update(_sample((step_idx + 1) * env.config.control_dt_s, info))
             # Sync qpos/qvel from the training MJCF into the scene MJCF so the
             # renderer shows the live policy state on top of the ground plane.
@@ -504,6 +555,7 @@ def run(
             and (fall_threshold is None or min_torso is None or min_torso >= fall_threshold)
         )
         upright_ok = min_upright is None or min_upright > 0.0
+        attempted_action = bool(nonzero_action_steps > 0)
         return {
             "profile": profile_id,
             "label": label,
@@ -522,9 +574,14 @@ def run(
             "delta_x_m": _series_summary(delta_x),
             "delta_y_m": _series_summary(delta_y),
             "delta_yaw_rad": _series_summary(delta_yaw),
+            "tracked_body_name": getattr(env, "_tracked_body_name", "root"),
+            "tracked_z_m": _series_summary(tracked_z),
+            "tracked_delta_x_m": _series_summary(tracked_delta_x),
+            "tracked_delta_y_m": _series_summary(tracked_delta_y),
+            "tracked_delta_z_m": _series_summary(tracked_delta_z),
             "action_norm": _series_summary(action_norms),
             "nonzero_action_steps": nonzero_action_steps,
-            "attempted_action": bool(nonzero_action_steps > 0 or task_id == "stand_up"),
+            "attempted_action": attempted_action,
             "goal_success": bool(final_result.success),
             "goal_failed": bool(final_result.failed),
             "goal_reason": final_result.reason,
@@ -533,7 +590,7 @@ def run(
                 "no_termination": not terminated,
                 "torso_above_fall_threshold": bool(no_fall),
                 "upright_positive": bool(upright_ok),
-                "attempted_action": bool(nonzero_action_steps > 0 or task_id == "stand_up"),
+                "attempted_action": attempted_action,
                 "goal_success": bool(final_result.success),
             },
         }
@@ -657,6 +714,14 @@ def main(argv: list[str] | None = None) -> int:
             "it is not trained-policy evidence."
         ),
     )
+    parser.add_argument(
+        "--allow-zero-action-fallback",
+        action="store_true",
+        help=(
+            "Allow rendering with zero actions when no checkpoint exists. "
+            "This is only for renderer/debug smoke, never trained-policy evidence."
+        ),
+    )
     args = parser.parse_args(argv)
     return run(
         args.profile,
@@ -671,6 +736,7 @@ def main(argv: list[str] | None = None) -> int:
         policy_checkpoint=args.policy_checkpoint,
         preserve_state_between_commands=args.preserve_state_between_commands,
         scripted_smoke=args.scripted_smoke,
+        allow_zero_action_fallback=args.allow_zero_action_fallback,
     )
 
 

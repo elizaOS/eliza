@@ -14,7 +14,8 @@ The checker returns PASS and now covers the previously identified local CAD/proc
 
 - **Boss-count coverage fixed.** `check_fastener_access` now enumerates `orange_screw_boss_1..10` plus `orange_snap_hook_1..8`; the generated checker result has `fastener_pass=True`.
 - **Foam-pad insertion fixed.** `battery_back_void_foam_pad` is now its own assembly step before `battery_pouch`, and the swept insertion checker reports 0 trapped parts.
-- **Line-flow drift fixed locally.** The line-flow now calls out the 11.8 mm package, the back-void foam pad before battery placement, deferred battery/PMIC FPC mating until the PCB exists, and 10-boss torque-map coverage.
+- **Line-flow drift fixed locally.** The line-flow now calls out the 11.8 mm package, the back-void foam pad before battery placement, deferred battery/PMIC FPC mating at S4 after the PCB exists, cell-adjacent pre-battery fastener drive, and 10-boss torque-map coverage.
+- **Split-interconnect FPC clearance fixed.** The FPC route checker now treats the side service loop and its top/bottom tails as one mating interconnect assembly; the re-run reports 0.56 mm side-loop clearance and 0.25 mm clearance on each tail, with no pinching parts.
 
 Remaining open items below are process, yield, fixture, and physical-validation mitigations. They do not contradict the current CAD swept-insertion result.
 
@@ -31,14 +32,14 @@ Severity: **blocker** = phone cannot be built / a real part has no install path;
 ### 2. Tool & driver access
 
 - **G04 / mitigated blocker** — Bosses 1..10 must be driven and access-verified. *Mitigation complete locally:* `check_fastener_access` now checks all 10 bosses plus 8 snap hooks, and line-flow uses 10-boss torque-map coverage.
-- **G05 / major** — Bosses 5/6 (x ±27, y +18, z -5.3..-2.5) sit beside the battery (battery x ±32). The M1.4 driver column is verified clear in the checker, but at S5 the battery is already bonded; a slipped driver can puncture the LiPo pouch ~5 mm away. *Mitigation:* drive bosses 5/6 (and any boss within 8 mm of the cell) at S2 *before* battery placement, or use a shrouded bit + torque-limited driver (Wera 7440 already specified) with a battery guard plate on the S5 fixture.
+- **G05 / mitigated major** — Bosses 5/6 (x ±27, y +18, z -5.3..-2.5) sit beside the battery (battery x ±32), so driving them after the pouch is bonded risks a slipped driver puncture. *Mitigation complete locally:* Station 2 now drives the pre-battery fasteners, including the cell-adjacent bosses, before pouch placement; Station 5 retains 10-boss torque-map verification for any post-battery perimeter fasteners.
 - **G06 / minor** — FPC ZIF/B2B seating at S4 is by "locking probe"; driver and probe share the open-back approach but at different islands. No reach conflict found (connectors at z -1.7..-0.4, well above PCB). *Mitigation:* none required; retain locking-probe AOI confirmation.
 
 ### 3. FPC handling
 
-- **G07 / major** — Battery FPC routes to a PMIC connector on `main_pcb`. Line-flow S3 says route+connect the battery FPC during battery placement, but `main_pcb` is not present until S6 and the split interconnect not until S11. Connecting a non-existent connector is impossible; if the FPC is pre-folded to the S3 routed pose it risks a sub-R0.8 crease before the board arrives. *Mitigation:* defer all battery/PMIC FPC mating to S4 (FPC station); at S3 only tack the service loop into the comb, do not fold to final.
+- **G07 / mitigated major** — Battery FPC routes to a PMIC connector on `main_pcb`; mating it during S3 battery placement would target a connector that is not present yet and could crease the tail. *Mitigation complete locally:* S3 now only tacks the service loop in the routing comb, and S4 explicitly mates the battery/PMIC service loop after `main_pcb` is present.
 - **G08 / major** — Display FPC bend keepout (`display_fpc_bend_keepout`) clears at 1.226 mm in *final* pose, but the display is dropped +Z at S15 over an already-populated bay; the FPC must fold around the top island as the panel seats. Final-pose clearance does not prove the transient bend radius during the fold. *Mitigation:* S4-FIX-004 routing combs must pre-form the display FPC to >= R1.0 and hold it during S15 seat; add an in-process FPC bend-radius gauge at S1/S15 (already a listed S1 gauge).
-- **G09 / major** — Split-board side service loop (`split_interconnect_side_flex`) reports 0.0 mm clearance to neighbors at final pose. Zero clearance means any over-insertion or vibration pinches it between PCB and side frame. *Mitigation:* relieve the side-frame inner wall locally (add >= 0.3 mm channel) or hold the loop in the S4 comb until after S17 snap; re-run checker after relief.
+- **G09 / mitigated major** — Split-board side service loop (`split_interconnect_side_flex`) previously reported 0.0 mm clearance because the checker counted the same split-interconnect top/bottom flex tails as non-mating neighbors. *Mitigation complete locally:* the route mate set now includes the side loop plus both tails as one interconnect assembly; re-run shows side loop 0.56 mm clearance and both tails 0.25 mm, with no pinching parts.
 - **G10 / minor** — Four FPC families (display, split top, split bottom, battery/PMIC side loop) all mate at S4 with audible+AOI click. Risk of wrong-tail-into-wrong-connector since top/bottom tails are similar. *Mitigation:* poka-yoke via different connector pin-counts/widths or keyed shrouds (see G21).
 
 ### 4. Connector mating
@@ -56,7 +57,7 @@ Severity: **blocker** = phone cannot be built / a real part has no install path;
 ### 6. Battery
 
 - **G17 / mitigated blocker (shared root with G01)** — Swell-void foam shelf must be present before battery placement. *Mitigation complete locally:* same foam-pad step as G01; swept insertion passes.
-- **G18 / major** — Battery insertion (S3, +Z drop between `orange_battery_left/right_rib`) with its FPC attached risks creasing the tail under the cell. *Mitigation:* place cell first, route FPC last into the S4 comb; never drop the cell onto its own folded tail. Confirms G07 sequencing.
+- **G18 / mitigated major** — Battery insertion (S3, +Z drop between `orange_battery_left/right_rib`) with its FPC folded under the cell risks creasing the tail. *Mitigation complete locally:* S3 places and bonds the cell first, tacks the service loop in the comb only, and defers final FPC mating to S4.
 - **G19 / minor** — Pull-tab/FPC orientation not keyed in CAD (single rectangular pouch). *Mitigation:* mark a printed orientation fiducial + jig hard-stop on S3-FIX-003.
 
 ### 7. Alignment
@@ -104,7 +105,7 @@ Severity: **blocker** = phone cannot be built / a real part has no install path;
 
 - Total gotchas: **36** (G01–G36).
 - **Blocker: 0**. Former blockers G01, G04, and G17 are locally mitigated in the checker/line-flow.
-- **Major: 20** (G02, G05, G07, G08, G09, G11, G12, G14, G15, G18, G20, G21, G22, G24, G26, G27, G29, G31, G32, G35).
+- **Major: 16** (G02, G08, G11, G12, G14, G15, G20, G21, G22, G24, G26, G27, G29, G31, G32, G35).
 - **Minor: 13** (G03, G06, G10, G13, G16, G19, G23, G25, G28, G30, G33, G34, G36).
 
 ## Verdict

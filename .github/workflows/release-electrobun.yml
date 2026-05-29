@@ -85,7 +85,7 @@ permissions:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.13" # 1.3.13 is the verified desktop packaging runtime; 1.3.11 trips Electrobun bundle creation in CI.
+  BUN_VERSION: "1.3.14" # 1.3.14 desktop packaging runtime (bumped 2026-05-28 for the repo-wide 1.3.14 upgrade); 1.3.11 trips Electrobun bundle creation in CI.
 
 jobs:
   prepare:

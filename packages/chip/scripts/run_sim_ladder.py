@@ -2,15 +2,27 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/sim_ladder.json"
+CLAIM_BOUNDARY = "local_rtl_simulation_ladder_only_not_linux_or_android_chip_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "chip_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 LADDER = [
     {
@@ -24,6 +36,11 @@ LADDER = [
         "required_artifacts": [
             "build/reports/cocotb/e1_linux_soc_contract_test_cpu_mem_intc_contract.xml"
         ],
+    },
+    {
+        "name": "cocotb_npu",
+        "command": ["make", "cocotb-npu"],
+        "required_artifacts": ["build/reports/cocotb/e1_npu_test_e1_npu.xml"],
     },
     {
         "name": "cocotb_cpu",
@@ -43,6 +60,30 @@ LADDER = [
 def code_from_text(text: str, fallback: str) -> str:
     code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
     return code or fallback
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    safe = value.replace(str(ROOT), "<repo>")
+    home = os.environ.get("HOME")
+    if home:
+        safe = safe.replace(home, "<home>")
+    safe = safe.replace("/var/tmp/", "<var-tmp>/")
+    safe = safe.replace("/tmp/", "<tmp>/")
+    return safe
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(child) for child in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def structured_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -127,6 +168,7 @@ def run_step(step: dict[str, Any]) -> dict[str, Any]:
         status = "blocked"
     else:
         status = "fail"
+    log_tail = [] if status == "pass" else result.stdout.splitlines()[-40:]
     return {
         "name": step["name"],
         "command": command,
@@ -135,7 +177,7 @@ def run_step(step: dict[str, Any]) -> dict[str, Any]:
         "elapsed_seconds": elapsed,
         "required_artifacts": artifacts,
         "missing_artifacts": missing,
-        "log_tail": result.stdout.splitlines()[-40:],
+        "log_tail": log_tail,
     }
 
 
@@ -150,14 +192,18 @@ def main() -> int:
 
     manifest = {
         "schema": "eliza.sim_ladder.v1",
+        "generated_utc": utc_now(),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "status": "pass"
         if all(item["status"] == "pass" for item in results) and len(results) == len(LADDER)
         else "fail",
         "results": results,
     }
     manifest["findings"] = structured_findings(results)
+    output_manifest = provenance_safe_value(manifest)
     tmp = REPORT.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    tmp.write_text(json.dumps(output_manifest, indent=2, sort_keys=True) + "\n")
     tmp.replace(REPORT)
 
     if manifest["status"] != "pass":

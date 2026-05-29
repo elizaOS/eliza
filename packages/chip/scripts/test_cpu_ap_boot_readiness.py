@@ -33,17 +33,28 @@ def test_report_schema_and_next_commands_are_machine_readable() -> None:
     report = readiness.build_report()
     if report["schema"] != "eliza.cpu_ap_boot_readiness.v1":
         raise AssertionError("schema drifted")
-    if report["claim_boundary"] != "readiness_gate_only_no_boot_evidence_created":
+    if (
+        report["claim_boundary"]
+        != "generated_rocket_rv64gc_ap_boot_readiness_only_not_phone_android_release_or_silicon_evidence"
+    ):
         raise AssertionError("claim boundary drifted")
+    for flag in readiness.FALSE_CLAIM_FLAGS:
+        if report.get(flag) is not False:
+            raise AssertionError(f"{flag} must be false")
+    for flag in readiness.GENERATED_AP_BOOT_FLAGS:
+        expected = report["status"] == "pass"
+        if report.get(flag) is not expected:
+            raise AssertionError(f"{flag} must be {expected} when status is {report['status']}")
     if report["status"] not in {"pass", "blocked", "fail"}:
         raise AssertionError(f"unexpected status: {report['status']}")
 
     commands = "\n".join(blocker["next"] for blocker in report["blockers"])
-    for token in (
-        "run_chipyard_eliza_linux_smoke.sh",
-        "CHIPYARD_LINUX_BINARY=",
-    ):
-        assert_contains(commands, token)
+    if report["blockers"]:
+        for token in (
+            "run_chipyard_eliza_linux_smoke.sh",
+            "CHIPYARD_LINUX_BINARY=",
+        ):
+            assert_contains(commands, token)
 
 
 def test_generated_dts_uart_token_matches_current_generated_ap() -> None:

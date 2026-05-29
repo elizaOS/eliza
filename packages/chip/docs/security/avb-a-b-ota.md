@@ -1,7 +1,7 @@
 # AVB Chain, A/B Slots, OTA, and Recovery
 
-Status: pre-silicon specification, with the vbmeta **verification** path AND the
-A/B slot + OTA-apply + recovery bootloader logic now implemented in firmware and
+Status: mixed implementation. The vbmeta **verification** path and the A/B slot,
+OTA-apply, and recovery bootloader logic are implemented in firmware and
 exercised by host known-answer + negative tests.
 
 The freestanding vbmeta verifier (`fw/avb/avb_verify.{c,h}`) parses the real

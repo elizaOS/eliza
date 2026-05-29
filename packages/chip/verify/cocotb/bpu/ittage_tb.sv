@@ -25,6 +25,12 @@ module ittage_tb (
     input  logic                upd_misp,
     input  logic [$clog2(ITTAGE_TABLES+1)-1:0] upd_provider,
 
+    input  logic                test_corrupt_parity_valid,
+    input  logic [$clog2(ITTAGE_TABLES)-1:0] test_corrupt_parity_table,
+    input  logic [VADDR_W-1:0]  test_corrupt_parity_pc,
+    input  logic [TAGE_HIST_LEN_MAX-1:0] test_corrupt_parity_hist,
+    input  logic [$clog2(ITTAGE_WAYS)-1:0] test_corrupt_parity_way,
+
     input  logic [$clog2(ITTAGE_TABLES)-1:0] probe_table,
     input  logic [$clog2(ITTAGE_ENTRIES_4 / ITTAGE_WAYS)-1:0] probe_idx,
     output logic [ITTAGE_USEFUL_W-1:0]       probe_useful

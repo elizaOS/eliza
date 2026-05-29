@@ -16,7 +16,6 @@ import {
   resolveWindowShellRoute,
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
-import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import { OwnerBadge } from "../composites/OwnerBadge";
@@ -103,7 +102,6 @@ export function Header({
     elizaCloudCreditsLow,
     loadDropStatus,
     ownerName,
-    plugins,
     setState,
     setTab,
     setUiLanguage,
@@ -194,25 +192,6 @@ export function Header({
       }
     };
   }, [showMacDesktopTitleBar]);
-
-  const developerModeEnabled = useIsDeveloperMode();
-
-  // Keep developer-mode filtering exercised here so Header still observes
-  // plugin nav declarations, but the top/bottom nav bars are intentionally
-  // not rendered. Views are launched from the Views view instead.
-  useMemo(() => {
-    for (const plugin of plugins) {
-      if (!plugin.enabled) continue;
-      const navTabs = plugin.app?.navTabs;
-      if (!navTabs?.length) continue;
-      const appDeveloperOnly = plugin.app?.developerOnly === true;
-      for (const navTab of navTabs) {
-        const isDeveloperOnly =
-          appDeveloperOnly || navTab.developerOnly === true;
-        if (isDeveloperOnly && !developerModeEnabled) continue;
-      }
-    }
-  }, [plugins, developerModeEnabled]);
 
   const hideMobileLocalAutomations =
     isMobileViewport &&

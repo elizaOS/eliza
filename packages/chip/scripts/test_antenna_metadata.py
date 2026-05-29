@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -26,6 +27,7 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
             report = root / "antenna_metadata.json"
             with (
                 patch.object(gate, "RUNS", root / "runs"),
+                patch.object(gate, "DERIVED_RUNS", root / "derived-runs"),
                 patch.object(gate, "REPORT", report),
                 patch.object(gate, "PADFRAME", root / "missing-padframe.yaml"),
                 patch("sys.argv", ["check_antenna_metadata.py", "--release"]),
@@ -47,7 +49,9 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
                 payload["blocker_categories"],
                 {"missing_openlane_antenna_metadata_report": 1},
             )
-            self.assertEqual(payload["report_search"]["glob"], gate.ANTENNA_REPORT_GLOB)
+            self.assertIn(gate.ANTENNA_REPORT_GLOB, payload["report_search"]["globs"])
+            self.assertIn(str(root / "runs"), payload["report_search"]["roots"])
+            self.assertIn(str(root / "derived-runs"), payload["report_search"]["roots"])
             self.assertEqual(payload["findings"][0]["severity"], "blocker")
 
     def test_malformed_openlane_report_is_hard_fail(self) -> None:
@@ -75,6 +79,62 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
                 payload["blocker_categories"],
                 {"malformed_openlane_antenna_metadata_report": 1},
             )
+
+    def test_report_for_other_design_is_blocked_not_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "report.yaml"
+            source.write_text(
+                """
+- cell: e1_pd_smoke_top
+  input: []
+  output: []
+  inout: []
+""".lstrip(),
+                encoding="utf-8",
+            )
+            report = root / "antenna_metadata.json"
+            with (
+                patch.object(gate, "REPORT", report),
+                patch.object(gate, "PADFRAME", root / "missing-padframe.yaml"),
+                patch(
+                    "sys.argv", ["check_antenna_metadata.py", "--release", "--report", str(source)]
+                ),
+            ):
+                stdout = StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = gate.main()
+
+            self.assertEqual(exit_code, 2)
+            self.assertIn("STATUS: BLOCKED", stdout.getvalue())
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(payload["status"], "blocked")
+            self.assertEqual(
+                payload["blocker_categories"],
+                {"missing_e1_chip_top_antenna_metadata_report": 1},
+            )
+            self.assertTrue(payload["summary"]["source_report_missing_e1_chip_top"])
+            self.assertEqual(payload["summary"]["missing_e1_chip_top_report_count"], 1)
+            self.assertIn("Regenerate the OpenLane antenna metadata report", payload["findings"][0]["next_step"])
+
+    def test_latest_report_accepts_any_openlane_step_number_and_derived_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            older = root / "runs" / "old" / "61-odb-checkdesignantennaproperties"
+            newer = root / "derived-runs" / "new" / "58-odb-checkdesignantennaproperties"
+            older.mkdir(parents=True)
+            newer.mkdir(parents=True)
+            older_report = older / "report.yaml"
+            newer_report = newer / "report.yaml"
+            older_report.write_text("- cell: e1_chip_top\n", encoding="utf-8")
+            newer_report.write_text("- cell: e1_chip_top\n", encoding="utf-8")
+            with (
+                patch.object(gate, "RUNS", root / "runs"),
+                patch.object(gate, "DERIVED_RUNS", root / "derived-runs"),
+            ):
+                os.utime(older_report, (1, 1))
+                os.utime(newer_report, (2, 2))
+                self.assertEqual(gate.latest_report(), newer_report)
 
     def test_missing_pin_report_records_actionable_buckets(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

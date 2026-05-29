@@ -106,7 +106,7 @@ module e1_tiny_cpu_contract_tb (
     assign cpu_reset_pc = reset_pc;
     assign cpu_hart_id  = hart_id;
 
-    e1_cpu_subsystem_stub #(
+    e1_tiny_cpu_contract #(
         .RESET_PC(32'h8000_0000),
         .HART_ID(32'h0)
     ) u_cpu (

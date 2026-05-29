@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,7 @@ CAPTURE_COMMANDS = {
     "buildroot": "make BR2_EXTERNAL=$PWD/sw/buildroot eliza_e1_defconfig && make BR2_EXTERNAL=$PWD/sw/buildroot",
     "kernel_import": "sw/linux/scripts/import-linux-bsp.sh /path/to/linux",
     "target_smoke": "ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu",
-    "capture_wrapper": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke",
+    "capture_wrapper": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux ml-smoke",
 }
 
 
@@ -178,6 +179,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.e1_npu_linux_smoke_source.v1",
         "status": "fail" if problems else ("blocked" if blockers else "pass"),
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": "source wiring plus explicit target transcript gate; not NNAPI or hardware benchmark proof",
         "sources": {
             "smoke": rel(SMOKE),

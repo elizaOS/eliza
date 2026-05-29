@@ -29,6 +29,15 @@ REPORT = Path(
 )
 if not REPORT.is_absolute():
     REPORT = ROOT / REPORT
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "rtl_boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "generated_ap_completion_claim_allowed": False,
+}
 
 REQUIRED_DTS_TOKENS = {
     "cpu": "cpu@0",
@@ -148,6 +157,7 @@ def main() -> int:
         "schema": "eliza.chipyard_payload_path.v1",
         "status": status,
         "claim_boundary": "generated_chipyard_artifacts_only_not_rtl_boot_claim",
+        **FALSE_CLAIM_FLAGS,
         "summary": "Generated Chipyard artifacts may feed the next external OpenSBI/U-Boot/Linux payload path, but do not prove RTL boot.",
         "capture_wrapper": "scripts/capture_chipyard_linux_evidence.sh",
         "capture_preflight": "scripts/capture_chipyard_linux_evidence.sh preflight",

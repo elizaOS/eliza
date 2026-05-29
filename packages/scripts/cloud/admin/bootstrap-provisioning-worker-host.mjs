@@ -421,7 +421,7 @@ async function deployWorker(host) {
       'git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"',
       "sudo chown -R deploy:deploy /opt/eliza",
       "if ! command -v bun >/dev/null 2>&1; then",
-      '  curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13"',
+      '  curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"',
       "fi",
       'export BUN_INSTALL="$HOME/.bun"',
       'export PATH="$BUN_INSTALL/bin:$PATH"',

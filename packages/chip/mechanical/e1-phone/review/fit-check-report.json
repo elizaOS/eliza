@@ -96,7 +96,7 @@
       ],
       "bottom_island_center_y_mm": -58.5,
       "bottom_island_role": "USB-C, USB-PD/charger, PMIC, audio, factory test access",
-      "bottom_island_size_basis": "Held to the KiCad Edge.Cuts and layout-utilization concept geometry: top island 64x29 mm at board y=0 and bottom island 64x15 mm at board y=117. This is intentionally a non-release concept outline until the routed-board STEP replaces the placeholder PCB and supplier land patterns close."
+      "bottom_island_size_basis": "Held to the KiCad Edge.Cuts and layout-utilization concept geometry: top island 64x29 mm at board y=0 and bottom island 64x15 mm at board y=117. This remains a non-release concept outline until the supplier-approved routed-board STEP, land patterns, and signed clearance evidence close."
     },
     "battery": {
       "candidate": "LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch",
@@ -180,7 +180,7 @@
         "source_note": "commodity Shenzhen compact LRA class; exact vendor drawing required"
       },
       "sim_tray": {
-        "candidate": "nano-SIM service tray or eSIM-only blocker placeholder",
+        "candidate": "nano-SIM service tray or eSIM-only release-blocked service option",
         "envelope_mm": [
           12.3,
           18.0,
@@ -697,7 +697,7 @@
     },
     "mesh_integrity": {
       "pass": true,
-      "checked_parts": 222,
+      "checked_parts": 258,
       "failures": []
     },
     "usb_c_insertion_envelope": {
@@ -923,7 +923,7 @@
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 182.18,
+      "estimated_mass_g": 182.2,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }

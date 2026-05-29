@@ -6,6 +6,7 @@ import hashlib
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -116,6 +117,7 @@ def run_smoke() -> int:
     data = {
         "schema": "eliza.mvp_npu_ml_smoke.v1",
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "npu_ml_smoke_claim": status == "pass",
         "integrated_linux_npu_ml_claim": False,
         "claim_boundary": (

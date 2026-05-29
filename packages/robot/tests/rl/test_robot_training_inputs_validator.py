@@ -20,14 +20,16 @@ def _task(
     *,
     variants: list[str] | None = None,
     requires_target: bool = False,
+    init_state: str | None = "stand",
+    reward: dict | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=task_id,
         tier="base",
         requires_target=requires_target,
-        reward={"target_velocity_x_m_s": 1.0},
+        reward=reward or {"target_velocity_x_m_s": 1.0},
         success={"no_fall": True},
-        init_state="stand",
+        init_state=init_state,
         verbs=_Verbs(variants or [task_id.replace("_", " ")]),
     )
 
@@ -105,6 +107,43 @@ def test_training_inputs_report_blocks_missing_and_unsupported_launch_tasks(monk
     ]
 
 
+def test_training_inputs_report_accepts_prone_reset_tasks(monkeypatch) -> None:
+    _patch_lightweight_inputs(
+        monkeypatch,
+        tasks=[_task("get_up", init_state="prone")],
+    )
+
+    report = validator.build_report(launch_tasks=("get_up",))
+
+    assert report["ok"] is True
+    assert report["blockers"] == []
+    assert report["tasks"][0]["supported_by_profile_env"] is True
+
+
+def test_training_inputs_report_accepts_contact_reward_keys(monkeypatch) -> None:
+    _patch_lightweight_inputs(
+        monkeypatch,
+        tasks=[
+            _task(
+                "walk_forward",
+                reward={
+                    "target_velocity_x_m_s": 0.1,
+                    "stance_contact_weight": 0.4,
+                    "foot_clearance_weight": 0.4,
+                    "foot_slip_weight": -1.0,
+                    "foot_spacing_weight": 1.0,
+                    "self_collision_weight": 2.0,
+                },
+            )
+        ],
+    )
+
+    report = validator.build_report(launch_tasks=("walk_forward",))
+
+    assert report["ok"] is True
+    assert report["tasks"][0]["reasons"] == []
+
+
 def test_training_inputs_cli_writes_report_and_returns_status(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -121,3 +160,27 @@ def test_training_inputs_cli_writes_report_and_returns_status(
     assert validator.main(["--tasks", "stand_up", "--out", str(out)]) == 0
     assert json.loads(out.read_text())["launch_tasks"] == ["stand_up"]
     assert validator.main(["--tasks", "bad_task"]) == 1
+
+
+def test_hiwonder_launch_resets_have_declared_biped_support() -> None:
+    report = validator._profile_report(  # noqa: SLF001
+        "hiwonder-ainex",
+        launch_tasks=(
+            "stand_up",
+            "walk_forward",
+            "walk_backward",
+            "sidestep_left",
+            "sidestep_right",
+            "turn_left",
+            "turn_right",
+        ),
+    )
+
+    assert report["ok"] is True
+    launch_rows = [
+        row for row in report["start_state_smoke"] if row["in_launch_tasks"]
+    ]
+    assert launch_rows
+    assert all(row["biped_support"] is True for row in launch_rows)
+    assert all(row["left_foot_contact"] is True for row in launch_rows)
+    assert all(row["right_foot_contact"] is True for row in launch_rows)

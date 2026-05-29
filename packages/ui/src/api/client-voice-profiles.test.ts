@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   VoiceProfilesClient,
@@ -47,11 +47,13 @@ describe("VoiceProfilesClient.list", () => {
     expect(owner.source).toBe("first-run");
   });
 
-  it("falls back to [] when the endpoint is missing (404)", async () => {
+  it("surfaces failures instead of fabricating an empty list", async () => {
     const client = makeClient(async () => {
       throw Object.assign(new Error("Not found"), { status: 404 });
     });
-    expect(await client.list()).toEqual([]);
+    await expect(client.list()).rejects.toBeInstanceOf(
+      VoiceProfilesUnavailableError,
+    );
   });
 
   it("throws VoiceProfilesUnavailableError for unexpected errors", async () => {
@@ -110,25 +112,13 @@ describe("VoiceProfilesClient.startOwnerCapture", () => {
     expect(session.prompts).toHaveLength(1);
   });
 
-  it("falls back to local prompts when the endpoint is missing", async () => {
+  it("surfaces failures instead of fabricating a local session", async () => {
     const client = makeClient(async () => {
       throw Object.assign(new Error("not found"), { status: 404 });
     });
-    const session = await client.startOwnerCapture();
-    expect(session.sessionId.startsWith("local-")).toBe(true);
-    expect(session.prompts.length).toBeGreaterThanOrEqual(2);
-    expect(session.expectedSeconds).toBeGreaterThan(0);
-  });
-
-  it("falls back to local prompts when a mobile shell returns a non-JSON route response", async () => {
-    const client = makeClient(async () => {
-      throw Object.assign(new Error("Invalid JSON response: <html>"), {
-        kind: "parse",
-      });
-    });
-    const session = await client.startOwnerCapture();
-    expect(session.sessionId.startsWith("local-")).toBe(true);
-    expect(session.prompts.length).toBeGreaterThanOrEqual(2);
+    await expect(client.startOwnerCapture()).rejects.toBeInstanceOf(
+      VoiceProfilesUnavailableError,
+    );
   });
 
   it("normalises the local-inference route script response", async () => {
@@ -152,15 +142,40 @@ describe("VoiceProfilesClient.startOwnerCapture", () => {
     expect(session.expectedSeconds).toBe(5);
   });
 
-  it("falls back to local prompts when the route returns an incompatible shape", async () => {
+  it("rejects a server response missing a sessionId", async () => {
+    const client = makeClient(async () => ({
+      prompts: [{ id: "p1", text: "Say hi", targetSeconds: 5 }],
+    }));
+    await expect(client.startOwnerCapture()).rejects.toBeInstanceOf(
+      VoiceProfilesUnavailableError,
+    );
+  });
+
+  it("rejects a server response with no usable prompts", async () => {
     const client = makeClient(async () => ({
       sessionId: "voice-session",
       script: [],
     }));
+    await expect(client.startOwnerCapture()).rejects.toBeInstanceOf(
+      VoiceProfilesUnavailableError,
+    );
+  });
 
+  it("normalises malformed prompts and keeps only valid ones", async () => {
+    const client = makeClient(async () => ({
+      sessionId: "mixed-session",
+      prompts: [
+        { id: "valid", text: "Say a short phrase" },
+        { id: "bad" },
+        null,
+      ],
+    }));
     const session = await client.startOwnerCapture();
-    expect(session.sessionId.startsWith("local-")).toBe(true);
-    expect(session.prompts.length).toBeGreaterThanOrEqual(2);
+    expect(session.sessionId).toBe("mixed-session");
+    expect(session.prompts).toEqual([
+      { id: "valid", text: "Say a short phrase", targetSeconds: 5 },
+    ]);
+    expect(session.expectedSeconds).toBe(5);
   });
 });
 
@@ -181,7 +196,7 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
     expect(calls).toEqual(["/api/voice/first-run/profile/append?id=session-x"]);
   });
 
-  it("does not block first-run when the route rejects the temporary JSON capture body", async () => {
+  it("surfaces a rejected capture body instead of swallowing it", async () => {
     const client = makeClient(async () => {
       throw Object.assign(new Error("invalid PCM body"), {
         kind: "http",
@@ -195,51 +210,12 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
         audioBase64: "AAAA",
         durationMs: 1000,
       }),
-    ).resolves.toBeUndefined();
-  });
-
-  it("falls back to local prompts when the endpoint returns a partial session", async () => {
-    const client = makeClient(async () => ({
-      sessionId: "partial-session",
-    }));
-    const session = await client.startOwnerCapture();
-    expect(session.sessionId.startsWith("local-")).toBe(true);
-    expect(session.prompts.length).toBeGreaterThanOrEqual(2);
-    expect(session.expectedSeconds).toBeGreaterThan(0);
-  });
-
-  it("normalises malformed prompts instead of returning an unsafe session", async () => {
-    const client = makeClient(async () => ({
-      sessionId: "mixed-session",
-      prompts: [
-        { id: "valid", text: "Say a short phrase" },
-        { id: "bad" },
-        null,
-      ],
-    }));
-    const session = await client.startOwnerCapture();
-    expect(session.sessionId).toBe("mixed-session");
-    expect(session.prompts).toEqual([
-      { id: "valid", text: "Say a short phrase", targetSeconds: 5 },
-    ]);
-    expect(session.expectedSeconds).toBe(5);
+    ).rejects.toBeInstanceOf(VoiceProfilesUnavailableError);
   });
 });
 
 describe("VoiceProfilesClient.finalizeOwnerCapture", () => {
-  it("returns the deterministic OWNER fallback when the endpoint is missing", async () => {
-    const client = makeClient(async () => {
-      throw Object.assign(new Error("connection refused"), {});
-    });
-    const r = await client.finalizeOwnerCapture("session-x", {
-      displayName: "Shaw",
-    });
-    expect(r.isOwner).toBe(true);
-    expect(r.profileId).toContain("session-x");
-    expect(r.entityId).toContain("session-x");
-  });
-
-  it("uses the local-inference id query parameter when finalizing", async () => {
+  it("returns the server result", async () => {
     const calls: string[] = [];
     const client = makeClient(async (path) => {
       calls.push(path);
@@ -250,14 +226,18 @@ describe("VoiceProfilesClient.finalizeOwnerCapture", () => {
       };
     });
 
-    await client.finalizeOwnerCapture("session-x", { displayName: "Shaw" });
+    const r = await client.finalizeOwnerCapture("session-x", {
+      displayName: "Shaw",
+    });
 
+    expect(r.profileId).toBe("profile-x");
+    expect(r.isOwner).toBe(true);
     expect(calls).toEqual([
       "/api/voice/first-run/profile/finalize?id=session-x",
     ]);
   });
 
-  it("returns the deterministic OWNER fallback when no embeddings are captured yet", async () => {
+  it("surfaces failures instead of fabricating an OWNER result", async () => {
     const client = makeClient(async () => {
       throw Object.assign(new Error("no embeddings captured yet"), {
         kind: "http",
@@ -265,16 +245,53 @@ describe("VoiceProfilesClient.finalizeOwnerCapture", () => {
       });
     });
 
-    const r = await client.finalizeOwnerCapture("session-x", {
-      displayName: "Shaw",
-    });
-
-    expect(r.isOwner).toBe(true);
-    expect(r.profileId).toContain("session-x");
+    await expect(
+      client.finalizeOwnerCapture("session-x", { displayName: "Shaw" }),
+    ).rejects.toBeInstanceOf(VoiceProfilesUnavailableError);
   });
 });
 
-describe("VoiceProfilesClient mutations swallow missing-endpoint errors", () => {
+describe("VoiceProfilesClient.captureFamilyMember", () => {
+  it("returns the server result", async () => {
+    const client = makeClient(async (path) => {
+      expect(path).toBe("/v1/voice/first-run/family-member");
+      return {
+        profileId: "vp_abc",
+        entityId: "ent-fam",
+        displayName: "Alex",
+        relationship: "spouse",
+        relationshipTag: "family_of",
+        ownerEntityId: "ent-owner",
+      };
+    });
+
+    const r = await client.captureFamilyMember({
+      audioBase64: "dGVzdA==",
+      durationMs: 5000,
+      displayName: "Alex",
+      relationship: "spouse",
+    });
+    expect(r.profileId).toBe("vp_abc");
+    expect(r.entityId).toBe("ent-fam");
+  });
+
+  it("surfaces failures instead of fabricating a stub result", async () => {
+    const client = makeClient(async () => {
+      throw Object.assign(new Error("not found"), { status: 404 });
+    });
+
+    await expect(
+      client.captureFamilyMember({
+        audioBase64: "dGVzdA==",
+        durationMs: 5000,
+        displayName: "Test",
+        relationship: "family",
+      }),
+    ).rejects.toBeInstanceOf(VoiceProfilesUnavailableError);
+  });
+});
+
+describe("VoiceProfilesClient mutations surface failures", () => {
   const cases: Array<[string, (c: VoiceProfilesClient) => Promise<unknown>]> = [
     ["patch", (c) => c.patch("a", { displayName: "x" })],
     ["merge", (c) => c.merge("a", { intoId: "b" })],
@@ -284,18 +301,19 @@ describe("VoiceProfilesClient mutations swallow missing-endpoint errors", () => 
   ];
 
   for (const [name, run] of cases) {
-    it(`${name}: returns without throwing on 404`, async () => {
+    it(`${name}: surfaces a 404 instead of swallowing it`, async () => {
       const client = makeClient(async () => {
         throw Object.assign(new Error("not found"), { status: 404 });
       });
-      await run(client); // should not throw
+      await expect(run(client)).rejects.toBeInstanceOf(
+        VoiceProfilesUnavailableError,
+      );
     });
 
     it(`${name}: surfaces non-404 failures`, async () => {
-      const spy = vi.fn(async () => {
+      const client = makeClient(async () => {
         throw Object.assign(new Error("boom"), { status: 500 });
       });
-      const client = makeClient(spy);
       await expect(run(client)).rejects.toBeInstanceOf(
         VoiceProfilesUnavailableError,
       );
@@ -304,11 +322,20 @@ describe("VoiceProfilesClient mutations swallow missing-endpoint errors", () => 
 });
 
 describe("VoiceProfilesClient.exportAll", () => {
-  it("returns null downloadUrl on the missing endpoint fallback", async () => {
+  it("returns the server download URL", async () => {
+    const client = makeClient(async () => ({
+      downloadUrl: "https://example.com/export.json",
+    }));
+    const r = await client.exportAll();
+    expect(r.downloadUrl).toBe("https://example.com/export.json");
+  });
+
+  it("surfaces failures instead of fabricating a null URL", async () => {
     const client = makeClient(async () => {
       throw Object.assign(new Error("not found"), { status: 404 });
     });
-    const r = await client.exportAll();
-    expect(r.downloadUrl).toBeNull();
+    await expect(client.exportAll()).rejects.toBeInstanceOf(
+      VoiceProfilesUnavailableError,
+    );
   });
 });

@@ -3,12 +3,19 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import check_chip_os_environment_preflight as preflight
+
+
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], preflight.CLAIM_BOUNDARY)
+    for key, expected in preflight.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
 
 
 class ChipOsEnvironmentPreflightTests(unittest.TestCase):
@@ -18,11 +25,13 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
             with (
                 mock.patch.object(preflight, "REPO", repo),
                 mock.patch.object(preflight, "ENV_DEFAULT_PATHS", {}),
+                mock.patch.object(preflight, "ENV_DEFAULT_COMMANDS", {}),
                 mock.patch.object(preflight, "TOOL_DEFAULT_PATHS", {}),
             ):
                 report = preflight.build_report(env={}, which=lambda _name: None)
 
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("missing_tool_qemu_system_riscv64", codes)
         self.assertIn("missing_env_aosp_dir", codes)
@@ -46,6 +55,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                 report = preflight.build_report(env=env, which=lambda name: f"/bin/{name}")
 
         self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["findings"], 0)
 
     def test_missing_aosp_smoke_envs_include_capture_hints(self) -> None:
@@ -60,6 +70,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                     "ENV_DEFAULT_PATHS",
                     {"AOSP_DIR": (aosp,)},
                 ),
+                mock.patch.object(preflight, "ENV_DEFAULT_COMMANDS", {}),
                 mock.patch.object(preflight, "TOOL_DEFAULT_PATHS", {}),
             ):
                 report = preflight.build_report(env={}, which=lambda _name: "/bin/tool")
@@ -98,6 +109,28 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                 "android_release_manifest_validator",
             }.issubset(paths)
         )
+
+    def test_output_report_sanitizes_host_local_paths_and_adds_timestamp(self) -> None:
+        report = {
+            "schema": preflight.SCHEMA,
+            "status": "pass",
+            "environment": [
+                {
+                    "name": "AOSP_DIR",
+                    "value": "/home/shaw/aosp",
+                    "command_hint": {
+                        "capture_command": "/home/shaw/milady/eliza/packages/chip/script.sh /home/shaw/aosp"
+                    },
+                }
+            ],
+            "tools": [{"path": "/home/shaw/Android/Sdk/platform-tools/adb"}],
+        }
+
+        output = preflight.report_for_output(report)
+        text = json.dumps(output)
+        self.assertRegex(output["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
+        self.assertNotIn("/home/shaw", text)
+        self.assertIn("$AOSP_DIR", text)
 
 
 if __name__ == "__main__":

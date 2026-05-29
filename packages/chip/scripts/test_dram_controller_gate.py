@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+import json
 
 import check_dram_controller as gate
 
@@ -63,6 +64,29 @@ class DramControllerGateTests(unittest.TestCase):
                 self.assertTrue(markers)
                 with self.assertRaises(ValueError):
                     gate.write_cocotb_result(sim_log)
+
+    def test_report_denies_unproven_memory_claims(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report = Path(tmpdir) / "dram_controller.json"
+            with mock.patch.object(gate, "REPORT", report):
+                gate.write_report("PASS", None, None, {"unit": "test"})
+
+            payload = json.loads(report.read_text(encoding="utf-8"))
+
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "linux_memory_claim_allowed",
+            "memory_bandwidth_claim_allowed",
+            "lpddr_phy_claim_allowed",
+            "silicon_capacity_claim_allowed",
+            "uma_claim_allowed",
+        ):
+            self.assertIs(payload.get(key), False)
+        boundary = payload["claim_boundary"]
+        self.assertIn("not Linux memory-sizing evidence", boundary)
+        self.assertIn("memory-bandwidth evidence", boundary)
+        self.assertIn("silicon-capacity", boundary)
 
 
 if __name__ == "__main__":

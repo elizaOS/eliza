@@ -31,7 +31,7 @@ VENV_PYTHON := $(VENV)/bin/python
 BENCH_PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),$(PYTHON))
 COCOTB_PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ] && "$(VENV_PYTHON)" -c "import cocotb" >/dev/null 2>&1; then printf '%s' "$(VENV_PYTHON)"; else command -v "$(PYTHON)" || printf '%s' "$(PYTHON)"; fi)
 RTL_TOP := e1_chip_top
-RTL_SRCS := rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
+RTL_SRCS := rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_tiny_cpu_contract.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
 BUILD := build
 
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
@@ -60,8 +60,24 @@ BUILD := build
 .PHONY: power-thermal-ai-policy-check
 .PHONY: software-bsp-firmware-ai-policy-check
 .PHONY: spec-traceability-ai-policy-check
+.PHONY: bootrom-positive-handoff-check
+.PHONY: bootrom-positive-handoff-test
+.PHONY: dram-controller-check
+.PHONY: dram-controller-gate-test
+.PHONY: memory-interconnect-contract-test
+.PHONY: npu-coverage-summary-test
+.PHONY: npu-accelerator-check npu-accelerator-gate-test
+.PHONY: npu-formal-coverage-check npu-formal-coverage-test
+.PHONY: cpu-mem-intc-cocotb-coverage-check cpu-mem-intc-cocotb-coverage-test
+.PHONY: dma-engine-check dma-engine-gate-test
+.PHONY: dma-formal-coverage-check dma-formal-coverage-test
+.PHONY: axil-formal-coverage-check axil-formal-coverage-test
+.PHONY: display-formal-coverage-check display-formal-coverage-test
+.PHONY: display-scanout-check
+.PHONY: soc-real-integration-check soc-real-integration-test
+.PHONY: linux-bsp-contract-check linux-bsp-contract-test
 
-.PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test chip-viewer lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check e1-npu-android-proof-manifest-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test tee-software-check tee-confidential-domain-contract-check tee-page-state-policy-check tee-page-state-model-check tee-page-state-model-test tee-iopmp-policy-check tee-side-channel-claims-check tee-attestation-evidence-check tee-quote-serializer-test tee-otp-fuse-map-check tee-otp-fuse-map-test tee-mee-freshness-model-check tee-purge-sequence-scope-check radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check avb-verify-check bootrom-sim-transcript-check rot-integration-check boot-security-chain-contract-check avb-verify-check bootrom-sim-transcript-check rot-check clean
+.PHONY: setup venv tools kicad-setup kicad-tools-check e1-phone-schematic-scaffold e1-phone-layout-metrics e1-phone-manufacturing-closure e1-phone-board-package-check kicad-phone-render kicad-phone-preview-check phone-cad phone-cad-test chip-viewer lint lint-fix typecheck analysis verify-all smoke ci-fast ci-local ci-strict ci-pd benchmarks-dry-run benchmarks benchmark-tools benchmarks-local-host-evidence benchmark-modeled-artifacts benchmark-modeled-cpu-npu cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier benchmark-sim-metrics benchmark-cpu-ap-sim-metrics benchmark-cpu-ap-sota-sim-metrics benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-check benchmark-efficiency-scope-test soc-thermal-sweep soc-thermal-sweep-test soc-optimization soc-optimization-work-order soc-optimization-test cpu-npu-2028-readiness-scorecard cpu-npu-2028-readiness-scorecard-test cpu-npu-manual-review cpu-npu-manual-review-test power-thermal-scope-check power-thermal-scope-test power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test npu-scope-check npu-scope-test e1-npu-nnapi-proof-check e1-npu-android-tradefed-build e1-npu-android-proof-manifest-assemble e1-npu-android-proof-manifest-check mvp-status mvp-status-strict mvp-status-json mvp-simulator mvp-simulator-check mvp-simulator-status-test aosp-simulator-completion-check android-sim-peripheral-evidence linux-handoff-check chipyard-generator-check chipyard-generated-check chipyard-generated-linux-contract-check chipyard-verilator-linux-smoke-check cpu-ap-scaffold-check cpu-ap-scope-check cpu-ap-scope-test cpu-ap-capture-plan cpu-ap-capture-preflight cpu-ap-capture-wire cpu-ap-capture-wire-preflight cpu-ap-evidence-check cpu-ap-evidence-test cpu-ap-completion-gate no-hardware-action-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check memory-iommu-qos-sim-check memory-iommu-qos-sim-test memory-axi4-check iommu-evidence-check cocotb-axi4 cocotb-axi4-irq-w1c cocotb-axi4-multimaster cocotb-axi4-width-converter cocotb-dram-ctrl cocotb-iommu stream-bench lmbench-bw mlc-bench dma-buf-negative dramsim-sweep npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check npu-context-queue-sim-check npu-context-queue-sim-test scale-feasibility-gate verification-maturity-matrix-check project-plan-check prototype-status-dashboard-check prototype-status-dashboard-test phone-soc-claim-check phone-media-pipeline-scope-check phone-media-pipeline-scope-test security-lifecycle-scope-check security-lifecycle-scope-test tee-software-check tee-confidential-domain-contract-check tee-page-state-policy-check tee-page-state-model-check tee-page-state-model-test tee-iopmp-policy-check tee-side-channel-claims-check tee-attestation-evidence-check tee-quote-serializer-test tee-otp-fuse-map-check tee-otp-fuse-map-test tee-mee-freshness-model-check tee-purge-sequence-scope-check radio-sensor-pmic-scope-check radio-sensor-pmic-scope-test product-feature-gates-check product-feature-gates-test product-check product-check-status-test product-release-check product-evidence-commands product-resolved-manifest pinout-check fpga-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check manufacturing-artifacts-check manufacturing-artifacts-release-check kicad-artifacts-check package-artifacts-check fpga-artifacts-check real-world-gates-check antenna-metadata-check antenna-metadata-release-check pd-preflight-check pd-contract-check pd-signoff-manifest-check bootrom-check rtl-check stub-audit cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal synth openlane openlane-smoke openroad qemu renode qemu-check qemu-check-strict qemu-os-check qemu-status-test renode-check renode-check-strict renode-status-test android-sim-boot-check android-sim-status-test aosp-linux-preflight aosp-linux-handoff aosp-linux-handoff-build-only platform-contract-check software-contract-check buildroot-check buildroot-scaffold-check buildroot-import-check buildroot-qemu-virt-smoke buildroot-qemu-virt-smoke-test aosp-build-preflight aosp-build-riscv64 bsp-scaffold-check software-bsp-check software-bsp-scaffold-check software-bsp-scope-check software-bsp-test docs-check tool-versions record-tool-versions pipeline-check archive-check archive-release otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check avb-verify-check bootrom-sim-transcript-check rot-integration-check boot-security-chain-contract-check avb-verify-check bootrom-sim-transcript-check rot-check clean
 
 setup: kicad-setup venv tools kicad-tools-check
 	@echo "packages/chip setup complete"
@@ -170,16 +186,16 @@ typecheck:
 analysis:
 	@$(PYTHON) scripts/run_analysis.py
 
-verify-all: lint typecheck smoke analysis cocotb cocotb-npu cocotb-contract cocotb-cpu qemu-status-test renode-status-test
+verify-all: lint typecheck smoke analysis cocotb cocotb-dma cocotb-npu cocotb-contract cocotb-cpu qemu-status-test renode-status-test
 	@echo "verify-all complete"
 
 smoke: lint typecheck docs-check project-plan-check record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check soc-thermal-sweep soc-optimization soc-optimization-work-order cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier cpu-npu-2028-readiness-scorecard cpu-npu-manual-review scale-feasibility-gate verification-maturity-matrix-check platform-contract-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test chipyard-generator-check cpu-ap-scaffold-check cpu-ap-evidence-test cpu-ap-completion-gate stub-audit bsp-scaffold-check software-bsp-check tee-software-check otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check qemu-check renode-check benchmarks-dry-run rtl-check synth
 	@echo "smoke complete"
 
-ci-fast: lint typecheck docs-check project-plan-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check scale-feasibility-gate verification-maturity-matrix-check platform-contract-check pinout-check stub-audit rtl-check synth cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check product-check
+ci-fast: lint typecheck docs-check project-plan-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check scale-feasibility-gate verification-maturity-matrix-check platform-contract-check pinout-check stub-audit rtl-check synth cocotb cocotb-dma cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check product-check
 	@echo "ci-fast complete"
 
-ci-local: lint typecheck docs-check platform-contract-check pinout-check product-check rtl-check synth cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check tool-versions
+ci-local: lint typecheck docs-check platform-contract-check pinout-check product-check rtl-check synth cocotb cocotb-dma cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check tool-versions
 	@echo "ci-local complete"
 
 ci-strict: REQUIRE_SBY=1
@@ -248,6 +264,18 @@ tapeout-readiness: manufacturing-tapeout-scope-check
 
 tapeout-readiness-strict: manufacturing-tapeout-scope-check
 	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --strict
+
+chip-tapeout-readiness: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope chip --report build/reports/chip-tapeout-readiness.json
+
+chip-tapeout-readiness-strict: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope chip --strict --report build/reports/chip-tapeout-readiness.json
+
+phone-release-readiness: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness.json
+
+phone-release-readiness-strict: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope phone --strict --report build/reports/phone-release-readiness.json
 
 tapeout-readiness-test:
 	@$(PYTHON) scripts/test_aggregate_tapeout_readiness.py
@@ -336,6 +364,147 @@ benchmark-cpu-ap-sim-metrics:
 benchmark-cpu-ap-sota-sim-metrics:
 	@$(PYTHON) benchmarks/generate_simulator_arch_metrics.py --mode model-14a-cpu-ap --profile sota_2core --base-frequency-hz 3800000000 --base-power-w 3.1 --ipc-scale 1.35 --mpki-scale 0.62 --out benchmarks/results/simulator-arch-metrics-sota.json
 
+e1x-wafer-mesh-evidence:
+	@$(PYTHON) scripts/generate_e1x_wafer_mesh_evidence.py
+
+e1x-wafer-mesh-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_wafer_mesh_model.py -q
+
+.PHONY: e1x-rtl-contract-check e1x-rtl-contract-test e1x-benchmark e1x-benchmark-test e1x-kernel-codegen e1x-kernel-codegen-test e1x-repair-rom-cocotb e1x-repair-rom-cocotb-test e1x-core-cocotb e1x-core-cocotb-test e1x-pe-core-cocotb e1x-pe-core-cocotb-test e1x-tile-cocotb e1x-tile-cocotb-test e1x-fabric-cocotb e1x-fabric-cocotb-test e1x-credit-router-cocotb e1x-credit-router-cocotb-test e1x-dft-cocotb e1x-dft-cocotb-test e1x-dft-strategy e1x-formal e1x-formal-test
+
+e1x-rtl-contract-check:
+	@$(PYTHON) scripts/check_e1x_rtl_contract.py
+
+e1x-rtl-contract-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_rtl_contract.py -q
+
+e1x-benchmark:
+	@$(PYTHON) scripts/check_e1x_benchmark.py
+
+e1x-benchmark-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_benchmark.py -q
+
+e1x-kernel-codegen:
+	@$(PYTHON) scripts/check_e1x_kernel_codegen.py
+
+e1x-kernel-codegen-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_kernel_codegen.py -q
+
+e1x-repair-rom-cocotb:
+	@$(PYTHON) scripts/check_e1x_repair_rom_cocotb.py
+
+e1x-repair-rom-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_repair_rom_cocotb.py -q
+
+e1x-core-cocotb:
+	@$(PYTHON) scripts/check_e1x_core_cocotb.py
+
+e1x-core-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_core_cocotb.py -q
+
+e1x-pe-core-cocotb:
+	@$(PYTHON) scripts/check_e1x_pe_core_cocotb.py
+
+e1x-pe-core-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_pe_core_cocotb.py -q
+
+e1x-tile-cocotb:
+	@$(PYTHON) scripts/check_e1x_tile_cocotb.py
+
+e1x-tile-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_tile_cocotb.py -q
+
+e1x-fabric-cocotb:
+	@$(PYTHON) scripts/check_e1x_fabric_cocotb.py
+
+e1x-fabric-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_fabric_cocotb.py -q
+
+.PHONY: e1x3d-wafer-stack-evidence e1x3d-scaled-model-evidence e1x3d-model-test e1x3d-benchmark e1x3d-fabric-cocotb e1x3d-fabric-cocotb-test e1x3d-placement-evidence e1x3d-placement e1x3d-placement-test e1x3d-pd-signoff e1x3d-tier-split-evidence e1x3d-3d-split e1x3d-stacked-thermal-evidence e1x3d-stacked-thermal e1x3d-signoff
+
+e1x3d-wafer-stack-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_wafer_stack_evidence.py
+
+e1x3d-scaled-model-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_scaled_model_evidence.py
+
+e1x3d-model-test:
+	@$(PYTHON) -m pytest scripts/test_e1x3d_wafer_model.py -q
+
+e1x3d-benchmark:
+	@$(PYTHON) scripts/check_e1x3d_benchmark.py
+
+e1x3d-fabric-cocotb:
+	@$(PYTHON) scripts/check_e1x3d_fabric_cocotb.py
+
+e1x3d-fabric-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x3d_fabric_cocotb.py -q
+
+e1x3d-placement-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_placement_evidence.py
+
+e1x3d-placement:
+	@$(PYTHON) scripts/check_e1x3d_placement.py
+
+e1x3d-placement-test:
+	@$(PYTHON) -m pytest scripts/test_e1x3d_placement_model.py -q
+
+e1x3d-pd-signoff:
+	@$(PYTHON) scripts/check_e1x3d_pd_signoff.py
+
+e1x3d-tier-split-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_tier_split_manifest.py
+
+e1x3d-3d-split:
+	@$(PYTHON) scripts/check_e1x3d_3d_split.py
+
+e1x3d-stacked-thermal-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_stacked_thermal.py
+
+e1x3d-stacked-thermal:
+	@$(PYTHON) scripts/check_e1x3d_stacked_thermal.py
+
+# Aggregate: every E1X3D gate that runs on open tools here. e1x3d-pd-signoff
+# stays BLOCKED (fail-closed) until a completed open-PDK OpenLane2 tile run
+# exists; run that via config.e1x3d-tile.sky130.json first.
+e1x3d-signoff: e1x3d-model-test e1x3d-benchmark e1x3d-placement e1x3d-3d-split e1x3d-stacked-thermal e1x3d-fabric-cocotb
+	@echo "E1X3D open-tool gates complete; see docs/arch/e1x3d-signoff-accounting.md for the signoff ledger and BLOCKED-external residuals."
+
+e1x-credit-router-cocotb:
+	@$(PYTHON) scripts/check_e1x_credit_router_cocotb.py
+
+e1x-credit-router-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_credit_router_cocotb.py -q
+
+e1x-dft-cocotb:
+	@$(PYTHON) scripts/check_e1x_dft_cocotb.py
+
+e1x-dft-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_dft_cocotb.py -q
+
+e1x-dft-strategy:
+	@$(PYTHON) scripts/check_e1x_dft_strategy.py
+
+e1x-formal:
+	@$(PYTHON) scripts/check_e1x_formal.py
+
+e1x-formal-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_formal.py -q
+
+.PHONY: e1x-boot-repair-fw e1x-boot-repair-fw-test e1x-graph-mapper e1x-graph-mapper-test
+
+e1x-boot-repair-fw:
+	@$(PYTHON) scripts/check_e1x_boot_repair_fw.py
+
+e1x-boot-repair-fw-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_boot_repair_fw.py -q
+
+e1x-graph-mapper:
+	@$(PYTHON) scripts/check_e1x_graph_mapper.py
+
+e1x-graph-mapper-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_graph_mapper.py -q
+
 benchmark-sim-metrics-test:
 	@$(PYTHON) scripts/test_simulator_arch_metrics.py
 
@@ -402,11 +571,29 @@ npu-scope-check:
 npu-scope-test:
 	@$(PYTHON) scripts/test_npu_scope.py
 
+npu-accelerator-check:
+	@$(PYTHON) scripts/check_npu_accelerator.py
+
+npu-accelerator-gate-test:
+	@$(PYTHON) scripts/test_npu_accelerator_gate.py
+
+npu-formal-coverage-check:
+	@$(PYTHON) scripts/check_npu_formal_coverage.py
+
+npu-formal-coverage-test:
+	@$(PYTHON) scripts/test_npu_formal_coverage.py
+
 e1-npu-nnapi-proof-check: npu-scope-check
 	@$(PYTHON) scripts/check_e1_npu_nnapi_proof.py --probe-adb
 
-e1-npu-android-proof-manifest-check: npu-scope-check
-	@$(PYTHON) scripts/check_e1_npu_android_proof_manifest.py --require-pass
+e1-npu-android-tradefed-build: npu-scope-check
+	@scripts/android/build_cts_vts_tradefed.sh
+
+e1-npu-android-proof-manifest-assemble: npu-scope-check
+	@$(PYTHON) scripts/assemble_e1_npu_android_proof_manifest.py || test $$? -eq 2
+
+e1-npu-android-proof-manifest-check: e1-npu-android-proof-manifest-assemble
+	@$(PYTHON) scripts/check_e1_npu_android_proof_manifest.py --manifest docs/evidence/android/e1-npu/android-proof-manifest.json --require-pass
 
 benchmarks: benchmark-efficiency-scope-check
 	@PATH="$(CURDIR)/$(VENV)/bin:$$PATH" $(BENCH_PYTHON) benchmarks/run_benchmarks.py
@@ -548,8 +735,22 @@ cpu-ap-evidence-test:
 	@$(PYTHON) scripts/test_cpu_ap_evidence.py
 	@$(PYTHON) scripts/test_cpu_ap_scope.py
 
+.PHONY: cva6-boot-report-flags-test
+cva6-boot-report-flags-test:
+	@$(PYTHON) scripts/test_cva6_boot_report_claim_flags.py
+
+chipyard-ap-abi-contract-test:
+	@$(PYTHON) scripts/test_chipyard_ap_abi_contract.py
+
+.PHONY: chipyard-ap-abi-contract-test
 cpu-ap-completion-gate: cpu-ap-scope-check
 	@$(PYTHON) scripts/check_cpu_ap_completion_gate.py
+
+soc-real-integration-check:
+	@$(PYTHON) scripts/check_soc_real_integration.py
+
+soc-real-integration-test:
+	@$(PYTHON) scripts/test_soc_real_integration_report.py
 
 .PHONY: core-selection-check core-selection-check-strict xiangshan-generator-check cva6-generator-check boom-generator-check ascalon-license-check linux-smoke linux-smoke-long linux-boot-check linux-boot-check-strict coremark embench jetstream spec-skeleton coremark-cva6-verilator dhrystone-cva6-verilator open-core-comparison-check open-core-comparison-test cocotb-cpu-extended pmu-event-alignment-check cpu-lint-check
 
@@ -633,8 +834,12 @@ memory-evidence-template-check:
 memory-interconnect-contract-check:
 	@$(PYTHON) scripts/check_memory_interconnect_contract.py
 
+memory-interconnect-contract-test:
+	@$(PYTHON) scripts/test_memory_interconnect_contract_report.py
+
 memory-axi4-check:
 	@$(PYTHON) scripts/check_axi4_burst.py
+	@$(MAKE) -s dram-controller-check
 	@$(MAKE) -s cocotb-axi4
 	@$(MAKE) -s cocotb-axi4-irq-w1c
 	@$(MAKE) -s cocotb-axi4-multimaster
@@ -643,6 +848,13 @@ memory-axi4-check:
 
 iommu-evidence-check:
 	@$(PYTHON) scripts/check_iommu_evidence.py
+
+dram-controller-check:
+	@$(PYTHON) scripts/check_dram_controller.py
+
+dram-controller-gate-test:
+	@$(PYTHON) scripts/test_dram_controller_gate.py
+	@$(PYTHON) scripts/test_dram_controller_make_target.py
 
 cocotb-axi4:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_axi4_burst \
@@ -674,7 +886,7 @@ cocotb-iommu:
 	  COCOTB_TOPLEVEL=e1_iommu_tb COCOTB_DIR=verify/cocotb/iommu \
 	  scripts/run_cocotb.sh
 
-.PHONY: cocotb-soc-boot-smoke cocotb-cross-domain cocotb-opensbi-mpxy-rpmi soc-integration-check cocotb-cva6-cpu cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram cocotb-cva6-soc
+.PHONY: cocotb-soc-boot-smoke cocotb-cross-domain cocotb-opensbi-mpxy-rpmi soc-integration-check soc-integration-report-test cocotb-cva6-cpu cocotb-cva6-cpu-bootrom cocotb-cva6-cpu-dram cocotb-cva6-soc
 
 cocotb-soc-boot-smoke:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_soc_boot_smoke \
@@ -701,6 +913,9 @@ cocotb-opensbi-mpxy-rpmi:
 
 soc-integration-check: cocotb-soc-boot-smoke cocotb-cross-domain cocotb-opensbi-mpxy-rpmi
 	@$(PYTHON) scripts/check_soc_integration.py
+
+soc-integration-report-test:
+	@$(PYTHON) scripts/test_soc_integration_report.py
 
 # ---------------------------------------------------------------------------
 # Standalone CVA6 wrapper integration (rtl/cpu/e1_cva6_wrapper.sv +
@@ -850,6 +1065,9 @@ project-plan-check:
 prototype-status-dashboard-check:
 	@$(PYTHON) scripts/check_prototype_status_dashboard.py
 
+prototype-status-dashboard-test:
+	@$(PYTHON) scripts/test_check_prototype_status_dashboard.py
+
 phone-soc-claim-check: phone-media-pipeline-scope-check
 	@$(PYTHON) scripts/check_phone_soc_claims.py
 
@@ -858,6 +1076,9 @@ phone-media-pipeline-scope-check:
 
 phone-media-pipeline-scope-test:
 	@$(PYTHON) scripts/test_phone_media_pipeline_scope.py
+
+phone-runtime-readiness-contract-test:
+	@$(PYTHON) scripts/test_phone_runtime_readiness_contract.py
 
 security-lifecycle-scope-check:
 	@$(PYTHON) scripts/check_security_lifecycle_scope.py
@@ -896,12 +1117,21 @@ avb-verify-check:
 bootrom-sim-transcript-check:
 	@$(PYTHON) scripts/check_bootrom_sim_transcript.py
 
+bootrom-positive-handoff-check:
+	@$(PYTHON) scripts/check_bootrom_positive_handoff.py
+
+bootrom-positive-handoff-test:
+	@$(PYTHON) scripts/test_bootrom_positive_handoff.py
+
 boot-security-chain-contract-check:
 	@$(PYTHON) scripts/check_boot_security_chain_contract.py
 
+boot-security-chain-contract-test:
+	@$(PYTHON) scripts/test_boot_security_chain_contract.py
+
 # Full RoT gate set. Fail-closed: rot-integration-check exits non-zero while the
 # OpenTitan crypto blocks are shimmed rather than integrated.
-rot-check: bootrom-check bootrom-sim-transcript-check boot-security-chain-contract-check otp-rtl-check security-lifecycle-scope-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check avb-verify-check tee-attestation-evidence-check rot-integration-check
+rot-check: bootrom-check bootrom-sim-transcript-check bootrom-positive-handoff-check boot-security-chain-contract-check otp-rtl-check security-lifecycle-scope-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check avb-verify-check tee-attestation-evidence-check rot-integration-check
 	@echo "rot-check: RoT gate set evaluated"
 
 # ----- TEE-native Phase-1 software gates (buildable now; no silicon) ------
@@ -950,6 +1180,9 @@ tee-software-check: tee-confidential-domain-contract-check tee-page-state-policy
 
 product-feature-gates-check: security-lifecycle-scope-check
 	@$(PYTHON) scripts/check_product_feature_gates.py
+
+product-feature-gates-test:
+	@$(PYTHON) scripts/test_product_feature_gates.py
 
 pinout-check:
 	@$(PYTHON) package/scripts/validate_pinout.py package/e1-demo-pinout.yaml
@@ -1074,6 +1307,17 @@ pd-signoff-manifest-check:
 pd-signoff-check:
 	@$(PYTHON) scripts/check_pd_signoff.py
 
+.PHONY: chip-visualizer chip-visualizer-full-gds chip-visualizer-test
+
+chip-visualizer:
+	@$(PYTHON) scripts/build_chip_visualizer.py $(CHIP_VISUALIZER_ARGS)
+
+chip-visualizer-full-gds:
+	@$(PYTHON) scripts/build_chip_visualizer.py --export-gds --render-gds --tile-gds --tile-overlays --out build/chip-visualizer-fullchip-gds $(CHIP_VISUALIZER_ARGS)
+
+chip-visualizer-test:
+	@$(PYTHON) scripts/test_chip_visualizer.py
+
 # ---------------------------------------------------------------------------
 # PD evidence gates: macro placement, DFT, CTS, multi-corner STA, post-route
 # PPA validator, and commercial-EDA partnership gate.
@@ -1167,29 +1411,93 @@ rtl-check:
 stub-audit:
 	@$(PYTHON) verify/check_stub_audit.py
 
+.PHONY: cocotb-dma
 cocotb:
 	@PYTHON=$(COCOTB_PYTHON) scripts/run_cocotb.sh
 
+dma-engine-check:
+	@$(PYTHON) scripts/check_dma_engine.py
+
+dma-engine-gate-test:
+	@$(PYTHON) scripts/test_dma_engine_gate.py
+
+dma-cocotb-coverage-check:
+	@$(PYTHON) scripts/check_dma_cocotb_coverage.py
+
+dma-cocotb-coverage-test:
+	@$(PYTHON) -m pytest scripts/test_dma_cocotb_coverage.py -q
+
+dma-long-transfer-coverage-test:
+	@$(PYTHON) -m pytest scripts/test_dma_long_transfer_coverage.py -q
+
+dma-formal-coverage-check:
+	@$(PYTHON) scripts/check_dma_formal_coverage.py
+
+dma-formal-coverage-test:
+	@$(PYTHON) scripts/test_dma_formal_coverage.py
+
+axil-formal-coverage-check:
+	@$(PYTHON) scripts/check_axil_formal_coverage.py
+
+axil-formal-coverage-test:
+	@$(PYTHON) scripts/test_axil_formal_coverage.py
+
+display-formal-coverage-check:
+	@$(PYTHON) scripts/check_display_formal_coverage.py
+
+display-formal-coverage-test:
+	@$(PYTHON) scripts/test_display_formal_coverage.py
+
+display-cocotb-coverage-check:
+	@$(PYTHON) scripts/check_display_cocotb_coverage.py
+
+display-cocotb-coverage-test:
+	@$(PYTHON) -m pytest scripts/test_display_cocotb_coverage.py -q
+
+cocotb-dma:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_e1_dma COCOTB_TOPLEVEL=e1_dma scripts/run_cocotb.sh
+	@$(PYTHON) scripts/check_dma_cocotb_coverage.py
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/dma COCOTB_MODULE=test_dma_long_transfer COCOTB_TOPLEVEL=e1_dma scripts/run_cocotb.sh
+	@$(PYTHON) scripts/check_dma_long_transfer_coverage.py
+
 cocotb-npu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_e1_npu COCOTB_TOPLEVEL=e1_npu scripts/run_cocotb.sh
+	@$(PYTHON) -m pytest compiler/runtime/test_e1_npu_tiny_mlp_e2e.py::test_mobilenet_first_conv2d_partitioner_emits_cpu_fallback_set -q
+	@$(PYTHON) scripts/check_npu_coverage_summary.py
+
+npu-coverage-summary-test:
+	@$(PYTHON) scripts/test_npu_coverage_summary.py
 
 cocotb-npu-tiny-mlp-e2e:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/npu COCOTB_MODULE=test_iree_tiny_mlp_e2e COCOTB_TOPLEVEL=e1_npu scripts/run_cocotb.sh
 
+display-scanout-check:
+	@$(PYTHON) scripts/check_display_scanout.py
+
 cocotb-contract:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_cpu_mem_intc_contract COCOTB_TOPLEVEL=e1_linux_soc_contract scripts/run_cocotb.sh
+	@$(PYTHON) scripts/check_cpu_mem_intc_cocotb_coverage.py
+
+cpu-mem-intc-cocotb-coverage-check:
+	@$(PYTHON) scripts/check_cpu_mem_intc_cocotb_coverage.py
+
+cpu-mem-intc-cocotb-coverage-test:
+	@$(PYTHON) -m pytest scripts/test_cpu_mem_intc_cocotb_coverage.py -q
 
 cocotb-cpu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_tiny_cpu_execution COCOTB_TOPLEVEL=e1_tiny_cpu_contract_tb scripts/run_cocotb.sh
 
 .PHONY: cocotb-coverage
-cocotb-coverage: cocotb cocotb-npu
+cocotb-coverage: cocotb cocotb-dma cocotb-npu
 	@$(PYTHON) scripts/check_cocotb_coverage.py --require-blocks
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-rtl-full mpki-eval-rtl-stratified mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-manifest bpu-workload-trace-manifest-check bpu-workload-trace-decode bpu-sweep bpu-sweep-full bpu-sweep-full-proxy-shard bpu-sweep-full-io-media-shard bpu-sweep-full-system-gpu-shard bpu-sweep-full-browser-build-crypto-shard bpu-sweep-full-compression-shard bpu-sweep-full-agent-shard bpu-model-test bpu-vs-cva6-mpki
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-h2p cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-rtl-full mpki-eval-rtl-full-proxy-shard mpki-eval-rtl-full-io-media-shard mpki-eval-rtl-full-system-gpu-shard mpki-eval-rtl-full-browser-build-crypto-shard mpki-eval-rtl-full-compression-shard mpki-eval-rtl-full-agent-shard mpki-eval-rtl-stratified mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-manifest bpu-workload-trace-manifest-check bpu-workload-trace-decode bpu-sweep bpu-sweep-full bpu-sweep-full-proxy-shard bpu-sweep-full-io-media-shard bpu-sweep-full-system-gpu-shard bpu-sweep-full-browser-build-crypto-shard bpu-sweep-full-compression-shard bpu-sweep-full-agent-shard bpu-model-test bpu-vs-cva6-mpki
 
-cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc
+cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-h2p cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
+
+cocotb-bpu-h2p:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_h2p COCOTB_TOPLEVEL=h2p_tb scripts/run_cocotb_bpu.sh
 
 cocotb-bpu-tage:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_tage COCOTB_TOPLEVEL=tage_tb scripts/run_cocotb_bpu.sh
@@ -1234,6 +1542,54 @@ mpki-eval-rtl:
 
 mpki-eval-rtl-full:
 	@$(MAKE) mpki-eval-rtl WORKLOAD_MAXBR=0 WORKLOAD_WINDOW_MODE=prefix
+
+mpki-eval-rtl-full-proxy-shard:
+	@ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=0 \
+	  ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE=prefix \
+	  ELIZA_BPU_MPKI_WORKLOAD_JSON=docs/evidence/cpu_ap/mpki_results_workload_proxy_rtl.json \
+	  ELIZA_BPU_MPKI_WORKLOAD_TRACES=$(CURDIR)/external/workload-traces/gpu_memory_residency_proxy.btrace.json:$(CURDIR)/external/workload-traces/gpu_irq_fence_scheduler_proxy.btrace.json:$(CURDIR)/external/workload-traces/nn_delegate_fallback_proxy.btrace.json:$(CURDIR)/external/workload-traces/mobile_ui_frame_scheduler_proxy.btrace.json:$(CURDIR)/external/workload-traces/wasm_jit_osr_proxy.btrace.json \
+	  PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_bpu_mpki \
+	  TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh
+
+mpki-eval-rtl-full-io-media-shard:
+	@ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=0 \
+	  ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE=prefix \
+	  ELIZA_BPU_MPKI_WORKLOAD_JSON=docs/evidence/cpu_ap/mpki_results_workload_io_media_rtl.json \
+	  ELIZA_BPU_MPKI_WORKLOAD_TRACES=$(CURDIR)/external/workload-traces/http_parser.btrace.json:$(CURDIR)/external/workload-traces/text_log.btrace.json:$(CURDIR)/external/workload-traces/file_tlv.btrace.json:$(CURDIR)/external/workload-traces/video_blocks.btrace.json:$(CURDIR)/external/workload-traces/audio_frames.btrace.json \
+	  PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_bpu_mpki \
+	  TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh
+
+mpki-eval-rtl-full-system-gpu-shard:
+	@ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=0 \
+	  ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE=prefix \
+	  ELIZA_BPU_MPKI_WORKLOAD_JSON=docs/evidence/cpu_ap/mpki_results_workload_system_gpu_rtl.json \
+	  ELIZA_BPU_MPKI_WORKLOAD_TRACES=$(CURDIR)/external/workload-traces/gpu_control_proxy.btrace.json:$(CURDIR)/external/workload-traces/gc_runtime_proxy.btrace.json:$(CURDIR)/external/workload-traces/kernel_syscall_proxy.btrace.json:$(CURDIR)/external/workload-traces/database_btree_proxy.btrace.json \
+	  PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_bpu_mpki \
+	  TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh
+
+mpki-eval-rtl-full-browser-build-crypto-shard:
+	@ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=0 \
+	  ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE=prefix \
+	  ELIZA_BPU_MPKI_WORKLOAD_JSON=docs/evidence/cpu_ap/mpki_results_workload_browser_build_crypto_rtl.json \
+	  ELIZA_BPU_MPKI_WORKLOAD_TRACES=$(CURDIR)/external/workload-traces/browser_layout_proxy.btrace.json:$(CURDIR)/external/workload-traces/build_compiler_proxy.btrace.json:$(CURDIR)/external/workload-traces/crypto_packet_proxy.btrace.json \
+	  PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_bpu_mpki \
+	  TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh
+
+mpki-eval-rtl-full-compression-shard:
+	@ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=0 \
+	  ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE=prefix \
+	  ELIZA_BPU_MPKI_WORKLOAD_JSON=docs/evidence/cpu_ap/mpki_results_workload_compression_rtl.json \
+	  ELIZA_BPU_MPKI_WORKLOAD_TRACES=$(CURDIR)/external/workload-traces/compression_proxy.btrace.json \
+	  PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_bpu_mpki \
+	  TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh
+
+mpki-eval-rtl-full-agent-shard:
+	@ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=0 \
+	  ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE=prefix \
+	  ELIZA_BPU_MPKI_WORKLOAD_JSON=docs/evidence/cpu_ap/mpki_results_workload_agent_rtl.json \
+	  ELIZA_BPU_MPKI_WORKLOAD_TRACES=$(CURDIR)/external/workload-traces/agent_loop.btrace.json:$(CURDIR)/external/workload-traces/agent_decode.btrace.json \
+	  PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_bpu_mpki \
+	  TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh
 
 mpki-eval-rtl-stratified:
 	@$(MAKE) mpki-eval-rtl WORKLOAD_MAXBR=$(or $(WORKLOAD_MAXBR),5000) WORKLOAD_WINDOW_MODE=stratified
@@ -1551,8 +1907,38 @@ android-sim-status-test:
 	@$(PYTHON) scripts/test_aosp_evidence_strictness.py
 	@$(PYTHON) scripts/test_android_peripheral_evidence.py
 
+android-simulated-peripheral-evidence-test:
+	@$(PYTHON) scripts/test_android_simulated_peripheral_evidence.py
+
+android-evidence-capture-contract-test:
+	@$(PYTHON) scripts/test_android_evidence_capture_contract.py
+
+android-app-runtime-contract-test:
+	@$(PYTHON) scripts/test_android_app_runtime_contract.py
+
+aosp-product-contract-test:
+	@$(PYTHON) scripts/test_aosp_product_contract.py
+
+aosp-hal-service-contract-test:
+	@$(PYTHON) scripts/test_aosp_hal_service_contract.py
+
+chip-os-bringup-workflow-contract-test:
+	@$(PYTHON) scripts/test_chip_os_bringup_workflow_contract.py
+
+android-system-apk-payload-test:
+	@$(PYTHON) scripts/test_android_system_apk_payload.py
+
+android-system-bridge-contract-test:
+	@$(PYTHON) scripts/test_android_system_bridge_contract.py
+
+android-release-readiness-contract-test:
+	@$(PYTHON) scripts/test_android_release_readiness_contract.py
+
 aosp-linux-preflight:
 	@$(PYTHON) scripts/check_aosp_linux_preflight.py --write-report
+
+aosp-linux-preflight-test:
+	@$(PYTHON) scripts/test_aosp_linux_preflight.py
 
 aosp-linux-handoff:
 	@scripts/run_aosp_linux_handoff.sh
@@ -1560,8 +1946,17 @@ aosp-linux-handoff:
 aosp-linux-handoff-build-only:
 	@scripts/run_aosp_linux_handoff.sh --build-only
 
+aosp-linux-handoff-contract-test:
+	@$(PYTHON) scripts/test_aosp_linux_handoff_contract.py
+
+.PHONY: aosp-linux-handoff-contract-test
+os-rv64-chip-boot-contract-test:
+	@$(PYTHON) scripts/test_os_rv64_chip_boot_contract.py
+
+.PHONY: os-rv64-chip-boot-contract-test
 platform-contract-check:
 	@$(PYTHON) scripts/check_platform_contract.py
+	@$(PYTHON) -m pytest scripts/test_platform_contract_linux_decode.py -q
 
 platform-artifacts:
 	@$(PYTHON) scripts/gen_platform_artifacts.py
@@ -1592,6 +1987,15 @@ buildroot-qemu-virt-smoke-test:
 
 linux-bsp-check:
 	@$(PYTHON) scripts/check_software_bsp.py linux
+
+linux-bsp-contract-check:
+	@$(PYTHON) scripts/check_linux_bsp_contract.py
+
+linux-bsp-contract-test:
+	@$(PYTHON) scripts/test_linux_bsp_contract.py
+
+linux-firmware-boot-chain-contract-test:
+	@$(PYTHON) scripts/test_linux_firmware_boot_chain_contract.py
 
 linux-scaffold-check:
 	@$(PYTHON) scripts/check_software_bsp.py linux --scaffold-only
@@ -1666,8 +2070,9 @@ software-bsp-test:
 	@$(PYTHON) scripts/test_software_bsp_checks.py
 	@$(PYTHON) scripts/test_software_bsp_evidence.py
 	@$(PYTHON) scripts/test_software_bsp_scope.py
+	@$(PYTHON) scripts/test_linux_bsp_contract.py
 
-evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
+evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu cocotb-cross-domain synth verilator formal record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
 .PHONY: ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-method-wrapper-readiness-check ai-eda-external-assets-check ai-eda-external-intake-check \
@@ -2079,6 +2484,7 @@ pipeline-check-strict:
 
 strict-release-gate-test: synth cocotb cocotb-npu cocotb-contract cocotb-cross-domain cocotb-cpu verilator formal record-tool-versions
 	@$(PYTHON) scripts/test_strict_release_gates.py
+	@$(PYTHON) -m pytest scripts/test_release_archive_simulator_evidence.py -q
 
 archive-release: pipeline-check
 	@scripts/archive_release.sh

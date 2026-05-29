@@ -95,22 +95,38 @@ EOF
 
 # Clang front-end shim (riscv-arch-test / riscv-compliance compiler).
 #
-# The xPack GNU binutils (2.45) -- and every GNU `as` available on this host --
-# reject the pseudo-instruction `la x0,<sym>` emitted by the riscv-arch-test
-# TEST_JALR_OP macro (LA(rd,5b) with rd==x0). That is a host-assembler policy,
-# not an RTL/ISS defect: GNU as forbids loading an address into the zero
-# register. The LLVM integrated assembler accepts it. cva6.py drives compile +
-# link in one $RISCV_CC invocation, so this shim makes clang behave like the
-# GNU driver cva6.py expects: it injects the bare-metal target and reuses the
-# xPack GNU `ld` (clang has no RISC-V linker of its own here, and would
-# otherwise pick up the host x86 /usr/bin/ld). Object code is functionally
-# identical RV64GC; the tandem RTL-vs-Spike RVFI compare runs the same ELF on
-# both models, so the assembler choice cannot bias the signature comparison.
-LLVM_CLANG="$REPO_ROOT/build/llvm-stage2/bin/clang"
+# The xPack GNU binutils (2.45) -- and every GNU `as` available on this host
+# (the Ubuntu riscv64-linux-gnu binutils 2.42 included) -- reject the
+# pseudo-instruction `la x0,<sym>` emitted by the riscv-arch-test TEST_JALR_OP
+# macro (LA(rd,5b) with rd==x0). That is a host-assembler policy, not an
+# RTL/ISS defect: GNU as forbids loading an address into the zero register. The
+# LLVM integrated assembler accepts it. cva6.py drives compile + link in one
+# $RISCV_CC invocation, so this shim makes clang behave like the GNU driver
+# cva6.py expects:
+#   -target riscv64-unknown-elf : bare-metal RV64 front-end.
+#   -fuse-ld=<xPack ld>         : reuse the xPack GNU linker (clang has no
+#                                 RISC-V lld target wired up here and would
+#                                 otherwise fall back to the host x86 /usr/bin/ld
+#                                 or a segfaulting ld.lld).
+#   -Wl,-melf64lriscv           : clang's riscv64-unknown-elf driver hands the
+#                                 GNU ld an elf32 emulation by default, which
+#                                 aborts with an ABI-mismatch against the elf64
+#                                 objects; pin the elf64 emulation explicitly.
+# The --version probe is intercepted to satisfy cva6.py check_cc_version(),
+# which parses the 3rd whitespace token of the first line as a GCC version and
+# requires major >= 11. Real compile invocations forward verbatim to clang.
+# Object code is functionally identical RV64GC; the tandem RTL-vs-Spike RVFI
+# compare runs the same ELF on both models, so the assembler choice cannot bias
+# the signature comparison.
+LLVM_CLANG="${E1_ARCH_TEST_CLANG:-$(command -v clang || true)}"
 cat > "$SHIM/riscv-arch-clang" <<EOF
 #!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then
+  echo "riscv-arch-clang (eliza) 18.0.0"
+  exec "$LLVM_CLANG" --version
+fi
 exec "$LLVM_CLANG" -target riscv64-unknown-elf \\
-  -fuse-ld="$RISCV/bin/riscv-none-elf-ld" "\$@"
+  -fuse-ld="$RISCV/bin/riscv-none-elf-ld" -Wl,-melf64lriscv "\$@"
 EOF
 chmod +x "$SHIM/riscv-arch-clang"
 VER_NATIVE_VERSION="$("$OSS_BIN/verilator" --version | awk '{print $2}')"

@@ -6,6 +6,7 @@
  * or an appropriate error/auth event.
  */
 
+import { logger } from "@elizaos/core";
 import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
@@ -286,7 +287,12 @@ export async function runPollingBackend(
               try {
                 const det = await scanProviderCredentials();
                 if (det.length > 0) deps.applyDetectedProviders(det);
-              } catch {}
+              } catch (error: unknown) {
+                logger.warn(
+                  { error },
+                  "[startup-phase-poll] provider-credential scan failed during onboarding resume",
+                );
+              }
             }
             applyFirstRunResumeFields(rf, deps);
             deps.setSetupStep(

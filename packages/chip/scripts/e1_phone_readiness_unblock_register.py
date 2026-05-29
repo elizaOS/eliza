@@ -15,6 +15,10 @@ BOARD_ROOT = CHIP_ROOT / "board/kicad/e1-phone"
 REPORT_REL = "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml"
 REPORT_PATH = CHIP_ROOT / REPORT_REL
 REPORT_DATE = "2026-05-22"
+PUBLIC_CAD_SOURCE_INTAKE_REL = "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+PUBLIC_BOM_MARKET_COST_BANDS_REL = (
+    "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
+)
 
 
 def load_yaml(path: Path) -> Any:
@@ -116,6 +120,45 @@ def make_blocker(
     }
 
 
+def public_sourcing_context() -> dict[str, Any]:
+    public_cad = load_yaml(CHIP_ROOT / PUBLIC_CAD_SOURCE_INTAKE_REL)
+    public_bom = load_yaml(CHIP_ROOT / PUBLIC_BOM_MARKET_COST_BANDS_REL)
+    public_cad_summary = public_cad.get("summary", {})
+    public_bom_summary = public_bom.get("summary", {})
+    return {
+        "scope": "public_cad_and_market_cost_intake_not_release_evidence",
+        "source_artifacts": [
+            PUBLIC_CAD_SOURCE_INTAKE_REL,
+            PUBLIC_BOM_MARKET_COST_BANDS_REL,
+        ],
+        "public_cad_source_record_count": int(public_cad_summary.get("record_count") or 0),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_cad_summary.get("public_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_cad_summary.get("public_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_cad_summary.get("local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_release_credit_record_count": int(
+            public_cad_summary.get("release_credit_record_count") or 0
+        ),
+        "public_market_bom_cost_category_count": int(
+            public_bom_summary.get("category_count") or 0
+        ),
+        "public_market_bom_cost_volume_count": int(public_bom_summary.get("volume_count") or 0),
+        "public_market_bom_cost_avl_quote_count": int(
+            public_bom_summary.get("avl_quote_count") or 0
+        ),
+        "public_market_bom_cost_signed_supplier_quote_count": int(
+            public_bom_summary.get("signed_supplier_quote_count") or 0
+        ),
+        "public_sourcing_release_credit": False,
+        "public_sourcing_release_allowed": False,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--write-report", action="store_true")
@@ -138,6 +181,7 @@ def main() -> int:
         BOARD_ROOT / "production/test/bench-first-article-template-manifest-2026-05-22.yaml"
     )
     local_progress = objective.get("local_non_release_progress_evidence", {})
+    public_sourcing = public_sourcing_context()
 
     supplier_acceptance: list[str] = []
     for record in supplier_intake["template_records"]:
@@ -256,6 +300,8 @@ def main() -> int:
             "board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml",
             "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",
             "board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml",
+            PUBLIC_CAD_SOURCE_INTAKE_REL,
+            PUBLIC_BOM_MARKET_COST_BANDS_REL,
         ],
         "summary": {
             "objective_status": objective["status"],
@@ -291,6 +337,21 @@ def main() -> int:
             "local_development_route_count": local_progress.get("development_route_count", 0),
             "local_development_segment_count": local_progress.get("development_segment_count", 0),
             "local_development_via_count": local_progress.get("development_via_count", 0),
+            "local_development_controlled_impedance_route_count": local_progress.get(
+                "development_controlled_impedance_route_count", 0
+            ),
+            "local_development_route_classification_gap_count": local_progress.get(
+                "development_route_classification_gap_count", 0
+            ),
+            "local_development_route_segment_trace_bound_count": local_progress.get(
+                "development_route_segment_trace_bound_count", 0
+            ),
+            "local_development_missing_net_count": local_progress.get(
+                "development_missing_net_count", 0
+            ),
+            "local_development_route_traceability_complete": local_progress.get(
+                "development_route_traceability_complete", False
+            ),
             "local_development_required_shared_net_category_count": local_progress.get(
                 "development_required_shared_net_category_count", 0
             ),
@@ -334,14 +395,14 @@ def main() -> int:
                 "routed_step_candidate_matches_development_source", False
             ),
             "local_routed_step_candidate_footprint_envelope_count": local_progress.get(
-                "routed_step_visual_detail", {}
-            ).get("footprint_envelope_count", 0),
+                "routed_step_candidate_footprint_envelope_count", 0
+            ),
             "local_routed_step_candidate_pad_contact_visual_count": local_progress.get(
-                "routed_step_visual_detail", {}
-            ).get("pad_contact_visual_count", 0),
+                "routed_step_candidate_pad_contact_visual_count", 0
+            ),
             "local_routed_step_candidate_route_segment_visual_count": local_progress.get(
-                "routed_step_visual_detail", {}
-            ).get("route_segment_visual_count", 0),
+                "routed_step_candidate_route_segment_visual_count", 0
+            ),
             "local_pinout_captured_file_count": local_progress.get("pinout_captured_file_count", 0),
             "local_pinout_declared_pin_count_total": local_progress.get(
                 "pinout_declared_pin_count_total", 0
@@ -405,6 +466,20 @@ def main() -> int:
             "local_cad_connection_represented_net_count_total": local_progress.get(
                 "cad_connection_represented_net_count_total", 0
             ),
+            "local_cad_connection_represented_route_count_total": local_progress.get(
+                "cad_connection_represented_route_count_total", 0
+            ),
+            "local_cad_connection_represented_route_record_count_total": local_progress.get(
+                "cad_connection_represented_route_record_count_total", 0
+            ),
+            "local_cad_connection_represented_route_classification_gap_count": (
+                local_progress.get("cad_connection_represented_route_classification_gap_count", 0)
+            ),
+            "local_cad_connection_all_represented_routes_have_layer_source_and_class": (
+                local_progress.get(
+                    "cad_connection_all_represented_routes_have_layer_source_and_class", False
+                )
+            ),
             "local_cad_connection_record_count": local_progress.get(
                 "cad_connection_record_count", 0
             ),
@@ -450,6 +525,12 @@ def main() -> int:
             "local_component_model_terminal_contract_or_no_pad_model_count": local_progress.get(
                 "component_model_terminal_contract_or_no_pad_model_count", 0
             ),
+            "local_component_model_total_pad_contract_visual_count": local_progress.get(
+                "component_model_total_pad_contract_visual_count", 0
+            ),
+            "local_component_model_uncovered_pad_visual_count": local_progress.get(
+                "component_model_uncovered_pad_visual_count", 0
+            ),
             "local_component_model_non_signal_pad_contract_count": local_progress.get(
                 "component_model_non_signal_pad_contract_count", 0
             ),
@@ -469,6 +550,16 @@ def main() -> int:
             ),
             "local_component_model_directory_terminal_contract_total_count": local_progress.get(
                 "component_model_directory_terminal_contract_total_count", 0
+            ),
+            "local_component_model_directory_total_pad_contract_visual_count": (
+                local_progress.get(
+                    "component_model_directory_total_pad_contract_visual_count", 0
+                )
+            ),
+            "local_component_model_directory_uncovered_pad_visual_count": (
+                local_progress.get(
+                    "component_model_directory_uncovered_pad_visual_count", 0
+                )
             ),
             "local_component_model_directory_non_signal_pad_contract_total_count": (
                 local_progress.get(
@@ -491,10 +582,89 @@ def main() -> int:
                     "component_model_directory_all_terminal_contract_flags_pass", False
                 )
             ),
+            "local_component_model_directory_local_discrete_step_file_count": (
+                local_progress.get("component_model_directory_local_discrete_step_file_count", 0)
+            ),
+            "local_component_model_directory_local_discrete_step_imported_solid_count": (
+                local_progress.get(
+                    "component_model_directory_local_discrete_step_imported_solid_count", 0
+                )
+            ),
+            "local_component_model_directory_local_discrete_step_bbox_match_count": (
+                local_progress.get("component_model_directory_local_discrete_step_bbox_match_count", 0)
+            ),
+            "local_component_model_directory_local_discrete_step_bytes_total": (
+                local_progress.get("component_model_directory_local_discrete_step_bytes_total", 0)
+            ),
+            "local_component_model_directory_supplier_step_intake_placeholder_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_placeholder_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_local_surrogate_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_local_surrogate_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_missing_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_missing_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_not_applicable_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_not_applicable_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_release_candidate_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_release_candidate_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_lane_counts": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_lane_counts", {}
+                )
+            ),
             "local_component_model_directory_release_allowed": local_progress.get(
                 "component_model_directory_release_allowed", False
             ),
+            "public_sourcing_intake_ready": True,
+            "public_cad_source_record_count": public_sourcing[
+                "public_cad_source_record_count"
+            ],
+            "public_cad_source_step_or_3d_observed_count": public_sourcing[
+                "public_cad_source_step_or_3d_observed_count"
+            ],
+            "public_cad_source_footprint_or_eda_observed_count": public_sourcing[
+                "public_cad_source_footprint_or_eda_observed_count"
+            ],
+            "public_cad_source_local_downloaded_hashed_count": public_sourcing[
+                "public_cad_source_local_downloaded_hashed_count"
+            ],
+            "public_cad_source_release_credit_record_count": public_sourcing[
+                "public_cad_source_release_credit_record_count"
+            ],
+            "public_market_bom_cost_category_count": public_sourcing[
+                "public_market_bom_cost_category_count"
+            ],
+            "public_market_bom_cost_volume_count": public_sourcing[
+                "public_market_bom_cost_volume_count"
+            ],
+            "public_market_bom_cost_avl_quote_count": public_sourcing[
+                "public_market_bom_cost_avl_quote_count"
+            ],
+            "public_market_bom_cost_signed_supplier_quote_count": public_sourcing[
+                "public_market_bom_cost_signed_supplier_quote_count"
+            ],
+            "public_sourcing_release_credit": public_sourcing[
+                "public_sourcing_release_credit"
+            ],
+            "public_sourcing_release_allowed": public_sourcing[
+                "public_sourcing_release_allowed"
+            ],
         },
+        "public_sourcing_intake_context": public_sourcing,
         "blockers": blockers,
         "release_policy": {
             "register_is_execution_plan_only": True,

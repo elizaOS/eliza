@@ -11,10 +11,10 @@ Eliza-built Android partition image set (Nebius build, 2026-05-22):
   product/lunch: eliza_openagent_ai_soc_phone-trunk_staging-userdebug (eliza_ai_soc)
   AOSP branch:   android-latest-release @ android16-qpr2-release (BP4A.251205.006)
   guest ABI:     riscv64
-  staged at:     /home/shaw/.local/cuttlefish/images/riscv64/eliza
+  staged at:     <home>/.local/cuttlefish/images/riscv64/eliza
 Host driver: prebuilt cvd-host_package (cvd 1.53.0, build 15357239, stock aosp_cf_riscv64_phone)
-  host_path:        /home/shaw/.local/cuttlefish/images/riscv64/cf  (stock prebuilt host tools + bootloader + qemu data)
-  qemu_binary_dir:  /home/shaw/.local/cuttlefish/qemu/bin-wrap -> qemu-system-riscv64 10.1.5 (native x86_64 TCG)
+  host_path:        <home>/.local/cuttlefish/images/riscv64/cf  (stock prebuilt host tools + bootloader + qemu data)
+  qemu_binary_dir:  <home>/.local/cuttlefish/qemu/bin-wrap -> qemu-system-riscv64 10.1.5 (native x86_64 TCG)
   cpus=6 memory_mb=12288 gpu_mode=guest_swiftshader
   host_tools run under qemu aarch64 binfmt (cf host package is aarch64); guest CPU is riscv64 TCG.
 

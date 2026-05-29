@@ -11,6 +11,13 @@ from pathlib import Path
 import check_chip_os_closure_plan as plan
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], plan.CLAIM_BOUNDARY)
+    testcase.assertRegex(str(report["generated_utc"]), r"^\d{4}-\d{2}-\d{2}T")
+    for key, expected in plan.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write_json(path: Path, data: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data) + "\n", encoding="utf-8")
@@ -59,6 +66,7 @@ class ChipOsClosurePlanTests(unittest.TestCase):
             )
             report = plan.build_plan(matrix, inventory)
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["first_blocked_phase"], "p0_workflow_evidence_plumbing")
         first = report["phases"][0]
         self.assertEqual(first["open_requirement_count"], 1)
@@ -175,6 +183,7 @@ class ChipOsClosurePlanTests(unittest.TestCase):
             write_json(inventory, {"summary": {}, "detailed_blockers": []})
             report = plan.build_plan(matrix, inventory)
         self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["blocked_phases"], 0)
 
 

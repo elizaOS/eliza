@@ -180,7 +180,7 @@ required_trial_route_outputs:
 
 allowed_fail_closed_placeholder_outputs:
   mechanical/e1-phone/review/routed-board-clearance.json:
-    required_status: blocked_waiting_for_routed_board_step
+    required_status: blocked_waiting_for_physical_routed_board_clearance_result
     reason: existing intake file defines the routed-board clearance rerun gate but contains no physical routed-board result.
 
 cross_checks:

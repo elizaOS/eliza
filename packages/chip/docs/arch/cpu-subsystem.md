@@ -1,6 +1,11 @@
 # CPU subsystem contract
 
-The repository now carries a minimal executable RISC-V CPU path at the former stub boundary, `rtl/cpu/e1_cpu_subsystem_stub.sv`. The module name is intentionally preserved to avoid broad integration churn, but the behavior is no longer quiescent: after reset it fetches 32-bit RISC-V instructions from `RESET_PC` over the existing AXI-Lite manager port, executes a small integer subset, and halts on `ECALL`, illegal instructions, or bus errors.
+The repository now carries a minimal executable RISC-V CPU path at
+`rtl/cpu/e1_tiny_cpu_contract.sv`. The legacy
+`rtl/cpu/e1_cpu_subsystem_stub.sv` module is only a compatibility alias that
+wraps this contract model. After reset it fetches 32-bit RISC-V instructions
+from `RESET_PC` over the existing AXI-Lite manager port, executes a small
+integer subset, and halts on `ECALL`, illegal instructions, or bus errors.
 
 ## Boundary
 

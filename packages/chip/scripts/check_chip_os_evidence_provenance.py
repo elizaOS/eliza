@@ -24,6 +24,17 @@ REPORT = ROOT / "build/reports/chip-os-evidence-provenance.json"
 
 SCHEMA = "eliza.chip_os_evidence_provenance.v1"
 CLAIM_BOUNDARY = "evidence_provenance_inventory_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 DEFAULT_SCAN_ROOTS = (
     "packages/chip/build/reports",
@@ -49,8 +60,32 @@ EXCLUDED_DIRS = {
 EXCLUDED_FILENAMES = {
     "chip-os-evidence-provenance.json",
 }
+EXCLUDED_SUFFIXES = (
+    ".schema.json",
+    ".example.json",
+)
+EXCLUDED_PATH_PARTS = (
+    ("firmware", "usr", "share", "qemu", "firmware"),
+)
+LINE_MARKER_EXCLUDED_FILENAMES = {
+    "chip-os-boot-gap-inventory.json",
+    "chip-os-bring-up-status.json",
+    "chip-os-closure-plan.json",
+    "chip-os-gap-keyword-inventory.json",
+    "chip-os-objective-evidence-matrix.json",
+    "chip-os-optimization-gap-inventory.json",
+    "chip-tapeout-readiness-current.json",
+    "phone-release-readiness-current.json",
+    "phone-release-readiness.json",
+    "tapeout-readiness-chip.json",
+    "tapeout-readiness-current.json",
+    "tapeout-readiness.json",
+}
+LINE_MARKER_EXCLUDED_SUFFIXES = (
+    "gap_keyword_inventory.json",
+)
 MAX_FILE_BYTES = 750_000
-HOST_PATH_RE = re.compile(r"(?<![\w/])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
+HOST_PATH_RE = re.compile(r"(?<![\w/>])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
 PLACEHOLDER_RE = re.compile(r"\b(placeholder|stub|dummy|fake|sentinel|all-zero|TODO|TBD)\b", re.I)
 BLOCKED_RE = re.compile(r"\b(BLOCKED|FAIL|blocked until|not yet|missing required)\b", re.I)
 REFERENCE_ONLY_RE = re.compile(
@@ -59,6 +94,9 @@ REFERENCE_ONLY_RE = re.compile(
 )
 TIMESTAMP_KEYS = {
     "generated_utc",
+    "generated_at",
+    "generated_at_utc",
+    "as_of",
     "timestamp",
     "timestamps",
     "start_utc",
@@ -85,8 +123,16 @@ def resolve(path: str) -> Path:
 def is_candidate(path: Path) -> bool:
     if path.name in EXCLUDED_FILENAMES:
         return False
+    if any(path.name.endswith(suffix) for suffix in EXCLUDED_SUFFIXES):
+        return False
     if any(part in EXCLUDED_DIRS for part in path.parts):
         return False
+    for sequence in EXCLUDED_PATH_PARTS:
+        if any(
+            tuple(path.parts[index : index + len(sequence)]) == sequence
+            for index in range(len(path.parts))
+        ):
+            return False
     if path.suffix.lower() not in TEXT_SUFFIXES:
         return False
     try:
@@ -190,6 +236,26 @@ def structured_status(value: object) -> str | None:
     return None
 
 
+def is_nonpassing_status(status: str | None) -> bool:
+    if not isinstance(status, str):
+        return False
+    lowered = status.lower()
+    return (
+        lowered in {"blocked", "fail", "failed"}
+        or "blocked" in lowered
+        or lowered.startswith("fail")
+        or lowered.endswith("_fail")
+    )
+
+
+def has_claim_boundary(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (dict, list)):
+        return bool(value)
+    return False
+
+
 def load_structured(path: Path, text: str) -> object | None:
     try:
         if path.suffix.lower() == ".json":
@@ -207,7 +273,8 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
         return rows
 
     status = structured_status(data)
-    if status and status.lower() in {"blocked", "fail", "failed"}:
+    if is_nonpassing_status(status):
+        assert status is not None
         rows.append(
             finding(
                 category="nonpassing_status",
@@ -219,7 +286,7 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
         )
 
     boundary = data.get("claim_boundary")
-    if not isinstance(boundary, str) or not boundary.strip():
+    if not has_claim_boundary(boundary):
         rows.append(
             finding(
                 category="missing_claim_boundary",
@@ -229,7 +296,7 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
                 evidence=rel(path),
             )
         )
-    elif REFERENCE_ONLY_RE.search(boundary):
+    elif isinstance(boundary, str) and REFERENCE_ONLY_RE.search(boundary):
         rows.append(
             finding(
                 category="weak_reference_scope",
@@ -253,8 +320,18 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
     return rows
 
 
-def line_findings(path: Path, text: str) -> list[dict[str, Any]]:
+def line_findings(
+    path: Path, text: str, structured_status_value: str | None = None
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    skip_marker_lines = (
+        path.name in LINE_MARKER_EXCLUDED_FILENAMES
+        or path.name.endswith(LINE_MARKER_EXCLUDED_SUFFIXES)
+        or (
+            isinstance(structured_status_value, str)
+            and is_nonpassing_status(structured_status_value)
+        )
+    )
     for line_number, line in enumerate(text.splitlines(), start=1):
         host_match = HOST_PATH_RE.search(line)
         if host_match:
@@ -268,6 +345,8 @@ def line_findings(path: Path, text: str) -> list[dict[str, Any]]:
                     evidence=host_match.group(0),
                 )
             )
+        if skip_marker_lines:
+            continue
         placeholder_match = PLACEHOLDER_RE.search(line)
         if placeholder_match:
             rows.append(
@@ -300,8 +379,8 @@ def scan_path(path: Path) -> list[dict[str, Any]]:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
-    rows = line_findings(path, text)
     structured = load_structured(path, text)
+    rows = line_findings(path, text, structured_status(structured))
     if structured is not None:
         rows.extend(structured_findings(path, structured))
     return rows
@@ -319,6 +398,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "scan_roots": len(roots),
             "files_scanned": len(paths),

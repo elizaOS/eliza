@@ -4,7 +4,7 @@ Status: PASS.
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`.
 Date: 2026-05-20. Reviewer: `automated_boolean_check`.
-Parts loaded: 222/222. Pair count: 24531 (BRep-evaluated: 763).
+Parts loaded: 258/258. Pair count: 33153 (BRep-evaluated: 989).
 Unintentional clash pairs: 0.
 
 ## Scope Cases
@@ -26,7 +26,7 @@ Unintentional clash pairs: 0.
 ## Flush-Back / Burial Geometry
 
 Back outer plane Z = -5.9 mm. Flush-back `flush_back_no_rear_protrusion`: max solid protrusion = 0.0 mm (PASS).
-- Envelope/void excursions (not solid, not a fault): `rear_camera_shell_aperture` (0.055mm), `rear_flash_shell_aperture` (0.055mm), `service_label_recess` (0.205mm)
+- Envelope/void excursions (not solid, not a fault): `rear_camera_shell_aperture` (0.055mm), `rear_flash_shell_aperture` (0.055mm)
 
 ## Rear Camera Back-Shell Hole
 
@@ -38,8 +38,8 @@ Status: PASS. Aperture clears cover glass XY: True.
 ## Rear Camera Optical Sightline
 
 Status: PASS. Orange-shell intersection: 0.0 mm3. Aperture contains tunnel XY: True.
-- `rear_camera_optical_sight_tunnel` overlaps `rear_camera_lens_window` by 21.324371 mm3 (PASS)
-- `rear_camera_optical_sight_tunnel` overlaps `rear_camera_cover_glass` by 21.775557 mm3 (PASS)
+- `rear_camera_optical_sight_tunnel` overlaps `rear_camera_lens_window` by 25.432 mm3 (PASS)
+- `rear_camera_optical_sight_tunnel` overlaps `rear_camera_cover_glass` by 27.7255 mm3 (PASS)
 
 ## Rear Flash Back-Shell Hole
 
@@ -75,9 +75,9 @@ Status: PASS.
 - `orange_side_frame` vs `bottom_speaker_grille_slot_3`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
 - `orange_side_frame` vs `bottom_speaker_grille_slot_4`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
 - `orange_side_frame` vs `bottom_speaker_grille_slot_5`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
-- `orange_side_frame` vs `bottom_microphone_port_1`: intersection 0.0 mm3, min gap 0.1 mm (PASS)
-- `orange_side_frame` vs `bottom_microphone_port_2`: intersection 0.0 mm3, min gap 0.1 mm (PASS)
-- `orange_side_frame` vs `top_microphone_port`: intersection 0.0 mm3, min gap 0.1 mm (PASS)
+- `orange_side_frame` vs `bottom_microphone_port_1`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
+- `orange_side_frame` vs `bottom_microphone_port_2`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
+- `orange_side_frame` vs `top_microphone_port`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
 - Captured mesh insert contacts reported as intentional seal envelopes.
 
 Burial vs back inner wall (Z = -4.7 mm); clearance >= 0 means back face at or inside the wall:

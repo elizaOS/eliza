@@ -4,7 +4,6 @@ depth 4
 
 [engines]
 smtbmc z3
-smtbmc bitwuzla
 
 [script]
 read -formal e1_bootrom.sv
@@ -15,6 +14,7 @@ read -formal e1_weight_buffer_sram.sv
 read -formal e1_display.sv
 read -formal e1_cva6_wrapper.sv
 read -formal e1_cpu_axi_bridge.sv
+read -formal e1_tiny_cpu_contract.sv
 read -formal e1_cpu_subsystem_stub.sv
 read -formal e1_soc_top.sv
 read -formal e1_soc_top_formal.sv
@@ -31,6 +31,7 @@ rtl/memory/e1_weight_buffer_sram.sv
 rtl/display/e1_display.sv
 rtl/cpu/e1_cva6_wrapper.sv
 rtl/cpu/e1_cpu_axi_bridge.sv
+rtl/cpu/e1_tiny_cpu_contract.sv
 rtl/cpu/e1_cpu_subsystem_stub.sv
 rtl/top/e1_soc_top.sv
 verify/formal/e1_soc_top_formal.sv

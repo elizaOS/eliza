@@ -13,7 +13,9 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,13 @@ ASSEMBLY_MANIFEST = ROOT / "mechanical/e1-phone/out/assembly-manifest.json"
 KICAD_CAD_TRACEABILITY = ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
 PAD_AUDIT = ROOT / "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml"
 COMPONENT_MODEL_DIR = ROOT / "board/kicad/e1-phone/production/step/component-models"
+SUPPLIER_SOURCING_DIR = ROOT / "board/kicad/e1-phone/production/sourcing"
+COMPONENT_3D_BINDING_REPORT = (
+    ROOT / "board/kicad/e1-phone/production/reports/component-3d-binding.yaml"
+)
+COMPONENT_3D_BINDING_MATRIX = (
+    ROOT / "board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv"
+)
 
 
 def chip_rel(path: Path) -> str:
@@ -77,9 +86,125 @@ def load_json_list_if_present(path: Path) -> list[dict[str, Any]]:
     return [item for item in data if isinstance(item, dict)]
 
 
+def board_text_counts(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else ""
+    return {
+        "board_file": chip_rel(path) if path.is_file() else str(path),
+        "present": path.is_file(),
+        "sha256": sha256(path) if path.is_file() else "",
+        "bytes": path.stat().st_size if path.is_file() else 0,
+        "footprint_count": text.count('(footprint "'),
+        "legacy_e1phone_footprint_ref_count": text.count('(footprint "E1Phone:'),
+        "placeholder_not_fabrication_footprint_marker_count": text.count(
+            "placeholder_not_fabrication_footprint"
+        ),
+        "segment_count": text.count("\n  (segment "),
+        "via_count": text.count("\n  (via "),
+        "zone_count": text.count("\n  (zone "),
+        "filled_zone_count": text.count("(filled_polygon"),
+    }
+
+
+def routed_candidate_source_binding(candidate_board: Path) -> dict[str, Any]:
+    source = board_text_counts(SOURCE_BOARD)
+    candidate = board_text_counts(candidate_board)
+    return {
+        "source_board": chip_rel(SOURCE_BOARD),
+        "candidate_board": chip_rel(candidate_board) if candidate_board.is_file() else str(candidate_board),
+        "source_board_sha256": source["sha256"],
+        "candidate_board_sha256": candidate["sha256"],
+        "candidate_matches_source_board": bool(
+            candidate["present"] and source["present"] and candidate["sha256"] == source["sha256"]
+        ),
+        "source_placeholder_marker_count": source[
+            "placeholder_not_fabrication_footprint_marker_count"
+        ],
+        "candidate_placeholder_marker_count": candidate[
+            "placeholder_not_fabrication_footprint_marker_count"
+        ],
+        "candidate_legacy_e1phone_footprint_ref_count": candidate[
+            "legacy_e1phone_footprint_ref_count"
+        ],
+        "candidate_footprint_count": candidate["footprint_count"],
+        "candidate_segment_count": candidate["segment_count"],
+        "candidate_via_count": candidate["via_count"],
+        "candidate_zone_count": candidate["zone_count"],
+        "candidate_filled_zone_count": candidate["filled_zone_count"],
+        "source_is_zero_placeholder_real_footprint_board": bool(
+            source["present"]
+            and source["placeholder_not_fabrication_footprint_marker_count"] == 0
+            and source["legacy_e1phone_footprint_ref_count"] == 0
+        ),
+        "candidate_is_zero_placeholder_real_footprint_board": bool(
+            candidate["present"]
+            and candidate["placeholder_not_fabrication_footprint_marker_count"] == 0
+            and candidate["legacy_e1phone_footprint_ref_count"] == 0
+        ),
+        "release_credit": False,
+    }
+
+
 def routed_visual_detail() -> dict[str, Any]:
     step_intake = load_yaml_if_present(STEP_INTAKE)
     routed_intake = load_yaml_if_present(ROUTED_INTAKE)
+    route_records = [
+        {
+            "index": index,
+            "route_id": str(segment.get("route_id", "")),
+            "net": str(segment.get("net", "")),
+            "layer": str(segment.get("layer", "")),
+            "width_mm": segment.get("width_mm"),
+            "start_mm": segment.get("start_mm", {}),
+            "end_mm": segment.get("end_mm", {}),
+            "route_classes": segment.get("route_classes", []),
+            "source_domains": segment.get("source_domains", []),
+            "controlled_impedance_targets_ohm": segment.get(
+                "controlled_impedance_targets_ohm", []
+            ),
+        }
+        for index, segment in enumerate(step_intake.get("segments", []), start=1)
+        if isinstance(segment, dict)
+    ]
+    via_records = [
+        {
+            "index": index,
+            "net": str(via.get("net", "")),
+            "at_mm": via.get("at_mm", {}),
+            "size_mm": via.get("size_mm"),
+            "drill_mm": via.get("drill_mm"),
+            "layers": via.get("layers", []),
+        }
+        for index, via in enumerate(step_intake.get("vias", []), start=1)
+        if isinstance(via, dict)
+    ]
+    zone_records = [
+        {
+            "index": zone.get("index", index),
+            "name": str(zone.get("name", "")),
+            "net": str(zone.get("net", "")),
+            "layers": zone.get("layers", []),
+            "polygon_point_count": int(zone.get("polygon_point_count", 0) or 0),
+            "filled_polygon_count": int(zone.get("filled_polygon_count", 0) or 0),
+            "bbox_mm": zone.get("bbox_mm", {}),
+        }
+        for index, zone in enumerate(step_intake.get("filled_copper_zones", []), start=1)
+        if isinstance(zone, dict)
+    ]
+    route_layer_counts: dict[str, int] = {}
+    route_class_counts: dict[str, int] = {}
+    route_source_domain_counts: dict[str, int] = {}
+    for record in route_records:
+        layer = record["layer"]
+        if layer:
+            route_layer_counts[layer] = route_layer_counts.get(layer, 0) + 1
+        for route_class in record.get("route_classes", []):
+            route_class_text = str(route_class)
+            route_class_counts[route_class_text] = route_class_counts.get(route_class_text, 0) + 1
+        for source_domain in record.get("source_domains", []):
+            source_domain_text = str(source_domain)
+            route_source_domain_counts[source_domain_text] = (
+                route_source_domain_counts.get(source_domain_text, 0) + 1
+            )
     return {
         "source_step_intake": chip_rel(STEP_INTAKE) if STEP_INTAKE.is_file() else "",
         "routed_development_intake": chip_rel(ROUTED_INTAKE) if ROUTED_INTAKE.is_file() else "",
@@ -89,9 +214,58 @@ def routed_visual_detail() -> dict[str, Any]:
         "footprint_envelope_count": int(step_intake.get("footprint_envelope_count", 0) or 0),
         "pad_contact_visual_count": int(step_intake.get("pad_contact_visual_count", 0) or 0),
         "route_segment_visual_count": int(step_intake.get("route_segment_visual_count", 0) or 0),
+        "route_segment_net_name_count": int(step_intake.get("route_segment_net_name_count", 0) or 0),
+        "route_segment_trace_bound_count": int(
+            step_intake.get("route_segment_trace_bound_count", 0) or 0
+        ),
+        "route_segment_trace_unbound_count": int(
+            step_intake.get("route_segment_trace_unbound_count", 0) or 0
+        ),
+        "controlled_impedance_segment_visual_count": int(
+            step_intake.get("controlled_impedance_segment_visual_count", 0) or 0
+        ),
         "board_segment_count": int(step_intake.get("segment_count", 0) or 0),
         "board_via_count": int(step_intake.get("via_count", 0) or 0),
+        "via_net_name_count": int(step_intake.get("via_net_name_count", 0) or 0),
         "development_footprint_refs": int(step_intake.get("development_footprint_refs", 0) or 0),
+        "route_visual_record_count": len(route_records),
+        "route_visual_route_id_count": len(
+            {record["route_id"] for record in route_records if record["route_id"]}
+        ),
+        "route_visual_net_name_count": len(
+            {record["net"] for record in route_records if record["net"]}
+        ),
+        "route_visual_layer_counts": dict(sorted(route_layer_counts.items())),
+        "route_visual_route_class_counts": dict(sorted(route_class_counts.items())),
+        "route_visual_source_domain_counts": dict(sorted(route_source_domain_counts.items())),
+        "route_visual_all_records_have_route_id": bool(route_records)
+        and all(record["route_id"] for record in route_records),
+        "route_visual_all_records_have_net": bool(route_records)
+        and all(record["net"] for record in route_records),
+        "route_visual_all_records_have_layer": bool(route_records)
+        and all(record["layer"] for record in route_records),
+        "route_visual_all_records_have_route_class": bool(route_records)
+        and all(bool(record.get("route_classes")) for record in route_records),
+        "route_visual_all_records_have_source_domain": bool(route_records)
+        and all(bool(record.get("source_domains")) for record in route_records),
+        "route_visual_records": route_records,
+        "via_visual_record_count": len(via_records),
+        "via_visual_net_name_count": len({record["net"] for record in via_records if record["net"]}),
+        "via_visual_all_records_have_net": bool(via_records)
+        and all(record["net"] for record in via_records),
+        "via_visual_all_records_have_layers": bool(via_records)
+        and all(bool(record.get("layers")) for record in via_records),
+        "via_visual_records": via_records,
+        "filled_copper_zone_record_count": len(zone_records),
+        "filled_copper_zone_filled_polygon_count": sum(
+            int(record.get("filled_polygon_count") or 0) for record in zone_records
+        ),
+        "filled_copper_zone_all_records_have_net": bool(zone_records)
+        and all(record["net"] for record in zone_records),
+        "filled_copper_zone_all_records_have_bbox": bool(zone_records)
+        and all(bool(record.get("bbox_mm")) for record in zone_records),
+        "filled_copper_zone_records": zone_records,
+        "release_credit": False,
     }
 
 
@@ -143,6 +317,24 @@ def cad_connection_summary() -> dict[str, Any]:
                     item.get("represented_net_count", len(item.get("nets", []))) or 0
                 ),
                 "represented_nets": item.get("represented_nets", item.get("nets", [])),
+                "represented_route_record_count": int(
+                    item.get("represented_route_record_count", 0) or 0
+                ),
+                "represented_route_records_with_layer_count": int(
+                    item.get("represented_route_records_with_layer_count", 0) or 0
+                ),
+                "represented_route_records_with_source_domain_count": int(
+                    item.get("represented_route_records_with_source_domain_count", 0) or 0
+                ),
+                "represented_route_records_with_route_class_count": int(
+                    item.get("represented_route_records_with_route_class_count", 0) or 0
+                ),
+                "represented_route_classification_gap_count": int(
+                    item.get("represented_route_classification_gap_count", 0) or 0
+                ),
+                "all_represented_routes_have_layer_source_and_class": bool(
+                    item.get("all_represented_routes_have_layer_source_and_class", False)
+                ),
                 "cad_part_present": bool(item.get("cad_part_present", False)),
                 "endpoints_present": bool(item.get("endpoints_present", False)),
                 "all_nets_in_routed_development_board": bool(
@@ -197,6 +389,24 @@ def cad_connection_summary() -> dict[str, Any]:
             coverage.get("connection_solid_step_part_bytes_total", 0) or 0
         ),
         "represented_net_count_total": int(coverage.get("represented_net_count_total", 0) or 0),
+        "represented_route_record_count_total": int(
+            coverage.get("represented_route_record_count_total", 0) or 0
+        ),
+        "represented_route_records_with_layer_count_total": int(
+            coverage.get("represented_route_records_with_layer_count_total", 0) or 0
+        ),
+        "represented_route_records_with_source_domain_count_total": int(
+            coverage.get("represented_route_records_with_source_domain_count_total", 0) or 0
+        ),
+        "represented_route_records_with_route_class_count_total": int(
+            coverage.get("represented_route_records_with_route_class_count_total", 0) or 0
+        ),
+        "represented_route_classification_gap_count": int(
+            coverage.get("represented_route_classification_gap_count", 0) or 0
+        ),
+        "all_represented_routes_have_layer_source_and_class": bool(
+            coverage.get("all_represented_routes_have_layer_source_and_class", False)
+        ),
         "visual_route_span_total_mm": float(coverage.get("visual_route_span_total_mm", 0) or 0),
         "endpoint_pair_distance_total_mm": float(
             coverage.get("endpoint_pair_distance_total_mm", 0) or 0
@@ -253,6 +463,32 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
         "cad_connection_represented_net_count_total": int(
             summary.get("cad_connection_represented_net_count_total", 0) or 0
         ),
+        "cad_connection_represented_route_count_total": int(
+            summary.get("cad_connection_represented_route_count_total", 0) or 0
+        ),
+        "cad_connection_represented_route_record_count_total": int(
+            summary.get("cad_connection_represented_route_record_count_total", 0) or 0
+        ),
+        "cad_connection_represented_route_records_with_layer_count_total": int(
+            summary.get("cad_connection_represented_route_records_with_layer_count_total", 0)
+            or 0
+        ),
+        "cad_connection_represented_route_records_with_source_domain_count_total": int(
+            summary.get(
+                "cad_connection_represented_route_records_with_source_domain_count_total", 0
+            )
+            or 0
+        ),
+        "cad_connection_represented_route_records_with_route_class_count_total": int(
+            summary.get("cad_connection_represented_route_records_with_route_class_count_total", 0)
+            or 0
+        ),
+        "cad_connection_represented_route_classification_gap_count": int(
+            summary.get("cad_connection_represented_route_classification_gap_count", 0) or 0
+        ),
+        "cad_connection_all_represented_routes_have_layer_source_and_class": bool(
+            summary.get("cad_connection_all_represented_routes_have_layer_source_and_class", False)
+        ),
         "cad_connection_visual_route_span_total_mm": float(
             summary.get("cad_connection_visual_route_span_total_mm", 0) or 0
         ),
@@ -304,6 +540,132 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
     }
 
 
+def supplier_lane_for_model(model: dict[str, Any]) -> str:
+    reference = str(model.get("reference", ""))
+    footprint = str(model.get("footprint", ""))
+    pinout_file = str(model.get("pinout_file", ""))
+    key = " ".join([reference, footprint, pinout_file]).lower()
+    if "display" in key or "touch" in key or "dsi" in key:
+        return "display_touch"
+    if "rear_camera" in key or "cam0" in key:
+        return "rear_camera"
+    if "front_camera" in key or "cam1" in key:
+        return "front_camera"
+    if "usb4105" in key or "j_usb" in key or "usb_c" in key:
+        return "usb_c_receptacle_evt0"
+    if "tps65987" in key or "usb_pd" in key:
+        return "usb_pd_controller"
+    if "max77860" in key or "charger" in key:
+        return "charger_power_path"
+    if "battery" in key or "fuel_gauge" in key or "j_battery" in key:
+        return "battery_pack"
+    if "quectel" in key or "cell" in key or "gnss" in key:
+        return "cellular"
+    if "murata" in key or "wifi" in key:
+        return "wifi_bluetooth"
+    if "audio" in key or "mic" in key or "spk" in key:
+        return "audio_speaker_microphone_flexes"
+    if "haptic" in key or "side" in key or "power_vol" in key or "keys" in key:
+        return "side_buttons"
+    if "top_bottom" in key or "df40" in key or "hirose" in key:
+        return "top_bottom_interconnect"
+    if "pmic" in key or "rail" in key or "aon" in key or "vbat" in key or "sys" in key:
+        return "pmic"
+    return "board_support_passives_mechanicals"
+
+
+def supplier_step_intake_for_lane(lane: str) -> dict[str, Any]:
+    if lane == "board_support_passives_mechanicals":
+        return {
+            "supplier_step_intake_file": "",
+            "supplier_step_intake_status": "not_applicable_board_level_support_pattern",
+            "supplier_step_intake_release_credit": False,
+            "supplier_step_intake_sha256": "",
+            "supplier_step_intake_bytes": 0,
+        }
+    step_path = SUPPLIER_SOURCING_DIR / lane / "supplier-model.step"
+    if not step_path.is_file():
+        return {
+            "supplier_step_intake_file": chip_rel(step_path),
+            "supplier_step_intake_status": "missing_supplier_step_intake",
+            "supplier_step_intake_release_credit": False,
+            "supplier_step_intake_sha256": "",
+            "supplier_step_intake_bytes": 0,
+        }
+    text = step_path.read_text(encoding="utf-8", errors="ignore").lower()
+    release_credit = (
+        "release_credit: true" in text
+        and "placeholder" not in text
+        and "blocked" not in text
+        and "not supplier evidence" not in text
+    )
+    if release_credit:
+        status = "supplier_step_intake_present_release_candidate"
+    elif "supplier-return placeholder" in text or "placeholder" in text:
+        status = "present_fail_closed_supplier_step_placeholder"
+    else:
+        status = "present_local_surrogate_step_not_supplier_approved"
+    return {
+        "supplier_step_intake_file": chip_rel(step_path),
+        "supplier_step_intake_status": status,
+        "supplier_step_intake_release_credit": release_credit,
+        "supplier_step_intake_sha256": sha256(step_path),
+        "supplier_step_intake_bytes": step_path.stat().st_size,
+    }
+
+
+def write_local_supplier_lane_surrogate_steps(models: list[dict[str, Any]]) -> dict[str, Any]:
+    lane_models: dict[str, list[dict[str, Any]]] = {}
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        lane = supplier_lane_for_model(model)
+        if lane == "board_support_passives_mechanicals":
+            continue
+        lane_models.setdefault(lane, []).append(model)
+
+    records = {}
+    for lane, lane_items in sorted(lane_models.items()):
+        max_width = 0.1
+        max_depth = 0.1
+        max_height = 0.05
+        area_sum = 0.0
+        for item in lane_items:
+            envelope = item.get("envelope_mm", {})
+            if not isinstance(envelope, dict):
+                envelope = {}
+            width = max(float(envelope.get("width", 0) or 0), 0.1)
+            depth = max(float(envelope.get("depth", 0) or 0), 0.1)
+            height = max(float(envelope.get("height", 0) or 0), 0.05)
+            max_width = max(max_width, width)
+            max_depth = max(max_depth, depth)
+            max_height = max(max_height, height)
+            area_sum += width * depth
+        surrogate_width = max(max_width, area_sum ** 0.5)
+        surrogate_depth = max(max_depth, area_sum / surrogate_width)
+        surrogate_model = {
+            "reference": f"{lane}_LOCAL_SURROGATE_NOT_SUPPLIER_APPROVED",
+            "envelope_mm": {
+                "width": round(surrogate_width, 3),
+                "depth": round(surrogate_depth, 3),
+                "height": round(max_height, 3),
+            },
+        }
+        lane_dir = SUPPLIER_SOURCING_DIR / lane
+        lane_dir.mkdir(parents=True, exist_ok=True)
+        step_path = lane_dir / "supplier-model.step"
+        write_local_envelope_step(step_path, surrogate_model)
+        records[lane] = {
+            "file": chip_rel(step_path),
+            "sha256": sha256(step_path),
+            "bytes": step_path.stat().st_size,
+            "model_reference_count": len(lane_items),
+            "status": "present_local_surrogate_step_not_supplier_approved",
+            "release_credit": False,
+        }
+    return records
+
+
 def blocked_metadata(artifact_id: str, source_requirement_id: str, path: Path) -> dict[str, Any]:
     visual = routed_visual_detail()
     connection = cad_connection_summary()
@@ -353,6 +715,58 @@ def blocked_metadata(artifact_id: str, source_requirement_id: str, path: Path) -
     }
 
 
+def directory_child_inventory(path: Path, manifest_path: Path, artifact_paths: set[str]) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    for child in sorted(path.rglob("*")):
+        if not child.is_file() or child == manifest_path:
+            continue
+        rel_child = chip_rel(child)
+        records.append(
+            {
+                "path": rel_child,
+                "name": child.name,
+                "size_bytes": child.stat().st_size,
+                "sha256": sha256(child),
+                "candidate_placeholder": child.name == "candidate-placeholder.txt",
+                "covered_by_candidate_manifest_artifact": rel_child in artifact_paths,
+                "release_credit": False,
+            }
+        )
+    placeholder_paths = [record["path"] for record in records if record["candidate_placeholder"]]
+    manifest_child_paths = [
+        record["path"] for record in records if record["covered_by_candidate_manifest_artifact"]
+    ]
+    return {
+        "child_artifact_inventory": records,
+        "child_artifact_count": len(records),
+        "candidate_placeholder_child_count": len(placeholder_paths),
+        "candidate_placeholder_child_paths": placeholder_paths,
+        "candidate_manifest_child_artifact_count": len(manifest_child_paths),
+        "candidate_manifest_child_artifact_paths": manifest_child_paths,
+        "untracked_non_manifest_child_count": sum(
+            1
+            for record in records
+            if not record["candidate_placeholder"]
+            and not record["covered_by_candidate_manifest_artifact"]
+        ),
+        "release_child_count": 0,
+        "all_non_manifest_children_classified": all(
+            record["candidate_placeholder"] or record["covered_by_candidate_manifest_artifact"]
+            for record in records
+        ),
+    }
+
+
+def refresh_dir_manifest(path: Path, artifact_paths: set[str]) -> None:
+    manifest_path = path / "release-manifest.yaml"
+    manifest = load_yaml_if_present(manifest_path)
+    if not manifest:
+        return
+    manifest.update(directory_child_inventory(path, manifest_path, artifact_paths))
+    manifest["release_children_complete"] = False
+    write_yaml(manifest_path, manifest)
+
+
 def write_dir_manifest(path: Path, artifact_id: str, source_requirement_id: str) -> dict[str, Any]:
     path.mkdir(parents=True, exist_ok=True)
     child = path / "candidate-placeholder.txt"
@@ -362,7 +776,8 @@ def write_dir_manifest(path: Path, artifact_id: str, source_requirement_id: str)
     )
     manifest = blocked_metadata(artifact_id, source_requirement_id, child)
     manifest["artifact_id"] = artifact_id
-    manifest["candidate_children"] = [child.name]
+    manifest["candidate_children"] = [chip_rel(child)]
+    manifest.update(directory_child_inventory(path, path / "release-manifest.yaml", set()))
     manifest["release_children_complete"] = False
     write_yaml(path / "release-manifest.yaml", manifest)
     return {
@@ -408,6 +823,135 @@ def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) 
         "release_allowed": False,
         "claim_boundary": "blocked local candidate; not release evidence",
     }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {"path": chip_rel(path), "kind": "json", "metadata": ""}
+
+
+def extract_kicad_blocks(text: str, head: str) -> list[str]:
+    blocks: list[str] = []
+    start = 0
+    while True:
+        index = text.find(head, start)
+        if index < 0:
+            return blocks
+        depth = 0
+        end = index
+        for pos in range(index, len(text)):
+            char = text[pos]
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    end = pos + 1
+                    break
+        if end <= index:
+            return blocks
+        blocks.append(text[index:end])
+        start = end
+
+
+def parse_zone_records(board_text: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for index, block in enumerate(extract_kicad_blocks(board_text, "(zone "), start=1):
+        layers_match = re.search(r'\(layers\s+([^)]+)\)', block)
+        layers = re.findall(r'"([^"]+)"', layers_match.group(1)) if layers_match else []
+        points = [
+            {"x": round(float(x), 3), "y": round(float(y), 3)}
+            for x, y in re.findall(r"\(xy\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\)", block)
+        ]
+        xs = [point["x"] for point in points]
+        ys = [point["y"] for point in points]
+        bbox = (
+            {
+                "x_min": min(xs),
+                "y_min": min(ys),
+                "x_max": max(xs),
+                "y_max": max(ys),
+                "width": round(max(xs) - min(xs), 3),
+                "height": round(max(ys) - min(ys), 3),
+            }
+            if points
+            else {}
+        )
+        name_match = re.search(r'\(name\s+"([^"]*)"\)', block)
+        net_match = re.search(r"\(net\s+(-?\d+)\)", block)
+        net_name_match = re.search(r'\(net_name\s+"([^"]*)"\)', block)
+        records.append(
+            {
+                "index": index,
+                "name": name_match.group(1) if name_match else "",
+                "net": int(net_match.group(1)) if net_match else None,
+                "net_name": net_name_match.group(1) if net_name_match else "",
+                "layers": layers,
+                "layer_count": len(layers),
+                "is_keepout": "(keepout " in block,
+                "has_fill_settings": "(fill " in block,
+                "filled_polygon_count": block.count("(filled_polygon"),
+                "polygon_point_count": len(points),
+                "bbox_mm": bbox,
+            }
+        )
+    return records
+
+
+def write_zone_fill_report(path: Path) -> dict[str, Any]:
+    board_text = SOURCE_BOARD.read_text(encoding="utf-8", errors="ignore")
+    zones = parse_zone_records(board_text)
+    keepout_zones = [zone for zone in zones if zone["is_keepout"]]
+    copper_zones = [zone for zone in zones if not zone["is_keepout"]]
+    filled_zones = [zone for zone in zones if int(zone["filled_polygon_count"] or 0) > 0]
+    unfilled_copper_zone_count = sum(
+        1 for zone in copper_zones if int(zone["filled_polygon_count"] or 0) == 0
+    )
+    local_filled_copper_zones_present = bool(copper_zones) and unfilled_copper_zone_count == 0
+    payload = blocked_metadata("zone_fill_report_candidate", "zone_fill_report", SOURCE_BOARD)
+    payload.update(
+        {
+            "schema": "eliza.e1_phone_zone_fill_report_candidate.v1",
+            "status": (
+                "blocked_local_routed_candidate_has_non_release_filled_copper_zones"
+                if local_filled_copper_zones_present
+                else "blocked_local_routed_candidate_has_keepouts_but_no_copper_filled_zones"
+            ),
+            "source_board": chip_rel(SOURCE_BOARD),
+            "source_board_sha256": sha256(SOURCE_BOARD),
+            "candidate_release_credit": False,
+            "zone_summary": {
+                "zone_count": len(zones),
+                "keepout_zone_count": len(keepout_zones),
+                "copper_zone_count": len(copper_zones),
+                "filled_zone_count": len(filled_zones),
+                "unfilled_copper_zone_count": unfilled_copper_zone_count,
+                "all_zones_have_polygon_points": all(
+                    int(zone["polygon_point_count"] or 0) > 0 for zone in zones
+                ),
+                "all_keepouts_have_copperpour_blocked": all(
+                    bool(zone["is_keepout"]) for zone in keepout_zones
+                ),
+                "local_filled_copper_zones_present": local_filled_copper_zones_present,
+                "local_filled_copper_zones_release_credit": False,
+                "release_zone_fill_complete": False,
+            },
+            "zone_records": zones,
+            "release_blockers": [
+                (
+                    "local copper zones are filled for development visualization only"
+                    if local_filled_copper_zones_present
+                    else "no copper zones are filled in the local routed candidate"
+                ),
+                "zone-fill output is local candidate evidence only and has not been run through release DRC",
+                "production source still requires approved routed KiCad board, supplier footprints, and signed DRC/ERC/zone-fill review",
+            ],
+            "claim_boundary": (
+                "Structured local zone inventory for the routed-development board. "
+                "This records keepout and fill state but does not count as release "
+                "zone-fill evidence."
+            ),
+            "release_allowed": False,
+        }
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return {"path": chip_rel(path), "kind": "json", "metadata": ""}
 
@@ -458,7 +1002,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
             return "discrete_passive_land_pattern"
         return "support_land_pattern"
 
-    for footprint in footprints:
+    for model_index, footprint in enumerate(footprints, start=1):
         pads = footprint.get("pads", [])
         pad_names = [
             str(pad.get("name", ""))
@@ -469,11 +1013,55 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
         terminal_contract = [
             str(pin) for pin in pad_record.get("local_terminal_contract", []) if pin is not None
         ]
+        non_signal_pad_contract = [
+            str(pin)
+            for pin in pad_record.get("non_signal_pad_contract", [])
+            if pin is not None
+        ]
+        npth_feature_count = int(pad_record.get("npth_mechanical_feature_count", 0) or 0)
+        npth_feature_contract = [
+            dict(item)
+            for item in pad_record.get("npth_mechanical_feature_contract", [])
+            if isinstance(item, dict)
+        ]
+        pad_contract_records = []
+        for pad_name in pad_names:
+            if pad_name in terminal_contract:
+                contract_kind = "electrical_terminal"
+                contract_source = (
+                    pad_record.get("pinout_file")
+                    or pad_record.get("local_terminal_contract_source", "")
+                )
+                covered = True
+            elif pad_name in non_signal_pad_contract:
+                contract_kind = "non_signal_mechanical_pad"
+                contract_source = pad_record.get("non_signal_pad_contract_source", "")
+                covered = True
+            elif pad_name == "" and npth_feature_count > 0 and npth_feature_contract:
+                contract_kind = "npth_mechanical_feature"
+                contract_source = pad_record.get("npth_mechanical_feature_contract_source", "")
+                covered = True
+            else:
+                contract_kind = "uncovered_pad_visual"
+                contract_source = ""
+                covered = False
+            pad_contract_records.append(
+                {
+                    "pad": pad_name,
+                    "contract_kind": contract_kind,
+                    "contract_source": contract_source,
+                    "covered": covered,
+                }
+            )
         terminal_contract_matches_pad_visuals = all(pin in pad_names for pin in terminal_contract)
         models.append(
             {
                 "reference": footprint.get("reference", ""),
                 "footprint": footprint.get("footprint", ""),
+                "combined_step_assembly_name": (
+                    f"{model_index:02d}_{footprint.get('reference', '')}_"
+                    f"{footprint.get('footprint', '')}"
+                ),
                 "layer": footprint.get("layer", ""),
                 "at_mm": footprint.get("at_mm", {}),
                 "model_source": "local_development_envelope",
@@ -488,30 +1076,20 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 "mechanical_pads": [
                     str(pin) for pin in pad_record.get("mechanical_pads", []) if pin is not None
                 ],
-                "npth_mechanical_feature_count": int(
-                    pad_record.get("npth_mechanical_feature_count", 0) or 0
-                ),
+                "npth_mechanical_feature_count": npth_feature_count,
                 "npth_mechanical_features": [
                     dict(item)
                     for item in pad_record.get("npth_mechanical_features", [])
                     if isinstance(item, dict)
                 ],
-                "npth_mechanical_feature_contract": [
-                    dict(item)
-                    for item in pad_record.get("npth_mechanical_feature_contract", [])
-                    if isinstance(item, dict)
-                ],
+                "npth_mechanical_feature_contract": npth_feature_contract,
                 "npth_mechanical_feature_contract_source": pad_record.get(
                     "npth_mechanical_feature_contract_source", ""
                 ),
                 "npth_mechanical_feature_contract_matches_footprint": bool(
                     pad_record.get("npth_mechanical_feature_contract_matches_footprint", True)
                 ),
-                "non_signal_pad_contract": [
-                    str(pin)
-                    for pin in pad_record.get("non_signal_pad_contract", [])
-                    if pin is not None
-                ],
+                "non_signal_pad_contract": non_signal_pad_contract,
                 "non_signal_pad_contract_source": pad_record.get(
                     "non_signal_pad_contract_source", ""
                 ),
@@ -520,6 +1098,17 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 ),
                 "pad_visual_count": len(pads) if isinstance(pads, list) else 0,
                 "pad_names": pad_names,
+                "pad_contract_records": pad_contract_records,
+                "pad_contract_covered_count": sum(
+                    1 for record in pad_contract_records if record["covered"]
+                ),
+                "uncovered_pad_visuals": [
+                    record["pad"] for record in pad_contract_records if not record["covered"]
+                ],
+                "all_pad_visuals_have_contract": all(
+                    record["covered"] for record in pad_contract_records
+                )
+                and len(pad_contract_records) == len(pads),
                 "pinout_file": pad_record.get("pinout_file", ""),
                 "pinout_status": pad_record.get("pinout_status", ""),
                 "coverage": pad_record.get("coverage", ""),
@@ -547,6 +1136,12 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
         for model in models
         if model["terminal_contract_count"] > 0 or int(model["electrical_pad_count"] or 0) == 0
     ]
+    total_pad_contract_visual_count = sum(
+        int(model.get("pad_contract_covered_count") or 0) for model in models
+    )
+    uncovered_pad_visual_count = sum(
+        len(model.get("uncovered_pad_visuals", [])) for model in models
+    )
     layer_counts: dict[str, int] = {}
     coverage_counts: dict[str, int] = {}
     pinout_status_counts: dict[str, int] = {}
@@ -631,6 +1226,13 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 "models_with_terminal_contract_or_no_electrical_pads_count": len(
                     models_with_terminal_contract_or_no_pads
                 ),
+                "total_pad_contract_visual_count": total_pad_contract_visual_count,
+                "uncovered_pad_visual_count": uncovered_pad_visual_count,
+                "all_model_pad_visuals_have_contract": all(
+                    model.get("all_pad_visuals_have_contract") is True for model in models
+                )
+                and total_pad_contract_visual_count
+                == sum(int(model.get("pad_visual_count") or 0) for model in models),
                 "non_signal_pad_contract_count": sum(
                     len(model["non_signal_pad_contract"]) for model in models
                 ),
@@ -686,6 +1288,223 @@ def safe_model_filename(reference: str) -> str:
     return safe or "unnamed_model"
 
 
+def write_local_envelope_step(path: Path, model: dict[str, Any]) -> None:
+    envelope = model.get("envelope_mm", {})
+    if not isinstance(envelope, dict):
+        envelope = {}
+    width = max(float(envelope.get("width", 0) or 0), 0.1)
+    depth = max(float(envelope.get("depth", 0) or 0), 0.1)
+    height = max(float(envelope.get("height", 0) or 0), 0.05)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import cadquery as cq
+    except ModuleNotFoundError:
+        try:
+            from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+            from OCP.IFSelect import IFSelect_RetDone
+            from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
+            from OCP.gp import gp_Pnt
+        except ModuleNotFoundError:
+            venv_python = ROOT / ".venv/bin/python"
+            if venv_python.is_file():
+                subprocess.run(
+                    [
+                        str(venv_python),
+                        "-c",
+                        (
+                            "import cadquery as cq, sys\n"
+                            "path, width, depth, height = sys.argv[1], float(sys.argv[2]), "
+                            "float(sys.argv[3]), float(sys.argv[4])\n"
+                            "shape = cq.Workplane('XY').box(width, depth, height)\n"
+                            "cq.exporters.export(shape, path)\n"
+                        ),
+                        str(path),
+                        str(width),
+                        str(depth),
+                        str(height),
+                    ],
+                    check=True,
+                )
+                return
+        else:
+            shape = BRepPrimAPI_MakeBox(
+                gp_Pnt(-width / 2.0, -depth / 2.0, -height / 2.0),
+                width,
+                depth,
+                height,
+            ).Shape()
+            writer = STEPControl_Writer()
+            writer.Transfer(shape, STEPControl_AsIs)
+            status = writer.Write(str(path))
+            if status != IFSelect_RetDone:
+                raise RuntimeError(f"OCP STEP write failed: {status}")
+            return
+        reference = str(model.get("reference", "LOCAL_ENVELOPE"))
+        half_w = width / 2.0
+        half_d = depth / 2.0
+        points = [
+            (-half_w, -half_d, 0.0),
+            (half_w, -half_d, 0.0),
+            (half_w, half_d, 0.0),
+            (-half_w, half_d, 0.0),
+            (-half_w, -half_d, height),
+            (half_w, -half_d, height),
+            (half_w, half_d, height),
+            (-half_w, half_d, height),
+        ]
+        triangles = [
+            (1, 2, 3),
+            (1, 3, 4),
+            (5, 7, 6),
+            (5, 8, 7),
+            (1, 5, 6),
+            (1, 6, 2),
+            (2, 6, 7),
+            (2, 7, 3),
+            (3, 7, 8),
+            (3, 8, 4),
+            (4, 8, 5),
+            (4, 5, 1),
+        ]
+        point_text = ",".join(
+            f"({x:.4f},{y:.4f},{z:.4f})" for x, y, z in points
+        )
+        triangle_text = ",".join(f"({a},{b},{c})" for a, b, c in triangles)
+        path.write_text(
+            "\n".join(
+                [
+                    "ISO-10303-21;",
+                    "HEADER;",
+                    "FILE_DESCRIPTION(('E1 phone local development envelope STEP'),'2;1');",
+                    f"FILE_NAME('{path.name}','2026-05-22',('eliza'),('elizaOS'),'generate_e1_phone_routed_output_candidates.py','local','non-release');",
+                    "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));",
+                    "ENDSEC;",
+                    "DATA;",
+                    f"#1=CARTESIAN_POINT_LIST_3D('{reference}',({point_text}));",
+                    f"#2=TRIANGULATED_FACE_SET('{reference}_LOCAL_ENVELOPE',#1,$,.T.,({triangle_text}),$);",
+                    "#3=GEOMETRIC_REPRESENTATION_CONTEXT(3);",
+                    "#4=SHAPE_REPRESENTATION('local_development_envelope',(#2),#3);",
+                    "ENDSEC;",
+                    "END-ISO-10303-21;",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return
+
+    shape = cq.Workplane("XY").box(width, depth, height)
+    cq.exporters.export(shape, str(path))
+
+
+def validate_local_envelope_step(path: Path, model: dict[str, Any]) -> dict[str, Any]:
+    envelope = model.get("envelope_mm", {})
+    if not isinstance(envelope, dict):
+        envelope = {}
+    expected = {
+        "width": max(float(envelope.get("width", 0) or 0), 0.1),
+        "depth": max(float(envelope.get("depth", 0) or 0), 0.1),
+        "height": max(float(envelope.get("height", 0) or 0), 0.05),
+    }
+
+    def validate_with_python(python: Path | None = None) -> dict[str, Any]:
+        code = (
+            "import cadquery as cq, json, sys\n"
+            "path = sys.argv[1]\n"
+            "shape = cq.importers.importStep(path)\n"
+            "solid = shape.val()\n"
+            "box = solid.BoundingBox()\n"
+            "print(json.dumps({"
+            "'import_status':'pass',"
+            "'solid_type':type(solid).__name__,"
+            "'bbox_mm':{'width':box.xlen,'depth':box.ylen,'height':box.zlen}"
+            "}, sort_keys=True))\n"
+        )
+        if python is None:
+            import cadquery as cq
+
+            shape = cq.importers.importStep(str(path))
+            solid = shape.val()
+            box = solid.BoundingBox()
+            return {
+                "import_status": "pass",
+                "solid_type": type(solid).__name__,
+                "bbox_mm": {
+                    "width": box.xlen,
+                    "depth": box.ylen,
+                    "height": box.zlen,
+                },
+            }
+        result = subprocess.run(
+            [str(python), "-c", code, str(path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        data = json.loads(result.stdout)
+        return data if isinstance(data, dict) else {"import_status": "invalid_output"}
+
+    def validate_with_ocp() -> dict[str, Any]:
+        from OCP.Bnd import Bnd_Box
+        from OCP.BRepBndLib import BRepBndLib
+        from OCP.IFSelect import IFSelect_RetDone
+        from OCP.STEPControl import STEPControl_Reader
+
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(str(path))
+        if status != IFSelect_RetDone:
+            raise RuntimeError(f"OCP STEP read failed: {status}")
+        reader.TransferRoots()
+        shape = reader.OneShape()
+        box = Bnd_Box()
+        BRepBndLib.Add_s(shape, box)
+        xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+        return {
+            "import_status": "pass",
+            "solid_type": "Solid",
+            "validation_tool": "ocp_step_reader",
+            "bbox_mm": {
+                "width": float(xmax - xmin),
+                "depth": float(ymax - ymin),
+                "height": float(zmax - zmin),
+            },
+        }
+
+    try:
+        validation = validate_with_python()
+    except ModuleNotFoundError:
+        try:
+            validation = validate_with_ocp()
+        except ModuleNotFoundError:
+            venv_python = ROOT / ".venv/bin/python"
+            if not venv_python.is_file():
+                validation = {
+                    "import_status": "not_run_cadquery_or_ocp_unavailable",
+                    "solid_type": "",
+                    "bbox_mm": {},
+                }
+            else:
+                validation = validate_with_python(venv_python)
+    except Exception as exc:
+        validation = {
+            "import_status": "failed",
+            "solid_type": "",
+            "bbox_mm": {},
+            "error": str(exc),
+        }
+
+    bbox = validation.get("bbox_mm", {})
+    if not isinstance(bbox, dict):
+        bbox = {}
+    matches = all(
+        abs(float(bbox.get(key, 0.0) or 0.0) - expected[key]) <= 0.01
+        for key in ("width", "depth", "height")
+    )
+    validation["expected_bbox_mm"] = expected
+    validation["bbox_matches_envelope"] = matches
+    return validation
+
+
 def write_component_model_directory(path: Path, component_manifest_path: Path) -> dict[str, Any]:
     component_manifest = load_yaml_if_present(component_manifest_path)
     models = component_manifest.get("models", [])
@@ -694,6 +1513,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
     if path.exists():
         shutil.rmtree(path)
     path.mkdir(parents=True, exist_ok=True)
+    supplier_lane_surrogate_steps = write_local_supplier_lane_surrogate_steps(models)
 
     source_routed_step = (
         ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step"
@@ -708,8 +1528,21 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         if not isinstance(model, dict):
             continue
         reference = str(model.get("reference", ""))
-        filename = f"{safe_model_filename(reference)}.local-model.json"
+        safe_reference = safe_model_filename(reference)
+        filename = f"{safe_reference}.local-model.json"
         record_path = path / filename
+        local_step_path = path / f"{safe_reference}.local-envelope.step"
+        supplier_lane = supplier_lane_for_model(model)
+        supplier_step_intake = supplier_step_intake_for_lane(supplier_lane)
+        write_local_envelope_step(local_step_path, model)
+        local_step_rel = chip_rel(local_step_path)
+        local_step_sha256 = sha256(local_step_path)
+        local_step_bytes = local_step_path.stat().st_size
+        local_step_validation = validate_local_envelope_step(local_step_path, model)
+        local_discrete_step_imported_as_solid = (
+            local_step_validation.get("import_status") == "pass"
+            and local_step_validation.get("solid_type") == "Solid"
+        )
         record = {
             "schema": "eliza.e1_phone_local_component_model_record.v1",
             "status": "blocked_local_development_envelope_not_supplier_step",
@@ -723,6 +1556,32 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "source_routed_step": source_routed_step_rel,
             "source_routed_step_sha256": source_routed_step_sha256,
             "source_routed_step_bytes": source_routed_step_bytes,
+            "combined_step_assembly_name": model.get("combined_step_assembly_name", ""),
+            "combined_step_locator_status": (
+                "development_envelope_named_subshape_in_combined_routed_step"
+            ),
+            "local_discrete_step_file": local_step_rel,
+            "local_discrete_step_sha256": local_step_sha256,
+            "local_discrete_step_bytes": local_step_bytes,
+            "local_discrete_step_status": "local_development_envelope_not_supplier_model",
+            "local_discrete_step_import_status": local_step_validation.get(
+                "import_status", ""
+            ),
+            "local_discrete_step_solid_type": local_step_validation.get("solid_type", ""),
+            "local_discrete_step_imported_as_solid": local_discrete_step_imported_as_solid,
+            "local_discrete_step_bbox_mm": local_step_validation.get("bbox_mm", {}),
+            "local_discrete_step_expected_bbox_mm": local_step_validation.get(
+                "expected_bbox_mm", {}
+            ),
+            "local_discrete_step_bbox_matches_envelope": local_step_validation.get(
+                "bbox_matches_envelope", False
+            ),
+            "expected_supplier_step_file": f"{safe_model_filename(reference)}.step",
+            "expected_supplier_brep_or_step_status": (
+                "missing_supplier_approved_discrete_component_model"
+            ),
+            "supplier_sourcing_lane": supplier_lane,
+            **supplier_step_intake,
             "source_step_intake": model.get("source_step_intake", ""),
             "source_assembly_item": model.get("source_assembly_item", ""),
             "discrete_supplier_step_file": "",
@@ -751,6 +1610,12 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             ),
             "pad_visual_count": model.get("pad_visual_count", 0),
             "pad_names": model.get("pad_names", []),
+            "pad_contract_records": model.get("pad_contract_records", []),
+            "pad_contract_covered_count": model.get("pad_contract_covered_count", 0),
+            "uncovered_pad_visuals": model.get("uncovered_pad_visuals", []),
+            "all_pad_visuals_have_contract": model.get(
+                "all_pad_visuals_have_contract", False
+            ),
             "pinout_file": model.get("pinout_file", ""),
             "coverage": model.get("coverage", ""),
             "visual_package_class": model.get("visual_package_class", ""),
@@ -785,11 +1650,48 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "source_routed_step": source_routed_step_rel,
                 "source_routed_step_sha256": source_routed_step_sha256,
                 "source_routed_step_bytes": source_routed_step_bytes,
+                "combined_step_assembly_name": record["combined_step_assembly_name"],
+                "local_discrete_step_file": record["local_discrete_step_file"],
+                "local_discrete_step_sha256": record["local_discrete_step_sha256"],
+                "local_discrete_step_bytes": record["local_discrete_step_bytes"],
+                "local_discrete_step_status": record["local_discrete_step_status"],
+                "local_discrete_step_import_status": record[
+                    "local_discrete_step_import_status"
+                ],
+                "local_discrete_step_solid_type": record["local_discrete_step_solid_type"],
+                "local_discrete_step_imported_as_solid": record[
+                    "local_discrete_step_imported_as_solid"
+                ],
+                "local_discrete_step_bbox_mm": record["local_discrete_step_bbox_mm"],
+                "local_discrete_step_expected_bbox_mm": record[
+                    "local_discrete_step_expected_bbox_mm"
+                ],
+                "local_discrete_step_bbox_matches_envelope": record[
+                    "local_discrete_step_bbox_matches_envelope"
+                ],
+                "expected_supplier_step_file": record["expected_supplier_step_file"],
+                "expected_supplier_brep_or_step_status": record[
+                    "expected_supplier_brep_or_step_status"
+                ],
+                "supplier_sourcing_lane": record["supplier_sourcing_lane"],
+                "supplier_step_intake_file": record["supplier_step_intake_file"],
+                "supplier_step_intake_status": record["supplier_step_intake_status"],
+                "supplier_step_intake_release_credit": record[
+                    "supplier_step_intake_release_credit"
+                ],
+                "supplier_step_intake_sha256": record["supplier_step_intake_sha256"],
+                "supplier_step_intake_bytes": record["supplier_step_intake_bytes"],
                 "pinout_bound": bool(model.get("pinout_file")),
                 "support_pattern_has_explicit_provenance": bool(
                     model.get("support_pattern_has_explicit_provenance", False)
                 ),
                 "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
+                "pad_contract_covered_count": int(
+                    model.get("pad_contract_covered_count", 0) or 0
+                ),
+                "all_pad_visuals_have_contract": bool(
+                    model.get("all_pad_visuals_have_contract", False)
+                ),
                 "terminal_contract_matches_pad_visuals": bool(
                     model.get("terminal_contract_matches_pad_visuals", False)
                 ),
@@ -807,6 +1709,94 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "release_credit": False,
             }
         )
+
+    records_by_reference = {
+        str(record.get("reference", "")): record
+        for record in model_records
+        if record.get("reference")
+    }
+    for model in models:
+        if not isinstance(model, dict):
+            continue
+        record = records_by_reference.get(str(model.get("reference", "")))
+        if not record:
+            continue
+        model["local_discrete_step_file"] = record["local_discrete_step_file"]
+        model["local_discrete_step_sha256"] = record["local_discrete_step_sha256"]
+        model["local_discrete_step_bytes"] = record["local_discrete_step_bytes"]
+        model["local_discrete_step_status"] = record["local_discrete_step_status"]
+        model["local_discrete_step_import_status"] = record[
+            "local_discrete_step_import_status"
+        ]
+        model["local_discrete_step_solid_type"] = record["local_discrete_step_solid_type"]
+        model["local_discrete_step_imported_as_solid"] = record[
+            "local_discrete_step_imported_as_solid"
+        ]
+        model["local_discrete_step_bbox_mm"] = record["local_discrete_step_bbox_mm"]
+        model["local_discrete_step_expected_bbox_mm"] = record[
+            "local_discrete_step_expected_bbox_mm"
+        ]
+        model["local_discrete_step_bbox_matches_envelope"] = record[
+            "local_discrete_step_bbox_matches_envelope"
+        ]
+    component_manifest["local_discrete_step_binding"] = {
+        "source": chip_rel(path / "release-manifest.yaml"),
+        "binding_basis": (
+            "Per-reference local STEP envelope files generated from the same "
+            "development model records as the combined routed-board STEP candidate. "
+            "These files are local review geometry and do not replace supplier STEP "
+            "or B-rep models."
+        ),
+        "model_count": len(models),
+        "model_record_count": len(model_records),
+        "local_discrete_step_file_count": sum(
+            1 for item in model_records if item.get("local_discrete_step_file")
+        ),
+        "local_discrete_step_imported_solid_count": sum(
+            1
+            for item in model_records
+            if item.get("local_discrete_step_import_status") == "pass"
+            and item.get("local_discrete_step_solid_type") == "Solid"
+        ),
+        "local_discrete_step_bbox_match_count": sum(
+            1
+            for item in model_records
+            if item.get("local_discrete_step_bbox_matches_envelope") is True
+        ),
+        "local_discrete_step_bytes_total": sum(
+            int(item.get("local_discrete_step_bytes", 0) or 0) for item in model_records
+        ),
+        "all_models_have_local_discrete_step_file": len(model_records) == len(models)
+        and all(
+            bool(item.get("local_discrete_step_file"))
+            and (ROOT / str(item.get("local_discrete_step_file"))).is_file()
+            for item in model_records
+        ),
+        "all_local_discrete_step_hashes_match_files": all(
+            item.get("local_discrete_step_sha256")
+            == sha256(ROOT / str(item.get("local_discrete_step_file")))
+            for item in model_records
+            if item.get("local_discrete_step_file")
+        ),
+        "all_local_discrete_step_sizes_match_files": all(
+            int(item.get("local_discrete_step_bytes", 0) or 0)
+            == (ROOT / str(item.get("local_discrete_step_file"))).stat().st_size
+            for item in model_records
+            if item.get("local_discrete_step_file")
+        ),
+        "all_local_discrete_steps_import_as_solids": all(
+            item.get("local_discrete_step_import_status") == "pass"
+            and item.get("local_discrete_step_solid_type") == "Solid"
+            for item in model_records
+        ),
+        "all_local_discrete_step_bboxes_match_envelopes": all(
+            item.get("local_discrete_step_bbox_matches_envelope") is True
+            for item in model_records
+        ),
+        "release_credit": False,
+    }
+    component_manifest["models"] = models
+    write_yaml(component_manifest_path, component_manifest)
 
     manifest = blocked_metadata(
         "component_model_directory_candidate",
@@ -840,6 +1830,21 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             ),
             "terminal_contract_total_count": sum(
                 int(model.get("terminal_contract_count", 0) or 0)
+                for model in models
+                if isinstance(model, dict)
+            ),
+            "total_pad_contract_visual_count": sum(
+                int(model.get("pad_contract_covered_count", 0) or 0)
+                for model in models
+                if isinstance(model, dict)
+            ),
+            "uncovered_pad_visual_count": sum(
+                len(model.get("uncovered_pad_visuals", []))
+                for model in models
+                if isinstance(model, dict)
+            ),
+            "all_model_pad_visuals_have_contract": all(
+                model.get("all_pad_visuals_have_contract") is True
                 for model in models
                 if isinstance(model, dict)
             ),
@@ -896,6 +1901,113 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 and int(item.get("source_routed_step_bytes", 0) or 0) == source_routed_step_bytes
                 for item in model_records
             ),
+            "all_model_records_have_combined_step_locator": all(
+                bool(item.get("combined_step_assembly_name")) for item in model_records
+            ),
+            "all_model_records_have_local_discrete_step_file": all(
+                bool(item.get("local_discrete_step_file"))
+                and (ROOT / str(item.get("local_discrete_step_file"))).is_file()
+                and item.get("local_discrete_step_sha256")
+                == sha256(ROOT / str(item.get("local_discrete_step_file")))
+                and int(item.get("local_discrete_step_bytes", 0) or 0)
+                == (ROOT / str(item.get("local_discrete_step_file"))).stat().st_size
+                for item in model_records
+            ),
+            "all_local_discrete_step_files_import_as_solids": all(
+                item.get("local_discrete_step_import_status") == "pass"
+                and item.get("local_discrete_step_solid_type") == "Solid"
+                for item in model_records
+            ),
+            "all_local_discrete_step_bboxes_match_envelopes": all(
+                item.get("local_discrete_step_bbox_matches_envelope") is True
+                for item in model_records
+            ),
+            "all_model_records_have_expected_supplier_step_file": all(
+                bool(item.get("expected_supplier_step_file")) for item in model_records
+            ),
+            "all_record_local_step_hashes_match_files": all(
+                bool(item.get("local_discrete_step_file"))
+                and item.get("local_discrete_step_sha256")
+                == sha256(ROOT / str(item.get("local_discrete_step_file")))
+                for item in model_records
+            ),
+            "all_record_local_step_sizes_match_files": all(
+                bool(item.get("local_discrete_step_file"))
+                and int(item.get("local_discrete_step_bytes", 0) or 0)
+                == (ROOT / str(item.get("local_discrete_step_file"))).stat().st_size
+                for item in model_records
+            ),
+            "all_record_metadata_hashes_match_files": all(
+                bool(item.get("metadata"))
+                and item.get("metadata_sha256") == sha256(path / str(item.get("metadata")))
+                for item in model_records
+            ),
+            "local_discrete_step_imported_solid_count": sum(
+                1
+                for item in model_records
+                if item.get("local_discrete_step_import_status") == "pass"
+                and item.get("local_discrete_step_solid_type") == "Solid"
+            ),
+            "local_discrete_step_bbox_match_count": sum(
+                1
+                for item in model_records
+                if item.get("local_discrete_step_bbox_matches_envelope") is True
+            ),
+            "local_discrete_step_file_count": sum(
+                1 for item in model_records if item.get("local_discrete_step_file")
+            ),
+            "local_discrete_step_bytes_total": sum(
+                int(item.get("local_discrete_step_bytes", 0) or 0) for item in model_records
+            ),
+            "missing_supplier_discrete_model_count": sum(
+                1
+                for item in model_records
+                if item.get("expected_supplier_brep_or_step_status")
+                == "missing_supplier_approved_discrete_component_model"
+            ),
+            "supplier_step_intake_placeholder_count": sum(
+                1
+                for item in model_records
+                if item.get("supplier_step_intake_status")
+                == "present_fail_closed_supplier_step_placeholder"
+            ),
+            "supplier_step_intake_missing_count": sum(
+                1
+                for item in model_records
+                if item.get("supplier_step_intake_status") == "missing_supplier_step_intake"
+            ),
+            "supplier_step_intake_not_applicable_count": sum(
+                1
+                for item in model_records
+                if item.get("supplier_step_intake_status")
+                == "not_applicable_board_level_support_pattern"
+            ),
+            "supplier_step_intake_local_surrogate_count": sum(
+                1
+                for item in model_records
+                if item.get("supplier_step_intake_status")
+                == "present_local_surrogate_step_not_supplier_approved"
+            ),
+            "supplier_lane_surrogate_step_count": len(supplier_lane_surrogate_steps),
+            "supplier_lane_surrogate_steps": supplier_lane_surrogate_steps,
+            "supplier_step_intake_release_candidate_count": sum(
+                1 for item in model_records if item.get("supplier_step_intake_release_credit")
+            ),
+            "supplier_step_intake_lane_counts": dict(
+                sorted(
+                    {
+                        lane: sum(
+                            1
+                            for item in model_records
+                            if item.get("supplier_sourcing_lane") == lane
+                        )
+                        for lane in {
+                            str(item.get("supplier_sourcing_lane", ""))
+                            for item in model_records
+                        }
+                    }.items()
+                )
+            ),
             "all_records_release_credit_false": True,
             "model_records": model_records,
             "release_allowed": False,
@@ -913,6 +2025,159 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         "kind": "directory",
         "metadata": chip_rel(path / "release-manifest.yaml"),
     }
+
+
+def write_component_3d_binding_gap_matrix(component_model_dir: Path) -> list[dict[str, Any]]:
+    manifest_path = component_model_dir / "release-manifest.yaml"
+    manifest = load_yaml_if_present(manifest_path)
+    model_records = manifest.get("model_records", [])
+    if not isinstance(model_records, list):
+        model_records = []
+
+    rows: list[dict[str, Any]] = []
+    for item in model_records:
+        if not isinstance(item, dict):
+            continue
+        supplier_step = str(item.get("supplier_step_intake_file") or "")
+        local_step = str(item.get("local_discrete_step_file") or "")
+        rows.append(
+            {
+                "reference": str(item.get("reference") or ""),
+                "footprint": str(item.get("footprint") or ""),
+                "supplier_sourcing_lane": str(item.get("supplier_sourcing_lane") or ""),
+                "pinout_bound": str(bool(item.get("pinout_bound"))).lower(),
+                "support_pattern_has_explicit_provenance": str(
+                    bool(item.get("support_pattern_has_explicit_provenance"))
+                ).lower(),
+                "terminal_contract_count": str(int(item.get("terminal_contract_count", 0) or 0)),
+                "combined_step_assembly_name": str(item.get("combined_step_assembly_name") or ""),
+                "local_discrete_step_file": local_step,
+                "local_discrete_step_sha256": str(item.get("local_discrete_step_sha256") or ""),
+                "local_discrete_step_bytes": str(
+                    int(item.get("local_discrete_step_bytes", 0) or 0)
+                ),
+                "local_discrete_step_import_status": str(
+                    item.get("local_discrete_step_import_status") or ""
+                ),
+                "local_discrete_step_imported_as_solid": str(
+                    item.get("local_discrete_step_imported_as_solid") is True
+                ).lower(),
+                "local_discrete_step_bbox_matches_envelope": str(
+                    item.get("local_discrete_step_bbox_matches_envelope") is True
+                ).lower(),
+                "expected_supplier_step_file": str(item.get("expected_supplier_step_file") or ""),
+                "expected_supplier_brep_or_step_status": str(
+                    item.get("expected_supplier_brep_or_step_status") or ""
+                ),
+                "supplier_step_intake_file": supplier_step,
+                "supplier_step_intake_status": str(item.get("supplier_step_intake_status") or ""),
+                "supplier_step_intake_sha256": str(item.get("supplier_step_intake_sha256") or ""),
+                "supplier_step_intake_bytes": str(
+                    int(item.get("supplier_step_intake_bytes", 0) or 0)
+                ),
+                "supplier_step_intake_release_credit": str(
+                    item.get("supplier_step_intake_release_credit") is True
+                ).lower(),
+                "supplier_approved": str(item.get("supplier_approved") is True).lower(),
+                "release_credit": str(item.get("release_credit") is True).lower(),
+                "release_allowed": "false",
+                "next_release_action": (
+                    "replace fail-closed supplier intake placeholder with signed supplier STEP/B-rep"
+                    if supplier_step
+                    else "bind board-level support pattern to approved assembly/fab drawing where applicable"
+                ),
+            }
+        )
+
+    COMPONENT_3D_BINDING_MATRIX.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = list(rows[0]) if rows else [
+        "reference",
+        "footprint",
+        "supplier_sourcing_lane",
+    ]
+    with COMPONENT_3D_BINDING_MATRIX.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    lane_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    for row in rows:
+        lane = row["supplier_sourcing_lane"]
+        status = row["supplier_step_intake_status"]
+        lane_counts[lane] = lane_counts.get(lane, 0) + 1
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    payload = blocked_metadata(
+        "component_3d_binding_gap_matrix_candidate",
+        "supplier_component_3d_model_binding_matrix",
+        COMPONENT_3D_BINDING_MATRIX,
+    )
+    payload.update(
+        {
+            "schema": "eliza.e1_phone_component_3d_binding_gap_matrix.v1",
+            "status": "blocked_local_component_binding_gap_matrix_not_supplier_approval",
+            "component_model_directory_manifest": chip_rel(manifest_path),
+            "component_model_directory_manifest_sha256": (
+                sha256(manifest_path) if manifest_path.is_file() else ""
+            ),
+            "csv_matrix": chip_rel(COMPONENT_3D_BINDING_MATRIX),
+            "csv_matrix_sha256": sha256(COMPONENT_3D_BINDING_MATRIX),
+            "csv_matrix_bytes": COMPONENT_3D_BINDING_MATRIX.stat().st_size,
+            "row_count": len(rows),
+            "supplier_lane_counts": dict(sorted(lane_counts.items())),
+            "supplier_step_intake_status_counts": dict(sorted(status_counts.items())),
+            "local_discrete_step_file_count": sum(
+                1 for row in rows if row["local_discrete_step_file"]
+            ),
+            "local_discrete_step_import_pass_count": sum(
+                1 for row in rows if row["local_discrete_step_import_status"] == "pass"
+            ),
+            "local_discrete_step_imported_solid_count": sum(
+                1 for row in rows if row["local_discrete_step_imported_as_solid"] == "true"
+            ),
+            "local_discrete_step_bbox_match_count": sum(
+                1 for row in rows if row["local_discrete_step_bbox_matches_envelope"] == "true"
+            ),
+            "supplier_step_intake_placeholder_count": status_counts.get(
+                "present_fail_closed_supplier_step_placeholder", 0
+            ),
+            "supplier_step_intake_local_surrogate_count": status_counts.get(
+                "present_local_surrogate_step_not_supplier_approved", 0
+            ),
+            "supplier_step_intake_not_applicable_count": status_counts.get(
+                "not_applicable_board_level_support_pattern", 0
+            ),
+            "supplier_step_intake_release_candidate_count": sum(
+                1 for row in rows if row["supplier_step_intake_release_credit"] == "true"
+            ),
+            "all_rows_release_credit_false": all(row["release_credit"] == "false" for row in rows),
+            "all_rows_release_allowed_false": all(
+                row["release_allowed"] == "false" for row in rows
+            ),
+            "release_allowed": False,
+            "release_credit": False,
+            "claim_boundary": (
+                "Per-reference component 3D binding gap matrix for local routed-output "
+                "review. It maps every component model record to local STEP evidence "
+                "and supplier intake status, but it is not supplier approval."
+            ),
+            "rows": rows,
+        }
+    )
+    write_yaml(COMPONENT_3D_BINDING_REPORT, payload)
+    return [
+        {
+            "path": chip_rel(COMPONENT_3D_BINDING_REPORT),
+            "kind": "yaml",
+            "metadata": "",
+        },
+        {
+            "path": chip_rel(COMPONENT_3D_BINDING_MATRIX),
+            "kind": "csv",
+            "metadata": chip_rel(COMPONENT_3D_BINDING_REPORT),
+        },
+    ]
 
 
 def write_csv_report(path: Path, rows: list[dict[str, str]]) -> dict[str, Any]:
@@ -976,9 +2241,15 @@ def generate() -> dict[str, Any]:
     routed_board = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
     routed_board.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(SOURCE_BOARD, routed_board)
+    routed_board_metadata = blocked_metadata(
+        "routed_kicad_pcb_candidate", "routed_kicad_pcb", routed_board
+    )
+    routed_board_metadata["routed_candidate_source_binding"] = (
+        routed_candidate_source_binding(routed_board)
+    )
     write_yaml(
         routed_board.with_suffix(routed_board.suffix + ".metadata.yaml"),
-        blocked_metadata("routed_kicad_pcb_candidate", "routed_kicad_pcb", routed_board),
+        routed_board_metadata,
     )
     artifacts.append(
         {
@@ -1019,6 +2290,7 @@ def generate() -> dict[str, Any]:
                 ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
             )
         )
+        artifacts.extend(write_component_3d_binding_gap_matrix(COMPONENT_MODEL_DIR))
 
     for path_text, title in [
         (
@@ -1071,6 +2343,14 @@ def generate() -> dict[str, Any]:
             "rf_conducted_cellular_wifi_bt_candidate",
         ),
         (
+            "board/kicad/e1-phone/production/reports/rf/cellular-conducted.json",
+            "rf_cellular_conducted_candidate",
+        ),
+        (
+            "board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json",
+            "rf_wifi_bt_conducted_candidate",
+        ),
+        (
             "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json",
             "side_key_force_travel_wake_log_candidate",
         ),
@@ -1111,6 +2391,10 @@ def generate() -> dict[str, Any]:
             "power_thermal_load_step_candidate",
         ),
         (
+            "board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json",
+            "power_thermal_rail_efficiency_soak_candidate",
+        ),
+        (
             "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json",
             "rf_sar_prescan_plan_candidate",
         ),
@@ -1124,7 +2408,9 @@ def generate() -> dict[str, Any]:
         ),
     ]:
         path = ROOT / path_text
-        if path.suffix == ".json":
+        if path_text == "board/kicad/e1-phone/production/reports/zone-fill.json":
+            artifacts.append(write_zone_fill_report(path))
+        elif path.suffix == ".json":
             artifacts.append(write_json_report(path, artifact_id, artifact_id))
         else:
             artifacts.append(write_yaml_report(path, artifact_id, artifact_id))
@@ -1173,6 +2459,23 @@ def generate() -> dict[str, Any]:
         )
     )
 
+    directory_manifest_paths = [
+        ROOT / "board/kicad/e1-phone/production/fab-quote",
+        ROOT / "board/kicad/e1-phone/production/first-article",
+        ROOT / "board/kicad/e1-phone/production/reports/si-pi",
+        ROOT / "board/kicad/e1-phone/production/reports/rf",
+        ROOT / "board/kicad/e1-phone/production/reports/power-thermal",
+    ]
+    artifact_paths = {
+        str(value)
+        for artifact in artifacts
+        if isinstance(artifact, dict)
+        for value in (artifact.get("path"), artifact.get("metadata"))
+        if value
+    }
+    for directory in directory_manifest_paths:
+        refresh_dir_manifest(directory, artifact_paths)
+
     manifest = {
         "schema": "eliza.e1_phone_routed_output_candidate_manifest.v1",
         "date": DATE,
@@ -1187,6 +2490,7 @@ def generate() -> dict[str, Any]:
         "source_step_size_bytes": SOURCE_STEP.stat().st_size if SOURCE_STEP.exists() else 0,
         "source_step_sha256": sha256(SOURCE_STEP) if SOURCE_STEP.exists() else "",
         "source_board_sha256": sha256(SOURCE_BOARD),
+        "routed_candidate_source_binding": routed_candidate_source_binding(routed_board),
         "routed_step_visual_detail": routed_visual_detail(),
         "cad_connection_coverage": cad_connection_summary(),
         "kicad_cad_traceability": kicad_cad_traceability_summary(),

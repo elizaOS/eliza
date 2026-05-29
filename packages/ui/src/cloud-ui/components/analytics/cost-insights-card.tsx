@@ -4,9 +4,7 @@ import { Progress } from "../progress";
 import { CostAlerts, type CostAlertsTrending } from "./cost-alerts";
 
 interface CostInsightsCardProps {
-  costTrending: CostAlertsTrending & {
-    monthlyBurnPercentClamped: number;
-  };
+  costTrending: CostAlertsTrending;
   creditBalance: number;
 }
 

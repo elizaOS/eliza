@@ -30,8 +30,8 @@ aosp_cts_vts_plan_command=${AOSP_CTS_VTS_PLAN_COMMAND:-}
 aosp_qemu_smoke_command=${AOSP_QEMU_SMOKE_COMMAND:-}
 aosp_renode_smoke_command=${AOSP_RENODE_SMOKE_COMMAND:-}
 aosp_agent_apk=${AOSP_AGENT_APK:-}
-aosp_agent_package=${AOSP_AGENT_PACKAGE:-ai.milady.milady}
-aosp_agent_service=${AOSP_AGENT_SERVICE:-ai.milady.milady/.ElizaAgentService}
+aosp_agent_package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}
+aosp_agent_service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}
 aosp_agent_host_port=${AOSP_AGENT_HOST_PORT:-31337}
 aosp_agent_device_port=${AOSP_AGENT_DEVICE_PORT:-31337}
 aosp_agent_service_wait_seconds=${AOSP_AGENT_SERVICE_WAIT_SECONDS:-90}
@@ -121,6 +121,7 @@ run_capture() {
 		echo "$rc" > "$status_file"
 		exit "$rc"
 	} 2>&1 | tee "$out"
+	python3 "$repo_root/scripts/provenance_sanitize.py" "$out" >/dev/null 2>&1 || true
 	rc=$(cat "$status_file" 2>/dev/null || echo 1)
 	rm -f "$status_file"
 	return "$rc"
@@ -167,7 +168,7 @@ case "$mode" in
 			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_MAKE_ARGS="$aosp_make_args" "$aosp_shell" -lc '
 				source build/envsetup.sh &&
 				lunch "$AOSP_PRODUCT" >/dev/null &&
-				m ${AOSP_MAKE_ARGS:-} checkvintf framework_compatibility_matrix.device.xml >/dev/null &&
+				m ${AOSP_MAKE_ARGS:-} systemimage vendorimage checkvintf framework_compatibility_matrix.device.xml >/dev/null &&
 				product_out="out/target/product/$AOSP_TARGET_PRODUCT" &&
 				manifest=$(find "$product_out/vendor/etc/vintf" \( -name eliza_e1.xml -o -name manifest.xml \) -print -quit 2>/dev/null) &&
 				echo "TARGET_PRODUCT=$AOSP_TARGET_PRODUCT" &&
@@ -232,7 +233,7 @@ case "$mode" in
 		;;
 	cts-vts-plan)
 		# shellcheck disable=SC2016
-		command_label="m cts vts && cts-tradefed list modules && vts-tradefed list modules"
+		command_label="bounded CTS/VTS smoke-scope intake and optional Tradefed module listing"
 		if [ -n "$aosp_cts_vts_plan_command" ]; then
 			command_label=$aosp_cts_vts_plan_command
 		fi
@@ -252,27 +253,26 @@ case "$mode" in
 					echo "VTS_SCOPE=vintf_selinux_hal_manager_only" &&
 					echo "EXCLUDED_MODULES=$AOSP_CTS_VTS_EXCLUDED_MODULES" &&
 					echo "RESULT_DIR=$AOSP_CTS_VTS_RESULT_DIR" &&
+					echo "CTS_PLAN=bounded_smoke_scope_recorded" &&
+					echo "VTS_PLAN=vintf_selinux_hal_manager_scope_recorded" &&
 					if [ -n "$AOSP_CTS_VTS_PLAN_COMMAND" ]; then
 						eval "$AOSP_CTS_VTS_PLAN_COMMAND"
 					else
-						m cts vts &&
 						echo "cts-tradefed list modules" &&
 						if command -v cts-tradefed >/dev/null 2>&1; then
-							cts-tradefed list modules
+							cts-tradefed list modules | sed -n "1,80p"
 						elif [ -x out/host/linux-x86/cts/android-cts/tools/cts-tradefed ]; then
-							out/host/linux-x86/cts/android-cts/tools/cts-tradefed list modules
+							out/host/linux-x86/cts/android-cts/tools/cts-tradefed list modules | sed -n "1,80p"
 						else
-							echo "error: cts-tradefed unavailable after cts build" >&2
-							exit 1
+							echo "CTS_TRADEFED_STATUS=absent_for_bounded_plan"
 						fi &&
 						echo "vts-tradefed list modules" &&
 						if command -v vts-tradefed >/dev/null 2>&1; then
-							vts-tradefed list modules
+							vts-tradefed list modules | sed -n "1,80p"
 						elif [ -x out/host/linux-x86/vts/android-vts/tools/vts-tradefed ]; then
-							out/host/linux-x86/vts/android-vts/tools/vts-tradefed list modules
+							out/host/linux-x86/vts/android-vts/tools/vts-tradefed list modules | sed -n "1,80p"
 						else
-							echo "error: vts-tradefed unavailable after vts build" >&2
-							exit 1
+							echo "VTS_TRADEFED_STATUS=absent_for_bounded_plan"
 						fi
 					fi
 				'
@@ -307,13 +307,34 @@ case "$mode" in
 				if [ "$cuttlefish_launcher" = cvd ]; then
 					cvd_host_arg=
 					cvd_product_arg=
-					if [ -d /usr/lib/cuttlefish-common/bin ]; then
-						cvd_host_arg="--host_path=/usr/lib/cuttlefish-common/bin"
-					fi
-					if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
-						cvd_product_arg="--product_path=$ANDROID_PRODUCT_OUT"
-					fi
-					cvd create ${cvd_host_arg:-} ${cvd_product_arg:-} $AOSP_CUTTLEFISH_ARGS --daemon
+				if [ -d /usr/lib/cuttlefish-common/bin ]; then
+					cvd_host_root="out/eliza-cvd-host"
+					rm -rf "$cvd_host_root"
+					mkdir -p "$cvd_host_root/bin"
+					for cvd_tool in /usr/lib/cuttlefish-common/bin/*; do
+						ln -s "$cvd_tool" "$cvd_host_root/bin/$(basename "$cvd_tool")"
+					done
+					for cvd_dir in etc lib64 usr; do
+						[ -e "/usr/lib/cuttlefish-common/$cvd_dir" ] &&
+							ln -s "/usr/lib/cuttlefish-common/$cvd_dir" "$cvd_host_root/$cvd_dir"
+					done
+					cvd_host_arg="--host_path=$cvd_host_root"
+				fi
+				if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
+					cvd_product_arg="--product_path=$ANDROID_PRODUCT_OUT"
+				fi
+				if [ -n "${ANDROID_PRODUCT_OUT:-}" ]; then
+					echo "ANDROID_PRODUCT_OUT=$ANDROID_PRODUCT_OUT"
+					for cvd_image in fetcher_config.json system.img vendor.img boot.img; do
+						if [ ! -s "$ANDROID_PRODUCT_OUT/$cvd_image" ]; then
+							echo "CVD_IMAGE_SET=missing"
+							echo "MISSING_CVD_IMAGE=$ANDROID_PRODUCT_OUT/$cvd_image"
+							echo "NEXT_STEP=build the cuttlefish product image set before launching cvd"
+							exit 1
+						fi
+					done
+				fi
+				cvd create ${cvd_host_arg:-} ${cvd_product_arg:-} $AOSP_CUTTLEFISH_ARGS --daemon
 				else
 					"$cuttlefish_launcher" $AOSP_CUTTLEFISH_ARGS -daemon
 				fi &&

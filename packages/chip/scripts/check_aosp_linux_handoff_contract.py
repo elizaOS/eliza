@@ -10,6 +10,7 @@ placeholder QEMU/Renode stages as BLOCKED for the objective.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import sys
@@ -28,6 +29,16 @@ REPORT = ROOT / "build/reports/aosp_linux_handoff_contract.json"
 
 SCHEMA = "eliza.aosp_linux_handoff_contract.v1"
 CLAIM_BOUNDARY = "static_aosp_linux_handoff_contract_only_not_aosp_runtime_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "e1_hardware_abi_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+}
 REQUIRED_HANDOFF_COMMANDS = (
     "scripts/check_aosp_linux_preflight.py --write-report",
     "scripts/run_aosp_linux_handoff.sh --build-only",
@@ -96,6 +107,18 @@ def all_track_blockers(report: dict[str, Any]) -> list[str]:
     return out
 
 
+def smoke_command(report: dict[str, Any], name: str) -> str:
+    explicit = os.environ.get(name, "")
+    if explicit:
+        return explicit
+    smoke_commands = report.get("smoke_commands", {})
+    if isinstance(smoke_commands, dict):
+        value = smoke_commands.get(name)
+        if isinstance(value, str):
+            return value
+    return ""
+
+
 def run_check(args: argparse.Namespace) -> dict[str, Any]:
     findings: list[Finding] = []
     inputs = (BOOT_SCRIPT, HANDOFF_SCRIPT, ANDROID_SIM_CHECK)
@@ -140,9 +163,12 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
             "; ".join(track_blockers(report, track)),
             "Clear this preflight track with a real AOSP checkout, host tools, and target-specific evidence commands.",
         )
+    qemu_smoke_command = smoke_command(report, "AOSP_QEMU_SMOKE_COMMAND")
+    renode_smoke_command = smoke_command(report, "AOSP_RENODE_SMOKE_COMMAND")
+
     add_if(
         findings,
-        not os.environ.get("AOSP_QEMU_SMOKE_COMMAND"),
+        not qemu_smoke_command,
         "aosp_qemu_smoke_command_unset",
         "AOSP QEMU smoke command is unset",
         "AOSP_QEMU_SMOKE_COMMAND",
@@ -150,7 +176,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     )
     add_if(
         findings,
-        not os.environ.get("AOSP_RENODE_SMOKE_COMMAND"),
+        not renode_smoke_command,
         "aosp_renode_smoke_command_unset",
         "AOSP Renode smoke command is unset",
         "AOSP_RENODE_SMOKE_COMMAND",
@@ -212,7 +238,12 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         if isinstance(tracks, dict)
         else {},
         "handoff_commands": handoff_commands,
+        "smoke_commands": {
+            "AOSP_QEMU_SMOKE_COMMAND": qemu_smoke_command,
+            "AOSP_RENODE_SMOKE_COMMAND": renode_smoke_command,
+        },
         "aosp_dir": report.get("aosp_dir"),
+        "aosp_dir_source": report.get("aosp_dir_source"),
     }
     return payload(findings, evidence)
 
@@ -223,6 +254,10 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

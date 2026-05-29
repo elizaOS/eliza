@@ -472,6 +472,9 @@ def test_python_default_geometry_tracks_rtl_package():
         "TAGE_ALT_ON_NA_THRESHOLD",
         "TAGE_ENTRIES_TABLE",
         "TAGE_HIST_LEN",
+        "TAGE_PATH_HISTORY_BITS",
+        "TAGE_PATH_HISTORY_SHIFT",
+        "TAGE_PATH_HISTORY_TOKEN_BITS",
         "TAGE_TABLES",
         "TAGE_TAG_W",
         "TAGE_USE_ALT_ON_NA",
@@ -490,6 +493,30 @@ def test_python_default_geometry_tracks_rtl_package():
         if isinstance(actual, tuple):
             actual = list(actual)
         assert actual == expected, f"{model_name} drifted from bpu_pkg.sv"
+
+
+def test_tage_path_history_splits_same_direction_history():
+    """Conditional TAGE must be able to distinguish same-PC direction state by path."""
+    geo = dict(DEFAULT_GEOMETRY)
+    geo["TAGE_PATH_HISTORY_BITS"] = 8
+    geo["TAGE_PATH_HISTORY_TOKEN_BITS"] = 4
+    sim = BPUSimulator(geometry=geo)
+    pc = 0x8000_4000
+
+    sim.tage_path_hist = 0x3
+    path_a_hist = sim._tage_history()
+    sim.tage.tables[0].try_allocate(pc, path_a_hist, True)
+    assert sim.tage.predict(pc, path_a_hist)[1] == 1
+
+    for candidate in range(0x10, 0x100):
+        sim.tage_path_hist = candidate
+        path_b_hist = sim._tage_history()
+        if sim.tage.tables[0].lookup(pc, path_b_hist) is None:
+            break
+    else:
+        raise AssertionError("could not find non-aliasing TAGE path history")
+
+    assert sim.tage.predict(pc, path_b_hist)[1] == 0
 
 
 def test_local_dir_meta_index_matches_rtl_low_pc_bits():

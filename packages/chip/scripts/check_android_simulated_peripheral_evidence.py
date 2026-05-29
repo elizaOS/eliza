@@ -11,6 +11,7 @@ to produce on the current product.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 import sys
 from collections.abc import Iterable
@@ -29,6 +30,21 @@ REPORT = ROOT / "build/reports/android_simulated_peripheral_evidence.json"
 
 SCHEMA = "eliza.android_simulated_peripheral_evidence.v1"
 CLAIM_BOUNDARY = "static_android_simulated_peripheral_evidence_only_not_live_runtime"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "live_runtime_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_simulated_peripheral_evidence.py"
+RECHECK_COMMAND = (
+    "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only"
+)
 REQUIRED_COMPONENTS = {
     "rear_camera",
     "front_camera",
@@ -61,6 +77,10 @@ CANONICAL_PROBES = {
 }
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 @dataclass(frozen=True)
 class Finding:
     code: str
@@ -68,6 +88,7 @@ class Finding:
     message: str
     evidence: str
     next_step: str
+    blocker_dependency: str = "live_device_validation"
 
 
 def rel(path: Path) -> str:
@@ -88,9 +109,10 @@ def add_if(
     message: str,
     evidence: str,
     next_step: str,
+    blocker_dependency: str = "live_device_validation",
 ) -> None:
     if condition:
-        findings.append(Finding(code, "blocker", message, evidence, next_step))
+        findings.append(Finding(code, "blocker", message, evidence, next_step, blocker_dependency))
 
 
 def load_gate(findings: list[Finding]) -> dict[str, Any]:
@@ -379,6 +401,7 @@ def check_source_contradictions(findings: list[Finding]) -> None:
         "Cuttlefish launcher disables Wi-Fi while Wi-Fi PASS evidence is required",
         rel(LAUNCH_CVD),
         "Enable Wi-Fi for the evidence run or document and gate the exact alternate network proof path.",
+        blocker_dependency="repo_artifact_generation",
     )
     add_if(
         findings,
@@ -389,6 +412,7 @@ def check_source_contradictions(findings: list[Finding]) -> None:
         "eliza_ai_soc product documents no audio/microphone/speaker support while audio evidence is required",
         rel(ELIZA_AI_SOC_README),
         "Add the audio HAL/config path or keep audio evidence outside any readiness claim.",
+        blocker_dependency="repo_artifact_generation",
     )
     missing_hal_phrase = "Add camera/audio/radio/GNSS/NFC/bluetooth/wifi HALs".lower()
     add_if(
@@ -398,17 +422,93 @@ def check_source_contradictions(findings: list[Finding]) -> None:
         "cuttlefish_e1 overlay still documents missing phone HAL coverage",
         rel(CUTTLEFISH_E1_README),
         "Update the overlay/product wiring and documentation once required phone HAL evidence is captured.",
+        blocker_dependency="repo_artifact_generation",
     )
+
+
+def components_from_findings(findings: list[Finding]) -> list[str]:
+    components: set[str] = set()
+    for finding in findings:
+        if ":" not in finding.code:
+            continue
+        _, component = finding.code.split(":", 1)
+        if component in REQUIRED_COMPONENTS:
+            components.add(component)
+    return sorted(components)
+
+
+def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
+    if not findings:
+        return []
+    components = components_from_findings(findings)
+    plan: list[dict[str, object]] = []
+    if components:
+        plan.append(
+            {
+                "id": "capture_android_simulated_peripheral_evidence",
+                "scope": "host_adb",
+                "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
+                "commands": [
+                    "adb devices",
+                    f"{CAPTURE_SCRIPT} {' '.join(components)}",
+                    RECHECK_COMMAND,
+                ],
+                "components": components,
+                "requires": [
+                    "exactly one booted Android/Cuttlefish target or explicit adb serial",
+                    "canonical peripheral probe scripts available in sw/aosp-device/peripherals",
+                    "phone HAL/product wiring enabled for the requested components",
+                ],
+            }
+        )
+    if any(
+        finding.code
+        in {
+            "peripheral_capture_probe_wifi_disabled",
+            "aosp_chip_product_declares_no_audio_hal",
+            "cuttlefish_e1_missing_phone_hals",
+        }
+        for finding in findings
+    ):
+        plan.append(
+            {
+                "id": "repair_android_peripheral_product_wiring",
+                "scope": "repo_aosp",
+                "claim_boundary": "repo_product_wiring_commands_only_not_runtime_evidence",
+                "commands": [
+                    "python3 packages/chip/scripts/check_android_simulated_peripheral_evidence.py --json-only",
+                ],
+                "requires": [
+                    "product README/launch script updates that match captured phone HAL evidence",
+                ],
+            }
+        )
+    return plan
 
 
 def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    dependency_counts: dict[str, int] = {}
+    for finding in blockers:
+        dependency_counts[finding.blocker_dependency] = (
+            dependency_counts.get(finding.blocker_dependency, 0) + 1
+        )
+    command_plan = next_command_plan(findings)
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        **FALSE_CLAIM_FLAGS,
+        "generated_utc": utc_now(),
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": dependency_counts,
+            "next_command_batch_count": len(command_plan),
+        },
+        "blocker_dependency_counts": dependency_counts,
         "findings": [asdict(finding) for finding in findings],
+        "next_command_plan": command_plan,
         "evidence": evidence,
     }
 

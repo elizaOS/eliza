@@ -29,12 +29,10 @@ import { MusicLibraryCharacterWidget } from "../components/character/MusicLibrar
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
-import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
 seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
-seedLegacyWidgets(TODO_PLUGIN_WIDGETS);
 seedLegacyWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
 registerWidgetComponent(
   "music-library",
@@ -238,23 +236,4 @@ export function resolveWidgetsForSlot(
   );
 
   return results;
-}
-
-// -- Backward compatibility --------------------------------------------------
-// Re-export a function matching the old `resolveChatSidebarWidgets` signature
-// so existing consumers (TasksEventsPanel) work during migration.
-
-import type { ChatSidebarPluginState } from "../components/chat/widgets/types";
-
-export function resolveChatSidebarWidgets(
-  plugins: readonly ChatSidebarPluginState[],
-) {
-  return resolveWidgetsForSlot("chat-sidebar", plugins).map((w) => ({
-    id: w.declaration.id,
-    pluginId: w.declaration.pluginId,
-    order: w.declaration.order ?? 100,
-    defaultEnabled: w.declaration.defaultEnabled !== false,
-    // biome-ignore lint/style/noNonNullAssertion: chat-sidebar widgets always have bundled components
-    Component: w.Component!,
-  }));
 }

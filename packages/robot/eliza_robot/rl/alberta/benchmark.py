@@ -24,10 +24,12 @@ import numpy as np
 
 from eliza_robot.rl.alberta.agent import AlbertaControllerConfig
 from eliza_robot.rl.alberta.baselines import (
+    AlbertaCBPSequentialLearner,
     AlbertaSequentialLearner,
     PPOSequentialLearner,
     SACSequentialLearner,
 )
+from eliza_robot.rl.alberta.cbp_agent import CBPControllerConfig, RetentionConfig
 from eliza_robot.rl.alberta.continual_env import JointReachConfig, JointReachEnv
 from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.metrics import ContinualMetrics, compute_continual_metrics
@@ -52,6 +54,15 @@ class BenchmarkConfig:
     actor_lamda: float = 0.7
     critic_lamda: float = 0.7
     log_sigma_init: float = -1.0
+    # alberta_cbp controller knobs (nonlinear Stream-AC + Continual Backprop).
+    cbp_hidden_sizes: tuple[int, ...] = (128,)
+    cbp_replacement_rate: float = 1e-4
+    cbp_maturity_threshold: int = 100
+    # Retention (anti-forgetting). Default to the phase-agnostic frozen-trunk
+    # multi-head recipe: per-task readout over CBP-curated random features.
+    cbp_retention_mode: str = "frozen"  # none | multihead | frozen | warmupfreeze
+    cbp_n_slots: int = 64
+    cbp_trunk_step_scale: float = 1.0
     embed_dim: int = 16
     # Generously over-provisioned so distinct tasks land on distinct prototype
     # blocks (collision-free) — a collision shares a block between two tasks and
@@ -85,6 +96,7 @@ def _build_env(cfg: BenchmarkConfig, seed: int) -> JointReachEnv | ObstacleCours
 def _config_dict(cfg: BenchmarkConfig) -> dict:
     data = asdict(cfg)
     data["learners"] = list(cfg.learners)
+    data["cbp_hidden_sizes"] = list(cfg.cbp_hidden_sizes)
     return data
 
 
@@ -114,20 +126,106 @@ def _alberta_controller_config(cfg: BenchmarkConfig, env: JointReachEnv, seed: i
     )
 
 
-def run_learner(learner, cfg: BenchmarkConfig) -> tuple[np.ndarray, np.ndarray]:
-    """Train ``learner`` task-by-task, returning ``(R, baseline)``.
+def _retention_config(cfg: BenchmarkConfig) -> RetentionConfig:
+    """Map the benchmark's retention-mode label to a RetentionConfig.
+
+    - ``none``         single shared head (best learner, forgets).
+    - ``multihead``    per-task heads, fully plastic shared trunk.
+    - ``frozen``       per-task heads over a CBP-curated *frozen* random trunk
+                       (phase-agnostic; near-perfect retention).
+    - ``warmupfreeze`` plastic trunk for the first task, then consolidated.
+    """
+    mode = cfg.cbp_retention_mode
+    if mode == "none":
+        return RetentionConfig(mode="none")
+    common = {"mode": "multihead", "n_slots": cfg.cbp_n_slots, "embed_dim": cfg.embed_dim}
+    if mode == "multihead":
+        return RetentionConfig(trunk_step_scale=cfg.cbp_trunk_step_scale, **common)
+    if mode == "frozen":
+        return RetentionConfig(trunk_step_scale=0.0, **common)
+    if mode == "warmupfreeze":
+        # Consolidate the trunk after the first task's step budget.
+        return RetentionConfig(trunk_step_scale=1.0, trunk_freeze_after=cfg.steps_per_task, **common)
+    raise ValueError(f"unknown cbp_retention_mode {mode!r}")
+
+
+def _alberta_cbp_controller_config(
+    cfg: BenchmarkConfig, env: JointReachEnv, seed: int
+) -> CBPControllerConfig:
+    from alberta_framework.core.continual_backprop import ContinualBackpropConfig
+
+    # A frozen trunk performs no representation learning, so Continual Backprop
+    # (generate-and-test) is counterproductive there: each replaced unit zeros a
+    # head column across *all* task slots, silently damaging past tasks' frozen
+    # readouts. Disable CBP for the frozen recipe; keep it for the plastic trunk
+    # (where it preserves plasticity over a long stream).
+    cbp_enabled = cfg.cbp_retention_mode != "frozen"
+
+    return CBPControllerConfig(
+        obs_dim=int(env.observation_space.shape[0]),
+        action_dim=int(env.action_space.shape[0]),
+        hidden_sizes=tuple(cfg.cbp_hidden_sizes),
+        gamma=cfg.gamma,
+        actor_step_size=cfg.actor_step_size,
+        critic_step_size=cfg.critic_step_size,
+        actor_lamda=cfg.actor_lamda,
+        critic_lamda=cfg.critic_lamda,
+        log_sigma_init=cfg.log_sigma_init,
+        learn_log_sigma=False,
+        obgd_kappa=2.0,
+        # The EMA normalizer is a shared global stat that drifts toward the
+        # current task and corrupts earlier tasks' inputs — a continual-learning
+        # leak. Disable it (the env obs are already well-scaled), matching the
+        # linear controller's benchmark config.
+        normalize=False,
+        cbp=ContinualBackpropConfig(
+            replacement_rate=cfg.cbp_replacement_rate,
+            maturity_threshold=cfg.cbp_maturity_threshold,
+            enabled=cbp_enabled,
+        ),
+        retention=_retention_config(cfg),
+        seed=seed,
+    )
+
+
+def run_learner(
+    learner, cfg: BenchmarkConfig
+) -> tuple[np.ndarray, np.ndarray, list[dict], list[list[dict]], list[list[dict]]]:
+    """Train ``learner`` task-by-task, returning return and motion evidence.
 
     ``R[i, j]`` = mean eval return on task ``j`` after training phase ``i``.
     ``baseline[j]`` = mean eval return on task ``j`` before any training.
     """
     T = cfg.n_tasks
     baseline = np.array([learner.eval_task(j, cfg.eval_episodes) for j in range(T)], dtype=np.float64)
+    baseline_motion = [
+        learner.eval_task_motion(j, cfg.eval_episodes)
+        if cfg.env_kind == "obstacle_course" and hasattr(learner, "eval_task_motion")
+        else {}
+        for j in range(T)
+    ]
     R = np.zeros((T, T), dtype=np.float64)
+    motion_matrix: list[list[dict]] = []
+    trajectory_matrix: list[list[dict]] = []
     for i in range(T):
         learner.train_phase(i, cfg.steps_per_task)
+        motion_row: list[dict] = []
+        trajectory_row: list[dict] = []
         for j in range(T):
             R[i, j] = learner.eval_task(j, cfg.eval_episodes)
-    return R, baseline
+            motion_row.append(
+                learner.eval_task_motion(j, cfg.eval_episodes)
+                if cfg.env_kind == "obstacle_course" and hasattr(learner, "eval_task_motion")
+                else {}
+            )
+            trajectory_row.append(
+                learner.eval_task_trace(j)
+                if cfg.env_kind == "obstacle_course" and hasattr(learner, "eval_task_trace")
+                else {}
+            )
+        motion_matrix.append(motion_row)
+        trajectory_matrix.append(trajectory_row)
+    return R, baseline, baseline_motion, motion_matrix, trajectory_matrix
 
 
 @dataclass
@@ -137,16 +235,22 @@ class LearnerResult:
     baseline: list[float]
     metrics: dict
     seed: int
+    motion_baseline: list[dict] | None = None
+    motion_matrix: list[list[dict]] | None = None
+    trajectory_matrix: list[list[dict]] | None = None
 
 
 def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     requested = tuple(dict.fromkeys(cfg.learners))
-    invalid = sorted(set(requested) - {"alberta", "ppo", "sac"})
+    invalid = sorted(set(requested) - {"alberta", "alberta_cbp", "ppo", "sac"})
     if invalid:
         raise ValueError(f"unknown learner(s): {', '.join(invalid)}")
-    if "alberta" not in requested or "ppo" not in requested:
-        raise ValueError("benchmark evidence must include at least alberta and ppo")
+    if "ppo" not in requested or not ({"alberta", "alberta_cbp"} & set(requested)):
+        raise ValueError(
+            "benchmark evidence must include ppo (baseline) and at least one "
+            "alberta-family learner (alberta or alberta_cbp)"
+        )
     per_seed: dict[str, list[ContinualMetrics]] = {name: [] for name in requested}
     results: list[LearnerResult] = []
 
@@ -157,18 +261,35 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
             env = _build_env(cfg, seed)
             if name == "alberta":
                 learner = AlbertaSequentialLearner(env, _alberta_controller_config(cfg, env, seed))
+            elif name == "alberta_cbp":
+                learner = AlbertaCBPSequentialLearner(
+                    env, _alberta_cbp_controller_config(cfg, env, seed)
+                )
             elif name == "ppo":
                 learner = PPOSequentialLearner(env, seed=seed)
             elif name == "sac":
                 learner = SACSequentialLearner(env, seed=seed)
             else:  # guarded above
                 raise AssertionError(name)
-            R, baseline = run_learner(learner, cfg)
+            R, baseline, motion_baseline, motion_matrix, trajectory_matrix = run_learner(
+                learner, cfg
+            )
             metrics = compute_continual_metrics(R, baseline)
             per_seed[name].append(metrics)
             metrics_for_seed[name] = metrics
             results.append(
-                LearnerResult(name, R.tolist(), baseline.tolist(), metrics.to_dict(), seed)
+                LearnerResult(
+                    name,
+                    R.tolist(),
+                    baseline.tolist(),
+                    metrics.to_dict(),
+                    seed,
+                    motion_baseline=motion_baseline if cfg.env_kind == "obstacle_course" else None,
+                    motion_matrix=motion_matrix if cfg.env_kind == "obstacle_course" else None,
+                    trajectory_matrix=trajectory_matrix
+                    if cfg.env_kind == "obstacle_course"
+                    else None,
+                )
             )
 
         parts = [
@@ -179,10 +300,12 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
 
     summary = _summarize(per_seed)
     adaptation = _adaptation_summary(results)
+    motion = _motion_summary(results) if cfg.env_kind == "obstacle_course" else {}
     bundle = {
         "config": _config_dict(cfg),
         "summary": summary,
         "adaptation": adaptation,
+        "motion": motion,
         "results": [asdict(r) for r in results],
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
@@ -193,7 +316,7 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
 
 
 def _write_report(cfg: BenchmarkConfig, summary: dict, results, out_dir: Path) -> None:
-    a, p = summary.get("alberta"), summary.get("ppo")
+    a, p = summary.get("alberta") or summary.get("alberta_cbp"), summary.get("ppo")
     lines = [
         "# Continual learning: Alberta vs PPO",
         "",
@@ -242,6 +365,23 @@ def _write_report(cfg: BenchmarkConfig, summary: dict, results, out_dir: Path) -
                 f"{float(item['tasks_with_positive_gain']):.1f}/{float(item['task_count']):.1f} | "
                 f"{float(item['first_task_retention_delta']):.2f} | "
                 f"{float(item['mean_final_minus_best']):.2f} |"
+            )
+    motion = _motion_summary(results) if cfg.env_kind == "obstacle_course" else {}
+    if motion:
+        lines += [
+            "",
+            "## Physical obstacle-course rollout checks",
+            "",
+            "| learner | final success rate | final collision rate | final passed-obstacle rate | final forward progress m | min obstacle clearance m |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for learner, item in motion.items():
+            lines.append(
+                f"| `{learner}` | {float(item['final_success_rate_mean']):.2f} | "
+                f"{float(item['final_collision_rate_mean']):.2f} | "
+                f"{float(item['final_passed_obstacle_rate_mean']):.2f} | "
+                f"{float(item['final_forward_progress_m_mean']):.2f} | "
+                f"{float(item['final_min_obstacle_clearance_m_min']):.2f} |"
             )
     lines += [
         "",
@@ -320,6 +460,57 @@ def _adaptation_summary(results: list[LearnerResult]) -> dict[str, dict[str, flo
     return summary
 
 
+def _motion_summary(results: list[LearnerResult]) -> dict[str, dict[str, float | int]]:
+    by_learner: dict[str, list[dict[str, float]]] = {}
+    for result in results:
+        if not result.motion_matrix:
+            continue
+        final_row = result.motion_matrix[-1]
+        if not final_row:
+            continue
+        by_learner.setdefault(result.name, []).append(
+            {
+                "final_success_rate_mean": float(
+                    np.mean([float(item.get("success_rate", 0.0)) for item in final_row])
+                ),
+                "final_collision_rate_mean": float(
+                    np.mean([float(item.get("collision_rate", 0.0)) for item in final_row])
+                ),
+                "final_passed_obstacle_rate_mean": float(
+                    np.mean([float(item.get("passed_obstacle_rate", 0.0)) for item in final_row])
+                ),
+                "final_forward_progress_m_mean": float(
+                    np.mean([float(item.get("mean_forward_progress_m", 0.0)) for item in final_row])
+                ),
+                "final_min_obstacle_clearance_m_min": float(
+                    np.min([float(item.get("min_obstacle_clearance_m", 0.0)) for item in final_row])
+                ),
+            }
+        )
+    return {
+        learner: {
+            "seeds": len(rows),
+            "final_success_rate_mean": float(
+                np.mean([row["final_success_rate_mean"] for row in rows])
+            ),
+            "final_collision_rate_mean": float(
+                np.mean([row["final_collision_rate_mean"] for row in rows])
+            ),
+            "final_passed_obstacle_rate_mean": float(
+                np.mean([row["final_passed_obstacle_rate_mean"] for row in rows])
+            ),
+            "final_forward_progress_m_mean": float(
+                np.mean([row["final_forward_progress_m_mean"] for row in rows])
+            ),
+            "final_min_obstacle_clearance_m_min": float(
+                np.min([row["final_min_obstacle_clearance_m_min"] for row in rows])
+            ),
+        }
+        for learner, rows in by_learner.items()
+        if rows
+    }
+
+
 def _plot(per_seed, results, out_dir: Path) -> None:
     try:
         import matplotlib
@@ -329,9 +520,10 @@ def _plot(per_seed, results, out_dir: Path) -> None:
     except Exception:
         return
 
-    # Mean retention curve: performance on task 0 across phases, both learners.
+    # Mean retention curve: performance on task 0 across phases, every learner.
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
-    for name in ("alberta", "ppo"):
+    names = list(dict.fromkeys(r.name for r in results))
+    for name in names:
         mats = [np.array(r.matrix) for r in results if r.name == name]
         if not mats:
             continue
@@ -396,10 +588,30 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--learners",
         nargs="+",
-        choices=("alberta", "ppo", "sac"),
+        choices=("alberta", "alberta_cbp", "ppo", "sac"),
         default=list(BenchmarkConfig.learners),
-        help="Sequential learners to run. Alberta and PPO are required; add sac for an off-policy baseline.",
+        help=(
+            "Sequential learners to run. Alberta and PPO are required; add "
+            "alberta_cbp (nonlinear Stream-AC + Continual Backprop) and/or sac."
+        ),
     )
+    p.add_argument(
+        "--cbp-hidden-sizes",
+        type=int,
+        nargs="+",
+        default=list(BenchmarkConfig.cbp_hidden_sizes),
+        help="MLP hidden-layer widths for the alberta_cbp controller.",
+    )
+    p.add_argument("--cbp-replacement-rate", type=float, default=BenchmarkConfig.cbp_replacement_rate)
+    p.add_argument("--cbp-maturity-threshold", type=int, default=BenchmarkConfig.cbp_maturity_threshold)
+    p.add_argument(
+        "--cbp-retention-mode",
+        choices=("none", "multihead", "frozen", "warmupfreeze"),
+        default=BenchmarkConfig.cbp_retention_mode,
+        help="alberta_cbp anti-forgetting mechanism (see RetentionConfig).",
+    )
+    p.add_argument("--cbp-n-slots", type=int, default=BenchmarkConfig.cbp_n_slots)
+    p.add_argument("--cbp-trunk-step-scale", type=float, default=BenchmarkConfig.cbp_trunk_step_scale)
     p.add_argument("--out-dir", type=str, default="evidence/alberta")
     args = p.parse_args(argv)
 
@@ -418,6 +630,12 @@ def main(argv: list[str] | None = None) -> None:
         proprio_random_dim=args.proprio_random_dim,
         n_prototypes=args.n_prototypes,
         obstacle_episode_steps=args.obstacle_episode_steps,
+        cbp_hidden_sizes=tuple(args.cbp_hidden_sizes),
+        cbp_replacement_rate=args.cbp_replacement_rate,
+        cbp_maturity_threshold=args.cbp_maturity_threshold,
+        cbp_retention_mode=args.cbp_retention_mode,
+        cbp_n_slots=args.cbp_n_slots,
+        cbp_trunk_step_scale=args.cbp_trunk_step_scale,
         learners=tuple(args.learners),
     )
     bundle = run_benchmark(cfg, Path(args.out_dir))

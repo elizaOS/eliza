@@ -2,65 +2,65 @@
   "profile": "asimov-1",
   "label": "stand up",
   "task_id": "stand_up",
-  "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
-  "steps_requested": 40,
-  "steps_executed": 40,
-  "terminated": true,
+  "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+  "steps_requested": 80,
+  "steps_executed": 80,
+  "terminated": false,
   "truncated": true,
-  "first_done_step": 40,
-  "done_reason": "terminated",
+  "first_done_step": 80,
+  "done_reason": "truncated",
   "fall_threshold": 0.378,
   "torso_z": {
-    "min": 0.37381563155685255,
-    "max": 0.6315840099307426,
-    "final": 0.37381563155685255,
-    "mean": 0.5723490570350542
+    "min": 0.5757729635163551,
+    "max": 0.6647926798509988,
+    "final": 0.5764769407261046,
+    "mean": 0.6104016975187807
   },
   "upright_proj": {
-    "min": 0.5910690313102859,
-    "max": 0.999998384288069,
-    "final": 0.5910690313102859,
-    "mean": 0.9225456901984371
+    "min": 0.7856759405633874,
+    "max": 0.9999758424327979,
+    "final": 0.7856759405633874,
+    "mean": 0.9006858493054164
   },
   "reward": {
-    "min": -7.482526528798875,
-    "max": 3.4148427390547407,
-    "final": -7.482526528798875,
-    "mean": 2.9277782028130046
+    "min": 3.57522848536582,
+    "max": 5.466103604258012,
+    "final": 3.57522848536582,
+    "mean": 4.712244029678297
   },
   "delta_x_m": {
-    "min": null,
-    "max": null,
-    "final": null,
-    "mean": null
+    "min": -0.10597928379973214,
+    "max": 0.05172449828805933,
+    "final": 0.05172449828805933,
+    "mean": -0.06259934404824018
   },
   "delta_y_m": {
-    "min": null,
-    "max": null,
-    "final": null,
-    "mean": null
+    "min": -0.15699420004132353,
+    "max": 0.0003391853091874635,
+    "final": -0.15699420004132353,
+    "mean": -0.061556478713613805
   },
   "delta_yaw_rad": {
-    "min": null,
-    "max": null,
-    "final": null,
-    "mean": null
+    "min": -0.6393397027892984,
+    "max": 0.006852998208377428,
+    "final": -0.6393397027892984,
+    "mean": -0.2862427011285698
   },
   "action_norm": {
-    "min": 3.146033525466919,
-    "max": 3.3063364028930664,
-    "final": 3.1846561431884766,
-    "mean": 3.2053021013736727
+    "min": 2.7824621200561523,
+    "max": 3.2246928215026855,
+    "final": 3.212592124938965,
+    "mean": 3.191383904218674
   },
-  "nonzero_action_steps": 40,
+  "nonzero_action_steps": 80,
   "attempted_action": true,
   "goal_success": false,
   "goal_failed": false,
   "goal_reason": "",
-  "rollout_ok": false,
+  "rollout_ok": true,
   "checks": {
-    "no_termination": false,
-    "torso_above_fall_threshold": false,
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
     "upright_positive": true,
     "attempted_action": true,
     "goal_success": false

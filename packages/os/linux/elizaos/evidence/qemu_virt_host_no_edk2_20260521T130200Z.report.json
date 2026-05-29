@@ -1,0 +1,26 @@
+{
+  "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+  "evidence": {},
+  "evidence_path": "evidence/qemu_virt_host_no_edk2_20260521T130200Z.json",
+  "findings": [
+    {
+      "code": "os_rv64_qemu_virt_evidence_invalid",
+      "evidence": "python3 packages/os/linux/elizaos/scripts/qemu_virt_smoke.py",
+      "message": "qemu_virt_smoke: ERROR: evidence file not found: evidence/qemu_virt_host_no_edk2_20260521T130200Z.json",
+      "next_step": "Regenerate valid qemu virt boot evidence from the harness.",
+      "severity": "blocker"
+    }
+  ],
+  "generated_utc": "2026-05-21T21:45:26.534787+00:00",
+  "iso_path": "<host-tmp>/elizaos-linux-riscv64-default-20260521T130200Z-grubfix.iso",
+  "message": "qemu_virt_smoke: ERROR: evidence file not found: evidence/qemu_virt_host_no_edk2_20260521T130200Z.json",
+  "required_markers": [
+    "Linux version",
+    "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
+    "elizaos-agent-ready",
+    "elizaos-tui-ready"
+  ],
+  "schema": "eliza.os_rv64_qemu_virt_smoke.v1",
+  "status": "blocked"
+}

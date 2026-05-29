@@ -12,6 +12,7 @@ BLOCKED in the aggregate readiness view.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sys
 from collections.abc import Callable, Iterable
@@ -25,6 +26,7 @@ import check_radio_sensor_pmic_scope
 import check_security_lifecycle_scope
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parents[1]
 REPORT = ROOT / "build/reports/phone_runtime_readiness_contract.json"
 ANDROID_APK_PAYLOAD_REPORT = ROOT / "build/reports/android_system_apk_payload.json"
 PLANNED_EVIDENCE_TEMPLATE_MANIFEST = (
@@ -35,6 +37,18 @@ LIVE_CAPTURE_CONTRACT_MANIFEST = (
 )
 SCHEMA = "eliza.phone_runtime_readiness_contract.v1"
 CLAIM_BOUNDARY = "static_phone_runtime_readiness_contract_only_not_runtime_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "runtime_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 ANDROID_PAYLOAD_PACKAGE_SENTINEL = "$ANDROID_PAYLOAD_PACKAGE"
 CHIP_ANDROID_ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
 PHONE_RUNTIME_VALIDATION_COMMAND = (
@@ -91,6 +105,10 @@ class Finding:
     evidence: str
     next_step: str
     blocker_dependency: str = "live_device_validation"
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 SCOPES: tuple[ScopeSpec, ...] = (
@@ -300,21 +318,43 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+def repo_rel(path: Path) -> str:
+    try:
+        return path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def repo_output_path(package_relative_path: str) -> str:
+    if package_relative_path.startswith("/"):
+        return package_relative_path
+    return f"packages/chip/{package_relative_path}"
+
+
+def pwd_repo_output_path(package_relative_path: str) -> str:
+    if package_relative_path.startswith("/"):
+        return package_relative_path
+    return f"$(pwd)/{repo_output_path(package_relative_path)}"
+
+
 def evidence_capture_plan(path: Path) -> dict[str, Any]:
     """Return exact operator commands for collecting a required evidence file."""
     relative = rel(path)
+    repo_relative = repo_rel(path)
     contract = live_capture_contract(relative)
     base = {
-        "expected_output_files": [relative],
+        "expected_output_files": [repo_relative],
         "release_credit": False,
         "prerequisites": [
+            "run capture_commands from the repository root",
             "booted eliza_ai_soc Android target reachable over adb",
             "CHIP_ANDROID_ADB_HOSTPORT set to the chip emulator adb host:port",
             "current staged system APK payload report generated",
         ],
         "validation_command": PHONE_RUNTIME_VALIDATION_COMMAND,
         "validation_commands": [PHONE_RUNTIME_VALIDATION_COMMAND],
-        "repo_relative_expected_path": relative,
+        "repo_relative_expected_path": repo_relative,
+        "package_relative_expected_path": relative,
         "expected_file_schema": contract.get(
             "expected_file_schema",
             "runtime evidence file satisfying required_tokens, forbidden_tokens, or json_expectations",
@@ -342,9 +382,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
         "docs/evidence/android/eliza_launcher_runtime_evidence.json": {
             **base,
             "expected_output_files": [
-                "docs/evidence/android/eliza_launcher_runtime_evidence.json",
-                "docs/evidence/android/eliza_launcher_runtime_logcat.txt",
-                "docs/evidence/android/eliza_launcher_runtime_transcript.log",
+                "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+                "packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt",
+                "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
             ],
             "capture_commands": [
                 "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
@@ -354,16 +394,16 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
                     "--artifact-id android-chip-riscv64-zip "
                     "--target-label chip-riscv64 "
                     "--expected-cpu-abi riscv64 "
-                    "--output docs/evidence/android/eliza_launcher_runtime_evidence.json "
-                    "--logcat docs/evidence/android/eliza_launcher_runtime_logcat.txt "
-                    "--transcript docs/evidence/android/eliza_launcher_runtime_transcript.log"
+                    "--output $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json "
+                    "--logcat $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt "
+                    "--transcript $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log"
                 ),
                 (
                     "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
                     "--expected-artifact-id android-chip-riscv64-zip "
                     "--expected-target-label chip-riscv64 "
                     "--expected-cpu-abi riscv64 "
-                    "--evidence docs/evidence/android/eliza_launcher_runtime_evidence.json"
+                    "--evidence packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
                 ),
             ],
         },
@@ -372,9 +412,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 adb_prefix,
                 (
-                    "mkdir -p docs/evidence/android && "
+                    "mkdir -p packages/chip/docs/evidence/android && "
                     'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell ps -A '
-                    "| tee docs/evidence/android/eliza_ai_soc_cvd_hal_processes.txt"
+                    "| tee packages/chip/docs/evidence/android/eliza_ai_soc_cvd_hal_processes.txt"
                 ),
             ],
         },
@@ -433,9 +473,15 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 adb_prefix,
                 (
-                    "mkdir -p docs/evidence/android/security && "
-                    'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell getprop ro.boot.verifiedbootstate '
-                    "| tee docs/evidence/android/security/verified_boot_acceptance.log"
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
+                    "state=$(adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell getprop "
+                    "ro.boot.verifiedbootstate | tr -d '\\r') && "
+                    "if [ \"$state\" = green ]; then result=0; verdict=pass; "
+                    "else result=1; verdict=fail; fi; "
+                    "printf 'VERIFIED_BOOT=%s\\nSTATE=%s\\nRESULT=%s\\n' "
+                    "\"$verdict\" \"$state\" \"$result\" | tee "
+                    "packages/chip/docs/evidence/android/security/verified_boot_acceptance.log; "
+                    "test \"$result\" = 0"
                 ),
             ],
         },
@@ -449,9 +495,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/security && "
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
                     'sh -c "$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND" '
-                    "| tee docs/evidence/android/security/tampered_boot_rejection.log"
+                    "| tee packages/chip/docs/evidence/android/security/tampered_boot_rejection.log"
                 ),
             ],
         },
@@ -465,9 +511,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_ROLLBACK_REJECTION_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/security && "
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
                     'sh -c "$ELIZA_ROLLBACK_REJECTION_COMMAND" '
-                    "| tee docs/evidence/android/security/rollback_rejection.log"
+                    "| tee packages/chip/docs/evidence/android/security/rollback_rejection.log"
                 ),
             ],
         },
@@ -481,9 +527,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/security && "
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
                     'sh -c "$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND" '
-                    "| tee docs/evidence/android/security/debug_lock_key_provisioning.log"
+                    "| tee packages/chip/docs/evidence/android/security/debug_lock_key_provisioning.log"
                 ),
             ],
         },
@@ -497,9 +543,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/power && "
+                    "mkdir -p packages/chip/docs/evidence/android/power && "
                     'sh -c "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND '
-                    '--output docs/evidence/android/power/sustained_npu_power_thermal_trace.json"'
+                    '--output packages/chip/docs/evidence/android/power/sustained_npu_power_thermal_trace.json"'
                 ),
             ],
         },
@@ -510,7 +556,7 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
                 (
                     "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
-                    "--output docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log"
+                    "--output $(pwd)/packages/chip/docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log"
                 ),
             ],
         },
@@ -538,7 +584,10 @@ def live_capture_contract(relative_path: str) -> dict[str, Any]:
     for contract in contracts:
         if not isinstance(contract, dict):
             continue
-        if contract.get("expected_path") != relative_path:
+        if contract.get("expected_path") not in {
+            relative_path,
+            repo_output_path(relative_path),
+        }:
             continue
         return {
             **contract,
@@ -840,6 +889,10 @@ def runtime_evidence_collection_inventory(evidence: dict[str, Any]) -> list[dict
                         "fail_closed_validation_rule": record.get("fail_closed_validation_rule"),
                         "capture_contract_manifest": record.get("capture_contract_manifest"),
                         "expected_output_files": record.get("expected_output_files", []),
+                        "repo_relative_expected_path": record.get("repo_relative_expected_path"),
+                        "package_relative_expected_path": record.get(
+                            "package_relative_expected_path"
+                        ),
                         "capture_commands": record.get("capture_commands", []),
                         "validation_command": record.get("validation_command"),
                         "validation_commands": record.get("validation_commands", []),
@@ -858,11 +911,20 @@ def runtime_evidence_collection_inventory(evidence: dict[str, Any]) -> list[dict
                         if isinstance(path, str)
                     }
                 ),
-                "next_commands": [
+                "next_commands": sorted(
+                    {
+                        command
+                        for record in blocked_files
+                        for command in record.get("capture_commands", [])
+                        if isinstance(command, str)
+                    }
+                )
+                + [
                     "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
                     PHONE_RUNTIME_VALIDATION_COMMAND,
                     PHONE_RUNTIME_AGGREGATE_COMMAND,
                 ],
+                "next_command_batches": next_command_batches(blocked_files),
             }
         )
     return inventory
@@ -895,6 +957,48 @@ def count_blocker_categories(records: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def next_command_batches(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return ordered, per-artifact operator command batches.
+
+    ``next_commands`` remains a flat compatibility field, but operators need to
+    know which commands belong to which missing/blocking artifact and in what
+    order to run them. These batches are plan metadata only; they are not
+    evidence that a target booted or passed.
+    """
+    batches: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        commands = [
+            str(command)
+            for command in record.get("capture_commands", [])
+            if isinstance(command, str)
+        ]
+        validation_commands = [
+            str(command)
+            for command in record.get("validation_commands", [])
+            if isinstance(command, str)
+        ]
+        if not commands and not validation_commands:
+            continue
+        batches.append(
+            {
+                "artifact": record.get("repo_relative_expected_path") or record.get("path"),
+                "package_relative_artifact": record.get("package_relative_expected_path")
+                or record.get("path"),
+                "description": record.get("description"),
+                "blocker_class": record.get("blocker_class"),
+                "blocker_category": record.get("blocker_category"),
+                "release_credit": False,
+                "expected_output_files": record.get("expected_output_files", []),
+                "capture_commands": commands,
+                "validation_commands": validation_commands,
+                "claim_boundary": "operator_command_batch_only_not_runtime_evidence",
+            }
+        )
+    return batches
+
+
 def runtime_capture_area_groups(
     collection_inventory: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -913,6 +1017,7 @@ def runtime_capture_area_groups(
         for record in blocked_files:
             capture_commands.extend(str(command) for command in record.get("capture_commands", []))
             expected_files.extend(str(path) for path in record.get("expected_output_files", []))
+        command_batches = next_command_batches(blocked_files)
         groups.append(
             {
                 "capture_area": scope_record.get("scope"),
@@ -925,9 +1030,36 @@ def runtime_capture_area_groups(
                 "next_artifacts": sorted(set(expected_files)),
                 "next_commands": list(dict.fromkeys(capture_commands))
                 + [PHONE_RUNTIME_VALIDATION_COMMAND, PHONE_RUNTIME_AGGREGATE_COMMAND],
+                "next_command_batches": command_batches,
             }
         )
     return sorted(groups, key=lambda row: row["priority"])
+
+
+def next_runtime_capture_action(
+    capture_area_groups: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the first operator action needed to move live runtime evidence."""
+    if not capture_area_groups:
+        return None
+    group = capture_area_groups[0]
+    return {
+        "capture_area": group.get("capture_area"),
+        "priority": group.get("priority"),
+        "runtime_surface": group.get("runtime_surface"),
+        "release_credit": False,
+        "blocked_evidence_file_count": group.get("blocked_evidence_file_count", 0),
+        "blocked_evidence_class_counts": group.get("blocked_evidence_class_counts", {}),
+        "blocked_evidence_category_counts": group.get("blocked_evidence_category_counts", {}),
+        "next_artifacts": group.get("next_artifacts", []),
+        "next_commands": group.get("next_commands", []),
+        "next_command_batches": group.get("next_command_batches", []),
+        "validation_commands": [
+            PHONE_RUNTIME_VALIDATION_COMMAND,
+            PHONE_RUNTIME_AGGREGATE_COMMAND,
+        ],
+        "claim_boundary": "operator_capture_action_only_not_runtime_release_evidence",
+    }
 
 
 def run_check(args: argparse.Namespace) -> dict[str, Any]:
@@ -1004,6 +1136,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     capture_plan = prioritized_runtime_capture_plan()
     collection_inventory = runtime_evidence_collection_inventory(evidence)
     capture_area_groups = runtime_capture_area_groups(collection_inventory)
+    next_capture_action = next_runtime_capture_action(capture_area_groups)
     blocked_runtime_files = [
         file_record
         for scope_record in collection_inventory
@@ -1015,8 +1148,10 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     highest_priority_capture_area = capture_plan[0]["capture_area"] if capture_plan else None
     return {
         "schema": SCHEMA,
+        "generated_utc": utc_now(),
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "failures": len(failures),
             "blockers": len(blockers),
@@ -1047,11 +1182,20 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
                 REPO_ARTIFACT_GENERATION
             ],
             "highest_priority_capture_area": highest_priority_capture_area,
+            "next_runtime_capture_area": (
+                next_capture_action.get("capture_area") if next_capture_action else None
+            ),
+            "next_runtime_capture_blocked_file_count": (
+                next_capture_action.get("blocked_evidence_file_count")
+                if next_capture_action
+                else 0
+            ),
         },
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,
         "prioritized_runtime_capture_plan": capture_plan,
         "runtime_capture_area_groups": capture_area_groups,
+        "next_runtime_capture_action": next_capture_action,
         "runtime_evidence_collection_inventory": collection_inventory,
     }
 

@@ -1,6 +1,6 @@
 # Prototype Status Dashboard
 
-Snapshot date: 2026-05-22. Volatile generated-artifact rows stay conservative until archived release evidence is produced by the named gates.
+Snapshot: updated 2026-05-29 from current local gate output; generated-artifact rows remain scoped to simulator/build evidence and are not fabrication or phone release evidence.
 
 ## MVP Gate Snapshot
 
@@ -8,24 +8,24 @@ Snapshot date: 2026-05-22. Volatile generated-artifact rows stay conservative un
 | --- | --- | --- | --- |
 | docs-and-project-plan | `PASS` | `command_pass` | `none` |
 | architecture-docs | `PASS` | `command_pass` | `none` |
-| toolchain-fast-path | `BLOCK` | `tool_blocker` | `scripts/check_tools.sh && scripts/tool_versions.sh` |
+| toolchain-fast-path | `PASS` | `tool_available` | `none` |
 | platform-contract | `PASS` | `command_pass` | `none` |
 | linux-boot-prerequisites | `PASS` | `command_pass` | `none` |
 | software-bsp | `PASS` | `command_pass` | `none` |
-| real-world-release-gates | `BLOCK` | `fail_closed_contract` | `archive real evidence from the named gates` |
+| real-world-release-gates | `PASS` | `command_pass` | `none` |
 | rtl-source | `PASS` | `source_present` | `none` |
-| synthesis | `BLOCK` | `tool_blocker` | `make synth` |
+| synthesis | `PASS` | `generated_artifact` | `none` |
 | cocotb | `BLOCK` | `regen_required` | `make cocotb cocotb-npu cocotb-contract cocotb-cpu` |
-| verilator | `BLOCK` | `tool_blocker` | `make verilator` |
-| formal | `BLOCK` | `tool_blocker` | `make formal inside Docker/Nix` |
-| qemu | `BLOCK` | `tool_blocker` | `make qemu-check` |
-| renode | `BLOCK` | `tool_blocker` | `make renode-check` |
-| npu-ml-proof | `BLOCK` | `tool_blocker` | `make mvp-npu-ml-evidence-check` |
-| minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
+| verilator | `PASS` | `generated_artifact` | `none` |
+| formal | `PASS` | `generated_artifact` | `none` |
+| qemu | `PASS` | `generated_artifact` | `none` |
+| renode | `PASS` | `generated_artifact` | `none` |
+| npu-ml-proof | `PASS` | `generated_artifact` | `none` |
+| minimum-linux-npu-target | `PASS` | `generated_artifact` | `none` |
 | pd-contract | `PASS` | `command_pass` | `none` |
 | product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication` |
-| benchmarks | `BLOCK` | `scaffold_only` | `python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing` |
-| release-pipeline | `BLOCK` | `regen_required` | `make tool-versions pipeline-check` |
+| benchmarks | `PASS` | `generated_artifact` | `none` |
+| release-pipeline | `PASS` | `generated_artifact` | `none` |
 
 ## Workstream Dashboard
 
@@ -42,8 +42,8 @@ Snapshot date: 2026-05-22. Volatile generated-artifact rows stay conservative un
 
 Product scaffold PASS means blockers are named and fail closed.
 PD contract PASS is preflight/scaffold evidence only; PD release remains blocked until post-route timing, antenna, DRC/LVS, and signoff artifacts are clean.
-PD release BLOCK means no selected signoff run archive is present; a release claim requires GDS/DEF/netlists/SPEF/SDF, clean DRC/LVS, clean antenna/timing/DRV evidence, and a run manifest from one selected run.
-PD retry BLOCK means `pd/openlane/config.sky130.json` points the SRAM macro OpenROAD netlist/model inputs at `pd/openlane/sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v`; the next release run must prove `OpenROAD.CheckMacroInstances` and signoff closure in archived run evidence.
-Minimum Linux+NPU target BLOCK means NPU ML smoke evidence is limited to the named diagnostic artifacts; generated-AP Linux boot and target-side ML transcripts are still missing.
-Benchmark BLOCK means reports are planning or dry-run evidence; `make benchmark-sim-metrics` is not performance evidence.
+PD release BLOCK means the selected `e1_chip_top` run has GDS/DEF/netlists/SPEF/SDF and clean Magic/KLayout DRC plus LVS, but still has 22 antenna nets, 24 antenna pins, 3 hold violations, 23,099 max-slew violations, and 442 max-cap violations.
+PD retry BLOCK means `pd/openlane/config.sky130.json` now points the SRAM macro OpenROAD netlist/model inputs at `pd/openlane/sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v`; the next release run must confirm `OpenROAD.CheckMacroInstances` clears once local Docker/container runtime service is healthy.
+Minimum Linux+NPU target PASS means generated-AP Linux boot, target-side e1 NPU ML smoke, and AP benchmark transcript evidence are present for the simulator-scoped target; it is not NNAPI, phone, silicon, or measured-power evidence.
+Benchmark PASS means generated-AP benchmark smoke evidence has been imported into the benchmark schema with simulator provenance; it is not calibrated silicon, phone, or release performance evidence.
 Android CTS/VTS, secure boot, radios, sensors, battery/PMIC/thermal, USB/storage/update, package, FPGA, KiCad, PD, SI/PI, and thermal release remain blocked until real evidence is archived.

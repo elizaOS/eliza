@@ -1,0 +1,191 @@
+{
+  "schema": "robot-text-policy-eval-v1",
+  "profile_id": "hiwonder-ainex",
+  "env": "profile_mujoco",
+  "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/alberta_text_conditioned",
+  "policy": "untrained_zero",
+  "env_action_dim": 12,
+  "policy_action_dim": 0,
+  "policy_output_dim": 0,
+  "tasks": {
+    "walk_forward": {
+      "mean_reward": -731.7152432886609,
+      "std_reward": 0.0,
+      "min_reward": -731.7152432886609,
+      "max_reward": -731.7152432886609,
+      "mean_steps_survived": 120.0,
+      "success_rate": 0.0,
+      "failure_rate": 0.0,
+      "mean_final_delta_x_m": -0.014243345393065251,
+      "mean_final_delta_y_m": 0.009374094831048672,
+      "mean_final_delta_yaw_rad": -0.0336546531029072,
+      "mean_final_torso_z_m": 0.24255921647571999,
+      "movement_summary": {
+        "final_delta_x_m": {
+          "min": -0.014243345393065251,
+          "max": -0.014243345393065251,
+          "mean": -0.014243345393065251,
+          "final": -0.014243345393065251
+        },
+        "final_delta_y_m": {
+          "min": 0.009374094831048672,
+          "max": 0.009374094831048672,
+          "mean": 0.009374094831048672,
+          "final": 0.009374094831048672
+        },
+        "final_delta_yaw_rad": {
+          "min": -0.0336546531029072,
+          "max": -0.0336546531029072,
+          "mean": -0.0336546531029072,
+          "final": -0.0336546531029072
+        },
+        "final_torso_z_m": {
+          "min": 0.24255921647571999,
+          "max": 0.24255921647571999,
+          "mean": 0.24255921647571999,
+          "final": 0.24255921647571999
+        },
+        "min_torso_z_m": {
+          "min": 0.24057477520608292,
+          "max": 0.24057477520608292,
+          "mean": 0.24057477520608292,
+          "final": 0.24057477520608292
+        },
+        "max_abs_lateral_drift_m": {
+          "min": 0.009374094831048672,
+          "max": 0.009374094831048672,
+          "mean": 0.009374094831048672,
+          "final": 0.009374094831048672
+        }
+      },
+      "rollouts": [
+        {
+          "reward": -731.7152432886609,
+          "steps": 120,
+          "terminated": false,
+          "truncated": true,
+          "success": false,
+          "failed": false,
+          "reason": "",
+          "final_delta_x": -0.014243345393065251,
+          "final_delta_y": 0.009374094831048672,
+          "final_delta_yaw": -0.0336546531029072,
+          "final_torso_z": 0.24255921647571999,
+          "min_torso_z": 0.24057477520608292,
+          "max_abs_lateral_drift": 0.009374094831048672,
+          "telemetry": {
+            "delta_x_m": {
+              "min": -0.014318807099417102,
+              "max": 2.8900673859231047e-05,
+              "mean": -0.010397515480064087,
+              "final": -0.014243345393065251
+            },
+            "delta_y_m": {
+              "min": 0.0002081560895755937,
+              "max": 0.009374094831048672,
+              "mean": 0.00663339992580824,
+              "final": 0.009374094831048672
+            },
+            "delta_yaw_rad": {
+              "min": -0.0336546531029072,
+              "max": -0.0015318285143183547,
+              "mean": -0.018517598699493973,
+              "final": -0.0336546531029072
+            },
+            "torso_z_m": {
+              "min": 0.24057477520608292,
+              "max": 0.24258548135356786,
+              "mean": 0.2423625094108234,
+              "final": 0.24255921647571999
+            }
+          }
+        },
+        {
+          "reward": -731.7152432886609,
+          "steps": 120,
+          "terminated": false,
+          "truncated": true,
+          "success": false,
+          "failed": false,
+          "reason": "",
+          "final_delta_x": -0.014243345393065251,
+          "final_delta_y": 0.009374094831048672,
+          "final_delta_yaw": -0.0336546531029072,
+          "final_torso_z": 0.24255921647571999,
+          "min_torso_z": 0.24057477520608292,
+          "max_abs_lateral_drift": 0.009374094831048672,
+          "telemetry": {
+            "delta_x_m": {
+              "min": -0.014318807099417102,
+              "max": 2.8900673859231047e-05,
+              "mean": -0.010397515480064087,
+              "final": -0.014243345393065251
+            },
+            "delta_y_m": {
+              "min": 0.0002081560895755937,
+              "max": 0.009374094831048672,
+              "mean": 0.00663339992580824,
+              "final": 0.009374094831048672
+            },
+            "delta_yaw_rad": {
+              "min": -0.0336546531029072,
+              "max": -0.0015318285143183547,
+              "mean": -0.018517598699493973,
+              "final": -0.0336546531029072
+            },
+            "torso_z_m": {
+              "min": 0.24057477520608292,
+              "max": 0.24258548135356786,
+              "mean": 0.2423625094108234,
+              "final": 0.24255921647571999
+            }
+          }
+        },
+        {
+          "reward": -731.7152432886609,
+          "steps": 120,
+          "terminated": false,
+          "truncated": true,
+          "success": false,
+          "failed": false,
+          "reason": "",
+          "final_delta_x": -0.014243345393065251,
+          "final_delta_y": 0.009374094831048672,
+          "final_delta_yaw": -0.0336546531029072,
+          "final_torso_z": 0.24255921647571999,
+          "min_torso_z": 0.24057477520608292,
+          "max_abs_lateral_drift": 0.009374094831048672,
+          "telemetry": {
+            "delta_x_m": {
+              "min": -0.014318807099417102,
+              "max": 2.8900673859231047e-05,
+              "mean": -0.010397515480064087,
+              "final": -0.014243345393065251
+            },
+            "delta_y_m": {
+              "min": 0.0002081560895755937,
+              "max": 0.009374094831048672,
+              "mean": 0.00663339992580824,
+              "final": 0.009374094831048672
+            },
+            "delta_yaw_rad": {
+              "min": -0.0336546531029072,
+              "max": -0.0015318285143183547,
+              "mean": -0.018517598699493973,
+              "final": -0.0336546531029072
+            },
+            "torso_z_m": {
+              "min": 0.24057477520608292,
+              "max": 0.24258548135356786,
+              "mean": 0.2423625094108234,
+              "final": 0.24255921647571999
+            }
+          }
+        }
+      ],
+      "episodes": 3
+    }
+  },
+  "mean_reward_overall": -731.7152432886609,
+  "mean_success_rate_overall": 0.0
+}

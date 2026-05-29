@@ -10,8 +10,8 @@
     "contact_tolerance_mm": 0.02,
     "seat_tolerance_mm": 0.05
   },
-  "total_parts_in_manifest": 222,
-  "parts_loaded": 222,
+  "total_parts_in_manifest": 258,
+  "parts_loaded": 258,
   "parts_placed_in_sequence": 99,
   "steps": [
     {
@@ -1001,7 +1001,7 @@
         "keepout": "split_interconnect_side_flex",
         "connector": "split_interconnect_top_connector",
         "unpinched": true,
-        "min_clearance_mm": 0.0,
+        "min_clearance_mm": 0.56,
         "pinching_parts": []
       },
       {
@@ -1009,7 +1009,7 @@
         "keepout": "split_interconnect_top_flex_tail",
         "connector": "split_interconnect_top_connector",
         "unpinched": true,
-        "min_clearance_mm": 0.0,
+        "min_clearance_mm": 0.25,
         "pinching_parts": []
       },
       {
@@ -1017,12 +1017,13 @@
         "keepout": "split_interconnect_bottom_flex_tail",
         "connector": "split_interconnect_bottom_connector",
         "unpinched": true,
-        "min_clearance_mm": 0.0,
+        "min_clearance_mm": 0.25,
         "pinching_parts": []
       }
     ]
   },
   "trapped_parts": [],
   "device_assemblable": true,
-  "runtime_s": 10.36
+  "runtime_s": 0.0,
+  "runtime_s_note": "wall-clock runtime omitted from committed evidence for deterministic reruns"
 }

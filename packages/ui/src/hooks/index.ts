@@ -19,4 +19,3 @@ export * from "./useTimeout";
 export * from "./useViewEvent";
 export * from "./useVoiceChat";
 export * from "./useWhatsAppPairing";
-export * from "./useWorkflowGenerationState";

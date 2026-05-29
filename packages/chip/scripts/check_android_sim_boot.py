@@ -48,6 +48,26 @@ REQUIRED_REPORT_FIELDS = {
     "linux_requirements": list,
     "handoff_commands": list,
     "claim_boundary": str,
+    "phone_claim_allowed": bool,
+    "release_claim_allowed": bool,
+    "e1_chip_hardware_claim_allowed": bool,
+    "cdd_compliance_claim_allowed": bool,
+    "gms_claim_allowed": bool,
+    "cts_vts_claim_allowed": bool,
+    "full_android_compatibility_claim_allowed": bool,
+    "hardware_boot_claim_allowed": bool,
+    "production_readiness_claim_allowed": bool,
+}
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "e1_chip_hardware_claim_allowed",
+    "cdd_compliance_claim_allowed",
+    "gms_claim_allowed",
+    "cts_vts_claim_allowed",
+    "full_android_compatibility_claim_allowed",
+    "hardware_boot_claim_allowed",
+    "production_readiness_claim_allowed",
 }
 
 
@@ -160,6 +180,10 @@ def main() -> int:
 
     if data.get("schema") != "eliza.android_sim_boot.v1":
         errors.append("android sim report schema mismatch")
+    if data.get("aosp_dir_source") is not None and not isinstance(
+        data.get("aosp_dir_source"), str
+    ):
+        errors.append("android sim report aosp_dir_source must be string when present")
     status = data.get("status")
     if status not in VALID_STATUSES:
         errors.append(f"android sim report status {status!r} is invalid")
@@ -185,6 +209,9 @@ def main() -> int:
         )
     if "compatibility claim" not in boundary:
         errors.append("android sim report must avoid full Android compatibility claims")
+    for key in sorted(FALSE_CLAIM_FLAGS):
+        if data.get(key) is not False:
+            errors.append(f"android sim report {key} must be exactly false")
     host_requirements = data.get("host_requirements", {})
     if isinstance(host_requirements, dict):
         if not isinstance(host_requirements.get("host_os"), str):

@@ -91,8 +91,6 @@ export {
   ApiParameterSelect,
   type ApiParameterSelectOption,
   type ApiParameterSelectProps,
-  ApiRouteExplorer,
-  ApiRouteExplorerClient,
   EndpointCard,
   type EndpointCardProps,
   OpenApiViewer,
@@ -194,7 +192,6 @@ export * from "./chat/connector-send-as";
 export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
-export * from "./chat/widgets/registry";
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";

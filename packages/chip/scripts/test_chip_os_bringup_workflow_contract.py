@@ -23,6 +23,11 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+def assert_no_boot_or_release_claims(report: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
+
+
 def aggregate_text(gate_names: set[str]) -> str:
     specs = "\n".join(
         f'    GateSpec(name="{name}", script="x.py", subsystem="bsp", tier="spec"),'
@@ -89,6 +94,7 @@ class ChipOsBringupWorkflowContractTests(unittest.TestCase):
         self.assertIn("chip_os_bringup_missing_dedicated_report", codes)
         self.assertIn("normal_aggregate_semantics_not_objective_specific", codes)
         self.assertIn("aggregate_missing_objective_critical_gates", codes)
+        assert_no_boot_or_release_claims(report)
 
     def test_strict_dedicated_target_passes_static_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -98,6 +104,7 @@ class ChipOsBringupWorkflowContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_no_boot_or_release_claims(report)
 
 
 class PatchStack:

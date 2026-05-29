@@ -33,6 +33,18 @@ AOSP_REFERENCE_ONLY_PATHS = [
     "docs/evidence/android/renode_e1_soc_smoke.log",
 ]
 CLAIM_BOUNDARY = "scaffold_and_evidence_inventory_only_not_linux_or_aosp_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_bsp_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 DEFAULT_EVIDENCE_METADATA = ["EXTERNAL_TREE=", "COMMAND=", "START_UTC=", "END_UTC=", "RESULT="]
 ANDROID_COMPAT_METADATA = [
     "EXTERNAL_TREE=",
@@ -218,6 +230,15 @@ TARGETS: dict[str, dict[str, Any]] = {
         "evidence_note": "external AOSP lunch/vendorimage/VINTF/SELinux/CTS-VTS intake logs plus virtual-device smoke transcripts",
     },
 }
+
+ALTERNATE_BSP_TARGETS = {"u-boot"}
+
+
+def selected_bsp_targets() -> list[str]:
+    names = [name for name in TARGETS if name not in ALTERNATE_BSP_TARGETS]
+    if os.environ.get("ELIZA_INCLUDE_ALTERNATE_UBOOT") == "1":
+        names.append("u-boot")
+    return names
 
 FORBIDDEN_TRANSCRIPT_MARKERS = [
     "placeholder transcript",
@@ -912,6 +933,7 @@ def build_scaffold_report(
         "schema": "eliza.software_bsp.v1",
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "generated_utc": datetime.now(UTC).isoformat(),
         "target": target,
         "scaffold_only": scaffold_only,
@@ -1058,7 +1080,7 @@ def capture_plan_commands(
 
 
 def print_capture_plan(args: argparse.Namespace) -> None:
-    names = TARGETS.keys() if args.target == "all" else [args.target]
+    names = selected_bsp_targets() if args.target == "all" else [args.target]
     for name in names:
         print(f"{name}: capture/import plan")
         for command in capture_plan_commands(
@@ -1104,6 +1126,26 @@ def print_evidence_plan(name: str) -> None:
 
 def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    safe = value.replace(str(ROOT), "<repo>")
+    home = os.environ.get("HOME")
+    if home:
+        safe = safe.replace(home, "<home>")
+    safe = safe.replace("/var/tmp/", "<var-tmp>/")
+    safe = safe.replace("/tmp/", "<tmp>/")
+    return safe
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(child) for child in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def shell_arg(path: str | Path) -> str:
@@ -1399,7 +1441,7 @@ def opensbi_preflight(tree: Path | None, handoff_cmd: str | None) -> dict[str, A
 
 
 def external_preflight_report(args: argparse.Namespace) -> dict[str, Any]:
-    names = TARGETS.keys() if args.target == "all" else [args.target]
+    names = selected_bsp_targets() if args.target == "all" else [args.target]
     targets: list[dict[str, Any]] = []
     for name in names:
         if name == "linux":
@@ -1451,18 +1493,19 @@ def external_preflight_report(args: argparse.Namespace) -> dict[str, Any]:
 
 def run_external_preflight(args: argparse.Namespace) -> int:
     report = external_preflight_report(args)
+    output_report = provenance_safe_value(report)
     if args.write_report:
         output = Path(args.output).expanduser() if args.output else LOCAL_EXTERNAL_PREFLIGHT_REPORT
         if not output.is_absolute():
             output = ROOT / output
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        output.write_text(json.dumps(output_report, indent=2, sort_keys=True) + "\n")
         print(f"wrote {rel(output)}")
     if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
+        print(json.dumps(output_report, indent=2, sort_keys=True))
     else:
         print(f"external BSP preflight: {report['status']}")
-        for target in report["targets"]:
+        for target in output_report["targets"]:
             print(f"{target['target']}: {target['status']}")
             for blocker in target.get("blockers", []):
                 print(f"  [BLOCKED] {blocker}")
@@ -1501,7 +1544,7 @@ def main() -> int:
         parser.add_argument("target", choices=[*TARGETS.keys(), "all"])
         parser.add_argument("--json", action="store_true")
         args = parser.parse_args()
-        names = TARGETS.keys() if args.target == "all" else [args.target]
+        names = selected_bsp_targets() if args.target == "all" else [args.target]
         if args.json:
             reports = [target_report(name) for name in names]
             print(
@@ -1561,7 +1604,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    names = TARGETS.keys() if args.target == "all" else [args.target]
+    names = selected_bsp_targets() if args.target == "all" else [args.target]
     if args.json:
         reports = [target_report(name) for name in names]
         print(

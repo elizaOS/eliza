@@ -1,43 +1,93 @@
 {
-  "schema": "eliza.linux_boot_artifacts.v1",
-  "claim_boundary": "external_chip_or_sim_transcripts_only_not_placeholder_evidence",
-  "status": "blocked_until_all_required_artifacts_pass",
-  "preflight": [
+  "artifacts": [
     {
-      "id": "host_tools",
-      "required_tools": ["make", "sh", "grep"]
+      "artifact_type": "kernel",
+      "id": "kernel_build",
+      "path": "docs/evidence/linux/eliza_e1_kernel_build.log",
+      "producer": "sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" kernel-build",
+      "required_strings": [
+        "eliza-evidence: target=linux artifact=eliza_e1_kernel_build",
+        "CONFIG_ELIZA_E1",
+        "eliza-evidence: status=PASS"
+      ],
+      "unblock_command": "ELIZA_LINUX_TREE=/path/to/linux sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" kernel-build"
     },
     {
-      "id": "external_linux_tree",
-      "external_paths": [
-        {
-          "env": "ELIZA_LINUX_TREE",
-          "kind": "directory",
-          "description": "external Linux kernel checkout with the Eliza BSP imported"
-        }
-      ]
+      "artifact_type": "dtb",
+      "id": "dtb_check",
+      "path": "docs/evidence/linux/eliza_e1_dtb_check.log",
+      "producer": "sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" dtb-check",
+      "required_strings": [
+        "eliza-evidence: target=linux artifact=eliza_e1_dtb_check",
+        "eliza,e1-npu",
+        "eliza-evidence: status=PASS"
+      ],
+      "unblock_command": "ELIZA_LINUX_TREE=/path/to/linux sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" dtb-check"
     },
     {
-      "id": "external_buildroot_tree",
-      "external_paths": [
-        {
-          "env": "ELIZA_BUILDROOT_TREE",
-          "kind": "directory",
-          "description": "external Buildroot checkout used to build the initramfs/rootfs"
-        }
-      ]
+      "artifact_type": "opensbi",
+      "id": "opensbi_handoff",
+      "path": "docs/evidence/linux/opensbi_fw_dynamic_handoff.log",
+      "producer": "ELIZA_OPENSBI_HANDOFF_CMD='<exact boot command>' docs/sw/opensbi/capture-opensbi-evidence.sh \"$ELIZA_OPENSBI_TREE\" handoff",
+      "required_strings": [
+        "eliza-evidence: target=opensbi artifact=opensbi_fw_dynamic_handoff",
+        "OpenSBI",
+        "Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
+        "eliza-evidence: status=PASS"
+      ],
+      "unblock_command": "ELIZA_OPENSBI_TREE=/path/to/opensbi ELIZA_OPENSBI_HANDOFF_CMD='<exact boot command>' docs/sw/opensbi/capture-opensbi-evidence.sh \"$ELIZA_OPENSBI_TREE\" handoff"
     },
     {
-      "id": "external_opensbi_tree",
-      "external_paths": [
-        {
-          "env": "ELIZA_OPENSBI_TREE",
-          "kind": "directory",
-          "description": "external OpenSBI checkout used for the selected boot handoff"
-        }
-      ]
+      "artifact_type": "boot_log",
+      "at_least_one": [
+        [
+          "Run /init as init process",
+          "Freeing unused kernel memory",
+          "Welcome to",
+          "login:"
+        ]
+      ],
+      "id": "serial_boot_log",
+      "path": "docs/evidence/linux/eliza_e1_serial_boot.log",
+      "producer": "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
+      "required_strings": [
+        "eliza-evidence: target=linux artifact=eliza_e1_serial_boot",
+        "eliza-evidence: claim_boundary=generated_chipyard_ap_serial_boot_transcript_only_not_silicon_or_board_evidence",
+        "OpenSBI",
+        "Linux version",
+        "Kernel command line:",
+        "eliza-evidence: status=PASS"
+      ],
+      "unblock_command": "python3 scripts/locate_chipyard_linux_payload.py --require-preferred && CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh"
+    },
+    {
+      "artifact_type": "rootfs",
+      "id": "rootfs_initramfs",
+      "path": "docs/evidence/buildroot/eliza_e1_image_manifest.txt",
+      "producer": "sw/buildroot/scripts/capture-buildroot-evidence.sh \"$ELIZA_BUILDROOT_TREE\" image-manifest",
+      "required_strings": [
+        "eliza-evidence: target=buildroot artifact=eliza_e1_image_manifest",
+        "sha256",
+        "eliza-evidence: status=PASS"
+      ],
+      "unblock_command": "ELIZA_BUILDROOT_TREE=/path/to/buildroot make -C \"$ELIZA_BUILDROOT_TREE\" BR2_EXTERNAL=\"$PWD/sw/buildroot\" && sw/buildroot/scripts/capture-buildroot-evidence.sh \"$ELIZA_BUILDROOT_TREE\" image-manifest"
+    },
+    {
+      "artifact_type": "smoke_log",
+      "id": "e1_mmio_smoke",
+      "path": "docs/evidence/linux/e1-mmio-smoke.log",
+      "producer": "E1_SMOKE_CMD='<target command for /usr/bin/e1-mmio-smoke>' sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" smoke",
+      "required_strings": [
+        "eliza-evidence: target=linux artifact=e1-mmio-smoke",
+        "E1_NPU_BASE=0x10020000",
+        "eliza-evidence: status=PASS"
+      ],
+      "unblock_command": "ELIZA_LINUX_TREE=/path/to/linux E1_SMOKE_CMD='<target command for /usr/bin/e1-mmio-smoke>' sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" smoke"
     }
   ],
+  "claim_boundary": "external_chip_or_sim_transcripts_only_not_placeholder_evidence",
   "command_plan": [
     "export ELIZA_LINUX_TREE=/path/to/linux",
     "export ELIZA_BUILDROOT_TREE=/path/to/buildroot",
@@ -57,92 +107,6 @@
     "E1_SMOKE_CMD='<target command for /usr/bin/e1-mmio-smoke>' sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" smoke",
     "make linux-boot-artifacts-check"
   ],
-  "artifacts": [
-    {
-      "id": "kernel_build",
-      "artifact_type": "kernel",
-      "path": "docs/evidence/linux/eliza_e1_kernel_build.log",
-      "producer": "sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" kernel-build",
-      "unblock_command": "ELIZA_LINUX_TREE=/path/to/linux sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" kernel-build",
-      "required_strings": [
-        "eliza-evidence: target=linux artifact=eliza_e1_kernel_build",
-        "CONFIG_ELIZA_E1",
-        "eliza-evidence: status=PASS"
-      ]
-    },
-    {
-      "id": "dtb_check",
-      "artifact_type": "dtb",
-      "path": "docs/evidence/linux/eliza_e1_dtb_check.log",
-      "producer": "sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" dtb-check",
-      "unblock_command": "ELIZA_LINUX_TREE=/path/to/linux sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" dtb-check",
-      "required_strings": [
-        "eliza-evidence: target=linux artifact=eliza_e1_dtb_check",
-        "eliza,e1-npu",
-        "eliza-evidence: status=PASS"
-      ]
-    },
-    {
-      "id": "opensbi_handoff",
-      "artifact_type": "opensbi",
-      "path": "docs/evidence/linux/opensbi_fw_dynamic_handoff.log",
-      "producer": "ELIZA_OPENSBI_HANDOFF_CMD='<exact boot command>' docs/sw/opensbi/capture-opensbi-evidence.sh \"$ELIZA_OPENSBI_TREE\" handoff",
-      "unblock_command": "ELIZA_OPENSBI_TREE=/path/to/opensbi ELIZA_OPENSBI_HANDOFF_CMD='<exact boot command>' docs/sw/opensbi/capture-opensbi-evidence.sh \"$ELIZA_OPENSBI_TREE\" handoff",
-      "required_strings": [
-        "eliza-evidence: target=opensbi artifact=opensbi_fw_dynamic_handoff",
-        "OpenSBI",
-        "Next Address",
-        "eliza-evidence: status=PASS"
-      ]
-    },
-    {
-      "id": "serial_boot_log",
-      "artifact_type": "boot_log",
-      "path": "docs/evidence/linux/eliza_e1_serial_boot.log",
-      "producer": "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
-      "unblock_command": "python3 scripts/locate_chipyard_linux_payload.py --require-preferred && CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
-      "required_strings": [
-        "eliza-evidence: target=linux artifact=eliza_e1_serial_boot",
-        "eliza-evidence: claim_boundary=generated_chipyard_ap_serial_boot_transcript_only_not_silicon_or_board_evidence",
-        "OpenSBI",
-        "Linux version",
-        "Kernel command line:",
-        "eliza-evidence: status=PASS"
-      ],
-      "at_least_one": [
-        [
-          "Run /init as init process",
-          "Freeing unused kernel memory",
-          "Welcome to",
-          "login:"
-        ]
-      ]
-    },
-    {
-      "id": "rootfs_initramfs",
-      "artifact_type": "rootfs",
-      "path": "docs/evidence/buildroot/eliza_e1_image_manifest.txt",
-      "producer": "sw/buildroot/scripts/capture-buildroot-evidence.sh \"$ELIZA_BUILDROOT_TREE\" image-manifest",
-      "unblock_command": "ELIZA_BUILDROOT_TREE=/path/to/buildroot make -C \"$ELIZA_BUILDROOT_TREE\" BR2_EXTERNAL=\"$PWD/sw/buildroot\" && sw/buildroot/scripts/capture-buildroot-evidence.sh \"$ELIZA_BUILDROOT_TREE\" image-manifest",
-      "required_strings": [
-        "eliza-evidence: target=buildroot artifact=eliza_e1_image_manifest",
-        "sha256",
-        "eliza-evidence: status=PASS"
-      ]
-    },
-    {
-      "id": "e1_mmio_smoke",
-      "artifact_type": "smoke_log",
-      "path": "docs/evidence/linux/e1-mmio-smoke.log",
-      "producer": "E1_SMOKE_CMD='<target command for /usr/bin/e1-mmio-smoke>' sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" smoke",
-      "unblock_command": "ELIZA_LINUX_TREE=/path/to/linux E1_SMOKE_CMD='<target command for /usr/bin/e1-mmio-smoke>' sw/linux/scripts/capture-linux-bsp-evidence.sh \"$ELIZA_LINUX_TREE\" smoke",
-      "required_strings": [
-        "eliza-evidence: target=linux artifact=e1-mmio-smoke",
-        "E1_NPU_BASE=0x10020000",
-        "eliza-evidence: status=PASS"
-      ]
-    }
-  ],
   "forbidden_strings": [
     "placeholder",
     "substitute",
@@ -150,5 +114,48 @@
     "status=FAIL",
     "RESULT=FAIL",
     "BLOCKED"
-  ]
+  ],
+  "generated_utc": "2026-05-28T20:06:56Z",
+  "preflight": [
+    {
+      "id": "host_tools",
+      "required_tools": [
+        "make",
+        "sh",
+        "grep"
+      ]
+    },
+    {
+      "external_paths": [
+        {
+          "description": "external Linux kernel checkout with the Eliza BSP imported",
+          "env": "ELIZA_LINUX_TREE",
+          "kind": "directory"
+        }
+      ],
+      "id": "external_linux_tree"
+    },
+    {
+      "external_paths": [
+        {
+          "description": "external Buildroot checkout used to build the initramfs/rootfs",
+          "env": "ELIZA_BUILDROOT_TREE",
+          "kind": "directory"
+        }
+      ],
+      "id": "external_buildroot_tree"
+    },
+    {
+      "external_paths": [
+        {
+          "description": "external OpenSBI checkout used for the selected boot handoff",
+          "env": "ELIZA_OPENSBI_TREE",
+          "kind": "directory"
+        }
+      ],
+      "id": "external_opensbi_tree"
+    }
+  ],
+  "schema": "eliza.linux_boot_artifacts.v1",
+  "status": "blocked_until_all_required_artifacts_pass"
 }

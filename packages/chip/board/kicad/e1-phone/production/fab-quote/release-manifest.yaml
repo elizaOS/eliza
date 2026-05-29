@@ -5,8 +5,8 @@ owner: local-routing-candidate-generator
 created_at: '2026-05-22'
 tool_or_supplier_revision: generate_e1_phone_routed_output_candidates.py
 input_artifact_hashes:
-  board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
-  board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+  board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
 reviewer: unreviewed
 reviewed_at: unreviewed_local_candidate_2026-05-22
 disposition: blocked_candidate_not_approved
@@ -14,7 +14,7 @@ external_review_authority: missing_external_review_authority
 signature_or_approval_record: missing_signature_or_approval_record
 artifact_sha256: 0491870d5cf4361fa78f4a61516527ead580b1f27f7ebb0710f35b17952533cc
 kicad_project_revision: development_real_footprint_snapshot
-routed_pcb_hash: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
+routed_pcb_hash: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
 erc_result: not_run
 drc_result: not_run
 stackup_revision: not_fabricator_approved
@@ -27,40 +27,5094 @@ routed_step_reference: board/kicad/e1-phone/production/step/routed-board-with-co
 routed_step_visual_detail:
   source_step_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
   routed_development_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
-  source_board_sha256: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
-  source_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-  routed_intake_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+  source_board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  source_step_sha256: 592fad3df9a619b125d28f322aa22803ca37c3a825e0b4e8170b277cf7e16ae7
+  routed_intake_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   footprint_envelope_count: 89
   pad_contact_visual_count: 1452
   route_segment_visual_count: 306
+  route_segment_net_name_count: 151
+  route_segment_trace_bound_count: 306
+  route_segment_trace_unbound_count: 0
+  controlled_impedance_segment_visual_count: 96
   board_segment_count: 306
   board_via_count: 24
+  via_net_name_count: 16
   development_footprint_refs: 89
+  route_visual_record_count: 306
+  route_visual_route_id_count: 153
+  route_visual_net_name_count: 151
+  route_visual_layer_counts:
+    F.Cu: 306
+  route_visual_route_class_counts:
+    audio_control_aon: 28
+    camera_power: 6
+    cc_sbu_control: 12
+    debug_boot: 18
+    display_bias_power: 6
+    display_camera_control: 24
+    high_current_power: 28
+    lpddr: 20
+    mipi_dphy_diff: 52
+    pcie_diff: 16
+    power: 12
+    rf_single: 22
+    sim_nfc_sensor: 34
+    test_access: 18
+    ufs_mphy: 12
+    usb2_diff: 10
+    wireless_control_bt_uart: 18
+  route_visual_source_domain_counts:
+    cellular_wifi_bt_rf_host: 94
+    compute_memory_storage_escape: 50
+    display_touch_mipi_dsi: 34
+    factory_test_fiducials_and_manufacturing_coupons: 40
+    front_rear_camera_mipi_csi: 54
+    split_interconnect_and_audio_haptics: 36
+    usb_c_power_sidekey_spine: 46
+  route_visual_all_records_have_route_id: true
+  route_visual_all_records_have_net: true
+  route_visual_all_records_have_layer: true
+  route_visual_all_records_have_route_class: true
+  route_visual_all_records_have_source_domain: true
+  route_visual_records:
+  - index: 1
+    route_id: USB_VBUS
+    net: VBUS
+    layer: F.Cu
+    width_mm: 0.35
+    start_mm:
+      x: 32.0
+      y: 124.0
+    end_mm:
+      x: 37.0
+      y: 121.8
+    route_classes: &id001
+    - high_current_power
+    - power
+    source_domains: &id002
+    - factory_test_fiducials_and_manufacturing_coupons
+    - split_interconnect_and_audio_haptics
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id003 []
+  - index: 2
+    route_id: USB_VBUS
+    net: VBUS
+    layer: F.Cu
+    width_mm: 0.35
+    start_mm:
+      x: 37.0
+      y: 121.8
+    end_mm:
+      x: 42.0
+      y: 121.8
+    route_classes: *id001
+    source_domains: *id002
+    controlled_impedance_targets_ohm: *id003
+  - index: 3
+    route_id: USB_CC1
+    net: USB_CC1
+    layer: F.Cu
+    width_mm: 0.15
+    start_mm:
+      x: 31.2
+      y: 124.0
+    end_mm:
+      x: 31.45
+      y: 121.8
+    route_classes: &id004
+    - cc_sbu_control
+    - test_access
+    source_domains: &id005
+    - factory_test_fiducials_and_manufacturing_coupons
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id006 []
+  - index: 4
+    route_id: USB_CC1
+    net: USB_CC1
+    layer: F.Cu
+    width_mm: 0.15
+    start_mm:
+      x: 31.45
+      y: 121.8
+    end_mm:
+      x: 23.0
+      y: 118.4
+    route_classes: *id004
+    source_domains: *id005
+    controlled_impedance_targets_ohm: *id006
+  - index: 5
+    route_id: USB_CC2
+    net: USB_CC2
+    layer: F.Cu
+    width_mm: 0.15
+    start_mm:
+      x: 32.8
+      y: 124.0
+    end_mm:
+      x: 32.0
+      y: 121.8
+    route_classes: &id007
+    - cc_sbu_control
+    - test_access
+    source_domains: &id008
+    - factory_test_fiducials_and_manufacturing_coupons
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id009 []
+  - index: 6
+    route_id: USB_CC2
+    net: USB_CC2
+    layer: F.Cu
+    width_mm: 0.15
+    start_mm:
+      x: 32.0
+      y: 121.8
+    end_mm:
+      x: 30.2
+      y: 118.4
+    route_classes: *id007
+    source_domains: *id008
+    controlled_impedance_targets_ohm: *id009
+  - index: 7
+    route_id: USB_DP
+    net: USB_DP
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 30.5
+      y: 124.0
+    end_mm:
+      x: 26.45
+      y: 121.8
+    route_classes: &id010
+    - usb2_diff
+    source_domains: &id011
+    - factory_test_fiducials_and_manufacturing_coupons
+    - split_interconnect_and_audio_haptics
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id012
+    - constraint: usb2_diff_impedance_ohm
+      value: 90
+  - index: 8
+    route_id: USB_DP
+    net: USB_DP
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 26.45
+      y: 121.8
+    end_mm:
+      x: 44.6
+      y: 118.4
+    route_classes: *id010
+    source_domains: *id011
+    controlled_impedance_targets_ohm: *id012
+  - index: 9
+    route_id: USB_DN
+    net: USB_DN
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 29.8
+      y: 124.0
+    end_mm:
+      x: 27.0
+      y: 121.8
+    route_classes: &id013
+    - usb2_diff
+    source_domains: &id014
+    - factory_test_fiducials_and_manufacturing_coupons
+    - split_interconnect_and_audio_haptics
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id015
+    - constraint: usb2_diff_impedance_ohm
+      value: 90
+  - index: 10
+    route_id: USB_DN
+    net: USB_DN
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 27.0
+      y: 121.8
+    end_mm:
+      x: 37.4
+      y: 118.4
+    route_classes: *id013
+    source_domains: *id014
+    controlled_impedance_targets_ohm: *id015
+  - index: 11
+    route_id: BATTERY_VBAT
+    net: VBAT
+    layer: F.Cu
+    width_mm: 0.45
+    start_mm:
+      x: 24.0
+      y: 118.0
+    end_mm:
+      x: 39.0
+      y: 118.0
+    route_classes: &id016
+    - high_current_power
+    - power
+    source_domains: &id017
+    - factory_test_fiducials_and_manufacturing_coupons
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id018 []
+  - index: 12
+    route_id: BATTERY_VBAT
+    net: VBAT
+    layer: F.Cu
+    width_mm: 0.45
+    start_mm:
+      x: 39.0
+      y: 118.0
+    end_mm:
+      x: 43.0
+      y: 112.0
+    route_classes: *id016
+    source_domains: *id017
+    controlled_impedance_targets_ohm: *id018
+  - index: 13
+    route_id: BATTERY_SYS
+    net: SYS
+    layer: F.Cu
+    width_mm: 0.45
+    start_mm:
+      x: 31.0
+      y: 118.0
+    end_mm:
+      x: 42.0
+      y: 116.0
+    route_classes: &id019
+    - high_current_power
+    - power
+    source_domains: &id020
+    - factory_test_fiducials_and_manufacturing_coupons
+    - split_interconnect_and_audio_haptics
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id021 []
+  - index: 14
+    route_id: BATTERY_SYS
+    net: SYS
+    layer: F.Cu
+    width_mm: 0.45
+    start_mm:
+      x: 42.0
+      y: 116.0
+    end_mm:
+      x: 45.0
+      y: 112.0
+    route_classes: *id019
+    source_domains: *id020
+    controlled_impedance_targets_ohm: *id021
+  - index: 15
+    route_id: AON_WAKE
+    net: PWR_KEY_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 58.0
+      y: 9.0
+    end_mm:
+      x: 60.0
+      y: 35.0
+    route_classes: &id022
+    - high_current_power
+    - test_access
+    source_domains: &id023
+    - factory_test_fiducials_and_manufacturing_coupons
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id024 []
+  - index: 16
+    route_id: AON_WAKE
+    net: PWR_KEY_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 60.0
+      y: 35.0
+    end_mm:
+      x: 58.0
+      y: 55.0
+    route_classes: *id022
+    source_domains: *id023
+    controlled_impedance_targets_ohm: *id024
+  - index: 17
+    route_id: VOL_UP
+    net: VOL_UP_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 59.0
+      y: 12.0
+    end_mm:
+      x: 61.0
+      y: 35.0
+    route_classes: &id025
+    - high_current_power
+    - test_access
+    source_domains: &id026
+    - factory_test_fiducials_and_manufacturing_coupons
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id027 []
+  - index: 18
+    route_id: VOL_UP
+    net: VOL_UP_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 61.0
+      y: 35.0
+    end_mm:
+      x: 59.0
+      y: 58.0
+    route_classes: *id025
+    source_domains: *id026
+    controlled_impedance_targets_ohm: *id027
+  - index: 19
+    route_id: VOL_DOWN
+    net: VOL_DOWN_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 60.0
+      y: 15.0
+    end_mm:
+      x: 62.0
+      y: 35.0
+    route_classes: &id028
+    - high_current_power
+    - test_access
+    source_domains: &id029
+    - factory_test_fiducials_and_manufacturing_coupons
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id030 []
+  - index: 20
+    route_id: VOL_DOWN
+    net: VOL_DOWN_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 62.0
+      y: 35.0
+    end_mm:
+      x: 60.0
+      y: 61.0
+    route_classes: *id028
+    source_domains: *id029
+    controlled_impedance_targets_ohm: *id030
+  - index: 21
+    route_id: DISPLAY_DSI0_P
+    net: DSI_D0_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 47.0
+      y: 8.0
+    end_mm:
+      x: 45.0
+      y: 16.0
+    route_classes: &id031
+    - mipi_dphy_diff
+    source_domains: &id032
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id033
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 22
+    route_id: DISPLAY_DSI0_P
+    net: DSI_D0_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 45.0
+      y: 16.0
+    end_mm:
+      x: 42.0
+      y: 24.0
+    route_classes: *id031
+    source_domains: *id032
+    controlled_impedance_targets_ohm: *id033
+  - index: 23
+    route_id: DISPLAY_DSI0_N
+    net: DSI_D0_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 47.5
+      y: 8.0
+    end_mm:
+      x: 45.5
+      y: 16.0
+    route_classes: &id034
+    - mipi_dphy_diff
+    source_domains: &id035
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id036
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 24
+    route_id: DISPLAY_DSI0_N
+    net: DSI_D0_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 45.5
+      y: 16.0
+    end_mm:
+      x: 42.5
+      y: 24.0
+    route_classes: *id034
+    source_domains: *id035
+    controlled_impedance_targets_ohm: *id036
+  - index: 25
+    route_id: DISPLAY_DSI1_P
+    net: DSI_D1_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 49.0
+      y: 8.0
+    end_mm:
+      x: 48.0
+      y: 16.0
+    route_classes: &id037
+    - mipi_dphy_diff
+    source_domains: &id038
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id039
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 26
+    route_id: DISPLAY_DSI1_P
+    net: DSI_D1_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 48.0
+      y: 16.0
+    end_mm:
+      x: 45.0
+      y: 24.0
+    route_classes: *id037
+    source_domains: *id038
+    controlled_impedance_targets_ohm: *id039
+  - index: 27
+    route_id: DISPLAY_DSI1_N
+    net: DSI_D1_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 49.5
+      y: 8.0
+    end_mm:
+      x: 48.5
+      y: 16.0
+    route_classes: &id040
+    - mipi_dphy_diff
+    source_domains: &id041
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id042
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 28
+    route_id: DISPLAY_DSI1_N
+    net: DSI_D1_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 48.5
+      y: 16.0
+    end_mm:
+      x: 45.5
+      y: 24.0
+    route_classes: *id040
+    source_domains: *id041
+    controlled_impedance_targets_ohm: *id042
+  - index: 29
+    route_id: DISPLAY_DSI_CLK_P
+    net: DSI_CLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 50.0
+      y: 8.0
+    end_mm:
+      x: 50.0
+      y: 15.5
+    route_classes: &id043
+    - mipi_dphy_diff
+    source_domains: &id044
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id045
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 30
+    route_id: DISPLAY_DSI_CLK_P
+    net: DSI_CLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 50.0
+      y: 15.5
+    end_mm:
+      x: 47.0
+      y: 23.5
+    route_classes: *id043
+    source_domains: *id044
+    controlled_impedance_targets_ohm: *id045
+  - index: 31
+    route_id: DISPLAY_DSI_CLK_N
+    net: DSI_CLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 50.5
+      y: 8.0
+    end_mm:
+      x: 50.5
+      y: 15.5
+    route_classes: &id046
+    - mipi_dphy_diff
+    source_domains: &id047
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id048
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 32
+    route_id: DISPLAY_DSI_CLK_N
+    net: DSI_CLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 50.5
+      y: 15.5
+    end_mm:
+      x: 47.5
+      y: 23.5
+    route_classes: *id046
+    source_domains: *id047
+    controlled_impedance_targets_ohm: *id048
+  - index: 33
+    route_id: DISPLAY_DSI2_P
+    net: DSI_D2_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 51.0
+      y: 8.0
+    end_mm:
+      x: 52.0
+      y: 16.0
+    route_classes: &id049
+    - mipi_dphy_diff
+    source_domains: &id050
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id051
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 34
+    route_id: DISPLAY_DSI2_P
+    net: DSI_D2_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 52.0
+      y: 16.0
+    end_mm:
+      x: 49.0
+      y: 24.0
+    route_classes: *id049
+    source_domains: *id050
+    controlled_impedance_targets_ohm: *id051
+  - index: 35
+    route_id: DISPLAY_DSI2_N
+    net: DSI_D2_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 51.5
+      y: 8.0
+    end_mm:
+      x: 52.5
+      y: 16.0
+    route_classes: &id052
+    - mipi_dphy_diff
+    source_domains: &id053
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id054
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 36
+    route_id: DISPLAY_DSI2_N
+    net: DSI_D2_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 52.5
+      y: 16.0
+    end_mm:
+      x: 49.5
+      y: 24.0
+    route_classes: *id052
+    source_domains: *id053
+    controlled_impedance_targets_ohm: *id054
+  - index: 37
+    route_id: DISPLAY_DSI3_P
+    net: DSI_D3_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 52.0
+      y: 8.0
+    end_mm:
+      x: 54.0
+      y: 16.0
+    route_classes: &id055
+    - mipi_dphy_diff
+    source_domains: &id056
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id057
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 38
+    route_id: DISPLAY_DSI3_P
+    net: DSI_D3_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 54.0
+      y: 16.0
+    end_mm:
+      x: 51.0
+      y: 24.0
+    route_classes: *id055
+    source_domains: *id056
+    controlled_impedance_targets_ohm: *id057
+  - index: 39
+    route_id: DISPLAY_DSI3_N
+    net: DSI_D3_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 52.5
+      y: 8.0
+    end_mm:
+      x: 54.5
+      y: 16.0
+    route_classes: &id058
+    - mipi_dphy_diff
+    source_domains: &id059
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id060
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 40
+    route_id: DISPLAY_DSI3_N
+    net: DSI_D3_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 54.5
+      y: 16.0
+    end_mm:
+      x: 51.5
+      y: 24.0
+    route_classes: *id058
+    source_domains: *id059
+    controlled_impedance_targets_ohm: *id060
+  - index: 41
+    route_id: DISPLAY_RESET
+    net: DISP_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 53.0
+      y: 8.0
+    end_mm:
+      x: 53.0
+      y: 20.5
+    route_classes: &id061
+    - display_camera_control
+    source_domains: &id062
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id063 []
+  - index: 42
+    route_id: DISPLAY_RESET
+    net: DISP_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 53.0
+      y: 20.5
+    end_mm:
+      x: 43.6
+      y: 26.2
+    route_classes: *id061
+    source_domains: *id062
+    controlled_impedance_targets_ohm: *id063
+  - index: 43
+    route_id: DISPLAY_TE
+    net: DISP_TE
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 53.5
+      y: 8.0
+    end_mm:
+      x: 54.0
+      y: 20.5
+    route_classes: &id064
+    - display_camera_control
+    source_domains: &id065
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id066 []
+  - index: 44
+    route_id: DISPLAY_TE
+    net: DISP_TE
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.0
+      y: 20.5
+    end_mm:
+      x: 44.4
+      y: 26.2
+    route_classes: *id064
+    source_domains: *id065
+    controlled_impedance_targets_ohm: *id066
+  - index: 45
+    route_id: TOUCH_I2C_SCL
+    net: TOUCH_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.0
+      y: 8.0
+    end_mm:
+      x: 55.0
+      y: 20.5
+    route_classes: &id067
+    - display_camera_control
+    source_domains: &id068
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id069 []
+  - index: 46
+    route_id: TOUCH_I2C_SCL
+    net: TOUCH_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 55.0
+      y: 20.5
+    end_mm:
+      x: 45.2
+      y: 26.2
+    route_classes: *id067
+    source_domains: *id068
+    controlled_impedance_targets_ohm: *id069
+  - index: 47
+    route_id: TOUCH_I2C_SDA
+    net: TOUCH_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.5
+      y: 8.0
+    end_mm:
+      x: 56.0
+      y: 20.5
+    route_classes: &id070
+    - display_camera_control
+    source_domains: &id071
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id072 []
+  - index: 48
+    route_id: TOUCH_I2C_SDA
+    net: TOUCH_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 56.0
+      y: 20.5
+    end_mm:
+      x: 46.0
+      y: 26.2
+    route_classes: *id070
+    source_domains: *id071
+    controlled_impedance_targets_ohm: *id072
+  - index: 49
+    route_id: CSI0_P
+    net: CAM0_CSI_D0_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 30.0
+      y: 8.0
+    end_mm:
+      x: 29.0
+      y: 14.0
+    route_classes: &id073
+    - mipi_dphy_diff
+    source_domains: &id074
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id075
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 50
+    route_id: CSI0_P
+    net: CAM0_CSI_D0_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 29.0
+      y: 14.0
+    end_mm:
+      x: 28.0
+      y: 22.0
+    route_classes: *id073
+    source_domains: *id074
+    controlled_impedance_targets_ohm: *id075
+  - index: 51
+    route_id: CSI0_N
+    net: CAM0_CSI_D0_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 30.5
+      y: 8.0
+    end_mm:
+      x: 29.5
+      y: 14.0
+    route_classes: &id076
+    - mipi_dphy_diff
+    source_domains: &id077
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id078
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 52
+    route_id: CSI0_N
+    net: CAM0_CSI_D0_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 29.5
+      y: 14.0
+    end_mm:
+      x: 28.5
+      y: 22.0
+    route_classes: *id076
+    source_domains: *id077
+    controlled_impedance_targets_ohm: *id078
+  - index: 53
+    route_id: CSI0_CLK_P
+    net: CAM0_CSI_CLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 31.0
+      y: 8.0
+    end_mm:
+      x: 32.0
+      y: 14.0
+    route_classes: &id079
+    - mipi_dphy_diff
+    source_domains: &id080
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id081
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 54
+    route_id: CSI0_CLK_P
+    net: CAM0_CSI_CLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.0
+      y: 14.0
+    end_mm:
+      x: 43.2
+      y: 10.8
+    route_classes: *id079
+    source_domains: *id080
+    controlled_impedance_targets_ohm: *id081
+  - index: 55
+    route_id: CSI0_CLK_N
+    net: CAM0_CSI_CLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 31.5
+      y: 8.0
+    end_mm:
+      x: 32.5
+      y: 14.0
+    route_classes: &id082
+    - mipi_dphy_diff
+    source_domains: &id083
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id084
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 56
+    route_id: CSI0_CLK_N
+    net: CAM0_CSI_CLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.5
+      y: 14.0
+    end_mm:
+      x: 43.7
+      y: 10.8
+    route_classes: *id082
+    source_domains: *id083
+    controlled_impedance_targets_ohm: *id084
+  - index: 57
+    route_id: CSI0_D1_P
+    net: CAM0_CSI_D1_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.0
+      y: 8.0
+    end_mm:
+      x: 34.0
+      y: 14.0
+    route_classes: &id085
+    - mipi_dphy_diff
+    source_domains: &id086
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id087
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 58
+    route_id: CSI0_D1_P
+    net: CAM0_CSI_D1_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 34.0
+      y: 14.0
+    end_mm:
+      x: 44.2
+      y: 10.8
+    route_classes: *id085
+    source_domains: *id086
+    controlled_impedance_targets_ohm: *id087
+  - index: 59
+    route_id: CSI0_D1_N
+    net: CAM0_CSI_D1_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.5
+      y: 8.0
+    end_mm:
+      x: 34.5
+      y: 14.0
+    route_classes: &id088
+    - mipi_dphy_diff
+    source_domains: &id089
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id090
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 60
+    route_id: CSI0_D1_N
+    net: CAM0_CSI_D1_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 34.5
+      y: 14.0
+    end_mm:
+      x: 44.7
+      y: 10.8
+    route_classes: *id088
+    source_domains: *id089
+    controlled_impedance_targets_ohm: *id090
+  - index: 61
+    route_id: CSI0_D2_P
+    net: CAM0_CSI_D2_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 33.0
+      y: 8.0
+    end_mm:
+      x: 36.0
+      y: 14.0
+    route_classes: &id091
+    - mipi_dphy_diff
+    source_domains: &id092
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id093
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 62
+    route_id: CSI0_D2_P
+    net: CAM0_CSI_D2_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 36.0
+      y: 14.0
+    end_mm:
+      x: 45.2
+      y: 10.8
+    route_classes: *id091
+    source_domains: *id092
+    controlled_impedance_targets_ohm: *id093
+  - index: 63
+    route_id: CSI0_D2_N
+    net: CAM0_CSI_D2_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 33.5
+      y: 8.0
+    end_mm:
+      x: 36.5
+      y: 14.0
+    route_classes: &id094
+    - mipi_dphy_diff
+    source_domains: &id095
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id096
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 64
+    route_id: CSI0_D2_N
+    net: CAM0_CSI_D2_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 36.5
+      y: 14.0
+    end_mm:
+      x: 45.7
+      y: 10.8
+    route_classes: *id094
+    source_domains: *id095
+    controlled_impedance_targets_ohm: *id096
+  - index: 65
+    route_id: CSI0_D3_P
+    net: CAM0_CSI_D3_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 34.0
+      y: 8.0
+    end_mm:
+      x: 38.0
+      y: 14.0
+    route_classes: &id097
+    - mipi_dphy_diff
+    source_domains: &id098
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id099
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 66
+    route_id: CSI0_D3_P
+    net: CAM0_CSI_D3_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 38.0
+      y: 14.0
+    end_mm:
+      x: 46.2
+      y: 10.8
+    route_classes: *id097
+    source_domains: *id098
+    controlled_impedance_targets_ohm: *id099
+  - index: 67
+    route_id: CSI0_D3_N
+    net: CAM0_CSI_D3_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 34.5
+      y: 8.0
+    end_mm:
+      x: 38.5
+      y: 14.0
+    route_classes: &id100
+    - mipi_dphy_diff
+    source_domains: &id101
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id102
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 68
+    route_id: CSI0_D3_N
+    net: CAM0_CSI_D3_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 38.5
+      y: 14.0
+    end_mm:
+      x: 46.7
+      y: 10.8
+    route_classes: *id100
+    source_domains: *id101
+    controlled_impedance_targets_ohm: *id102
+  - index: 69
+    route_id: CSI1_CLK_P
+    net: CAM1_CSI_CLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 35.0
+      y: 8.0
+    end_mm:
+      x: 38.0
+      y: 17.0
+    route_classes: &id103
+    - mipi_dphy_diff
+    source_domains: &id104
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id105
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 70
+    route_id: CSI1_CLK_P
+    net: CAM1_CSI_CLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 38.0
+      y: 17.0
+    end_mm:
+      x: 43.2
+      y: 14.8
+    route_classes: *id103
+    source_domains: *id104
+    controlled_impedance_targets_ohm: *id105
+  - index: 71
+    route_id: CSI1_CLK_N
+    net: CAM1_CSI_CLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 35.5
+      y: 8.0
+    end_mm:
+      x: 38.5
+      y: 17.0
+    route_classes: &id106
+    - mipi_dphy_diff
+    source_domains: &id107
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id108
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 72
+    route_id: CSI1_CLK_N
+    net: CAM1_CSI_CLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 38.5
+      y: 17.0
+    end_mm:
+      x: 43.7
+      y: 14.8
+    route_classes: *id106
+    source_domains: *id107
+    controlled_impedance_targets_ohm: *id108
+  - index: 73
+    route_id: CSI1_D0_P
+    net: CAM1_CSI_D0_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 36.0
+      y: 8.0
+    end_mm:
+      x: 40.0
+      y: 17.0
+    route_classes: &id109
+    - mipi_dphy_diff
+    source_domains: &id110
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id111
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 74
+    route_id: CSI1_D0_P
+    net: CAM1_CSI_D0_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 40.0
+      y: 17.0
+    end_mm:
+      x: 44.2
+      y: 14.8
+    route_classes: *id109
+    source_domains: *id110
+    controlled_impedance_targets_ohm: *id111
+  - index: 75
+    route_id: CSI1_D0_N
+    net: CAM1_CSI_D0_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 36.5
+      y: 8.0
+    end_mm:
+      x: 40.5
+      y: 17.0
+    route_classes: &id112
+    - mipi_dphy_diff
+    source_domains: &id113
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id114
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 76
+    route_id: CSI1_D0_N
+    net: CAM1_CSI_D0_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 40.5
+      y: 17.0
+    end_mm:
+      x: 44.7
+      y: 14.8
+    route_classes: *id112
+    source_domains: *id113
+    controlled_impedance_targets_ohm: *id114
+  - index: 77
+    route_id: CSI1_D1_P
+    net: CAM1_CSI_D1_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 37.0
+      y: 8.0
+    end_mm:
+      x: 42.0
+      y: 17.0
+    route_classes: &id115
+    - mipi_dphy_diff
+    source_domains: &id116
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id117
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 78
+    route_id: CSI1_D1_P
+    net: CAM1_CSI_D1_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 42.0
+      y: 17.0
+    end_mm:
+      x: 45.2
+      y: 14.8
+    route_classes: *id115
+    source_domains: *id116
+    controlled_impedance_targets_ohm: *id117
+  - index: 79
+    route_id: CSI1_D1_N
+    net: CAM1_CSI_D1_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 37.5
+      y: 8.0
+    end_mm:
+      x: 42.5
+      y: 17.0
+    route_classes: &id118
+    - mipi_dphy_diff
+    source_domains: &id119
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id120
+    - constraint: mipi_dphy_diff_impedance_ohm
+      value: 100
+  - index: 80
+    route_id: CSI1_D1_N
+    net: CAM1_CSI_D1_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 42.5
+      y: 17.0
+    end_mm:
+      x: 45.7
+      y: 14.8
+    route_classes: *id118
+    source_domains: *id119
+    controlled_impedance_targets_ohm: *id120
+  - index: 81
+    route_id: CAM0_MCLK
+    net: CAM0_MCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 38.0
+      y: 8.0
+    end_mm:
+      x: 43.2
+      y: 18.7
+    route_classes: &id121
+    - display_camera_control
+    source_domains: &id122
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id123 []
+  - index: 82
+    route_id: CAM0_MCLK
+    net: CAM0_MCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 43.2
+      y: 18.7
+    end_mm:
+      x: 43.2
+      y: 22.6
+    route_classes: *id121
+    source_domains: *id122
+    controlled_impedance_targets_ohm: *id123
+  - index: 83
+    route_id: CAM1_MCLK
+    net: CAM1_MCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 38.5
+      y: 8.0
+    end_mm:
+      x: 44.2
+      y: 18.7
+    route_classes: &id124
+    - display_camera_control
+    source_domains: &id125
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id126 []
+  - index: 84
+    route_id: CAM1_MCLK
+    net: CAM1_MCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 44.2
+      y: 18.7
+    end_mm:
+      x: 44.2
+      y: 22.6
+    route_classes: *id124
+    source_domains: *id125
+    controlled_impedance_targets_ohm: *id126
+  - index: 85
+    route_id: CELL_MAIN_RF
+    net: CELL_RF_MAIN
+    layer: F.Cu
+    width_mm: 0.22
+    start_mm:
+      x: 7.0
+      y: 6.7
+    end_mm:
+      x: 12.2
+      y: 6.7
+    route_classes: &id127
+    - rf_single
+    source_domains: &id128
+    - cellular_wifi_bt_rf_host
+    - factory_test_fiducials_and_manufacturing_coupons
+    controlled_impedance_targets_ohm: &id129
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 86
+    route_id: CELL_MAIN_RF
+    net: CELL_RF_MAIN
+    layer: F.Cu
+    width_mm: 0.22
+    start_mm:
+      x: 12.2
+      y: 6.7
+    end_mm:
+      x: 17.0
+      y: 4.2
+    route_classes: *id127
+    source_domains: *id128
+    controlled_impedance_targets_ohm: *id129
+  - index: 87
+    route_id: CELL_DIV_RF
+    net: CELL_RF_DIV
+    layer: F.Cu
+    width_mm: 0.22
+    start_mm:
+      x: 13.2
+      y: 6.7
+    end_mm:
+      x: 18.4
+      y: 6.7
+    route_classes: &id130
+    - rf_single
+    source_domains: &id131
+    - cellular_wifi_bt_rf_host
+    - factory_test_fiducials_and_manufacturing_coupons
+    controlled_impedance_targets_ohm: &id132
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 88
+    route_id: CELL_DIV_RF
+    net: CELL_RF_DIV
+    layer: F.Cu
+    width_mm: 0.22
+    start_mm:
+      x: 18.4
+      y: 6.7
+    end_mm:
+      x: 22.0
+      y: 4.2
+    route_classes: *id130
+    source_domains: *id131
+    controlled_impedance_targets_ohm: *id132
+  - index: 89
+    route_id: GNSS_RF
+    net: CELL_GNSS_RF
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 55.0
+      y: 6.7
+    end_mm:
+      x: 59.0
+      y: 6.7
+    route_classes: &id133
+    - rf_single
+    source_domains: &id134
+    - cellular_wifi_bt_rf_host
+    - factory_test_fiducials_and_manufacturing_coupons
+    controlled_impedance_targets_ohm: &id135
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 90
+    route_id: GNSS_RF
+    net: CELL_GNSS_RF
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 59.0
+      y: 6.7
+    end_mm:
+      x: 61.0
+      y: 4.2
+    route_classes: *id133
+    source_domains: *id134
+    controlled_impedance_targets_ohm: *id135
+  - index: 91
+    route_id: CELL_USB2_DP
+    net: CELL_USB2_DP
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 12.0
+      y: 12.0
+    end_mm:
+      x: 18.0
+      y: 13.0
+    route_classes: &id136
+    - usb2_diff
+    source_domains: &id137
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id138 []
+  - index: 92
+    route_id: CELL_USB2_DP
+    net: CELL_USB2_DP
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 18.0
+      y: 13.0
+    end_mm:
+      x: 30.0
+      y: 10.0
+    route_classes: *id136
+    source_domains: *id137
+    controlled_impedance_targets_ohm: *id138
+  - index: 93
+    route_id: CELL_USB2_DN
+    net: CELL_USB2_DN
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 12.5
+      y: 12.5
+    end_mm:
+      x: 18.5
+      y: 13.5
+    route_classes: &id139
+    - usb2_diff
+    source_domains: &id140
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id141 []
+  - index: 94
+    route_id: CELL_USB2_DN
+    net: CELL_USB2_DN
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 18.5
+      y: 13.5
+    end_mm:
+      x: 30.5
+      y: 10.5
+    route_classes: *id139
+    source_domains: *id140
+    controlled_impedance_targets_ohm: *id141
+  - index: 95
+    route_id: CELL_PCIE_TX_P
+    net: CELL_PCIE_TX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 13.0
+      y: 13.0
+    end_mm:
+      x: 20.0
+      y: 15.0
+    route_classes: &id142
+    - pcie_diff
+    source_domains: &id143
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id144
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 96
+    route_id: CELL_PCIE_TX_P
+    net: CELL_PCIE_TX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 20.0
+      y: 15.0
+    end_mm:
+      x: 31.0
+      y: 11.0
+    route_classes: *id142
+    source_domains: *id143
+    controlled_impedance_targets_ohm: *id144
+  - index: 97
+    route_id: CELL_PCIE_TX_N
+    net: CELL_PCIE_TX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 13.5
+      y: 13.5
+    end_mm:
+      x: 20.5
+      y: 15.5
+    route_classes: &id145
+    - pcie_diff
+    source_domains: &id146
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id147
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 98
+    route_id: CELL_PCIE_TX_N
+    net: CELL_PCIE_TX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 20.5
+      y: 15.5
+    end_mm:
+      x: 31.5
+      y: 11.5
+    route_classes: *id145
+    source_domains: *id146
+    controlled_impedance_targets_ohm: *id147
+  - index: 99
+    route_id: CELL_PCIE_RX_P
+    net: CELL_PCIE_RX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 14.0
+      y: 14.0
+    end_mm:
+      x: 22.0
+      y: 17.0
+    route_classes: &id148
+    - pcie_diff
+    source_domains: &id149
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id150
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 100
+    route_id: CELL_PCIE_RX_P
+    net: CELL_PCIE_RX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 22.0
+      y: 17.0
+    end_mm:
+      x: 32.0
+      y: 12.0
+    route_classes: *id148
+    source_domains: *id149
+    controlled_impedance_targets_ohm: *id150
+  - index: 101
+    route_id: CELL_PCIE_RX_N
+    net: CELL_PCIE_RX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 14.5
+      y: 14.5
+    end_mm:
+      x: 22.5
+      y: 17.5
+    route_classes: &id151
+    - pcie_diff
+    source_domains: &id152
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id153
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 102
+    route_id: CELL_PCIE_RX_N
+    net: CELL_PCIE_RX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 22.5
+      y: 17.5
+    end_mm:
+      x: 32.5
+      y: 12.5
+    route_classes: *id151
+    source_domains: *id152
+    controlled_impedance_targets_ohm: *id153
+  - index: 103
+    route_id: CELL_RESET
+    net: CELL_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 15.0
+      y: 15.0
+    end_mm:
+      x: 25.0
+      y: 18.5
+    route_classes: &id154
+    - wireless_control_bt_uart
+    source_domains: &id155
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id156 []
+  - index: 104
+    route_id: CELL_RESET
+    net: CELL_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 25.0
+      y: 18.5
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id154
+    source_domains: *id155
+    controlled_impedance_targets_ohm: *id156
+  - index: 105
+    route_id: CELL_DISABLE
+    net: CELL_W_DISABLE_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 15.5
+      y: 15.5
+    end_mm:
+      x: 25.5
+      y: 19.5
+    route_classes: &id157
+    - wireless_control_bt_uart
+    source_domains: &id158
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id159 []
+  - index: 106
+    route_id: CELL_DISABLE
+    net: CELL_W_DISABLE_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 25.5
+      y: 19.5
+    end_mm:
+      x: 39.0
+      y: 29.0
+    route_classes: *id157
+    source_domains: *id158
+    controlled_impedance_targets_ohm: *id159
+  - index: 107
+    route_id: WIFI_RF0
+    net: WIFI_BT_RF0
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 10.0
+      y: 21.5
+    end_mm:
+      x: 10.0
+      y: 25.5
+    route_classes: &id160
+    - rf_single
+    - test_access
+    source_domains: &id161
+    - cellular_wifi_bt_rf_host
+    - factory_test_fiducials_and_manufacturing_coupons
+    controlled_impedance_targets_ohm: &id162
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 108
+    route_id: WIFI_RF0
+    net: WIFI_BT_RF0
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 10.0
+      y: 25.5
+    end_mm:
+      x: 18.0
+      y: 27.0
+    route_classes: *id160
+    source_domains: *id161
+    controlled_impedance_targets_ohm: *id162
+  - index: 109
+    route_id: WIFI_RF1
+    net: WIFI_BT_RF1
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 15.0
+      y: 21.5
+    end_mm:
+      x: 15.0
+      y: 25.5
+    route_classes: &id163
+    - rf_single
+    - test_access
+    source_domains: &id164
+    - cellular_wifi_bt_rf_host
+    - factory_test_fiducials_and_manufacturing_coupons
+    controlled_impedance_targets_ohm: &id165
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 110
+    route_id: WIFI_RF1
+    net: WIFI_BT_RF1
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 15.0
+      y: 25.5
+    end_mm:
+      x: 23.0
+      y: 27.0
+    route_classes: *id163
+    source_domains: *id164
+    controlled_impedance_targets_ohm: *id165
+  - index: 111
+    route_id: WIFI_PCIE_TX_P
+    net: WIFI_PCIE_TX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 17.0
+      y: 23.0
+    end_mm:
+      x: 22.0
+      y: 20.0
+    route_classes: &id166
+    - pcie_diff
+    source_domains: &id167
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id168
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 112
+    route_id: WIFI_PCIE_TX_P
+    net: WIFI_PCIE_TX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 22.0
+      y: 20.0
+    end_mm:
+      x: 30.0
+      y: 12.0
+    route_classes: *id166
+    source_domains: *id167
+    controlled_impedance_targets_ohm: *id168
+  - index: 113
+    route_id: WIFI_PCIE_TX_N
+    net: WIFI_PCIE_TX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 17.5
+      y: 23.5
+    end_mm:
+      x: 22.5
+      y: 20.5
+    route_classes: &id169
+    - pcie_diff
+    source_domains: &id170
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id171
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 114
+    route_id: WIFI_PCIE_TX_N
+    net: WIFI_PCIE_TX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 22.5
+      y: 20.5
+    end_mm:
+      x: 30.5
+      y: 12.5
+    route_classes: *id169
+    source_domains: *id170
+    controlled_impedance_targets_ohm: *id171
+  - index: 115
+    route_id: WIFI_PCIE_RX_P
+    net: WIFI_PCIE_RX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 18.0
+      y: 24.0
+    end_mm:
+      x: 24.0
+      y: 22.0
+    route_classes: &id172
+    - pcie_diff
+    source_domains: &id173
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id174
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 116
+    route_id: WIFI_PCIE_RX_P
+    net: WIFI_PCIE_RX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 24.0
+      y: 22.0
+    end_mm:
+      x: 31.0
+      y: 13.0
+    route_classes: *id172
+    source_domains: *id173
+    controlled_impedance_targets_ohm: *id174
+  - index: 117
+    route_id: WIFI_PCIE_RX_N
+    net: WIFI_PCIE_RX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 18.5
+      y: 24.5
+    end_mm:
+      x: 24.5
+      y: 22.5
+    route_classes: &id175
+    - pcie_diff
+    source_domains: &id176
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id177
+    - constraint: pcie_diff_impedance_ohm
+      value: 85
+  - index: 118
+    route_id: WIFI_PCIE_RX_N
+    net: WIFI_PCIE_RX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 24.5
+      y: 22.5
+    end_mm:
+      x: 31.5
+      y: 13.5
+    route_classes: *id175
+    source_domains: *id176
+    controlled_impedance_targets_ohm: *id177
+  - index: 119
+    route_id: WIFI_ENABLE
+    net: WIFI_EN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 19.0
+      y: 25.0
+    end_mm:
+      x: 29.0
+      y: 24.0
+    route_classes: &id178
+    - wireless_control_bt_uart
+    source_domains: &id179
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id180 []
+  - index: 120
+    route_id: WIFI_ENABLE
+    net: WIFI_EN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 29.0
+      y: 24.0
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id178
+    source_domains: *id179
+    controlled_impedance_targets_ohm: *id180
+  - index: 121
+    route_id: BT_ENABLE
+    net: BT_EN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 19.5
+      y: 25.5
+    end_mm:
+      x: 29.5
+      y: 25.0
+    route_classes: &id181
+    - wireless_control_bt_uart
+    source_domains: &id182
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id183 []
+  - index: 122
+    route_id: BT_ENABLE
+    net: BT_EN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 29.5
+      y: 25.0
+    end_mm:
+      x: 39.0
+      y: 29.0
+    route_classes: *id181
+    source_domains: *id182
+    controlled_impedance_targets_ohm: *id183
+  - index: 123
+    route_id: UFS_TX_P
+    net: UFS_TX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 31.0
+      y: 10.0
+    end_mm:
+      x: 36.0
+      y: 8.0
+    route_classes: &id184
+    - ufs_mphy
+    source_domains: &id185
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id186 []
+  - index: 124
+    route_id: UFS_TX_P
+    net: UFS_TX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 36.0
+      y: 8.0
+    end_mm:
+      x: 40.5
+      y: 7.8
+    route_classes: *id184
+    source_domains: *id185
+    controlled_impedance_targets_ohm: *id186
+  - index: 125
+    route_id: UFS_TX_N
+    net: UFS_TX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 31.5
+      y: 10.5
+    end_mm:
+      x: 36.5
+      y: 8.5
+    route_classes: &id187
+    - ufs_mphy
+    source_domains: &id188
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id189 []
+  - index: 126
+    route_id: UFS_TX_N
+    net: UFS_TX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 36.5
+      y: 8.5
+    end_mm:
+      x: 41.0
+      y: 7.8
+    route_classes: *id187
+    source_domains: *id188
+    controlled_impedance_targets_ohm: *id189
+  - index: 127
+    route_id: UFS_RX_P
+    net: UFS_RX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.0
+      y: 11.0
+    end_mm:
+      x: 37.0
+      y: 9.0
+    route_classes: &id190
+    - ufs_mphy
+    source_domains: &id191
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id192 []
+  - index: 128
+    route_id: UFS_RX_P
+    net: UFS_RX_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 37.0
+      y: 9.0
+    end_mm:
+      x: 41.5
+      y: 7.8
+    route_classes: *id190
+    source_domains: *id191
+    controlled_impedance_targets_ohm: *id192
+  - index: 129
+    route_id: UFS_RX_N
+    net: UFS_RX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.5
+      y: 11.5
+    end_mm:
+      x: 37.5
+      y: 9.5
+    route_classes: &id193
+    - ufs_mphy
+    source_domains: &id194
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id195 []
+  - index: 130
+    route_id: UFS_RX_N
+    net: UFS_RX_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 37.5
+      y: 9.5
+    end_mm:
+      x: 42.0
+      y: 7.8
+    route_classes: *id193
+    source_domains: *id194
+    controlled_impedance_targets_ohm: *id195
+  - index: 131
+    route_id: LPDDR_CK_P
+    net: LPDDR_CK_P
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 29.0
+      y: 10.0
+    end_mm:
+      x: 27.0
+      y: 8.5
+    route_classes: &id196
+    - lpddr
+    source_domains: &id197
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id198 []
+  - index: 132
+    route_id: LPDDR_CK_P
+    net: LPDDR_CK_P
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 27.0
+      y: 8.5
+    end_mm:
+      x: 25.5
+      y: 7.8
+    route_classes: *id196
+    source_domains: *id197
+    controlled_impedance_targets_ohm: *id198
+  - index: 133
+    route_id: LPDDR_CK_N
+    net: LPDDR_CK_N
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 29.5
+      y: 10.5
+    end_mm:
+      x: 27.5
+      y: 9.0
+    route_classes: &id199
+    - lpddr
+    source_domains: &id200
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id201 []
+  - index: 134
+    route_id: LPDDR_CK_N
+    net: LPDDR_CK_N
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 27.5
+      y: 9.0
+    end_mm:
+      x: 26.0
+      y: 7.8
+    route_classes: *id199
+    source_domains: *id200
+    controlled_impedance_targets_ohm: *id201
+  - index: 135
+    route_id: LPDDR_DQS_P
+    net: LPDDR_DQS_P
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 30.0
+      y: 11.0
+    end_mm:
+      x: 32.0
+      y: 8.5
+    route_classes: &id202
+    - lpddr
+    source_domains: &id203
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id204 []
+  - index: 136
+    route_id: LPDDR_DQS_P
+    net: LPDDR_DQS_P
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 32.0
+      y: 8.5
+    end_mm:
+      x: 35.5
+      y: 7.8
+    route_classes: *id202
+    source_domains: *id203
+    controlled_impedance_targets_ohm: *id204
+  - index: 137
+    route_id: LPDDR_DQS_N
+    net: LPDDR_DQS_N
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 30.5
+      y: 11.5
+    end_mm:
+      x: 32.5
+      y: 9.0
+    route_classes: &id205
+    - lpddr
+    source_domains: &id206
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id207 []
+  - index: 138
+    route_id: LPDDR_DQS_N
+    net: LPDDR_DQS_N
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 32.5
+      y: 9.0
+    end_mm:
+      x: 36.0
+      y: 7.8
+    route_classes: *id205
+    source_domains: *id206
+    controlled_impedance_targets_ohm: *id207
+  - index: 139
+    route_id: NFC_I2C_SCL
+    net: NFC_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 51.0
+      y: 127.2
+    end_mm:
+      x: 45.0
+      y: 122.5
+    route_classes: &id208
+    - sim_nfc_sensor
+    source_domains: &id209
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id210 []
+  - index: 140
+    route_id: NFC_I2C_SCL
+    net: NFC_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 45.0
+      y: 122.5
+    end_mm:
+      x: 39.0
+      y: 127.2
+    route_classes: *id208
+    source_domains: *id209
+    controlled_impedance_targets_ohm: *id210
+  - index: 141
+    route_id: NFC_I2C_SDA
+    net: NFC_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 51.5
+      y: 127.6
+    end_mm:
+      x: 45.5
+      y: 123.0
+    route_classes: &id211
+    - sim_nfc_sensor
+    source_domains: &id212
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id213 []
+  - index: 142
+    route_id: NFC_I2C_SDA
+    net: NFC_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 45.5
+      y: 123.0
+    end_mm:
+      x: 39.5
+      y: 127.2
+    route_classes: *id211
+    source_domains: *id212
+    controlled_impedance_targets_ohm: *id213
+  - index: 143
+    route_id: NFC_IRQ
+    net: NFC_IRQ_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 51.8
+      y: 124.4
+    end_mm:
+      x: 50.0
+      y: 123.0
+    route_classes: &id214
+    - sim_nfc_sensor
+    source_domains: &id215
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id216 []
+  - index: 144
+    route_id: NFC_IRQ
+    net: NFC_IRQ_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 50.0
+      y: 123.0
+    end_mm:
+      x: 40.0
+      y: 127.2
+    route_classes: *id214
+    source_domains: *id215
+    controlled_impedance_targets_ohm: *id216
+  - index: 145
+    route_id: NFC_ENABLE
+    net: NFC_EN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 52.2
+      y: 124.4
+    end_mm:
+      x: 51.0
+      y: 123.0
+    route_classes: &id217
+    - sim_nfc_sensor
+    source_domains: &id218
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id219 []
+  - index: 146
+    route_id: NFC_ENABLE
+    net: NFC_EN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 51.0
+      y: 123.0
+    end_mm:
+      x: 40.5
+      y: 127.2
+    route_classes: *id217
+    source_domains: *id218
+    controlled_impedance_targets_ohm: *id219
+  - index: 147
+    route_id: NFC_RF_P_LOOP
+    net: NFC_RF_P
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 52.8
+      y: 124.4
+    end_mm:
+      x: 52.8
+      y: 128.7
+    route_classes: &id220
+    - sim_nfc_sensor
+    source_domains: &id221
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id222 []
+  - index: 148
+    route_id: NFC_RF_P_LOOP
+    net: NFC_RF_P
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 52.8
+      y: 128.7
+    end_mm:
+      x: 49.8
+      y: 130.2
+    route_classes: *id220
+    source_domains: *id221
+    controlled_impedance_targets_ohm: *id222
+  - index: 149
+    route_id: NFC_RF_N_LOOP
+    net: NFC_RF_N
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 53.8
+      y: 125.4
+    end_mm:
+      x: 53.8
+      y: 129.2
+    route_classes: &id223
+    - sim_nfc_sensor
+    source_domains: &id224
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id225 []
+  - index: 150
+    route_id: NFC_RF_N_LOOP
+    net: NFC_RF_N
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 53.8
+      y: 129.2
+    end_mm:
+      x: 52.2
+      y: 130.2
+    route_classes: *id223
+    source_domains: *id224
+    controlled_impedance_targets_ohm: *id225
+  - index: 151
+    route_id: SENSOR_I2C_SCL
+    net: SENSOR_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 11.5
+      y: 17.0
+    end_mm:
+      x: 18.0
+      y: 20.0
+    route_classes: &id226
+    - sim_nfc_sensor
+    source_domains: &id227
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id228 []
+  - index: 152
+    route_id: SENSOR_I2C_SCL
+    net: SENSOR_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 18.0
+      y: 20.0
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id226
+    source_domains: *id227
+    controlled_impedance_targets_ohm: *id228
+  - index: 153
+    route_id: SENSOR_I2C_SDA
+    net: SENSOR_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 12.0
+      y: 17.5
+    end_mm:
+      x: 18.5
+      y: 20.5
+    route_classes: &id229
+    - sim_nfc_sensor
+    source_domains: &id230
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id231 []
+  - index: 154
+    route_id: SENSOR_I2C_SDA
+    net: SENSOR_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 18.5
+      y: 20.5
+    end_mm:
+      x: 39.0
+      y: 29.0
+    route_classes: *id229
+    source_domains: *id230
+    controlled_impedance_targets_ohm: *id231
+  - index: 155
+    route_id: AON_1V8_TP
+    net: AON_1V8
+    layer: F.Cu
+    width_mm: 0.2
+    start_mm:
+      x: 18.0
+      y: 28.8
+    end_mm:
+      x: 27.6
+      y: 121.0
+    route_classes: &id232
+    - high_current_power
+    - test_access
+    source_domains: &id233
+    - factory_test_fiducials_and_manufacturing_coupons
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id234 []
+  - index: 156
+    route_id: AON_1V8_TP
+    net: AON_1V8
+    layer: F.Cu
+    width_mm: 0.2
+    start_mm:
+      x: 27.6
+      y: 121.0
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id232
+    source_domains: *id233
+    controlled_impedance_targets_ohm: *id234
+  - index: 157
+    route_id: IO_1V8_TP
+    net: IO_1V8
+    layer: F.Cu
+    width_mm: 0.2
+    start_mm:
+      x: 24.5
+      y: 22.0
+    end_mm:
+      x: 34.8
+      y: 118.0
+    route_classes: &id235
+    - camera_power
+    - display_bias_power
+    - test_access
+    source_domains: &id236
+    - display_touch_mipi_dsi
+    - factory_test_fiducials_and_manufacturing_coupons
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id237 []
+  - index: 158
+    route_id: IO_1V8_TP
+    net: IO_1V8
+    layer: F.Cu
+    width_mm: 0.2
+    start_mm:
+      x: 34.8
+      y: 118.0
+    end_mm:
+      x: 38.5
+      y: 29.0
+    route_classes: *id235
+    source_domains: *id236
+    controlled_impedance_targets_ohm: *id237
+  - index: 159
+    route_id: RF_VBAT_TP
+    net: RF_VBAT
+    layer: F.Cu
+    width_mm: 0.28
+    start_mm:
+      x: 31.2
+      y: 22.8
+    end_mm:
+      x: 42.0
+      y: 121.0
+    route_classes: &id238
+    - power
+    source_domains: &id239
+    - factory_test_fiducials_and_manufacturing_coupons
+    controlled_impedance_targets_ohm: &id240 []
+  - index: 160
+    route_id: RF_VBAT_TP
+    net: RF_VBAT
+    layer: F.Cu
+    width_mm: 0.28
+    start_mm:
+      x: 42.0
+      y: 121.0
+    end_mm:
+      x: 10.0
+      y: 10.0
+    route_classes: *id238
+    source_domains: *id239
+    controlled_impedance_targets_ohm: *id240
+  - index: 161
+    route_id: SPEAKER_P
+    net: SPK_P
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 15.0
+      y: 121.0
+    end_mm:
+      x: 21.0
+      y: 121.0
+    route_classes: &id241
+    - audio_control_aon
+    source_domains: &id242
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id243 []
+  - index: 162
+    route_id: SPEAKER_P
+    net: SPK_P
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 21.0
+      y: 121.0
+    end_mm:
+      x: 25.0
+      y: 126.0
+    route_classes: *id241
+    source_domains: *id242
+    controlled_impedance_targets_ohm: *id243
+  - index: 163
+    route_id: SPEAKER_N
+    net: SPK_N
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 15.5
+      y: 122.0
+    end_mm:
+      x: 22.0
+      y: 122.0
+    route_classes: &id244
+    - audio_control_aon
+    source_domains: &id245
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id246 []
+  - index: 164
+    route_id: SPEAKER_N
+    net: SPK_N
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 22.0
+      y: 122.0
+    end_mm:
+      x: 26.0
+      y: 126.0
+    route_classes: *id244
+    source_domains: *id245
+    controlled_impedance_targets_ohm: *id246
+  - index: 165
+    route_id: HAPTIC_OUT_A
+    net: HAPTIC_OUT
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 46.0
+      y: 118.0
+    end_mm:
+      x: 51.0
+      y: 119.5
+    route_classes: &id247
+    - audio_control_aon
+    source_domains: &id248
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id249 []
+  - index: 166
+    route_id: HAPTIC_OUT_A
+    net: HAPTIC_OUT
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 51.0
+      y: 119.5
+    end_mm:
+      x: 55.0
+      y: 122.0
+    route_classes: *id247
+    source_domains: *id248
+    controlled_impedance_targets_ohm: *id249
+  - index: 167
+    route_id: HAPTIC_OUT_B
+    net: HAPTIC_OUT
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 47.0
+      y: 119.0
+    end_mm:
+      x: 52.0
+      y: 120.5
+    route_classes: *id247
+    source_domains: *id248
+    controlled_impedance_targets_ohm: *id249
+  - index: 168
+    route_id: HAPTIC_OUT_B
+    net: HAPTIC_OUT
+    layer: F.Cu
+    width_mm: 0.16
+    start_mm:
+      x: 52.0
+      y: 120.5
+    end_mm:
+      x: 56.0
+      y: 123.0
+    route_classes: *id247
+    source_domains: *id248
+    controlled_impedance_targets_ohm: *id249
+  - index: 169
+    route_id: GND_STITCH_TOP
+    net: GND
+    layer: F.Cu
+    width_mm: 0.3
+    start_mm:
+      x: 4.0
+      y: 4.0
+    end_mm:
+      x: 30.0
+      y: 4.0
+    route_classes: &id250
+    - high_current_power
+    source_domains: &id251
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id252 []
+  - index: 170
+    route_id: GND_STITCH_TOP
+    net: GND
+    layer: F.Cu
+    width_mm: 0.3
+    start_mm:
+      x: 30.0
+      y: 4.0
+    end_mm:
+      x: 60.0
+      y: 4.0
+    route_classes: *id250
+    source_domains: *id251
+    controlled_impedance_targets_ohm: *id252
+  - index: 171
+    route_id: GND_STITCH_BOTTOM
+    net: GND
+    layer: F.Cu
+    width_mm: 0.3
+    start_mm:
+      x: 8.0
+      y: 124.0
+    end_mm:
+      x: 34.0
+      y: 126.0
+    route_classes: *id250
+    source_domains: *id251
+    controlled_impedance_targets_ohm: *id252
+  - index: 172
+    route_id: GND_STITCH_BOTTOM
+    net: GND
+    layer: F.Cu
+    width_mm: 0.3
+    start_mm:
+      x: 34.0
+      y: 126.0
+    end_mm:
+      x: 56.0
+      y: 124.0
+    route_classes: *id250
+    source_domains: *id251
+    controlled_impedance_targets_ohm: *id252
+  - index: 173
+    route_id: SHIELD_GND_USB
+    net: SHIELD_GND
+    layer: F.Cu
+    width_mm: 0.3
+    start_mm:
+      x: 34.0
+      y: 129.0
+    end_mm:
+      x: 35.0
+      y: 126.0
+    route_classes: &id253
+    - usb2_diff
+    source_domains: &id254
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id255
+    - constraint: usb2_diff_impedance_ohm
+      value: 90
+  - index: 174
+    route_id: SHIELD_GND_USB
+    net: SHIELD_GND
+    layer: F.Cu
+    width_mm: 0.3
+    start_mm:
+      x: 35.0
+      y: 126.0
+    end_mm:
+      x: 37.0
+      y: 121.8
+    route_classes: *id253
+    source_domains: *id254
+    controlled_impedance_targets_ohm: *id255
+  - index: 175
+    route_id: BAT_NTC
+    net: BAT_NTC
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 37.0
+      y: 28.0
+    end_mm:
+      x: 54.8
+      y: 24.8
+    route_classes: &id256
+    - high_current_power
+    source_domains: &id257
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id258 []
+  - index: 176
+    route_id: BAT_NTC
+    net: BAT_NTC
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.8
+      y: 24.8
+    end_mm:
+      x: 43.0
+      y: 112.0
+    route_classes: *id256
+    source_domains: *id257
+    controlled_impedance_targets_ohm: *id258
+  - index: 177
+    route_id: BAT_ID
+    net: BAT_ID
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 37.5
+      y: 28.5
+    end_mm:
+      x: 55.3
+      y: 24.8
+    route_classes: &id259
+    - high_current_power
+    source_domains: &id260
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id261 []
+  - index: 178
+    route_id: BAT_ID
+    net: BAT_ID
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 55.3
+      y: 24.8
+    end_mm:
+      x: 44.0
+      y: 112.0
+    route_classes: *id259
+    source_domains: *id260
+    controlled_impedance_targets_ohm: *id261
+  - index: 179
+    route_id: CHG_IRQ
+    net: CHG_IRQ_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 24.5
+      y: 22.0
+    end_mm:
+      x: 50.5
+      y: 24.8
+    route_classes: &id262
+    - high_current_power
+    source_domains: &id263
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id264 []
+  - index: 180
+    route_id: CHG_IRQ
+    net: CHG_IRQ_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 50.5
+      y: 24.8
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id262
+    source_domains: *id263
+    controlled_impedance_targets_ohm: *id264
+  - index: 181
+    route_id: CHG_I2C_SCL
+    net: CHG_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 25.0
+      y: 22.5
+    end_mm:
+      x: 50.8
+      y: 25.3
+    route_classes: &id265
+    - high_current_power
+    source_domains: &id266
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id267 []
+  - index: 182
+    route_id: CHG_I2C_SCL
+    net: CHG_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 50.8
+      y: 25.3
+    end_mm:
+      x: 38.5
+      y: 29.5
+    route_classes: *id265
+    source_domains: *id266
+    controlled_impedance_targets_ohm: *id267
+  - index: 183
+    route_id: CHG_I2C_SDA
+    net: CHG_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 25.5
+      y: 23.0
+    end_mm:
+      x: 51.1
+      y: 25.8
+    route_classes: &id268
+    - high_current_power
+    source_domains: &id269
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id270 []
+  - index: 184
+    route_id: CHG_I2C_SDA
+    net: CHG_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 51.1
+      y: 25.8
+    end_mm:
+      x: 39.0
+      y: 30.0
+    route_classes: *id268
+    source_domains: *id269
+    controlled_impedance_targets_ohm: *id270
+  - index: 185
+    route_id: USBPD_I2C_SCL
+    net: USBPD_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 34.0
+      y: 121.8
+    end_mm:
+      x: 46.5
+      y: 24.8
+    route_classes: &id271
+    - cc_sbu_control
+    source_domains: &id272
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id273 []
+  - index: 186
+    route_id: USBPD_I2C_SCL
+    net: USBPD_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 46.5
+      y: 24.8
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id271
+    source_domains: *id272
+    controlled_impedance_targets_ohm: *id273
+  - index: 187
+    route_id: USBPD_I2C_SDA
+    net: USBPD_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 34.5
+      y: 121.8
+    end_mm:
+      x: 47.0
+      y: 24.8
+    route_classes: &id274
+    - cc_sbu_control
+    source_domains: &id275
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id276 []
+  - index: 188
+    route_id: USBPD_I2C_SDA
+    net: USBPD_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 47.0
+      y: 24.8
+    end_mm:
+      x: 38.5
+      y: 29.0
+    route_classes: *id274
+    source_domains: *id275
+    controlled_impedance_targets_ohm: *id276
+  - index: 189
+    route_id: USBPD_IRQ
+    net: USBPD_IRQ_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 35.0
+      y: 121.8
+    end_mm:
+      x: 47.5
+      y: 24.8
+    route_classes: &id277
+    - cc_sbu_control
+    source_domains: &id278
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id279 []
+  - index: 190
+    route_id: USBPD_IRQ
+    net: USBPD_IRQ_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 47.5
+      y: 24.8
+    end_mm:
+      x: 39.0
+      y: 29.0
+    route_classes: *id277
+    source_domains: *id278
+    controlled_impedance_targets_ohm: *id279
+  - index: 191
+    route_id: USBPD_RESET
+    net: USBPD_RESET
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 35.5
+      y: 121.8
+    end_mm:
+      x: 48.0
+      y: 24.8
+    route_classes: &id280
+    - cc_sbu_control
+    source_domains: &id281
+    - usb_c_power_sidekey_spine
+    controlled_impedance_targets_ohm: &id282 []
+  - index: 192
+    route_id: USBPD_RESET
+    net: USBPD_RESET
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 48.0
+      y: 24.8
+    end_mm:
+      x: 39.5
+      y: 29.0
+    route_classes: *id280
+    source_domains: *id281
+    controlled_impedance_targets_ohm: *id282
+  - index: 193
+    route_id: DISP_AVDD
+    net: DISP_AVDD_5V5
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 53.5
+      y: 7.0
+    end_mm:
+      x: 42.4
+      y: 22.8
+    route_classes: &id283
+    - display_bias_power
+    - power
+    source_domains: &id284
+    - display_touch_mipi_dsi
+    - factory_test_fiducials_and_manufacturing_coupons
+    controlled_impedance_targets_ohm: &id285 []
+  - index: 194
+    route_id: DISP_AVDD
+    net: DISP_AVDD_5V5
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 42.4
+      y: 22.8
+    end_mm:
+      x: 56.4
+      y: 121.0
+    route_classes: *id283
+    source_domains: *id284
+    controlled_impedance_targets_ohm: *id285
+  - index: 195
+    route_id: DISP_AVEE
+    net: DISP_AVEE_N5V5
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 54.0
+      y: 7.5
+    end_mm:
+      x: 42.9
+      y: 22.8
+    route_classes: &id286
+    - display_bias_power
+    source_domains: &id287
+    - display_touch_mipi_dsi
+    controlled_impedance_targets_ohm: &id288 []
+  - index: 196
+    route_id: DISP_AVEE
+    net: DISP_AVEE_N5V5
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 42.9
+      y: 22.8
+    end_mm:
+      x: 56.0
+      y: 120.5
+    route_classes: *id286
+    source_domains: *id287
+    controlled_impedance_targets_ohm: *id288
+  - index: 197
+    route_id: CAM0_I2C_SCL
+    net: CAM0_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 53.5
+      y: 18.5
+    end_mm:
+      x: 43.2
+      y: 22.6
+    route_classes: &id289
+    - display_camera_control
+    source_domains: &id290
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id291 []
+  - index: 198
+    route_id: CAM0_I2C_SCL
+    net: CAM0_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 43.2
+      y: 22.6
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id289
+    source_domains: *id290
+    controlled_impedance_targets_ohm: *id291
+  - index: 199
+    route_id: CAM0_I2C_SDA
+    net: CAM0_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.0
+      y: 19.0
+    end_mm:
+      x: 43.7
+      y: 22.6
+    route_classes: &id292
+    - display_camera_control
+    source_domains: &id293
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id294 []
+  - index: 200
+    route_id: CAM0_I2C_SDA
+    net: CAM0_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 43.7
+      y: 22.6
+    end_mm:
+      x: 38.5
+      y: 29.0
+    route_classes: *id292
+    source_domains: *id293
+    controlled_impedance_targets_ohm: *id294
+  - index: 201
+    route_id: CAM1_I2C_SCL
+    net: CAM1_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.5
+      y: 19.5
+    end_mm:
+      x: 44.2
+      y: 22.6
+    route_classes: &id295
+    - display_camera_control
+    source_domains: &id296
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id297 []
+  - index: 202
+    route_id: CAM1_I2C_SCL
+    net: CAM1_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 44.2
+      y: 22.6
+    end_mm:
+      x: 39.0
+      y: 29.0
+    route_classes: *id295
+    source_domains: *id296
+    controlled_impedance_targets_ohm: *id297
+  - index: 203
+    route_id: CAM1_I2C_SDA
+    net: CAM1_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 55.0
+      y: 20.0
+    end_mm:
+      x: 44.7
+      y: 22.6
+    route_classes: &id298
+    - display_camera_control
+    source_domains: &id299
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id300 []
+  - index: 204
+    route_id: CAM1_I2C_SDA
+    net: CAM1_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 44.7
+      y: 22.6
+    end_mm:
+      x: 39.5
+      y: 29.0
+    route_classes: *id298
+    source_domains: *id299
+    controlled_impedance_targets_ohm: *id300
+  - index: 205
+    route_id: CAM0_RESET
+    net: CAM0_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 55.5
+      y: 20.5
+    end_mm:
+      x: 43.2
+      y: 18.7
+    route_classes: &id301
+    - display_camera_control
+    source_domains: &id302
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id303 []
+  - index: 206
+    route_id: CAM0_RESET
+    net: CAM0_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 43.2
+      y: 18.7
+    end_mm:
+      x: 38.0
+      y: 29.5
+    route_classes: *id301
+    source_domains: *id302
+    controlled_impedance_targets_ohm: *id303
+  - index: 207
+    route_id: CAM1_RESET
+    net: CAM1_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 56.0
+      y: 21.0
+    end_mm:
+      x: 44.2
+      y: 18.7
+    route_classes: &id304
+    - display_camera_control
+    source_domains: &id305
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id306 []
+  - index: 208
+    route_id: CAM1_RESET
+    net: CAM1_RESET_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 44.2
+      y: 18.7
+    end_mm:
+      x: 38.5
+      y: 29.5
+    route_classes: *id304
+    source_domains: *id305
+    controlled_impedance_targets_ohm: *id306
+  - index: 209
+    route_id: CAM_AVDD
+    net: CAM_AVDD_2V8
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 43.2
+      y: 18.7
+    end_mm:
+      x: 49.2
+      y: 118.0
+    route_classes: &id307
+    - camera_power
+    - power
+    source_domains: &id308
+    - factory_test_fiducials_and_manufacturing_coupons
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id309 []
+  - index: 210
+    route_id: CAM_AVDD
+    net: CAM_AVDD_2V8
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 49.2
+      y: 118.0
+    end_mm:
+      x: 36.8
+      y: 22.8
+    route_classes: *id307
+    source_domains: *id308
+    controlled_impedance_targets_ohm: *id309
+  - index: 211
+    route_id: CAM_DVDD
+    net: CAM_DVDD_1V2
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 43.7
+      y: 18.7
+    end_mm:
+      x: 48.7
+      y: 117.5
+    route_classes: &id310
+    - camera_power
+    source_domains: &id311
+    - front_rear_camera_mipi_csi
+    controlled_impedance_targets_ohm: &id312 []
+  - index: 212
+    route_id: CAM_DVDD
+    net: CAM_DVDD_1V2
+    layer: F.Cu
+    width_mm: 0.18
+    start_mm:
+      x: 48.7
+      y: 117.5
+    end_mm:
+      x: 37.3
+      y: 22.8
+    route_classes: *id310
+    source_domains: *id311
+    controlled_impedance_targets_ohm: *id312
+  - index: 213
+    route_id: WIFI_SDIO_CLK
+    net: WIFI_SDIO_CLK
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 18.0
+      y: 23.0
+    end_mm:
+      x: 24.0
+      y: 18.0
+    route_classes: &id313
+    - rf_single
+    source_domains: &id314
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id315
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 214
+    route_id: WIFI_SDIO_CLK
+    net: WIFI_SDIO_CLK
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 24.0
+      y: 18.0
+    end_mm:
+      x: 30.0
+      y: 10.0
+    route_classes: *id313
+    source_domains: *id314
+    controlled_impedance_targets_ohm: *id315
+  - index: 215
+    route_id: WIFI_SDIO_CMD
+    net: WIFI_SDIO_CMD
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 18.5
+      y: 23.5
+    end_mm:
+      x: 24.5
+      y: 18.5
+    route_classes: &id316
+    - rf_single
+    source_domains: &id317
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id318
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 216
+    route_id: WIFI_SDIO_CMD
+    net: WIFI_SDIO_CMD
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 24.5
+      y: 18.5
+    end_mm:
+      x: 30.5
+      y: 10.5
+    route_classes: *id316
+    source_domains: *id317
+    controlled_impedance_targets_ohm: *id318
+  - index: 217
+    route_id: WIFI_SDIO_D0
+    net: WIFI_SDIO_D0
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 19.0
+      y: 24.0
+    end_mm:
+      x: 25.0
+      y: 19.0
+    route_classes: &id319
+    - rf_single
+    source_domains: &id320
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id321
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 218
+    route_id: WIFI_SDIO_D0
+    net: WIFI_SDIO_D0
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 25.0
+      y: 19.0
+    end_mm:
+      x: 31.0
+      y: 11.0
+    route_classes: *id319
+    source_domains: *id320
+    controlled_impedance_targets_ohm: *id321
+  - index: 219
+    route_id: WIFI_SDIO_D1
+    net: WIFI_SDIO_D1
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 19.5
+      y: 24.5
+    end_mm:
+      x: 25.5
+      y: 19.5
+    route_classes: &id322
+    - rf_single
+    source_domains: &id323
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id324
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 220
+    route_id: WIFI_SDIO_D1
+    net: WIFI_SDIO_D1
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 25.5
+      y: 19.5
+    end_mm:
+      x: 31.5
+      y: 11.5
+    route_classes: *id322
+    source_domains: *id323
+    controlled_impedance_targets_ohm: *id324
+  - index: 221
+    route_id: WIFI_SDIO_D2
+    net: WIFI_SDIO_D2
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 20.0
+      y: 25.0
+    end_mm:
+      x: 26.0
+      y: 20.0
+    route_classes: &id325
+    - rf_single
+    source_domains: &id326
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id327
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 222
+    route_id: WIFI_SDIO_D2
+    net: WIFI_SDIO_D2
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 26.0
+      y: 20.0
+    end_mm:
+      x: 32.0
+      y: 12.0
+    route_classes: *id325
+    source_domains: *id326
+    controlled_impedance_targets_ohm: *id327
+  - index: 223
+    route_id: WIFI_SDIO_D3
+    net: WIFI_SDIO_D3
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 20.5
+      y: 25.5
+    end_mm:
+      x: 26.5
+      y: 20.5
+    route_classes: &id328
+    - rf_single
+    source_domains: &id329
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id330
+    - constraint: rf_single_impedance_ohm
+      value: 50
+  - index: 224
+    route_id: WIFI_SDIO_D3
+    net: WIFI_SDIO_D3
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 26.5
+      y: 20.5
+    end_mm:
+      x: 32.5
+      y: 12.5
+    route_classes: *id328
+    source_domains: *id329
+    controlled_impedance_targets_ohm: *id330
+  - index: 225
+    route_id: BT_UART_TX
+    net: BT_UART_TX
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 21.0
+      y: 23.0
+    end_mm:
+      x: 28.0
+      y: 26.0
+    route_classes: &id331
+    - wireless_control_bt_uart
+    source_domains: &id332
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id333 []
+  - index: 226
+    route_id: BT_UART_TX
+    net: BT_UART_TX
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 28.0
+      y: 26.0
+    end_mm:
+      x: 38.0
+      y: 29.0
+    route_classes: *id331
+    source_domains: *id332
+    controlled_impedance_targets_ohm: *id333
+  - index: 227
+    route_id: BT_UART_RX
+    net: BT_UART_RX
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 21.5
+      y: 23.5
+    end_mm:
+      x: 28.5
+      y: 26.5
+    route_classes: &id334
+    - wireless_control_bt_uart
+    source_domains: &id335
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id336 []
+  - index: 228
+    route_id: BT_UART_RX
+    net: BT_UART_RX
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 28.5
+      y: 26.5
+    end_mm:
+      x: 38.5
+      y: 29.0
+    route_classes: *id334
+    source_domains: *id335
+    controlled_impedance_targets_ohm: *id336
+  - index: 229
+    route_id: BT_UART_CTS
+    net: BT_UART_CTS_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 22.0
+      y: 24.0
+    end_mm:
+      x: 29.0
+      y: 27.0
+    route_classes: &id337
+    - wireless_control_bt_uart
+    source_domains: &id338
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id339 []
+  - index: 230
+    route_id: BT_UART_CTS
+    net: BT_UART_CTS_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 29.0
+      y: 27.0
+    end_mm:
+      x: 39.0
+      y: 29.0
+    route_classes: *id337
+    source_domains: *id338
+    controlled_impedance_targets_ohm: *id339
+  - index: 231
+    route_id: BT_UART_RTS
+    net: BT_UART_RTS_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 22.5
+      y: 24.5
+    end_mm:
+      x: 29.5
+      y: 27.5
+    route_classes: &id340
+    - wireless_control_bt_uart
+    source_domains: &id341
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id342 []
+  - index: 232
+    route_id: BT_UART_RTS
+    net: BT_UART_RTS_N
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 29.5
+      y: 27.5
+    end_mm:
+      x: 39.5
+      y: 29.0
+    route_classes: *id340
+    source_domains: *id341
+    controlled_impedance_targets_ohm: *id342
+  - index: 233
+    route_id: WIFI_HOST_WAKE
+    net: WIFI_HOST_WAKE
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 23.0
+      y: 25.0
+    end_mm:
+      x: 30.0
+      y: 28.0
+    route_classes: &id343
+    - wireless_control_bt_uart
+    source_domains: &id344
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id345 []
+  - index: 234
+    route_id: WIFI_HOST_WAKE
+    net: WIFI_HOST_WAKE
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 30.0
+      y: 28.0
+    end_mm:
+      x: 40.0
+      y: 29.0
+    route_classes: *id343
+    source_domains: *id344
+    controlled_impedance_targets_ohm: *id345
+  - index: 235
+    route_id: USIM_VCC
+    net: USIM_VCC
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 52.0
+      y: 28.7
+    end_mm:
+      x: 15.0
+      y: 15.0
+    route_classes: &id346
+    - sim_nfc_sensor
+    source_domains: &id347
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id348 []
+  - index: 236
+    route_id: USIM_VCC
+    net: USIM_VCC
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 15.0
+      y: 15.0
+    end_mm:
+      x: 10.0
+      y: 10.0
+    route_classes: *id346
+    source_domains: *id347
+    controlled_impedance_targets_ohm: *id348
+  - index: 237
+    route_id: USIM_CLK
+    net: USIM_CLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 52.5
+      y: 28.7
+    end_mm:
+      x: 15.5
+      y: 15.5
+    route_classes: &id349
+    - sim_nfc_sensor
+    source_domains: &id350
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id351 []
+  - index: 238
+    route_id: USIM_CLK
+    net: USIM_CLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 15.5
+      y: 15.5
+    end_mm:
+      x: 10.5
+      y: 10.5
+    route_classes: *id349
+    source_domains: *id350
+    controlled_impedance_targets_ohm: *id351
+  - index: 239
+    route_id: USIM_RST
+    net: USIM_RST
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 53.0
+      y: 28.7
+    end_mm:
+      x: 16.0
+      y: 16.0
+    route_classes: &id352
+    - sim_nfc_sensor
+    source_domains: &id353
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id354 []
+  - index: 240
+    route_id: USIM_RST
+    net: USIM_RST
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 16.0
+      y: 16.0
+    end_mm:
+      x: 11.0
+      y: 11.0
+    route_classes: *id352
+    source_domains: *id353
+    controlled_impedance_targets_ohm: *id354
+  - index: 241
+    route_id: USIM_IO
+    net: USIM_IO
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 53.5
+      y: 28.7
+    end_mm:
+      x: 16.5
+      y: 16.5
+    route_classes: &id355
+    - sim_nfc_sensor
+    source_domains: &id356
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id357 []
+  - index: 242
+    route_id: USIM_IO
+    net: USIM_IO
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 16.5
+      y: 16.5
+    end_mm:
+      x: 11.5
+      y: 11.5
+    route_classes: *id355
+    source_domains: *id356
+    controlled_impedance_targets_ohm: *id357
+  - index: 243
+    route_id: USIM_DET
+    net: USIM_DET
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.0
+      y: 28.7
+    end_mm:
+      x: 17.0
+      y: 17.0
+    route_classes: &id358
+    - sim_nfc_sensor
+    source_domains: &id359
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id360 []
+  - index: 244
+    route_id: USIM_DET
+    net: USIM_DET
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 17.0
+      y: 17.0
+    end_mm:
+      x: 12.0
+      y: 12.0
+    route_classes: *id358
+    source_domains: *id359
+    controlled_impedance_targets_ohm: *id360
+  - index: 245
+    route_id: ESIM_VCC
+    net: ESIM_VCC
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 59.0
+      y: 28.7
+    end_mm:
+      x: 18.0
+      y: 17.0
+    route_classes: &id361
+    - sim_nfc_sensor
+    source_domains: &id362
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id363 []
+  - index: 246
+    route_id: ESIM_VCC
+    net: ESIM_VCC
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 18.0
+      y: 17.0
+    end_mm:
+      x: 12.5
+      y: 12.5
+    route_classes: *id361
+    source_domains: *id362
+    controlled_impedance_targets_ohm: *id363
+  - index: 247
+    route_id: ESIM_CLK
+    net: ESIM_CLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 59.5
+      y: 28.7
+    end_mm:
+      x: 18.5
+      y: 17.5
+    route_classes: &id364
+    - sim_nfc_sensor
+    source_domains: &id365
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id366 []
+  - index: 248
+    route_id: ESIM_CLK
+    net: ESIM_CLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 18.5
+      y: 17.5
+    end_mm:
+      x: 13.0
+      y: 13.0
+    route_classes: *id364
+    source_domains: *id365
+    controlled_impedance_targets_ohm: *id366
+  - index: 249
+    route_id: ESIM_RST
+    net: ESIM_RST
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 60.0
+      y: 28.7
+    end_mm:
+      x: 19.0
+      y: 18.0
+    route_classes: &id367
+    - sim_nfc_sensor
+    source_domains: &id368
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id369 []
+  - index: 250
+    route_id: ESIM_RST
+    net: ESIM_RST
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 19.0
+      y: 18.0
+    end_mm:
+      x: 13.5
+      y: 13.5
+    route_classes: *id367
+    source_domains: *id368
+    controlled_impedance_targets_ohm: *id369
+  - index: 251
+    route_id: ESIM_IO
+    net: ESIM_IO
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 60.5
+      y: 28.7
+    end_mm:
+      x: 19.5
+      y: 18.5
+    route_classes: &id370
+    - sim_nfc_sensor
+    source_domains: &id371
+    - cellular_wifi_bt_rf_host
+    controlled_impedance_targets_ohm: &id372 []
+  - index: 252
+    route_id: ESIM_IO
+    net: ESIM_IO
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 19.5
+      y: 18.5
+    end_mm:
+      x: 14.0
+      y: 14.0
+    route_classes: *id370
+    source_domains: *id371
+    controlled_impedance_targets_ohm: *id372
+  - index: 253
+    route_id: UFS_REFCLK_P
+    net: UFS_REFCLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 30.5
+      y: 10.0
+    end_mm:
+      x: 35.0
+      y: 8.0
+    route_classes: &id373
+    - ufs_mphy
+    source_domains: &id374
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id375 []
+  - index: 254
+    route_id: UFS_REFCLK_P
+    net: UFS_REFCLK_P
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 35.0
+      y: 8.0
+    end_mm:
+      x: 40.0
+      y: 7.8
+    route_classes: *id373
+    source_domains: *id374
+    controlled_impedance_targets_ohm: *id375
+  - index: 255
+    route_id: UFS_REFCLK_N
+    net: UFS_REFCLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 31.0
+      y: 10.5
+    end_mm:
+      x: 35.5
+      y: 8.5
+    route_classes: &id376
+    - ufs_mphy
+    source_domains: &id377
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id378 []
+  - index: 256
+    route_id: UFS_REFCLK_N
+    net: UFS_REFCLK_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 35.5
+      y: 8.5
+    end_mm:
+      x: 40.5
+      y: 7.8
+    route_classes: *id376
+    source_domains: *id377
+    controlled_impedance_targets_ohm: *id378
+  - index: 257
+    route_id: LPDDR_CA0
+    net: LPDDR_CA0
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 30.5
+      y: 10.0
+    end_mm:
+      x: 30.5
+      y: 8.5
+    route_classes: &id379
+    - lpddr
+    source_domains: &id380
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id381 []
+  - index: 258
+    route_id: LPDDR_CA0
+    net: LPDDR_CA0
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 30.5
+      y: 8.5
+    end_mm:
+      x: 30.5
+      y: 7.8
+    route_classes: *id379
+    source_domains: *id380
+    controlled_impedance_targets_ohm: *id381
+  - index: 259
+    route_id: LPDDR_CA1
+    net: LPDDR_CA1
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 31.0
+      y: 10.5
+    end_mm:
+      x: 31.0
+      y: 8.5
+    route_classes: &id382
+    - lpddr
+    source_domains: &id383
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id384 []
+  - index: 260
+    route_id: LPDDR_CA1
+    net: LPDDR_CA1
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 31.0
+      y: 8.5
+    end_mm:
+      x: 31.0
+      y: 7.8
+    route_classes: *id382
+    source_domains: *id383
+    controlled_impedance_targets_ohm: *id384
+  - index: 261
+    route_id: LPDDR_CA2
+    net: LPDDR_CA2
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 31.5
+      y: 11.0
+    end_mm:
+      x: 31.5
+      y: 8.5
+    route_classes: &id385
+    - lpddr
+    source_domains: &id386
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id387 []
+  - index: 262
+    route_id: LPDDR_CA2
+    net: LPDDR_CA2
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 31.5
+      y: 8.5
+    end_mm:
+      x: 31.5
+      y: 7.8
+    route_classes: *id385
+    source_domains: *id386
+    controlled_impedance_targets_ohm: *id387
+  - index: 263
+    route_id: LPDDR_CA3
+    net: LPDDR_CA3
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 32.0
+      y: 11.5
+    end_mm:
+      x: 32.0
+      y: 8.5
+    route_classes: &id388
+    - lpddr
+    source_domains: &id389
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id390 []
+  - index: 264
+    route_id: LPDDR_CA3
+    net: LPDDR_CA3
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 32.0
+      y: 8.5
+    end_mm:
+      x: 32.0
+      y: 7.8
+    route_classes: *id388
+    source_domains: *id389
+    controlled_impedance_targets_ohm: *id390
+  - index: 265
+    route_id: LPDDR_RESET
+    net: LPDDR_RESET_N
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 32.5
+      y: 12.0
+    end_mm:
+      x: 33.0
+      y: 8.5
+    route_classes: &id391
+    - lpddr
+    source_domains: &id392
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id393 []
+  - index: 266
+    route_id: LPDDR_RESET
+    net: LPDDR_RESET_N
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 33.0
+      y: 8.5
+    end_mm:
+      x: 33.5
+      y: 7.8
+    route_classes: *id391
+    source_domains: *id392
+    controlled_impedance_targets_ohm: *id393
+  - index: 267
+    route_id: LPDDR_ZQ
+    net: LPDDR_ZQ
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 33.0
+      y: 12.5
+    end_mm:
+      x: 34.0
+      y: 8.5
+    route_classes: &id394
+    - lpddr
+    source_domains: &id395
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id396 []
+  - index: 268
+    route_id: LPDDR_ZQ
+    net: LPDDR_ZQ
+    layer: F.Cu
+    width_mm: 0.09
+    start_mm:
+      x: 34.0
+      y: 8.5
+    end_mm:
+      x: 34.5
+      y: 7.8
+    route_classes: *id394
+    source_domains: *id395
+    controlled_impedance_targets_ohm: *id396
+  - index: 269
+    route_id: JTAG_TCK
+    net: JTAG_TCK
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 30.5
+      y: 10.0
+    end_mm:
+      x: 39.0
+      y: 14.0
+    route_classes: &id397
+    - debug_boot
+    source_domains: &id398
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id399 []
+  - index: 270
+    route_id: JTAG_TCK
+    net: JTAG_TCK
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 39.0
+      y: 14.0
+    end_mm:
+      x: 44.0
+      y: 16.2
+    route_classes: *id397
+    source_domains: *id398
+    controlled_impedance_targets_ohm: *id399
+  - index: 271
+    route_id: JTAG_TMS
+    net: JTAG_TMS
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 31.0
+      y: 10.5
+    end_mm:
+      x: 39.5
+      y: 14.5
+    route_classes: &id400
+    - debug_boot
+    source_domains: &id401
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id402 []
+  - index: 272
+    route_id: JTAG_TMS
+    net: JTAG_TMS
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 39.5
+      y: 14.5
+    end_mm:
+      x: 44.5
+      y: 16.2
+    route_classes: *id400
+    source_domains: *id401
+    controlled_impedance_targets_ohm: *id402
+  - index: 273
+    route_id: JTAG_TDI
+    net: JTAG_TDI
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 31.5
+      y: 11.0
+    end_mm:
+      x: 40.0
+      y: 15.0
+    route_classes: &id403
+    - debug_boot
+    source_domains: &id404
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id405 []
+  - index: 274
+    route_id: JTAG_TDI
+    net: JTAG_TDI
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 40.0
+      y: 15.0
+    end_mm:
+      x: 45.0
+      y: 16.2
+    route_classes: *id403
+    source_domains: *id404
+    controlled_impedance_targets_ohm: *id405
+  - index: 275
+    route_id: JTAG_TDO
+    net: JTAG_TDO
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.0
+      y: 11.5
+    end_mm:
+      x: 40.5
+      y: 15.5
+    route_classes: &id406
+    - debug_boot
+    source_domains: &id407
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id408 []
+  - index: 276
+    route_id: JTAG_TDO
+    net: JTAG_TDO
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 40.5
+      y: 15.5
+    end_mm:
+      x: 45.5
+      y: 16.2
+    route_classes: *id406
+    source_domains: *id407
+    controlled_impedance_targets_ohm: *id408
+  - index: 277
+    route_id: JTAG_TRST
+    net: JTAG_TRST_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 32.5
+      y: 12.0
+    end_mm:
+      x: 41.0
+      y: 16.0
+    route_classes: &id409
+    - debug_boot
+    source_domains: &id410
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id411 []
+  - index: 278
+    route_id: JTAG_TRST
+    net: JTAG_TRST_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 41.0
+      y: 16.0
+    end_mm:
+      x: 46.0
+      y: 16.2
+    route_classes: *id409
+    source_domains: *id410
+    controlled_impedance_targets_ohm: *id411
+  - index: 279
+    route_id: BOOT_MODE0
+    net: BOOT_MODE0
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 33.0
+      y: 12.5
+    end_mm:
+      x: 41.5
+      y: 16.5
+    route_classes: &id412
+    - debug_boot
+    source_domains: &id413
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id414 []
+  - index: 280
+    route_id: BOOT_MODE0
+    net: BOOT_MODE0
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 41.5
+      y: 16.5
+    end_mm:
+      x: 46.5
+      y: 16.2
+    route_classes: *id412
+    source_domains: *id413
+    controlled_impedance_targets_ohm: *id414
+  - index: 281
+    route_id: BOOT_MODE1
+    net: BOOT_MODE1
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 33.5
+      y: 13.0
+    end_mm:
+      x: 42.0
+      y: 17.0
+    route_classes: &id415
+    - debug_boot
+    source_domains: &id416
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id417 []
+  - index: 282
+    route_id: BOOT_MODE1
+    net: BOOT_MODE1
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 42.0
+      y: 17.0
+    end_mm:
+      x: 47.0
+      y: 16.2
+    route_classes: *id415
+    source_domains: *id416
+    controlled_impedance_targets_ohm: *id417
+  - index: 283
+    route_id: BOOT_MODE2
+    net: BOOT_MODE2
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 34.0
+      y: 13.5
+    end_mm:
+      x: 42.5
+      y: 17.5
+    route_classes: &id418
+    - debug_boot
+    source_domains: &id419
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id420 []
+  - index: 284
+    route_id: BOOT_MODE2
+    net: BOOT_MODE2
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 42.5
+      y: 17.5
+    end_mm:
+      x: 47.5
+      y: 16.2
+    route_classes: *id418
+    source_domains: *id419
+    controlled_impedance_targets_ohm: *id420
+  - index: 285
+    route_id: SOC_RESET
+    net: SOC_RESET_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 34.5
+      y: 14.0
+    end_mm:
+      x: 43.0
+      y: 18.0
+    route_classes: &id421
+    - debug_boot
+    source_domains: &id422
+    - compute_memory_storage_escape
+    controlled_impedance_targets_ohm: &id423 []
+  - index: 286
+    route_id: SOC_RESET
+    net: SOC_RESET_N
+    layer: F.Cu
+    width_mm: 0.1
+    start_mm:
+      x: 43.0
+      y: 18.0
+    end_mm:
+      x: 48.0
+      y: 16.2
+    route_classes: *id421
+    source_domains: *id422
+    controlled_impedance_targets_ohm: *id423
+  - index: 287
+    route_id: I2S_BCLK
+    net: I2S_BCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.0
+      y: 27.5
+    end_mm:
+      x: 28.0
+      y: 127.2
+    route_classes: &id424
+    - audio_control_aon
+    source_domains: &id425
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id426 []
+  - index: 288
+    route_id: I2S_BCLK
+    net: I2S_BCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 28.0
+      y: 127.2
+    end_mm:
+      x: 14.0
+      y: 124.0
+    route_classes: *id424
+    source_domains: *id425
+    controlled_impedance_targets_ohm: *id426
+  - index: 289
+    route_id: I2S_LRCLK
+    net: I2S_LRCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 54.5
+      y: 27.5
+    end_mm:
+      x: 28.5
+      y: 127.2
+    route_classes: &id427
+    - audio_control_aon
+    source_domains: &id428
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id429 []
+  - index: 290
+    route_id: I2S_LRCLK
+    net: I2S_LRCLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 28.5
+      y: 127.2
+    end_mm:
+      x: 14.5
+      y: 124.0
+    route_classes: *id427
+    source_domains: *id428
+    controlled_impedance_targets_ohm: *id429
+  - index: 291
+    route_id: I2S_DOUT
+    net: I2S_DOUT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 55.0
+      y: 27.5
+    end_mm:
+      x: 29.0
+      y: 127.2
+    route_classes: &id430
+    - audio_control_aon
+    source_domains: &id431
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id432 []
+  - index: 292
+    route_id: I2S_DOUT
+    net: I2S_DOUT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 29.0
+      y: 127.2
+    end_mm:
+      x: 15.0
+      y: 124.0
+    route_classes: *id430
+    source_domains: *id431
+    controlled_impedance_targets_ohm: *id432
+  - index: 293
+    route_id: I2S_DIN
+    net: I2S_DIN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 55.5
+      y: 27.5
+    end_mm:
+      x: 29.5
+      y: 127.2
+    route_classes: &id433
+    - audio_control_aon
+    source_domains: &id434
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id435 []
+  - index: 294
+    route_id: I2S_DIN
+    net: I2S_DIN
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 29.5
+      y: 127.2
+    end_mm:
+      x: 15.5
+      y: 124.0
+    route_classes: *id433
+    source_domains: *id434
+    controlled_impedance_targets_ohm: *id435
+  - index: 295
+    route_id: PDM_CLK
+    net: PDM_CLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 56.0
+      y: 27.5
+    end_mm:
+      x: 13.0
+      y: 119.4
+    route_classes: &id436
+    - audio_control_aon
+    source_domains: &id437
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id438 []
+  - index: 296
+    route_id: PDM_CLK
+    net: PDM_CLK
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 13.0
+      y: 119.4
+    end_mm:
+      x: 14.0
+      y: 124.0
+    route_classes: *id436
+    source_domains: *id437
+    controlled_impedance_targets_ohm: *id438
+  - index: 297
+    route_id: PDM_DAT
+    net: PDM_DAT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 56.5
+      y: 27.5
+    end_mm:
+      x: 13.5
+      y: 119.4
+    route_classes: &id439
+    - audio_control_aon
+    source_domains: &id440
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id441 []
+  - index: 298
+    route_id: PDM_DAT
+    net: PDM_DAT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 13.5
+      y: 119.4
+    end_mm:
+      x: 14.5
+      y: 124.0
+    route_classes: *id439
+    source_domains: *id440
+    controlled_impedance_targets_ohm: *id441
+  - index: 299
+    route_id: AUDIO_I2C_SCL
+    net: AUDIO_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 57.0
+      y: 27.5
+    end_mm:
+      x: 39.0
+      y: 127.2
+    route_classes: &id442
+    - audio_control_aon
+    source_domains: &id443
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id444 []
+  - index: 300
+    route_id: AUDIO_I2C_SCL
+    net: AUDIO_I2C_SCL
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 39.0
+      y: 127.2
+    end_mm:
+      x: 14.0
+      y: 124.0
+    route_classes: *id442
+    source_domains: *id443
+    controlled_impedance_targets_ohm: *id444
+  - index: 301
+    route_id: AUDIO_I2C_SDA
+    net: AUDIO_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 57.5
+      y: 27.5
+    end_mm:
+      x: 39.5
+      y: 127.2
+    route_classes: &id445
+    - audio_control_aon
+    source_domains: &id446
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id447 []
+  - index: 302
+    route_id: AUDIO_I2C_SDA
+    net: AUDIO_I2C_SDA
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 39.5
+      y: 127.2
+    end_mm:
+      x: 14.5
+      y: 124.0
+    route_classes: *id445
+    source_domains: *id446
+    controlled_impedance_targets_ohm: *id447
+  - index: 303
+    route_id: CODEC_INT
+    net: CODEC_INT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 58.0
+      y: 27.5
+    end_mm:
+      x: 40.0
+      y: 127.2
+    route_classes: &id448
+    - audio_control_aon
+    source_domains: &id449
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id450 []
+  - index: 304
+    route_id: CODEC_INT
+    net: CODEC_INT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 40.0
+      y: 127.2
+    end_mm:
+      x: 15.0
+      y: 124.0
+    route_classes: *id448
+    source_domains: *id449
+    controlled_impedance_targets_ohm: *id450
+  - index: 305
+    route_id: AMP_INT
+    net: AMP_INT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 58.5
+      y: 27.5
+    end_mm:
+      x: 40.5
+      y: 127.2
+    route_classes: &id451
+    - audio_control_aon
+    source_domains: &id452
+    - split_interconnect_and_audio_haptics
+    controlled_impedance_targets_ohm: &id453 []
+  - index: 306
+    route_id: AMP_INT
+    net: AMP_INT
+    layer: F.Cu
+    width_mm: 0.12
+    start_mm:
+      x: 40.5
+      y: 127.2
+    end_mm:
+      x: 15.5
+      y: 124.0
+    route_classes: *id451
+    source_domains: *id452
+    controlled_impedance_targets_ohm: *id453
+  via_visual_record_count: 24
+  via_visual_net_name_count: 16
+  via_visual_all_records_have_net: true
+  via_visual_all_records_have_layers: true
+  via_visual_records:
+  - index: 1
+    net: USB_DP
+    at_mm:
+      x: 35.8
+      y: 121.8
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 2
+    net: USB_DN
+    at_mm:
+      x: 36.3
+      y: 121.8
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 3
+    net: USB_CC1
+    at_mm:
+      x: 24.0
+      y: 118.4
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 4
+    net: USB_CC2
+    at_mm:
+      x: 31.0
+      y: 118.4
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 5
+    net: VBUS
+    at_mm:
+      x: 38.0
+      y: 121.8
+    size_mm: 0.55
+    drill_mm: 0.25
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 6
+    net: VBUS
+    at_mm:
+      x: 41.0
+      y: 121.8
+    size_mm: 0.55
+    drill_mm: 0.25
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 7
+    net: VBAT
+    at_mm:
+      x: 39.0
+      y: 118.0
+    size_mm: 0.55
+    drill_mm: 0.25
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 8
+    net: SYS
+    at_mm:
+      x: 42.0
+      y: 116.0
+    size_mm: 0.55
+    drill_mm: 0.25
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 9
+    net: DSI_CLK_P
+    at_mm:
+      x: 47.0
+      y: 23.5
+    size_mm: 0.4
+    drill_mm: 0.18
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 10
+    net: GND
+    at_mm:
+      x: 47.8
+      y: 23.5
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 11
+    net: CAM0_CSI_CLK_P
+    at_mm:
+      x: 43.2
+      y: 10.8
+    size_mm: 0.4
+    drill_mm: 0.18
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 12
+    net: CAM1_CSI_CLK_P
+    at_mm:
+      x: 43.2
+      y: 14.8
+    size_mm: 0.4
+    drill_mm: 0.18
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 13
+    net: CELL_PCIE_TX_P
+    at_mm:
+      x: 31.0
+      y: 11.0
+    size_mm: 0.4
+    drill_mm: 0.18
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 14
+    net: WIFI_PCIE_TX_P
+    at_mm:
+      x: 30.0
+      y: 12.0
+    size_mm: 0.4
+    drill_mm: 0.18
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 15
+    net: GND
+    at_mm:
+      x: 10.0
+      y: 6.7
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 16
+    net: GND
+    at_mm:
+      x: 20.0
+      y: 6.7
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 17
+    net: GND
+    at_mm:
+      x: 10.0
+      y: 25.5
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 18
+    net: GND
+    at_mm:
+      x: 15.0
+      y: 25.5
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 19
+    net: LPDDR_CK_P
+    at_mm:
+      x: 25.5
+      y: 7.8
+    size_mm: 0.35
+    drill_mm: 0.15
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 20
+    net: UFS_TX_P
+    at_mm:
+      x: 40.5
+      y: 7.8
+    size_mm: 0.35
+    drill_mm: 0.15
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 21
+    net: I2S_BCLK
+    at_mm:
+      x: 28.0
+      y: 127.2
+    size_mm: 0.4
+    drill_mm: 0.18
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 22
+    net: GND
+    at_mm:
+      x: 51.0
+      y: 130.0
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 23
+    net: GND
+    at_mm:
+      x: 8.0
+      y: 124.0
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  - index: 24
+    net: GND
+    at_mm:
+      x: 56.0
+      y: 124.0
+    size_mm: 0.45
+    drill_mm: 0.2
+    layers:
+    - F.Cu
+    - B.Cu
+  filled_copper_zone_record_count: 2
+  filled_copper_zone_filled_polygon_count: 6
+  filled_copper_zone_all_records_have_net: true
+  filled_copper_zone_all_records_have_bbox: true
+  filled_copper_zone_records:
+  - index: 12
+    name: E1Phone_LOCAL_GND_TOP_ISLAND_POUR
+    net: GND
+    layers:
+    - F.Cu
+    - In1.GND
+    - B.Cu
+    polygon_point_count: 16
+    filled_polygon_count: 3
+    bbox_mm:
+      x_min: 1.0
+      y_min: 1.0
+      x_max: 63.0
+      y_max: 28.2
+      width: 62.0
+      height: 27.2
+  - index: 13
+    name: E1Phone_LOCAL_GND_BOTTOM_ISLAND_POUR
+    net: GND
+    layers:
+    - F.Cu
+    - In8.GND
+    - B.Cu
+    polygon_point_count: 16
+    filled_polygon_count: 3
+    bbox_mm:
+      x_min: 1.0
+      y_min: 117.8
+      x_max: 63.0
+      y_max: 131.0
+      width: 62.0
+      height: 13.2
+  release_credit: false
 cad_connection_coverage:
   coverage_report: mechanical/e1-phone/review/cad-connection-coverage.json
   assembly_manifest: mechanical/e1-phone/out/assembly-manifest.json
-  assembly_manifest_part_count: 222
-  assembly_manifest_connection_terminal_marker_count: 42
-  assembly_manifest_connection_solid_step_part_count: 63
+  assembly_manifest_part_count: 258
+  assembly_manifest_connection_terminal_marker_count: 64
+  assembly_manifest_connection_solid_step_part_count: 96
   assembly_manifest_missing_connection_solid_step_part_count: 0
   assembly_manifest_missing_connection_solid_step_part_names: []
   status: cad_connection_markers_complete_not_release
-  required_connection_count: 21
-  passing_connection_count: 21
-  required_connection_terminal_marker_count: 42
-  passing_connection_terminal_pair_count: 21
-  required_connection_solid_step_part_count: 63
-  passing_connection_solid_step_part_set_count: 21
-  connection_solid_step_part_bytes_total: 982305
-  represented_net_count_total: 94
-  visual_route_span_total_mm: 374.0
-  endpoint_pair_distance_total_mm: 1145.578
+  required_connection_count: 32
+  passing_connection_count: 32
+  required_connection_terminal_marker_count: 64
+  passing_connection_terminal_pair_count: 32
+  required_connection_solid_step_part_count: 96
+  passing_connection_solid_step_part_set_count: 32
+  connection_solid_step_part_bytes_total: 1501919
+  represented_net_count_total: 150
+  represented_route_record_count_total: 153
+  represented_route_records_with_layer_count_total: 153
+  represented_route_records_with_source_domain_count_total: 153
+  represented_route_records_with_route_class_count_total: 153
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
+  visual_route_span_total_mm: 456.0
+  endpoint_pair_distance_total_mm: 1521.175
   physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
     flexible_antenna_loop: 1
-    flexible_printed_circuit: 10
+    flexible_printed_circuit: 14
+    ground_spring_contact: 2
     insulated_wire_pair: 2
+    pcb_copper_trace_group: 5
     rf_50ohm_feed: 5
     rf_tuner_interconnect: 1
   electrical_class_counts:
@@ -68,21 +5122,30 @@ cad_connection_coverage:
     audio_power_pair: 1
     audio_receiver_pair: 1
     battery_power_sense: 1
+    battery_power_sense_board_route: 1
+    camera_power_control: 2
+    cellular_host_interface: 1
     cellular_wifi_rf: 5
     compute_board_to_board_mixed_speed: 1
     digital_microphone: 2
+    display_bias_power: 1
     haptic_drive: 1
     low_speed_gpio: 1
     mipi_csi_camera_control: 2
     mipi_dsi_touch_control: 1
     nfc_loop_rf: 1
+    pd_charger_power_control_board_route: 1
+    sensor_i2c: 1
+    shield_chassis_ground: 2
     sim_esim_low_speed: 1
     top_bottom_board_mixed_signal: 1
     usb2_pd_vbus: 1
-  controlled_impedance_connection_count: 13
-  controlled_impedance_requirement_defined_count: 21
-  bend_radius_requirement_defined_count: 21
-  supplier_release_required_connection_count: 21
+    usb2_pd_vbus_board_route: 1
+    wifi_bt_host_interface: 1
+  controlled_impedance_connection_count: 16
+  controlled_impedance_requirement_defined_count: 32
+  bend_radius_requirement_defined_count: 32
+  supplier_release_required_connection_count: 32
   release_credit: false
   connection_ids:
   - display_touch_fpc
@@ -91,14 +5154,25 @@ cad_connection_coverage:
   - side_key_flex
   - battery_lead_flex
   - usb_c_escape_tail
+  - usb_c_to_pd_controller_escape
+  - pd_controller_to_charger_control
+  - charger_to_battery_power_sense
+  - display_bias_power_flex
+  - rear_camera_power_flex
+  - front_camera_power_flex
+  - wifi_bt_host_control
+  - cellular_host_control
   - bottom_speaker_lead_pair
   - bottom_microphone_flex
   - top_microphone_flex
   - earpiece_receiver_lead_flex
   - haptic_flex
+  - sensor_hub_i2c_flex
   - sim_esim_signal_flex
   - nfc_loop_antenna_flex
   - compute_som_sodimm_carrier
+  - soc_shield_ground_spring
+  - radio_shield_ground_spring
   - cellular_main_rf_feed
   - cellular_diversity_rf_feed
   - cellular_antenna_aperture_tuner
@@ -113,14 +5187,25 @@ cad_connection_coverage:
   - side_key_flex_tail
   - battery_connector_lead_flex
   - usb_c_power_data_escape_tail
+  - usb_pd_controller_escape_trace_marker
+  - pd_charger_control_trace_marker
+  - charger_battery_power_sense_trace_marker
+  - display_bias_power_flex_marker
+  - rear_camera_power_flex_marker
+  - front_camera_power_flex_marker
+  - wifi_bt_host_control_trace_marker
+  - cellular_host_control_trace_marker
   - bottom_speaker_lead_pair
   - bottom_microphone_flex_leads
   - top_microphone_flex_tail
   - earpiece_receiver_lead_flex
   - haptic_flex_tail
+  - sensor_hub_i2c_flex_marker
   - sim_esim_signal_flex_marker
   - nfc_loop_antenna_flex_marker
   - compute_som_sodimm_connector
+  - soc_shield_ground_spring_marker
+  - radio_shield_ground_spring_marker
   - cellular_rf_feed_development_envelope
   - cellular_div_rf_feed_development_envelope
   - antenna_aperture_tuner
@@ -141,23 +5226,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/display_fpc_tail.step
-    cad_step_bytes: 15509
+    cad_step_bytes: 15523
     from_terminal_part: display_touch_fpc_from_terminal
     from_terminal_step: mechanical/e1-phone/out/display_touch_fpc_from_terminal.step
-    from_terminal_step_bytes: 15599
+    from_terminal_step_bytes: 15647
     to_terminal_part: display_touch_fpc_to_terminal
     to_terminal_step: mechanical/e1-phone/out/display_touch_fpc_to_terminal.step
-    to_terminal_step_bytes: 15590
+    to_terminal_step_bytes: 15647
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31189
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - display_fpc_tail
     - display_touch_fpc_from_terminal
     - display_touch_fpc_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46698
+    solid_step_part_bytes_total: 46817
     net_count: 14
     nets:
     - DSI_D0_P
@@ -190,6 +5275,12 @@ cad_connection_coverage:
     - DISP_TE
     - TOUCH_I2C_SCL
     - TOUCH_I2C_SDA
+    represented_route_record_count: 14
+    represented_route_records_with_layer_count: 14
+    represented_route_records_with_source_domain_count: 14
+    represented_route_records_with_route_class_count: 14
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -209,23 +5300,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/rear_camera_fpc_tail.step
-    cad_step_bytes: 15522
+    cad_step_bytes: 15536
     from_terminal_part: rear_camera_csi_fpc_from_terminal
     from_terminal_step: mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15699
     to_terminal_part: rear_camera_csi_fpc_to_terminal
     to_terminal_step: mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.step
-    to_terminal_step_bytes: 15599
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31171
+    terminal_step_bytes_total: 31372
     solid_step_part_names:
     - rear_camera_fpc_tail
     - rear_camera_csi_fpc_from_terminal
     - rear_camera_csi_fpc_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46693
+    solid_step_part_bytes_total: 46908
     net_count: 13
     nets:
     - CAM0_CSI_D0_P
@@ -256,6 +5347,12 @@ cad_connection_coverage:
     - CAM0_MCLK
     - CAM0_I2C_SCL
     - CAM0_I2C_SDA
+    represented_route_record_count: 13
+    represented_route_records_with_layer_count: 13
+    represented_route_records_with_source_domain_count: 13
+    represented_route_records_with_route_class_count: 13
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -275,23 +5372,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/front_camera_fpc_tail.step
-    cad_step_bytes: 15587
+    cad_step_bytes: 15601
     from_terminal_part: front_camera_csi_fpc_from_terminal
     from_terminal_step: mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15699
     to_terminal_part: front_camera_csi_fpc_to_terminal
     to_terminal_step: mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.step
-    to_terminal_step_bytes: 15599
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31171
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - front_camera_fpc_tail
     - front_camera_csi_fpc_from_terminal
     - front_camera_csi_fpc_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46758
+    solid_step_part_bytes_total: 46999
     net_count: 9
     nets:
     - CAM1_CSI_CLK_P
@@ -314,6 +5411,12 @@ cad_connection_coverage:
     - CAM1_MCLK
     - CAM1_I2C_SCL
     - CAM1_I2C_SDA
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -333,23 +5436,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/side_key_flex_tail.step
-    cad_step_bytes: 15535
+    cad_step_bytes: 15549
     from_terminal_part: side_key_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/side_key_flex_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15673
     to_terminal_part: side_key_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/side_key_flex_to_terminal.step
-    to_terminal_step_bytes: 15625
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31197
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - side_key_flex_tail
     - side_key_flex_from_terminal
     - side_key_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46732
+    solid_step_part_bytes_total: 46895
     net_count: 3
     nets:
     - PWR_KEY_N
@@ -360,6 +5463,12 @@ cad_connection_coverage:
     - PWR_KEY_N
     - VOL_UP_N
     - VOL_DOWN_N
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -379,23 +5488,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/battery_connector_lead_flex.step
-    cad_step_bytes: 15578
+    cad_step_bytes: 15592
     from_terminal_part: battery_lead_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/battery_lead_flex_from_terminal.step
-    from_terminal_step_bytes: 15590
+    from_terminal_step_bytes: 15647
     to_terminal_part: battery_lead_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/battery_lead_flex_to_terminal.step
-    to_terminal_step_bytes: 15572
+    to_terminal_step_bytes: 15647
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31162
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - battery_connector_lead_flex
     - battery_lead_flex_from_terminal
     - battery_lead_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46740
+    solid_step_part_bytes_total: 46886
     net_count: 4
     nets:
     - VBAT
@@ -408,6 +5517,12 @@ cad_connection_coverage:
     - SYS
     - BAT_NTC
     - BAT_ID
+    represented_route_record_count: 4
+    represented_route_records_with_layer_count: 4
+    represented_route_records_with_source_domain_count: 4
+    represented_route_records_with_route_class_count: 4
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -427,23 +5542,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/usb_c_power_data_escape_tail.step
-    cad_step_bytes: 15552
+    cad_step_bytes: 15566
     from_terminal_part: usb_c_escape_tail_from_terminal
     from_terminal_step: mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.step
-    from_terminal_step_bytes: 15616
+    from_terminal_step_bytes: 15673
     to_terminal_part: usb_c_escape_tail_to_terminal
     to_terminal_step: mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.step
-    to_terminal_step_bytes: 15572
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31188
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - usb_c_power_data_escape_tail
     - usb_c_escape_tail_from_terminal
     - usb_c_escape_tail_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46740
+    solid_step_part_bytes_total: 46912
     net_count: 5
     nets:
     - VBUS
@@ -458,6 +5573,482 @@ cad_connection_coverage:
     - USB_CC2
     - USB_DP
     - USB_DN
+    represented_route_record_count: 5
+    represented_route_records_with_layer_count: 5
+    represented_route_records_with_source_domain_count: 5
+    represented_route_records_with_route_class_count: 5
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: usb_c_to_pd_controller_escape
+    cad_part: usb_pd_controller_escape_trace_marker
+    from: usb_c_receptacle
+    to: usb_pd_controller_package_marker
+    connection_type: board_power_usb_trace
+    physical_medium: pcb_copper_trace_group
+    electrical_class: usb2_pd_vbus_board_route
+    controlled_impedance_required: true
+    impedance_requirement: USB2 differential impedance plus VBUS/CC current and ESD review
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.step
+    cad_step_bytes: 15588
+    from_terminal_part: usb_c_to_pd_controller_escape_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.step
+    from_terminal_step_bytes: 15664
+    to_terminal_part: usb_c_to_pd_controller_escape_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31337
+    solid_step_part_names:
+    - usb_pd_controller_escape_trace_marker
+    - usb_c_to_pd_controller_escape_from_terminal
+    - usb_c_to_pd_controller_escape_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46925
+    net_count: 5
+    nets:
+    - VBUS
+    - USB_CC1
+    - USB_CC2
+    - USB_DP
+    - USB_DN
+    represented_net_count: 5
+    represented_nets:
+    - VBUS
+    - USB_CC1
+    - USB_CC2
+    - USB_DP
+    - USB_DN
+    represented_route_record_count: 5
+    represented_route_records_with_layer_count: 5
+    represented_route_records_with_source_domain_count: 5
+    represented_route_records_with_route_class_count: 5
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: pd_controller_to_charger_control
+    cad_part: pd_charger_control_trace_marker
+    from: usb_pd_controller_package_marker
+    to: charger_package_marker
+    connection_type: board_power_control_trace
+    physical_medium: pcb_copper_trace_group
+    electrical_class: pd_charger_power_control_board_route
+    controlled_impedance_required: false
+    impedance_requirement: VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/pd_charger_control_trace_marker.step
+    cad_step_bytes: 15592
+    from_terminal_part: pd_controller_to_charger_control_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: pd_controller_to_charger_control_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.step
+    to_terminal_step_bytes: 15699
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31372
+    solid_step_part_names:
+    - pd_charger_control_trace_marker
+    - pd_controller_to_charger_control_from_terminal
+    - pd_controller_to_charger_control_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46964
+    net_count: 9
+    nets:
+    - VBUS
+    - SYS
+    - USBPD_I2C_SCL
+    - USBPD_I2C_SDA
+    - USBPD_IRQ_N
+    - USBPD_RESET
+    - CHG_I2C_SCL
+    - CHG_I2C_SDA
+    - CHG_IRQ_N
+    represented_net_count: 9
+    represented_nets:
+    - VBUS
+    - SYS
+    - USBPD_I2C_SCL
+    - USBPD_I2C_SDA
+    - USBPD_IRQ_N
+    - USBPD_RESET
+    - CHG_I2C_SCL
+    - CHG_I2C_SDA
+    - CHG_IRQ_N
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: charger_to_battery_power_sense
+    cad_part: charger_battery_power_sense_trace_marker
+    from: charger_package_marker
+    to: battery_connector_package_marker
+    connection_type: board_battery_power_sense_trace
+    physical_medium: pcb_copper_trace_group
+    electrical_class: battery_power_sense_board_route
+    controlled_impedance_required: false
+    impedance_requirement: VBAT/SYS current capacity plus NTC/ID kelvin-sense review
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.step
+    cad_step_bytes: 15566
+    from_terminal_part: charger_to_battery_power_sense_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.step
+    from_terminal_step_bytes: 15699
+    to_terminal_part: charger_to_battery_power_sense_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.step
+    to_terminal_step_bytes: 15699
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31398
+    solid_step_part_names:
+    - charger_battery_power_sense_trace_marker
+    - charger_to_battery_power_sense_from_terminal
+    - charger_to_battery_power_sense_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46964
+    net_count: 4
+    nets:
+    - VBAT
+    - SYS
+    - BAT_NTC
+    - BAT_ID
+    represented_net_count: 4
+    represented_nets:
+    - VBAT
+    - SYS
+    - BAT_NTC
+    - BAT_ID
+    represented_route_record_count: 4
+    represented_route_records_with_layer_count: 4
+    represented_route_records_with_source_domain_count: 4
+    represented_route_records_with_route_class_count: 4
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: display_bias_power_flex
+    cad_part: display_bias_power_flex_marker
+    from: backlight_bias_package_marker
+    to: display_fpc_connector
+    connection_type: display_bias_power_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: display_bias_power
+    controlled_impedance_required: false
+    impedance_requirement: display_bias_voltage_and_current_capacity_required
+    min_bend_radius_mm: 1.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/display_bias_power_flex_marker.step
+    cad_step_bytes: 15545
+    from_terminal_part: display_bias_power_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/display_bias_power_flex_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: display_bias_power_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/display_bias_power_flex_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - display_bias_power_flex_marker
+    - display_bias_power_flex_from_terminal
+    - display_bias_power_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46891
+    net_count: 2
+    nets:
+    - DISP_AVDD_5V5
+    - DISP_AVEE_N5V5
+    represented_net_count: 2
+    represented_nets:
+    - DISP_AVDD_5V5
+    - DISP_AVEE_N5V5
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: rear_camera_power_flex
+    cad_part: rear_camera_power_flex_marker
+    from: main_pcb
+    to: rear_camera_module
+    connection_type: camera_power_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: camera_power_control
+    controlled_impedance_required: false
+    impedance_requirement: camera_rail_current_capacity_and_sequencing_required
+    min_bend_radius_mm: 1.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/rear_camera_power_flex_marker.step
+    cad_step_bytes: 15558
+    from_terminal_part: rear_camera_power_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: rear_camera_power_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/rear_camera_power_flex_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - rear_camera_power_flex_marker
+    - rear_camera_power_flex_from_terminal
+    - rear_camera_power_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46904
+    net_count: 3
+    nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM0_RESET_N
+    represented_net_count: 3
+    represented_nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM0_RESET_N
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: front_camera_power_flex
+    cad_part: front_camera_power_flex_marker
+    from: main_pcb
+    to: front_camera_module
+    connection_type: camera_power_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: camera_power_control
+    controlled_impedance_required: false
+    impedance_requirement: camera_rail_current_capacity_and_sequencing_required
+    min_bend_radius_mm: 1.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/front_camera_power_flex_marker.step
+    cad_step_bytes: 15627
+    from_terminal_part: front_camera_power_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/front_camera_power_flex_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: front_camera_power_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/front_camera_power_flex_to_terminal.step
+    to_terminal_step_bytes: 15699
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31372
+    solid_step_part_names:
+    - front_camera_power_flex_marker
+    - front_camera_power_flex_from_terminal
+    - front_camera_power_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46999
+    net_count: 3
+    nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM1_RESET_N
+    represented_net_count: 3
+    represented_nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM1_RESET_N
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: wifi_bt_host_control
+    cad_part: wifi_bt_host_control_trace_marker
+    from: wifi_bt_module_keepout
+    to: soc_package_marker
+    connection_type: wifi_bt_host_control_trace
+    physical_medium: pcb_copper_trace_group
+    electrical_class: wifi_bt_host_interface
+    controlled_impedance_required: true
+    impedance_requirement: PCIe differential impedance plus SDIO/UART/control routing review
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/wifi_bt_host_control_trace_marker.step
+    cad_step_bytes: 15549
+    from_terminal_part: wifi_bt_host_control_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: wifi_bt_host_control_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/wifi_bt_host_control_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - wifi_bt_host_control_trace_marker
+    - wifi_bt_host_control_from_terminal
+    - wifi_bt_host_control_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46895
+    net_count: 17
+    nets:
+    - WIFI_PCIE_TX_P
+    - WIFI_PCIE_TX_N
+    - WIFI_PCIE_RX_P
+    - WIFI_PCIE_RX_N
+    - WIFI_EN
+    - BT_EN
+    - WIFI_SDIO_CLK
+    - WIFI_SDIO_CMD
+    - WIFI_SDIO_D0
+    - WIFI_SDIO_D1
+    - WIFI_SDIO_D2
+    - WIFI_SDIO_D3
+    - BT_UART_TX
+    - BT_UART_RX
+    - BT_UART_CTS_N
+    - BT_UART_RTS_N
+    - WIFI_HOST_WAKE
+    represented_net_count: 17
+    represented_nets:
+    - WIFI_PCIE_TX_P
+    - WIFI_PCIE_TX_N
+    - WIFI_PCIE_RX_P
+    - WIFI_PCIE_RX_N
+    - WIFI_EN
+    - BT_EN
+    - WIFI_SDIO_CLK
+    - WIFI_SDIO_CMD
+    - WIFI_SDIO_D0
+    - WIFI_SDIO_D1
+    - WIFI_SDIO_D2
+    - WIFI_SDIO_D3
+    - BT_UART_TX
+    - BT_UART_RX
+    - BT_UART_CTS_N
+    - BT_UART_RTS_N
+    - WIFI_HOST_WAKE
+    represented_route_record_count: 17
+    represented_route_records_with_layer_count: 17
+    represented_route_records_with_source_domain_count: 17
+    represented_route_records_with_route_class_count: 17
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: cellular_host_control
+    cad_part: cellular_host_control_trace_marker
+    from: cellular_lga_module_keepout
+    to: soc_package_marker
+    connection_type: cellular_host_control_trace
+    physical_medium: pcb_copper_trace_group
+    electrical_class: cellular_host_interface
+    controlled_impedance_required: true
+    impedance_requirement: USB2/PCIe differential impedance plus reset/disable routing review
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/cellular_host_control_trace_marker.step
+    cad_step_bytes: 15549
+    from_terminal_part: cellular_host_control_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/cellular_host_control_from_terminal.step
+    from_terminal_step_bytes: 15699
+    to_terminal_part: cellular_host_control_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/cellular_host_control_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31372
+    solid_step_part_names:
+    - cellular_host_control_trace_marker
+    - cellular_host_control_from_terminal
+    - cellular_host_control_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46921
+    net_count: 8
+    nets:
+    - CELL_USB2_DP
+    - CELL_USB2_DN
+    - CELL_PCIE_TX_P
+    - CELL_PCIE_TX_N
+    - CELL_PCIE_RX_P
+    - CELL_PCIE_RX_N
+    - CELL_RESET_N
+    - CELL_W_DISABLE_N
+    represented_net_count: 8
+    represented_nets:
+    - CELL_USB2_DP
+    - CELL_USB2_DN
+    - CELL_PCIE_TX_P
+    - CELL_PCIE_TX_N
+    - CELL_PCIE_RX_P
+    - CELL_PCIE_RX_N
+    - CELL_RESET_N
+    - CELL_W_DISABLE_N
+    represented_route_record_count: 8
+    represented_route_records_with_layer_count: 8
+    represented_route_records_with_source_domain_count: 8
+    represented_route_records_with_route_class_count: 8
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -477,23 +6068,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/bottom_speaker_lead_pair.step
-    cad_step_bytes: 15552
+    cad_step_bytes: 15566
     from_terminal_part: bottom_speaker_lead_pair_from_terminal
     from_terminal_step: mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15673
     to_terminal_part: bottom_speaker_lead_pair_to_terminal
     to_terminal_step: mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.step
-    to_terminal_step_bytes: 15625
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31197
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - bottom_speaker_lead_pair
     - bottom_speaker_lead_pair_from_terminal
     - bottom_speaker_lead_pair_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46749
+    solid_step_part_bytes_total: 46912
     net_count: 2
     nets:
     - SPK_P
@@ -502,6 +6093,12 @@ cad_connection_coverage:
     represented_nets:
     - SPK_P
     - SPK_N
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -521,23 +6118,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/bottom_microphone_flex_leads.step
-    cad_step_bytes: 15583
+    cad_step_bytes: 15597
     from_terminal_part: bottom_microphone_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15647
     to_terminal_part: bottom_microphone_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.step
-    to_terminal_step_bytes: 15651
+    to_terminal_step_bytes: 15725
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31223
+    terminal_step_bytes_total: 31372
     solid_step_part_names:
     - bottom_microphone_flex_leads
     - bottom_microphone_flex_from_terminal
     - bottom_microphone_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46806
+    solid_step_part_bytes_total: 46969
     net_count: 2
     nets:
     - PDM_CLK
@@ -546,6 +6143,12 @@ cad_connection_coverage:
     represented_nets:
     - PDM_CLK
     - PDM_DAT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -565,23 +6168,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/top_microphone_flex_tail.step
-    cad_step_bytes: 15565
+    cad_step_bytes: 15579
     from_terminal_part: top_microphone_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/top_microphone_flex_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15621
     to_terminal_part: top_microphone_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/top_microphone_flex_to_terminal.step
-    to_terminal_step_bytes: 15599
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31171
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - top_microphone_flex_tail
     - top_microphone_flex_from_terminal
     - top_microphone_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46736
+    solid_step_part_bytes_total: 46873
     net_count: 2
     nets:
     - PDM_CLK
@@ -590,6 +6193,12 @@ cad_connection_coverage:
     represented_nets:
     - PDM_CLK
     - PDM_DAT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -609,23 +6218,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/earpiece_receiver_lead_flex.step
-    cad_step_bytes: 15530
+    cad_step_bytes: 15544
     from_terminal_part: earpiece_receiver_lead_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15647
     to_terminal_part: earpiece_receiver_lead_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.step
-    to_terminal_step_bytes: 15564
+    to_terminal_step_bytes: 15621
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31136
+    terminal_step_bytes_total: 31268
     solid_step_part_names:
     - earpiece_receiver_lead_flex
     - earpiece_receiver_lead_flex_from_terminal
     - earpiece_receiver_lead_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46666
+    solid_step_part_bytes_total: 46812
     net_count: 2
     nets:
     - SPK_P
@@ -634,6 +6243,12 @@ cad_connection_coverage:
     represented_nets:
     - SPK_P
     - SPK_N
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -653,29 +6268,85 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/haptic_flex_tail.step
-    cad_step_bytes: 15561
+    cad_step_bytes: 15575
     from_terminal_part: haptic_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/haptic_flex_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15647
     to_terminal_part: haptic_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/haptic_flex_to_terminal.step
-    to_terminal_step_bytes: 15625
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31197
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - haptic_flex_tail
     - haptic_flex_from_terminal
     - haptic_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46758
+    solid_step_part_bytes_total: 46921
     net_count: 1
     nets:
     - HAPTIC_OUT
     represented_net_count: 1
     represented_nets:
     - HAPTIC_OUT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: sensor_hub_i2c_flex
+    cad_part: sensor_hub_i2c_flex_marker
+    from: main_pcb
+    to: sensor_hub_package_marker
+    connection_type: sensor_hub_i2c_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: sensor_i2c
+    controlled_impedance_required: false
+    impedance_requirement: not_controlled_impedance
+    min_bend_radius_mm: 0.8
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/sensor_hub_i2c_flex_marker.step
+    cad_step_bytes: 15592
+    from_terminal_part: sensor_hub_i2c_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.step
+    from_terminal_step_bytes: 15699
+    to_terminal_part: sensor_hub_i2c_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/sensor_hub_i2c_flex_to_terminal.step
+    to_terminal_step_bytes: 15647
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - sensor_hub_i2c_flex_marker
+    - sensor_hub_i2c_flex_from_terminal
+    - sensor_hub_i2c_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46938
+    net_count: 2
+    nets:
+    - SENSOR_I2C_SCL
+    - SENSOR_I2C_SDA
+    represented_net_count: 2
+    represented_nets:
+    - SENSOR_I2C_SCL
+    - SENSOR_I2C_SDA
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -695,23 +6366,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/sim_esim_signal_flex_marker.step
-    cad_step_bytes: 15583
+    cad_step_bytes: 15597
     from_terminal_part: sim_esim_signal_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15699
     to_terminal_part: sim_esim_signal_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.step
-    to_terminal_step_bytes: 15625
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31197
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - sim_esim_signal_flex_marker
     - sim_esim_signal_flex_from_terminal
     - sim_esim_signal_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46780
+    solid_step_part_bytes_total: 46995
     net_count: 9
     nets:
     - USIM_VCC
@@ -734,6 +6405,12 @@ cad_connection_coverage:
     - ESIM_CLK
     - ESIM_RST
     - ESIM_IO
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -753,23 +6430,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.step
-    cad_step_bytes: 15557
+    cad_step_bytes: 15571
     from_terminal_part: nfc_loop_antenna_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.step
-    from_terminal_step_bytes: 15643
+    from_terminal_step_bytes: 15699
     to_terminal_part: nfc_loop_antenna_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.step
-    to_terminal_step_bytes: 15643
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31286
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - nfc_loop_antenna_flex_marker
     - nfc_loop_antenna_flex_from_terminal
     - nfc_loop_antenna_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46843
+    solid_step_part_bytes_total: 46969
     net_count: 4
     nets:
     - NFC_RF_P
@@ -782,6 +6459,12 @@ cad_connection_coverage:
     - NFC_RF_N
     - NFC_IRQ_N
     - NFC_EN
+    represented_route_record_count: 4
+    represented_route_records_with_layer_count: 4
+    represented_route_records_with_source_domain_count: 4
+    represented_route_records_with_route_class_count: 4
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -801,23 +6484,23 @@ cad_connection_coverage:
     min_bend_radius_mm: null
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/compute_som_sodimm_connector.step
-    cad_step_bytes: 15561
+    cad_step_bytes: 15575
     from_terminal_part: compute_som_sodimm_carrier_from_terminal
     from_terminal_step: mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step
-    from_terminal_step_bytes: 15572
+    from_terminal_step_bytes: 15673
     to_terminal_part: compute_som_sodimm_carrier_to_terminal
     to_terminal_step: mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.step
-    to_terminal_step_bytes: 15590
+    to_terminal_step_bytes: 15621
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31162
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - compute_som_sodimm_connector
     - compute_som_sodimm_carrier_from_terminal
     - compute_som_sodimm_carrier_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46723
+    solid_step_part_bytes_total: 46869
     net_count: 9
     nets:
     - USB_DP
@@ -840,6 +6523,110 @@ cad_connection_coverage:
     - CAM1_MCLK
     - LPDDR_CK_P
     - LPDDR_CK_N
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: soc_shield_ground_spring
+    cad_part: soc_shield_ground_spring_marker
+    from: soc_shield_can
+    to: main_pcb
+    connection_type: shield_ground_spring
+    physical_medium: ground_spring_contact
+    electrical_class: shield_chassis_ground
+    controlled_impedance_required: false
+    impedance_requirement: low_inductance_chassis_ground_contact_required
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/soc_shield_ground_spring_marker.step
+    cad_step_bytes: 15605
+    from_terminal_part: soc_shield_ground_spring_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: soc_shield_ground_spring_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/soc_shield_ground_spring_to_terminal.step
+    to_terminal_step_bytes: 15647
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31320
+    solid_step_part_names:
+    - soc_shield_ground_spring_marker
+    - soc_shield_ground_spring_from_terminal
+    - soc_shield_ground_spring_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46925
+    net_count: 1
+    nets:
+    - GND
+    represented_net_count: 1
+    represented_nets:
+    - GND
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: radio_shield_ground_spring
+    cad_part: radio_shield_ground_spring_marker
+    from: radio_shield_can
+    to: main_pcb
+    connection_type: shield_ground_spring
+    physical_medium: ground_spring_contact
+    electrical_class: shield_chassis_ground
+    controlled_impedance_required: false
+    impedance_requirement: low_inductance_chassis_ground_contact_required
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/radio_shield_ground_spring_marker.step
+    cad_step_bytes: 15631
+    from_terminal_part: radio_shield_ground_spring_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: radio_shield_ground_spring_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/radio_shield_ground_spring_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - radio_shield_ground_spring_marker
+    - radio_shield_ground_spring_from_terminal
+    - radio_shield_ground_spring_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46977
+    net_count: 2
+    nets:
+    - GND
+    - SHIELD_GND
+    represented_net_count: 2
+    represented_nets:
+    - GND
+    - SHIELD_GND
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -859,29 +6646,35 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/cellular_rf_feed_development_envelope.step
-    cad_step_bytes: 15673
+    cad_step_bytes: 15687
     from_terminal_part: cellular_main_rf_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.step
-    from_terminal_step_bytes: 15625
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_main_rf_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.step
-    to_terminal_step_bytes: 15590
+    to_terminal_step_bytes: 15621
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31215
+    terminal_step_bytes_total: 31320
     solid_step_part_names:
     - cellular_rf_feed_development_envelope
     - cellular_main_rf_feed_from_terminal
     - cellular_main_rf_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46888
+    solid_step_part_bytes_total: 47007
     net_count: 1
     nets:
     - CELL_RF_MAIN
     represented_net_count: 1
     represented_nets:
     - CELL_RF_MAIN
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -901,29 +6694,35 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.step
-    cad_step_bytes: 15621
+    cad_step_bytes: 15635
     from_terminal_part: cellular_diversity_rf_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.step
-    from_terminal_step_bytes: 15625
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_diversity_rf_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.step
-    to_terminal_step_bytes: 15616
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31241
+    terminal_step_bytes_total: 31372
     solid_step_part_names:
     - cellular_div_rf_feed_development_envelope
     - cellular_diversity_rf_feed_from_terminal
     - cellular_diversity_rf_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46862
+    solid_step_part_bytes_total: 47007
     net_count: 1
     nets:
     - CELL_RF_DIV
     represented_net_count: 1
     represented_nets:
     - CELL_RF_DIV
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -943,23 +6742,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/antenna_aperture_tuner.step
-    cad_step_bytes: 15579
+    cad_step_bytes: 15593
     from_terminal_part: cellular_antenna_aperture_tuner_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.step
-    from_terminal_step_bytes: 15625
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_antenna_aperture_tuner_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.step
-    to_terminal_step_bytes: 15616
+    to_terminal_step_bytes: 15664
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31241
+    terminal_step_bytes_total: 31363
     solid_step_part_names:
     - antenna_aperture_tuner
     - cellular_antenna_aperture_tuner_from_terminal
     - cellular_antenna_aperture_tuner_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46820
+    solid_step_part_bytes_total: 46956
     net_count: 2
     nets:
     - CELL_RF_DIV
@@ -968,6 +6767,12 @@ cad_connection_coverage:
     represented_nets:
     - CELL_RF_DIV
     - RF_VBAT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -987,29 +6792,35 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.step
-    cad_step_bytes: 15621
+    cad_step_bytes: 15635
     from_terminal_part: cellular_gnss_rf_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.step
-    from_terminal_step_bytes: 15625
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_gnss_rf_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.step
-    to_terminal_step_bytes: 15625
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31250
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - cellular_gnss_rf_feed_development_envelope
     - cellular_gnss_rf_feed_from_terminal
     - cellular_gnss_rf_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46871
+    solid_step_part_bytes_total: 47033
     net_count: 1
     nets:
     - CELL_GNSS_RF
     represented_net_count: 1
     represented_nets:
     - CELL_GNSS_RF
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1029,29 +6840,35 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.step
-    cad_step_bytes: 15647
+    cad_step_bytes: 15661
     from_terminal_part: wifi_bt_rf0_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step
-    from_terminal_step_bytes: 15599
+    from_terminal_step_bytes: 15647
     to_terminal_part: wifi_bt_rf0_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.step
-    to_terminal_step_bytes: 15599
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31198
+    terminal_step_bytes_total: 31320
     solid_step_part_names:
     - wifi_bt_rf_feed_development_envelope
     - wifi_bt_rf0_feed_from_terminal
     - wifi_bt_rf0_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46845
+    solid_step_part_bytes_total: 46981
     net_count: 1
     nets:
     - WIFI_BT_RF0
     represented_net_count: 1
     represented_nets:
     - WIFI_BT_RF0
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1071,29 +6888,35 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.step
-    cad_step_bytes: 15595
+    cad_step_bytes: 15609
     from_terminal_part: wifi_bt_rf1_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step
-    from_terminal_step_bytes: 15599
+    from_terminal_step_bytes: 15673
     to_terminal_part: wifi_bt_rf1_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.step
-    to_terminal_step_bytes: 15599
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31198
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - wifi_bt_rf1_feed_development_envelope
     - wifi_bt_rf1_feed_from_terminal
     - wifi_bt_rf1_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46793
+    solid_step_part_bytes_total: 46955
     net_count: 1
     nets:
     - WIFI_BT_RF1
     represented_net_count: 1
     represented_nets:
     - WIFI_BT_RF1
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1113,23 +6936,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/split_interconnect_side_flex.step
-    cad_step_bytes: 15580
+    cad_step_bytes: 15594
     from_terminal_part: split_interconnect_side_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.step
-    from_terminal_step_bytes: 15599
+    from_terminal_step_bytes: 15647
     to_terminal_part: split_interconnect_side_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.step
-    to_terminal_step_bytes: 15625
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31224
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - split_interconnect_side_flex
     - split_interconnect_side_flex_from_terminal
     - split_interconnect_side_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46804
+    solid_step_part_bytes_total: 46940
     net_count: 8
     nets:
     - USB_DP
@@ -1150,6 +6973,12 @@ cad_connection_coverage:
     - I2S_DIN
     - PDM_CLK
     - PDM_DAT
+    represented_route_record_count: 8
+    represented_route_records_with_layer_count: 8
+    represented_route_records_with_source_domain_count: 8
+    represented_route_records_with_route_class_count: 8
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1170,20 +6999,29 @@ kicad_cad_traceability:
   captured_pinout_public_source_count: 21
   pinout_bound_footprint_count: 21
   all_pinout_bound_footprints_have_terminal_contract: true
-  cad_connection_count: 21
-  cad_connection_represented_net_count_total: 94
-  cad_connection_visual_route_span_total_mm: 374.0
-  cad_connection_terminal_marker_count: 42
-  cad_connection_terminal_pair_count: 21
-  cad_connection_solid_step_part_count: 63
-  cad_connection_solid_step_part_set_count: 21
-  cad_connection_solid_step_part_bytes_total: 982305
+  cad_connection_count: 32
+  cad_connection_represented_net_count_total: 150
+  cad_connection_represented_route_count_total: 153
+  cad_connection_represented_route_record_count_total: 153
+  cad_connection_represented_route_records_with_layer_count_total: 153
+  cad_connection_represented_route_records_with_source_domain_count_total: 153
+  cad_connection_represented_route_records_with_route_class_count_total: 153
+  cad_connection_represented_route_classification_gap_count: 0
+  cad_connection_all_represented_routes_have_layer_source_and_class: true
+  cad_connection_visual_route_span_total_mm: 456.0
+  cad_connection_terminal_marker_count: 64
+  cad_connection_terminal_pair_count: 32
+  cad_connection_solid_step_part_count: 96
+  cad_connection_solid_step_part_set_count: 32
+  cad_connection_solid_step_part_bytes_total: 1501919
   cad_connection_physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
     flexible_antenna_loop: 1
-    flexible_printed_circuit: 10
+    flexible_printed_circuit: 14
+    ground_spring_contact: 2
     insulated_wire_pair: 2
+    pcb_copper_trace_group: 5
     rf_50ohm_feed: 5
     rf_tuner_interconnect: 1
   cad_connection_electrical_class_counts:
@@ -1191,21 +7029,30 @@ kicad_cad_traceability:
     audio_power_pair: 1
     audio_receiver_pair: 1
     battery_power_sense: 1
+    battery_power_sense_board_route: 1
+    camera_power_control: 2
+    cellular_host_interface: 1
     cellular_wifi_rf: 5
     compute_board_to_board_mixed_speed: 1
     digital_microphone: 2
+    display_bias_power: 1
     haptic_drive: 1
     low_speed_gpio: 1
     mipi_csi_camera_control: 2
     mipi_dsi_touch_control: 1
     nfc_loop_rf: 1
+    pd_charger_power_control_board_route: 1
+    sensor_i2c: 1
+    shield_chassis_ground: 2
     sim_esim_low_speed: 1
     top_bottom_board_mixed_signal: 1
     usb2_pd_vbus: 1
-  cad_connection_controlled_impedance_count: 13
-  cad_connection_controlled_impedance_requirement_defined_count: 21
-  cad_connection_bend_radius_requirement_defined_count: 21
-  cad_connection_supplier_release_required_count: 21
+    usb2_pd_vbus_board_route: 1
+    wifi_bt_host_interface: 1
+  cad_connection_controlled_impedance_count: 16
+  cad_connection_controlled_impedance_requirement_defined_count: 32
+  cad_connection_bend_radius_requirement_defined_count: 32
+  cad_connection_supplier_release_required_count: 32
   incomplete_footprint_count: 0
   incomplete_cad_connection_count: 0
   missing_captured_pinout_file_count: 0
@@ -1226,5 +7073,50 @@ release_allowed: false
 claim_boundary: Local routed-output candidate only. Not approved release evidence; requires real DRC/ERC/SI/PI/RF/fabricator/supplier
   review.
 candidate_children:
-- candidate-placeholder.txt
+- board/kicad/e1-phone/production/fab-quote/candidate-placeholder.txt
+child_artifact_inventory:
+- path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+  name: assembler-commercial-quote.pdf
+  size_bytes: 286
+  sha256: ce822be94de8b490c3d9780143db3d470b89381a66a3bd3ecb07b318e6aca5ed
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf.metadata.yaml
+  name: assembler-commercial-quote.pdf.metadata.yaml
+  size_bytes: 42422
+  sha256: f358e86d1ec9c74ec9327ec9c4ea95a1cca618eb38659a47a8ec1cfe78b7f687
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/candidate-placeholder.txt
+  name: candidate-placeholder.txt
+  size_bytes: 86
+  sha256: 0491870d5cf4361fa78f4a61516527ead580b1f27f7ebb0710f35b17952533cc
+  candidate_placeholder: true
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+  name: fabricator-commercial-quote.pdf
+  size_bytes: 287
+  sha256: d3f79c5785ce051162f499ca3fdf00fc0105a0b12f48d1f5d61a0a6da1550c4d
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf.metadata.yaml
+  name: fabricator-commercial-quote.pdf.metadata.yaml
+  size_bytes: 42425
+  sha256: de9017e68f032778ec9aaa46af388212942b449369de3733da8430e2e47e1ac9
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+child_artifact_count: 5
+candidate_placeholder_child_count: 1
+candidate_placeholder_child_paths:
+- board/kicad/e1-phone/production/fab-quote/candidate-placeholder.txt
+candidate_manifest_child_artifact_count: 0
+candidate_manifest_child_artifact_paths: []
+untracked_non_manifest_child_count: 4
+release_child_count: 0
+all_non_manifest_children_classified: false
 release_children_complete: false

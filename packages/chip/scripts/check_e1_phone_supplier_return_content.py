@@ -757,6 +757,16 @@ def main() -> int:
         diagnostics = blocker_diagnostics(blocked)
         categories = diagnostics["supplier_return_blocker_categories"]
         primary_categories = diagnostics["primary_supplier_return_blocker_categories"]
+        primary_lane_actions = [
+            unblock_action(lane, evidence_class, expected_path, failures)
+            for lane, evidence_class, expected_path, failures in sorted(
+                {
+                    lane: (lane, evidence_class, expected_path, failures)
+                    for lane, evidence_class, expected_path, failures in blocked
+                }.values(),
+                key=lambda item: item[0],
+            )
+        ]
         write_report(
             {
                 "schema": "eliza.e1_phone_supplier_return_content_report.v1",
@@ -785,6 +795,37 @@ def main() -> int:
                     unblock_action(lane, evidence_class, expected_path, failures)
                     for lane, evidence_class, expected_path, failures in blocked
                 ],
+                "blocker_dependency_counts": {
+                    "repo_artifact_generation": categories[
+                        "true_missing_supplier_return_artifacts"
+                    ],
+                    "live_device_validation": 0,
+                    "actionable_external_dependency": max(
+                        0,
+                        len(blocked)
+                        - categories["true_missing_supplier_return_artifacts"],
+                    ),
+                },
+                "next_command_by_dependency": {
+                    "actionable_external_dependency": [VALIDATION_COMMAND],
+                    **(
+                        {"repo_artifact_generation": [VALIDATION_COMMAND]}
+                        if categories["true_missing_supplier_return_artifacts"] > 0
+                        else {}
+                    ),
+                },
+                "validation_commands": [VALIDATION_COMMAND],
+                "primary_blocker": {
+                    "dependency": "actionable_external_dependency",
+                    "blocked_rows": len(blocked),
+                    "required_action": (
+                        "Collect supplier-returned files and signed review metadata by "
+                        "lane; no current local generator can provide supplier approval."
+                    ),
+                    "validation_command": VALIDATION_COMMAND,
+                    "release_credit": False,
+                },
+                "primary_lane_actions": primary_lane_actions,
                 "blocker_diagnostics": diagnostics,
                 "next_unblock_actions": [
                     unblock_action(lane, evidence_class, expected_path, failures)

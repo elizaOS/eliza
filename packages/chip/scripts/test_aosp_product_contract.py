@@ -23,6 +23,11 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+def assert_no_runtime_or_release_claims(report: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
+
+
 class AospProductContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         chip = tmp / "chip/sw/aosp-device"
@@ -133,6 +138,7 @@ class AospProductContractTests(unittest.TestCase):
         self.assertIn("local_manifest_does_not_project_os_vendor_layer", codes)
         self.assertIn("aosp_allow_missing_dependencies_enabled", codes)
         self.assertIn("chip_product_missing_active_hal_packages", codes)
+        assert_no_runtime_or_release_claims(report)
 
     def test_fused_product_contract_passes_static_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -184,6 +190,8 @@ class AospProductContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertRegex(str(report["generated_utc"]), r"^\d{4}-\d{2}-\d{2}T")
+        assert_no_runtime_or_release_claims(report)
 
     def test_deprecated_local_hwcomposer_blocks_current_fcm(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -206,6 +214,7 @@ class AospProductContractTests(unittest.TestCase):
 
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("chip_product_packages_deprecated_hidl_hwcomposer", codes)
+        assert_no_runtime_or_release_claims(report)
 
 
 class PatchStack:

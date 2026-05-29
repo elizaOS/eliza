@@ -83,6 +83,10 @@ def is_template_placeholder(value: Any) -> bool:
     return isinstance(value, str) and "64-character lowercase sha256" in value
 
 
+def is_blocked_placeholder(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith("blocked:")
+
+
 def validate_manifest(data: dict[str, Any], require_pass: bool) -> tuple[int, dict[str, Any]]:
     errors: list[str] = []
     blockers: list[str] = []
@@ -160,6 +164,9 @@ def validate_manifest(data: dict[str, Any], require_pass: bool) -> tuple[int, di
                 errors.append(f"template artifacts.{name}.sha256 must be a placeholder")
             continue
 
+        if status == BLOCKED and is_blocked_placeholder(expected_sha):
+            blockers.append(f"{name}: {expected_sha}")
+            continue
         if not is_sha256(expected_sha):
             errors.append(f"artifacts.{name}.sha256 must be lowercase SHA-256 hex")
         if (

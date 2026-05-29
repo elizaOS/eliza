@@ -11,7 +11,15 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     report = preflight.prepare(
         out_dir=tmp_path,
         profile_id="asimov-1",
-        tasks=("stand_up", "walk_forward"),
+        tasks=(
+            "stand_up",
+            "walk_forward",
+            "walk_backward",
+            "sidestep_left",
+            "sidestep_right",
+            "turn_left",
+            "turn_right",
+        ),
         alberta_steps=100,
         alberta_episode_steps=11,
         alberta_eval_episodes=2,
@@ -67,6 +75,16 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
         "unitree-h1",
         "unitree-r1",
     ]
+    assert loaded["checks"]["video_commands_cover_production"] is True
+    assert loaded["video_commands"] == [
+        "stand up",
+        "walk forward",
+        "walk backward",
+        "sidestep left",
+        "sidestep right",
+        "turn left",
+        "turn right",
+    ]
     for script in loaded["scripts"].values():
         assert os.access(script, os.X_OK)
 
@@ -79,9 +97,13 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert '--steps "$ALBERTA_STREAMING_STEPS"' in train_script
     assert "--episode-steps 11" in train_script
     assert "--eval-episodes 2" in train_script
+    assert "--require-phase-success" in train_script
+    assert "--min-phase-success-rate 1.0" in train_script
 
     local_preflight_script = (tmp_path / "scripts" / "00_local_preflight.sh").read_text()
     assert "--profiles hiwonder-ainex asimov-1 unitree-g1 unitree-h1 unitree-r1" in local_preflight_script
+    assert '--commands "stand up" "walk forward" "walk backward" "sidestep left" "sidestep right" "turn left" "turn right"' in local_preflight_script
+    assert "--video-evidence evidence/multi_robot_smoke_videos" in local_preflight_script
     assert (
         "eliza-robot-validate-full-training-preflight evidence/full_training_preflight"
         in local_preflight_script
@@ -139,26 +161,36 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "POST_TRAIN_EVAL_EPISODES" in post_script
     assert "POST_TRAIN_EVAL_MAX_STEPS" in post_script
     assert "POST_TRAIN_VIDEO_MAX_STEPS" in post_script
-    assert "POST_TRAIN_SKIP_EVAL" in post_script
+    assert "POST_TRAIN_SKIP_EVAL" not in post_script
     assert "export JAX_PLATFORMS=cpu" in post_script
     assert "export JAX_PLATFORM_NAME=cpu" in post_script
     assert "unset CUDA_VISIBLE_DEVICES" in post_script
     assert "uv run eliza-robot-validate-alberta-checkpoint" in post_script
-    assert "--tasks stand_up walk_forward" in post_script
+    assert (
+        "--tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right"
+        in post_script
+    )
     assert '--min-steps "$ALBERTA_STREAMING_STEPS"' in post_script
     assert "--require-domain-rand" in post_script
     assert "--require-inference" in post_script
+    assert "--require-phase-promotion" in post_script
     assert "uv run eliza-robot-validate-asimov1-production-checkpoint" in post_script
     assert "--require-inference-check" in post_script
     assert "validate_asimov1_real_agent_readiness.py" in post_script
     assert "--require-production" in post_script
     assert "evidence_text_to_action_e2e.py --checkpoint" in post_script
     assert "--profile asimov-1 --no-real" in post_script
+    assert "--out evidence/curriculum_eval/eval_text_policy.json" in post_script
+    assert "--curriculum-report-out evidence/curriculum_eval/report.json" in post_script
     assert '--episodes "$POST_TRAIN_EVAL_EPISODES"' in post_script
     assert '--max-steps "$POST_TRAIN_EVAL_MAX_STEPS"' in post_script
-    assert 'if [[ "$POST_TRAIN_SKIP_EVAL" != "1" ]]' in post_script
+    assert "record_agent_videos.py --profiles hiwonder-ainex asimov-1 unitree-g1 unitree-h1 unitree-r1" in post_script
+    assert "--out evidence/multi_robot_smoke_videos" in post_script
+    assert "--scripted-smoke" in post_script
+    assert "eliza-robot-review-video-evidence --evidence-dir evidence/multi_robot_smoke_videos --out-dir evidence/multi_robot_smoke_review" in post_script
     assert "record_agent_videos.py --profiles asimov-1" in post_script
-    assert "rm -rf evidence/agent_videos evidence/video_review" in post_script
+    assert '--commands "stand up" "walk forward" "walk backward" "sidestep left" "sidestep right" "turn left" "turn right"' in post_script
+    assert "rm -rf evidence/multi_robot_smoke_videos evidence/agent_videos evidence/video_review" in post_script
     assert '--max-steps "$POST_TRAIN_VIDEO_MAX_STEPS"' in post_script
     assert "--policy-checkpoint checkpoints/asimov_1_alberta_full" in post_script
     assert "eliza-robot-generate-alberta-report" in post_script

@@ -19,10 +19,6 @@ import { logger } from "@elizaos/core";
 
 type RoleGate = "user" | "admin" | "owner";
 
-const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {};
-
-const ACTION_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {};
-
 // ---------------------------------------------------------------------------
 // Provider-level gating — providers that expose sensitive context.
 // Keys are exact provider `name` strings.
@@ -260,4 +256,4 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
 }
 
 /** Exported for testing. */
-export { ACTION_ROLE_OVERRIDES, PROVIDER_ROLE_OVERRIDES, ROLE_GATED_PLUGINS };
+export { PROVIDER_ROLE_OVERRIDES };

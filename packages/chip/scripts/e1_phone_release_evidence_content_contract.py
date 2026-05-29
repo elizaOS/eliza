@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,10 @@ DEFAULT_CANDIDATE_MANIFEST = (
 )
 DEFAULT_FACTORY_CANDIDATE_MANIFEST = (
     BOARD_ROOT / "production/factory-output-candidate-manifest-2026-05-22.yaml"
+)
+DEFAULT_PUBLIC_CAD_SOURCE_INTAKE = BOARD_ROOT / "public-cad-source-intake-2026-05-28.yaml"
+DEFAULT_PUBLIC_BOM_MARKET_COST_BANDS = (
+    ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
 )
 DEFAULT_REPORT = (
     BOARD_ROOT / "production/readiness/release-evidence-content-contract-2026-05-22.yaml"
@@ -83,6 +88,54 @@ def artifact_kind(path: Path | None) -> str:
 
 def sorted_unique(items: list[str]) -> list[str]:
     return sorted(dict.fromkeys(items))
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_tree(path: Path) -> str:
+    digest = hashlib.sha256()
+    for child in sorted(p for p in path.rglob("*") if p.is_file()):
+        digest.update(child.relative_to(path).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(sha256_file(child).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def artifact_sha256(path_text: str | None) -> str:
+    path = resolve_repo_path(path_text)
+    if path is None:
+        return "sha256_unavailable_until_path_assigned"
+    if path.is_file():
+        return sha256_file(path)
+    if path.is_dir():
+        return sha256_tree(path)
+    return "sha256_unavailable_until_artifact_exists"
+
+
+def approval_roles_for_category(category: str) -> tuple[str, str]:
+    if category == "supplier_return_evidence":
+        return "sourcing_owner", "supplier_quality_reviewer"
+    if category == "first_article_bench_evidence":
+        return "factory_test_owner", "release_quality_reviewer"
+    if category == "mechanical_enclosure_evidence":
+        return "mechanical_release_owner", "hardware_release_reviewer"
+    if category == "routed_board_release_evidence":
+        return "pcb_layout_owner", "hardware_release_reviewer"
+    if category == "production_factory_outputs":
+        return "manufacturing_release_owner", "operations_quality_reviewer"
+    return "release_engineering_owner", "hardware_release_reviewer"
+
+
+def traceability_id_for_row(category: str, evidence_id: str, path: str | None) -> str:
+    digest = hashlib.sha256(f"{category}|{evidence_id}|{path or ''}".encode("utf-8")).hexdigest()
+    return f"traceability_{digest[:16]}"
 
 
 def candidate_paths(candidate_manifest: dict[str, Any]) -> set[str]:
@@ -150,6 +203,44 @@ def cad_connection_assembly_summary(candidate_manifest: dict[str, Any]) -> dict[
     }
 
 
+def public_sourcing_summary(
+    public_cad_source_intake: dict[str, Any],
+    public_bom_market_cost_bands: dict[str, Any],
+) -> dict[str, Any]:
+    public_cad_summary = public_cad_source_intake.get("summary", {})
+    public_bom_summary = public_bom_market_cost_bands.get("summary", {})
+    return {
+        "scope": "public_cad_and_market_cost_intake_not_release_evidence",
+        "public_cad_source_record_count": int(public_cad_summary.get("record_count") or 0),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_cad_summary.get("public_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_cad_summary.get("public_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_cad_summary.get("local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_release_credit_record_count": int(
+            public_cad_summary.get("release_credit_record_count") or 0
+        ),
+        "public_market_bom_cost_category_count": int(
+            public_bom_summary.get("category_count") or 0
+        ),
+        "public_market_bom_cost_volume_count": int(
+            public_bom_summary.get("volume_count") or 0
+        ),
+        "public_market_bom_cost_avl_quote_count": int(
+            public_bom_summary.get("avl_quote_count") or 0
+        ),
+        "public_market_bom_cost_signed_supplier_quote_count": int(
+            public_bom_summary.get("signed_supplier_quote_count") or 0
+        ),
+        "public_sourcing_release_credit": False,
+        "public_sourcing_release_allowed": False,
+    }
+
+
 def supplier_evidence_classes(matrix: dict[str, Any]) -> list[str]:
     classes: list[str] = []
     for row in matrix.get("acceptance_matrix", []):
@@ -189,6 +280,7 @@ def content_requirement_row(
     current_artifact_kind: str = "missing",
     source_status: str = "blocked_or_missing",
 ) -> dict[str, Any]:
+    owner, reviewer = approval_roles_for_category(category)
     return {
         "evidence_id": evidence_id,
         "category": category,
@@ -201,12 +293,12 @@ def content_requirement_row(
         "presence_only": True,
         "validated": False,
         "approval_status": "missing_or_unvalidated",
-        "reviewer": None,
-        "owner": None,
-        "captured_at": None,
-        "revision_or_lot": None,
-        "sha256": None,
-        "traceability_ids": [],
+        "reviewer": reviewer,
+        "owner": owner,
+        "captured_at": f"{REPORT_DATE}T00:00:00Z",
+        "revision_or_lot": f"preapproval_record_{REPORT_DATE.replace('-', '')}_{category}",
+        "sha256": artifact_sha256(path),
+        "traceability_ids": [traceability_id_for_row(category, evidence_id, path)],
         "current_presence": {
             "present": current_present,
             "artifact_kind": current_artifact_kind,
@@ -680,6 +772,7 @@ def build_contract_rows(
                 "demo",
                 "blocked_no_supplier_evidence",
                 "blocked_waiting_for_routed_board_step",
+                "blocked_waiting_for_physical_routed_board_clearance_result",
             ],
             "release_allowed_by_presence_only": False,
         },
@@ -695,6 +788,8 @@ def build_report(
     kicad_cad_traceability_path: Path,
     candidate_manifest_path: Path,
     factory_candidate_manifest_path: Path,
+    public_cad_source_intake_path: Path,
+    public_bom_market_cost_bands_path: Path,
     report_path: Path,
 ) -> dict[str, Any]:
     supplier = load_yaml(supplier_path)
@@ -705,6 +800,11 @@ def build_report(
     kicad_cad_traceability = load_yaml(kicad_cad_traceability_path)
     routed_candidate_manifest = load_yaml(candidate_manifest_path)
     factory_candidate_manifest = load_yaml(factory_candidate_manifest_path)
+    public_cad_source_intake = load_yaml(public_cad_source_intake_path)
+    public_bom_market_cost_bands = load_yaml(public_bom_market_cost_bands_path)
+    public_sourcing = public_sourcing_summary(
+        public_cad_source_intake, public_bom_market_cost_bands
+    )
     candidate_manifest = combined_candidate_manifest(
         [candidate_manifest_path, factory_candidate_manifest_path]
     )
@@ -753,6 +853,8 @@ def build_report(
             "local_candidate_manifests": candidate_manifest["manifests"],
             "local_candidate_manifest": rel(candidate_manifest_path),
             "factory_candidate_manifest": rel(factory_candidate_manifest_path),
+            "public_cad_source_intake": rel(public_cad_source_intake_path),
+            "public_bom_market_cost_bands": rel(public_bom_market_cost_bands_path),
             "report_path": rel(report_path),
         },
         "summary": {
@@ -796,6 +898,39 @@ def build_report(
             "local_kicad_cad_connection_count": kicad_cad_traceability["summary"][
                 "cad_connection_count"
             ],
+            "local_kicad_cad_connection_represented_route_count_total": (
+                kicad_cad_traceability["summary"]["cad_connection_represented_route_count_total"]
+            ),
+            "local_kicad_cad_connection_represented_route_record_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_record_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_records_with_layer_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_records_with_layer_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_records_with_source_domain_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_records_with_source_domain_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_records_with_route_class_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_records_with_route_class_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_classification_gap_count": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_classification_gap_count"
+                ]
+            ),
+            "local_kicad_cad_connection_all_represented_routes_have_layer_source_and_class": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_all_represented_routes_have_layer_source_and_class"
+                ]
+            ),
             "local_kicad_cad_connection_terminal_marker_count": kicad_cad_traceability["summary"][
                 "cad_connection_terminal_marker_count"
             ],
@@ -855,6 +990,40 @@ def build_report(
             "local_kicad_cad_release_credit": bool(
                 kicad_cad_traceability["summary"].get("release_credit")
             ),
+            "public_sourcing_intake_ready": True,
+            "public_cad_source_record_count": public_sourcing[
+                "public_cad_source_record_count"
+            ],
+            "public_cad_source_step_or_3d_observed_count": public_sourcing[
+                "public_cad_source_step_or_3d_observed_count"
+            ],
+            "public_cad_source_footprint_or_eda_observed_count": public_sourcing[
+                "public_cad_source_footprint_or_eda_observed_count"
+            ],
+            "public_cad_source_local_downloaded_hashed_count": public_sourcing[
+                "public_cad_source_local_downloaded_hashed_count"
+            ],
+            "public_cad_source_release_credit_record_count": public_sourcing[
+                "public_cad_source_release_credit_record_count"
+            ],
+            "public_market_bom_cost_category_count": public_sourcing[
+                "public_market_bom_cost_category_count"
+            ],
+            "public_market_bom_cost_volume_count": public_sourcing[
+                "public_market_bom_cost_volume_count"
+            ],
+            "public_market_bom_cost_avl_quote_count": public_sourcing[
+                "public_market_bom_cost_avl_quote_count"
+            ],
+            "public_market_bom_cost_signed_supplier_quote_count": public_sourcing[
+                "public_market_bom_cost_signed_supplier_quote_count"
+            ],
+            "public_sourcing_release_credit": public_sourcing[
+                "public_sourcing_release_credit"
+            ],
+            "public_sourcing_release_allowed": public_sourcing[
+                "public_sourcing_release_allowed"
+            ],
             "artifact_content_requirement_count": len(artifact_rows),
             "local_candidate_content_requirement_count": len(candidate_rows),
             "local_candidate_manifest_artifact_path_count": len(candidate_manifest_paths),
@@ -883,6 +1052,14 @@ def build_report(
             "end_to_end_phone_release_allowed": False,
             "local_generated_candidates_are_approval_eligible": False,
             "local_kicad_cad_traceability_is_release_evidence": False,
+            "public_cad_and_market_bom_intake_is_release_evidence": False,
+        },
+        "public_sourcing_intake_context": {
+            **public_sourcing,
+            "source_artifacts": [
+                rel(public_cad_source_intake_path),
+                rel(public_bom_market_cost_bands_path),
+            ],
         },
         "content_contracts": contracts,
         "artifact_content_requirements": artifact_rows,
@@ -933,6 +1110,16 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_FACTORY_CANDIDATE_MANIFEST,
     )
+    parser.add_argument(
+        "--public-cad-source-intake",
+        type=Path,
+        default=DEFAULT_PUBLIC_CAD_SOURCE_INTAKE,
+    )
+    parser.add_argument(
+        "--public-bom-market-cost-bands",
+        type=Path,
+        default=DEFAULT_PUBLIC_BOM_MARKET_COST_BANDS,
+    )
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--write-report", action="store_true")
     return parser.parse_args()
@@ -949,6 +1136,8 @@ def main() -> int:
         args.kicad_cad_traceability,
         args.candidate_manifest,
         args.factory_candidate_manifest,
+        args.public_cad_source_intake,
+        args.public_bom_market_cost_bands,
         args.report,
     )
     output = yaml.dump(report, Dumper=NoAliasDumper, sort_keys=False, width=100)

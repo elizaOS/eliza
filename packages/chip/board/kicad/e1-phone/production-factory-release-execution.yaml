@@ -189,6 +189,7 @@ factory_fixture_execution:
     - board/kicad/e1-phone/production/test/factory-test-limits.yaml
     - board/kicad/e1-phone/production/test/probe-coordinates.csv
     - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    - board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
     - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
     - board/kicad/e1-phone/production/test/first-article-test-transcript.json
   probe_domains_blocked:

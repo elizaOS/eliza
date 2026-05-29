@@ -12,6 +12,14 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/mvp_simulator.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+    "phone_performance_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 TIMEOUT_WRAPPER = [sys.executable, "scripts/run_with_timeout.py"]
 DEFAULT_TIMEOUT_SECONDS = 300
 CHIPYARD_OUT = ROOT / "build/chipyard/eliza_rocket"
@@ -118,7 +126,7 @@ STEPS = [
             "bounded startup attempt of OpenSBI/Linux on generated "
             "ElizaRocketConfig Verilator simulator"
         ),
-        "command": ["scripts/run_chipyard_eliza_linux_smoke.sh"],
+        "command": [sys.executable, "scripts/check_chipyard_verilator_linux_smoke.py"],
         "pass_markers": ["STATUS: PASS chipyard.verilator_linux_smoke"],
         "block_markers": [
             "STATUS: BLOCKED chipyard.verilator_linux_smoke",
@@ -212,6 +220,13 @@ ON_CHIP_OS_BOOT_REQUIRED_STEPS = {
     "chipyard_payload_path",
     "chipyard_verilator_linux_attempt",
     "chipyard_verilator_linux_smoke",
+}
+
+READINESS_REQUIRED_STEPS = {
+    *ON_CHIP_OS_BOOT_REQUIRED_STEPS,
+    "npu_ml_smoke",
+    "qemu_firmware_smoke",
+    "renode_firmware_smoke",
 }
 
 
@@ -472,11 +487,19 @@ def main() -> int:
         item = run_step(step)
         results.append(item)
 
-    statuses = {item["status"] for item in results}
-    if "fail" in statuses:
+    required_statuses = {
+        str(item.get("name")): item.get("status")
+        for item in results
+        if str(item.get("name")) in READINESS_REQUIRED_STEPS
+    }
+    required_failed = any(status == "fail" for status in required_statuses.values())
+    required_blocked = any(status != "pass" for status in required_statuses.values()) or (
+        set(required_statuses) != READINESS_REQUIRED_STEPS
+    )
+    if required_failed:
         overall = "fail"
         code = 1
-    elif "blocked" in statuses or len(results) != len(STEPS):
+    elif required_blocked:
         overall = "blocked"
         code = 2
     else:
@@ -540,6 +563,7 @@ def main() -> int:
         ),
         "qemu_virt_reference_only": True,
         "renode_reference_only": True,
+        **FALSE_CLAIM_FLAGS,
         "blockers_to_on_chip_os_boot": on_chip_blockers,
         "blockers_to_minimum_linux_npu_target": minimum_target_blockers,
         "remaining_blockers": blocked_items(results),

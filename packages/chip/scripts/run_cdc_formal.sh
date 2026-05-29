@@ -24,16 +24,21 @@ work_dir="build/formal/cdc"
 manifest="build/reports/cdc_formal_manifest.json"
 mkdir -p "$work_dir" "build/reports"
 
-# task_name : sby_file : bound_module : property_pack : needs_sv_pkg
-#   needs_sv_pkg=1 marks a task whose RTL imports a SystemVerilog package in the
-#   module header (`module m import pkg::*; #(...)`). The bundled yosys Verilog
-#   frontend cannot parse that construct; such tasks require an sv2v lowering
-#   pass and are blocked-closed (not failed) when sv2v is absent.
+# task_name : sby_file : bound_module : property_pack : needs_slang
+#   needs_slang=1 marks a task whose RTL imports a SystemVerilog package in the
+#   module header (`module m import pkg::*; #(...)`). The stock yosys Verilog
+#   frontend cannot parse that construct, so the task's .sby reads the RTL
+#   through the yosys-slang frontend (`plugin -i slang; read_slang ...`). slang
+#   ships with the pinned oss-cad-suite yosys that sby drives. A needs_slang
+#   task is blocked-closed (not failed) only if that yosys cannot load slang.
 tasks="droop_cdc:droop_cdc.sby:droop_sensor:cdc_properties.sv:1 reset_sync:reset_sync.sby:e1_reset_sync:reset_properties.sv:0"
 
-have_sv2v=0
-if command -v sv2v >/dev/null 2>&1; then
-    have_sv2v=1
+# Probe whether the yosys that sby will drive can load the slang frontend. The
+# oss-cad-suite sby wrapper prepends its own bin to PATH, so the `yosys` resolved
+# here (with the same PATH prefix applied above) is the binary sby uses.
+have_slang=0
+if command -v yosys >/dev/null 2>&1 && yosys -p "plugin -i slang" -qq >/dev/null 2>&1; then
+    have_slang=1
 fi
 
 if ! command -v sby >/dev/null 2>&1; then
@@ -41,6 +46,7 @@ if ! command -v sby >/dev/null 2>&1; then
     echo "Install oss-cad-suite or add sby to PATH. No Yosys fallback is offered for CDC/RDC."
 SBY_MISSING=1 MANIFEST="$manifest" TASKS="$tasks" python3 - <<'PY'
 import json, os
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -79,6 +85,7 @@ manifest.write_text(json.dumps({
     "schema": "eliza.cdc_formal_evidence.v1",
     "claim_boundary": "intent_manifest_only_not_cdc_rdc_signoff",
     "status": "blocked",
+    "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     "blocked_reason": "SymbiYosys missing; install sby to produce bound-property evidence",
     "tasks": tasks,
     "findings": findings,
@@ -98,7 +105,7 @@ for spec in $tasks; do
     bound_module="${rest%%:*}"
     rest="${rest#*:}"
     property_pack="${rest%%:*}"
-    needs_sv_pkg="${rest#*:}"
+    needs_slang="${rest#*:}"
 
     spec_path="$props_dir/$sby_file"
     if [ ! -f "$spec_path" ]; then
@@ -108,12 +115,14 @@ for spec in $tasks; do
         continue
     fi
 
-    if [ "$needs_sv_pkg" = "1" ] && [ "$have_sv2v" = "0" ]; then
-        echo "BLOCKED: $name requires sv2v to lower the package-import module header;"
-        echo "  the bundled yosys Verilog frontend cannot parse 'module $bound_module import pkg::*;'."
-        echo "  Install sv2v (https://github.com/zachjs/sv2v) and re-run; prove with:"
-        echo "    sv2v rtl/power/power_pkg.sv rtl/power/droop_sensor.sv > build/formal/cdc/droop_sensor.lowered.v && sh scripts/run_cdc_formal.sh"
-        status_lines="$status_lines $name:blocked_requires_sv2v:$sby_file:$bound_module:$property_pack"
+    if [ "$needs_slang" = "1" ] && [ "$have_slang" = "0" ]; then
+        echo "BLOCKED: $name needs the yosys-slang frontend to parse the package-import"
+        echo "  module header 'module $bound_module import pkg::*;'; the stock yosys"
+        echo "  Verilog frontend cannot. The slang plugin ships with the oss-cad-suite"
+        echo "  yosys (share/yosys/plugins/slang.so) but could not be loaded here."
+        echo "  Install/repair oss-cad-suite so 'yosys -p \"plugin -i slang\"' succeeds, then"
+        echo "  re-run scripts/run_cdc_formal.sh."
+        status_lines="$status_lines $name:blocked_requires_slang:$sby_file:$bound_module:$property_pack"
         continue
     fi
 
@@ -134,6 +143,7 @@ done
 
 MANIFEST="$manifest" STATUS_LINES="$status_lines" FAIL="$fail" python3 - <<'PY'
 import json, os
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -146,13 +156,13 @@ def finding_for_task(name, task):
     status = task["status"]
     if status == "pass":
         return None
-    if status == "blocked_requires_sv2v":
+    if status == "blocked_requires_slang":
         message = (
-            f"{name} CDC/RDC formal task requires sv2v before yosys can parse "
-            f"the {task['bound_module']} SystemVerilog package import"
+            f"{name} CDC/RDC formal task needs the yosys-slang frontend before yosys "
+            f"can parse the {task['bound_module']} SystemVerilog package import"
         )
         next_step = (
-            "Install sv2v, lower the package-import RTL as described by the script output, "
+            "Install/repair oss-cad-suite so 'yosys -p \"plugin -i slang\"' succeeds, "
             "then rerun scripts/run_cdc_formal.sh."
         )
     elif status == "missing_sby":
@@ -207,6 +217,7 @@ manifest.write_text(json.dumps({
     "schema": "eliza.cdc_formal_evidence.v1",
     "claim_boundary": "intent_manifest_only_not_cdc_rdc_signoff",
     "status": overall,
+    "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     "tasks": tasks,
     "findings": findings,
 }, indent=2, sort_keys=True) + "\n")

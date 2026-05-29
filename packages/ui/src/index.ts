@@ -150,7 +150,6 @@ export {
   type ChatMediaAttachment,
   ContentType,
 } from "./cloud-ui/types/chat-media";
-export * from "./companion/index";
 export type {
   DocumentImageCompressionPlatform,
   DocumentImageUploadFile,

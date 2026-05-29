@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import tarfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 REQUIRED_SUFFIXES = [
@@ -14,6 +15,8 @@ REQUIRED_SUFFIXES = [
     "reports/formal_manifest.json",
     "reports/cocotb/manifest.json",
     "reports/qemu_smoke.log",
+    "reports/qemu_smoke.manifest",
+    "renode/eliza_e1_status.json",
     "netlist/e1_chip_synth.v",
     "source/Makefile",
     "source/scripts/check_mvp_status.py",
@@ -170,6 +173,28 @@ REQUIRED_TEXT = {
         "qemu_virt_reference",
         "eliza_e1_uart.transcript",
     ],
+    "reports/qemu_smoke.manifest": [
+        "status=PASS",
+        "evidence_kind=qemu-executable-transcript",
+        "claim_boundary=qemu-virt software reference only; not e1-chip hardware ABI boot evidence",
+        "phone_claim_allowed=false",
+        "release_claim_allowed=false",
+        "hardware_boot_claim_allowed=false",
+        "silicon_evidence_claim_allowed=false",
+        "linux_boot_claim_allowed=false",
+        "qemu_command=qemu-system-riscv64 -machine virt",
+        "banner=eliza e1 qemu",
+    ],
+    "renode/eliza_e1_status.json": [
+        '"model_kind": "qemu_virt_reference"',
+        '"claim_boundary": "qemu-virt software reference only; not e1-chip hardware ABI boot evidence"',
+        '"phone_claim_allowed": false',
+        '"release_claim_allowed": false',
+        '"hardware_boot_claim_allowed": false',
+        '"silicon_evidence_claim_allowed": false',
+        '"linux_boot_claim_allowed": false',
+        '"status":',
+    ],
 }
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -178,20 +203,28 @@ SCHEMA = "eliza.release_archive.v1"
 CLAIM_BOUNDARY = "release_archive_validation_only_not_release_evidence"
 
 
+def rel(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def finding_payload(status: str, archive: Path, index: int, finding: str) -> dict:
+    archive_label = rel(archive)
     payload = {
         "code": f"release_archive_{status}_{index}",
         "severity": "blocker" if status == "blocked" else "error",
         "message": finding,
-        "evidence": str(archive),
+        "evidence": archive_label,
         "next_step": (
             "Regenerate the release archive from real checked release artifacts "
             "and rerun this checker."
         ),
-        "next_command": f"python3 scripts/check_release_archive.py {archive}",
+        "next_command": f"python3 scripts/check_release_archive.py {archive_label}",
         "next_commands": [
             "scripts/archive_release.sh",
-            f"python3 scripts/check_release_archive.py {archive}",
+            f"python3 scripts/check_release_archive.py {archive_label}",
         ],
         "evidence_requirements": {
             "required_suffixes": REQUIRED_SUFFIXES,
@@ -232,10 +265,17 @@ def write_report(status: str, archive: Path, findings: list[str]) -> None:
     payload = {
         "schema": SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
-        "archive": str(archive),
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "hardware_boot_claim_allowed": False,
+        "silicon_evidence_claim_allowed": False,
+        "simulator_pass_is_release_evidence": False,
+        "archive": rel(archive),
         "summary": {
-            "release_ready": status == "pass",
+            "archive_validation_passed": status == "pass",
+            "release_ready": False,
             "blockers": len(findings) if status == "blocked" else 0,
             "failures": len(findings) if status == "fail" else 0,
         },

@@ -26,6 +26,10 @@ module e1_bootrom #(
     input  logic [13:0] addr,
     output logic [31:0] rdata
 );
+    // The debug bridge exposes the low ROM words through the v0 MMIO map, but
+    // the generated secure mask ROM may be up to 64 KiB.  Keep the simulated
+    // storage sized to the secure ROM aperture so $readmemh never truncates or
+    // fails on a valid generated image.
     localparam int unsigned WORDS = 16384;
 
     logic [31:0] mem [WORDS];
@@ -34,7 +38,19 @@ module e1_bootrom #(
         for (int i = 0; i < WORDS; i++) begin
             mem[i] = 32'h0000_0000;
         end
+`ifndef YOSYS
+        begin : sim_rom_load
+            string rom_path;
+            // A testbench may override the ROM_HEX parameter with a plusarg
+            // resolved relative to the simulator cwd.
+            if (!$value$plusargs("BOOT_ROM_HEX=%s", rom_path)) begin
+                rom_path = ROM_HEX;
+            end
+            $readmemh(rom_path, mem);
+        end
+`else
         $readmemh(ROM_HEX, mem);
+`endif
         // Debug-visible identity/version header (published ROM contract):
         // magic "OSO", "CHIP", format version, and the 32'h0000_1000 handoff
         // word. Overlaid after the image load so external bring-up tooling can

@@ -4,7 +4,8 @@
 // PC folded with a different history segment. An optional per-PC bias bank can
 // be folded into the same vote so persistent static bias can be learned without
 // spending global-history entries. The sum is compared against the threshold
-// counter to decide whether to flip TAGE's prediction.
+// counter to decide whether to flip TAGE's prediction. Counter SRAM entries
+// carry parity; corrupted entries contribute neutral zero until retrained.
 //
 // On commit, SC tables train against the actual direction outcome. The
 // threshold is bumped up whenever SC's verdict is wrong on a low-confidence
@@ -39,12 +40,51 @@ module sc
 );
     typedef logic signed [SC_CTR_W-1:0] sc_ctr_t;
     typedef logic signed [SC_BIAS_CTR_W-1:0] sc_bias_ctr_t;
+    typedef struct packed {
+        sc_ctr_t ctr;
+        logic    parity;
+    } sc_entry_t;
+    typedef struct packed {
+        sc_bias_ctr_t ctr;
+        logic         parity;
+    } sc_bias_entry_t;
 
-    sc_ctr_t storage_q [SC_TABLES][SC_ENTRIES_TABLE];
-    sc_bias_ctr_t bias_q [SC_BIAS_ENTRIES];
+    sc_entry_t storage_q [SC_TABLES][SC_ENTRIES_TABLE];
+    sc_bias_entry_t bias_q [SC_BIAS_ENTRIES];
     logic [SC_LOCAL_HISTORY_BITS-1:0] local_history_q [SC_LOCAL_HISTORY_ENTRIES];
     logic signed [7:0] threshold_q;
     logic signed [5:0] threshold_ctrl_q;
+
+    function automatic logic sc_ctr_parity(input sc_ctr_t ctr);
+        sc_ctr_parity = ^ctr;
+    endfunction
+
+    function automatic logic sc_bias_ctr_parity(input sc_bias_ctr_t ctr);
+        sc_bias_ctr_parity = ^ctr;
+    endfunction
+
+    function automatic sc_entry_t sc_entry_with_parity(input sc_ctr_t ctr);
+        sc_entry_t fixed;
+        fixed.ctr = ctr;
+        fixed.parity = sc_ctr_parity(ctr);
+        sc_entry_with_parity = fixed;
+    endfunction
+
+    function automatic sc_bias_entry_t sc_bias_entry_with_parity(input sc_bias_ctr_t ctr);
+        sc_bias_entry_t fixed;
+        fixed.ctr = ctr;
+        fixed.parity = sc_bias_ctr_parity(ctr);
+        sc_bias_entry_with_parity = fixed;
+    endfunction
+
+    function automatic sc_ctr_t sc_entry_ctr(input sc_entry_t entry);
+        sc_entry_ctr = (entry.parity == sc_ctr_parity(entry.ctr)) ? entry.ctr : '0;
+    endfunction
+
+    function automatic sc_bias_ctr_t sc_bias_entry_ctr(input sc_bias_entry_t entry);
+        sc_bias_entry_ctr =
+            (entry.parity == sc_bias_ctr_parity(entry.ctr)) ? entry.ctr : '0;
+    endfunction
 
     function automatic logic [SC_BIAS_IDX_W-1:0] sc_bias_idx(
         input logic [VADDR_W-1:0] pc
@@ -108,11 +148,11 @@ module sc
             logic [SC_IDX_W-1:0] idx;
             sc_ctr_t ctr;
             idx = sc_idx(t, pc, hist);
-            ctr = storage_q[t][idx];
+            ctr = sc_entry_ctr(storage_q[t][idx]);
             total = total + $signed({{4{ctr[SC_CTR_W-1]}}, ctr});
         end
         if (SC_BIAS_ENABLE != 0) begin
-            bias_ctr = bias_q[sc_bias_idx(pc)];
+            bias_ctr = sc_bias_entry_ctr(bias_q[sc_bias_idx(pc)]);
             total = total +
                 $signed({{(SC_CTR_W + 4 - SC_BIAS_CTR_W){bias_ctr[SC_BIAS_CTR_W-1]}},
                          bias_ctr});
@@ -153,7 +193,7 @@ module sc
             /* verilator lint_off BLKSEQ */
             for (int unsigned t = 0; t < SC_TABLES; t++) begin
                 for (int unsigned i = 0; i < SC_ENTRIES_TABLE; i++) begin
-                    storage_q[t][i] = '0;
+                    storage_q[t][i] <= sc_entry_with_parity('0);
                 end
             end
             for (int unsigned i = 0; i < SC_LOCAL_HISTORY_ENTRIES; i++) begin
@@ -161,7 +201,7 @@ module sc
             end
             if (SC_BIAS_ENABLE != 0) begin
                 for (int unsigned i = 0; i < SC_BIAS_ENTRIES; i++) begin
-                    bias_q[i] = '0;
+                    bias_q[i] <= sc_bias_entry_with_parity('0);
                 end
             end
             /* verilator lint_on BLKSEQ */
@@ -170,13 +210,18 @@ module sc
         end else if (upd_valid) begin
             if (SC_BIAS_ENABLE != 0) begin
                 automatic logic [SC_BIAS_IDX_W-1:0] bidx = sc_bias_idx(upd_pc);
+                automatic sc_bias_ctr_t bias_base;
+                automatic sc_bias_ctr_t bias_next;
+                bias_base = sc_bias_entry_ctr(bias_q[bidx]);
+                bias_next = bias_base;
                 if (upd_taken) begin
-                    if (bias_q[bidx] != {1'b0, {(SC_BIAS_CTR_W-1){1'b1}}})
-                        bias_q[bidx] <= bias_q[bidx] + 1'b1;
+                    if (bias_base != {1'b0, {(SC_BIAS_CTR_W-1){1'b1}}})
+                        bias_next = bias_base + 1'b1;
                 end else begin
-                    if (bias_q[bidx] != {1'b1, {(SC_BIAS_CTR_W-1){1'b0}}})
-                        bias_q[bidx] <= bias_q[bidx] - 1'b1;
+                    if (bias_base != {1'b1, {(SC_BIAS_CTR_W-1){1'b0}}})
+                        bias_next = bias_base - 1'b1;
                 end
+                bias_q[bidx] <= sc_bias_entry_with_parity(bias_next);
             end
             if (upd_tage_lowconf) begin
                 // Adaptive threshold control: raise the threshold when SC was
@@ -189,7 +234,7 @@ module sc
                     end else begin
                         threshold_ctrl_q <= threshold_ctrl_q + 1'b1;
                     end
-                end else if (upd_abs_sum >= threshold_cmp) begin
+            end else if (upd_abs_sum >= threshold_cmp) begin
                     if (threshold_ctrl_q <= -(SC_TC_LIMIT - 6'sd1)) begin
                         threshold_ctrl_q <= '0;
                         if (threshold_q > $signed(SC_THRESH_MIN[7:0]))
@@ -200,13 +245,18 @@ module sc
                 end
                 for (int unsigned t = 0; t < SC_TABLES; t++) begin
                     automatic logic [SC_IDX_W-1:0] idx = sc_idx(t, upd_pc, upd_hist);
+                    automatic sc_ctr_t ctr_base;
+                    automatic sc_ctr_t ctr_next;
+                    ctr_base = sc_entry_ctr(storage_q[t][idx]);
+                    ctr_next = ctr_base;
                     if (upd_taken) begin
-                        if (storage_q[t][idx] != {1'b0, {(SC_CTR_W-1){1'b1}}})
-                            storage_q[t][idx] <= storage_q[t][idx] + 1'b1;
+                        if (ctr_base != {1'b0, {(SC_CTR_W-1){1'b1}}})
+                            ctr_next = ctr_base + 1'b1;
                     end else begin
-                        if (storage_q[t][idx] != {1'b1, {(SC_CTR_W-1){1'b0}}})
-                            storage_q[t][idx] <= storage_q[t][idx] - 1'b1;
+                        if (ctr_base != {1'b1, {(SC_CTR_W-1){1'b0}}})
+                            ctr_next = ctr_base - 1'b1;
                     end
+                    storage_q[t][idx] <= sc_entry_with_parity(ctr_next);
                 end
             end
             local_history_q[sc_local_idx(upd_pc)] <=

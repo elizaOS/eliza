@@ -2,7 +2,10 @@ import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
 import type {
   IPermissionsRegistry,
   PermissionId,
+  PermissionRestrictedReason,
   PermissionState,
+  PermissionStatus,
+  Platform,
 } from "@elizaos/shared";
 import {
   getMacPermissionDeepLink,
@@ -89,6 +92,129 @@ function unavailableSystemPermission(id: PermissionId): PermissionState {
     platform: currentPlatform(),
     reason: "Native permission checks are unavailable in this runtime.",
   };
+}
+
+const PERMISSION_STATUSES: readonly PermissionStatus[] = [
+  "granted",
+  "denied",
+  "not-determined",
+  "restricted",
+  "not-applicable",
+];
+
+const PLATFORMS: readonly Platform[] = [
+  "darwin",
+  "win32",
+  "linux",
+  "ios",
+  "android",
+  "web",
+];
+
+const PERMISSION_RESTRICTED_REASONS: readonly PermissionRestrictedReason[] = [
+  "entitlement_required",
+  "platform_unsupported",
+  "os_policy",
+];
+
+function validateBlockedFeature(
+  value: unknown,
+): { app: string; action: string; at: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (
+    typeof v.app === "string" &&
+    typeof v.action === "string" &&
+    typeof v.at === "number"
+  ) {
+    return { app: v.app, action: v.action, at: v.at };
+  }
+  return null;
+}
+
+/**
+ * Validate a client-supplied permission map into typed `PermissionState`s.
+ *
+ * The desktop shell is the only native peer that can probe OS permissions, so
+ * it pushes the probed states here over loopback. We still validate the wire
+ * shape at this boundary instead of force-casting: every entry must be keyed by
+ * a known `PermissionId` and carry a valid `PermissionStatus`/`Platform`, with
+ * the required numeric/boolean fields present. Unknown ids and malformed
+ * entries are rejected (fail closed) so the persisted map — which feeds GET
+ * responses and capability auto-enable — only ever holds real states.
+ */
+function validatePermissionStates(
+  raw: Record<string, Record<string, unknown>>,
+):
+  | { ok: true; value: Record<string, PermissionState> }
+  | { ok: false; reason: string } {
+  const result: Record<string, PermissionState> = {};
+
+  for (const [key, entry] of Object.entries(raw)) {
+    if (!isPermissionId(key)) {
+      return { ok: false, reason: `Unknown permission id "${key}"` };
+    }
+    if (entry.id !== key) {
+      return {
+        ok: false,
+        reason: `Permission "${key}" has mismatched id field`,
+      };
+    }
+    if (
+      typeof entry.status !== "string" ||
+      !PERMISSION_STATUSES.includes(entry.status as PermissionStatus)
+    ) {
+      return { ok: false, reason: `Permission "${key}" has invalid status` };
+    }
+    if (
+      typeof entry.platform !== "string" ||
+      !PLATFORMS.includes(entry.platform as Platform)
+    ) {
+      return { ok: false, reason: `Permission "${key}" has invalid platform` };
+    }
+    if (typeof entry.lastChecked !== "number") {
+      return {
+        ok: false,
+        reason: `Permission "${key}" is missing lastChecked`,
+      };
+    }
+    if (typeof entry.canRequest !== "boolean") {
+      return {
+        ok: false,
+        reason: `Permission "${key}" is missing canRequest`,
+      };
+    }
+
+    const validated: PermissionState = {
+      id: key,
+      status: entry.status as PermissionStatus,
+      platform: entry.platform as Platform,
+      lastChecked: entry.lastChecked,
+      canRequest: entry.canRequest,
+    };
+    if (typeof entry.lastRequested === "number") {
+      validated.lastRequested = entry.lastRequested;
+    }
+    if (typeof entry.reason === "string") {
+      validated.reason = entry.reason;
+    }
+    if (
+      typeof entry.restrictedReason === "string" &&
+      PERMISSION_RESTRICTED_REASONS.includes(
+        entry.restrictedReason as PermissionRestrictedReason,
+      )
+    ) {
+      validated.restrictedReason =
+        entry.restrictedReason as PermissionRestrictedReason;
+    }
+    const blockedFeature = validateBlockedFeature(entry.lastBlockedFeature);
+    if (blockedFeature) {
+      validated.lastBlockedFeature = blockedFeature;
+    }
+    result[key] = validated;
+  }
+
+  return { ok: true, value: result };
 }
 
 async function openSystemPermissionSettings(
@@ -438,10 +564,12 @@ export async function handlePermissionRoutes(
     const body = parsedPermState.data;
 
     if (body.permissions && typeof body.permissions === "object") {
-      state.permissionStates = body.permissions as unknown as Record<
-        string,
-        PermissionState
-      >;
+      const validated = validatePermissionStates(body.permissions);
+      if (!validated.ok) {
+        error(res, validated.reason, 400);
+        return true;
+      }
+      state.permissionStates = validated.value;
 
       let configChanged = false;
       state.config.plugins = state.config.plugins || {};

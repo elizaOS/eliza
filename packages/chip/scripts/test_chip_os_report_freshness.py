@@ -14,6 +14,12 @@ import check_chip_os_report_freshness as freshness
 from aggregate_tapeout_readiness import GateSpec
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], freshness.CLAIM_BOUNDARY)
+    for key, expected in freshness.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 class ChipOsReportFreshnessTests(unittest.TestCase):
     def test_missing_report_and_source_are_findings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -100,6 +106,31 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
         self.assertEqual(len(specs), 1)
         self.assertEqual(specs[0].report, "packages/chip/build/reports/demo_gate.json")
         self.assertEqual(specs[0].sources, ("packages/chip/scripts/check_demo_gate.py",))
+
+    def test_report_freshness_payload_denies_boot_launcher_and_release_claims(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            source = repo / "packages/chip/scripts/demo.py"
+            report_path = repo / "packages/chip/build/reports/demo.json"
+            source.parent.mkdir(parents=True)
+            report_path.parent.mkdir(parents=True)
+            source.write_text("print('demo')\n", encoding="utf-8")
+            report_path.write_text("{}\n", encoding="utf-8")
+            spec = freshness.ReportSpec(
+                "demo",
+                "packages/chip/build/reports/demo.json",
+                ("packages/chip/scripts/demo.py",),
+                "demo report",
+            )
+            with (
+                mock.patch.object(freshness, "REPO", repo),
+                mock.patch.object(freshness, "BASE_REPORTS", (spec,)),
+                mock.patch.object(freshness, "dynamic_gate_report_specs", return_value=[]),
+            ):
+                report = freshness.build_report()
+
+        self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
 
     def test_dynamic_alias_reports_use_real_report_producer_sources(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -219,7 +250,8 @@ class ChipOsReportFreshnessTests(unittest.TestCase):
             "packages/os/linux/elizaos/config/includes.chroot/etc/systemd/system/elizaos-agent.service",
             "packages/os/linux/elizaos/config/includes.chroot/usr/lib/elizaos/run-agent.sh",
             "packages/os/linux/elizaos/config/includes.chroot/usr/lib/elizaos/wait-agent-health.sh",
-            "packages/os/linux/elizaos/manifest.json",
+            "packages/os/linux/elizaos/manifest.json.template",
+            "packages/os/linux/elizaos/chip-boot-manifest.json",
         ):
             self.assertIn(source, sources)
 

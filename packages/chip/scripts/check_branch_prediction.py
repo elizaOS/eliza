@@ -46,6 +46,14 @@ FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL = (
 )
 FULL_COMPRESSION_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json"
 FULL_AGENT_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_agent_shard.json"
+FULL_PROXY_RTL_REPLAY_REL = "docs/evidence/cpu_ap/mpki_results_workload_proxy_rtl.json"
+FULL_IO_MEDIA_RTL_REPLAY_REL = "docs/evidence/cpu_ap/mpki_results_workload_io_media_rtl.json"
+FULL_SYSTEM_GPU_RTL_REPLAY_REL = "docs/evidence/cpu_ap/mpki_results_workload_system_gpu_rtl.json"
+FULL_BROWSER_BUILD_CRYPTO_RTL_REPLAY_REL = (
+    "docs/evidence/cpu_ap/mpki_results_workload_browser_build_crypto_rtl.json"
+)
+FULL_COMPRESSION_RTL_REPLAY_REL = "docs/evidence/cpu_ap/mpki_results_workload_compression_rtl.json"
+FULL_AGENT_RTL_REPLAY_REL = "docs/evidence/cpu_ap/mpki_results_workload_agent_rtl.json"
 FALSE_CLAIM_STALE_PHRASES = (
     "claim is supported",
     "claim remains supported",
@@ -141,6 +149,8 @@ THRESHOLDS: dict[str, int] = {
     "L2_FTB_WAYS": 8,
     "TAGE_TABLES": 4,
     "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_PATH_HISTORY_BITS": 64,
+    "TAGE_PATH_HISTORY_TOKEN_BITS": 8,
     "BIM_ENTRIES": 8192,
     "SC_TABLES": 4,
     "SC_ENTRIES_TABLE": 512,
@@ -222,6 +232,7 @@ EVIDENCE_SCALARS = {
     "TAGE_ALT_ON_NA_CTR_W",
     "TAGE_ALT_ON_NA_ENTRIES",
     "TAGE_ALT_ON_NA_THRESHOLD",
+    "TAGE_PATH_HISTORY_SHIFT",
     "TAGE_USE_ALT_ON_NA",
     "TAGE_TAG_W",
     "TAGE_USEFUL_RESET_PERIOD",
@@ -922,7 +933,50 @@ def validate_full_trace_shard_sweep(
                 and isinstance(other_mpki, (int, float))
                 and float(best_mpki) > float(other_mpki)
             ):
-                failures.append(f"{artifact} best_config must not regress versus {config}")
+                    failures.append(f"{artifact} best_config must not regress versus {config}")
+
+
+def validate_workload_rtl_shard(
+    failures: list[str],
+    relpath: str,
+    required_traces: set[str],
+    *,
+    require_full_trace: bool,
+) -> None:
+    path = ROOT / relpath
+    artifact = relpath
+    if not path.is_file():
+        failures.append(f"missing workload RTL replay shard: {artifact}")
+        return
+    data = read_json_object(path, failures)
+    if data is None:
+        return
+    if data.get("schema") != "eliza.bpu_mpki.v1":
+        failures.append(f"{artifact} schema must be eliza.bpu_mpki.v1")
+    parse_artifact_timestamp(data, artifact, failures)
+    if data.get("harness") != "cocotb-rtl-bpu_top":
+        failures.append(f"{artifact} harness must be cocotb-rtl-bpu_top")
+    if data.get("evidence_class") != "qemu_rv64_workload":
+        failures.append(f"{artifact} evidence_class must be qemu_rv64_workload")
+    validate_bpu_claim_boundary(data, artifact, "qemu_rv64_workload", failures)
+    validate_workload_replay_coverage(data, artifact, failures)
+    workloads = data.get("workloads")
+    if not isinstance(workloads, dict):
+        failures.append(f"{artifact} workloads must be an object")
+        return
+    names = set(workloads)
+    if names != required_traces:
+        failures.append(f"{artifact} workloads must match required RTL shard traces")
+    for name, workload in workloads.items():
+        if not isinstance(workload, dict):
+            continue
+        if workload.get("trace_class") != "qemu_rv64_workload":
+            failures.append(f"{artifact} workload {name} has non-QEMU trace_class")
+    if require_full_trace:
+        if data.get("branch_replay_cap") is not None:
+            failures.append(f"{artifact} branch_replay_cap must be null for full RTL shard")
+        if data.get("full_trace_replay") is not True:
+            failures.append(f"{artifact} full_trace_replay must be true for full RTL shard")
 
 
 def validate_workload_class_bucket_promotion(
@@ -1189,6 +1243,9 @@ def evaluate_evidence_artifacts() -> list[str]:
         ROOT / FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL,
         ROOT / FULL_COMPRESSION_SHARD_SWEEP_REL,
         ROOT / FULL_AGENT_SHARD_SWEEP_REL,
+        ROOT / FULL_PROXY_RTL_REPLAY_REL,
+        ROOT / FULL_IO_MEDIA_RTL_REPLAY_REL,
+        ROOT / FULL_SYSTEM_GPU_RTL_REPLAY_REL,
     )
     for path in required_artifacts:
         if not path.is_file():
@@ -1269,6 +1326,42 @@ def evaluate_evidence_artifacts() -> list[str]:
         require_baseline_not_worse_than_h2p_off=False,
         required_extra_configs={"h2p_lowconf_only"},
         required_best_not_worse_than=("baseline", "h2p_off"),
+    )
+    validate_workload_rtl_shard(
+        failures,
+        FULL_PROXY_RTL_REPLAY_REL,
+        REQUIRED_FULL_PROXY_SHARD_TRACES,
+        require_full_trace=True,
+    )
+    validate_workload_rtl_shard(
+        failures,
+        FULL_IO_MEDIA_RTL_REPLAY_REL,
+        REQUIRED_FULL_IO_MEDIA_SHARD_TRACES,
+        require_full_trace=True,
+    )
+    validate_workload_rtl_shard(
+        failures,
+        FULL_SYSTEM_GPU_RTL_REPLAY_REL,
+        REQUIRED_FULL_SYSTEM_GPU_SHARD_TRACES,
+        require_full_trace=True,
+    )
+    validate_workload_rtl_shard(
+        failures,
+        FULL_BROWSER_BUILD_CRYPTO_RTL_REPLAY_REL,
+        REQUIRED_FULL_BROWSER_BUILD_CRYPTO_SHARD_TRACES,
+        require_full_trace=True,
+    )
+    validate_workload_rtl_shard(
+        failures,
+        FULL_COMPRESSION_RTL_REPLAY_REL,
+        REQUIRED_FULL_COMPRESSION_SHARD_TRACES,
+        require_full_trace=True,
+    )
+    validate_workload_rtl_shard(
+        failures,
+        FULL_AGENT_RTL_REPLAY_REL,
+        REQUIRED_FULL_AGENT_SHARD_TRACES,
+        require_full_trace=True,
     )
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_model_generated: datetime | None = None
@@ -1621,6 +1714,116 @@ def build_evidence(
     else:
         workload_mpki_ref["present"] = False
 
+    workload_proxy_rtl_path = ROOT / FULL_PROXY_RTL_REPLAY_REL
+    workload_proxy_rtl_ref: dict[str, object] = {
+        "path": str(workload_proxy_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl-full-proxy-shard",
+        "trace_class": "qemu_rv64_workload",
+        "present": workload_proxy_rtl_path.is_file(),
+    }
+    if workload_proxy_rtl_path.is_file():
+        workload_proxy_rtl_ref["sha256"] = sha256_path(workload_proxy_rtl_path)
+        workload_proxy_rtl_ref.update(
+            artifact_metric_ref(
+                workload_proxy_rtl_path,
+                load_json_object_if_present(workload_proxy_rtl_path),
+            )
+        )
+
+    workload_io_media_rtl_path = ROOT / FULL_IO_MEDIA_RTL_REPLAY_REL
+    workload_io_media_rtl_ref: dict[str, object] = {
+        "path": str(workload_io_media_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl-full-io-media-shard",
+        "trace_class": "qemu_rv64_workload",
+        "present": workload_io_media_rtl_path.is_file(),
+    }
+    if workload_io_media_rtl_path.is_file():
+        workload_io_media_rtl_ref["sha256"] = sha256_path(workload_io_media_rtl_path)
+        workload_io_media_rtl_ref.update(
+            artifact_metric_ref(
+                workload_io_media_rtl_path,
+                load_json_object_if_present(workload_io_media_rtl_path),
+            )
+        )
+
+    workload_system_gpu_rtl_path = ROOT / FULL_SYSTEM_GPU_RTL_REPLAY_REL
+    workload_system_gpu_rtl_ref: dict[str, object] = {
+        "path": str(workload_system_gpu_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl-full-system-gpu-shard",
+        "trace_class": "qemu_rv64_workload",
+        "present": workload_system_gpu_rtl_path.is_file(),
+    }
+    if workload_system_gpu_rtl_path.is_file():
+        workload_system_gpu_rtl_ref["sha256"] = sha256_path(workload_system_gpu_rtl_path)
+        workload_system_gpu_rtl_ref.update(
+            artifact_metric_ref(
+                workload_system_gpu_rtl_path,
+                load_json_object_if_present(workload_system_gpu_rtl_path),
+            )
+        )
+
+    workload_browser_build_crypto_rtl_path = ROOT / FULL_BROWSER_BUILD_CRYPTO_RTL_REPLAY_REL
+    workload_browser_build_crypto_rtl_ref: dict[str, object] = {
+        "path": str(workload_browser_build_crypto_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl-full-browser-build-crypto-shard",
+        "trace_class": "qemu_rv64_workload",
+        "present": workload_browser_build_crypto_rtl_path.is_file(),
+    }
+    if workload_browser_build_crypto_rtl_path.is_file():
+        workload_browser_build_crypto_rtl_ref["sha256"] = sha256_path(
+            workload_browser_build_crypto_rtl_path
+        )
+        workload_browser_build_crypto_rtl_ref.update(
+            artifact_metric_ref(
+                workload_browser_build_crypto_rtl_path,
+                load_json_object_if_present(workload_browser_build_crypto_rtl_path),
+            )
+        )
+
+    workload_compression_rtl_path = ROOT / FULL_COMPRESSION_RTL_REPLAY_REL
+    workload_compression_rtl_ref: dict[str, object] = {
+        "path": str(workload_compression_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl-full-compression-shard",
+        "trace_class": "qemu_rv64_workload",
+        "present": workload_compression_rtl_path.is_file(),
+    }
+    if workload_compression_rtl_path.is_file():
+        workload_compression_rtl_ref["sha256"] = sha256_path(workload_compression_rtl_path)
+        workload_compression_rtl_ref.update(
+            artifact_metric_ref(
+                workload_compression_rtl_path,
+                load_json_object_if_present(workload_compression_rtl_path),
+            )
+        )
+
+    workload_agent_rtl_path = ROOT / FULL_AGENT_RTL_REPLAY_REL
+    workload_agent_rtl_ref: dict[str, object] = {
+        "path": str(workload_agent_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl-full-agent-shard",
+        "trace_class": "qemu_rv64_workload",
+        "present": workload_agent_rtl_path.is_file(),
+    }
+    if workload_agent_rtl_path.is_file():
+        workload_agent_rtl_ref["sha256"] = sha256_path(workload_agent_rtl_path)
+        workload_agent_rtl_ref.update(
+            artifact_metric_ref(
+                workload_agent_rtl_path,
+                load_json_object_if_present(workload_agent_rtl_path),
+            )
+        )
+
     sweep_path = ROOT / "docs/evidence/cpu_ap/bpu_sweep_results.json"
     sweep_ref: dict[str, object] = {
         "path": str(sweep_path.relative_to(ROOT)),
@@ -1704,6 +1907,11 @@ def build_evidence(
     return {
         "schema": "eliza.bpu_params.v1",
         "status": status,
+        "claim_boundary": (
+            "Branch predictor parameter and RTL/model evidence only; not "
+            "Android, SPEC2017, CBP-5 target-met, silicon, power, thermal, or "
+            "phone-class release evidence."
+        ),
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "source_revision": git_revision(),
         "tool_versions": tools,
@@ -1739,6 +1947,12 @@ def build_evidence(
         },
         "synthetic_mpki_results_ref": synthetic_mpki_ref,
         "workload_mpki_results_ref": workload_mpki_ref,
+        "workload_proxy_rtl_results_ref": workload_proxy_rtl_ref,
+        "workload_io_media_rtl_results_ref": workload_io_media_rtl_ref,
+        "workload_system_gpu_rtl_results_ref": workload_system_gpu_rtl_ref,
+        "workload_browser_build_crypto_rtl_results_ref": workload_browser_build_crypto_rtl_ref,
+        "workload_compression_rtl_results_ref": workload_compression_rtl_ref,
+        "workload_agent_rtl_results_ref": workload_agent_rtl_ref,
         "workload_trace_manifest_ref": workload_trace_manifest_ref,
         "sweep_results_ref": sweep_ref,
         "full_proxy_shard_sweep_ref": full_proxy_shard_ref,
@@ -1759,7 +1973,7 @@ def build_evidence(
                 "Open RTL geometry verified against 2028 thresholds. CBP-5"
                 " train-trace RTL evidence is on file but aggregate RTL MPKI"
                 " is above target_2028_mpki, so CBP-5 target-met, SPEC,"
-                " AOSP, and JS-engine MPKI claims remain blocked."
+                " AOSP, and JS-engine MPKI claims are not allowed."
             ),
         },
     }

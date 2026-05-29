@@ -69,7 +69,7 @@
         {
           "artifact": "Linux runtime MMIO smoke",
           "blocker_code": "missing_linux_mmio_smoke_log",
-          "capture_command": "E1_SMOKE_CMD='ssh root@TARGET /tmp/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux smoke",
+          "capture_command": "E1_SMOKE_CMD='ssh root@TARGET <host-tmp>/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux smoke",
           "claim_boundary": "single_runtime_driver_smoke_only_not_linux_or_android_boot_evidence",
           "path": "docs/evidence/linux/e1-mmio-smoke.log",
           "validation_command": "python3 scripts/check_software_bsp.py linux --require-evidence"

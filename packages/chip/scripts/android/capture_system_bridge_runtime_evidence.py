@@ -26,8 +26,8 @@ SCHEMA = "eliza.android_system_bridge_runtime_evidence.v1"
 CLAIM_BOUNDARY = "booted_android_system_bridge_runtime_evidence_only"
 DEFAULT_BRIDGE_SYSTEM_APK = "/system/priv-app/ElizaSystemBridge/ElizaSystemBridge.apk"
 PERMISSION_FILE_PATHS = (
-    "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml",
-    "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml",
+    "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+    "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
     "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
 )
 ANDROID_TARGET_PREFIXES = (
@@ -69,6 +69,7 @@ AOSP_EXPECTED_ARTIFACT_NAMES = (
     "product.img",
     "system_ext.img",
 )
+HOST_LOCAL_PATH = re.compile(r"(?<![\w/])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,28 @@ def rel(path: Path) -> str:
         return path.relative_to(ROOT).as_posix()
     except ValueError:
         return str(path)
+
+
+def provenance_safe_text(value: str) -> str:
+    sanitized = value
+    replacements = (
+        (ROOT.as_posix(), "packages/chip"),
+        (ROOT.parents[1].as_posix(), ""),
+        (AOSP_PRODUCT_OUT.parents[3].as_posix(), "$AOSP_WORKSPACE"),
+    )
+    for source, replacement in replacements:
+        sanitized = sanitized.replace(source, replacement.rstrip("/"))
+    return HOST_LOCAL_PATH.sub(lambda match: f"<host-path>/{Path(match.group(0)).name}", sanitized)
+
+
+def provenance_safe_value(value):
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def adb_prefix(serial: str | None) -> list[str]:
@@ -470,9 +493,10 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
     if denial_count:
         missing.append("selinux_denial_count_zero")
 
-    return {
+    report = {
         "schema": SCHEMA,
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": utc_now(),
         "status": "PASS" if pass_status else "BLOCKED",
         "result": 0 if pass_status else 2,
         "started_utc": started,
@@ -528,6 +552,7 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
             ],
         },
     }
+    return report
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -542,7 +567,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--bridge-package", default="ai.elizaos.system.bridge")
     parser.add_argument("--bridge-system-apk-path", default=DEFAULT_BRIDGE_SYSTEM_APK)
-    parser.add_argument("--launcher-package", default="ai.milady.milady")
+    parser.add_argument("--launcher-package", default="ai.elizaos.app")
     parser.add_argument("--bridge-service-marker", default="ai.elizaos.system.bridge")
     parser.add_argument(
         "--bridge-bound-marker",
@@ -577,7 +602,10 @@ def main(argv: list[str] | None = None) -> int:
         args.logcat = ROOT / args.logcat
     report = build_report(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(provenance_safe_value(report), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     print(f"{report['status']}: android.system_bridge_runtime ({rel(args.output)})")
     if report["status"] != "PASS":
         observations = report.get("observations")

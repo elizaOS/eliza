@@ -27,6 +27,22 @@ def assert_contains(text: str, expected: str) -> None:
         raise AssertionError(f"missing {expected!r} in output:\n{text}")
 
 
+def assert_false_claim_flags(data: dict) -> None:
+    for key in (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "e1_chip_hardware_claim_allowed",
+        "cdd_compliance_claim_allowed",
+        "gms_claim_allowed",
+        "cts_vts_claim_allowed",
+        "full_android_compatibility_claim_allowed",
+        "hardware_boot_claim_allowed",
+        "production_readiness_claim_allowed",
+    ):
+        if data.get(key) is not False:
+            raise AssertionError(f"android sim report {key} must be false: {data.get(key)!r}")
+
+
 def run(
     command: list[str], env_overrides: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -34,6 +50,7 @@ def run(
     env.pop("AOSP_DIR", None)
     env["ANDROID_SIM_BOOT_REPORT"] = str(REPORT)
     env["AOSP_LINUX_PREFLIGHT_REPORT"] = str(PREFLIGHT_REPORT)
+    env["ELIZA_DISABLE_AOSP_DIR_DEFAULTS"] = "1"
     if env_overrides:
         env.update(env_overrides)
     return subprocess.run(
@@ -70,6 +87,7 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
         raise AssertionError("android sim report must be blocked without AOSP_DIR")
     if "not e1-chip hardware ABI proof" not in data.get("claim_boundary", ""):
         raise AssertionError("android sim report must keep the e1-chip ABI boundary explicit")
+    assert_false_claim_flags(data)
     missing_requirements = data.get("host_requirements", {}).get("missing", [])
     if not any("AOSP_DIR is not set" in item for item in missing_requirements):
         raise AssertionError(
@@ -216,6 +234,31 @@ def test_aosp_linux_preflight_blocks_without_aosp_dir() -> None:
             PREFLIGHT_REPORT.write_bytes(saved)
 
 
+def test_aosp_linux_preflight_sanitizes_host_local_paths() -> None:
+    saved = PREFLIGHT_REPORT.read_bytes() if PREFLIGHT_REPORT.is_file() else None
+    try:
+        result = run(
+            [sys.executable, str(PREFLIGHT), "--json", "--write-report"],
+            {"AOSP_DIR": "/home/shaw/aosp"},
+        )
+        if result.returncode not in {0, 2}:
+            raise AssertionError(result.stdout)
+        data = json.loads(result.stdout)
+        encoded = json.dumps(data, sort_keys=True)
+        if "generated_utc" not in data:
+            raise AssertionError("AOSP Linux preflight must include generated_utc")
+        if "/home/shaw" in encoded:
+            raise AssertionError(encoded)
+        if "packages/chip/tools/bin/renode" not in encoded and "<host-path>/renode" not in encoded:
+            raise AssertionError(encoded)
+    finally:
+        if saved is None:
+            PREFLIGHT_REPORT.unlink(missing_ok=True)
+        else:
+            PREFLIGHT_REPORT.parent.mkdir(parents=True, exist_ok=True)
+            PREFLIGHT_REPORT.write_bytes(saved)
+
+
 def test_aosp_linux_preflight_reports_uninstalled_repo_launcher() -> None:
     saved = PREFLIGHT_REPORT.read_bytes() if PREFLIGHT_REPORT.is_file() else None
     try:
@@ -329,6 +372,7 @@ def main() -> int:
             test_checker_rejects_pass_without_required_aosp_evidence,
             test_boot_script_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_blocks_without_aosp_dir,
+            test_aosp_linux_preflight_sanitizes_host_local_paths,
             test_aosp_linux_preflight_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_allows_existing_checkout_without_repo,
             test_riscv64_aosp_overlay_materializes_files_not_host_symlinks,

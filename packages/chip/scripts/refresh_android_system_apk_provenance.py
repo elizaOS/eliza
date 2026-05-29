@@ -20,6 +20,11 @@ WORKSPACE = ROOT.parent
 DEFAULT_APK = payload_gate.DEFAULT_APK
 PROVENANCE_ENTRY = payload_gate.PROVENANCE_ENTRY
 RUNTIME_PROVENANCE_ENTRY = payload_gate.RUNTIME_PROVENANCE_ENTRY
+RUNTIME_PAYLOAD_ENTRIES = (
+    payload_gate.RUNTIME_PROVENANCE_ENTRY,
+    *payload_gate.RISCV_AGENT_RUNTIME_ENTRIES,
+    *payload_gate.RISCV_NATIVE_LIB_ENTRIES,
+)
 
 
 def rel(path: Path) -> str:
@@ -73,6 +78,49 @@ def copy_without_provenance(source: Path, target: Path) -> None:
             dst.writestr(info, src.read(info.filename))
 
 
+def stage_runtime_payload(apk: Path, runtime_source_apk: Path) -> None:
+    missing: list[str] = []
+    with zipfile.ZipFile(runtime_source_apk, "r") as src:
+        source_names = set(src.namelist())
+        runtime_provenance = read_zip_json(runtime_source_apk, RUNTIME_PROVENANCE_ENTRY)
+        runtime_provenance_entries: tuple[str, ...] = ()
+        if isinstance(runtime_provenance, dict):
+            runtime_provenance_entries = tuple(
+                str(item.get("path"))
+                for item in runtime_provenance.get("files", [])
+                if isinstance(item, dict) and item.get("path")
+            )
+        entries = tuple(dict.fromkeys((*RUNTIME_PAYLOAD_ENTRIES, *runtime_provenance_entries)))
+        for entry in RUNTIME_PAYLOAD_ENTRIES:
+            if entry not in source_names:
+                missing.append(entry)
+        if missing:
+            raise FileNotFoundError(
+                f"{rel(runtime_source_apk)} missing runtime payload entries: "
+                + ", ".join(missing)
+            )
+        runtime_payload = {entry: src.read(entry) for entry in entries if entry in source_names}
+        runtime_infos = {entry: src.getinfo(entry) for entry in runtime_payload}
+
+    with tempfile.TemporaryDirectory(prefix="eliza-apk-runtime-payload-") as tmp_text:
+        tmp = Path(tmp_text)
+        staged = tmp / "runtime-staged.apk"
+        with (
+            zipfile.ZipFile(apk, "r") as target,
+            zipfile.ZipFile(staged, "w", compression=zipfile.ZIP_DEFLATED) as out,
+        ):
+            replaced = set(runtime_payload) | {PROVENANCE_ENTRY}
+            seen: set[str] = set()
+            for info in target.infolist():
+                if info.filename in replaced or info.filename in seen:
+                    continue
+                seen.add(info.filename)
+                out.writestr(info, target.read(info.filename))
+            for entry in runtime_payload:
+                out.writestr(runtime_infos[entry], runtime_payload[entry])
+        apk.write_bytes(staged.read_bytes())
+
+
 def provenance_payload(apk_without_provenance: Path, apk_name: str) -> dict[str, Any]:
     runtime_provenance = read_zip_json(apk_without_provenance, RUNTIME_PROVENANCE_ENTRY)
     runtime_bytes = b""
@@ -119,12 +167,23 @@ def refresh_apk(apk: Path) -> dict[str, Any]:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=Path, default=DEFAULT_APK)
+    parser.add_argument(
+        "--runtime-source-apk",
+        type=Path,
+        help=(
+            "APK containing generated riscv64 assets/lib entries and "
+            "android-agent runtime provenance to stage before refreshing AOSP provenance"
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
-    provenance = refresh_apk(args.apk.resolve())
+    apk = args.apk.resolve()
+    if args.runtime_source_apk is not None:
+        stage_runtime_payload(apk, args.runtime_source_apk.resolve())
+    provenance = refresh_apk(apk)
     print(
         "refreshed AOSP APK provenance: "
         f"apk={rel(args.apk.resolve())} "

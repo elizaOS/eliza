@@ -59,6 +59,9 @@ def _train_alberta(
     episode_steps: int,
     eval_episodes: int,
     domain_rand: bool,
+    action_scale: float = 0.3,
+    action_scale_initial: float | None = None,
+    action_scale_increment: float = 0.05,
 ) -> dict:
     from eliza_robot.rl.alberta.train_robot import (
         steps_per_task_from_total,
@@ -74,6 +77,9 @@ def _train_alberta(
         out_dir,
         pca_dim=pca_dim,
         episode_steps=episode_steps,
+        action_scale=action_scale,
+        action_scale_initial=action_scale_initial,
+        action_scale_increment=action_scale_increment,
         eval_episodes=eval_episodes,
         seed=seed,
         requested_total_steps=total_steps,
@@ -231,6 +237,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--pca-dim", type=int, default=32)
     parser.add_argument("--episode-steps", type=int, default=200)
+    parser.add_argument("--action-scale", type=float, default=0.3)
+    parser.add_argument("--action-scale-initial", type=float, default=None)
+    parser.add_argument("--action-scale-increment", type=float, default=0.05)
     parser.add_argument("--eval-episodes", type=int, default=3)
     parser.add_argument(
         "--backend",
@@ -268,6 +277,9 @@ def main(argv: list[str] | None = None) -> int:
             include_tasks=tasks,
             pca_dim=args.pca_dim,
             episode_steps=args.episode_steps,
+            action_scale=args.action_scale,
+            action_scale_initial=args.action_scale_initial,
+            action_scale_increment=args.action_scale_increment,
             eval_episodes=args.eval_episodes,
             domain_rand=not args.no_domain_rand,
         )

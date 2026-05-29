@@ -171,6 +171,24 @@ class SystemBridgeRuntimeCaptureTests(unittest.TestCase):
             )
         )
 
+    def test_provenance_sanitizer_strips_host_local_paths(self) -> None:
+        payload = {
+            "product_out": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+            "tool": "/home/shaw/Android/Sdk/platform-tools/adb",
+            "repo": "/home/shaw/milady/eliza/packages/chip/docs/evidence/android/log.txt",
+            "tmp": "/var/tmp/cvd/1000/1/home/cuttlefish/instances/cvd-1/logs/logcat",
+        }
+
+        sanitized = capture.provenance_safe_value(payload)
+        encoded = str(sanitized)
+
+        self.assertNotIn("/home/shaw", encoded)
+        self.assertNotIn("/var/tmp", encoded)
+        self.assertEqual(
+            sanitized["product_out"], "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc"
+        )
+        self.assertEqual(sanitized["repo"], "packages/chip/docs/evidence/android/log.txt")
+
 
 if __name__ == "__main__":
     unittest.main()

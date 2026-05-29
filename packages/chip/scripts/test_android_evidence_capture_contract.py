@@ -24,6 +24,11 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+def assert_no_runtime_or_release_claims(report: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
+
+
 class AndroidEvidenceCaptureContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         manifest = write(
@@ -100,6 +105,7 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
         self.assertIn("aosp_completion_gate_uses_legacy_agent_markers", codes)
         self.assertIn("qemu_smoke_log_is_version_only", codes)
         self.assertIn("cts_vts_plan_is_source_scan_only", codes)
+        assert_no_runtime_or_release_claims(report)
 
     def test_launcher_agent_runtime_evidence_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -200,6 +206,7 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_no_runtime_or_release_claims(report)
 
 
 class PatchStack:

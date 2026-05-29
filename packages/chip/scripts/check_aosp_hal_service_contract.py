@@ -48,6 +48,16 @@ LINUX_NPU_UAPI_HEADER = ROOT / "sw/linux/drivers/e1/e1-npu-uapi.h"
 REPORT = ROOT / "build/reports/aosp_hal_service_contract.json"
 SCHEMA = "eliza.aosp_hal_service_contract.v1"
 CLAIM_BOUNDARY = "static_aosp_hal_service_contract_only_not_vintf_or_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "vintf_claim_allowed": False,
+    "lshal_runtime_claim_allowed": False,
+    "npu_driver_liveness_claim_allowed": False,
+    "display_hwc_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+}
 E1_NPU_SERVICE_PACKAGE = "vendor.eliza.e1_npu@1.0-service"
 HWC_SERVICE_PACKAGE = "android.hardware.graphics.composer@2.4-service.eliza_ai_soc"
 MODERN_CUTTLEFISH_GRAPHICS_PACKAGES = (
@@ -425,6 +435,7 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

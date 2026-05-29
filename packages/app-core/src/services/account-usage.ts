@@ -182,10 +182,6 @@ export async function pollCodexUsage(
 
 // Local JSONL counters.
 
-function elizaHome(): string {
-  return process.env.ELIZA_HOME || resolveStateDir();
-}
-
 function dayStamp(ts: number = Date.now()): string {
   const d = new Date(ts);
   const yyyy = d.getUTCFullYear();
@@ -200,7 +196,7 @@ function counterFile(
   ts: number = Date.now(),
 ): string {
   return path.join(
-    elizaHome(),
+    resolveStateDir(),
     "usage",
     providerId,
     accountId,

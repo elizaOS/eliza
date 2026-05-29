@@ -243,12 +243,12 @@ objective_requirements:
     release_required: true
     blockers:
       - all E1Phone:* footprints are non-release placeholders excluded from BOM and position files
-      - no routed copper segments or filled zones are present in the KiCad PCB
+      - production concept source has no release-approved routed copper segments or filled zones
       - supplier connector/module land patterns and STEP models have not replaced placeholders
       - DRC, ERC, SI/PI, RF, fabrication, assembly, and routed enclosure clearance evidence are missing
       - supplier pinouts, footprints, mating connector data, and STEP models are not frozen
       - KiCad schematic remains scaffold text and has no ERC release report
-      - production concept PCB has placeholder footprints, no routed tracks, and no filled zones; local routed real-footprint development board is non-release
+      - production concept PCB has placeholder footprints, no release-approved routed tracks, and no filled zones; local routed real-footprint development board is non-release
       - route feasibility and escape density are not proven with supplier footprints and a trial route
       - module host integration closure is blocked on supplier pinouts, real schematic capture, routed host interfaces, firmware,
         RF, and bring-up evidence

@@ -1,19 +1,19 @@
 eliza-evidence: target=aosp_cuttlefish_prebuilt artifact=cuttlefish_riscv64_prebuilt_smoke
 eliza-evidence: schema=eliza.cuttlefish_prebuilt_smoke.v1
 eliza-evidence: claim_boundary=virtual_device_launch_dry_run_not_a_boot_or_compatibility_claim
-eliza-evidence: prebuilt_root=/home/shaw/.local/cuttlefish/images/riscv64/cf
+eliza-evidence: prebuilt_root=<home>/.local/cuttlefish/images/riscv64/cf
 eliza-evidence: build_branch=aosp-android-latest-release
 eliza-evidence: build_target=aosp_cf_riscv64_phone-userdebug
 eliza-evidence: build_id=15357239
 eliza-evidence: kernel_version=6.8.0-mainline-ga5ed8b92e9f6-ab11698348
-eliza-evidence: host_qemu=/home/shaw/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64
+eliza-evidence: host_qemu=<home>/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64
 eliza-evidence: host_qemu_version=QEMU emulator version 10.1.5 (v10.1.5-dirty)
 eliza-evidence: host_qemu_virtio_gpu=present
 eliza-evidence: host_qemu_vnc=present
 eliza-evidence: host_qemu_source=external/qemu-src (built from v10.1.5 with -Dvnc=enabled -Dpixman=enabled -Dvnc_jpeg=disabled -Dvnc_sasl=disabled -Dpng=disabled)
 eliza-evidence: host_qemu_sha256=1e33ccdaddc4a79f953a2db3d5cb5b912b2d8720ade7c1f679be7912fea2adbc
-eliza-evidence: host_qemu_origin=/home/shaw/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64 symlink -> external/qemu-src/build/qemu-system-riscv64
-eliza-evidence: host_qemu_orig_backup=/home/shaw/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64.orig-9.2.1-debian
+eliza-evidence: host_qemu_origin=<home>/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64 symlink -> external/qemu-src/build/qemu-system-riscv64
+eliza-evidence: host_qemu_orig_backup=<home>/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64.orig-9.2.1-debian
 eliza-evidence: report_recorded_utc=2026-05-20T11:01:03Z
 
 eliza-evidence: attempt_id=1 attempt_start_utc=2026-05-19T01:15:00Z
@@ -41,18 +41,18 @@ eliza-evidence: attempt_3_runtime_subprocess_exit_code=1
 eliza-evidence: attempt_3_status=FAIL_HOST_QEMU_VIRTIO_GPU
 
 eliza-evidence: attempt_id=4 attempt_start_utc=2026-05-20T10:13:24Z
-eliza-evidence: attempt_4_args=--cpus=4 --memory_mb=4096 --gpu_mode=guest_swiftshader --start_webrtc=false --qemu_binary_dir=/home/shaw/.local/cuttlefish/qemu/bin-wrap --daemon
+eliza-evidence: attempt_4_args=--cpus=4 --memory_mb=4096 --gpu_mode=guest_swiftshader --start_webrtc=false --qemu_binary_dir=<home>/.local/cuttlefish/qemu/bin-wrap --daemon
 eliza-evidence: attempt_4_failure_layer=qemu-system-riscv64
 eliza-evidence: attempt_4_failure_excerpt=qemu-system-riscv64: -vnc: invalid option
 eliza-evidence: attempt_4_root_cause=fresh qemu 10.1.5 rebuilt with --enable-virtio-gpu cleared the virtio-gpu-pci blocker, but the meson configure had no pixman so VNC was auto-disabled; cuttlefish always emits -vnc 127.0.0.1:544 regardless of --gpu_mode, so the new binary failed at flag parse before any guest state was loaded
 eliza-evidence: attempt_4_status=FAIL_HOST_QEMU_VNC
 
 eliza-evidence: attempt_id=5 attempt_start_utc=2026-05-20T10:33:31Z
-eliza-evidence: attempt_5_args=--cpus=4 --memory_mb=4096 --gpu_mode=guest_swiftshader --start_webrtc=false --qemu_binary_dir=/home/shaw/.local/cuttlefish/qemu/bin-wrap --daemon
+eliza-evidence: attempt_5_args=--cpus=4 --memory_mb=4096 --gpu_mode=guest_swiftshader --start_webrtc=false --qemu_binary_dir=<home>/.local/cuttlefish/qemu/bin-wrap --daemon
 eliza-evidence: attempt_5_failure_layer=none_reached_userspace
 eliza-evidence: attempt_5_root_cause=rebuilt qemu 10.1.5 with -Dvnc=enabled -Dpixman=enabled after staging pixman from external/oss-cad-suite/lib/libpixman-1.so.0 + external/magic-deps/usr/include/pixman-1 into external/qemu-deps/sysroot; both virtio-gpu-pci and -vnc now accepted; OpenSBI handed off, kernel booted, Android init started services through bootanim/zygote/surfaceflinger/adbd; adb on 0.0.0.0:6520 was queryable
 eliza-evidence: attempt_5_guest_uptime_when_snapshot_taken_s=1409
-eliza-evidence: attempt_5_kernel_log_path=/home/shaw/.local/cuttlefish/images/riscv64/cf/cuttlefish/instances/cvd-1/logs/kernel.log
+eliza-evidence: attempt_5_kernel_log_path=<home>/.local/cuttlefish/images/riscv64/cf/cuttlefish/instances/cvd-1/logs/kernel.log
 eliza-evidence: attempt_5_kernel_log_snapshot_path=packages/chip/docs/evidence/android/cuttlefish_riscv64_kernel.log.20260520T110103Z.txt
 eliza-evidence: attempt_5_kernel_log_snapshot_sha256=a30de667a0cb0d5a1abcc2bc3d8545fb91e48806fc8d2634e3e6dceca0c2ebc8
 eliza-evidence: attempt_5_kernel_log_snapshot_lines=4210
@@ -71,7 +71,7 @@ eliza-evidence: attempt_5_adb_getprop_init_svc_adbd=running
 eliza-evidence: attempt_5_adb_getprop_sys_boot_completed=
 eliza-evidence: attempt_5_adb_getprop_dev_bootcomplete=
 eliza-evidence: attempt_5_adb_process_count_in_guest=414
-eliza-evidence: attempt_5_adb_screencap_path=/tmp/cuttlefish_screen_boot.png
+eliza-evidence: attempt_5_adb_screencap_path=<host-tmp>/cuttlefish_screen_boot.png
 eliza-evidence: attempt_5_adb_screencap_geometry=720x1280
 eliza-evidence: attempt_5_adb_screencap_bytes=22615
 eliza-evidence: attempt_5_furthest_init_milestone=init: starting service 'cppreopts' / preloads_copy.sh / zygote already-running at uptime 864s

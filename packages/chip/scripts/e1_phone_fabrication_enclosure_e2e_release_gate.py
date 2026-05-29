@@ -418,6 +418,21 @@ def build_report(
             "development_route_count": objective_local_progress["development_route_count"],
             "development_segment_count": objective_local_progress["development_segment_count"],
             "development_via_count": objective_local_progress["development_via_count"],
+            "development_controlled_impedance_route_count": objective_local_progress[
+                "development_controlled_impedance_route_count"
+            ],
+            "development_route_classification_gap_count": objective_local_progress[
+                "development_route_classification_gap_count"
+            ],
+            "development_route_segment_trace_bound_count": objective_local_progress[
+                "development_route_segment_trace_bound_count"
+            ],
+            "development_missing_net_count": objective_local_progress[
+                "development_missing_net_count"
+            ],
+            "development_route_traceability_complete": objective_local_progress[
+                "development_route_traceability_complete"
+            ],
             "development_required_shared_net_category_count": objective_local_progress[
                 "development_required_shared_net_category_count"
             ],
@@ -536,6 +551,20 @@ def build_report(
             "cad_connection_represented_net_count_total": objective_local_progress[
                 "cad_connection_represented_net_count_total"
             ],
+            "cad_connection_represented_route_count_total": objective_local_progress[
+                "cad_connection_represented_route_count_total"
+            ],
+            "cad_connection_represented_route_record_count_total": objective_local_progress[
+                "cad_connection_represented_route_record_count_total"
+            ],
+            "cad_connection_represented_route_classification_gap_count": objective_local_progress[
+                "cad_connection_represented_route_classification_gap_count"
+            ],
+            "cad_connection_all_represented_routes_have_layer_source_and_class": (
+                objective_local_progress[
+                    "cad_connection_all_represented_routes_have_layer_source_and_class"
+                ]
+            ),
             "cad_connection_record_count": objective_local_progress["cad_connection_record_count"],
             "cad_connection_represented_net_list_total": objective_local_progress[
                 "cad_connection_represented_net_list_total"
@@ -579,6 +608,12 @@ def build_report(
             "component_model_terminal_contract_or_no_pad_model_count": objective_local_progress[
                 "component_model_terminal_contract_or_no_pad_model_count"
             ],
+            "component_model_total_pad_contract_visual_count": objective_local_progress[
+                "component_model_total_pad_contract_visual_count"
+            ],
+            "component_model_uncovered_pad_visual_count": objective_local_progress[
+                "component_model_uncovered_pad_visual_count"
+            ],
             "component_model_non_signal_pad_contract_count": objective_local_progress[
                 "component_model_non_signal_pad_contract_count"
             ],
@@ -599,6 +634,16 @@ def build_report(
             "component_model_directory_terminal_contract_total_count": objective_local_progress[
                 "component_model_directory_terminal_contract_total_count"
             ],
+            "component_model_directory_total_pad_contract_visual_count": (
+                objective_local_progress[
+                    "component_model_directory_total_pad_contract_visual_count"
+                ]
+            ),
+            "component_model_directory_uncovered_pad_visual_count": (
+                objective_local_progress[
+                    "component_model_directory_uncovered_pad_visual_count"
+                ]
+            ),
             "component_model_directory_non_signal_pad_contract_total_count": (
                 objective_local_progress[
                     "component_model_directory_non_signal_pad_contract_total_count"
@@ -618,6 +663,56 @@ def build_report(
             "component_model_directory_all_terminal_contract_flags_pass": (
                 objective_local_progress[
                     "component_model_directory_all_terminal_contract_flags_pass"
+                ]
+            ),
+            "component_model_directory_local_discrete_step_file_count": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_file_count"
+                ]
+            ),
+            "component_model_directory_local_discrete_step_imported_solid_count": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_imported_solid_count"
+                ]
+            ),
+            "component_model_directory_local_discrete_step_bbox_match_count": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_bbox_match_count"
+                ]
+            ),
+            "component_model_directory_local_discrete_step_bytes_total": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_bytes_total"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_placeholder_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_placeholder_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_local_surrogate_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_local_surrogate_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_missing_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_missing_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_not_applicable_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_not_applicable_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_release_candidate_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_release_candidate_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_lane_counts": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_lane_counts"
                 ]
             ),
             "component_model_directory_release_allowed": objective_local_progress[
@@ -641,7 +736,7 @@ def build_report(
             "source status starts with blocked",
             "missing required routed or factory output count is nonzero",
             "required artifact content is template-only, presence-only, unvalidated, or unapproved",
-            "board STEP intake uses concept/demo evidence instead of routed-board evidence",
+            "board STEP intake uses local routed-board candidate evidence without supplier approval",
             "routed-board clearance rerun is missing",
             "first-article transcript or traveler is missing",
             "supplier-returned geometry, drawings, and traceability are absent or unvalidated",

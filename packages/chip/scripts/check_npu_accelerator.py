@@ -207,6 +207,65 @@ def _parse_results(
     return {"id": check_id, "status": "pass", "detail": f"{len(seen)} cocotb tests passed"}
 
 
+def build_report(checks: list[dict]) -> dict:
+    has_fail = any(c["status"] == "fail" for c in checks)
+    has_block = any(c["status"] == "blocked" for c in checks)
+    if has_fail:
+        status, blocker_id = "FAIL", "npu_accelerator_check_failure"
+        blocker_reason = "; ".join(
+            f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "fail"
+        )
+    elif has_block:
+        status, blocker_id = "BLOCKED", "npu_accelerator_dependency_missing"
+        blocker_reason = "; ".join(
+            f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "blocked"
+        )
+    else:
+        status, blocker_id, blocker_reason = "PASS", None, None
+
+    return {
+        "schema": "eliza.gate_status.v1",
+        "gate": "npu-accelerator-check",
+        "status": status,
+        "blocker_id": blocker_id,
+        "blocker_reason": blocker_reason,
+        "evidence_paths": EVIDENCE_PATHS,
+        "as_of": _now(),
+        "generated_utc": _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "subsystem": "npu",
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "production_accelerator_release_claim_allowed": False,
+        "nnapi_claim_allowed": False,
+        "performance_claim_allowed": False,
+        "claim_boundary": (
+            "The E1 NPU (rtl/npu/e1_npu.sv) is a descriptor-queue accelerator: a "
+            "memory-resident 16-byte-descriptor ring fetched over an AXI4-Lite "
+            "master, tensor-tile streaming into a 64-byte scratchpad, GEMM_S8/S4 + "
+            "vector + scalar execution, result writeback to DRAM, and a completion "
+            "IRQ. The confidential-I/O build (+E1_NPU_SECURE_SIDEBAND) tags every "
+            "outbound access with the fixed NPU source ID (0x000004) + the "
+            "monitor-programmed owning-domain ID + a secure qualifier (the OOB the "
+            "RISC-V IOMMU ar_devid/ar_pasid and the IOPMP source-ID R/W/X table "
+            "police), gates the private command queue on an owner token, and locks "
+            "down PERF_* counters when owned-private. This gate proves lint (both "
+            "views), the confidential-I/O descriptor KAT (GEMM matches "
+            "golden_gemm_s8 with IRQ + tags), and no regression of the existing "
+            "NPU contract / IREE e2e suites. It does NOT prove SoC-fabric wiring of "
+            "the NPU master onto an IOMMU upstream port (S6.x integration item), "
+            "NNAPI/VTS, the Linux/Android driver, or phone-class throughput."
+        ),
+        "summary": {
+            "check_count": len(checks),
+            "passing_check_count": sum(1 for c in checks if c["status"] == "pass"),
+            "failures": [c["id"] for c in checks if c["status"] != "pass"],
+        },
+        "checks": checks,
+    }
+
+
 def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     checks: list[dict] = []
@@ -257,56 +316,11 @@ def main() -> int:
         )
         checks.append(_run_cocotb_suite("cocotb_test_e1_npu", "test_e1_npu", "verify/cocotb", ()))
 
-    has_fail = any(c["status"] == "fail" for c in checks)
-    has_block = any(c["status"] == "blocked" for c in checks)
-    if has_fail:
-        status, blocker_id = "FAIL", "npu_accelerator_check_failure"
-        blocker_reason = "; ".join(
-            f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "fail"
-        )
-    elif has_block:
-        status, blocker_id = "BLOCKED", "npu_accelerator_dependency_missing"
-        blocker_reason = "; ".join(
-            f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "blocked"
-        )
-    else:
-        status, blocker_id, blocker_reason = "PASS", None, None
-
-    report = {
-        "schema": "eliza.gate_status.v1",
-        "gate": "npu-accelerator-check",
-        "status": status,
-        "blocker_id": blocker_id,
-        "blocker_reason": blocker_reason,
-        "evidence_paths": EVIDENCE_PATHS,
-        "as_of": _now(),
-        "subsystem": "npu",
-        "claim_boundary": (
-            "The E1 NPU (rtl/npu/e1_npu.sv) is a descriptor-queue accelerator: a "
-            "memory-resident 16-byte-descriptor ring fetched over an AXI4-Lite "
-            "master, tensor-tile streaming into a 64-byte scratchpad, GEMM_S8/S4 + "
-            "vector + scalar execution, result writeback to DRAM, and a completion "
-            "IRQ. The confidential-I/O build (+E1_NPU_SECURE_SIDEBAND) tags every "
-            "outbound access with the fixed NPU source ID (0x000004) + the "
-            "monitor-programmed owning-domain ID + a secure qualifier (the OOB the "
-            "RISC-V IOMMU ar_devid/ar_pasid and the IOPMP source-ID R/W/X table "
-            "police), gates the private command queue on an owner token, and locks "
-            "down PERF_* counters when owned-private. This gate proves lint (both "
-            "views), the confidential-I/O descriptor KAT (GEMM matches "
-            "golden_gemm_s8 with IRQ + tags), and no regression of the existing "
-            "NPU contract / IREE e2e suites. It does NOT prove SoC-fabric wiring of "
-            "the NPU master onto an IOMMU upstream port (S6.x integration item), "
-            "NNAPI/VTS, the Linux/Android driver, or phone-class throughput."
-        ),
-        "summary": {
-            "check_count": len(checks),
-            "passing_check_count": sum(1 for c in checks if c["status"] == "pass"),
-            "failures": [c["id"] for c in checks if c["status"] != "pass"],
-        },
-        "checks": checks,
-    }
+    report = build_report(checks)
     REPORT.write_text(json.dumps(report, indent=2) + "\n")
 
+    status = str(report["status"])
+    blocker_reason = report["blocker_reason"]
     print(f"STATUS: {status} npu-accelerator-check -> {REPORT.relative_to(ROOT)}")
     for c in checks:
         print(f"  [{c['status'].upper():7}] {c['id']}: {c['detail']}")

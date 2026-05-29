@@ -1,9 +1,10 @@
 /**
  * External wallet bridge state — owned by the agent runtime so callers in this
  * package don't have to reach upward into app plugin packages (plugins/app-*) for
- * sync state queries. Outer-layer integrations (e.g. app-steward) write into
- * this module via the public setters; agent-internal code reads via the
- * getters.
+ * sync state queries. This is the single source of truth for whether the
+ * Steward EVM bridge is active: outer-layer integrations (plugin-steward-app)
+ * write into it via {@link setStewardEvmBridgeActive}, and any reader — including
+ * the plugin's own status accessor — must read it via {@link isStewardEvmBridgeActive}.
  */
 
 let stewardEvmBridgeActive = false;

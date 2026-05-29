@@ -190,10 +190,10 @@ Read `bun-version.json` for the authoritative pins. Summary:
 
 | Pin                | Value                                          | Why bumpable in lockstep |
 |--------------------|------------------------------------------------|--------------------------|
-| Bun tag            | `bun-v1.3.13`                                  | matches `stage-android-agent.mjs:BUN_VERSION` |
-| WebKit fork commit | `4d5e75ebd84a14edbc7ae264245dcd77fe597c10`     | matches `scripts/build/deps/webkit.ts:WEBKIT_VERSION` on oven-sh/bun@bun-v1.3.13 |
+| Bun tag            | `bun-v1.3.14`                                  | matches `stage-android-agent.mjs:BUN_VERSION` |
+| WebKit fork commit | `5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b`     | matches `scripts/build/deps/webkit.ts:WEBKIT_VERSION` on oven-sh/bun@bun-v1.3.14 |
 | LLVM               | `21.1.8`                                       | matches Bun's pinned LLVM_VERSION; runtime allocator depends on no skew |
-| Rust nightly       | `nightly-2025-12-10`                           | matches Bun's `rust-toolchain.toml` on `bun-v1.3.13` |
+| Rust nightly       | `nightly-2025-12-10`                           | matches Bun's `rust-toolchain.toml` on `bun-v1.3.14` |
 | Zig                | `0.14.1`                                       | first stable with `riscv64-linux-musl` target acceptance |
 | Alpine branch      | `v3.21`                                        | matches `stage-android-agent.mjs:ALPINE_BRANCH` so musl/libstdc++ ABIs line up |
 
@@ -281,7 +281,7 @@ git remote add upstream https://github.com/WebKit/WebKit.git
 git fetch --filter=blob:none upstream main
 
 # 2. Cherry-pick onto the pinned commit
-git checkout -b riscv64-rebase 4d5e75ebd84a14edbc7ae264245dcd77fe597c10
+git checkout -b riscv64-rebase 5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b
 git cherry-pick d9b48eb6 2c412363 7cab5669 30fad9e8 66db9c06 \
                 849df0d9 b4c1b133 3d6fa6f5 37bf7544 7b1df19a \
                 d11ef53d eabcb75e d2f4296a a276bc15 3aefcc51 \
@@ -291,7 +291,7 @@ git cherry-pick d9b48eb6 2c412363 7cab5669 30fad9e8 66db9c06 \
 # 3. Export as patches
 git format-patch -o "$REPO_ROOT/packages/app-core/scripts/bun-riscv64/webkit-patches/" \
     --start-number=1 \
-    4d5e75ebd84a14edbc7ae264245dcd77fe597c10..HEAD
+    5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b..HEAD
 
 # 4. Remove the recipes
 rm "$REPO_ROOT/packages/app-core/scripts/bun-riscv64/webkit-patches/"*.recipe

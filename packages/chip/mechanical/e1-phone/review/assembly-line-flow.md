@@ -50,7 +50,7 @@ Production assembly flow for the E1 orange PC+ABS slab phone (78 x 153.6 x 11.8 
 
 ### Station 4 — FPC Connections
 
-- **Operations:** Connect display FPC to display_fpc_connector. Connect split_interconnect_top_flex_tail to top board island connector. Connect split_interconnect_bottom_flex_tail to bottom island. Connect haptic_lra leads to PMIC. Connect side_key_power_flex_tail and side_key_volume_flex_tail to power/volume tactile switches. Verify all 5 connector clicks via audible+AOI confirmation.
+- **Operations:** Connect display FPC to display_fpc_connector. Connect split_interconnect_top_flex_tail to top board island connector. Connect split_interconnect_bottom_flex_tail to bottom island. Mate the battery/PMIC service loop after `main_pcb` is present. Connect haptic_lra leads to PMIC. Connect side_key_power_flex_tail and side_key_volume_flex_tail to power/volume tactile switches. Verify all connector clicks via audible+AOI confirmation.
 - **Fixture:** FPC routing combs S4-FIX-004; locking probe to confirm seating
 - **Gauges:** FPC continuity tester (Goldensea TR-9000), AOI on connector seating
 - **Cycle:** 42 s (longest manual station)

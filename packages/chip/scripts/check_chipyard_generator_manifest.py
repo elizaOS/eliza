@@ -64,6 +64,8 @@ def check_selected_manifest(errors: list[str]) -> None:
     manifest = load_json(SELECTED)
     selected = manifest.get("selected_path", {})
     policy = manifest.get("claim_policy", {})
+    status = manifest.get("status")
+    post_evidence_claim = status == "linux_complete"
 
     require(
         manifest.get("schema") == "eliza.cpu_ap_generator_manifest.v1",
@@ -71,8 +73,8 @@ def check_selected_manifest(errors: list[str]) -> None:
         errors,
     )
     require(
-        manifest.get("status") == "selected_not_generated",
-        "selected manifest must remain selected_not_generated until artifacts exist",
+        status in {"selected_not_generated", "linux_complete"},
+        "selected manifest status must be selected_not_generated or linux_complete",
         errors,
     )
     require(selected.get("generator") == "Chipyard", "selected generator must be Chipyard", errors)
@@ -99,15 +101,21 @@ def check_selected_manifest(errors: list[str]) -> None:
         errors,
     )
     require(
-        policy.get("linux_capable_cpu_claim") is False,
-        "Linux CPU claim must be false without boot evidence",
+        policy.get("linux_capable_cpu_claim") is post_evidence_claim,
+        "Linux CPU claim must match selected manifest evidence state",
         errors,
     )
     require(
         policy.get("platform_contract_has_cpu_may_flip_to_true") is False,
-        "platform has_cpu flip must remain blocked without generated artifacts",
+        "platform e1_chip.has_cpu flip must remain blocked; use e1_chip_cpu_variant for generated AP claims",
         errors,
     )
+    if post_evidence_claim:
+        require(
+            BUILD_MANIFEST.is_file(),
+            "linux_complete selected manifest requires generated import manifest",
+            errors,
+        )
 
     for path in (
         "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",

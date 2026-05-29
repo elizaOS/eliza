@@ -17,6 +17,16 @@ import { useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
 import { Slider } from "../slider";
 
+/**
+ * Illustrative spend-mix assumptions for the "what if" projection. These are NOT
+ * server-sourced: Cloud does not currently expose an inference-vs-purchase spend
+ * split, so the simulator assumes a fixed mix purely to visualize potential
+ * earnings. They must never be presented as actual monetization accounting — the
+ * UI labels every output as an estimate.
+ */
+const ASSUMED_INFERENCE_SPEND_SHARE = 0.8;
+const ASSUMED_PURCHASE_SPEND_SHARE = 0.2;
+
 interface EarningsSimulatorProps {
   markupPercentage: number;
   purchaseSharePercentage: number;
@@ -34,14 +44,12 @@ export function EarningsSimulator({
   const calculations = useMemo(() => {
     const totalSpend = users * spendPerUser;
 
-    // Inference earnings: users spend on AI, creator gets markup
-    // Assume 80% of spend goes to inference costs
-    const inferenceSpend = totalSpend * 0.8;
+    // Inference earnings: users spend on AI, creator gets the markup share.
+    const inferenceSpend = totalSpend * ASSUMED_INFERENCE_SPEND_SHARE;
     const inferenceEarnings = inferenceSpend * (markupPercentage / 100);
 
-    // Purchase earnings: creator gets % of credit purchases
-    // Assume 20% of spend is new credit purchases
-    const purchaseSpend = totalSpend * 0.2;
+    // Purchase earnings: creator gets a share of new credit purchases.
+    const purchaseSpend = totalSpend * ASSUMED_PURCHASE_SPEND_SHARE;
     const purchaseEarnings = purchaseSpend * (purchaseSharePercentage / 100);
 
     const totalEarnings = inferenceEarnings + purchaseEarnings;
@@ -163,6 +171,14 @@ export function EarningsSimulator({
             ${calculations.totalEarnings.toFixed(2)}
           </span>
         </div>
+
+        {/* Illustrative-estimate disclaimer */}
+        <p className="text-[10px] text-neutral-600 leading-snug pt-2">
+          Illustrative estimate only. Assumes{" "}
+          {Math.round(ASSUMED_INFERENCE_SPEND_SHARE * 100)}% of spend goes to
+          inference and {Math.round(ASSUMED_PURCHASE_SPEND_SHARE * 100)}% to
+          credit purchases. Actual earnings depend on real usage.
+        </p>
       </div>
     </div>
   );

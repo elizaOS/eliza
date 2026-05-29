@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,22 @@ LIFECYCLE_TEST = ROOT / "verify/cocotb/test_e1_lifecycle.py"
 LC_CTRL_TEST = ROOT / "verify/cocotb/test_e1_lc_ctrl.py"
 RETIRED_LIFECYCLE_RTL = ROOT / "rtl/security/e1_lifecycle.sv"
 OUT = ROOT / "build/reports/security_lifecycle_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "secure_boot_claim_allowed": False,
+    "verified_boot_claim_allowed": False,
+    "rollback_protection_claim_allowed": False,
+    "debug_lock_claim_allowed": False,
+    "production_otp_claim_allowed": False,
+    "keymint_claim_allowed": False,
+    "tee_claim_allowed": False,
+    "strongbox_claim_allowed": False,
+    "attestation_claim_allowed": False,
+    "silicon_security_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -190,11 +207,13 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.security_lifecycle_scope.v1",
         "status": "security_lifecycle_scope_release_blocked",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": (
             "Security lifecycle scope audit only; not secure boot, not verified boot, "
             "not rollback protection, not debug lock, not production OTP, not KeyMint, "
             "not TEE, not StrongBox, not attestation, and not silicon security evidence."
         ),
+        **FALSE_CLAIM_FLAGS,
         "current_scaffold": {
             "lifecycle_rtl": rel(LIFECYCLE_RTL),
             "top_level_access": "absent_unmapped_in_current_cocotb_contract",
@@ -247,6 +266,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not silicon security evidence",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

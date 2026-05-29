@@ -3,6 +3,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,15 @@ LINUX_DRIVER_HEADERS = (
     ROOT / "sw/linux/drivers/eliza/e1_platform_contract.h",
 )
 REPORT = ROOT / "build/reports/platform_contract.json"
+CLAIM_BOUNDARY = "static_platform_contract_consistency_only_not_linux_or_aosp_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 REGION_RTL_NAMES = {
@@ -357,6 +367,7 @@ def check_contract(contract: dict) -> list[str]:
     check_qemu_virt_separation(contract, errors)
     check_cpu_variant_artifacts(contract, errors)
     check_cpu_variant_consumers(contract, errors)
+    check_cpu_variant_linux_contract_decode(contract, errors)
     return errors
 
 
@@ -428,12 +439,65 @@ def check_cpu_variant_consumers(contract: dict, errors: list[str]) -> None:
                 )
 
 
+def check_cpu_variant_linux_contract_decode(contract: dict, errors: list[str]) -> None:
+    """Check the Linux-contract AXI-Lite decoder against generated CPU ABI bases."""
+    if "e1_chip_cpu_variant" not in contract:
+        return
+    interconnect = read_text(ROOT / "rtl/interconnect/e1_axi_lite_interconnect.sv")
+    wrapper = read_text(ROOT / "rtl/interconnect/e1_linux_soc_contract.sv")
+    v = contract["e1_chip_cpu_variant"]
+    devs = v["devices"]
+
+    params = {
+        name: h(value)
+        for name, value in re.findall(
+            r"localparam\s+logic\s+\[31:0\]\s+(\w+)_BASE\s*=\s*32'h([0-9A-Fa-f_]+)",
+            interconnect,
+        )
+    }
+    expected = {
+        "DRAM": h(v["dram"]["base"]),
+        "INTC": h(v["plic"]["base"]),
+        "DMA": h(devs["dma"]["base"]),
+        "NPU": h(devs["npu"]["base"]),
+        "DISP": h(devs["display"]["base"]),
+    }
+    for name, base in expected.items():
+        actual = params.get(name)
+        require(
+            actual == base,
+            f"Linux AXI-Lite contract {name}_BASE is {fmt_hex(actual or 0)}, "
+            f"CPU variant contract expects {fmt_hex(base)}",
+            errors,
+        )
+
+    for token in (
+        ".npu_awvalid(",
+        ".npu_arvalid(",
+        ".display_awvalid(",
+        ".display_arvalid(",
+        "e1_npu u_npu",
+        "e1_display u_display",
+    ):
+        require(
+            token in wrapper,
+            f"rtl/interconnect/e1_linux_soc_contract.sv missing Linux MMIO target token {token}",
+            errors,
+        )
+
+
 def code_from_text(text: str) -> str:
     cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
     return "_".join(part for part in cleaned.split("_") if part)[:96] or "platform_contract_failure"
 
 
 def write_report(errors: list[str]) -> None:
+    report = report_payload(errors)
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def report_payload(errors: list[str]) -> dict[str, object]:
     findings = [
         {
             "code": code_from_text(error),
@@ -447,12 +511,13 @@ def write_report(errors: list[str]) -> None:
     report = {
         "schema": "eliza.platform_contract.v1",
         "status": "fail" if errors else "pass",
-        "claim_boundary": "static_platform_contract_consistency_only_not_linux_or_aosp_boot_evidence",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"findings": len(findings)},
         "findings": findings,
     }
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return report
 
 
 def main() -> int:

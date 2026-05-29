@@ -80,6 +80,7 @@ factory_production_summary:
     - board/kicad/e1-phone/production/test/factory-test-limits.yaml
     - board/kicad/e1-phone/production/test/probe-coordinates.csv
     - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    - board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
     - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
     - board/kicad/e1-phone/production/test/first-article-test-transcript.json
   routed_release_ready_flags:
@@ -104,7 +105,7 @@ acceptance_items:
       - DRC-clean routed KiCad PCB revision
       - Gerber X2 or IPC-2581 fabrication output with stackup notes
       - NC drill, slot, and board outline files tied to the routed release revision
-    blocker: The live PCB has no routed copper or production fabrication exports.
+    blocker: The production concept source has no release-approved routed copper or production fabrication exports.
   - id: assembly_outputs_bom_pnp_drawings_stencil
     owner: assembly
     status: blocked_missing_routed_outputs_fixture_limits_quotes_or_first_article_evidence

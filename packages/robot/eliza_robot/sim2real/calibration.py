@@ -55,10 +55,19 @@ class CalibrationParameters:
     response_delay_s: float = 0.0
 
     def apply_to(self, joint_positions: dict[str, float], joint_order: list[str]) -> dict[str, float]:
-        """Apply the calibration to a commanded joint dict."""
+        """Apply the calibration to a commanded joint dict.
+
+        Only joints actually present in ``joint_positions`` are returned —
+        previously every joint in ``joint_order`` was emitted (with 0.0+offset
+        for uncommanded ones), which would drive joints the caller never asked
+        to move. ``joint_order`` is still used for the per-joint strength/offset
+        index alignment.
+        """
         out: dict[str, float] = {}
         for i, name in enumerate(joint_order):
-            val = float(joint_positions.get(name, 0.0))
+            if name not in joint_positions:
+                continue
+            val = float(joint_positions[name])
             if i < self.motor_strengths.shape[0]:
                 val *= float(self.motor_strengths[i])
                 val += float(self.joint_offsets[i])
@@ -122,7 +131,9 @@ def _trajectory_distance(
     """Compute per-feature RMS divergence between two trajectories."""
     n = min(len(a), len(b))
     if n == 0:
-        return {"rms_imu": 0.0, "rms_joint": 0.0, "samples": 0}
+        # Must include rms_total — callers index result["rms_total"], so the
+        # empty-trajectory path returning only rms_imu/rms_joint raised KeyError.
+        return {"rms_imu": 0.0, "rms_joint": 0.0, "rms_total": 0.0, "samples": 0}
     roll_sq = sum((a[i].imu_roll - b[i].imu_roll) ** 2 for i in range(n)) / n
     pitch_sq = sum((a[i].imu_pitch - b[i].imu_pitch) ** 2 for i in range(n)) / n
     rms_imu = math.sqrt(roll_sq + pitch_sq)

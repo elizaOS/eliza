@@ -198,7 +198,7 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 182.18 g.
+- Estimated CAD mass: 182.2 g.
 
 ## Design Decisions From This Pass
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -14,6 +15,18 @@ GAPS = ROOT / "docs/manufacturing/real-world-verification-gaps.yaml"
 SECURITY_SCOPE_REPORT = ROOT / "build/reports/security_lifecycle_scope.json"
 SECURITY_SCOPE_CHECK = ROOT / "scripts/check_security_lifecycle_scope.py"
 REPORT = ROOT / "build/reports/product_feature_gates.json"
+CLAIM_BOUNDARY = "product_feature_manifest_check_only_not_runtime_or_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "runtime_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "android_feature_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 REQUIRED_DOMAINS = {
     "modem_radio",
@@ -365,6 +378,12 @@ def code_from_text(text: str) -> str:
 
 
 def write_report(failures: list[str]) -> None:
+    report = report_payload(failures)
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def report_payload(failures: list[str]) -> dict:
     findings = [
         {
             "code": code_from_text(failure),
@@ -378,12 +397,13 @@ def write_report(failures: list[str]) -> None:
     report = {
         "schema": "eliza.product_feature_gates.v1",
         "status": "fail" if failures else "pass",
-        "claim_boundary": "product_feature_manifest_check_only_not_runtime_or_release_evidence",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"findings": len(findings)},
         "findings": findings,
     }
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return report
 
 
 def main() -> int:

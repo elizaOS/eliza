@@ -18,6 +18,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_boot_security_chain_contract as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -100,6 +106,26 @@ class BootSecurityChainContractTests(unittest.TestCase):
             mock.patch.object(
                 gate, "BOOTROM_RELEASE_EVIDENCE", tmp / "docs/boot-rom/release-evidence.md"
             ),
+            mock.patch.object(
+                gate,
+                "BOOTROM_SIM_REPORT",
+                tmp / "build/reports/gate-bootrom-sim-transcript-check.json",
+            ),
+            mock.patch.object(
+                gate,
+                "BOOTROM_SIM_TRANSCRIPT",
+                tmp / "docs/boot-rom/transcripts/e1_secure_bootrom_qemu_rv64.txt",
+            ),
+            mock.patch.object(
+                gate,
+                "BOOTROM_POSITIVE_HANDOFF_REPORT",
+                tmp / "build/reports/gate-bootrom-positive-handoff-check.json",
+            ),
+            mock.patch.object(
+                gate,
+                "BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT",
+                tmp / "docs/boot-rom/transcripts/e1_secure_bootrom_positive_handoff_qemu_rv64.txt",
+            ),
             mock.patch.object(gate, "PMC_SECURE_BOOT", tmp / "fw/pmc/src/secure_boot.c"),
             mock.patch.object(gate, "PMC_README", tmp / "fw/pmc/README.md"),
             mock.patch.object(
@@ -120,6 +146,7 @@ class BootSecurityChainContractTests(unittest.TestCase):
             report = gate.run_check(Namespace())
 
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("platform_contract_has_no_cpu_boot_target", codes)
         self.assertIn("platform_contract_boot_vector_placeholder", codes)
@@ -127,9 +154,22 @@ class BootSecurityChainContractTests(unittest.TestCase):
         self.assertIn("reset_rom_handoff_not_authenticated_or_proven", codes)
         self.assertIn("bootrom_checker_masks_toolchain_blocked_as_success", codes)
         self.assertIn("bootrom_release_evidence_not_wired_or_exercised", codes)
+        self.assertIn("bootrom_release_evidence_missing_transcript_gate", codes)
+        self.assertIn("bootrom_sim_transcript_report_missing", codes)
+        self.assertIn("bootrom_positive_handoff_report_missing", codes)
         self.assertIn("pmc_secure_boot_placeholder_accepts_all", codes)
         self.assertIn("pmc_secure_boot_release_blockers_open", codes)
         self.assertIn("security_boot_docs_are_pre_silicon_or_blocked", codes)
+        self.assertGreater(
+            report["summary"]["blocker_dependency_counts"]["repo_artifact_generation"],
+            0,
+        )
+        self.assertGreater(
+            report["summary"]["blocker_dependency_counts"]["actionable_external_dependency"],
+            0,
+        )
+        self.assertGreater(report["summary"]["next_command_count"], 0)
+        self.assertTrue(report["next_command_plan"])
 
     def test_complete_static_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -152,8 +192,58 @@ class BootSecurityChainContractTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 gate.BOOTROM_RELEASE_EVIDENCE.write_text(
-                    "Simulator transcript proves reset vector reaches ROM and hands off to OpenSBI.\n",
+                    "scripts/check_bootrom_sim_transcript.py checks "
+                    "docs/boot-rom/transcripts/e1_secure_bootrom_qemu_rv64.txt.\n",
                     encoding="utf-8",
+                )
+                write_json(
+                    gate.BOOTROM_SIM_REPORT,
+                    {
+                        "schema": "eliza.gate_status.v1",
+                        "gate": "boot.bootrom_sim_transcript",
+                        "status": "PASS",
+                        "phone_claim_allowed": False,
+                        "release_claim_allowed": False,
+                        "provisioned_root_claim_allowed": False,
+                        "signed_image_handoff_claim_allowed": False,
+                        "linux_boot_claim_allowed": False,
+                        "android_boot_claim_allowed": False,
+                        "silicon_secure_boot_claim_allowed": False,
+                        "checks": [
+                            {"id": marker, "status": "pass", "detail": "found"}
+                            for marker in sorted(gate.REQUIRED_BOOTROM_SIM_MARKERS)
+                        ],
+                    },
+                )
+                write(
+                    gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT,
+                    "reset-vector-fetch <_start>\n"
+                    "<e1_secure_boot_main>\n"
+                    "authenticated-image-verified\n"
+                    "handoff-target-loaded-from-manifest\n"
+                    "OpenSBI entry reached\n",
+                )
+                write_json(
+                    gate.BOOTROM_POSITIVE_HANDOFF_REPORT,
+                    {
+                        "schema": "eliza.gate_status.v1",
+                        "gate": "boot.bootrom_positive_handoff",
+                        "status": "PASS",
+                        "phone_claim_allowed": False,
+                        "release_claim_allowed": False,
+                        "linux_boot_claim_allowed": False,
+                        "android_boot_claim_allowed": False,
+                        "silicon_secure_boot_claim_allowed": False,
+                        "evidence_paths": [
+                            gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT.relative_to(
+                                gate.ROOT
+                            ).as_posix()
+                        ],
+                        "checks": [
+                            {"id": marker, "status": "pass", "detail": "found"}
+                            for marker in sorted(gate.REQUIRED_POSITIVE_HANDOFF_MARKERS)
+                        ],
+                    },
                 )
                 gate.PMC_SECURE_BOOT.write_text(
                     "int pmc_secure_boot_verify(const unsigned char *image, unsigned long length) {\n"
@@ -179,7 +269,177 @@ class BootSecurityChainContractTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertEqual(
+            report["summary"]["blocker_dependency_counts"],
+            {
+                "repo_artifact_generation": 0,
+                "live_device_validation": 0,
+                "actionable_external_dependency": 0,
+            },
+        )
+        assert_false_claim_flags(self, report)
+
+    def test_positive_handoff_report_must_cite_transcript_and_markers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            with PatchStack(self._patch_tree(tmp)):
+                write_json(gate.PLATFORM_CONTRACT, ready_contract())
+                gate.BOOTROM_RTL.write_text(
+                    'initial $readmemh("build/boot-rom/e1_secure_boot_rom.hex", rom);\n',
+                    encoding="utf-8",
+                )
+                gate.RESET_ROM.write_text(
+                    "verify_signature:\n"
+                    "    call authenticate_image\n"
+                    "    call init_dram\n"
+                    "    call enter_opensbi\n",
+                    encoding="utf-8",
+                )
+                gate.BOOTROM_CHECKER.write_text(
+                    "if missing_toolchain:\n    return 2\n",
+                    encoding="utf-8",
+                )
+                gate.BOOTROM_RELEASE_EVIDENCE.write_text(
+                    "scripts/check_bootrom_sim_transcript.py checks "
+                    "docs/boot-rom/transcripts/e1_secure_bootrom_qemu_rv64.txt.\n",
+                    encoding="utf-8",
+                )
+                write_json(
+                    gate.BOOTROM_SIM_REPORT,
+                    {
+                        "schema": "eliza.gate_status.v1",
+                        "gate": "boot.bootrom_sim_transcript",
+                        "status": "PASS",
+                        "phone_claim_allowed": False,
+                        "release_claim_allowed": False,
+                        "provisioned_root_claim_allowed": False,
+                        "signed_image_handoff_claim_allowed": False,
+                        "linux_boot_claim_allowed": False,
+                        "android_boot_claim_allowed": False,
+                        "silicon_secure_boot_claim_allowed": False,
+                        "checks": [
+                            {"id": marker, "status": "pass", "detail": "found"}
+                            for marker in sorted(gate.REQUIRED_BOOTROM_SIM_MARKERS)
+                        ],
+                    },
+                )
+                write_json(
+                    gate.BOOTROM_POSITIVE_HANDOFF_REPORT,
+                    {
+                        "schema": "eliza.gate_status.v1",
+                        "gate": "boot.bootrom_positive_handoff",
+                        "status": "PASS",
+                        "evidence_paths": ["docs/boot-rom/transcripts/wrong.log"],
+                        "checks": [
+                            {
+                                "id": "reset_vector_fetch",
+                                "status": "pass",
+                                "detail": "found",
+                            }
+                        ],
+                    },
+                )
+                gate.PMC_SECURE_BOOT.write_text(
+                    "int pmc_secure_boot_verify(const unsigned char *image, unsigned long length) {\n"
+                    "  if (!image || length == 0) return -1;\n"
+                    "  return verify_signature_and_rollback(image, length);\n"
+                    "}\n",
+                    encoding="utf-8",
+                )
+                gate.PMC_README.write_text(
+                    "Secure boot verifier and key provisioning are closed by evidence.\n",
+                    encoding="utf-8",
+                )
+                for doc in (
+                    gate.SECURE_BOOT_LIFECYCLE,
+                    gate.BOOT_IMAGE_FORMAT,
+                    gate.AVB_OTA,
+                    gate.KEY_CEREMONY,
+                ):
+                    doc.write_text(
+                        "Implementation evidence captured and validated.\n", encoding="utf-8"
+                    )
+
+                report = gate.run_check(Namespace())
+
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
+        self.assertIn("bootrom_positive_handoff_report_allows_release_claims", codes)
+        self.assertIn("bootrom_positive_handoff_transcript_not_cited", codes)
+        self.assertIn("bootrom_positive_handoff_missing_required_markers", codes)
+
+    def test_sim_transcript_report_must_deny_handoff_and_release_claims(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            with PatchStack(self._patch_tree(tmp)):
+                write_json(gate.PLATFORM_CONTRACT, ready_contract())
+                gate.BOOTROM_RTL.write_text(
+                    'initial $readmemh("build/boot-rom/e1_secure_boot_rom.hex", rom);\n',
+                    encoding="utf-8",
+                )
+                gate.RESET_ROM.write_text(
+                    "verify_signature:\n"
+                    "    call authenticate_image\n"
+                    "    call init_dram\n"
+                    "    call enter_opensbi\n",
+                    encoding="utf-8",
+                )
+                gate.BOOTROM_CHECKER.write_text("if missing_toolchain:\n    return 2\n", encoding="utf-8")
+                gate.BOOTROM_RELEASE_EVIDENCE.write_text(
+                    "scripts/check_bootrom_sim_transcript.py checks "
+                    "docs/boot-rom/transcripts/e1_secure_bootrom_qemu_rv64.txt.\n",
+                    encoding="utf-8",
+                )
+                write_json(
+                    gate.BOOTROM_SIM_REPORT,
+                    {
+                        "schema": "eliza.gate_status.v1",
+                        "gate": "boot.bootrom_sim_transcript",
+                        "status": "PASS",
+                        "release_claim_allowed": True,
+                        "checks": [
+                            {"id": marker, "status": "pass", "detail": "found"}
+                            for marker in sorted(gate.REQUIRED_BOOTROM_SIM_MARKERS)
+                        ],
+                    },
+                )
+                write(gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT, "reset-vector-fetch <_start>\n<e1_secure_boot_main>\nauthenticated-image-verified\nhandoff-target-loaded-from-manifest\nOpenSBI entry\n")
+                write_json(
+                    gate.BOOTROM_POSITIVE_HANDOFF_REPORT,
+                    {
+                        "schema": "eliza.gate_status.v1",
+                        "gate": "boot.bootrom_positive_handoff",
+                        "status": "PASS",
+                        "phone_claim_allowed": False,
+                        "release_claim_allowed": False,
+                        "linux_boot_claim_allowed": False,
+                        "android_boot_claim_allowed": False,
+                        "silicon_secure_boot_claim_allowed": False,
+                        "evidence_paths": [gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT.relative_to(gate.ROOT).as_posix()],
+                        "checks": [
+                            {"id": marker, "status": "pass", "detail": "found"}
+                            for marker in sorted(gate.REQUIRED_POSITIVE_HANDOFF_MARKERS)
+                        ],
+                    },
+                )
+                gate.PMC_SECURE_BOOT.write_text(
+                    "int pmc_secure_boot_verify(const unsigned char *image, unsigned long length) {\n"
+                    "  if (!image || length == 0) return -1;\n"
+                    "  return verify_signature_and_rollback(image, length);\n"
+                    "}\n",
+                    encoding="utf-8",
+                )
+                gate.PMC_README.write_text("Secure boot verifier and key provisioning are closed by evidence.\n", encoding="utf-8")
+                for doc in (gate.SECURE_BOOT_LIFECYCLE, gate.BOOT_IMAGE_FORMAT, gate.AVB_OTA, gate.KEY_CEREMONY):
+                    doc.write_text("Implementation evidence captured and validated.\n", encoding="utf-8")
+
+                report = gate.run_check(Namespace())
+
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
+        self.assertIn("bootrom_sim_transcript_report_allows_release_claims", codes)
 
 
 class PatchStack:

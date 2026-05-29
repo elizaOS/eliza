@@ -42,7 +42,7 @@ export async function handleUpdateRoutes(
       fetchAllChannelVersions,
       CHANNEL_DIST_TAGS,
     } = await import("../services/update-checker.ts");
-    const { isTrustedLocalRequest } = await import("./server-auth.ts");
+    const { isTrustedLocalRequest } = await import("./server-helpers-auth.ts");
     const { detectInstallMethod, getUpdateActionPlan } = await import(
       "../services/self-updater.ts"
     );

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +35,13 @@ DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "eliza_robot" / "text_embeddings"
 DEFAULT_DIM = 384
 DEFAULT_PCA_DIM = 32
+CACHE_LOAD_ERRORS = (
+    EOFError,
+    KeyError,
+    OSError,
+    ValueError,
+    zipfile.BadZipFile,
+)
 
 
 @dataclass
@@ -93,6 +101,21 @@ def _synthetic_task_embeddings(
     return out
 
 
+def _load_cached_task_embeddings(
+    cache_path: Path, meta: dict
+) -> dict[str, TaskEmbedding]:
+    out: dict[str, TaskEmbedding] = {}
+    with np.load(cache_path) as npz:
+        for task_id in meta["task_ids"]:
+            out[task_id] = TaskEmbedding(
+                task_id=task_id,
+                mean_embed=npz[f"{task_id}_mean"],
+                reduced_embed=npz[f"{task_id}_reduced"],
+                variants=meta["variants"][task_id],
+            )
+    return out
+
+
 def build_task_embeddings(
     curriculum: Curriculum | None = None,
     *,
@@ -136,16 +159,11 @@ def build_task_embeddings(
         cache_sha256 = meta.get("curriculum_sha256")
         cache_is_current = cache_sha256 == curriculum_sha256
         if cache_is_current or (cache_sha256 is None and not sentence_libs_available):
-            npz = np.load(cache_path)
-            out: dict[str, TaskEmbedding] = {}
-            for task_id in meta["task_ids"]:
-                out[task_id] = TaskEmbedding(
-                    task_id=task_id,
-                    mean_embed=npz[f"{task_id}_mean"],
-                    reduced_embed=npz[f"{task_id}_reduced"],
-                    variants=meta["variants"][task_id],
-                )
-            return out
+            try:
+                return _load_cached_task_embeddings(cache_path, meta)
+            except CACHE_LOAD_ERRORS:
+                if not sentence_libs_available:
+                    return _synthetic_task_embeddings(curriculum, pca_dim=pca_dim)
         if not sentence_libs_available:
             return _synthetic_task_embeddings(curriculum, pca_dim=pca_dim)
 

@@ -128,7 +128,7 @@ def test_env_override_wins_over_default_probe() -> None:
         out_dir = Path(td)
         command = (
             "printf '%s\\n' 'COMPONENT=bluetooth' 'HCI_ATTACH=pass' 'BLE_SCAN=pass' "
-            "'OPERATOR_OVERRIDE=true'"
+            "'PAIRING=pass' 'OPERATOR_OVERRIDE=true'"
         )
         result = run_capture(["bluetooth"], out_dir, {"ELIZA_BLUETOOTH_SIM_COMMAND": command})
         if result.returncode != 0:

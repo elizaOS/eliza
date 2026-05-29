@@ -2,8 +2,8 @@
   "claim_boundary": "Automated part-to-view coverage map. It proves every generated CAD part is assigned to generated review artifacts and the per-part top-view and exploded-context contact sheets; it does not prove human CMF approval or pixel-level part segmentation.",
   "status": "part_visual_coverage_pass",
   "coverage_mode": "role_and_name_based_review_view_mapping",
-  "expected_part_count": 222,
-  "covered_part_count": 222,
+  "expected_part_count": 258,
+  "covered_part_count": 258,
   "required_review_artifacts": [
     "component-review-audio.png",
     "component-review-io-buttons.png",
@@ -1920,6 +1920,42 @@
       "pass": true
     },
     {
+      "part": "usb_pd_controller_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "charger_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "battery_connector_package_marker",
+      "role": "PCB connector marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
       "part": "audio_codec_package_marker",
       "role": "PCB component marker",
       "required_views": [
@@ -2280,6 +2316,102 @@
       "pass": true
     },
     {
+      "part": "usb_pd_controller_escape_trace_marker",
+      "role": "PCB trace marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "pd_charger_control_trace_marker",
+      "role": "PCB trace marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "charger_battery_power_sense_trace_marker",
+      "role": "PCB trace marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "display_bias_power_flex_marker",
+      "role": "flex/cable",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_power_flex_marker",
+      "role": "flex/cable",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_power_flex_marker",
+      "role": "flex/cable",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "wifi_bt_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "cellular_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
       "part": "bottom_speaker_lead_pair",
       "role": "flex/cable",
       "required_views": [
@@ -2329,6 +2461,18 @@
     },
     {
       "part": "haptic_flex_tail",
+      "role": "flex/cable",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "sensor_hub_i2c_flex_marker",
       "role": "flex/cable",
       "required_views": [
         "part-review-contact-sheet.png",
@@ -2390,6 +2534,30 @@
     {
       "part": "wifi_bt_rf1_feed_development_envelope",
       "role": "RF feed",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "soc_shield_ground_spring_marker",
+      "role": "ground spring",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "radio_shield_ground_spring_marker",
+      "role": "ground spring",
       "required_views": [
         "part-review-contact-sheet.png",
         "part-explode-contact-sheet.png"
@@ -2615,6 +2783,198 @@
       "pass": true
     },
     {
+      "part": "usb_c_to_pd_controller_escape_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "usb_c_to_pd_controller_escape_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "pd_controller_to_charger_control_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "pd_controller_to_charger_control_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "charger_to_battery_power_sense_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "charger_to_battery_power_sense_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "display_bias_power_flex_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "display_bias_power_flex_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "wifi_bt_host_control_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "wifi_bt_host_control_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "cellular_host_control_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "cellular_host_control_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
       "part": "bottom_speaker_lead_pair_from_terminal",
       "role": "connection terminal",
       "required_views": [
@@ -2735,6 +3095,30 @@
       "pass": true
     },
     {
+      "part": "sensor_hub_i2c_flex_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "sensor_hub_i2c_flex_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
       "part": "sim_esim_signal_flex_from_terminal",
       "role": "connection terminal",
       "required_views": [
@@ -2796,6 +3180,54 @@
     },
     {
       "part": "compute_som_sodimm_carrier_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "soc_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "soc_shield_ground_spring_to_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "radio_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "radio_shield_ground_spring_to_terminal",
       "role": "connection terminal",
       "required_views": [
         "part-review-contact-sheet.png",

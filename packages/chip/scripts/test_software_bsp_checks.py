@@ -16,6 +16,31 @@ def load_checker():
     return module
 
 
+def assert_false_claim_flags(checker, report: dict) -> None:
+    assert report["claim_boundary"] == checker.CLAIM_BOUNDARY
+    for key, expected in checker.FALSE_CLAIM_FLAGS.items():
+        assert report.get(key) is expected, key
+
+
+def test_scaffold_report_denies_runtime_boot_and_release_claims() -> None:
+    checker = load_checker()
+    report = checker.build_scaffold_report(
+        target="all",
+        scaffold_only=False,
+        require_evidence=True,
+        results=[
+            {
+                "target": "linux",
+                "errors": [],
+                "blockers": ["missing generated AP Linux boot transcript"],
+            }
+        ],
+    )
+
+    assert report["status"] == "blocked"
+    assert_false_claim_flags(checker, report)
+
+
 def test_log_parser_rejects_placeholder_failure() -> None:
     checker = load_checker()
     with tempfile.TemporaryDirectory() as tmp:

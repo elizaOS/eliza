@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,17 @@ REPORT = REPORT_DIR / "chip-os-closure-plan.json"
 
 SCHEMA = "eliza.chip_os_closure_plan.v1"
 CLAIM_BOUNDARY = "closure_plan_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 @dataclass(frozen=True)
@@ -296,8 +308,10 @@ def build_plan(matrix_path: Path, inventory_path: Path) -> dict[str, Any]:
     first_blocked = blocked_phases[0]["id"] if blocked_phases else None
     return {
         "schema": SCHEMA,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": "pass" if not blocked_phases else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "phases": len(phases),
             "closed_phases": len(phases) - len(blocked_phases),

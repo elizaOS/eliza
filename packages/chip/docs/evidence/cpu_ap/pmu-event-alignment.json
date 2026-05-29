@@ -1,16 +1,18 @@
 {
-  "schema": "eliza.cpu_pmu_event_alignment.v1",
-  "generated_at": "2026-05-24T03:15:17Z",
-  "bpu_event_count": 27,
-  "zihpm_branch_block_count": 27,
-  "remap_pair_count": 27,
   "aliases": {
     "PMU_FTB_MISS": "EVT_BTB_MISS",
     "PMU_L2_FTB_HIT": "EVT_L2_BTB_HIT",
-    "PMU_L2_FTB_MISS": "EVT_L2_BTB_MISS",
     "PMU_L2_FTB_LATE_REDIRECT": "EVT_L2_BTB_LATE_REDIRECT",
+    "PMU_L2_FTB_MISS": "EVT_L2_BTB_MISS",
     "PMU_META_TRAIN": "EVT_BPU_META_TRAIN"
   },
+  "bpu_event_count": 27,
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "errors": [],
-  "verdict": "ok"
+  "generated_at": "2026-05-24T03:15:17Z",
+  "generated_utc": "2026-05-24T03:43:54Z",
+  "remap_pair_count": 27,
+  "schema": "eliza.cpu_pmu_event_alignment.v1",
+  "verdict": "ok",
+  "zihpm_branch_block_count": 27
 }

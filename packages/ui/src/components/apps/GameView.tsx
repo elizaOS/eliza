@@ -46,6 +46,50 @@ import {
   shouldUseEmbeddedAppViewer,
 } from "./viewer-auth";
 
+/**
+ * Optional self-learning telemetry fields the "Defense of the Agents" game loop
+ * may push into {@link AppSessionState.telemetry}. Every field is optional: the
+ * loop only emits the keys it currently tracks, so absent fields must render an
+ * explicit empty state rather than a fabricated default.
+ */
+interface GameLearningTelemetry {
+  abilityPriority?: string[];
+  recallThreshold?: number;
+  ticksTracked?: number;
+  abilitiesLearned?: number;
+  survivalRate?: number;
+}
+
+function readLearningTelemetry(
+  telemetry: AppSessionState["telemetry"],
+): GameLearningTelemetry {
+  if (!telemetry) return {};
+  const abilityPriority = Array.isArray(telemetry.abilityPriority)
+    ? telemetry.abilityPriority.filter(
+        (ability): ability is string => typeof ability === "string",
+      )
+    : undefined;
+  return {
+    abilityPriority,
+    recallThreshold:
+      typeof telemetry.recallThreshold === "number"
+        ? telemetry.recallThreshold
+        : undefined,
+    ticksTracked:
+      typeof telemetry.ticksTracked === "number"
+        ? telemetry.ticksTracked
+        : undefined,
+    abilitiesLearned:
+      typeof telemetry.abilitiesLearned === "number"
+        ? telemetry.abilitiesLearned
+        : undefined,
+    survivalRate:
+      typeof telemetry.survivalRate === "number"
+        ? telemetry.survivalRate
+        : undefined,
+  };
+}
+
 export function buildDisconnectedSessionState(
   session: AppSessionState | null,
 ): AppSessionState | null {
@@ -1285,16 +1329,16 @@ export function GameView() {
       activeGamePostMessagePayload,
     );
     if (!expectedReadyType) return;
+    // Fail closed: without a concrete http(s) origin we can neither verify the
+    // sender nor safely target the auth payload, so never send it.
+    if (!postMessageTargetOrigin) return;
 
     const onMessage = (event: MessageEvent<{ type?: string }>) => {
       if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
       if (event.data?.type !== expectedReadyType) return;
-      if (
-        postMessageTargetOrigin !== "*" &&
-        event.origin !== postMessageTargetOrigin
-      ) {
+      if (event.origin !== postMessageTargetOrigin) {
         return;
       }
       iframeWindow.postMessage(
@@ -1466,268 +1510,254 @@ export function GameView() {
     );
   }
 
-  const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => (
-    <div
-      className={`flex min-h-0 flex-col bg-card ${
-        layout === "sidebar" ? "w-80" : "h-full"
-      }`}
-    >
-      <div className="flex items-center gap-2 px-3 py-2">
-        <span className="font-bold text-xs">{t("game.agentActivity")}</span>
-        <span className="flex-1" />
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 text-2xs px-2 py-0 border-border bg-card hover:border-accent"
-          onClick={() => void loadLogs()}
-        >
-          {t("common.refresh")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 text-2xs px-2 py-0 border-border bg-card hover:border-accent"
-          onClick={() => setShowLogsPanel(false)}
-        >
-          {t("common.hide")}
-        </Button>
-      </div>
-      {activeSessionState?.goalLabel ? (
-        <div className="px-2 py-1.5 text-2xs text-muted">
-          {activeSessionState.goalLabel}
+  const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => {
+    const learningTelemetry = readLearningTelemetry(
+      activeSessionState?.telemetry,
+    );
+    return (
+      <div
+        className={`flex min-h-0 flex-col bg-card ${
+          layout === "sidebar" ? "w-80" : "h-full"
+        }`}
+      >
+        <div className="flex items-center gap-2 px-3 py-2">
+          <span className="font-bold text-xs">{t("game.agentActivity")}</span>
+          <span className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 text-2xs px-2 py-0 border-border bg-card hover:border-accent"
+            onClick={() => void loadLogs()}
+          >
+            {t("common.refresh")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 text-2xs px-2 py-0 border-border bg-card hover:border-accent"
+            onClick={() => setShowLogsPanel(false)}
+          >
+            {t("common.hide")}
+          </Button>
         </div>
-      ) : null}
-      {/* Defense of the Agents telemetry dashboard */}
-      {activeSessionState?.telemetry?.heroClass != null ? (
-        <div className="px-2 py-2 text-2xs space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-txt">
-              {String(activeSessionState.telemetry.heroClass)
-                .charAt(0)
-                .toUpperCase() +
-                String(activeSessionState.telemetry.heroClass).slice(1)}{" "}
-              Lv{String(activeSessionState.telemetry.heroLevel ?? "?")}
-            </span>
-            <span className="text-muted">
-              {String(activeSessionState.telemetry.heroLane ?? "?")} lane
-            </span>
-            {activeSessionState.telemetry.heroAlive === false ? (
-              <span className="text-danger font-semibold">DEAD</span>
-            ) : null}
-            {activeSessionState.telemetry.autoPlay ? (
-              <span className="px-1 py-0.5 rounded-sm bg-ok/15 text-ok font-semibold">
-                AUTO
-              </span>
-            ) : (
-              <span className="px-1 py-0.5 rounded-sm bg-muted/15 text-muted">
-                MANUAL
-              </span>
-            )}
+        {activeSessionState?.goalLabel ? (
+          <div className="px-2 py-1.5 text-2xs text-muted">
+            {activeSessionState.goalLabel}
           </div>
-          {/* HP bar */}
-          {typeof activeSessionState.telemetry.heroHp === "number" &&
-          typeof activeSessionState.telemetry.heroMaxHp === "number" &&
-          activeSessionState.telemetry.heroMaxHp > 0 ? (
+        ) : null}
+        {/* Defense of the Agents telemetry dashboard */}
+        {activeSessionState?.telemetry?.heroClass != null ? (
+          <div className="px-2 py-2 text-2xs space-y-1.5">
             <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(100, Math.round((Number(activeSessionState.telemetry.heroHp) / Number(activeSessionState.telemetry.heroMaxHp)) * 100))}%`,
-                    background:
-                      Number(activeSessionState.telemetry.heroHp) /
-                        Number(activeSessionState.telemetry.heroMaxHp) >
-                      0.5
-                        ? "rgb(34, 197, 94)"
-                        : Number(activeSessionState.telemetry.heroHp) /
-                              Number(activeSessionState.telemetry.heroMaxHp) >
-                            0.25
-                          ? "rgb(245, 158, 11)"
-                          : "rgb(239, 68, 68)",
-                  }}
-                />
-              </div>
-              <span className="text-muted whitespace-nowrap">
-                {activeSessionState.telemetry.heroHp}/
-                {activeSessionState.telemetry.heroMaxHp}
+              <span className="font-semibold text-txt">
+                {String(activeSessionState.telemetry.heroClass)
+                  .charAt(0)
+                  .toUpperCase() +
+                  String(activeSessionState.telemetry.heroClass).slice(1)}{" "}
+                Lv{String(activeSessionState.telemetry.heroLevel ?? "?")}
               </span>
-            </div>
-          ) : null}
-          {/* Strategy info */}
-          {activeSessionState.telemetry.strategyVersion != null ? (
-            <div className="space-y-0.5 text-muted">
-              <div className="flex items-center gap-2">
-                <span>
-                  Strategy v
-                  {String(activeSessionState.telemetry.strategyVersion)}
+              <span className="text-muted">
+                {String(activeSessionState.telemetry.heroLane ?? "?")} lane
+              </span>
+              {activeSessionState.telemetry.heroAlive === false ? (
+                <span className="text-danger font-semibold">DEAD</span>
+              ) : null}
+              {activeSessionState.telemetry.autoPlay ? (
+                <span className="px-1 py-0.5 rounded-sm bg-ok/15 text-ok font-semibold">
+                  AUTO
                 </span>
-                {activeSessionState.telemetry.strategyScore != null ? (
+              ) : (
+                <span className="px-1 py-0.5 rounded-sm bg-muted/15 text-muted">
+                  MANUAL
+                </span>
+              )}
+            </div>
+            {/* HP bar */}
+            {typeof activeSessionState.telemetry.heroHp === "number" &&
+            typeof activeSessionState.telemetry.heroMaxHp === "number" &&
+            activeSessionState.telemetry.heroMaxHp > 0 ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round((Number(activeSessionState.telemetry.heroHp) / Number(activeSessionState.telemetry.heroMaxHp)) * 100))}%`,
+                      background:
+                        Number(activeSessionState.telemetry.heroHp) /
+                          Number(activeSessionState.telemetry.heroMaxHp) >
+                        0.5
+                          ? "rgb(34, 197, 94)"
+                          : Number(activeSessionState.telemetry.heroHp) /
+                                Number(activeSessionState.telemetry.heroMaxHp) >
+                              0.25
+                            ? "rgb(245, 158, 11)"
+                            : "rgb(239, 68, 68)",
+                    }}
+                  />
+                </div>
+                <span className="text-muted whitespace-nowrap">
+                  {activeSessionState.telemetry.heroHp}/
+                  {activeSessionState.telemetry.heroMaxHp}
+                </span>
+              </div>
+            ) : null}
+            {/* Strategy info */}
+            {activeSessionState.telemetry.strategyVersion != null ? (
+              <div className="space-y-0.5 text-muted">
+                <div className="flex items-center gap-2">
                   <span>
-                    score:{" "}
-                    {Number(activeSessionState.telemetry.strategyScore).toFixed(
-                      2,
-                    )}
+                    Strategy v
+                    {String(activeSessionState.telemetry.strategyVersion)}
                   </span>
+                  {activeSessionState.telemetry.strategyScore != null ? (
+                    <span>
+                      score:{" "}
+                      {Number(
+                        activeSessionState.telemetry.strategyScore,
+                      ).toFixed(2)}
+                    </span>
+                  ) : null}
+                  {activeSessionState.telemetry.bestStrategyVersion != null ? (
+                    <span>
+                      best: v
+                      {String(activeSessionState.telemetry.bestStrategyVersion)}{" "}
+                      (
+                      {Number(
+                        activeSessionState.telemetry.bestStrategyScore ?? 0,
+                      ).toFixed(2)}
+                      )
+                    </span>
+                  ) : null}
+                </div>
+                {learningTelemetry.abilityPriority?.length ? (
+                  <div className="text-3xs">
+                    Priority: {learningTelemetry.abilityPriority.join(" > ")}
+                    {" · "}
+                    Recall @
+                    {learningTelemetry.recallThreshold != null
+                      ? `${Math.round(learningTelemetry.recallThreshold * 100)}% HP`
+                      : "—"}
+                  </div>
                 ) : null}
-                {activeSessionState.telemetry.bestStrategyVersion != null ? (
-                  <span>
-                    best: v
-                    {String(activeSessionState.telemetry.bestStrategyVersion)} (
-                    {Number(
-                      activeSessionState.telemetry.bestStrategyScore ?? 0,
-                    ).toFixed(2)}
-                    )
-                  </span>
+                {learningTelemetry.ticksTracked != null ? (
+                  <div className="text-3xs">
+                    {learningTelemetry.ticksTracked} ticks tracked ·{" "}
+                    {learningTelemetry.abilitiesLearned != null
+                      ? `${learningTelemetry.abilitiesLearned} abilities learned`
+                      : "— abilities learned"}
+                    {learningTelemetry.survivalRate != null
+                      ? ` · ${Math.round(learningTelemetry.survivalRate * 100)}% survival`
+                      : ""}
+                  </div>
                 ) : null}
               </div>
-              {(activeSessionState.telemetry as Record<string, unknown>)
-                .abilityPriority ? (
-                <div className="text-3xs">
-                  Priority:{" "}
-                  {(
-                    (activeSessionState.telemetry as Record<string, unknown>)
-                      .abilityPriority as string[]
-                  ).join(" > ")}
-                  {" · "}
-                  Recall @
-                  {Math.round(
-                    Number(
-                      (activeSessionState.telemetry as Record<string, unknown>)
-                        .recallThreshold ?? 0.25,
-                    ) * 100,
-                  )}
-                  % HP
-                </div>
-              ) : null}
-              {(activeSessionState.telemetry as Record<string, unknown>)
-                .ticksTracked != null ? (
-                <div className="text-3xs">
-                  {String(
-                    (activeSessionState.telemetry as Record<string, unknown>)
-                      .ticksTracked,
-                  )}{" "}
-                  ticks tracked ·{" "}
-                  {String(
-                    (activeSessionState.telemetry as Record<string, unknown>)
-                      .abilitiesLearned ?? 0,
-                  )}{" "}
-                  abilities learned
-                  {activeSessionState.telemetry.survivalRate != null
-                    ? ` · ${Math.round(Number(activeSessionState.telemetry.survivalRate) * 100)}% survival`
+            ) : null}
+            {/* Lane pressure */}
+            {activeSessionState.telemetry.laneHumanUnits != null ? (
+              <div className="flex items-center gap-2 text-muted">
+                <span>Lane:</span>
+                <span
+                  className={
+                    Number(activeSessionState.telemetry.laneFrontline ?? 0) > 0
+                      ? "text-ok"
+                      : Number(
+                            activeSessionState.telemetry.laneFrontline ?? 0,
+                          ) < 0
+                        ? "text-danger"
+                        : ""
+                  }
+                >
+                  {String(activeSessionState.telemetry.laneHumanUnits)}v
+                  {String(activeSessionState.telemetry.laneOrcUnits)} (
+                  {Number(activeSessionState.telemetry.laneFrontline ?? 0) > 0
+                    ? "+"
                     : ""}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {/* Lane pressure */}
-          {activeSessionState.telemetry.laneHumanUnits != null ? (
-            <div className="flex items-center gap-2 text-muted">
-              <span>Lane:</span>
-              <span
-                className={
-                  Number(activeSessionState.telemetry.laneFrontline ?? 0) > 0
-                    ? "text-ok"
-                    : Number(activeSessionState.telemetry.laneFrontline ?? 0) <
-                        0
-                      ? "text-danger"
-                      : ""
-                }
+                  {String(activeSessionState.telemetry.laneFrontline)})
+                </span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {activeSessionState?.suggestedPrompts?.length ? (
+          <div className="flex flex-wrap gap-1 px-2 py-2">
+            {activeSessionState.suggestedPrompts.slice(0, 4).map((prompt) => (
+              <Button
+                key={prompt}
+                variant="outline"
+                size="sm"
+                className="h-6 max-w-full text-2xs "
+                onClick={() => void sendChatCommand(prompt)}
+                disabled={sendingChat}
               >
-                {String(activeSessionState.telemetry.laneHumanUnits)}v
-                {String(activeSessionState.telemetry.laneOrcUnits)} (
-                {Number(activeSessionState.telemetry.laneFrontline ?? 0) > 0
-                  ? "+"
-                  : ""}
-                {String(activeSessionState.telemetry.laneFrontline)})
-              </span>
+                <span className="truncate">{prompt}</span>
+              </Button>
+            ))}
+          </div>
+        ) : null}
+        {activeSessionState?.recommendations?.length ? (
+          <div className="px-2 py-2 text-2xs space-y-1.5">
+            <div className="font-semibold text-txt">
+              {t("gameview.Recommendations", {
+                defaultValue: "Recommendations",
+              })}
             </div>
-          ) : null}
-        </div>
-      ) : null}
-      {activeSessionState?.suggestedPrompts?.length ? (
-        <div className="flex flex-wrap gap-1 px-2 py-2">
-          {activeSessionState.suggestedPrompts.slice(0, 4).map((prompt) => (
-            <Button
-              key={prompt}
-              variant="outline"
-              size="sm"
-              className="h-6 max-w-full text-2xs "
-              onClick={() => void sendChatCommand(prompt)}
-              disabled={sendingChat}
-            >
-              <span className="truncate">{prompt}</span>
-            </Button>
-          ))}
-        </div>
-      ) : null}
-      {activeSessionState?.recommendations?.length ? (
-        <div className="px-2 py-2 text-2xs space-y-1.5">
-          <div className="font-semibold text-txt">
-            {t("gameview.Recommendations", {
-              defaultValue: "Recommendations",
+            {activeSessionState.recommendations.slice(0, 3).map((item) => (
+              <div key={item.id} className="space-y-0.5">
+                <div className="text-txt">
+                  {item.label}
+                  {typeof item.priority === "number" ? (
+                    <span className="ml-1 text-muted">#{item.priority}</span>
+                  ) : null}
+                </div>
+                {item.reason ? (
+                  <div className="text-muted">{item.reason}</div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {logLoadError ? (
+          <div className="border-b border-danger/25 bg-danger/8 px-2 py-1.5 text-2xs text-danger">
+            {t("logsview.LoadFailed", {
+              defaultValue: "Failed to load logs: {{message}}",
+              message: logLoadError,
             })}
           </div>
-          {activeSessionState.recommendations.slice(0, 3).map((item) => (
-            <div key={item.id} className="space-y-0.5">
-              <div className="text-txt">
-                {item.label}
-                {typeof item.priority === "number" ? (
-                  <span className="ml-1 text-muted">#{item.priority}</span>
-                ) : null}
-              </div>
-              {item.reason ? (
-                <div className="text-muted">{item.reason}</div>
-              ) : null}
-            </div>
-          ))}
+        ) : null}
+        {/* Chat input for sending commands to agent */}
+        <div className="flex items-center gap-2 px-2 py-2">
+          <Input
+            type="text"
+            data-testid="game-command-input"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !sendingChat) {
+                e.preventDefault();
+                handleSendChat();
+              }
+            }}
+            placeholder={t("game.chatPlaceholder")}
+            className="flex-1 h-8 text-xs bg-bg focus-visible:ring-accent"
+            disabled={sendingChat}
+          />
+          <Button
+            variant="default"
+            size="sm"
+            data-testid="game-command-send"
+            onClick={handleSendChat}
+            disabled={sendingChat || !chatInput.trim()}
+            className="h-8 font-bold tracking-wide"
+          >
+            {sendingChat ? "..." : t("common.send")}
+          </Button>
         </div>
-      ) : null}
-      {logLoadError ? (
-        <div className="border-b border-danger/25 bg-danger/8 px-2 py-1.5 text-2xs text-danger">
-          {t("logsview.LoadFailed", {
-            defaultValue: "Failed to load logs: {{message}}",
-            message: logLoadError,
-          })}
-        </div>
-      ) : null}
-      {/* Chat input for sending commands to agent */}
-      <div className="flex items-center gap-2 px-2 py-2">
-        <Input
-          type="text"
-          data-testid="game-command-input"
-          value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !sendingChat) {
-              e.preventDefault();
-              handleSendChat();
-            }
-          }}
-          placeholder={t("game.chatPlaceholder")}
-          className="flex-1 h-8 text-xs bg-bg focus-visible:ring-accent"
-          disabled={sendingChat}
-        />
-        <Button
-          variant="default"
-          size="sm"
-          data-testid="game-command-send"
-          onClick={handleSendChat}
-          disabled={sendingChat || !chatInput.trim()}
-          className="h-8 font-bold tracking-wide"
-        >
-          {sendingChat ? "..." : t("common.send")}
-        </Button>
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 text-xs-tight font-mono">
-        {/* Prefer telemetry activity feed when available (Defense game loop pushes entries here) */}
-        {Array.isArray(
-          (activeSessionState?.telemetry as Record<string, unknown> | null)
-            ?.recentActivity,
-        ) &&
-        (
-          (activeSessionState?.telemetry as Record<string, unknown>)
-            .recentActivity as { ts: number; action: string; detail: string }[]
-        ).length > 0 ? (
+        <div className="flex-1 min-h-0 overflow-y-auto p-2 text-xs-tight font-mono">
+          {/* Prefer telemetry activity feed when available (Defense game loop pushes entries here) */}
+          {Array.isArray(
+            (activeSessionState?.telemetry as Record<string, unknown> | null)
+              ?.recentActivity,
+          ) &&
           (
             (activeSessionState?.telemetry as Record<string, unknown>)
               .recentActivity as {
@@ -1735,118 +1765,129 @@ export function GameView() {
               action: string;
               detail: string;
             }[]
-          )
-            .slice()
-            .reverse()
-            .slice(0, 30)
-            .map(
-              (
-                entry: { ts: number; action: string; detail: string },
-                idx: number,
-              ) => (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
-                  key={`${entry.ts}-${idx}`}
-                  className="py-1 flex flex-col gap-0.5"
-                >
+          ).length > 0 ? (
+            (
+              (activeSessionState?.telemetry as Record<string, unknown>)
+                .recentActivity as {
+                ts: number;
+                action: string;
+                detail: string;
+              }[]
+            )
+              .slice()
+              .reverse()
+              .slice(0, 30)
+              .map(
+                (
+                  entry: { ts: number; action: string; detail: string },
+                  idx: number,
+                ) => (
+                  <div
+                    // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
+                    key={`${entry.ts}-${idx}`}
+                    className="py-1 flex flex-col gap-0.5"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted text-2xs">
+                        {formatTime(entry.ts, { fallback: "—" })}
+                      </span>
+                      <span
+                        className={`font-semibold text-2xs uppercase ${
+                          entry.action === "error"
+                            ? "text-danger"
+                            : entry.action.startsWith("ability")
+                              ? "text-ok"
+                              : entry.action.startsWith("move")
+                                ? "text-warn"
+                                : "text-muted"
+                        }`}
+                      >
+                        {entry.action.split(":")[0]}
+                      </span>
+                    </div>
+                    <div className="text-txt break-all">{entry.detail}</div>
+                  </div>
+                ),
+              )
+          ) : Array.isArray(activeSessionState?.activity) &&
+            activeSessionState.activity.length > 0 ? (
+            activeSessionState.activity
+              .slice()
+              .sort(
+                (a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0),
+              )
+              .slice(0, 30)
+              .map((entry) => (
+                <div key={entry.id} className="py-1 flex flex-col gap-0.5">
                   <div className="flex items-center gap-1">
                     <span className="text-muted text-2xs">
-                      {formatTime(entry.ts, { fallback: "—" })}
+                      {formatTime(entry.timestamp ?? 0, { fallback: "—" })}
                     </span>
                     <span
                       className={`font-semibold text-2xs uppercase ${
-                        entry.action === "error"
+                        entry.severity === "error"
                           ? "text-danger"
-                          : entry.action.startsWith("ability")
-                            ? "text-ok"
-                            : entry.action.startsWith("move")
-                              ? "text-warn"
-                              : "text-muted"
+                          : entry.severity === "warning"
+                            ? "text-warn"
+                            : "text-muted"
                       }`}
                     >
-                      {entry.action.split(":")[0]}
+                      {entry.type}
                     </span>
                   </div>
-                  <div className="text-txt break-all">{entry.detail}</div>
+                  <div className="text-txt break-all">{entry.message}</div>
                 </div>
-              ),
-            )
-        ) : Array.isArray(activeSessionState?.activity) &&
-          activeSessionState.activity.length > 0 ? (
-          activeSessionState.activity
-            .slice()
-            .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
-            .slice(0, 30)
-            .map((entry) => (
-              <div key={entry.id} className="py-1 flex flex-col gap-0.5">
+              ))
+          ) : gameLogs.length === 0 ? (
+            <div className="text-center py-4 text-muted italic">
+              {t("game.noAgentActivity")}
+            </div>
+          ) : (
+            gameLogs.slice(0, 50).map((entry: LogEntry, idx) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
+                key={`${entry.timestamp}-${idx}`}
+                className="py-1 flex flex-col gap-0.5"
+              >
                 <div className="flex items-center gap-1">
                   <span className="text-muted text-2xs">
-                    {formatTime(entry.timestamp ?? 0, { fallback: "—" })}
+                    {formatTime(entry.timestamp, { fallback: "—" })}
                   </span>
                   <span
                     className={`font-semibold text-2xs uppercase ${
-                      entry.severity === "error"
+                      entry.level === "error"
                         ? "text-danger"
-                        : entry.severity === "warning"
+                        : entry.level === "warn"
                           ? "text-warn"
                           : "text-muted"
                     }`}
                   >
-                    {entry.type}
+                    {entry.level}
                   </span>
+                  {(entry.tags ?? []).slice(0, 2).map((t: string) => {
+                    const c = TAG_COLORS[t];
+                    return (
+                      <span
+                        key={t}
+                        className="text-3xs px-1 py-px rounded-sm"
+                        style={{
+                          background: c ? c.bg : "var(--bg-muted)",
+                          color: c ? c.fg : "var(--muted)",
+                        }}
+                      >
+                        {t}
+                      </span>
+                    );
+                  })}
                 </div>
                 <div className="text-txt break-all">{entry.message}</div>
               </div>
             ))
-        ) : gameLogs.length === 0 ? (
-          <div className="text-center py-4 text-muted italic">
-            {t("game.noAgentActivity")}
-          </div>
-        ) : (
-          gameLogs.slice(0, 50).map((entry: LogEntry, idx) => (
-            <div
-              // biome-ignore lint/suspicious/noArrayIndexKey: composite key with index as tiebreaker
-              key={`${entry.timestamp}-${idx}`}
-              className="py-1 flex flex-col gap-0.5"
-            >
-              <div className="flex items-center gap-1">
-                <span className="text-muted text-2xs">
-                  {formatTime(entry.timestamp, { fallback: "—" })}
-                </span>
-                <span
-                  className={`font-semibold text-2xs uppercase ${
-                    entry.level === "error"
-                      ? "text-danger"
-                      : entry.level === "warn"
-                        ? "text-warn"
-                        : "text-muted"
-                  }`}
-                >
-                  {entry.level}
-                </span>
-                {(entry.tags ?? []).slice(0, 2).map((t: string) => {
-                  const c = TAG_COLORS[t];
-                  return (
-                    <span
-                      key={t}
-                      className="text-3xs px-1 py-px rounded-sm"
-                      style={{
-                        background: c ? c.bg : "var(--bg-muted)",
-                        color: c ? c.fg : "var(--muted)",
-                      }}
-                    >
-                      {t}
-                    </span>
-                  );
-                })}
-              </div>
-              <div className="text-txt break-all">{entry.message}</div>
-            </div>
-          ))
-        )}
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const activeRunSummary =
     activeGameRun?.summary ??

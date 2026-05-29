@@ -1,0 +1,62 @@
+{
+  "schema": "robot-local-learning-probe-v1",
+  "profile": "hiwonder-ainex",
+  "task": "walk_forward",
+  "checkpoint": "evidence/local_learning_probe_hiwonder_walk_v3/checkpoint",
+  "manifest_learning": {
+    "phase": 0,
+    "task": "walk_forward",
+    "train_steps": 1200,
+    "train_episodes": 24,
+    "train_mean_return": -164.07701718735268,
+    "pre_eval_mean_return": -402.84426904921406,
+    "pre_eval_success_rate": 0.0,
+    "eval_mean_return": -89.92716606095652,
+    "eval_success_rate": 0.0,
+    "eval_failure_rate": 1.0,
+    "eval_mean_length": 37.0,
+    "pre_mean_final_delta_x_m": -0.012875315200263094,
+    "eval_mean_final_delta_x_m": 0.08004791831668565,
+    "pre_mean_final_delta_y_m": 0.007826105241774009,
+    "eval_mean_final_delta_y_m": 0.13209415930079715,
+    "pre_mean_final_delta_yaw_rad": -0.020734075959961403,
+    "eval_mean_final_delta_yaw_rad": 0.3468542850314165,
+    "pre_mean_final_torso_z_m": 0.2424587154954274,
+    "eval_mean_final_torso_z_m": 0.2310846608776576,
+    "learning_return_delta": 312.9171029882575,
+    "learning_success_rate_delta": 0.0,
+    "learning_delta_x_m": 0.09292323351694874,
+    "learning_delta_y_m": 0.12426805405902315,
+    "learning_delta_yaw_rad": 0.3675883609913779,
+    "promoted": false,
+    "promotion_passed": false,
+    "promotion_blocker": "phase_success_rate_below_threshold",
+    "promotion_reasons": [
+      "fall: |pitch|=0.60 > 0.6",
+      "fall: |pitch|=0.60 > 0.6"
+    ]
+  },
+  "zero": {
+    "mean_reward": -402.84426904921406,
+    "success_rate": 0.0,
+    "failure_rate": 0.0,
+    "mean_steps_survived": 80.0,
+    "mean_final_delta_x_m": -0.012875315200263094,
+    "mean_final_delta_y_m": 0.007826105241774009,
+    "mean_final_delta_yaw_rad": -0.020734075959961403
+  },
+  "trained": {
+    "mean_reward": -89.92716606095651,
+    "success_rate": 0.0,
+    "failure_rate": 1.0,
+    "mean_steps_survived": 37.0,
+    "mean_final_delta_x_m": 0.08004791831668565,
+    "mean_final_delta_y_m": 0.13209415930079715,
+    "mean_final_delta_yaw_rad": 0.3468542850314165
+  },
+  "reward_delta_trained_minus_zero": 312.91710298825757,
+  "forward_delta_trained_minus_zero_m": 0.09292323351694874,
+  "learning_signal_present": true,
+  "walking_success": false,
+  "verdict": "partial_reward_and_motion_improvement_but_not_walking"
+}

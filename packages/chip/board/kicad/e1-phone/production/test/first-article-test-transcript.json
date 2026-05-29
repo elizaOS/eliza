@@ -1,5 +1,6 @@
 {
   "artifact_id": "first_article_test_transcript_candidate",
+  "board_serial": "unserialized_until_routed_first_article_board_exists",
   "cad_connection_coverage": {
     "assembly_manifest": "mechanical/e1-phone/out/assembly-manifest.json",
     "assembly_manifest_connection_solid_step_part_count": 63,
@@ -1240,6 +1241,8 @@
   "erc_result": "not_run",
   "fab_output_manifest": "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
   "fab_vendor_or_assembler": "missing_external_supplier_or_factory",
+  "fixture_calibration_id": "calibration_record_unavailable_until_fixture_exists",
+  "fixture_id": "fixture_unassigned_until_cm_test_station_selected",
   "impedance_coupon_reference": "missing_fabricator_coupon",
   "input_artifact_hashes": {
     "board/kicad/e1-phone/component-height-step-integration.yaml": "68b6671ced762dfb47607415c3881b7c69bc6da3b3bcf2fbab9c6c9b8d44ad1b",
@@ -1247,9 +1250,17 @@
     "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml": "509ade0d8f5c5f3491a67a61e6f5f28a7b719dbc4b49bb03dabf9d0adc2b8398"
   },
   "kicad_project_revision": "development_real_footprint_snapshot",
+  "limits_file": "board/kicad/e1-phone/production/test/factory-test-limits.yaml",
   "limits_revision": "not_approved",
   "lot_or_serial_traceability": "missing",
+  "measured_results": {
+    "measurement_state": "not_measured_until_routed_hardware_and_fixture_exist",
+    "release_credit": false,
+    "source_requirement_id": "board/kicad/e1-phone/production/test/first-article-test-transcript.json"
+  },
+  "operator": "operator_unassigned_until_executed_first_article",
   "owner": "local-factory-output-candidate-generator",
+  "pass_fail_disposition": "not_evaluated_until_executed_first_article",
   "program_or_fixture_revision": "not_run",
   "release_allowed": false,
   "release_package_revision": "local_candidate_not_release",
@@ -1279,5 +1290,12 @@
   ],
   "source_requirement_id": "board/kicad/e1-phone/production/test/first-article-test-transcript.json",
   "stackup_revision": "not_fabricator_approved",
-  "tool_or_supplier_revision": "generate_e1_phone_factory_output_candidates.py"
+  "supplier_lot_ids": [
+    "supplier_lots_unassigned_until_approved_bom_avl"
+  ],
+  "test_software_revision": "test_software_unreleased_until_factory_program_exists",
+  "tool_or_supplier_revision": "generate_e1_phone_factory_output_candidates.py",
+  "waivers": [
+    "none_recorded_until_executed_first_article"
+  ]
 }

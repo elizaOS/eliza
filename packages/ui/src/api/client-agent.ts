@@ -42,7 +42,7 @@ import type {
   AgentEventsResponse,
   AgentSelfStatusSnapshot,
   AgentStatus,
-  BenchmarkMatrixResponse,
+  AppConfigResponse,
   BuildTrainingAnalysisIndexOptions,
   BuildTrainingReadinessReportOptions,
   CharacterData,
@@ -78,10 +78,6 @@ import type {
   RelationshipsMergeCandidate,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
-  RunActionBenchmarkOptions,
-  RunActionBenchmarkResponse,
-  RunBenchmarkVsCerebrasOptions,
-  RunBenchmarkVsCerebrasResponse,
   RunFeedGenerationOptions,
   RunFeedGenerationResponse,
   RunLocalEvalComparisonOptions,
@@ -116,8 +112,6 @@ import type {
   TriggerSummary,
   UpdateStatus,
   UpdateTriggerRequest,
-  WriteBenchmarkMatrixFromArtifactsOptions,
-  WriteBenchmarkMatrixOptions,
 } from "./client-types";
 import { mapAcpSessionsToCodingAgentSessions } from "./client-types";
 
@@ -525,7 +519,7 @@ declare module "./client-base" {
     restartAndWait(maxWaitMs?: number): Promise<AgentStatus>;
     resetAgent(): Promise<void>;
     restart(): Promise<{ ok: boolean }>;
-    getConfig(): Promise<Record<string, unknown>>;
+    getConfig(): Promise<AppConfigResponse>;
     getConfigSchema(): Promise<ConfigSchemaResponse>;
     updateConfig(
       patch: Record<string, unknown>,
@@ -703,21 +697,9 @@ declare module "./client-base" {
     ingestHuggingFaceTrainingDataset(
       options?: IngestHuggingFaceDatasetOptions,
     ): Promise<HuggingFaceDatasetIngestResponse>;
-    writeTrainingBenchmarkMatrix(
-      options: WriteBenchmarkMatrixOptions,
-    ): Promise<BenchmarkMatrixResponse>;
-    writeTrainingBenchmarkMatrixFromArtifacts(
-      options: WriteBenchmarkMatrixFromArtifactsOptions,
-    ): Promise<BenchmarkMatrixResponse>;
-    runTrainingBenchmarkVsCerebras(
-      options?: RunBenchmarkVsCerebrasOptions,
-    ): Promise<RunBenchmarkVsCerebrasResponse>;
     stageEliza1Bundle(
       options?: StageEliza1BundleOptions,
     ): Promise<StageEliza1BundleResponse>;
-    runTrainingActionBenchmark(
-      options?: RunActionBenchmarkOptions,
-    ): Promise<RunActionBenchmarkResponse>;
     runFeedTrainingGeneration(
       options?: RunFeedGenerationOptions,
     ): Promise<RunFeedGenerationResponse>;
@@ -1585,18 +1567,17 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
   logSettingsClient("GET /api/config → start", {
     baseUrl: this.getBaseUrl(),
   });
-  let viaRpc: Record<string, unknown> | null = null;
+  let viaRpc: AppConfigResponse | null = null;
   try {
-    viaRpc = await invokeDesktopBridgeRequest<Record<string, unknown>>({
+    viaRpc = await invokeDesktopBridgeRequest<AppConfigResponse>({
       rpcMethod: "getConfig",
       ipcChannel: "agent",
     });
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
-  const r =
-    viaRpc ?? ((await this.fetch("/api/config")) as Record<string, unknown>);
-  const cloud = r.cloud as Record<string, unknown> | undefined;
+  const r = viaRpc ?? ((await this.fetch("/api/config")) as AppConfigResponse);
+  const cloud = r.cloud;
   logSettingsClient("GET /api/config ← ok", {
     baseUrl: this.getBaseUrl(),
     topKeys: Object.keys(r).sort(),
@@ -2394,49 +2375,11 @@ ElizaClient.prototype.ingestHuggingFaceTrainingDataset = async function (
   });
 };
 
-ElizaClient.prototype.writeTrainingBenchmarkMatrix = async function (
-  this: ElizaClient,
-  options,
-) {
-  return this.fetch("/api/training/benchmarks/matrix", {
-    method: "POST",
-    body: JSON.stringify(options),
-  });
-};
-
-ElizaClient.prototype.writeTrainingBenchmarkMatrixFromArtifacts =
-  async function (this: ElizaClient, options) {
-    return this.fetch("/api/training/benchmarks/matrix/from-artifacts", {
-      method: "POST",
-      body: JSON.stringify(options),
-    });
-  };
-
-ElizaClient.prototype.runTrainingBenchmarkVsCerebras = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/benchmarks/run-vs-cerebras", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
 ElizaClient.prototype.stageEliza1Bundle = async function (
   this: ElizaClient,
   options?,
 ) {
   return this.fetch("/api/training/models/stage-eliza1-bundle", {
-    method: "POST",
-    body: JSON.stringify(options ?? {}),
-  });
-};
-
-ElizaClient.prototype.runTrainingActionBenchmark = async function (
-  this: ElizaClient,
-  options?,
-) {
-  return this.fetch("/api/training/benchmarks/action-selection/run", {
     method: "POST",
     body: JSON.stringify(options ?? {}),
   });

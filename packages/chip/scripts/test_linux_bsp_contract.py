@@ -71,6 +71,17 @@ config ELIZA_E1_GPIO
 """
 
 
+DISPLAY_BINDING = """# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+properties:
+  interrupt-names:
+    items:
+      - const: IRQ_VSYNC
+  eliza,mode: true
+  eliza,format: true
+  eliza,fb-base: true
+"""
+
+
 class LinuxBspContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         fragment = write(tmp / "sw/linux/configs/eliza_e1.fragment", STALE_FRAGMENT)
@@ -83,6 +94,10 @@ class LinuxBspContractTests(unittest.TestCase):
             'grep -R "CONFIG_ELIZA_E1_NPU" .config && grep -R "CONFIG_ELIZA_E1_DMA" .config\n',
         )
         dts = write(tmp / "sw/linux/dts/eliza-e1.dts", DTS)
+        display_binding = write(
+            tmp / "sw/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml",
+            DISPLAY_BINDING,
+        )
         drivers_e1 = tmp / "sw/linux/drivers/e1"
         drivers_eliza = tmp / "sw/linux/drivers/eliza"
         write(drivers_e1 / "Kconfig", REDUCED_E1_KCONFIG)
@@ -97,6 +112,7 @@ class LinuxBspContractTests(unittest.TestCase):
             mock.patch.object(gate, "IMPORT_SCRIPT", import_script),
             mock.patch.object(gate, "CAPTURE_SCRIPT", capture_script),
             mock.patch.object(gate, "DTS", dts),
+            mock.patch.object(gate, "DISPLAY_BINDING", display_binding),
             mock.patch.object(gate, "DRIVERS_E1", drivers_e1),
             mock.patch.object(gate, "DRIVERS_ELIZA", drivers_eliza),
             mock.patch.object(gate, "REPORT", tmp / "build/reports/linux_bsp_contract.json"),
@@ -109,10 +125,25 @@ class LinuxBspContractTests(unittest.TestCase):
             with PatchStack(patches):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "linux_boot_claim_allowed",
+            "android_bsp_claim_allowed",
+            "display_driver_claim_allowed",
+            "drm_kms_claim_allowed",
+            "display_runtime_binding_claim_allowed",
+            "simple_framebuffer_runtime_claim_allowed",
+            "panel_dcs_init_claim_allowed",
+            "dsi_host_claim_allowed",
+        ):
+            self.assertIs(report.get(key), False)
+        self.assertIn("generated_utc", report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("linux_kernel_fragment_has_stale_openphone_contract", codes)
         self.assertIn("linux_kernel_fragment_missing_eliza_base_symbols", codes)
         self.assertIn("linux_kernel_fragment_missing_dts_driver_symbols", codes)
+        self.assertIn("linux_display_dts_missing_programming_contract", codes)
         self.assertIn("linux_kernel_fragment_has_legacy_android_options", codes)
         self.assertIn("linux_import_uses_reduced_driver_tree_while_full_tree_exists", codes)
         self.assertIn("linux_capture_does_not_verify_full_dts_driver_set", codes)
@@ -136,10 +167,43 @@ class LinuxBspContractTests(unittest.TestCase):
                 )
                 blocked = gate.ROOT / "docs/evidence/linux/eliza_e1_kernel_build.log.BLOCKED"
                 blocked.write_text("required_markers: eliza-evidence\n", encoding="utf-8")
+                gate.DTS.write_text(
+                    """/dts-v1/;
+/ {
+  soc {
+    dma@10010000 { compatible = "eliza,e1-dma"; };
+    npu@10020000 { compatible = "eliza,e1-npu"; };
+    display@10030000 {
+      compatible = "eliza,e1-display";
+      interrupt-names = "IRQ_VSYNC";
+      eliza,mode = <0x050002d0>;
+      eliza,format = <0x34325258>;
+      eliza,fb-base = <0x80000000>;
+    };
+    gpio@10000000 { compatible = "eliza,e1-gpio"; };
+  };
+};
+""",
+                    encoding="utf-8",
+                )
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertIn("generated_utc", report)
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "linux_boot_claim_allowed",
+            "android_bsp_claim_allowed",
+            "display_driver_claim_allowed",
+            "drm_kms_claim_allowed",
+            "display_runtime_binding_claim_allowed",
+            "simple_framebuffer_runtime_claim_allowed",
+            "panel_dcs_init_claim_allowed",
+            "dsi_host_claim_allowed",
+        ):
+            self.assertIs(report.get(key), False)
 
 
 class PatchStack:

@@ -819,46 +819,6 @@ export function PageScopedChatPane({
     </div>
   );
 
-  const composerT = useCallback(
-    (key: string, options?: Record<string, unknown>) => {
-      const fallback =
-        typeof options?.defaultValue === "string" ? options.defaultValue : key;
-
-      switch (key) {
-        case "aria.attachImage":
-        case "chatview.AttachImage":
-          return "Add attachment";
-        case "chat.agentStarting":
-          return "Agent starting";
-        case "chat.inputPlaceholder":
-        case "chat.inputPlaceholderNarrow":
-        case "common.message":
-          return placeholder;
-        case "chat.listening":
-          return "Listening…";
-        case "chat.micTitleIdleEnhanced":
-        case "chat.micTitleIdleStandard":
-          return "Start voice input";
-        case "chat.releaseToSend":
-          return "Release to send";
-        case "chat.send":
-        case "common.send":
-          return "Send";
-        case "chat.stopGeneration":
-          return "Stop";
-        case "chat.stopListening":
-          return "Stop voice input";
-        case "chat.stopSpeaking":
-          return "Stop";
-        case "chat.voiceInput":
-          return "Voice input";
-        default:
-          return fallback;
-      }
-    },
-    [placeholder],
-  );
-
   return (
     <section
       data-testid={`page-scoped-chat-${scope}`}
@@ -1048,7 +1008,7 @@ export function PageScopedChatPane({
             }}
             agentVoiceEnabled={false}
             showAgentVoiceToggle={false}
-            t={composerT}
+            t={app.t}
             placeholder={placeholder}
             onAttachImage={() => fileInputRef.current?.click()}
             onChatInputChange={handleInputChange}

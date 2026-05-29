@@ -71,6 +71,11 @@ export async function startAnthropicOAuthFlowRaw(): Promise<AnthropicOAuthFlowHa
     const splits = authCode.split("#");
     const code = splits[0];
     const state = splits[1];
+    if (state !== verifier) {
+      throw new Error(
+        "Anthropic OAuth state mismatch: returned state does not match the request verifier",
+      );
+    }
     const tokenResponse = await fetch(TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

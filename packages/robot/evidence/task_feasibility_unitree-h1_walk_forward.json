@@ -1,0 +1,204 @@
+{
+  "schema": "robot-task-feasibility-v1",
+  "profile_id": "unitree-h1",
+  "controller": "bezier_gait_for_hiwonder_locomotion_else_deterministic_smoke",
+  "max_steps": 120,
+  "tasks": [
+    {
+      "task_id": "walk_forward",
+      "controller": "deterministic_smoke",
+      "action_scale": 0.3,
+      "success": false,
+      "failed": true,
+      "reason": "fall: |pitch|=0.61 > 0.6",
+      "steps": 36,
+      "terminated": true,
+      "truncated": false,
+      "termination_reason": "fall",
+      "start_torso_z_m": 0.98,
+      "stand_height_m": 1.02,
+      "final_torso_z_m": 0.8787686042974152,
+      "min_torso_z_m": 0.8787686042974152,
+      "max_torso_z_m": 0.9799339124124563,
+      "final_delta_x_m": -0.2301828206831644,
+      "final_delta_y_m": 0.0015455490940537147,
+      "final_delta_yaw_rad": -0.0007015588924785236,
+      "max_abs_delta_x_m": 0.2301828206831644,
+      "max_abs_delta_y_m": 0.0015455490940537147,
+      "max_abs_delta_yaw_rad": 0.0010528922308570034,
+      "progress_ratio": 0.042251008031011214,
+      "candidate_score": -2.1577489919689885,
+      "diagnostics": {
+        "controller": "deterministic_smoke",
+        "action_scale": 0.3,
+        "termination_reason": "fall",
+        "torso_z_m": {
+          "min": 0.8787686042974152,
+          "max": 0.9799339124124563,
+          "final": 0.8787686042974152
+        },
+        "delta_x_m": {
+          "final": -0.2301828206831644,
+          "max_abs": 0.2301828206831644,
+          "min": -0.2301828206831644,
+          "max": 0.012675302409303363
+        },
+        "delta_y_m": {
+          "final": 0.0015455490940537147,
+          "max_abs": 0.0015455490940537147,
+          "min": -5.689400895314844e-06,
+          "max": 0.0015455490940537147
+        },
+        "delta_yaw_rad": {
+          "final": -0.0007015588924785236,
+          "max_abs": 0.0010528922308570034,
+          "min": -0.0007015588924785236,
+          "max": 0.0010528922308570034
+        },
+        "success_predicates": [
+          {
+            "predicate": "torso_z_min_ratio",
+            "expected": {
+              ">=": 0.765,
+              "ratio_of_stand_height": 0.75
+            },
+            "actual": 0.8787686042974152,
+            "unmet": false,
+            "observed_extreme": {
+              "min": 0.8787686042974152,
+              "max": 0.9799339124124563
+            }
+          },
+          {
+            "predicate": "delta_x_m_min",
+            "expected": {
+              ">=": 0.3,
+              "within_window_s": 5.0
+            },
+            "actual": -0.2301828206831644,
+            "unmet": true,
+            "observed_extreme": {
+              "max": 0.012675302409303363
+            }
+          },
+          {
+            "predicate": "max_lateral_drift_m",
+            "expected": {
+              "<=": 0.2
+            },
+            "actual": 0.0015455490940537147,
+            "unmet": false,
+            "observed_extreme": {
+              "max_abs_delta_y_m": 0.0015455490940537147
+            }
+          },
+          {
+            "predicate": "max_abs_delta_yaw_rad",
+            "expected": {
+              "<=": 0.4
+            },
+            "actual": 0.0007015588924785236,
+            "unmet": false,
+            "observed_extreme": {
+              "max_abs": 0.0010528922308570034
+            }
+          },
+          {
+            "predicate": "no_fall",
+            "expected": true,
+            "actual": false,
+            "unmet": true
+          }
+        ],
+        "unmet_success_predicates": [
+          "delta_x_m_min",
+          "no_fall"
+        ],
+        "progress_ratio": 0.042251008031011214,
+        "candidate_results": [
+          {
+            "controller": "deterministic_smoke",
+            "action_scale": 0.3,
+            "success": false,
+            "failed": true,
+            "terminated": true,
+            "termination_reason": "fall",
+            "steps": 36,
+            "final_torso_z_m": 0.8787686042974152,
+            "final_delta_x_m": -0.2301828206831644,
+            "final_delta_y_m": 0.0015455490940537147,
+            "final_delta_yaw_rad": -0.0007015588924785236,
+            "progress_ratio": 0.042251008031011214,
+            "unmet_success_predicates": [
+              "delta_x_m_min",
+              "no_fall"
+            ],
+            "candidate_score": -2.1577489919689885
+          }
+        ],
+        "passive_baseline": {
+          "controller": "zero_action_baseline",
+          "action_scale": 0.3,
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 39,
+          "final_torso_z_m": 0.81558535732301,
+          "final_delta_x_m": -0.3173626666253284,
+          "final_delta_y_m": 0.0019328029177343353,
+          "final_delta_yaw_rad": -0.0008273730674506458,
+          "progress_ratio": 0.000921695753123562,
+          "unmet_success_predicates": [
+            "delta_x_m_min",
+            "no_fall"
+          ],
+          "candidate_score": -2.1990783042468767
+        }
+      },
+      "candidate_results": [
+        {
+          "controller": "deterministic_smoke",
+          "action_scale": 0.3,
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 36,
+          "final_torso_z_m": 0.8787686042974152,
+          "final_delta_x_m": -0.2301828206831644,
+          "final_delta_y_m": 0.0015455490940537147,
+          "final_delta_yaw_rad": -0.0007015588924785236,
+          "progress_ratio": 0.042251008031011214,
+          "unmet_success_predicates": [
+            "delta_x_m_min",
+            "no_fall"
+          ],
+          "candidate_score": -2.1577489919689885
+        }
+      ],
+      "passive_baseline": {
+        "controller": "zero_action_baseline",
+        "action_scale": 0.3,
+        "success": false,
+        "failed": true,
+        "terminated": true,
+        "termination_reason": "fall",
+        "steps": 39,
+        "final_torso_z_m": 0.81558535732301,
+        "final_delta_x_m": -0.3173626666253284,
+        "final_delta_y_m": 0.0019328029177343353,
+        "final_delta_yaw_rad": -0.0008273730674506458,
+        "progress_ratio": 0.000921695753123562,
+        "unmet_success_predicates": [
+          "delta_x_m_min",
+          "no_fall"
+        ],
+        "candidate_score": -2.1990783042468767
+      }
+    }
+  ],
+  "n_tasks": 1,
+  "n_success": 0,
+  "all_success": false
+}

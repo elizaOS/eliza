@@ -20,6 +20,11 @@ if str(ROOT / "scripts") not in sys.path:
 import check_android_system_apk_payload as gate  # noqa: E402
 
 
+def assert_no_runtime_or_release_claims(report: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
+
+
 def make_apk(path: Path, entries: list[str]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as zf:
@@ -86,6 +91,34 @@ def make_complete_apk(
 
 
 class AndroidSystemApkPayloadTests(unittest.TestCase):
+    def test_default_apk_prefers_repo_local_eliza_apk(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            local_apk = make_apk(
+                root / "workspace/os/android/vendor/eliza/apps/Eliza/Eliza.apk",
+                ["AndroidManifest.xml"],
+            )
+            outer_apk = make_apk(
+                root / "outer/os/android/vendor/milady/apps/Milady/Milady.apk",
+                ["AndroidManifest.xml"],
+            )
+            app_config = root / "outer/apps/app/app.config.ts"
+            app_config.parent.mkdir(parents=True, exist_ok=True)
+            app_config.write_text(
+                'export default { vendorDir: "milady", appName: "Milady" };\n',
+                encoding="utf-8",
+            )
+            original_workspace = gate.WORKSPACE
+            original_outer = gate.OUTER_WORKSPACE
+            try:
+                gate.WORKSPACE = root / "workspace"
+                gate.OUTER_WORKSPACE = root / "outer"
+                self.assertEqual(gate.resolve_default_apk(), local_apk)
+            finally:
+                gate.WORKSPACE = original_workspace
+                gate.OUTER_WORKSPACE = original_outer
+            self.assertTrue(outer_apk.is_file())
+
     def test_missing_riscv64_payload_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             apk = make_apk(
@@ -114,6 +147,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         self.assertTrue(
             any("ELIZA_BUN_RISCV64_FILE" in finding["next_step"] for finding in report["findings"])
         )
+        assert_no_runtime_or_release_claims(report)
 
     def test_complete_static_payload_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -124,6 +158,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertTrue(report["evidence"]["has_llama_kernel_diagnostic"])
+        assert_no_runtime_or_release_claims(report)
 
     def test_stale_aosp_build_provenance_apk_name_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,6 +172,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("aosp_build_provenance_apk_name_mismatch", codes)
+        assert_no_runtime_or_release_claims(report)
 
     def test_duplicate_aosp_provenance_entry_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

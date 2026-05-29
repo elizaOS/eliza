@@ -15,6 +15,7 @@ asserts the e1 ABI projection against the separate conformed artifact.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
@@ -33,6 +34,15 @@ STATIC_E1_DTS = ROOT / "sw/linux/dts/eliza-e1.dts"
 REPORT = ROOT / "build/reports/chipyard_ap_abi_contract.json"
 SCHEMA = "eliza.chipyard_ap_abi_contract.v1"
 CLAIM_BOUNDARY = "static_generated_ap_abi_contract_only_not_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "rtl_boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "generated_ap_completion_claim_allowed": False,
+}
 
 
 @dataclass(frozen=True)
@@ -290,6 +300,10 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

@@ -36,6 +36,16 @@ REPORT = ROOT / "build/reports/linux_firmware_boot_chain_contract.json"
 
 SCHEMA = "eliza.linux_firmware_boot_chain_contract.v1"
 CLAIM_BOUNDARY = "static_firmware_boot_chain_contract_only_not_external_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "external_boot_claim_allowed": False,
+    "firmware_handoff_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 TARGETS = ("buildroot", "opensbi", "u-boot")
 SELECTED_RISCV64_FIRMWARE_CHAIN = "EDK2/OpenSBI -> GRUB EFI -> Linux"
 SELECTED_RISCV64_BOOTLOADER_PACKAGES = {"grub-efi-riscv64", "grub-efi-riscv64-bin"}
@@ -82,6 +92,7 @@ class Finding:
     next_step: str
     next_command: str = ""
     evidence_requirements: list[dict[str, Any]] | None = None
+    blocker_dependency: str | None = None
 
 
 def rel(path: Path) -> str:
@@ -149,9 +160,22 @@ def add_if(
     message: str,
     evidence: str,
     next_step: str,
+    next_command: str = "",
+    *,
+    blocker_dependency: str | None = None,
 ) -> None:
     if condition:
-        findings.append(Finding(code, "blocker", message, evidence, next_step))
+        findings.append(
+            Finding(
+                code,
+                "blocker",
+                message,
+                evidence,
+                next_step,
+                next_command,
+                blocker_dependency=blocker_dependency,
+            )
+        )
 
 
 def manifest_items(manifest: Mapping[str, Any], target: str) -> list[dict[str, Any]]:
@@ -447,6 +471,9 @@ def check_preflight(findings: list[Finding], preflight: Mapping[str, Any]) -> No
         "OpenSBI fw_dynamic handoff evidence still uses a placeholder command",
         rel(PREFLIGHT_REPORT),
         "Set ELIZA_OPENSBI_HANDOFF_CMD to the exact QEMU, Renode, or board handoff command and recapture the OpenSBI handoff transcript.",
+        "ELIZA_OPENSBI_HANDOFF_CMD='<exact qemu, renode, or board handoff command>' "
+        "python3 scripts/check_software_bsp_external_preflight.py --write-report",
+        blocker_dependency="live_device_validation",
     )
 
 
@@ -512,11 +539,30 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
 
 def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    blocker_dependency_counts = {
+        "repo_artifact_generation": sum(
+            1 for finding in blockers if finding.blocker_dependency == "repo_artifact_generation"
+        ),
+        "live_device_validation": sum(
+            1 for finding in blockers if finding.blocker_dependency == "live_device_validation"
+        ),
+        "actionable_external_dependency": sum(
+            1
+            for finding in blockers
+            if finding.blocker_dependency == "actionable_external_dependency"
+        ),
+    }
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        **FALSE_CLAIM_FLAGS,
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": blocker_dependency_counts,
+        },
+        "blocker_dependency_counts": blocker_dependency_counts,
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,
     }

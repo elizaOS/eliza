@@ -48,7 +48,7 @@ KIOSK_PACKAGE_REQUIREMENTS = (
     "cage",
     "seatd",
     "libwebkit2gtk-4.1-0",
-    "libgtk-3-0",
+    "libgtk-3-0t64",
     "libgl1-mesa-dri",
     "libegl1",
     "grim",

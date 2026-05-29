@@ -20,9 +20,32 @@ from eliza_robot.asimov_1.constants import (  # noqa: E402
 )
 from eliza_robot.rl.text_conditioned.train import _write_full_training_job  # noqa: E402
 
+CURRICULUM_EVAL_TASKS = (
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right",
+)
+
 
 def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def _has_curriculum_eval_contract(text: str) -> bool:
+    tasks = "--tasks " + " ".join(CURRICULUM_EVAL_TASKS)
+    return (
+        "eval_text_policy.py" in text
+        and "--profile asimov-1" in text
+        and "--backend mjx" in text
+        and tasks in text
+        and "--out evidence/curriculum_eval/eval_text_policy.json" in text
+        and "--curriculum-report-out evidence/curriculum_eval/report.json" in text
+        and "--fail-under-success-rate 1.0" in text
+    )
 
 
 def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
@@ -80,7 +103,7 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
         and "--require-value-obs-key privileged_state" in run_script_text
         and f"--require-critic-obs-dim {expected_critic_dim}" in run_script_text
         and "validate_asimov1_production_checkpoint.py" in run_script_text
-        and "eval_text_policy.py --profile asimov-1 --backend mjx" in run_script_text
+        and _has_curriculum_eval_contract(run_script_text)
         and "sim_validation_gate.py --profile asimov-1" in run_script_text
         and "--require-asimov-model-provenance" in run_script_text,
         "readme": (job_dir / "README.full_training.md").is_file(),
@@ -156,9 +179,7 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
             for c in commands
         )
         and any(
-            "eval_text_policy.py" in c
-            and "--profile asimov-1" in c
-            and "--backend mjx" in c
+            _has_curriculum_eval_contract(c)
             for c in commands
         )
         and any(

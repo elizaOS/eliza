@@ -1,48 +1,36 @@
-# Pre-existing test failures (NOT introduced by the unified-robot work)
+# Test collection status
 
-When running `uv run pytest tests/`, nine test modules error out at
-**collection time** for reasons unrelated to the text-conditioned RL
-pipeline. The unified-robot work does not affect any of these — they
-fail to even import, on every commit from `develop` since well before
-the multi-robot effort started.
+The collection-time import errors that previously forced a long `--ignore`
+list are **resolved**. `uv run pytest tests/ --co` now collects the entire
+tree with **zero errors**. What was done (2026-05-28):
 
-| Test module | Cause | Owner |
-|---|---|---|
-| `tests/bridge/test_e2e.py` | imports `eliza_robot.runtime.openpi_loop`; the `runtime` package was never created | bridge |
-| `tests/bridge/test_ainex_agent_integration.py` | depends on `tests/bridge/conftest.py` which imports the missing `runtime` package | bridge |
-| `tests/bridge/test_bridge_policy_pipeline.py` | same conftest path | bridge |
-| `tests/bridge/test_execution_service.py` | same conftest path | bridge |
-| `tests/bridge/test_openpi_http_e2e.py` | same conftest path | bridge |
-| `tests/sim/mujoco/test_compositional_env.py` | imports `eliza_robot.sim.mujoco.wave_env` (module deleted) | sim |
-| `tests/sim/mujoco/test_arm_control.py` | imports `bridge.isaaclab.ainex_cfg` from an external ainex-robot-code submodule that isn't vendored | sim |
-| `tests/sim/mujoco/test_joystick_env.py` / `test_target_env.py` | depend on a now-deleted entity-slots feature | sim |
-| `tests/sim/mujoco/test_train.py` | imports a renamed `train` symbol | sim |
-| `tests/perception/test_sim_camera.py` | requires an OpenGL display | perception |
-| `tests/asimov_1/test_asimov1_integration.py` | asimov_remote backend setup | asimov |
-| `tests/rl/test_asimov_policy_loop.py` / `test_asimov_training_cli.py` / `test_sim_validation_gate.py` | depend on `tests/rl/conftest.py` deps that pin to the asimov-1 backend | asimov |
+- **Removed dead test modules** that imported a never-created
+  `eliza_robot.runtime` package and the removed
+  `train_bridge_policy` / `serve_policy` / `build_from_trace` subsystem
+  (they never ran): `tests/bridge/test_e2e.py`,
+  `tests/bridge/test_openpi_http_e2e.py`,
+  `tests/bridge/test_bridge_policy_pipeline.py`.
+- **Guarded cross-package integration tests** with
+  `pytest.importorskip("elizaos_plugin_ainex")` so they skip cleanly when the
+  separate AiNex plugin package is not installed in the robot venv:
+  `tests/bridge/test_ainex_agent_integration.py`,
+  `tests/bridge/test_execution_service.py`.
+- **Pruned the deleted `wave_env` env** from
+  `tests/sim/mujoco/test_compositional_env.py` (kept the live `CompositionalEnv`
+  tests; waving moved to `rl/skills/composite_skill.py`).
 
-## Running the working set
+The other modules the old version of this doc listed
+(`test_joystick_env`, `test_target_env`, `test_arm_control`, `test_train`,
+asimov, perception) already collected — the stale list pre-dated several fixes.
+Some tests still **skip** at runtime when an optional artifact is absent (e.g.
+the `mujoco_locomotion_v13_flat_feet` walking checkpoint, or an OpenGL display);
+that is intended skip behavior, not a collection error.
+
+Just run the suite normally:
 
 ```bash
-uv run pytest tests/ \
-  --ignore=tests/bridge/test_e2e.py \
-  --ignore=tests/bridge/test_ainex_agent_integration.py \
-  --ignore=tests/bridge/test_bridge_policy_pipeline.py \
-  --ignore=tests/bridge/test_execution_service.py \
-  --ignore=tests/bridge/test_openpi_http_e2e.py \
-  --ignore=tests/sim/mujoco/test_compositional_env.py \
-  --ignore=tests/sim/mujoco/test_arm_control.py \
-  --ignore=tests/sim/mujoco/test_joystick_env.py \
-  --ignore=tests/sim/mujoco/test_target_env.py \
-  --ignore=tests/sim/mujoco/test_train.py \
-  --ignore=tests/perception/test_sim_camera.py \
-  --ignore=tests/asimov_1/test_asimov1_integration.py \
-  --ignore=tests/rl/test_asimov_policy_loop.py \
-  --ignore=tests/rl/test_asimov_training_cli.py \
-  --ignore=tests/rl/test_sim_validation_gate.py
+uv run pytest tests/        # or: bun run --cwd packages/robot test:py
 ```
-
-Reproducible run on this commit: **725 passed, 7 skipped, 0 failed**.
 
 ## Tests this work added (all green)
 

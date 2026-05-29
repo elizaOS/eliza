@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,20 @@ REQUIRED_DTS_TOKENS = {
     "uart": "serial@10001000",
     "plic": "interrupt-controller@c000000",
 }
+FALSE_CLAIM_FLAGS = (
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "android_boot_claim_allowed",
+)
+GENERATED_AP_BOOT_FLAGS = (
+    "linux_boot_claim_allowed",
+    "generated_ap_boot_claim_allowed",
+    "privileged_boot_claim_allowed",
+)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -114,7 +129,12 @@ def build_report() -> dict[str, Any]:
     blockers: list[dict[str, str]] = []
     report = {
         "schema": "eliza.cpu_ap_boot_readiness.v1",
-        "claim_boundary": "readiness_gate_only_no_boot_evidence_created",
+        "claim_boundary": (
+            "generated_rocket_rv64gc_ap_boot_readiness_only_not_phone_android_release_or_silicon_evidence"
+        ),
+        "generated_utc": utc_now(),
+        **{flag: False for flag in FALSE_CLAIM_FLAGS},
+        **{flag: False for flag in GENERATED_AP_BOOT_FLAGS},
         "generated_artifacts": check_generated(errors, blockers),
         "chipyard_verilator_linux_smoke": check_smoke(blockers),
         "linux_boot_artifacts": check_linux_artifacts(blockers),
@@ -122,6 +142,18 @@ def build_report() -> dict[str, Any]:
         "blockers": blockers,
     }
     report["status"] = "fail" if errors else ("blocked" if blockers else "pass")
+    if report["status"] == "pass":
+        for flag in GENERATED_AP_BOOT_FLAGS:
+            report[flag] = True
+    for flag in FALSE_CLAIM_FLAGS:
+        if report.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
+    for flag in GENERATED_AP_BOOT_FLAGS:
+        expected = report["status"] == "pass"
+        if report.get(flag) is not expected:
+            errors.append(f"{flag} must be {expected} when status is {report['status']}")
+    if errors:
+        report["status"] = "fail"
     return report
 
 

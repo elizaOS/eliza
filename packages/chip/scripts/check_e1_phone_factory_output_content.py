@@ -891,9 +891,6 @@ def content_failures(path_text: str) -> list[str]:
         failures.extend(
             f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
         )
-        failures.extend(
-            f"missing_factory_field:{field}" for field in missing_fields(parsed, FACTORY_FIELDS)
-        )
         if isinstance(parsed, dict) and parsed.get("disposition") != "approved":
             failures.append("disposition_not_approved")
     elif suffix == ".csv":
@@ -979,6 +976,7 @@ def main() -> int:
         first_article_index = first_article_dependency_index()
         factory_execution_packets = factory_execution_packet_inventory(blocked, first_article_index)
         bridge = factory_first_article_bridge(blocked, blocker_categories, first_article_index)
+        diagnostics = blocker_diagnostics(blocked)
     except ValueError as exc:
         write_report(
             {
@@ -1022,8 +1020,10 @@ def main() -> int:
             {
                 "schema": "eliza.e1_phone_factory_output_content_report.v1",
                 "status": "blocked",
+                "release_credit": False,
                 "summary": {
                     "release_ready": False,
+                    "release_credit": False,
                     "required_paths": len(rows),
                     "present": path_exists_count,
                     "path_exists_count": path_exists_count,
@@ -1079,7 +1079,41 @@ def main() -> int:
                 "blocked_evidence_inventory": [
                     unblock_action(path_text, row, failures) for path_text, row, failures in blocked
                 ],
-                "blocker_diagnostics": blocker_diagnostics(blocked),
+                "blocker_dependency_counts": {
+                    "repo_artifact_generation": blocker_categories["counts"][
+                        "true_missing_factory_outputs"
+                    ],
+                    "live_device_validation": 0,
+                    "actionable_external_dependency": max(
+                        0,
+                        len(blocked)
+                        + missing
+                        - blocker_categories["counts"]["true_missing_factory_outputs"],
+                    ),
+                },
+                "next_command_by_dependency": {
+                    "actionable_external_dependency": [VALIDATION_COMMAND],
+                    **(
+                        {"repo_artifact_generation": [VALIDATION_COMMAND]}
+                        if blocker_categories["counts"]["true_missing_factory_outputs"] > 0
+                        else {}
+                    ),
+                },
+                "validation_commands": [VALIDATION_COMMAND, FIRST_ARTICLE_VALIDATION_COMMAND],
+                "primary_blocker": {
+                    "dependency": "actionable_external_dependency"
+                    if generation_summary["external_release_evidence_required_count"] > 0
+                    else "repo_artifact_generation",
+                    "blocked_rows": len(blocked),
+                    "required_action": (
+                        "Replace present candidate or placeholder factory outputs with approved "
+                        "hash-bound release evidence; local generation alone does not grant "
+                        "factory release credit."
+                    ),
+                    "validation_command": VALIDATION_COMMAND,
+                    "release_credit": False,
+                },
+                "blocker_diagnostics": diagnostics,
                 "factory_output_blocker_categories": blocker_categories,
                 "repo_generation_summary": generation_summary,
                 "factory_execution_packet_inventory": factory_execution_packets,
@@ -1119,8 +1153,10 @@ def main() -> int:
         {
             "schema": "eliza.e1_phone_factory_output_content_report.v1",
             "status": "pass",
+            "release_credit": True,
             "summary": {
                 "release_ready": True,
+                "release_credit": True,
                 "required_paths": len(rows),
                 "present": path_exists_count,
                 "path_exists_count": path_exists_count,

@@ -69,6 +69,7 @@ export function InferenceEndpointPanel() {
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [createErrorMsg, setCreateErrorMsg] = useState<string | null>(null);
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleCreate = useCallback(async () => {
@@ -93,11 +94,14 @@ export function InferenceEndpointPanel() {
 
   const handleDelete = useCallback(
     async (endpointId: string) => {
+      setDeleteErrorMsg(null);
       try {
         await deleteEndpoint(endpointId);
         await refetch();
-      } catch {
-        // deletion failure is surfaced implicitly: item remains in list
+      } catch (err) {
+        setDeleteErrorMsg(
+          err instanceof Error ? err.message : "Failed to delete endpoint",
+        );
       }
     },
     [deleteEndpoint, refetch],
@@ -184,6 +188,12 @@ export function InferenceEndpointPanel() {
           <Plus className="w-4 h-4" />
           Add Endpoint
         </Button>
+      )}
+
+      {deleteErrorMsg && (
+        <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded">
+          {deleteErrorMsg}
+        </div>
       )}
 
       <div className="space-y-3">

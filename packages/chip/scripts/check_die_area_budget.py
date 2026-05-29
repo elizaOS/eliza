@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -162,6 +163,8 @@ def main() -> int:
 
     report = {
         "schema": "eliza.process_die_area_budget_check.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": "die_area_budget_envelope_check_only_not_pdk_or_layout_signoff",
         "evidence_class": "envelope_target_real_no_signoff",
         "envelope": envelope,
         "sub_budgets_seen": sorted(sub_budgets.keys()) if isinstance(sub_budgets, dict) else [],

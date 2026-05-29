@@ -693,3 +693,25 @@ async def command_queue_iofence_completes(dut):
     assert seen_complete, "IOFENCE.C did not pulse cmd_complete_irq"
     cqh = await mmio_read64(dut, OFFS_CQH)
     assert (cqh & 0xFFFF_FFFF) == 1, f"CQH did not advance past IOFENCE (got {cqh})"
+
+
+@cocotb.test()
+async def command_queue_invalid_opcode_stops_without_advancing(dut):
+    """Invalid command opcodes must leave CQH parked on the bad entry."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    cq_ppn = 2
+    mem_write(dut, (cq_ppn << 12) + 0, 0x7F)  # unsupported opcode
+    mem_write(dut, (cq_ppn << 12) + 8, 0x00)
+
+    await mmio_write64(dut, OFFS_CQB, make_ddtp(cq_ppn, 0))
+    await mmio_write64(dut, OFFS_CQCSR, 0x1)
+    await mmio_write64(dut, OFFS_CQT, 0x1)
+
+    for _ in range(64):
+        await RisingEdge(dut.clk)
+        assert int(dut.cmd_complete_irq.value) == 0, "invalid opcode completed as IOFENCE"
+
+    cqh = await mmio_read64(dut, OFFS_CQH)
+    assert (cqh & 0xFFFF_FFFF) == 0, f"CQH advanced past invalid opcode (got {cqh})"

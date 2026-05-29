@@ -38,17 +38,10 @@ export type FirstRunPatchState = {
 
 // ── cloud-preference-patch ──────────────────────────────────────────────
 
-export type CloudPreferenceClientLike = Pick<
-  typeof appClient,
-  "getCloudStatus" | "getConfig"
-> & {
-  getCloudCredits?: typeof appClient.getCloudCredits;
-};
+export type CloudPreferenceClientLike = Pick<typeof appClient, "getConfig">;
 
 export type CloudPreferencePatchState = {
   getConfig: CloudPreferenceClientLike["getConfig"];
-  getCloudStatus: CloudPreferenceClientLike["getCloudStatus"];
-  getCloudCredits?: CloudPreferenceClientLike["getCloudCredits"];
 };
 
 // ── shared browser-like abstractions ────────────────────────────────────

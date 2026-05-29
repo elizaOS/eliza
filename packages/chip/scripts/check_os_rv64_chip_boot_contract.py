@@ -10,6 +10,7 @@ and prove the Eliza agent is live? Today the expected answer is BLOCKED.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
@@ -20,6 +21,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
+REPO = ROOT.parents[1]
 VARIANT = WORKSPACE / "os/linux/elizaos"
 CHIP_MANIFEST = VARIANT / "chip-boot-manifest.json"
 MANIFEST = CHIP_MANIFEST if CHIP_MANIFEST.exists() else VARIANT / "manifest.json"
@@ -40,6 +42,21 @@ TUI_SMOKE_SCRIPT = VARIANT / "config/includes.chroot/usr/lib/elizaos/run-termina
 REPORT = ROOT / "build/reports/os_rv64_chip_boot_contract.json"
 SCHEMA = "eliza.os_rv64_chip_boot_contract.v1"
 CLAIM_BOUNDARY = "chip_objective_gate_no_qemu_virt_or_first_boot_marker_substitution"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "physical_board_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+CAPTURE_SCRIPT = "packages/os/linux/elizaos/scripts/capture-chip-boot-evidence.py"
+CAPTURE_TRANSCRIPT_PLACEHOLDER = "/path/to/generated-ap-serial.log"
+AGENT_TRANSCRIPT_PLACEHOLDER = "/path/to/agent-health.log"
+RECHECK_COMMAND = (
+    "python3 packages/chip/scripts/check_os_rv64_chip_boot_contract.py --json-only"
+)
 
 CHIP_BOOT_EVIDENCE_IDS = {
     "generated-eliza-ap-boot",
@@ -143,6 +160,87 @@ class Finding:
     next_step: str
 
 
+def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
+    """Return executable capture steps without converting blockers into evidence."""
+
+    if not findings:
+        return []
+    codes = {finding.code for finding in findings}
+    plan: list[dict[str, object]] = []
+    if any(
+        code.startswith("chip_target_boot")
+        or code in {
+            "missing_chip_target_boot_evidence_row",
+            "missing_agent_liveness_marker",
+            "missing_tui_liveness_marker",
+        }
+        for code in codes
+    ):
+        plan.append(
+            {
+                "id": "write_blocked_boot_evidence_from_real_transcript",
+                "scope": "host",
+                "claim_boundary": "diagnostic_blocked_evidence_only_not_live_capture_proof",
+                "command": (
+                    f"{CAPTURE_SCRIPT} "
+                    f"--boot-transcript {CAPTURE_TRANSCRIPT_PLACEHOLDER} "
+                    "--write-blocked"
+                ),
+                "requires": [
+                    "real generated Eliza AP/chip-emulator serial transcript",
+                    "OpenSBI and Linux boot markers in transcript",
+                ],
+            }
+        )
+    if any(
+        code.startswith("agent_live")
+        or code in {"missing_agent_liveness_marker", "missing_tui_liveness_marker"}
+        for code in codes
+    ):
+        plan.append(
+            {
+                "id": "write_blocked_agent_live_evidence_from_real_transcript",
+                "scope": "host",
+                "claim_boundary": "diagnostic_blocked_evidence_only_not_live_capture_proof",
+                "command": (
+                    f"{CAPTURE_SCRIPT} "
+                    f"--boot-transcript {CAPTURE_TRANSCRIPT_PLACEHOLDER} "
+                    f"--agent-transcript {AGENT_TRANSCRIPT_PLACEHOLDER} "
+                    "--write-blocked"
+                ),
+                "requires": [
+                    "real generated Eliza AP/chip-emulator boot transcript",
+                    "real target transcript containing service, process, and /api/health probes",
+                ],
+            }
+        )
+        plan.append(
+            {
+                "id": "target_agent_live_probe_transcript",
+                "scope": "target",
+                "claim_boundary": "operator_target_commands_only_not_repo_local_evidence",
+                "command": (
+                    "systemctl is-active elizaos-agent.service; "
+                    "ps -eo pid,args | grep '/opt/elizaos/bin/elizaos'; "
+                    "curl -fsS http://127.0.0.1:31337/api/health; "
+                    "systemctl start elizaos-terminal-tui-smoke.service; "
+                    "journalctl -u elizaos-terminal-tui-smoke.service --no-pager"
+                ),
+                "requires": ["running generated Eliza AP/chip-emulator Linux target"],
+            }
+        )
+    plan.append(
+        {
+            "id": "recheck_contract",
+            "scope": "host",
+            "claim_boundary": CLAIM_BOUNDARY,
+            "command": RECHECK_COMMAND,
+            "requires": ["repo checkout after evidence JSON update"],
+        }
+    )
+    return plan
+
+
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
@@ -162,6 +260,10 @@ def read_json(path: Path) -> dict[str, object]:
 
 
 def rel(path: Path) -> str:
+    try:
+        return path.relative_to(REPO).as_posix()
+    except ValueError:
+        pass
     try:
         return path.relative_to(WORKSPACE).as_posix()
     except ValueError:
@@ -211,10 +313,18 @@ def resolve_variant_path(path_value: object) -> Path | None:
     if not isinstance(path_value, str) or not path_value:
         return None
     candidate = Path(path_value)
-    if not candidate.is_absolute():
-        return (VARIANT / candidate).resolve()
     if candidate.is_file():
         return candidate
+    if not candidate.is_absolute():
+        repo_candidate = (REPO / candidate).resolve()
+        if repo_candidate.is_file():
+            return repo_candidate
+        variant_candidate = (VARIANT / candidate).resolve()
+        if variant_candidate.is_file():
+            return variant_candidate
+        if path_value.startswith("packages/"):
+            return repo_candidate
+        return variant_candidate
     fallback = VARIANT / "evidence" / candidate.name
     if fallback.is_file():
         return fallback.resolve()
@@ -229,7 +339,7 @@ def transcript_text(evidence: dict[str, object]) -> tuple[str, str]:
     if transcript_path is None:
         return "", "missing transcript_path"
     if not transcript_path.is_file():
-        return "", f"missing transcript file {transcript_path}"
+        return "", f"missing transcript file {rel(transcript_path)}"
     return read_text(transcript_path), rel(transcript_path)
 
 
@@ -755,12 +865,25 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
 def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    dependency_counts = {"live_device_validation": len(blockers)} if blockers else {}
+    command_plan = next_command_plan(findings)
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
+        "generated_utc": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        **FALSE_CLAIM_FLAGS,
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": dependency_counts,
+            "next_command_count": len(command_plan),
+        },
+        "blocker_dependency_counts": dependency_counts,
         "findings": [asdict(finding) for finding in findings],
+        "next_command_plan": command_plan,
         "evidence": evidence,
     }
 

@@ -141,7 +141,7 @@ jobs:
 
             # Pin bun version on first install to narrow `curl | bash` blast radius.
             if ! command -v bun >/dev/null 2>&1; then
-              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13"
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi

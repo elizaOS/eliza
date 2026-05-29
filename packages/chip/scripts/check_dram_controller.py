@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -91,6 +92,18 @@ LINT_WAIVERS = [
 ]
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def verilator_bin() -> str | None:
+    found = shutil.which("verilator")
+    if found:
+        return found
+    bundled = ROOT / "external/oss-cad-suite/bin/verilator"
+    return str(bundled) if bundled.is_file() else None
+
+
 def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(
@@ -103,9 +116,15 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "blocker_reason": blocker_reason,
                 "evidence_paths": [CTRL_RTL, AXI4_PKG, TB, TEST],
                 "as_of": datetime.now(UTC).isoformat(),
+                "generated_utc": utc_now(),
                 "subsystem": "memory",
                 "phone_claim_allowed": False,
                 "release_claim_allowed": False,
+                "linux_memory_claim_allowed": False,
+                "memory_bandwidth_claim_allowed": False,
+                "lpddr_phy_claim_allowed": False,
+                "silicon_capacity_claim_allowed": False,
+                "uma_claim_allowed": False,
                 "claim_boundary": (
                     "Proves e1_dram_ctrl is a real full-AXI4 slave front-end "
                     "(read/write bursts INCR/WRAP/FIXED, AxSIZE byte addressing, "
@@ -115,8 +134,9 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                     "mem_base_addr/mem_capacity_bytes) with a DRAMsim3-LPDDR "
                     "derived row-hit/miss latency model and fail-closed DECERR "
                     "on out-of-range access, verified under Verilator + cocotb. "
-                    "This is not phone-class memory evidence and not LPDDR "
-                    "capacity, bandwidth, PHY, training, or UMA evidence. "
+                    "This is not phone-class memory evidence and not Linux "
+                    "memory-sizing evidence, memory-bandwidth evidence, LPDDR "
+                    "capacity, PHY, training, silicon-capacity, or UMA evidence. "
                     "Does NOT cover the LPDDR5X analog PHY / DFI 5.0 training "
                     "(physical silicon dependency in "
                     "docs/evidence/memory/lpddr-phy-procurement.yaml), on-die "
@@ -144,8 +164,11 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
 
 
 def verilator_lint() -> tuple[bool, str]:
+    verilator = verilator_bin()
+    if verilator is None:
+        return False, "verilator not found on PATH or under external/oss-cad-suite/bin"
     cmd = [
-        "verilator",
+        verilator,
         "--lint-only",
         "-Wall",
         *LINT_WAIVERS,

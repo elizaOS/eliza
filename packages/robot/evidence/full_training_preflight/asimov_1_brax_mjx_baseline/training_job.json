@@ -3,7 +3,7 @@
   "profile_id": "asimov-1",
   "output_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
   "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
-  "mjcf_xml_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+  "mjcf_xml_sha256": "1699a8f5313cd6c9f43eeca4012c8b5390a1db3a924c89ca7a46cefdb47cfce9",
   "asset_manifest": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
   "asset_manifest_sha256": "9ebde2c4a976c3b2d13e8746628e0918a51c4067eb95d1356ffbdadca8edf415",
   "control_hz": 50.0,
@@ -233,7 +233,7 @@
     "uv run python scripts/verify_brax_text_policy.py --ckpt /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25 --require-critic-obs-dim 86 --require-policy-obs-key state --require-value-obs-key privileged_state",
     "uv run python scripts/validate_asimov1_production_checkpoint.py /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --min-steps 150000000 --require-inference-check",
     "uv run python scripts/validate_asimov1_full_training_run.py /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline/full_training_run.json --job-dir /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
-    "uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200",
+    "uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200 --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0",
     "uv run python scripts/sim_validation_gate.py --profile asimov-1 --checkpoint /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --require-asimov-model-provenance"
   ]
 }

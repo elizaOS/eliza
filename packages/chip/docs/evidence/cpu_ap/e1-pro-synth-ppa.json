@@ -1,78 +1,80 @@
 {
-  "schema": "eliza.cpu_synth_ppa.v1",
-  "block_id": "e1_pro_cva6_core",
-  "rtl_top": "cva6",
-  "core_role": "little_core_e1_pro",
-  "target_config": "cv64a6_imafdc_sv39",
-  "isa": "rv64gc",
-  "equivalence": "e1-pro IS CVA6 cv64a6_imafdc_sv39 by construction (core-selection.json)",
-  "claim_level": "L1_RTL_FULL_SOC",
-  "evidence_class": "open_pdk_synthesis_estimate_not_signoff",
-  "provenance": "eda_synthesis",
-  "generated_at": "2026-05-22T19:56:29Z",
-  "pdk": {
-    "name": "ASAP7",
-    "note": "ASU/ARM predictive 7 nm FinFET academic PDK (BSD-3); NOT a foundry node",
-    "stdcell_library": "asap7sc7p5t_27",
-    "corner": "RVT_TT_0p70V_25C",
-    "liberty_model": "NLDM",
-    "liberty_files": "asap7sc7p5t_{AO,INVBUF,OA,SIMPLE,SEQ}_RVT_TT_nldm (per-group, read individually; the merged lib drops some lu_table_template headers so OpenROAD reads the per-group files)"
-  },
-  "tools": {
-    "synthesis": {
-      "name": "yosys",
-      "version": "Yosys 0.64+197 (git sha1 4e35ed595, clang++ 18.1.8 -fPIC -O3)",
-      "frontend": "yosys-slang",
-      "mapper": "abc -fast (SIMPLE SCL)"
-    },
-    "place_and_time": {
-      "name": "openroad",
-      "version": "dc64608b78fd8521a1abade971fc8fde9144dccc ",
-      "flow": "floorplan + global_placement + repair_design + STA"
-    }
-  },
-  "constraint": {
-    "target_clock_ps": 1000,
-    "target_clock_mhz": 1000.0
-  },
-  "frequency": {
-    "worst_slack_ps": -3497.18,
-    "critical_path_ns": 4.4972,
-    "max_freq_mhz": 222.4,
-    "method": "OpenROAD STA after read_lef + floorplan(util 45%) + place_pins + global_placement + repair_design (buffer insertion, max_fanout 24, ASAP7 wire RC on M2/M5). ASAP7 NLDM time_unit is 1 ps, so STA period/slack are in ps; Fmax = 1e6 / (period_ps - worst_slack_ps). Placed + buffered, no CTS, no detailed placement, no routing."
-  },
   "area": {
-    "std_cell_area_um2": 54301.45,
-    "std_cell_area_mm2": 0.054301,
     "cell_count_total": 498801,
-    "sequential_cells": 24247,
     "combinational_cells": 474554,
-    "note": "Pre-PnR std-cell area only. No SRAM macro replacement (caches synthesized as flop arrays), no placement/routing utilization, no PEX."
+    "note": "Pre-PnR std-cell area only. No SRAM macro replacement (caches synthesized as flop arrays), no placement/routing utilization, no PEX.",
+    "sequential_cells": 24247,
+    "std_cell_area_mm2": 0.054301,
+    "std_cell_area_um2": 54301.45
   },
+  "block_id": "e1_pro_cva6_core",
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "claim_level": "L1_RTL_FULL_SOC",
+  "constraint": {
+    "target_clock_mhz": 1000.0,
+    "target_clock_ps": 1000
+  },
+  "core_role": "little_core_e1_pro",
   "efficiency": {
-    "coremark_per_mhz": 2.2596,
-    "coremark_per_mhz_source": "docs/evidence/cpu_ap/cva6-coremark-verilator.json",
     "coremark_iterations_per_s_at_fmax": 502.4,
     "coremark_iterations_per_s_per_mm2": 9252.9,
+    "coremark_per_mhz": 2.2596,
+    "coremark_per_mhz_source": "docs/evidence/cpu_ap/cva6-coremark-verilator.json",
     "gops_per_mm2_method": "CoreMark/MHz x Fmax_MHz = CoreMark-iter/s; divided by synthesized std-cell area mm^2. This is a CoreMark-throughput density proxy for GOPS/mm^2; it inherits the open-PDK + pre-PnR caveats and the flop-array cache caveat (real area with SRAM macros is smaller, so density is conservatively understated)."
   },
-  "limiting_path": {
-    "source": "openroad_sta_after_floorplan_globalplace_repairdesign",
-    "constraint_period_ps": 1000.0,
-    "worst_slack_ps": -3497.18,
-    "critical_path_ps": 4497.18,
-    "startpoint": "_964384_",
-    "endpoint": "_985870_",
-    "buffers_inserted": 20315,
-    "nets_buffered": 3058,
-    "note": "Critical path is a long combinational arithmetic/compare chain (cv64a6_imafdc includes the F/D FPU; the openc910 cvfpu divide/sqrt SRT datapath has long unpipelined chains). Number is post-global-placement + repair_design, WITHOUT CTS or timing-driven detailed placement, so a full ORFS signoff would typically improve it (conservative lower bound)."
-  },
-  "honesty_boundary": "Open-PDK (ASAP7 academic predictive 7nm) synthesis + global-placement + resizer estimate. Fmax is OpenROAD STA worst-slack after floorplan, global placement, and repair_design buffering. NO clock-tree synthesis, NO timing-driven detailed placement, NO routing, NO SRAM macros (caches are synthesized as flop arrays), NO parasitic extraction, NO foundry signoff. A full ORFS signoff with CTS would typically raise Fmax, so this is a CONSERVATIVE LOWER BOUND. CVA6's published 1.7 GHz is real GF22FDX silicon on a DIFFERENT node and is NOT directly comparable; this number exists so e1-pro has a measured open-PDK frequency+area point instead of only CVA6's foundry figure.",
+  "equivalence": "e1-pro IS CVA6 cv64a6_imafdc_sv39 by construction (core-selection.json)",
+  "evidence_class": "open_pdk_synthesis_estimate_not_signoff",
   "forbidden_uses": [
     "cite_as_silicon_fmax",
     "cite_as_foundry_signoff",
     "cite_as_post_route_pnr_evidence",
     "compare_directly_to_gf22_1p7ghz_as_same_node",
     "cite_sram_macro_density"
-  ]
+  ],
+  "frequency": {
+    "critical_path_ns": 4.4972,
+    "max_freq_mhz": 222.4,
+    "method": "OpenROAD STA after read_lef + floorplan(util 45%) + place_pins + global_placement + repair_design (buffer insertion, max_fanout 24, ASAP7 wire RC on M2/M5). ASAP7 NLDM time_unit is 1 ps, so STA period/slack are in ps; Fmax = 1e6 / (period_ps - worst_slack_ps). Placed + buffered, no CTS, no detailed placement, no routing.",
+    "worst_slack_ps": -3497.18
+  },
+  "generated_at": "2026-05-22T19:56:29Z",
+  "generated_utc": "2026-05-22T19:56:29Z",
+  "honesty_boundary": "Open-PDK (ASAP7 academic predictive 7nm) synthesis + global-placement + resizer estimate. Fmax is OpenROAD STA worst-slack after floorplan, global placement, and repair_design buffering. NO clock-tree synthesis, NO timing-driven detailed placement, NO routing, NO SRAM macros (caches are synthesized as flop arrays), NO parasitic extraction, NO foundry signoff. A full ORFS signoff with CTS would typically raise Fmax, so this is a CONSERVATIVE LOWER BOUND. CVA6's published 1.7 GHz is real GF22FDX silicon on a DIFFERENT node and is NOT directly comparable; this number exists so e1-pro has a measured open-PDK frequency+area point instead of only CVA6's foundry figure.",
+  "isa": "rv64gc",
+  "limiting_path": {
+    "buffers_inserted": 20315,
+    "constraint_period_ps": 1000.0,
+    "critical_path_ps": 4497.18,
+    "endpoint": "_985870_",
+    "nets_buffered": 3058,
+    "note": "Critical path is a long combinational arithmetic/compare chain (cv64a6_imafdc includes the F/D FPU; the openc910 cvfpu divide/sqrt SRT datapath has long unpipelined chains). Number is post-global-placement + repair_design, WITHOUT CTS or timing-driven detailed placement, so a full ORFS signoff would typically improve it (conservative lower bound).",
+    "source": "openroad_sta_after_floorplan_globalplace_repairdesign",
+    "startpoint": "_964384_",
+    "worst_slack_ps": -3497.18
+  },
+  "pdk": {
+    "corner": "RVT_TT_0p70V_25C",
+    "liberty_files": "asap7sc7p5t_{AO,INVBUF,OA,SIMPLE,SEQ}_RVT_TT_nldm (per-group, read individually; the merged lib drops some lu_table_template headers so OpenROAD reads the per-group files)",
+    "liberty_model": "NLDM",
+    "name": "ASAP7",
+    "note": "ASU/ARM predictive 7 nm FinFET academic PDK (BSD-3); NOT a foundry node",
+    "stdcell_library": "asap7sc7p5t_27"
+  },
+  "provenance": "eda_synthesis",
+  "rtl_top": "cva6",
+  "schema": "eliza.cpu_synth_ppa.v1",
+  "target_config": "cv64a6_imafdc_sv39",
+  "tools": {
+    "place_and_time": {
+      "flow": "floorplan + global_placement + repair_design + STA",
+      "name": "openroad",
+      "version": "dc64608b78fd8521a1abade971fc8fde9144dccc "
+    },
+    "synthesis": {
+      "frontend": "yosys-slang",
+      "mapper": "abc -fast (SIMPLE SCL)",
+      "name": "yosys",
+      "version": "Yosys 0.64+197 (git sha1 4e35ed595, clang++ 18.1.8 -fPIC -O3)"
+    }
+  }
 }

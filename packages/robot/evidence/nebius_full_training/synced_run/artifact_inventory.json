@@ -2,54 +2,71 @@
   "schema": "robot-nebius-training-artifact-inventory-v1",
   "ok": false,
   "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
-  "generated_at": "2026-05-24T07:27:27.132251Z",
-  "present_count": 107,
-  "required_count": 117,
+  "generated_at": "2026-05-27T23:06:11.819574Z",
+  "present_count": 164,
+  "semantic_ok_count": 160,
+  "required_count": 164,
   "categories": {
     "stage_status": {
       "present_count": 13,
+      "semantic_ok_count": 13,
       "required_count": 13,
-      "missing": []
+      "missing": [],
+      "semantic_failed": []
     },
     "training_inputs": {
       "present_count": 2,
+      "semantic_ok_count": 2,
       "required_count": 2,
-      "missing": []
+      "missing": [],
+      "semantic_failed": []
     },
     "checkpoints": {
       "present_count": 4,
+      "semantic_ok_count": 4,
       "required_count": 4,
-      "missing": []
+      "missing": [],
+      "semantic_failed": []
     },
     "backend_comparison": {
       "present_count": 2,
+      "semantic_ok_count": 2,
       "required_count": 2,
-      "missing": []
+      "missing": [],
+      "semantic_failed": []
+    },
+    "curriculum_eval": {
+      "present_count": 2,
+      "semantic_ok_count": 2,
+      "required_count": 2,
+      "missing": [],
+      "semantic_failed": []
     },
     "continual_benchmarks": {
       "present_count": 6,
+      "semantic_ok_count": 6,
       "required_count": 6,
-      "missing": []
+      "missing": [],
+      "semantic_failed": []
     },
     "video_evidence": {
-      "present_count": 78,
-      "required_count": 78,
-      "missing": []
+      "present_count": 123,
+      "semantic_ok_count": 122,
+      "required_count": 123,
+      "missing": [],
+      "semantic_failed": [
+        "production_video_review"
+      ]
     },
     "review_reports": {
-      "present_count": 2,
+      "present_count": 12,
+      "semantic_ok_count": 9,
       "required_count": 12,
-      "missing": [
-        "monitor_status",
-        "monitor_summary",
+      "missing": [],
+      "semantic_failed": [
         "validation_report",
-        "validation_summary",
         "finalization_report",
-        "finalization_summary",
-        "training_comparison_report",
-        "training_comparison_summary",
-        "runtime_watch_history",
-        "instance_launch_hygiene"
+        "training_comparison_report"
       ]
     }
   },
@@ -72,6 +89,8 @@
     "alberta_policy",
     "backend_comparison_json",
     "backend_comparison_md",
+    "curriculum_eval_report",
+    "curriculum_eval_native",
     "joint_reach_benchmark_json",
     "joint_reach_benchmark_md",
     "joint_reach_benchmark_plot",
@@ -159,10 +178,6 @@
     "multi_robot_contact_unitree_r1_turn_left",
     "multi_robot_contact_unitree_r1_turn_right",
     "multi_robot_contact_unitree_r1_combined",
-    "alberta_end_to_end_report_json",
-    "alberta_end_to_end_report_md"
-  ],
-  "missing": [
     "monitor_status",
     "monitor_summary",
     "validation_report",
@@ -171,8 +186,62 @@
     "finalization_summary",
     "training_comparison_report",
     "training_comparison_summary",
+    "alberta_end_to_end_report_json",
+    "alberta_end_to_end_report_md",
     "runtime_watch_history",
-    "instance_launch_hygiene"
+    "instance_launch_hygiene",
+    "production_video_asimov_walk_backward",
+    "production_video_telemetry_asimov_walk_backward",
+    "production_video_contact_asimov_walk_backward",
+    "production_video_asimov_sidestep_left",
+    "production_video_telemetry_asimov_sidestep_left",
+    "production_video_contact_asimov_sidestep_left",
+    "production_video_asimov_sidestep_right",
+    "production_video_telemetry_asimov_sidestep_right",
+    "production_video_contact_asimov_sidestep_right",
+    "multi_robot_video_hiwonder_walk_backward",
+    "multi_robot_video_telemetry_hiwonder_walk_backward",
+    "multi_robot_contact_hiwonder_walk_backward",
+    "multi_robot_video_hiwonder_sidestep_left",
+    "multi_robot_video_telemetry_hiwonder_sidestep_left",
+    "multi_robot_contact_hiwonder_sidestep_left",
+    "multi_robot_video_hiwonder_sidestep_right",
+    "multi_robot_video_telemetry_hiwonder_sidestep_right",
+    "multi_robot_contact_hiwonder_sidestep_right",
+    "multi_robot_video_unitree_g1_walk_backward",
+    "multi_robot_video_telemetry_unitree_g1_walk_backward",
+    "multi_robot_contact_unitree_g1_walk_backward",
+    "multi_robot_video_unitree_g1_sidestep_left",
+    "multi_robot_video_telemetry_unitree_g1_sidestep_left",
+    "multi_robot_contact_unitree_g1_sidestep_left",
+    "multi_robot_video_unitree_g1_sidestep_right",
+    "multi_robot_video_telemetry_unitree_g1_sidestep_right",
+    "multi_robot_contact_unitree_g1_sidestep_right",
+    "multi_robot_video_unitree_h1_walk_backward",
+    "multi_robot_video_telemetry_unitree_h1_walk_backward",
+    "multi_robot_contact_unitree_h1_walk_backward",
+    "multi_robot_video_unitree_h1_sidestep_left",
+    "multi_robot_video_telemetry_unitree_h1_sidestep_left",
+    "multi_robot_contact_unitree_h1_sidestep_left",
+    "multi_robot_video_unitree_h1_sidestep_right",
+    "multi_robot_video_telemetry_unitree_h1_sidestep_right",
+    "multi_robot_contact_unitree_h1_sidestep_right",
+    "multi_robot_video_unitree_r1_walk_backward",
+    "multi_robot_video_telemetry_unitree_r1_walk_backward",
+    "multi_robot_contact_unitree_r1_walk_backward",
+    "multi_robot_video_unitree_r1_sidestep_left",
+    "multi_robot_video_telemetry_unitree_r1_sidestep_left",
+    "multi_robot_contact_unitree_r1_sidestep_left",
+    "multi_robot_video_unitree_r1_sidestep_right",
+    "multi_robot_video_telemetry_unitree_r1_sidestep_right",
+    "multi_robot_contact_unitree_r1_sidestep_right"
+  ],
+  "missing": [],
+  "semantic_failed": [
+    "production_video_review",
+    "validation_report",
+    "finalization_report",
+    "training_comparison_report"
   ],
   "artifacts": [
     {
@@ -180,6 +249,8 @@
       "category": "stage_status",
       "path": "status/success.txt",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 36
     },
     {
@@ -187,6 +258,8 @@
       "category": "stage_status",
       "path": "status/runner_status.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 6253
     },
     {
@@ -194,6 +267,8 @@
       "category": "stage_status",
       "path": "status/00_local_preflight.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 4030
     },
     {
@@ -201,6 +276,8 @@
       "category": "stage_status",
       "path": "status/10_nebius_train_alberta.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 2926
     },
     {
@@ -208,6 +285,8 @@
       "category": "stage_status",
       "path": "status/20_nebius_compare_backends.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 3876
     },
     {
@@ -215,6 +294,8 @@
       "category": "stage_status",
       "path": "status/30_nebius_continual_benchmarks.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 3784
     },
     {
@@ -222,6 +303,8 @@
       "category": "stage_status",
       "path": "status/40_nebius_brax_baseline.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 3508
     },
     {
@@ -229,6 +312,8 @@
       "category": "stage_status",
       "path": "status/50_post_train_validation.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 3862
     },
     {
@@ -236,6 +321,8 @@
       "category": "stage_status",
       "path": "logs/10_nebius_train_alberta.log",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 2323
     },
     {
@@ -243,6 +330,8 @@
       "category": "stage_status",
       "path": "logs/20_nebius_compare_backends.log",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 130201
     },
     {
@@ -250,6 +339,8 @@
       "category": "stage_status",
       "path": "logs/30_nebius_continual_benchmarks.log",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 5943
     },
     {
@@ -257,6 +348,8 @@
       "category": "stage_status",
       "path": "logs/40_nebius_brax_baseline.log",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 50486
     },
     {
@@ -264,6 +357,8 @@
       "category": "stage_status",
       "path": "logs/50_post_train_validation.log",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 144443
     },
     {
@@ -271,13 +366,17 @@
       "category": "training_inputs",
       "path": "evidence/full_training_preflight/training_inputs_report.json",
       "present": true,
-      "bytes": 14836
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42268
     },
     {
       "name": "alberta_manifest",
       "category": "checkpoints",
       "path": "checkpoints/asimov_1_alberta_full/manifest.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 2897
     },
     {
@@ -285,6 +384,8 @@
       "category": "checkpoints",
       "path": "checkpoints/asimov_1_alberta_full/alberta_policy.npz",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 261226
     },
     {
@@ -292,6 +393,8 @@
       "category": "backend_comparison",
       "path": "evidence/backend_compare/asimov-1/comparison.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 18408
     },
     {
@@ -299,13 +402,35 @@
       "category": "backend_comparison",
       "path": "evidence/backend_compare/asimov-1/comparison.md",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 1605
+    },
+    {
+      "name": "curriculum_eval_report",
+      "category": "curriculum_eval",
+      "path": "evidence/curriculum_eval/report.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 12111
+    },
+    {
+      "name": "curriculum_eval_native",
+      "category": "curriculum_eval",
+      "path": "evidence/curriculum_eval/eval_text_policy.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 22390
     },
     {
       "name": "joint_reach_benchmark_json",
       "category": "continual_benchmarks",
       "path": "evidence/alberta_joint_reach/continual_benchmark.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 9389
     },
     {
@@ -313,6 +438,8 @@
       "category": "continual_benchmarks",
       "path": "evidence/alberta_joint_reach/continual_benchmark.md",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 1427
     },
     {
@@ -320,6 +447,8 @@
       "category": "continual_benchmarks",
       "path": "evidence/alberta_joint_reach/continual_benchmark.png",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 53074
     },
     {
@@ -327,41 +456,53 @@
       "category": "continual_benchmarks",
       "path": "evidence/alberta_obstacle_course/continual_benchmark.json",
       "present": true,
-      "bytes": 9506
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 70837
     },
     {
       "name": "obstacle_course_benchmark_md",
       "category": "continual_benchmarks",
       "path": "evidence/alberta_obstacle_course/continual_benchmark.md",
       "present": true,
-      "bytes": 1422
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1733
     },
     {
       "name": "obstacle_course_benchmark_plot",
       "category": "continual_benchmarks",
       "path": "evidence/alberta_obstacle_course/continual_benchmark.png",
       "present": true,
-      "bytes": 49794
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 49456
     },
     {
       "name": "obstacle_course_demo_json",
       "category": "training_inputs",
       "path": "evidence/alberta_obstacle_course/obstacle_course_demo.json",
       "present": true,
-      "bytes": 5810
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 5932
     },
     {
       "name": "obstacle_course_demo_video",
       "category": "video_evidence",
       "path": "evidence/alberta_obstacle_course/obstacle_course_demo.mp4",
       "present": true,
-      "bytes": 112704
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 116456
     },
     {
       "name": "brax_manifest",
       "category": "checkpoints",
       "path": "evidence/full_training_preflight/asimov_1_brax_mjx_baseline/manifest.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 1432
     },
     {
@@ -369,6 +510,8 @@
       "category": "checkpoints",
       "path": "evidence/full_training_preflight/asimov_1_brax_mjx_baseline/policy_brax.pkl",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 1626932
     },
     {
@@ -376,601 +519,773 @@
       "category": "video_evidence",
       "path": "evidence/agent_videos/manifest.json",
       "present": true,
-      "bytes": 7851
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 3985
     },
     {
       "name": "production_video_asimov_stand_up",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_stand_up.mp4",
       "present": true,
-      "bytes": 348504
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 537235
     },
     {
       "name": "production_video_asimov_walk_forward",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_walk_forward.mp4",
       "present": true,
-      "bytes": 341035
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 334446
     },
     {
       "name": "production_video_asimov_turn_left",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_turn_left.mp4",
       "present": true,
-      "bytes": 340159
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 335455
     },
     {
       "name": "production_video_asimov_turn_right",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_turn_right.mp4",
       "present": true,
-      "bytes": 340317
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 334199
     },
     {
       "name": "production_video_asimov_combined",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_combined_actions.mp4",
       "present": true,
-      "bytes": 1134208
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 2186651
     },
     {
       "name": "production_video_telemetry_asimov_stand_up",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_stand_up.telemetry.json",
       "present": true,
-      "bytes": 1516
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1774
     },
     {
       "name": "production_video_telemetry_asimov_walk_forward",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_walk_forward.telemetry.json",
       "present": true,
-      "bytes": 1522
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1790
     },
     {
       "name": "production_video_telemetry_asimov_turn_left",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_turn_left.telemetry.json",
       "present": true,
-      "bytes": 1519
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1779
     },
     {
       "name": "production_video_telemetry_asimov_turn_right",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_turn_right.telemetry.json",
       "present": true,
-      "bytes": 1514
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1789
     },
     {
       "name": "production_video_telemetry_asimov_combined",
       "category": "video_evidence",
       "path": "evidence/agent_videos/asimov-1/asimov-1_combined_actions.telemetry.json",
       "present": true,
-      "bytes": 7456
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 14797
     },
     {
       "name": "multi_robot_video_hiwonder_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
       "present": true,
-      "bytes": 164953
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 422887
     },
     {
       "name": "multi_robot_video_hiwonder_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
       "present": true,
-      "bytes": 218059
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 383932
     },
     {
       "name": "multi_robot_video_hiwonder_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_left.mp4",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_turn_left.mp4",
       "present": true,
-      "bytes": 201997
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 320583
     },
     {
       "name": "multi_robot_video_hiwonder_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_right.mp4",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_turn_right.mp4",
       "present": true,
-      "bytes": 190451
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 324624
     },
     {
       "name": "multi_robot_video_hiwonder_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
       "present": true,
-      "bytes": 646287
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 2337178
     },
     {
       "name": "multi_robot_video_telemetry_hiwonder_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_stand_up.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_stand_up.telemetry.json",
       "present": true,
-      "bytes": 1428
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1614
     },
     {
       "name": "multi_robot_video_telemetry_hiwonder_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.telemetry.json",
       "present": true,
-      "bytes": 1498
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1694
     },
     {
       "name": "multi_robot_video_telemetry_hiwonder_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_left.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_turn_left.telemetry.json",
       "present": true,
-      "bytes": 1491
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1690
     },
     {
       "name": "multi_robot_video_telemetry_hiwonder_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_right.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_turn_right.telemetry.json",
       "present": true,
-      "bytes": 1495
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1695
     },
     {
       "name": "multi_robot_video_telemetry_hiwonder_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.telemetry.json",
       "present": true,
-      "bytes": 7272
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 13977
     },
     {
       "name": "multi_robot_video_unitree_g1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_stand_up.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_stand_up.mp4",
       "present": true,
-      "bytes": 128966
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 292590
     },
     {
       "name": "multi_robot_video_unitree_g1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_walk_forward.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_walk_forward.mp4",
       "present": true,
-      "bytes": 381460
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 683625
     },
     {
       "name": "multi_robot_video_unitree_g1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_turn_left.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_turn_left.mp4",
       "present": true,
-      "bytes": 334958
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 606030
     },
     {
       "name": "multi_robot_video_unitree_g1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_turn_right.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_turn_right.mp4",
       "present": true,
-      "bytes": 334380
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 619151
     },
     {
       "name": "multi_robot_video_unitree_g1_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_combined_actions.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_combined_actions.mp4",
       "present": true,
-      "bytes": 1001805
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 3861955
     },
     {
       "name": "multi_robot_video_telemetry_unitree_g1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_stand_up.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_stand_up.telemetry.json",
       "present": true,
-      "bytes": 1420
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1626
     },
     {
       "name": "multi_robot_video_telemetry_unitree_g1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_walk_forward.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_walk_forward.telemetry.json",
       "present": true,
-      "bytes": 1494
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1685
     },
     {
       "name": "multi_robot_video_telemetry_unitree_g1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_turn_left.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_turn_left.telemetry.json",
       "present": true,
-      "bytes": 1483
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1685
     },
     {
       "name": "multi_robot_video_telemetry_unitree_g1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_turn_right.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_turn_right.telemetry.json",
       "present": true,
-      "bytes": 1486
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1690
     },
     {
       "name": "multi_robot_video_telemetry_unitree_g1_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-g1/unitree-g1_combined_actions.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_combined_actions.telemetry.json",
       "present": true,
-      "bytes": 7239
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 13947
     },
     {
       "name": "multi_robot_video_unitree_h1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_stand_up.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_stand_up.mp4",
       "present": true,
-      "bytes": 376393
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 470036
     },
     {
       "name": "multi_robot_video_unitree_h1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_walk_forward.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_walk_forward.mp4",
       "present": true,
-      "bytes": 383955
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 471379
     },
     {
       "name": "multi_robot_video_unitree_h1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_turn_left.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_turn_left.mp4",
       "present": true,
-      "bytes": 382225
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 475389
     },
     {
       "name": "multi_robot_video_unitree_h1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_turn_right.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_turn_right.mp4",
       "present": true,
-      "bytes": 379190
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 495370
     },
     {
       "name": "multi_robot_video_unitree_h1_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_combined_actions.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_combined_actions.mp4",
       "present": true,
-      "bytes": 1417076
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 3208443
     },
     {
       "name": "multi_robot_video_telemetry_unitree_h1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_stand_up.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_stand_up.telemetry.json",
       "present": true,
-      "bytes": 1421
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1628
     },
     {
       "name": "multi_robot_video_telemetry_unitree_h1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_walk_forward.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_walk_forward.telemetry.json",
       "present": true,
-      "bytes": 1495
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1693
     },
     {
       "name": "multi_robot_video_telemetry_unitree_h1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_turn_left.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_turn_left.telemetry.json",
       "present": true,
-      "bytes": 1485
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1683
     },
     {
       "name": "multi_robot_video_telemetry_unitree_h1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_turn_right.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_turn_right.telemetry.json",
       "present": true,
-      "bytes": 1487
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1683
     },
     {
       "name": "multi_robot_video_telemetry_unitree_h1_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-h1/unitree-h1_combined_actions.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_combined_actions.telemetry.json",
       "present": true,
-      "bytes": 7244
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 13964
     },
     {
       "name": "multi_robot_video_unitree_r1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_stand_up.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_stand_up.mp4",
       "present": true,
-      "bytes": 273896
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 560335
     },
     {
       "name": "multi_robot_video_unitree_r1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_walk_forward.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_walk_forward.mp4",
       "present": true,
-      "bytes": 310123
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 483885
     },
     {
       "name": "multi_robot_video_unitree_r1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_turn_left.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_turn_left.mp4",
       "present": true,
-      "bytes": 323916
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 429624
     },
     {
       "name": "multi_robot_video_unitree_r1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_turn_right.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_turn_right.mp4",
       "present": true,
-      "bytes": 320459
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 460783
     },
     {
       "name": "multi_robot_video_unitree_r1_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_combined_actions.mp4",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_combined_actions.mp4",
       "present": true,
-      "bytes": 1029188
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 3261682
     },
     {
       "name": "multi_robot_video_telemetry_unitree_r1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_stand_up.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_stand_up.telemetry.json",
       "present": true,
-      "bytes": 1422
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1622
     },
     {
       "name": "multi_robot_video_telemetry_unitree_r1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_walk_forward.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_walk_forward.telemetry.json",
       "present": true,
-      "bytes": 1495
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1691
     },
     {
       "name": "multi_robot_video_telemetry_unitree_r1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_turn_left.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_turn_left.telemetry.json",
       "present": true,
-      "bytes": 1487
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1677
     },
     {
       "name": "multi_robot_video_telemetry_unitree_r1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_turn_right.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_turn_right.telemetry.json",
       "present": true,
-      "bytes": 1487
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1685
     },
     {
       "name": "multi_robot_video_telemetry_unitree_r1_combined",
       "category": "video_evidence",
-      "path": "evidence/agent_videos/unitree-r1/unitree-r1_combined_actions.telemetry.json",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_combined_actions.telemetry.json",
       "present": true,
-      "bytes": 7247
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 13925
     },
     {
       "name": "production_video_review",
       "category": "video_evidence",
       "path": "evidence/video_review_production/video_review.json",
       "present": true,
-      "bytes": 54801
+      "semantic_ok": false,
+      "semantic_reason": "ok_not_true",
+      "bytes": 96596
     },
     {
       "name": "production_video_contact_asimov_stand_up",
       "category": "video_evidence",
       "path": "evidence/video_review_production/asimov-1_asimov-1_stand_up_contact.jpg",
       "present": true,
-      "bytes": 94982
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93327
     },
     {
       "name": "production_video_contact_asimov_walk_forward",
       "category": "video_evidence",
       "path": "evidence/video_review_production/asimov-1_asimov-1_walk_forward_contact.jpg",
       "present": true,
-      "bytes": 94975
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93546
     },
     {
       "name": "production_video_contact_asimov_turn_left",
       "category": "video_evidence",
       "path": "evidence/video_review_production/asimov-1_asimov-1_turn_left_contact.jpg",
       "present": true,
-      "bytes": 95013
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93548
     },
     {
       "name": "production_video_contact_asimov_turn_right",
       "category": "video_evidence",
       "path": "evidence/video_review_production/asimov-1_asimov-1_turn_right_contact.jpg",
       "present": true,
-      "bytes": 94931
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93440
     },
     {
       "name": "production_video_contact_asimov_combined",
       "category": "video_evidence",
       "path": "evidence/video_review_production/asimov-1_asimov-1_combined_actions_contact.jpg",
       "present": true,
-      "bytes": 94341
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93024
     },
     {
       "name": "multi_robot_contact_hiwonder_stand_up",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_stand_up_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_stand_up_contact.jpg",
       "present": true,
-      "bytes": 42816
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42289
     },
     {
       "name": "multi_robot_contact_hiwonder_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_walk_forward_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_walk_forward_contact.jpg",
       "present": true,
-      "bytes": 43111
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42717
     },
     {
       "name": "multi_robot_contact_hiwonder_turn_left",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_turn_left_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_turn_left_contact.jpg",
       "present": true,
-      "bytes": 42675
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42313
     },
     {
       "name": "multi_robot_contact_hiwonder_turn_right",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg",
       "present": true,
-      "bytes": 42840
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42404
     },
     {
       "name": "multi_robot_contact_hiwonder_combined",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg",
       "present": true,
-      "bytes": 42884
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42217
     },
     {
       "name": "multi_robot_contact_unitree_g1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-g1_unitree-g1_stand_up_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_stand_up_contact.jpg",
       "present": true,
-      "bytes": 72439
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 70854
     },
     {
       "name": "multi_robot_contact_unitree_g1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-g1_unitree-g1_walk_forward_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_walk_forward_contact.jpg",
       "present": true,
-      "bytes": 71994
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 71557
     },
     {
       "name": "multi_robot_contact_unitree_g1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-g1_unitree-g1_turn_left_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_turn_left_contact.jpg",
       "present": true,
-      "bytes": 72525
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 72672
     },
     {
       "name": "multi_robot_contact_unitree_g1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-g1_unitree-g1_turn_right_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_turn_right_contact.jpg",
       "present": true,
-      "bytes": 72517
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 72873
     },
     {
       "name": "multi_robot_contact_unitree_g1_combined",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-g1_unitree-g1_combined_actions_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_combined_actions_contact.jpg",
       "present": true,
-      "bytes": 72573
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 72508
     },
     {
       "name": "multi_robot_contact_unitree_h1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-h1_unitree-h1_stand_up_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_stand_up_contact.jpg",
       "present": true,
-      "bytes": 79544
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78852
     },
     {
       "name": "multi_robot_contact_unitree_h1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-h1_unitree-h1_walk_forward_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_walk_forward_contact.jpg",
       "present": true,
-      "bytes": 79393
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78983
     },
     {
       "name": "multi_robot_contact_unitree_h1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-h1_unitree-h1_turn_left_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_turn_left_contact.jpg",
       "present": true,
-      "bytes": 79426
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78872
     },
     {
       "name": "multi_robot_contact_unitree_h1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-h1_unitree-h1_turn_right_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_turn_right_contact.jpg",
       "present": true,
-      "bytes": 79458
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78905
     },
     {
       "name": "multi_robot_contact_unitree_h1_combined",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-h1_unitree-h1_combined_actions_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_combined_actions_contact.jpg",
       "present": true,
-      "bytes": 79154
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78721
     },
     {
       "name": "multi_robot_contact_unitree_r1_stand_up",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-r1_unitree-r1_stand_up_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_stand_up_contact.jpg",
       "present": true,
-      "bytes": 74239
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73920
     },
     {
       "name": "multi_robot_contact_unitree_r1_walk_forward",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-r1_unitree-r1_walk_forward_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_walk_forward_contact.jpg",
       "present": true,
-      "bytes": 74221
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73658
     },
     {
       "name": "multi_robot_contact_unitree_r1_turn_left",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-r1_unitree-r1_turn_left_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_turn_left_contact.jpg",
       "present": true,
-      "bytes": 74155
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73712
     },
     {
       "name": "multi_robot_contact_unitree_r1_turn_right",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-r1_unitree-r1_turn_right_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_turn_right_contact.jpg",
       "present": true,
-      "bytes": 74148
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73651
     },
     {
       "name": "multi_robot_contact_unitree_r1_combined",
       "category": "video_evidence",
-      "path": "evidence/video_review_production/unitree-r1_unitree-r1_combined_actions_contact.jpg",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_combined_actions_contact.jpg",
       "present": true,
-      "bytes": 74139
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73463
     },
     {
       "name": "monitor_status",
       "category": "review_reports",
       "path": "monitor_status.json",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 2862
     },
     {
       "name": "monitor_summary",
       "category": "review_reports",
       "path": "monitor_summary.md",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1015
     },
     {
       "name": "validation_report",
       "category": "review_reports",
       "path": "validation_report.json",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": false,
+      "semantic_reason": "ok_not_true",
+      "bytes": 185444
     },
     {
       "name": "validation_summary",
       "category": "review_reports",
       "path": "validation_summary.md",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 2308
     },
     {
       "name": "finalization_report",
       "category": "review_reports",
       "path": "finalization_report.json",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": false,
+      "semantic_reason": "ok_not_true",
+      "bytes": 3874
     },
     {
       "name": "finalization_summary",
       "category": "review_reports",
       "path": "finalization_summary.md",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 2483
     },
     {
       "name": "training_comparison_report",
       "category": "review_reports",
       "path": "training_comparison_report.json",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": false,
+      "semantic_reason": "ok_not_true",
+      "bytes": 42647
     },
     {
       "name": "training_comparison_summary",
       "category": "review_reports",
       "path": "training_comparison_report.md",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 9161
     },
     {
       "name": "alberta_end_to_end_report_json",
       "category": "review_reports",
       "path": "evidence/ALBERTA_END_TO_END_REPORT.json",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 50537
     },
     {
@@ -978,21 +1293,432 @@
       "category": "review_reports",
       "path": "evidence/ALBERTA_END_TO_END_REPORT.md",
       "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
       "bytes": 18952
     },
     {
       "name": "runtime_watch_history",
       "category": "review_reports",
       "path": "runtime_watch_history.jsonl",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 70
     },
     {
       "name": "instance_launch_hygiene",
       "category": "review_reports",
       "path": "instance_launch_hygiene.json",
-      "present": false,
-      "bytes": 0
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 580
+    },
+    {
+      "name": "production_video_asimov_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_walk_backward.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 333777
+    },
+    {
+      "name": "production_video_telemetry_asimov_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_walk_backward.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1795
+    },
+    {
+      "name": "production_video_contact_asimov_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_walk_backward_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93545
+    },
+    {
+      "name": "production_video_asimov_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_sidestep_left.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 335413
+    },
+    {
+      "name": "production_video_telemetry_asimov_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_sidestep_left.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1788
+    },
+    {
+      "name": "production_video_contact_asimov_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_sidestep_left_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93567
+    },
+    {
+      "name": "production_video_asimov_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_sidestep_right.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 333550
+    },
+    {
+      "name": "production_video_telemetry_asimov_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_sidestep_right.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1798
+    },
+    {
+      "name": "production_video_contact_asimov_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_sidestep_right_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 93574
+    },
+    {
+      "name": "multi_robot_video_hiwonder_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_walk_backward.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 348801
+    },
+    {
+      "name": "multi_robot_video_telemetry_hiwonder_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_walk_backward.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1700
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_walk_backward_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42442
+    },
+    {
+      "name": "multi_robot_video_hiwonder_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_sidestep_left.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 342882
+    },
+    {
+      "name": "multi_robot_video_telemetry_hiwonder_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_sidestep_left.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1703
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_sidestep_left_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42354
+    },
+    {
+      "name": "multi_robot_video_hiwonder_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_sidestep_right.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 357455
+    },
+    {
+      "name": "multi_robot_video_telemetry_hiwonder_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_sidestep_right.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1702
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/hiwonder-ainex_hiwonder-ainex_sidestep_right_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 42380
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_walk_backward.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 649147
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_g1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_walk_backward.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1693
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_walk_backward_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 71359
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_sidestep_left.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 606141
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_g1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_sidestep_left.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1693
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_sidestep_left_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 72413
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_sidestep_right.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 600773
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_g1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_sidestep_right.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1699
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-g1_unitree-g1_sidestep_right_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 72525
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_walk_backward.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 477745
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_h1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_walk_backward.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1695
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_walk_backward_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78885
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_sidestep_left.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 470594
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_h1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_sidestep_left.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1702
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_sidestep_left_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78870
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_sidestep_right.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 473550
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_h1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_sidestep_right.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1704
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-h1_unitree-h1_sidestep_right_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 78910
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_walk_backward.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 557067
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_r1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_walk_backward.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1689
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_walk_backward",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_walk_backward_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73769
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_sidestep_left.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 527208
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_r1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_sidestep_left.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1695
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_sidestep_left",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_sidestep_left_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73862
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_sidestep_right.mp4",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 534608
+    },
+    {
+      "name": "multi_robot_video_telemetry_unitree_r1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_sidestep_right.telemetry.json",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 1690
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_sidestep_right",
+      "category": "video_evidence",
+      "path": "evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_sidestep_right_contact.jpg",
+      "present": true,
+      "semantic_ok": true,
+      "semantic_reason": null,
+      "bytes": 73914
     }
   ]
 }

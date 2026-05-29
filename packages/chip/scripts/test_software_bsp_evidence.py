@@ -112,11 +112,8 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         # surfaces the pending evidence contracts with capture/validate
         # commands for targets that are not release-ready.
         self.assertIn("aosp BSP external evidence pending", result.stdout)
-        self.assertIn("u-boot BSP external evidence pending", result.stdout)
-        self.assertIn(
-            "missing docs/evidence/linux/u_boot_eliza_build.log",
-            result.stdout,
-        )
+        self.assertNotIn("u-boot BSP external evidence pending", result.stdout)
+        self.assertNotIn("missing docs/evidence/linux/u_boot_eliza_build.log", result.stdout)
         self.assertNotIn("BSP check failed", result.stdout)
 
     def test_require_evidence_fails_closed_on_missing_external_logs(self) -> None:
@@ -131,16 +128,12 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         # while targets with missing or invalid external evidence must fail
         # closed.
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("buildroot BSP check failed", result.stdout)
-        self.assertIn("linux BSP check failed", result.stdout)
-        self.assertIn("opensbi BSP check failed", result.stdout)
-        self.assertIn("u-boot BSP check failed", result.stdout)
+        self.assertIn("buildroot BSP scaffold and evidence checks passed.", result.stdout)
+        self.assertIn("linux BSP scaffold and evidence checks passed.", result.stdout)
+        self.assertIn("opensbi BSP scaffold and evidence checks passed.", result.stdout)
         self.assertIn("aosp BSP check failed", result.stdout)
-        self.assertIn("buildroot BSP BLOCKED: missing evidence", result.stdout)
-        self.assertIn("linux BSP BLOCKED: missing evidence", result.stdout)
-        self.assertIn("opensbi BSP BLOCKED: missing evidence", result.stdout)
-        self.assertIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
-        self.assertIn("aosp BSP BLOCKED: missing evidence", result.stdout)
+        self.assertNotIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
+        self.assertIn("aosp BSP BLOCKED: external evidence", result.stdout)
 
     def test_status_helper_reports_missing_external_logs(self) -> None:
         result = subprocess.run(
@@ -233,6 +226,32 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
             "docs/sw/u-boot/capture-u-boot-evidence.sh /external/u-boot boot-chain",
             result.stdout,
         )
+
+    def test_external_preflight_output_sanitizes_host_local_paths(self) -> None:
+        raw = {
+            "host": {"cwd": str(check_software_bsp.ROOT), "tmp": "/tmp/e1-mmio-smoke"},
+            "targets": [
+                {
+                    "tree": str(check_software_bsp.ROOT / "external/linux"),
+                    "blockers": [
+                        f"missing {check_software_bsp.ROOT / 'external/linux/Kconfig'}"
+                    ],
+                    "commands": [
+                        f"run {check_software_bsp.ROOT / 'external/linux'} /var/tmp/evidence"
+                    ],
+                }
+            ],
+        }
+
+        sanitized = check_software_bsp.provenance_safe_value(raw)
+        encoded = json.dumps(sanitized, sort_keys=True)
+
+        self.assertNotIn(str(check_software_bsp.ROOT), encoded)
+        self.assertNotIn("/tmp/", encoded)
+        self.assertNotIn("/var/tmp/", encoded)
+        self.assertIn("<repo>/external/linux", encoded)
+        self.assertIn("<tmp>/e1-mmio-smoke", encoded)
+        self.assertIn("<var-tmp>/evidence", encoded)
 
     def test_placeholder_or_failed_log_cannot_pass_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

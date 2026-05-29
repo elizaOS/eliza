@@ -61,6 +61,40 @@ export interface VaultEntryMeta {
   kind: "secret" | "value" | "reference";
 }
 
+const VAULT_ENTRY_CATEGORIES: ReadonlySet<VaultEntryCategory> = new Set([
+  "provider",
+  "plugin",
+  "wallet",
+  "credential",
+  "system",
+  "session",
+]);
+
+const VAULT_ENTRY_KINDS: ReadonlySet<VaultEntryMeta["kind"]> = new Set([
+  "secret",
+  "value",
+  "reference",
+]);
+
+/**
+ * Runtime guard for the `/api/secrets/inventory` element shape. Validates the
+ * fields the UI relies on so an unexpected server payload fails at the network
+ * boundary instead of deep inside render.
+ */
+export function isVaultEntryMeta(value: unknown): value is VaultEntryMeta {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.key === "string" &&
+    typeof v.category === "string" &&
+    VAULT_ENTRY_CATEGORIES.has(v.category as VaultEntryCategory) &&
+    typeof v.label === "string" &&
+    typeof v.hasProfiles === "boolean" &&
+    typeof v.kind === "string" &&
+    VAULT_ENTRY_KINDS.has(v.kind as VaultEntryMeta["kind"])
+  );
+}
+
 export type RoutingScopeKind = "agent" | "app" | "skill";
 
 export interface RoutingScope {

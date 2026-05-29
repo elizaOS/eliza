@@ -5,6 +5,7 @@ import re
 import sys
 from argparse import ArgumentParser
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -423,6 +424,7 @@ def write_report(
     payload = {
         "schema": SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
         "mode": mode,
         "manifests": manifests,
@@ -1139,6 +1141,11 @@ def blocker_execution_packets(findings: list[str]) -> list[dict[str, object]]:
 REQUIRED_KICAD_COMMANDS = {"erc", "drc", "gerbers", "drill", "bom", "position"}
 REQUIRED_FPGA_COMMANDS = {"synth", "place_route", "pack"}
 ALLOWED_RELEASE_GATES = {"pd_release", "tapeout_release", "board_fabrication_release"}
+ALLOWED_FAIL_CLOSED_PHONE_RELEASE_GATE_STATUSES = {
+    "missing",
+    "blocked_local_routed_candidate_not_release",
+    "blocked_local_cad_passes_but_release_requires_supplier_models_routed_clearance_and_first_article",
+}
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CHECKSUM_METADATA_RE = re.compile(r"(^|_)checksum$")
 DIRTY_SOURCE_RE = re.compile(r"(\+working-tree|dirty|uncommitted)", re.I)
@@ -1685,16 +1692,17 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
         if not isinstance(gate, dict):
             failures.append(f"{rel_manifest}.release_gates.{gate_name}: gate must be a mapping")
             continue
-        if gate.get("status") != "missing":
+        gate_status = gate.get("status")
+        if gate_status not in ALLOWED_FAIL_CLOSED_PHONE_RELEASE_GATE_STATUSES:
             failures.append(
-                f"{rel_manifest}.release_gates.{gate_name}: expected missing, got {gate.get('status')}"
+                f"{rel_manifest}.release_gates.{gate_name}: expected fail-closed, got {gate_status}"
             )
         evidence = gate.get("required_evidence", [])
         if not as_list(evidence):
             failures.append(f"{rel_manifest}.release_gates.{gate_name}: missing required_evidence")
         if release:
             failures.append(
-                f"{rel_manifest}.release_gates.{gate_name}: release gate remains missing"
+                f"{rel_manifest}.release_gates.{gate_name}: release gate remains {gate_status}"
             )
 
     routed_plan_path = repo_path("board/kicad/e1-phone/routed-release-plan.yaml")
@@ -1970,7 +1978,16 @@ def main() -> int:
         out_path = resolved_manifest_path
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
-            json.dumps(resolved_manifest(manifests), indent=2, sort_keys=True) + "\n"
+            json.dumps(
+                {
+                    **resolved_manifest(manifests),
+                    "generated_utc": datetime.now(UTC).isoformat(),
+                    "claim_boundary": CLAIM_BOUNDARY,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
         )
 
     mode = "release" if args.release else "preflight"

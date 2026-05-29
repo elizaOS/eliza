@@ -9,6 +9,7 @@ separate from e1-phone-mainboard-concept.kicad_pcb and production/step.
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import shutil
 import uuid
@@ -234,6 +235,23 @@ VIAS = [
     ("BOTTOM_GND_STITCH_B", "GND", 56.0, 124.0, 0.45, 0.20),
 ]
 
+COPPER_ZONES = [
+    {
+        "id": "E1Phone_LOCAL_GND_TOP_ISLAND_POUR",
+        "net": "GND",
+        "layers": ["F.Cu", "In1.GND", "B.Cu"],
+        "points": [(1.000, 1.000), (63.000, 1.000), (63.000, 28.200), (1.000, 28.200)],
+        "purpose": "local development GND reference fill on top board island clear of battery window",
+    },
+    {
+        "id": "E1Phone_LOCAL_GND_BOTTOM_ISLAND_POUR",
+        "net": "GND",
+        "layers": ["F.Cu", "In8.GND", "B.Cu"],
+        "points": [(1.000, 117.800), (63.000, 117.800), (63.000, 131.000), (1.000, 131.000)],
+        "purpose": "local development GND reference fill on bottom board island clear of battery window",
+    },
+]
+
 
 NET_ALIASES = {
     "BT_UART_CTS": "BT_UART_CTS_N",
@@ -270,6 +288,126 @@ def flatten_nets(value: object) -> list[str]:
 
 def canonical_net(name: str) -> str:
     return NET_ALIASES.get(name, name)
+
+
+def polyline_length(points: list[tuple[float, float]]) -> float:
+    return sum(
+        math.hypot(b[0] - a[0], b[1] - a[1])
+        for a, b in zip(points, points[1:], strict=False)
+    )
+
+
+def manhattan_length(points: list[tuple[float, float]]) -> float:
+    return sum(
+        abs(b[0] - a[0]) + abs(b[1] - a[1])
+        for a, b in zip(points, points[1:], strict=False)
+    )
+
+
+def classify_route(net_name: str, domain_classes: list[str], net_group: str = "") -> str:
+    net = canonical_net(net_name)
+    if net_group in {"control", "type_c_pd"}:
+        return next(
+            (item for item in domain_classes if "control" in item or "gpio" in item),
+            "control",
+        )
+    if net_group in {"power", "side_keys"}:
+        return next((item for item in domain_classes if "power" in item), "power")
+    if net_group in {"identity", "nfc", "sensors"}:
+        return "sim_nfc_sensor"
+    if net_group == "debug_boot":
+        return "debug_boot"
+    if net_group in {"audio", "haptic", "split_critical"} and not (
+        net in {"USB_DP", "USB_DN"} or any(token in net for token in ("VBUS", "SYS"))
+    ):
+        return next((item for item in domain_classes if "audio" in item), "audio_control_aon")
+    if net in {"USB_DP", "USB_DN", "CELL_USB2_DP", "CELL_USB2_DN"}:
+        return "usb2_diff"
+    if "CSI" in net or net.startswith("DSI_"):
+        return "mipi_dphy_diff"
+    if "PCIE" in net:
+        return "pcie_diff"
+    if net.endswith("_RF") or "_RF_" in net or net in {"NFC_RF_P", "NFC_RF_N"}:
+        return "rf_single"
+    if net.startswith("UFS_"):
+        return "ufs_mphy"
+    if net.startswith("LPDDR_"):
+        return "lpddr"
+    if any(token in net for token in ("VBUS", "VBAT", "SYS", "AVDD", "AVEE", "DVDD")):
+        return next((item for item in domain_classes if "power" in item), "power")
+    if any(token in net for token in ("I2S", "PDM", "AUDIO", "CODEC", "AMP", "SPK", "HAPTIC")):
+        return next((item for item in domain_classes if "audio" in item), "audio_control_aon")
+    if "GPIO" in domain_classes:
+        return "side_key_gpio"
+    return domain_classes[0] if domain_classes else "unclassified"
+
+
+def route_metadata_index() -> dict[str, dict[str, object]]:
+    burndown = yaml.safe_load(
+        (ROOT / "board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml").read_text()
+    )
+    metadata: dict[str, dict[str, object]] = {}
+    for domain in burndown.get("route_domains", []):
+        exact_nets = domain.get("exact_nets", {})
+        constraints = domain.get("constraints", {})
+        route_classes = list(domain.get("route_classes", []))
+        net_to_group: dict[str, str] = {}
+        if isinstance(exact_nets, dict):
+            for group, values in exact_nets.items():
+                for net in flatten_nets(values):
+                    net_to_group[canonical_net(net)] = str(group)
+        for net in sorted(set(flatten_nets(exact_nets))):
+            canonical = canonical_net(net)
+            route_class = classify_route(canonical, route_classes, net_to_group.get(canonical, ""))
+            entry = metadata.setdefault(
+                canonical,
+                {
+                    "domains": [],
+                    "net_groups": [],
+                    "route_classes": [],
+                    "controlled_impedance_targets_ohm": [],
+                    "length_limits_mm": [],
+                    "skew_limits_mm": [],
+                },
+            )
+            entry["domains"].append(domain["id"])
+            if canonical in net_to_group:
+                entry["net_groups"].append(net_to_group[canonical])
+            entry["route_classes"].append(route_class)
+            for key, value in constraints.items():
+                if "impedance_ohm" in key and route_class.split("_")[0] in key:
+                    entry["controlled_impedance_targets_ohm"].append(
+                        {"constraint": key, "value": value}
+                    )
+                if key.endswith("length_mm_max") and (
+                    route_class.split("_")[0] in key
+                    or net_to_group.get(canonical, "").split("_")[0] in key
+                ):
+                    entry["length_limits_mm"].append({"constraint": key, "value": value})
+                if key.endswith("skew_mm_max") and route_class.split("_")[0] in key:
+                    entry["skew_limits_mm"].append({"constraint": key, "value": value})
+    for entry in metadata.values():
+        for key in (
+            "domains",
+            "net_groups",
+            "route_classes",
+            "controlled_impedance_targets_ohm",
+            "length_limits_mm",
+            "skew_limits_mm",
+        ):
+            values = entry[key]
+            if values and isinstance(values[0], dict):
+                deduped = []
+                seen = set()
+                for value in values:
+                    marker = tuple(sorted(value.items()))
+                    if marker not in seen:
+                        seen.add(marker)
+                        deduped.append(value)
+                entry[key] = deduped
+            else:
+                entry[key] = sorted(set(str(value) for value in values))
+    return metadata
 
 
 def route_coverage(route_records: list[dict[str, object]]) -> dict[str, object]:
@@ -341,11 +479,107 @@ def via(
     )
 
 
+def find_sexpr_blocks(text: str, head: str) -> list[tuple[int, int, str]]:
+    blocks: list[tuple[int, int, str]] = []
+    for match in re.finditer(rf"(?m)^\s*\({re.escape(head)}", text):
+        start = match.start()
+        depth = 0
+        in_string = False
+        escaped = False
+        end = start
+        while end < len(text):
+            char = text[end]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+            else:
+                if char == '"':
+                    in_string = True
+                elif char == "(":
+                    depth += 1
+                elif char == ")":
+                    depth -= 1
+                    if depth == 0:
+                        end += 1
+                        break
+            end += 1
+        blocks.append((start, end, text[start:end]))
+    return blocks
+
+
+def remove_generated_local_copper_zones(text: str) -> str:
+    generated_names = {str(zone["id"]) for zone in COPPER_ZONES}
+    pieces: list[str] = []
+    cursor = 0
+    for start, end, block in find_sexpr_blocks(text, "zone "):
+        name_match = re.search(r'\(name\s+"([^"]+)"\)', block)
+        name = name_match.group(1) if name_match else ""
+        if name in generated_names:
+            pieces.append(text[cursor:start])
+            cursor = end
+    if cursor == 0:
+        return text
+    pieces.append(text[cursor:])
+    return "".join(pieces)
+
+
+def copper_zone(
+    zone_id: str,
+    net_name: str,
+    net_id: int,
+    layers: list[str],
+    points: list[tuple[float, float]],
+) -> str:
+    layer_text = " ".join(f'"{layer}"' for layer in layers)
+    point_text = "\n".join(f"        (xy {x:.3f} {y:.3f})" for x, y in points)
+    filled_polygons = []
+    for layer in layers:
+        filled_polygons.append(
+            "\n".join(
+                [
+                    f'    (filled_polygon (layer "{layer}")',
+                    "      (island)",
+                    "      (pts",
+                    point_text,
+                    "      )",
+                    "    )",
+                ]
+            )
+        )
+    filled_polygon_text = "\n".join(filled_polygons)
+    return "\n".join(
+        [
+            (
+                f"  (zone (net {net_id}) (net_name \"{net_name}\") "
+                f"(layers {layer_text}) (tstamp \"{stable_uuid('zone', zone_id, net_name)}\")"
+            ),
+            f'    (name "{zone_id}")',
+            "    (hatch edge 0.500)",
+            "    (priority 30)",
+            "    (connect_pads (clearance 0.150))",
+            "    (min_thickness 0.100)",
+            "    (fill yes (thermal_gap 0.500) (thermal_bridge_width 0.500))",
+            "    (polygon",
+            "      (pts",
+            point_text,
+            "      )",
+            "    )",
+            filled_polygon_text,
+            "  )",
+        ]
+    )
+
+
 def main() -> int:
     source_board = REAL_FOOTPRINT_BOARD if REAL_FOOTPRINT_BOARD.is_file() else CONCEPT
     text = source_board.read_text()
     ids = net_ids(text)
-    body = text.rstrip()[:-1].rstrip()
+    route_metadata = route_metadata_index()
+    body = remove_generated_local_copper_zones(text.rstrip()[:-1].rstrip())
     body = re.sub(r"\n\s*\(segment \(start [^\n]+\)", "", body)
     body = re.sub(r"\n\s*\(via \(at [^\n]+\)", "", body)
     lines: list[str] = []
@@ -360,13 +594,28 @@ def main() -> int:
         start_count = len(lines)
         for idx, (a, b) in enumerate(zip(points, points[1:], strict=False), start=1):
             lines.append(segment(route_id, net_name, net_id, layer, width, a, b, idx))
+        metadata = route_metadata.get(canonical_net(net_name), {})
+        route_length = round(polyline_length(points), 3)
+        route_manhattan = round(manhattan_length(points), 3)
         route_records.append(
             {
                 "id": route_id,
                 "net": net_name,
+                "canonical_net": canonical_net(net_name),
                 "layer": layer,
                 "width_mm": width,
                 "segment_count": len(lines) - start_count,
+                "length_mm": route_length,
+                "manhattan_length_mm": route_manhattan,
+                "source_domains": metadata.get("domains", []),
+                "source_net_groups": metadata.get("net_groups", []),
+                "route_classes": metadata.get("route_classes", []),
+                "controlled_impedance_targets_ohm": metadata.get(
+                    "controlled_impedance_targets_ohm", []
+                ),
+                "length_limits_mm": metadata.get("length_limits_mm", []),
+                "skew_limits_mm": metadata.get("skew_limits_mm", []),
+                "constraint_status": "development_trace_only_not_field_solved_or_drc_signed",
                 "points_mm": [{"x": x, "y": y} for x, y in points],
             }
         )
@@ -389,7 +638,102 @@ def main() -> int:
             }
         )
 
-    OUT.write_text(body + "\n" + "\n".join(lines + via_lines) + "\n)\n")
+    routes_by_net = {}
+    for route in route_records:
+        routes_by_net.setdefault(str(route["canonical_net"]), []).append(route)
+    for via_record in via_records:
+        linked = [
+            str(route["id"])
+            for route in routes_by_net.get(str(via_record["net"]), [])
+            if any(
+                math.hypot(
+                    float(point["x"]) - float(via_record["at_mm"]["x"]),
+                    float(point["y"]) - float(via_record["at_mm"]["y"]),
+                )
+                <= max(float(via_record["size_mm"]), 0.6)
+                for point in route["points_mm"]
+            )
+        ]
+        via_record["linked_route_ids"] = linked
+    via_ids_by_net = {}
+    for via_record in via_records:
+        via_ids_by_net.setdefault(str(via_record["net"]), []).append(str(via_record["id"]))
+    for route in route_records:
+        route["linked_via_ids"] = via_ids_by_net.get(str(route["canonical_net"]), [])
+
+    zone_lines: list[str] = []
+    zone_records: list[dict[str, object]] = []
+    for zone in COPPER_ZONES:
+        zone_id = str(zone["id"])
+        net_name = str(zone["net"])
+        net_id = ids.get(net_name)
+        points = list(zone["points"])
+        layers = list(zone["layers"])
+        if net_id is None:
+            missing_nets.append(net_name)
+            continue
+        zone_lines.append(copper_zone(zone_id, net_name, net_id, layers, points))
+        xs = [point[0] for point in points]
+        ys = [point[1] for point in points]
+        zone_records.append(
+            {
+                "id": zone_id,
+                "net": net_name,
+                "layers": layers,
+                "polygon_point_count": len(points),
+                "filled_polygon_count": len(layers),
+                "release_credit": False,
+                "purpose": zone["purpose"],
+                "bbox_mm": {
+                    "x_min": min(xs),
+                    "y_min": min(ys),
+                    "x_max": max(xs),
+                    "y_max": max(ys),
+                    "width": round(max(xs) - min(xs), 3),
+                    "height": round(max(ys) - min(ys), 3),
+                },
+            }
+        )
+
+    class_summary: dict[str, dict[str, object]] = {}
+    domain_summary: dict[str, dict[str, object]] = {}
+    route_classification_gaps: list[dict[str, object]] = []
+    for route in route_records:
+        if not route["route_classes"] or not route["source_domains"] or not route["source_net_groups"]:
+            route_classification_gaps.append(
+                {
+                    "id": route["id"],
+                    "net": route["net"],
+                    "missing_source_domains": not bool(route["source_domains"]),
+                    "missing_source_net_groups": not bool(route["source_net_groups"]),
+                    "missing_route_classes": not bool(route["route_classes"]),
+                }
+            )
+        classes = route["route_classes"] or ["unclassified"]
+        domains = route["source_domains"] or ["unmapped"]
+        for route_class in classes:
+            summary = class_summary.setdefault(
+                str(route_class),
+                {"route_count": 0, "segment_count": 0, "length_mm": 0.0, "nets": []},
+            )
+            summary["route_count"] += 1
+            summary["segment_count"] += route["segment_count"]
+            summary["length_mm"] += route["length_mm"]
+            summary["nets"].append(route["canonical_net"])
+        for domain in domains:
+            summary = domain_summary.setdefault(
+                str(domain),
+                {"route_count": 0, "segment_count": 0, "length_mm": 0.0, "nets": []},
+            )
+            summary["route_count"] += 1
+            summary["segment_count"] += route["segment_count"]
+            summary["length_mm"] += route["length_mm"]
+            summary["nets"].append(route["canonical_net"])
+    for summary in list(class_summary.values()) + list(domain_summary.values()):
+        summary["length_mm"] = round(float(summary["length_mm"]), 3)
+        summary["nets"] = sorted(set(str(net) for net in summary["nets"]))
+
+    OUT.write_text(body + "\n" + "\n".join(lines + via_lines + zone_lines) + "\n)\n")
     detailed_step_intake = (
         yaml.safe_load(DETAILED_DEV_STEP_INTAKE.read_text(encoding="utf-8"))
         if DETAILED_DEV_STEP_INTAKE.is_file()
@@ -430,10 +774,26 @@ def main() -> int:
         "route_count": len(route_records),
         "segment_count": sum(int(cast(int, item["segment_count"])) for item in route_records),
         "via_count": len(via_records),
+        "local_copper_zone_count": len(zone_records),
+        "local_copper_zone_filled_polygon_count": sum(
+            int(item["filled_polygon_count"]) for item in zone_records
+        ),
+        "local_copper_zone_release_credit": False,
+        "route_length_total_mm": round(sum(float(item["length_mm"]) for item in route_records), 3),
+        "controlled_impedance_route_count": sum(
+            1 for item in route_records if item["controlled_impedance_targets_ohm"]
+        ),
+        "route_classification_gap_count": len(route_classification_gaps),
+        "route_classification_gaps": route_classification_gaps,
+        "route_traceability_summary": {
+            "classes": dict(sorted(class_summary.items())),
+            "domains": dict(sorted(domain_summary.items())),
+        },
         "missing_nets": sorted(set(missing_nets)),
         "coverage": route_coverage(route_records),
         "routes": route_records,
         "vias": via_records,
+        "local_copper_zones": zone_records,
         "release_blockers_preserved": [
             "development footprint IDs remain non-release review patterns",
             "supplier-frozen land patterns and signed STEP models are not frozen",

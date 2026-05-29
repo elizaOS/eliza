@@ -1,0 +1,360 @@
+{
+  "started_at": "2026-05-27T19:54:10Z",
+  "commands": [
+    "stand up",
+    "walk forward",
+    "walk backward",
+    "sidestep left",
+    "sidestep right",
+    "turn left",
+    "turn right"
+  ],
+  "production_command_coverage": {
+    "ok": true,
+    "required": [
+      "stand up",
+      "walk forward",
+      "walk backward",
+      "sidestep left",
+      "sidestep right",
+      "turn left",
+      "turn right"
+    ],
+    "present": [
+      "stand up",
+      "walk forward",
+      "walk backward",
+      "sidestep left",
+      "sidestep right",
+      "turn left",
+      "turn right"
+    ],
+    "missing": []
+  },
+  "record_combined": true,
+  "preserve_state_between_commands": false,
+  "policy_checkpoint": null,
+  "profiles": [
+    {
+      "profile": "hiwonder-ainex",
+      "videos": [
+        "hiwonder-ainex_combined_actions.mp4",
+        "hiwonder-ainex_sidestep_left.mp4",
+        "hiwonder-ainex_sidestep_right.mp4",
+        "hiwonder-ainex_stand_up.mp4",
+        "hiwonder-ainex_turn_left.mp4",
+        "hiwonder-ainex_turn_right.mp4",
+        "hiwonder-ainex_walk_backward.mp4",
+        "hiwonder-ainex_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "hiwonder-ainex_combined_actions.telemetry.json",
+        "hiwonder-ainex_sidestep_left.telemetry.json",
+        "hiwonder-ainex_sidestep_right.telemetry.json",
+        "hiwonder-ainex_stand_up.telemetry.json",
+        "hiwonder-ainex_turn_left.telemetry.json",
+        "hiwonder-ainex_turn_right.telemetry.json",
+        "hiwonder-ainex_walk_backward.telemetry.json",
+        "hiwonder-ainex_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "hiwonder-ainex_stand_up.mp4",
+        "hiwonder-ainex_walk_forward.mp4",
+        "hiwonder-ainex_walk_backward.mp4",
+        "hiwonder-ainex_sidestep_left.mp4",
+        "hiwonder-ainex_sidestep_right.mp4",
+        "hiwonder-ainex_turn_left.mp4",
+        "hiwonder-ainex_turn_right.mp4",
+        "hiwonder-ainex_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "hiwonder-ainex_stand_up.telemetry.json",
+        "hiwonder-ainex_walk_forward.telemetry.json",
+        "hiwonder-ainex_walk_backward.telemetry.json",
+        "hiwonder-ainex_sidestep_left.telemetry.json",
+        "hiwonder-ainex_sidestep_right.telemetry.json",
+        "hiwonder-ainex_turn_left.telemetry.json",
+        "hiwonder-ainex_turn_right.telemetry.json",
+        "hiwonder-ainex_combined_actions.telemetry.json"
+      ],
+      "expected_contact_sheets": [
+        "hiwonder-ainex_hiwonder-ainex_stand_up_contact.jpg",
+        "hiwonder-ainex_hiwonder-ainex_walk_forward_contact.jpg",
+        "hiwonder-ainex_hiwonder-ainex_walk_backward_contact.jpg",
+        "hiwonder-ainex_hiwonder-ainex_sidestep_left_contact.jpg",
+        "hiwonder-ainex_hiwonder-ainex_sidestep_right_contact.jpg",
+        "hiwonder-ainex_hiwonder-ainex_turn_left_contact.jpg",
+        "hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg",
+        "hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "hiwonder-ainex_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "scripted_smoke": true,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_turn_right.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_turn_right.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.telemetry.json",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 22.31
+    },
+    {
+      "profile": "asimov-1",
+      "videos": [
+        "asimov-1_combined_actions.mp4",
+        "asimov-1_sidestep_left.mp4",
+        "asimov-1_sidestep_right.mp4",
+        "asimov-1_stand_up.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_turn_right.mp4",
+        "asimov-1_walk_backward.mp4",
+        "asimov-1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "asimov-1_combined_actions.telemetry.json",
+        "asimov-1_sidestep_left.telemetry.json",
+        "asimov-1_sidestep_right.telemetry.json",
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_turn_left.telemetry.json",
+        "asimov-1_turn_right.telemetry.json",
+        "asimov-1_walk_backward.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "asimov-1_stand_up.mp4",
+        "asimov-1_walk_forward.mp4",
+        "asimov-1_walk_backward.mp4",
+        "asimov-1_sidestep_left.mp4",
+        "asimov-1_sidestep_right.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_turn_right.mp4",
+        "asimov-1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json",
+        "asimov-1_walk_backward.telemetry.json",
+        "asimov-1_sidestep_left.telemetry.json",
+        "asimov-1_sidestep_right.telemetry.json",
+        "asimov-1_turn_left.telemetry.json",
+        "asimov-1_turn_right.telemetry.json",
+        "asimov-1_combined_actions.telemetry.json"
+      ],
+      "expected_contact_sheets": [
+        "asimov-1_asimov-1_stand_up_contact.jpg",
+        "asimov-1_asimov-1_walk_forward_contact.jpg",
+        "asimov-1_asimov-1_walk_backward_contact.jpg",
+        "asimov-1_asimov-1_sidestep_left_contact.jpg",
+        "asimov-1_asimov-1_sidestep_right_contact.jpg",
+        "asimov-1_asimov-1_turn_left_contact.jpg",
+        "asimov-1_asimov-1_turn_right_contact.jpg",
+        "asimov-1_asimov-1_combined_actions_contact.jpg"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "asimov-1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "scripted_smoke": true,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/asimov-1/asimov-1_turn_right.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/asimov-1/asimov-1_turn_right.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/asimov-1/asimov-1_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/asimov-1/asimov-1_combined_actions.telemetry.json",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 40.39
+    },
+    {
+      "profile": "unitree-g1",
+      "videos": [
+        "unitree-g1_combined_actions.mp4",
+        "unitree-g1_sidestep_left.mp4",
+        "unitree-g1_sidestep_right.mp4",
+        "unitree-g1_stand_up.mp4",
+        "unitree-g1_turn_left.mp4",
+        "unitree-g1_turn_right.mp4",
+        "unitree-g1_walk_backward.mp4",
+        "unitree-g1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "unitree-g1_combined_actions.telemetry.json",
+        "unitree-g1_sidestep_left.telemetry.json",
+        "unitree-g1_sidestep_right.telemetry.json",
+        "unitree-g1_stand_up.telemetry.json",
+        "unitree-g1_turn_left.telemetry.json",
+        "unitree-g1_turn_right.telemetry.json",
+        "unitree-g1_walk_backward.telemetry.json",
+        "unitree-g1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "unitree-g1_stand_up.mp4",
+        "unitree-g1_walk_forward.mp4",
+        "unitree-g1_walk_backward.mp4",
+        "unitree-g1_sidestep_left.mp4",
+        "unitree-g1_sidestep_right.mp4",
+        "unitree-g1_turn_left.mp4",
+        "unitree-g1_turn_right.mp4",
+        "unitree-g1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "unitree-g1_stand_up.telemetry.json",
+        "unitree-g1_walk_forward.telemetry.json",
+        "unitree-g1_walk_backward.telemetry.json",
+        "unitree-g1_sidestep_left.telemetry.json",
+        "unitree-g1_sidestep_right.telemetry.json",
+        "unitree-g1_turn_left.telemetry.json",
+        "unitree-g1_turn_right.telemetry.json",
+        "unitree-g1_combined_actions.telemetry.json"
+      ],
+      "expected_contact_sheets": [
+        "unitree-g1_unitree-g1_stand_up_contact.jpg",
+        "unitree-g1_unitree-g1_walk_forward_contact.jpg",
+        "unitree-g1_unitree-g1_walk_backward_contact.jpg",
+        "unitree-g1_unitree-g1_sidestep_left_contact.jpg",
+        "unitree-g1_unitree-g1_sidestep_right_contact.jpg",
+        "unitree-g1_unitree-g1_turn_left_contact.jpg",
+        "unitree-g1_unitree-g1_turn_right_contact.jpg",
+        "unitree-g1_unitree-g1_combined_actions_contact.jpg"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "unitree-g1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "scripted_smoke": true,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_turn_right.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_turn_right.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-g1/unitree-g1_combined_actions.telemetry.json",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 14.98
+    },
+    {
+      "profile": "unitree-h1",
+      "videos": [
+        "unitree-h1_combined_actions.mp4",
+        "unitree-h1_sidestep_left.mp4",
+        "unitree-h1_sidestep_right.mp4",
+        "unitree-h1_stand_up.mp4",
+        "unitree-h1_turn_left.mp4",
+        "unitree-h1_turn_right.mp4",
+        "unitree-h1_walk_backward.mp4",
+        "unitree-h1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "unitree-h1_combined_actions.telemetry.json",
+        "unitree-h1_sidestep_left.telemetry.json",
+        "unitree-h1_sidestep_right.telemetry.json",
+        "unitree-h1_stand_up.telemetry.json",
+        "unitree-h1_turn_left.telemetry.json",
+        "unitree-h1_turn_right.telemetry.json",
+        "unitree-h1_walk_backward.telemetry.json",
+        "unitree-h1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "unitree-h1_stand_up.mp4",
+        "unitree-h1_walk_forward.mp4",
+        "unitree-h1_walk_backward.mp4",
+        "unitree-h1_sidestep_left.mp4",
+        "unitree-h1_sidestep_right.mp4",
+        "unitree-h1_turn_left.mp4",
+        "unitree-h1_turn_right.mp4",
+        "unitree-h1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "unitree-h1_stand_up.telemetry.json",
+        "unitree-h1_walk_forward.telemetry.json",
+        "unitree-h1_walk_backward.telemetry.json",
+        "unitree-h1_sidestep_left.telemetry.json",
+        "unitree-h1_sidestep_right.telemetry.json",
+        "unitree-h1_turn_left.telemetry.json",
+        "unitree-h1_turn_right.telemetry.json",
+        "unitree-h1_combined_actions.telemetry.json"
+      ],
+      "expected_contact_sheets": [
+        "unitree-h1_unitree-h1_stand_up_contact.jpg",
+        "unitree-h1_unitree-h1_walk_forward_contact.jpg",
+        "unitree-h1_unitree-h1_walk_backward_contact.jpg",
+        "unitree-h1_unitree-h1_sidestep_left_contact.jpg",
+        "unitree-h1_unitree-h1_sidestep_right_contact.jpg",
+        "unitree-h1_unitree-h1_turn_left_contact.jpg",
+        "unitree-h1_unitree-h1_turn_right_contact.jpg",
+        "unitree-h1_unitree-h1_combined_actions_contact.jpg"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "unitree-h1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "scripted_smoke": true,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_turn_right.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_turn_right.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-h1/unitree-h1_combined_actions.telemetry.json",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 12.12
+    },
+    {
+      "profile": "unitree-r1",
+      "videos": [
+        "unitree-r1_combined_actions.mp4",
+        "unitree-r1_sidestep_left.mp4",
+        "unitree-r1_sidestep_right.mp4",
+        "unitree-r1_stand_up.mp4",
+        "unitree-r1_turn_left.mp4",
+        "unitree-r1_turn_right.mp4",
+        "unitree-r1_walk_backward.mp4",
+        "unitree-r1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "unitree-r1_combined_actions.telemetry.json",
+        "unitree-r1_sidestep_left.telemetry.json",
+        "unitree-r1_sidestep_right.telemetry.json",
+        "unitree-r1_stand_up.telemetry.json",
+        "unitree-r1_turn_left.telemetry.json",
+        "unitree-r1_turn_right.telemetry.json",
+        "unitree-r1_walk_backward.telemetry.json",
+        "unitree-r1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "unitree-r1_stand_up.mp4",
+        "unitree-r1_walk_forward.mp4",
+        "unitree-r1_walk_backward.mp4",
+        "unitree-r1_sidestep_left.mp4",
+        "unitree-r1_sidestep_right.mp4",
+        "unitree-r1_turn_left.mp4",
+        "unitree-r1_turn_right.mp4",
+        "unitree-r1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "unitree-r1_stand_up.telemetry.json",
+        "unitree-r1_walk_forward.telemetry.json",
+        "unitree-r1_walk_backward.telemetry.json",
+        "unitree-r1_sidestep_left.telemetry.json",
+        "unitree-r1_sidestep_right.telemetry.json",
+        "unitree-r1_turn_left.telemetry.json",
+        "unitree-r1_turn_right.telemetry.json",
+        "unitree-r1_combined_actions.telemetry.json"
+      ],
+      "expected_contact_sheets": [
+        "unitree-r1_unitree-r1_stand_up_contact.jpg",
+        "unitree-r1_unitree-r1_walk_forward_contact.jpg",
+        "unitree-r1_unitree-r1_walk_backward_contact.jpg",
+        "unitree-r1_unitree-r1_sidestep_left_contact.jpg",
+        "unitree-r1_unitree-r1_sidestep_right_contact.jpg",
+        "unitree-r1_unitree-r1_turn_left_contact.jpg",
+        "unitree-r1_unitree-r1_turn_right_contact.jpg",
+        "unitree-r1_unitree-r1_combined_actions_contact.jpg"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "unitree-r1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "scripted_smoke": true,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_turn_right.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_turn_right.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/unitree-r1/unitree-r1_combined_actions.telemetry.json",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 15.27
+    }
+  ],
+  "ok": true
+}

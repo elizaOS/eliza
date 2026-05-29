@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,20 @@ POWER_MANIFEST = ROOT / "docs/manufacturing/evidence/power/e1-npu-power-capture-
 THERMAL_PLAN = ROOT / "docs/manufacturing/evidence/thermal/e1-npu-thermal-capture-plan.md"
 SUSTAINED_CHECKER = ROOT / "benchmarks/power/scripts/check_sustained_run_evidence.py"
 OUT = ROOT / "build/reports/power_thermal_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "measured_silicon_claim_allowed": False,
+    "complete_phone_claim_allowed": False,
+    "calibrated_power_claim_allowed": False,
+    "calibrated_thermal_claim_allowed": False,
+    "frequency_trace_claim_allowed": False,
+    "sustained_tops_w_claim_allowed": False,
+    "throttle_claim_allowed": False,
+    "thermal_compliance_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 REQUIRED_CAPTURE_STATUSES = {
     "power_meter_calibrated",
@@ -31,6 +46,10 @@ REQUIRED_ARTIFACTS = {
     "calibration_record",
 }
 ZERO_SHA256 = "0" * 64
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def rel(path: Path) -> str:
@@ -239,12 +258,14 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.power_thermal_scope.v1",
         "status": "power_thermal_scope_release_blocked",
+        "generated_utc": utc_now(),
         "claim_boundary": (
             "Power and thermal scope audit only; not measured silicon, not complete-phone "
             "evidence, not calibrated power trace evidence, not calibrated thermal trace "
             "evidence, not frequency trace evidence, not sustained TOPS/W evidence, "
             "not throttle evidence, and not thermal compliance."
         ),
+        **FALSE_CLAIM_FLAGS,
         "current_scaffolds": {
             "sustained_template": rel(SUSTAINED_TEMPLATE),
             "power_capture_manifest": rel(POWER_MANIFEST),
@@ -281,6 +302,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not thermal compliance",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

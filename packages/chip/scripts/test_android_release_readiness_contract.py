@@ -20,6 +20,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_android_release_readiness_contract as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -196,6 +202,17 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             "next_step": "stage",
         }
 
+    def _partial_aosp_chip_inventory(self) -> dict[str, object]:
+        return {
+            "status": "partial",
+            "productOut": "/tmp/aosp/out/target/product/eliza_ai_soc",
+            "present": ["vendor.img", "system.img"],
+            "missing": ["product.img", "system_ext.img"],
+            "records": [],
+            "blocker_dependency": "repo_artifact_generation",
+            "next_step": "finish build",
+        }
+
     def _patch_tree(self, tmp: Path):
         android_manifest = write(
             tmp / "os/release/beta-2026-05-16/android-release-manifest.json",
@@ -312,6 +329,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             with PatchStack(patches):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["blockers"], len(report["blockers"]))
         self.assertGreater(report["blocker_dependency_counts"]["repo_artifact_generation"], 0)
         codes = {finding["code"] for finding in report["findings"]}
@@ -327,6 +345,23 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertIn("umbrella_android_artifacts_missing_required_evidence_rows", codes)
         self.assertIn("android_live_launcher_agent_evidence_missing_by_target", codes)
         self.assertIn("umbrella_missing_android_riscv64_chip_artifact", codes)
+        findings_by_code = {finding["code"]: finding for finding in report["findings"]}
+        self.assertIn(
+            "android_release_artifact_inventory.commands",
+            findings_by_code["android_release_artifacts_missing_from_expected_paths"][
+                "next_command"
+            ],
+        )
+        self.assertIn(
+            "live_launcher_agent_missing_evidence.records",
+            findings_by_code["android_live_launcher_agent_evidence_missing_by_target"][
+                "next_command"
+            ],
+        )
+        self.assertEqual(
+            report["summary"]["blocker_dependency_counts"],
+            report["blocker_dependency_counts"],
+        )
         inventory = report["evidence"]["android_release_artifact_inventory"]
         self.assertEqual(inventory["status"], "blocked")
         self.assertIn(
@@ -381,7 +416,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertFalse(live_by_id["android-cuttlefish-x86_64-zip"]["releaseCredit"])
         self.assertIn(
-            "evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
+            "os/release/beta-2026-05-16/evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
             live_by_id["android-cuttlefish-x86_64-zip"]["expectedOutputFiles"],
         )
         self.assertIn(
@@ -410,7 +445,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertTrue(all(row["release_credit"] is False for row in prioritized))
         cuttlefish = prioritized[0]
         self.assertIn(
-            "evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
+            "os/release/beta-2026-05-16/evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
             cuttlefish["expected_output_files"],
         )
         self.assertTrue(
@@ -421,7 +456,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         peripherals = {row["capture_area"]: row for row in prioritized}["peripherals"]
         self.assertTrue(
             any(
-                path.endswith("docs/evidence/android/peripherals/cellular_5g_lte_sim.log")
+                path.endswith("cellular_5g_lte_sim.log")
                 for path in peripherals["expected_output_files"]
             )
         )
@@ -434,7 +469,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         security = {row["capture_area"]: row for row in prioritized}["security_lifecycle"]
         self.assertTrue(
             any(
-                path.endswith("docs/evidence/android/security/rollback_rejection.log")
+                path.endswith("rollback_rejection.log")
                 for path in security["expected_output_files"]
             )
         )
@@ -444,10 +479,16 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 for command in security["capture_commands"]
             )
         )
+        self.assertTrue(
+            any(
+                "verdict=pass" in command and "RESULT=%s" in command
+                for command in security["capture_commands"]
+            )
+        )
         power = {row["capture_area"]: row for row in prioritized}["power_thermal"]
         self.assertTrue(
             any(
-                path.endswith("docs/evidence/android/power/sustained_npu_power_thermal_trace.json")
+                path.endswith("sustained_npu_power_thermal_trace.json")
                 for path in power["expected_output_files"]
             )
         )
@@ -530,7 +571,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertFalse(by_id["android-chip-riscv64-zip"]["releaseCredit"])
         self.assertIn(
-            "evidence/android/chip-riscv64-launcher-agent-live.json",
+            str(tmp / "evidence/android/chip-riscv64-launcher-agent-live.json"),
             by_id["android-chip-riscv64-zip"]["expectedOutputFiles"],
         )
         self.assertIn(
@@ -655,7 +696,68 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                     report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_false_claim_flags(self, report)
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
+
+    def test_staged_chip_archive_integrity_suppresses_stale_product_out_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches = self._patch_tree(Path(tmpdir))
+            with PatchStack(patches):
+                gate.ANDROID_MANIFEST.write_text(PASSING_ANDROID_MANIFEST, encoding="utf-8")
+                gate.UMBRELLA_MANIFEST.write_text(PASSING_UMBRELLA_MANIFEST, encoding="utf-8")
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-launcher-agent-live.json",
+                    PASSING_LAUNCHER_AGENT_LIVE_PAYLOAD,
+                )
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/android-partition-artifacts-integrity.json",
+                    PASSING_PARTITION_INTEGRITY_PAYLOAD,
+                )
+                write(
+                    Path(tmpdir) / "os/release/beta-2026-05-16/android/partitions/boot.img",
+                    "boot-image\n",
+                )
+                archive = write_android_archive(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/android/archives/elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip"
+                )
+                archive_sha = gate.file_sha256(archive)
+                archive_size = archive.stat().st_size
+                umbrella = json.loads(PASSING_UMBRELLA_MANIFEST)
+                umbrella["artifacts"][0]["sizeBytes"] = archive_size
+                umbrella["artifacts"][0]["sha256"] = archive_sha
+                gate.UMBRELLA_MANIFEST.write_text(json.dumps(umbrella), encoding="utf-8")
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-artifact-integrity.json",
+                    json.dumps(
+                        {
+                            "status": "collected",
+                            "artifact_id": "android-chip-riscv64-zip",
+                            "filename": "elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip",
+                            "path": "android/archives/elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip",
+                            "sha256": archive_sha,
+                            "sizeBytes": archive_size,
+                        }
+                    )
+                    + "\n",
+                )
+                gate.POST_FLASH.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
+                gate.INSTALLER.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
+                with mock.patch.object(
+                    gate,
+                    "aosp_chip_build_artifact_inventory",
+                    return_value=self._partial_aosp_chip_inventory(),
+                ):
+                    report = gate.run_check(Namespace())
+
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertNotIn("android_chip_riscv64_aosp_artifacts_incomplete", codes)
+        self.assertTrue(report["evidence"]["chip_riscv64_archive_staged_with_integrity"])
+        self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
 
     def test_partial_aosp_chip_source_artifacts_are_explicit_repo_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -733,6 +835,40 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertIn(
             "systemextimage",
             inventory["latestBuildAttempt"]["generationCommands"]["imageOnlyResumeFromCurrentTree"],
+        )
+
+    def test_missing_android_archive_source_members_are_repo_generation_dependency(self) -> None:
+        inventory = {
+            "records": [
+                {
+                    "artifactId": "android-cuttlefish-x86_64-zip",
+                    "readyToArchive": False,
+                    "sourceDirectory": "/home/shaw/aosp/out/target/product/vsoc_x86_64_only",
+                    "missingMembers": ["boot.img"],
+                }
+            ]
+        }
+
+        self.assertEqual(
+            gate.android_archive_source_dependency(inventory),
+            "repo_artifact_generation",
+        )
+
+    def test_complete_android_archive_source_members_remain_repo_generation(self) -> None:
+        inventory = {
+            "records": [
+                {
+                    "artifactId": "android-chip-riscv64-zip",
+                    "readyToArchive": True,
+                    "sourceDirectory": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+                    "missingMembers": [],
+                }
+            ]
+        }
+
+        self.assertEqual(
+            gate.android_archive_source_dependency(inventory),
+            "repo_artifact_generation",
         )
 
     def test_build_only_stage_logs_distinguish_timeout_from_pass(self) -> None:
@@ -1165,11 +1301,62 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 gate.INSTALLER.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertIn(
             "android_release_manifest_launcher_package_mismatch",
             {finding["code"] for finding in report["findings"]},
         )
         self.assertEqual(report["evidence"]["expected_android_package"], "ai.milady.milady")
+
+    def test_report_provenance_sanitizer_strips_host_local_paths(self) -> None:
+        payload = {
+            "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img",
+            "repo": "/home/shaw/milady/eliza/packages/chip/docs/evidence/android/log.txt",
+            "command": "AOSP_DIR=/home/shaw/aosp python3 /home/shaw/milady/eliza/packages/chip/scripts/check.py",
+            "nested": ["/tmp/aosp/out/target/product/eliza_ai_soc/system.img"],
+        }
+
+        sanitized = gate.provenance_safe_value(payload)
+
+        self.assertNotIn("/home/shaw", json.dumps(sanitized))
+        self.assertNotIn("/tmp/aosp", json.dumps(sanitized))
+        self.assertEqual(
+            sanitized["path"],
+            "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/vendor.img",
+        )
+        self.assertEqual(
+            sanitized["repo"],
+            "packages/chip/docs/evidence/android/log.txt",
+        )
+
+    def test_release_artifact_inventory_sidecar_is_provenance_safe(self) -> None:
+        report = {
+            "evidence": {
+                "android_release_artifact_inventory": {"status": "blocked"},
+                "android_archive_source_member_inventory": {
+                    "records": [
+                        {
+                            "sourceDirectory": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+                            "members": [
+                                {
+                                    "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img"
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "staged_android_archive_integrity_inventory": {},
+            }
+        }
+
+        sidecar = gate.release_artifact_inventory_sidecar(report)
+        encoded = json.dumps(sidecar, sort_keys=True)
+
+        self.assertEqual(sidecar["schema"], "eliza.android_release_artifact_inventory.v3")
+        self.assertEqual(sidecar["status"], "blocked")
+        self.assertIn("generated_utc", sidecar)
+        self.assertNotIn("/home/shaw", encoded)
+        self.assertIn("$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/vendor.img", encoded)
 
 
 class PatchStack:

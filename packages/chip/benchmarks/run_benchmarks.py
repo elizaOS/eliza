@@ -72,7 +72,7 @@ VALID_PROVENANCE = {
     "silicon-measured",
     "simulator",
     "imported",
-    "blocked_placeholder",
+    "blocked_missing_target_evidence",
 }
 E1_NPU_REQUIRED_CAPTURE_COMMANDS = {
     "adb_devices": "adb devices",
@@ -1957,7 +1957,7 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
             errors.append(f"{prefix}.status {status!r} is not valid")
         if status == "blocked":
             expected_blocked_provenance = (
-                "dry_run" if report.get("dry_run") is True else "blocked_placeholder"
+                "dry_run" if report.get("dry_run") is True else "blocked_missing_target_evidence"
             )
             if result.get("provenance") != expected_blocked_provenance:
                 errors.append(
@@ -2172,7 +2172,7 @@ def run_benchmark(
                     "benchmark result is blocked; dependency cannot support a release claim "
                     "until all benchmark requirements pass"
                 )
-        result["provenance"] = "blocked_placeholder"
+        result["provenance"] = "blocked_missing_target_evidence"
         result["status"] = "blocked"
         result["claim_allowed"] = False
         result["phone_claim_allowed"] = False

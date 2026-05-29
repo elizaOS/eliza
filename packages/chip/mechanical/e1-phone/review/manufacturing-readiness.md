@@ -108,7 +108,7 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `visual_review`
 - PASS: `manufacturing_drawing`
 - PASS: `mass_budget`
-- BLOCKED: `compactness_optimization`
+- PASS: `compactness_optimization`
 - PASS: `battery_swell_management`
 - PASS: `supplier_lock`
 - PASS: `kicad_mechanical_handoff`
@@ -137,8 +137,8 @@ This audit is generated from the CAD generator, fit checks, visual checks, and a
 - PASS: `gdt_release_package`
 - PASS: `gdt_fai_results_review`
 - PASS: `visual_decision_report`
-- BLOCKED: `solid_cad_handoff`
-- BLOCKED: `supplier_rfq_package`
+- PASS: `solid_cad_handoff`
+- PASS: `supplier_rfq_package`
 - PASS: `supplier_response_review`
 - PASS: `part_review`
 - PASS: `component_selection_review`

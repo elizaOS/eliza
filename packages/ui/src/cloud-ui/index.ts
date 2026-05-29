@@ -68,8 +68,6 @@ export type {
 } from "./components/docs";
 export {
   ApiParameterSelect,
-  ApiRouteExplorer,
-  ApiRouteExplorerClient,
   DocsLayout,
   EndpointCard,
   LlmsTxtBadge,

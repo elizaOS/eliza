@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
+import re
 import shlex
 import shutil
 from collections.abc import Callable
@@ -19,6 +21,17 @@ REPORT = ROOT / "build/reports/chip-os-environment-preflight.json"
 
 SCHEMA = "eliza.chip_os_environment_preflight.v1"
 CLAIM_BOUNDARY = "environment_preflight_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+HOST_LOCAL_PATH = re.compile(r"/(?:home|Users|tmp|var/folders)/[^\s\"']+")
 
 
 @dataclass(frozen=True)
@@ -169,6 +182,11 @@ ENV_DEFAULT_PATHS = {
     ),
 }
 
+ENV_DEFAULT_COMMANDS = {
+    "AOSP_QEMU_SMOKE_COMMAND": ROOT / "scripts/aosp_qemu_smoke_command.sh",
+    "AOSP_RENODE_SMOKE_COMMAND": ROOT / "scripts/aosp_renode_smoke_command.sh",
+}
+
 TOOL_DEFAULT_PATHS = {
     "qemu-system-riscv64": (
         ROOT / "tools/bin/qemu-system-riscv64",
@@ -269,6 +287,38 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+def generated_utc() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    sanitized = value
+    replacements = (
+        (str(ROOT), "packages/chip"),
+        (str(REPO), "."),
+        ("/home/shaw/aosp", "$AOSP_DIR"),
+    )
+    for source, replacement in replacements:
+        sanitized = sanitized.replace(source, replacement.rstrip("/"))
+    return HOST_LOCAL_PATH.sub(lambda match: Path(match.group(0)).name, sanitized)
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
+
+
+def report_for_output(report: dict[str, Any]) -> dict[str, Any]:
+    output = dict(report)
+    output["generated_utc"] = generated_utc()
+    return provenance_safe_value(output)
+
+
 def finding(code: str, message: str, evidence: str, next_step: str, **extra: Any) -> dict[str, Any]:
     row = {
         "code": code,
@@ -319,6 +369,9 @@ def check_tools(
 
 
 def default_env_value(name: str) -> str:
+    command = ENV_DEFAULT_COMMANDS.get(name)
+    if command and command.is_file() and os.access(command, os.X_OK):
+        return str(command)
     for candidate in ENV_DEFAULT_PATHS.get(name, ()):
         if candidate.exists():
             return str(candidate)
@@ -445,6 +498,7 @@ def build_report(
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "tools": len(tool_rows),
             "missing_tools": sum(1 for row in tool_rows if not row["present"]),
@@ -470,9 +524,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     report = build_report()
+    output_report = report_for_output(report)
     output = Path(args.report)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    output.write_text(json.dumps(output_report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     summary = report["summary"]
     print(
         f"STATUS: {str(report['status']).upper()} chip_os_environment_preflight "

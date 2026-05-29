@@ -77,13 +77,16 @@ def main() -> int:
             owner="layout",
             source="kicad-cli pcb drc",
             expected_path="board/kicad/e1-phone/production/reports/drc.json",
-            blocker="PCB has no routed copper, filled zones, or DRC evidence",
+            blocker="no release-approved routed copper, filled zones, or DRC evidence",
         ),
         "routed_kicad_pcb": output_item(
             owner="layout",
             source="KiCad PCB editor",
             expected_path="board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
-            blocker="current KiCad PCB is a concept placeholder scaffold",
+            blocker=(
+                "routed KiCad PCB exists only as a blocked local candidate; "
+                "production source remains a concept placeholder scaffold"
+            ),
         ),
         "filled_zones": output_item(
             owner="layout",
@@ -144,6 +147,12 @@ def main() -> int:
             source="KiCad STEP export with vendor 3D models",
             expected_path="board/kicad/e1-phone/production/step",
             blocker="routed board STEP with supplier connector/module/shield models missing",
+        ),
+        "supplier_component_3d_model_manifest": output_item(
+            owner="mechanical",
+            source="supplier STEP/B-rep intake and component-to-footprint review",
+            expected_path="board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
+            blocker="supplier-approved component 3D model manifest and model-to-footprint approval missing",
         ),
         "enclosure_clearance_report_using_routed_step": output_item(
             owner="mechanical",

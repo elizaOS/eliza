@@ -16,6 +16,16 @@ PASS = "PASS"
 BLOCK = "BLOCK"
 FAIL = "FAIL"
 PRODUCT_STATUS_TIMEOUT_SECONDS = 30
+PROVENANCE_NORMALIZE_TARGETS = (
+    "build/reports",
+    "docs/evidence",
+    "../os/linux/elizaos/evidence",
+)
+PROVENANCE_SANITIZE_ROOTS = (
+    ROOT / "build/reports",
+    ROOT / "docs/evidence",
+    ROOT.parent / "os/linux/elizaos/evidence",
+)
 
 
 @dataclass
@@ -429,9 +439,12 @@ def renode_status() -> Status:
 
 
 def benchmark_status() -> Status:
+    generated_ap = ROOT / "benchmarks/results/generated-ap-smoke/report.json"
     host_smoke = ROOT / "benchmarks/results/final-macbook-host-smoke/report.json"
     report = (
-        host_smoke
+        generated_ap
+        if generated_ap.is_file()
+        else host_smoke
         if host_smoke.is_file()
         else ROOT / "benchmarks/results/pipeline-check/report.json"
     )
@@ -440,7 +453,7 @@ def benchmark_status() -> Status:
             "benchmarks",
             BLOCK,
             "missing regenerated benchmark report",
-            "make benchmarks-dry-run or run the final-macbook-host-smoke benchmark set",
+            "python3 benchmarks/import_cpu_ap_benchmark_evidence.py or make benchmarks-dry-run",
             "regen_required",
         )
     data = json.loads(report.read_text())
@@ -709,6 +722,42 @@ def print_json(statuses: list[Status]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
+def normalize_generated_report_provenance() -> None:
+    normalizer = ROOT / "scripts/normalize_report_provenance.py"
+    if not normalizer.is_file():
+        return
+    subprocess.run(
+        [sys.executable, str(normalizer), *PROVENANCE_NORMALIZE_TARGETS],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    sanitizer = ROOT / "scripts/provenance_sanitize.py"
+    if not sanitizer.is_file():
+        return
+    paths: list[str] = []
+    for root in PROVENANCE_SANITIZE_ROOTS:
+        if not root.exists():
+            continue
+        if root.is_file():
+            paths.append(str(root))
+            continue
+        paths.extend(
+            str(path)
+            for path in root.rglob("*")
+            if path.is_file() and path.suffix.lower() in {".json", ".yaml", ".yml", ".log", ".txt"}
+        )
+    if paths:
+        subprocess.run(
+            [sys.executable, str(sanitizer), *paths],
+            cwd=ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
@@ -717,6 +766,7 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
 
     statuses = collect_statuses()
+    normalize_generated_report_provenance()
     if args.json:
         print_json(statuses)
     else:

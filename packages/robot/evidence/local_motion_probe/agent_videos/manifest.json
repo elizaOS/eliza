@@ -1,0 +1,81 @@
+{
+  "started_at": "2026-05-27T19:02:56Z",
+  "commands": [
+    "stand up",
+    "walk forward",
+    "turn left"
+  ],
+  "production_command_coverage": {
+    "ok": false,
+    "required": [
+      "stand up",
+      "walk forward",
+      "walk backward",
+      "sidestep left",
+      "sidestep right",
+      "turn left",
+      "turn right"
+    ],
+    "present": [
+      "stand up",
+      "walk forward",
+      "turn left"
+    ],
+    "missing": [
+      "walk backward",
+      "sidestep left",
+      "sidestep right",
+      "turn right"
+    ]
+  },
+  "record_combined": true,
+  "preserve_state_between_commands": false,
+  "policy_checkpoint": null,
+  "profiles": [
+    {
+      "profile": "asimov-1",
+      "videos": [
+        "asimov-1_combined_actions.mp4",
+        "asimov-1_stand_up.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "asimov-1_combined_actions.telemetry.json",
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_turn_left.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "asimov-1_stand_up.mp4",
+        "asimov-1_walk_forward.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json",
+        "asimov-1_turn_left.telemetry.json",
+        "asimov-1_combined_actions.telemetry.json"
+      ],
+      "expected_contact_sheets": [
+        "asimov-1_asimov-1_stand_up_contact.jpg",
+        "asimov-1_asimov-1_walk_forward_contact.jpg",
+        "asimov-1_asimov-1_turn_left_contact.jpg",
+        "asimov-1_asimov-1_combined_actions_contact.jpg"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "asimov-1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "scripted_smoke": true,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] executing task=turn_left ('turn left')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/agent_videos/asimov-1/asimov-1_turn_left.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/agent_videos/asimov-1/asimov-1_turn_left.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/agent_videos/asimov-1/asimov-1_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/agent_videos/asimov-1/asimov-1_combined_actions.telemetry.json",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 15.15
+    }
+  ],
+  "ok": true
+}

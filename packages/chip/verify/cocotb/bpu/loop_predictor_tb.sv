@@ -19,7 +19,10 @@ module loop_predictor_tb (
     input  logic [VADDR_W-1:0] upd_pc,
     input  logic [LOOP_PATH_SIG_W-1:0] upd_path_sig,
     input  logic [VADDR_W-1:0] upd_target,
-    input  logic               upd_taken
+    input  logic               upd_taken,
+    input  logic               test_corrupt_parity_valid,
+    input  logic [VADDR_W-1:0] test_corrupt_parity_pc,
+    input  logic [LOOP_PATH_SIG_W-1:0] test_corrupt_parity_path_sig
 );
     loop_predictor u_loop (.*);
 endmodule

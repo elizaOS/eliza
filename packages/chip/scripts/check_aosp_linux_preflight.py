@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import json
 import os
 import shutil
@@ -9,11 +10,32 @@ import subprocess
 import sys
 from pathlib import Path
 
+from provenance_sanitize import sanitize_host_local_paths
+
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = Path(
     os.environ.get("AOSP_LINUX_PREFLIGHT_REPORT", ROOT / "build/reports/aosp_linux_preflight.json")
 )
 CLAIM_BOUNDARY = "host_preflight_only_not_aosp_build_boot_cuttlefish_or_e1_chip_hardware_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "aosp_build_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "cuttlefish_boot_claim_allowed": False,
+    "e1_chip_hardware_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
+DEFAULT_AOSP_DIRS = (Path("/home/shaw/aosp"),)
+TOOL_DEFAULT_PATHS = {
+    "renode": (ROOT / "tools/bin/renode", ROOT / "external/renode_1.16.1-dotnet_portable/renode"),
+}
+SMOKE_COMMAND_DEFAULTS = {
+    "AOSP_QEMU_SMOKE_COMMAND": ROOT / "scripts/aosp_qemu_smoke_command.sh",
+    "AOSP_RENODE_SMOKE_COMMAND": ROOT / "scripts/aosp_renode_smoke_command.sh",
+}
 
 LINUX_REQUIREMENTS = [
     "Linux host with hardware virtualization enabled",
@@ -69,6 +91,20 @@ HANDOFF_COMMANDS = [
 ]
 
 
+def utc_now() -> str:
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_value(value):
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    return value
+
+
 def display_path(path: Path) -> str:
     try:
         return path.relative_to(ROOT).as_posix()
@@ -77,7 +113,7 @@ def display_path(path: Path) -> str:
 
 
 def command_version(command: str) -> str | None:
-    path = shutil.which(command)
+    path = tool_path(command)
     if path is None:
         return None
     try:
@@ -96,7 +132,7 @@ def command_version(command: str) -> str | None:
 
 
 def command_blocker(command: str) -> str | None:
-    path = shutil.which(command)
+    path = tool_path(command)
     if path is None:
         return f"{command} not found on PATH"
     if command == "repo":
@@ -117,6 +153,26 @@ def command_blocker(command: str) -> str | None:
         if "<repo not installed>" in output:
             return f"{command} launcher found at {path}, but repo is not installed"
     return None
+
+
+def tool_path(command: str) -> str | None:
+    found = shutil.which(command)
+    if found:
+        return found
+    for candidate in TOOL_DEFAULT_PATHS.get(command, ()):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def smoke_command_value(name: str) -> str:
+    explicit = os.environ.get(name, "")
+    if explicit:
+        return explicit
+    default = SMOKE_COMMAND_DEFAULTS.get(name)
+    if default and default.is_file() and os.access(default, os.X_OK):
+        return str(default)
+    return ""
 
 
 def aosp_tool(aosp_dir: Path | None, *names: str) -> str | None:
@@ -165,6 +221,20 @@ def repo_input_state() -> dict:
     }
 
 
+def resolve_aosp_dir(args: argparse.Namespace) -> tuple[str, str]:
+    if args.aosp_dir:
+        return args.aosp_dir, "arg"
+    env_value = os.environ.get("AOSP_DIR", "")
+    if env_value:
+        return env_value, "env"
+    if os.environ.get("ELIZA_DISABLE_AOSP_DIR_DEFAULTS") == "1":
+        return "", "unset"
+    for candidate in DEFAULT_AOSP_DIRS:
+        if (candidate / "build/envsetup.sh").is_file() and (candidate / "device").is_dir():
+            return str(candidate), "repo-default"
+    return "", "unset"
+
+
 def group_output() -> str:
     try:
         return subprocess.check_output(["id", "-nG"], text=True).strip()
@@ -178,7 +248,7 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
     track_blockers: dict[str, list[str]] = {name: [] for name in EXECUTION_TRACKS}
     host_os = os.uname().sysname
     host_arch = os.uname().machine
-    aosp_dir_text = args.aosp_dir or os.environ.get("AOSP_DIR", "")
+    aosp_dir_text, aosp_dir_source = resolve_aosp_dir(args)
     aosp_dir = Path(aosp_dir_text).expanduser().resolve() if aosp_dir_text else None
     repo_inputs = repo_input_state()
     has_existing_checkout = bool(
@@ -255,11 +325,11 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
         blockers.append(message)
         track_blockers["cuttlefish"].append(message)
 
-    if shutil.which("renode") is None:
+    if tool_path("renode") is None:
         track_blockers["renode"].append("renode not found on PATH")
-    if not os.environ.get("AOSP_QEMU_SMOKE_COMMAND"):
+    if not smoke_command_value("AOSP_QEMU_SMOKE_COMMAND"):
         track_blockers["qemu"].append("AOSP_QEMU_SMOKE_COMMAND is not set")
-    if not os.environ.get("AOSP_RENODE_SMOKE_COMMAND"):
+    if not smoke_command_value("AOSP_RENODE_SMOKE_COMMAND"):
         track_blockers["renode"].append("AOSP_RENODE_SMOKE_COMMAND is not set")
     if repo_inputs["missing"]:
         blockers.append("repo-local AOSP device inputs are incomplete")
@@ -284,9 +354,12 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
 
     report = {
         "schema": "eliza.aosp_linux_preflight.v1",
+        "generated_utc": utc_now(),
         "status": "blocked" if blockers else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "aosp_dir": str(aosp_dir) if aosp_dir else "",
+        "aosp_dir_source": aosp_dir_source,
         "host": {
             "os": host_os,
             "arch": host_arch,
@@ -302,6 +375,10 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
             "qemu-system-riscv64": command_version("qemu-system-riscv64"),
             "renode": command_version("renode"),
             "cuttlefish_launcher": cuttlefish_launcher,
+        },
+        "smoke_commands": {
+            "AOSP_QEMU_SMOKE_COMMAND": smoke_command_value("AOSP_QEMU_SMOKE_COMMAND"),
+            "AOSP_RENODE_SMOKE_COMMAND": smoke_command_value("AOSP_RENODE_SMOKE_COMMAND"),
         },
         "import_status": import_status,
         "execution_tracks": tracks,
@@ -319,7 +396,7 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
             "used as AOSP build, boot, CTS, VTS, or e1-chip hardware evidence."
         ),
     }
-    return (2 if blockers else 0), report
+    return (2 if blockers else 0), provenance_safe_value(report)
 
 
 def main() -> int:

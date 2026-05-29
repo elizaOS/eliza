@@ -1,37 +1,30 @@
-schema: eliza.coverage_requirement_map.v1
 claim_boundary: merged_local_evidence_only_no_signoff_no_hardware
-
-description: >-
-  Maps merged verification evidence (cocotb cover-point blocks and bound
-  CDC/RDC formal property tasks) to verification requirement IDs owned by the
-  Traceability agent's registry under docs/spec-db/requirements/verif.yaml.
-  scripts/check_coverage_holes.py validates every requirement_id below against
-  that registry and fails closed "registry missing" until it exists, rather than
-  treating an unverifiable map as covered. The mapped evidence must stay inside
-  each requirement's own claim_boundary (shallow/structural; no signoff claim).
-
-# block: names match eliza.verification_coverage.v1 .blocks keys
-# property: names match eliza.verification_coverage.v1 .cdc_rdc_properties keys
+description: Maps merged verification evidence (cocotb cover-point blocks and bound
+  CDC/RDC formal property tasks) to verification requirement IDs owned by the Traceability
+  agent's registry under docs/spec-db/requirements/verif.yaml. scripts/check_coverage_holes.py
+  validates every requirement_id below against that registry and fails closed "registry
+  missing" until it exists, rather than treating an unverifiable map as covered. The
+  mapped evidence must stay inside each requirement's own claim_boundary (shallow/structural;
+  no signoff claim).
+generated_utc: '2026-05-21T12:31:14Z'
 mappings:
-  - requirement_id: REQ-VERIF-0001
-    description: >-
-      AXI-Lite property pack bound across fabric masters/targets; evidenced by
-      the SoC-top formal entry and SoC-level cocotb cover-points.
-    blocks:
-      - e1_soc_top
-      - chip
-  - requirement_id: REQ-VERIF-0002
-    description: >-
-      DMA formal coverage (protocol/long-transfer) and AXI-response cover-points.
-    blocks:
-      - e1_dma
-  - requirement_id: REQ-VERIF-0003
-    description: NPU opcode/shape/status coverage accounting from cocotb cover-points.
-    blocks:
-      - npu
-  - requirement_id: REQ-VERIF-0004
-    description: >-
-      Property-proof evidence on the debug MMIO bridge demonstrates the formal
-      flow produces real BMC evidence (not just a Yosys structural fallback).
-    blocks:
-      - e1_dbg_mmio_bridge
+- blocks:
+  - e1_soc_top
+  - chip
+  description: AXI-Lite property pack bound across fabric masters/targets; evidenced
+    by the SoC-top formal entry and SoC-level cocotb cover-points.
+  requirement_id: REQ-VERIF-0001
+- blocks:
+  - e1_dma
+  description: DMA formal coverage (protocol/long-transfer) and AXI-response cover-points.
+  requirement_id: REQ-VERIF-0002
+- blocks:
+  - npu
+  description: NPU opcode/shape/status coverage accounting from cocotb cover-points.
+  requirement_id: REQ-VERIF-0003
+- blocks:
+  - e1_dbg_mmio_bridge
+  description: Property-proof evidence on the debug MMIO bridge demonstrates the formal
+    flow produces real BMC evidence (not just a Yosys structural fallback).
+  requirement_id: REQ-VERIF-0004
+schema: eliza.coverage_requirement_map.v1

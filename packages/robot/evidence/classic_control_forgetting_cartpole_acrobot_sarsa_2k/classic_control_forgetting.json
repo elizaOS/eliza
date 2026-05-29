@@ -1,0 +1,660 @@
+{
+  "config": {
+    "first_task": "CartPole-v1",
+    "second_task": "Acrobot-v1",
+    "steps_first_task": 2000,
+    "steps_second_task": 2000,
+    "eval_episodes": 5,
+    "seeds": 1,
+    "learners": [
+      "alberta",
+      "ppo",
+      "dqn",
+      "a2c"
+    ],
+    "n_prototypes": 64,
+    "proprio_random_dim": 16,
+    "note": "Alberta uses the vendored discrete SARSAAgent with sparse-gated task-local features and task-valid action masking. PPO, DQN, and A2C are strong standard Stable-Baselines3 classic-control baselines here, not a leaderboard claim for all possible CartPole solvers."
+  },
+  "tasks": [
+    "CartPole-v1",
+    "Acrobot-v1"
+  ],
+  "aggregate": {
+    "alberta": {
+      "acc": {
+        "mean": -225.9,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 25.800000000000004,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "cartpole_after_first": {
+        "mean": 22.4,
+        "std": 0.0
+      },
+      "cartpole_after_second": {
+        "mean": 48.2,
+        "std": 0.0
+      },
+      "cartpole_retention_delta": {
+        "mean": 25.800000000000004,
+        "std": 0.0
+      },
+      "second_task_after_second": {
+        "mean": -500.0,
+        "std": 0.0
+      }
+    },
+    "ppo": {
+      "acc": {
+        "mean": -237.8,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 1.7999999999999972,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "cartpole_after_first": {
+        "mean": 22.6,
+        "std": 0.0
+      },
+      "cartpole_after_second": {
+        "mean": 24.4,
+        "std": 0.0
+      },
+      "cartpole_retention_delta": {
+        "mean": 1.7999999999999972,
+        "std": 0.0
+      },
+      "second_task_after_second": {
+        "mean": -500.0,
+        "std": 0.0
+      }
+    },
+    "dqn": {
+      "acc": {
+        "mean": -224.3,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 20.2,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "cartpole_after_first": {
+        "mean": 31.2,
+        "std": 0.0
+      },
+      "cartpole_after_second": {
+        "mean": 51.4,
+        "std": 0.0
+      },
+      "cartpole_retention_delta": {
+        "mean": 20.2,
+        "std": 0.0
+      },
+      "second_task_after_second": {
+        "mean": -500.0,
+        "std": 0.0
+      }
+    },
+    "a2c": {
+      "acc": {
+        "mean": -81.69999999999999,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 10.0,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "cartpole_after_first": {
+        "mean": 42.8,
+        "std": 0.0
+      },
+      "cartpole_after_second": {
+        "mean": 52.8,
+        "std": 0.0
+      },
+      "cartpole_retention_delta": {
+        "mean": 10.0,
+        "std": 0.0
+      },
+      "second_task_after_second": {
+        "mean": -216.2,
+        "std": 0.0
+      }
+    }
+  },
+  "results": [
+    {
+      "learner": "alberta",
+      "seed": 7000,
+      "baseline": [
+        {
+          "episodes": 5,
+          "mean_return": 9.8,
+          "std_return": 0.39999999999999997,
+          "mean_length": 9.8,
+          "returns": [
+            10.0,
+            10.0,
+            9.0,
+            10.0,
+            10.0
+          ]
+        },
+        {
+          "episodes": 5,
+          "mean_return": -500.0,
+          "std_return": 0.0,
+          "mean_length": 500.0,
+          "returns": [
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0
+          ]
+        }
+      ],
+      "phase_evals": [
+        [
+          {
+            "episodes": 5,
+            "mean_return": 22.4,
+            "std_return": 3.0724582991474434,
+            "mean_length": 22.4,
+            "returns": [
+              21.0,
+              21.0,
+              28.0,
+              19.0,
+              23.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -500.0,
+            "std_return": 0.0,
+            "mean_length": 500.0,
+            "returns": [
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0
+            ]
+          }
+        ],
+        [
+          {
+            "episodes": 5,
+            "mean_return": 48.2,
+            "std_return": 12.039933554633928,
+            "mean_length": 48.2,
+            "returns": [
+              48.0,
+              47.0,
+              30.0,
+              68.0,
+              48.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -500.0,
+            "std_return": 0.0,
+            "mean_length": 500.0,
+            "returns": [
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0
+            ]
+          }
+        ]
+      ],
+      "matrix": [
+        [
+          22.4,
+          -500.0
+        ],
+        [
+          48.2,
+          -500.0
+        ]
+      ],
+      "metrics": {
+        "acc": -225.9,
+        "bwt": 25.800000000000004,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          48.2,
+          -500.0
+        ],
+        "diagonal_per_task": [
+          22.4,
+          -500.0
+        ]
+      },
+      "summary": {
+        "acc": -225.9,
+        "bwt": 25.800000000000004,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "cartpole_after_first": 22.4,
+        "cartpole_after_second": 48.2,
+        "cartpole_retention_delta": 25.800000000000004,
+        "second_task_after_second": -500.0
+      }
+    },
+    {
+      "learner": "ppo",
+      "seed": 7000,
+      "baseline": [
+        {
+          "episodes": 5,
+          "mean_return": 9.4,
+          "std_return": 0.7999999999999999,
+          "mean_length": 9.4,
+          "returns": [
+            11.0,
+            9.0,
+            9.0,
+            9.0,
+            9.0
+          ]
+        },
+        {
+          "episodes": 5,
+          "mean_return": -500.0,
+          "std_return": 0.0,
+          "mean_length": 500.0,
+          "returns": [
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0
+          ]
+        }
+      ],
+      "phase_evals": [
+        [
+          {
+            "episodes": 5,
+            "mean_return": 22.6,
+            "std_return": 3.9293765408777,
+            "mean_length": 22.6,
+            "returns": [
+              16.0,
+              26.0,
+              27.0,
+              23.0,
+              21.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -500.0,
+            "std_return": 0.0,
+            "mean_length": 500.0,
+            "returns": [
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0
+            ]
+          }
+        ],
+        [
+          {
+            "episodes": 5,
+            "mean_return": 24.4,
+            "std_return": 4.454211490264017,
+            "mean_length": 24.4,
+            "returns": [
+              17.0,
+              29.0,
+              29.0,
+              24.0,
+              23.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -500.0,
+            "std_return": 0.0,
+            "mean_length": 500.0,
+            "returns": [
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0
+            ]
+          }
+        ]
+      ],
+      "matrix": [
+        [
+          22.6,
+          -500.0
+        ],
+        [
+          24.4,
+          -500.0
+        ]
+      ],
+      "metrics": {
+        "acc": -237.8,
+        "bwt": 1.7999999999999972,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          24.4,
+          -500.0
+        ],
+        "diagonal_per_task": [
+          22.6,
+          -500.0
+        ]
+      },
+      "summary": {
+        "acc": -237.8,
+        "bwt": 1.7999999999999972,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "cartpole_after_first": 22.6,
+        "cartpole_after_second": 24.4,
+        "cartpole_retention_delta": 1.7999999999999972,
+        "second_task_after_second": -500.0
+      }
+    },
+    {
+      "learner": "dqn",
+      "seed": 7000,
+      "baseline": [
+        {
+          "episodes": 5,
+          "mean_return": 9.4,
+          "std_return": 0.7999999999999999,
+          "mean_length": 9.4,
+          "returns": [
+            8.0,
+            10.0,
+            10.0,
+            10.0,
+            9.0
+          ]
+        },
+        {
+          "episodes": 5,
+          "mean_return": -500.0,
+          "std_return": 0.0,
+          "mean_length": 500.0,
+          "returns": [
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0
+          ]
+        }
+      ],
+      "phase_evals": [
+        [
+          {
+            "episodes": 5,
+            "mean_return": 31.2,
+            "std_return": 5.192301994298868,
+            "mean_length": 31.2,
+            "returns": [
+              41.0,
+              26.0,
+              28.0,
+              30.0,
+              31.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -500.0,
+            "std_return": 0.0,
+            "mean_length": 500.0,
+            "returns": [
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0
+            ]
+          }
+        ],
+        [
+          {
+            "episodes": 5,
+            "mean_return": 51.4,
+            "std_return": 8.8,
+            "mean_length": 51.4,
+            "returns": [
+              67.0,
+              43.0,
+              43.0,
+              51.0,
+              53.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -500.0,
+            "std_return": 0.0,
+            "mean_length": 500.0,
+            "returns": [
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0
+            ]
+          }
+        ]
+      ],
+      "matrix": [
+        [
+          31.2,
+          -500.0
+        ],
+        [
+          51.4,
+          -500.0
+        ]
+      ],
+      "metrics": {
+        "acc": -224.3,
+        "bwt": 20.2,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          51.4,
+          -500.0
+        ],
+        "diagonal_per_task": [
+          31.2,
+          -500.0
+        ]
+      },
+      "summary": {
+        "acc": -224.3,
+        "bwt": 20.2,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "cartpole_after_first": 31.2,
+        "cartpole_after_second": 51.4,
+        "cartpole_retention_delta": 20.2,
+        "second_task_after_second": -500.0
+      }
+    },
+    {
+      "learner": "a2c",
+      "seed": 7000,
+      "baseline": [
+        {
+          "episodes": 5,
+          "mean_return": 9.4,
+          "std_return": 0.7999999999999999,
+          "mean_length": 9.4,
+          "returns": [
+            11.0,
+            9.0,
+            9.0,
+            9.0,
+            9.0
+          ]
+        },
+        {
+          "episodes": 5,
+          "mean_return": -500.0,
+          "std_return": 0.0,
+          "mean_length": 500.0,
+          "returns": [
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0,
+            -500.0
+          ]
+        }
+      ],
+      "phase_evals": [
+        [
+          {
+            "episodes": 5,
+            "mean_return": 42.8,
+            "std_return": 13.81882773609976,
+            "mean_length": 42.8,
+            "returns": [
+              23.0,
+              62.0,
+              54.0,
+              40.0,
+              35.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -500.0,
+            "std_return": 0.0,
+            "mean_length": 500.0,
+            "returns": [
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0,
+              -500.0
+            ]
+          }
+        ],
+        [
+          {
+            "episodes": 5,
+            "mean_return": 52.8,
+            "std_return": 21.609257275528932,
+            "mean_length": 52.8,
+            "returns": [
+              27.0,
+              81.0,
+              76.0,
+              42.0,
+              38.0
+            ]
+          },
+          {
+            "episodes": 5,
+            "mean_return": -216.2,
+            "std_return": 143.52477138111036,
+            "mean_length": 217.0,
+            "returns": [
+              -500.0,
+              -144.0,
+              -184.0,
+              -134.0,
+              -119.0
+            ]
+          }
+        ]
+      ],
+      "matrix": [
+        [
+          42.8,
+          -500.0
+        ],
+        [
+          52.8,
+          -216.2
+        ]
+      ],
+      "metrics": {
+        "acc": -81.69999999999999,
+        "bwt": 10.0,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          52.8,
+          -216.2
+        ],
+        "diagonal_per_task": [
+          42.8,
+          -216.2
+        ]
+      },
+      "summary": {
+        "acc": -81.69999999999999,
+        "bwt": 10.0,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "cartpole_after_first": 42.8,
+        "cartpole_after_second": 52.8,
+        "cartpole_retention_delta": 10.0,
+        "second_task_after_second": -216.2
+      }
+    }
+  ],
+  "generated_at": "2026-05-27T15:23:13"
+}

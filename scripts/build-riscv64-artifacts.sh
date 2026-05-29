@@ -11,15 +11,13 @@
 # harness). Unset = no-op.
 #
 # Tooling requirements (caller's job to install):
-#   - zig 0.14+        (Zig toolchain; provides riscv64-linux-musl)
+#   - zig 0.14+        (Zig toolchain; provides riscv64-linux-musl — every
+#                       cross-build here is zig/musl, so no Android NDK is needed)
 #   - cmake 3.21+      (drives every package's cross-build)
-#   - Android NDK r27+ (only needed for the *android*-riscv64-cpu paths
-#                       — not required for linux-riscv64-cpu work)
 #   - node 20+         (drives compile-libllama.mjs / build-omnivoice.mjs / build-whisper.mjs)
 #
 # Usage:
 #   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh
-#   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh --skip-android  # CPU-side only
 #   ELIZA_RISCV64_SMOKE=1 bash scripts/build-riscv64-artifacts.sh --force         # rebuild even if present
 #
 # Exit code:
@@ -34,13 +32,11 @@ cd "$repo_root"
 
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 FORCE=0
-SKIP_ANDROID=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --jobs) JOBS="$2"; shift 2;;
         --force) FORCE=1; shift;;
-        --skip-android) SKIP_ANDROID=1; shift;;
         -h|--help)
             awk '/^# /{print substr($0,3)} /^#$/{print ""} !/^#/{exit}' "$0"
             exit 0;;
@@ -81,15 +77,8 @@ if [ -z "$NODE_BIN" ]; then
     exit 2
 fi
 
-ANDROID_NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-${ANDROID_NDK:-}}}"
-if [ -z "$ANDROID_NDK" ] && [ "$SKIP_ANDROID" = "0" ]; then
-    echo "[build-riscv64-artifacts] ANDROID_NDK_HOME unset; will SKIP android-riscv64-cpu targets." >&2
-    echo "[build-riscv64-artifacts]   Pass --skip-android to silence; or install NDK r27+ and export ANDROID_NDK_HOME." >&2
-    SKIP_ANDROID=1
-fi
-
 echo "[build-riscv64-artifacts] zig=$ZIG_VERSION  cmake=$(cmake --version | head -1)  node=$($NODE_BIN --version)"
-echo "[build-riscv64-artifacts] jobs=$JOBS  force=$FORCE  skip_android=$SKIP_ANDROID"
+echo "[build-riscv64-artifacts] jobs=$JOBS  force=$FORCE"
 
 # ── Helpers ──────────────────────────────────────────────────────────
 FAIL_N=0
@@ -194,31 +183,37 @@ if [ ! -f "$COMPILE_LIBLLAMA" ]; then
     echo "  ✗ compile-libllama.mjs missing at $COMPILE_LIBLLAMA"
     FAIL_N=$((FAIL_N+1))
 else
-    # linux-riscv64-cpu path. Sentinel: any libllama.so under build/riscv64-stage/.
-    linux_sentinel="$repo_root/build/riscv64-stage/riscv64/libllama.so"
-    if should_build "$linux_sentinel"; then
-        echo "→ Building libllama (linux-riscv64-cpu) …"
-        if "$NODE_BIN" "$COMPILE_LIBLLAMA" --target linux-riscv64-cpu >"$repo_root/build/libllama-linux-riscv64.log" 2>&1; then
-            echo "  ✓ libllama linux-riscv64-cpu"
+    # compile-libllama.mjs exposes exactly one riscv64 target: android-riscv64-cpu.
+    # Despite the name it produces a Linux/musl shared object — zig
+    # `riscv64-linux-musl` driver, -DCMAKE_SYSTEM_NAME=Linux, no Android NDK in
+    # the compile, strip via `zig objcopy` (NDK llvm-strip is only a non-fatal
+    # last-resort fallback). So it is the canonical riscv64 libllama for both the
+    # APK and bare Linux riscv64, and it does NOT require the NDK. (There is no
+    # separate `linux-riscv64-cpu` libllama target; the earlier invocation of one
+    # always threw "unsupported --target".)
+    #
+    # repoRoot inside compile-libllama resolves to the milady consumer root, so
+    # its default --assets-dir/--src-dir would land in the wrong tree. Pin both
+    # to this eliza checkout so the .so installs where check-riscv64-artifacts.sh
+    # scans for it and the build uses the in-repo llama.cpp submodule.
+    libllama_assets_dir="$repo_root/packages/app-core/platforms/android/app/src/main/assets/agent"
+    libllama_sentinel="$libllama_assets_dir/riscv64/libllama.so"
+    libllama_src_args=()
+    if [ -f "$repo_root/plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt" ]; then
+        libllama_src_args=(--src-dir "$repo_root/plugins/plugin-local-inference/native/llama.cpp")
+    fi
+    if should_build "$libllama_sentinel"; then
+        echo "→ Building libllama (riscv64, zig/musl) …"
+        mkdir -p "$repo_root/build"
+        if "$NODE_BIN" "$COMPILE_LIBLLAMA" --target android-riscv64-cpu \
+            --assets-dir "$libllama_assets_dir" \
+            "${libllama_src_args[@]}" \
+            >"$repo_root/build/libllama-riscv64.log" 2>&1; then
+            echo "  ✓ libllama riscv64"
         else
-            echo "  ✗ libllama linux-riscv64-cpu (see build/libllama-linux-riscv64.log)"
+            echo "  ✗ libllama riscv64 (see build/libllama-riscv64.log)"
             FAIL_N=$((FAIL_N+1))
         fi
-    fi
-    # android-riscv64-cpu path. Sentinel: assets/agent/riscv64/libllama.so
-    if [ "$SKIP_ANDROID" = "0" ]; then
-        android_sentinel="$repo_root/packages/app-core/platforms/android/app/src/main/assets/agent/riscv64/libllama.so"
-        if should_build "$android_sentinel"; then
-            echo "→ Building libllama (android-riscv64-cpu) …"
-            if "$NODE_BIN" "$COMPILE_LIBLLAMA" --target android-riscv64-cpu >"$repo_root/build/libllama-android-riscv64.log" 2>&1; then
-                echo "  ✓ libllama android-riscv64-cpu"
-            else
-                echo "  ✗ libllama android-riscv64-cpu (see build/libllama-android-riscv64.log)"
-                FAIL_N=$((FAIL_N+1))
-            fi
-        fi
-    else
-        echo "  → skipping android-riscv64-cpu (--skip-android / NDK unset)"
     fi
 fi
 

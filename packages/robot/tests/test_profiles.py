@@ -200,12 +200,28 @@ def test_supported_profile_has_ego_camera(profile_id: str) -> None:
     # Every supported humanoid declares at least one robot-mounted RGB
     # camera for the ego-pose observation channel + perception module.
     # Mount link varies per robot (head_tilt_link on AiNex, torso on
-    # Unitree, pelvis_link on Asimov) — we only require one exists with
+    # Unitree, pelvis_link on Asimov); locomotion uses a separate stable-body
+    # field tested below.
+    # We only require one camera exists with
     # a valid mount link and resolution.
     assert cams, f"{profile_id} declares no cameras"
     cam = cams[0]
     assert cam.mount_link, f"{profile_id} camera has no mount_link"
     assert cam.width > 0 and cam.height > 0 and cam.fps > 0
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)
+def test_supported_profile_declares_stable_locomotion_tracking_body(
+    profile_id: str,
+) -> None:
+    profile = load_profile(profile_id)
+    body_name = profile.sensors.locomotion_tracking_body
+    assert body_name, f"{profile_id} has no locomotion_tracking_body"
+    camera_mounts = {camera.mount_link for camera in profile.sensors.cameras}
+    if profile_id == "hiwonder-ainex":
+        assert body_name == "body_link"
+        assert body_name not in camera_mounts
+        assert "head" not in body_name
 
 
 @pytest.mark.parametrize("profile_id", SUPPORTED_PROFILE_IDS)

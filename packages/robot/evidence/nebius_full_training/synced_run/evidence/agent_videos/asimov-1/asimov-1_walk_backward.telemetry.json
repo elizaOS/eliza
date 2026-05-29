@@ -1,0 +1,68 @@
+{
+  "profile": "asimov-1",
+  "label": "walk backward",
+  "task_id": "walk_backward",
+  "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+  "steps_requested": 80,
+  "steps_executed": 40,
+  "terminated": true,
+  "truncated": false,
+  "first_done_step": 40,
+  "done_reason": "terminated",
+  "fall_threshold": 0.378,
+  "torso_z": {
+    "min": 0.366449692022043,
+    "max": 0.6318425806072878,
+    "final": 0.366449692022043,
+    "mean": 0.5723662997673664
+  },
+  "upright_proj": {
+    "min": 0.5868838474753656,
+    "max": 0.9999297933020269,
+    "final": 0.5868838474753656,
+    "mean": 0.9223299365306747
+  },
+  "reward": {
+    "min": -7.3492200509556085,
+    "max": 4.367094271335415,
+    "final": -7.3492200509556085,
+    "mean": 3.574608439235722
+  },
+  "delta_x_m": {
+    "min": -0.5680829222359715,
+    "max": -0.0035722545745259975,
+    "final": -0.5680829222359715,
+    "mean": -0.21172131097357952
+  },
+  "delta_y_m": {
+    "min": -0.0047248775365643135,
+    "max": 0.04165697629902399,
+    "final": 0.029705545760774277,
+    "mean": 0.02153582734879484
+  },
+  "delta_yaw_rad": {
+    "min": -0.046240869911690054,
+    "max": 0.05375515026956826,
+    "final": -0.046240869911690054,
+    "mean": 0.013762082230234143
+  },
+  "action_norm": {
+    "min": 3.057379961013794,
+    "max": 3.234574317932129,
+    "final": 3.1660635471343994,
+    "mean": 3.199538916349411
+  },
+  "nonzero_action_steps": 40,
+  "attempted_action": true,
+  "goal_success": false,
+  "goal_failed": false,
+  "goal_reason": "",
+  "rollout_ok": false,
+  "checks": {
+    "no_termination": false,
+    "torso_above_fall_threshold": false,
+    "upright_positive": true,
+    "attempted_action": true,
+    "goal_success": false
+  }
+}

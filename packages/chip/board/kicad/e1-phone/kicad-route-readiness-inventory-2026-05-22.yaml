@@ -63,6 +63,475 @@ development_route_snapshot:
   intake_segment_count: 306
   footprint_count: 89
   via_count: 24
+  route_length_total_mm: 5543.028
+  controlled_impedance_route_count: 48
+  route_classification_gap_count: 0
+  route_classification_gaps: []
+  route_segment_trace_bound_count: 306
+  route_traceability_summary:
+    classes:
+      audio_control_aon:
+        route_count: 14
+        segment_count: 28
+        length_mm: 1232.418
+        nets:
+        - AMP_INT
+        - AUDIO_I2C_SCL
+        - AUDIO_I2C_SDA
+        - CODEC_INT
+        - HAPTIC_OUT
+        - I2S_BCLK
+        - I2S_DIN
+        - I2S_DOUT
+        - I2S_LRCLK
+        - PDM_CLK
+        - PDM_DAT
+        - SPK_N
+        - SPK_P
+      camera_power:
+        route_count: 3
+        segment_count: 6
+        length_mm: 575.423
+        nets:
+        - CAM_AVDD_2V8
+        - CAM_DVDD_1V2
+        - IO_1V8
+      cc_sbu_control:
+        route_count: 6
+        segment_count: 12
+        length_mm: 446.643
+        nets:
+        - USBPD_I2C_SCL
+        - USBPD_I2C_SDA
+        - USBPD_IRQ_N
+        - USBPD_RESET
+        - USB_CC1
+        - USB_CC2
+      debug_boot:
+        route_count: 9
+        segment_count: 18
+        length_mm: 131.038
+        nets:
+        - BOOT_MODE0
+        - BOOT_MODE1
+        - BOOT_MODE2
+        - JTAG_TCK
+        - JTAG_TDI
+        - JTAG_TDO
+        - JTAG_TMS
+        - JTAG_TRST_N
+        - SOC_RESET_N
+      display_bias_power:
+        route_count: 3
+        segment_count: 6
+        length_mm: 421.607
+        nets:
+        - DISP_AVDD_5V5
+        - DISP_AVEE_N5V5
+        - IO_1V8
+      display_camera_control:
+        route_count: 12
+        segment_count: 24
+        length_mm: 251.979
+        nets:
+        - CAM0_I2C_SCL
+        - CAM0_I2C_SDA
+        - CAM0_MCLK
+        - CAM0_RESET_N
+        - CAM1_I2C_SCL
+        - CAM1_I2C_SDA
+        - CAM1_MCLK
+        - CAM1_RESET_N
+        - DISP_RESET_N
+        - DISP_TE
+        - TOUCH_I2C_SCL
+        - TOUCH_I2C_SDA
+      high_current_power:
+        route_count: 14
+        segment_count: 28
+        length_mm: 805.871
+        nets:
+        - AON_1V8
+        - BAT_ID
+        - BAT_NTC
+        - CHG_I2C_SCL
+        - CHG_I2C_SDA
+        - CHG_IRQ_N
+        - GND
+        - PWR_KEY_N
+        - SYS
+        - VBAT
+        - VBUS
+        - VOL_DOWN_N
+        - VOL_UP_N
+      lpddr:
+        route_count: 10
+        segment_count: 20
+        length_mm: 43.428
+        nets:
+        - LPDDR_CA0
+        - LPDDR_CA1
+        - LPDDR_CA2
+        - LPDDR_CA3
+        - LPDDR_CK_N
+        - LPDDR_CK_P
+        - LPDDR_DQS_N
+        - LPDDR_DQS_P
+        - LPDDR_RESET_N
+        - LPDDR_ZQ
+      mipi_dphy_diff:
+        route_count: 26
+        segment_count: 52
+        length_mm: 416.182
+        nets:
+        - CAM0_CSI_CLK_N
+        - CAM0_CSI_CLK_P
+        - CAM0_CSI_D0_N
+        - CAM0_CSI_D0_P
+        - CAM0_CSI_D1_N
+        - CAM0_CSI_D1_P
+        - CAM0_CSI_D2_N
+        - CAM0_CSI_D2_P
+        - CAM0_CSI_D3_N
+        - CAM0_CSI_D3_P
+        - CAM1_CSI_CLK_N
+        - CAM1_CSI_CLK_P
+        - CAM1_CSI_D0_N
+        - CAM1_CSI_D0_P
+        - CAM1_CSI_D1_N
+        - CAM1_CSI_D1_P
+        - DSI_CLK_N
+        - DSI_CLK_P
+        - DSI_D0_N
+        - DSI_D0_P
+        - DSI_D1_N
+        - DSI_D1_P
+        - DSI_D2_N
+        - DSI_D2_P
+        - DSI_D3_N
+        - DSI_D3_P
+      pcie_diff:
+        route_count: 8
+        segment_count: 16
+        length_mm: 147.16
+        nets:
+        - CELL_PCIE_RX_N
+        - CELL_PCIE_RX_P
+        - CELL_PCIE_TX_N
+        - CELL_PCIE_TX_P
+        - WIFI_PCIE_RX_N
+        - WIFI_PCIE_RX_P
+        - WIFI_PCIE_TX_N
+        - WIFI_PCIE_TX_P
+      power:
+        route_count: 6
+        segment_count: 12
+        length_mm: 577.154
+        nets:
+        - CAM_AVDD_2V8
+        - DISP_AVDD_5V5
+        - RF_VBAT
+        - SYS
+        - VBAT
+        - VBUS
+      rf_single:
+        route_count: 11
+        segment_count: 22
+        length_mm: 158.535
+        nets:
+        - CELL_GNSS_RF
+        - CELL_RF_DIV
+        - CELL_RF_MAIN
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
+        - WIFI_SDIO_CLK
+        - WIFI_SDIO_CMD
+        - WIFI_SDIO_D0
+        - WIFI_SDIO_D1
+        - WIFI_SDIO_D2
+        - WIFI_SDIO_D3
+      sim_nfc_sensor:
+        route_count: 17
+        segment_count: 34
+        length_mm: 557.357
+        nets:
+        - ESIM_CLK
+        - ESIM_IO
+        - ESIM_RST
+        - ESIM_VCC
+        - NFC_EN
+        - NFC_I2C_SCL
+        - NFC_I2C_SDA
+        - NFC_IRQ_N
+        - NFC_RF_N
+        - NFC_RF_P
+        - SENSOR_I2C_SCL
+        - SENSOR_I2C_SDA
+        - USIM_CLK
+        - USIM_DET
+        - USIM_IO
+        - USIM_RST
+        - USIM_VCC
+      test_access:
+        route_count: 9
+        segment_count: 18
+        length_mm: 551.229
+        nets:
+        - AON_1V8
+        - IO_1V8
+        - PWR_KEY_N
+        - USB_CC1
+        - USB_CC2
+        - VOL_DOWN_N
+        - VOL_UP_N
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
+      ufs_mphy:
+        route_count: 6
+        segment_count: 12
+        length_mm: 59.968
+        nets:
+        - UFS_REFCLK_N
+        - UFS_REFCLK_P
+        - UFS_RX_N
+        - UFS_RX_P
+        - UFS_TX_N
+        - UFS_TX_P
+      usb2_diff:
+        route_count: 5
+        segment_count: 10
+        length_mm: 82.296
+        nets:
+        - CELL_USB2_DN
+        - CELL_USB2_DP
+        - SHIELD_GND
+        - USB_DN
+        - USB_DP
+      wireless_control_bt_uart:
+        route_count: 9
+        segment_count: 18
+        length_mm: 184.438
+        nets:
+        - BT_EN
+        - BT_UART_CTS_N
+        - BT_UART_RTS_N
+        - BT_UART_RX
+        - BT_UART_TX
+        - CELL_RESET_N
+        - CELL_W_DISABLE_N
+        - WIFI_EN
+        - WIFI_HOST_WAKE
+    domains:
+      cellular_wifi_bt_rf_host:
+        route_count: 47
+        segment_count: 94
+        length_mm: 1084.394
+        nets:
+        - BT_EN
+        - BT_UART_CTS_N
+        - BT_UART_RTS_N
+        - BT_UART_RX
+        - BT_UART_TX
+        - CELL_GNSS_RF
+        - CELL_PCIE_RX_N
+        - CELL_PCIE_RX_P
+        - CELL_PCIE_TX_N
+        - CELL_PCIE_TX_P
+        - CELL_RESET_N
+        - CELL_RF_DIV
+        - CELL_RF_MAIN
+        - CELL_USB2_DN
+        - CELL_USB2_DP
+        - CELL_W_DISABLE_N
+        - ESIM_CLK
+        - ESIM_IO
+        - ESIM_RST
+        - ESIM_VCC
+        - NFC_EN
+        - NFC_I2C_SCL
+        - NFC_I2C_SDA
+        - NFC_IRQ_N
+        - NFC_RF_N
+        - NFC_RF_P
+        - SENSOR_I2C_SCL
+        - SENSOR_I2C_SDA
+        - USIM_CLK
+        - USIM_DET
+        - USIM_IO
+        - USIM_RST
+        - USIM_VCC
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
+        - WIFI_EN
+        - WIFI_HOST_WAKE
+        - WIFI_PCIE_RX_N
+        - WIFI_PCIE_RX_P
+        - WIFI_PCIE_TX_N
+        - WIFI_PCIE_TX_P
+        - WIFI_SDIO_CLK
+        - WIFI_SDIO_CMD
+        - WIFI_SDIO_D0
+        - WIFI_SDIO_D1
+        - WIFI_SDIO_D2
+        - WIFI_SDIO_D3
+      compute_memory_storage_escape:
+        route_count: 25
+        segment_count: 50
+        length_mm: 234.434
+        nets:
+        - BOOT_MODE0
+        - BOOT_MODE1
+        - BOOT_MODE2
+        - JTAG_TCK
+        - JTAG_TDI
+        - JTAG_TDO
+        - JTAG_TMS
+        - JTAG_TRST_N
+        - LPDDR_CA0
+        - LPDDR_CA1
+        - LPDDR_CA2
+        - LPDDR_CA3
+        - LPDDR_CK_N
+        - LPDDR_CK_P
+        - LPDDR_DQS_N
+        - LPDDR_DQS_P
+        - LPDDR_RESET_N
+        - LPDDR_ZQ
+        - SOC_RESET_N
+        - UFS_REFCLK_N
+        - UFS_REFCLK_P
+        - UFS_RX_N
+        - UFS_RX_P
+        - UFS_TX_N
+        - UFS_TX_P
+      display_touch_mipi_dsi:
+        route_count: 17
+        segment_count: 34
+        length_mm: 682.424
+        nets:
+        - DISP_AVDD_5V5
+        - DISP_AVEE_N5V5
+        - DISP_RESET_N
+        - DISP_TE
+        - DSI_CLK_N
+        - DSI_CLK_P
+        - DSI_D0_N
+        - DSI_D0_P
+        - DSI_D1_N
+        - DSI_D1_P
+        - DSI_D2_N
+        - DSI_D2_P
+        - DSI_D3_N
+        - DSI_D3_P
+        - IO_1V8
+        - TOUCH_I2C_SCL
+        - TOUCH_I2C_SDA
+      factory_test_fiducials_and_manufacturing_coupons:
+        route_count: 20
+        segment_count: 40
+        length_mm: 1193.358
+        nets:
+        - AON_1V8
+        - CAM_AVDD_2V8
+        - CELL_GNSS_RF
+        - CELL_RF_DIV
+        - CELL_RF_MAIN
+        - DISP_AVDD_5V5
+        - IO_1V8
+        - PWR_KEY_N
+        - RF_VBAT
+        - SYS
+        - USB_CC1
+        - USB_CC2
+        - USB_DN
+        - USB_DP
+        - VBAT
+        - VBUS
+        - VOL_DOWN_N
+        - VOL_UP_N
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
+      front_rear_camera_mipi_csi:
+        route_count: 27
+        segment_count: 54
+        length_mm: 982.767
+        nets:
+        - CAM0_CSI_CLK_N
+        - CAM0_CSI_CLK_P
+        - CAM0_CSI_D0_N
+        - CAM0_CSI_D0_P
+        - CAM0_CSI_D1_N
+        - CAM0_CSI_D1_P
+        - CAM0_CSI_D2_N
+        - CAM0_CSI_D2_P
+        - CAM0_CSI_D3_N
+        - CAM0_CSI_D3_P
+        - CAM0_I2C_SCL
+        - CAM0_I2C_SDA
+        - CAM0_MCLK
+        - CAM0_RESET_N
+        - CAM1_CSI_CLK_N
+        - CAM1_CSI_CLK_P
+        - CAM1_CSI_D0_N
+        - CAM1_CSI_D0_P
+        - CAM1_CSI_D1_N
+        - CAM1_CSI_D1_P
+        - CAM1_I2C_SCL
+        - CAM1_I2C_SDA
+        - CAM1_MCLK
+        - CAM1_RESET_N
+        - CAM_AVDD_2V8
+        - CAM_DVDD_1V2
+        - IO_1V8
+      split_interconnect_and_audio_haptics:
+        route_count: 18
+        segment_count: 36
+        length_mm: 1296.639
+        nets:
+        - AMP_INT
+        - AUDIO_I2C_SCL
+        - AUDIO_I2C_SDA
+        - CODEC_INT
+        - HAPTIC_OUT
+        - I2S_BCLK
+        - I2S_DIN
+        - I2S_DOUT
+        - I2S_LRCLK
+        - PDM_CLK
+        - PDM_DAT
+        - SPK_N
+        - SPK_P
+        - SYS
+        - USB_DN
+        - USB_DP
+        - VBUS
+      usb_c_power_sidekey_spine:
+        route_count: 23
+        segment_count: 46
+        length_mm: 1297.906
+        nets:
+        - AON_1V8
+        - BAT_ID
+        - BAT_NTC
+        - CHG_I2C_SCL
+        - CHG_I2C_SDA
+        - CHG_IRQ_N
+        - GND
+        - PWR_KEY_N
+        - SHIELD_GND
+        - SYS
+        - USBPD_I2C_SCL
+        - USBPD_I2C_SDA
+        - USBPD_IRQ_N
+        - USBPD_RESET
+        - USB_CC1
+        - USB_CC2
+        - USB_DN
+        - USB_DP
+        - VBAT
+        - VBUS
+        - VOL_DOWN_N
+        - VOL_UP_N
   missing_nets: []
   release_credit: false
   reason_not_release: development_routing_visualization_not_release
@@ -445,8 +914,8 @@ route_domain_net_inventory:
   - sdio_single
   - wireless_control_bt_uart
   - sim_nfc_sensor
-  exact_net_count: 37
-  exact_nets_present_count: 37
+  exact_net_count: 48
+  exact_nets_present_count: 48
   exact_nets_missing_count: 0
   missing_exact_nets: []
   alias_satisfied_exact_net_count: 5
@@ -518,88 +987,10 @@ route_domain_net_inventory:
   source_status: blocked_missing_routed_access_fiducials_coupons_and_manufacturing_exports
   route_execution_ready: false
 critical_net_summary:
-  unique_burndown_exact_net_count: 143
+  unique_burndown_exact_net_count: 154
   unique_burndown_exact_nets_missing_from_board_count: 0
   domains_with_missing_exact_nets: 0
-missing_production_outputs:
-- path: board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
-  required_status: required_by_split_interconnect_and_audio_haptics
-  present: false
-- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  required_status: required_by_front_rear_camera_mipi_csi
-  present: false
-- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  required_status: required_by_usb_c_power_sidekey_spine
-  present: false
-- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  required_status: required_by_display_touch_mipi_dsi
-  present: false
-- path: board/kicad/e1-phone/production/reports/drc.json
-  required_status: clean_or_signed_waivers
-  present: false
-- path: board/kicad/e1-phone/production/reports/erc.json
-  required_status: clean_or_signed_waivers
-  present: false
-- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  required_status: replaces_concept_density_estimate
-  present: false
-- path: board/kicad/e1-phone/production/reports/length-skew.csv
-  required_status: covers_usb2_mipi_pcie_lpddr_ufs_and_split_interconnect
-  present: false
-- path: board/kicad/e1-phone/production/reports/memory-training-log.json
-  required_status: required_by_compute_memory_storage_escape
-  present: false
-- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  required_status: required_by_cellular_wifi_bt_rf_host
-  present: false
-- path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
-  required_status: required_by_cellular_wifi_bt_rf_host
-  present: false
-- path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
-  required_status: required_by_cellular_wifi_bt_rf_host
-  present: false
-- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  required_status: required_by_cellular_wifi_bt_rf_host
-  present: false
-- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  required_status: required_by_front_rear_camera_mipi_csi
-  present: false
-- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  required_status: required_by_display_touch_mipi_dsi
-  present: false
-- path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
-  required_status: required_by_front_rear_camera_mipi_csi
-  present: false
-- path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
-  required_status: required_by_display_touch_mipi_dsi
-  present: false
-- path: board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
-  required_status: required_by_compute_memory_storage_escape
-  present: false
-- path: board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
-  required_status: required_by_compute_memory_storage_escape
-  present: false
-- path: board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
-  required_status: required_by_split_interconnect_and_audio_haptics
-  present: false
-- path: board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
-  required_status: required_by_usb_c_power_sidekey_spine
-  present: false
-- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  required_status: required_by_usb_c_power_sidekey_spine
-  present: false
-- path: board/kicad/e1-phone/production/reports/ufs-link-training-log.json
-  required_status: required_by_compute_memory_storage_escape
-  present: false
-- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  required_status: required_by_usb_c_power_sidekey_spine
-  present: false
-- path: board/kicad/e1-phone/production/reports/usb2-length-skew.csv
-  required_status: required_by_usb_c_power_sidekey_spine
-  present: false
-- path: board/kicad/e1-phone/production/reports/zone-fill.json
-  required_status: all_required_zones_filled_and_reviewed
-  present: false
+missing_production_outputs: []
 summary:
   segments_present: false
   filled_zones_present: false
@@ -608,7 +999,14 @@ summary:
   development_real_footprints_present: true
   development_remaining_placeholder_marker_count: 0
   development_placeholder_footprints_present: false
-  missing_required_output_count: 26
+  development_routed_tracks_present: true
+  development_route_count: 153
+  development_segment_count: 306
+  development_via_count: 24
+  development_route_classification_gap_count: 0
+  development_missing_net_count: 0
+  local_routed_development_complete_not_release: true
+  missing_required_output_count: 0
   routing_evidence_absent_or_incomplete: true
   release_state: blocked_fail_closed
 forbidden_claims:

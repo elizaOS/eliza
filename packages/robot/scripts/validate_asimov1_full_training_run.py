@@ -50,13 +50,23 @@ def _load_dict(path: Path) -> dict[str, Any]:
 
 
 def _sha256_file(path: Path) -> str | None:
-    if not path.is_file():
+    try:
+        if not path.is_file():
+            return None
+        h = hashlib.sha256()
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
         return None
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+
+
+def _asset_suffix(path: Path) -> tuple[str, ...]:
+    parts = path.parts
+    if "assets" in parts:
+        return parts[parts.index("assets") :]
+    return parts[-1:]
 
 
 def _step_argv(step: Any) -> list[str]:
@@ -213,10 +223,17 @@ def _input_asset_provenance_checks(
     ):
         path = Path(str(job.get(path_key, "")))
         actual_hash = _sha256_file(path)
+        if actual_hash is None and _asset_suffix(path) == _asset_suffix(expected_path):
+            actual_hash = _sha256_file(expected_path)
+            current_asset = actual_hash is not None
+        else:
+            try:
+                current_asset = path.is_file() and path.resolve() == expected_path.resolve()
+            except OSError:
+                current_asset = False
         checks[label] = (
             bool(job.get(path_key))
-            and path.is_file()
-            and path.resolve() == expected_path.resolve()
+            and current_asset
             and actual_hash is not None
             and job.get(hash_key) == actual_hash
             and manifest.get(path_key) == str(path)

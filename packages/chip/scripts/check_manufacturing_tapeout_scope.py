@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -287,6 +288,7 @@ def build_report() -> dict[str, Any]:
     ]
     return {
         "schema": "eliza.manufacturing_tapeout_scope.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": "manufacturing_tapeout_scope_release_blocked",
         "claim_boundary": (
             "Manufacturing and tapeout scope audit only; not tapeout ready, "

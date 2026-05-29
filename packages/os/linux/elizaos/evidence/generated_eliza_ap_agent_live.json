@@ -1,0 +1,49 @@
+{
+  "claim_boundary": "generated_eliza_ap_chip_emulator_agent_live_evidence_blocked",
+  "fallback_payload_used": null,
+  "full_agent_bundle": false,
+  "generated_utc": "2026-05-28T19:58:42Z",
+  "health": {
+    "http_status": 0,
+    "ready": false,
+    "response": {},
+    "status": "blocked",
+    "url": "http://127.0.0.1:31337/api/health"
+  },
+  "process": {
+    "command": "",
+    "executable": "",
+    "pid": 0
+  },
+  "provenance": "generated_eliza_ap",
+  "schema": "eliza.os.linux.agent_live.v1",
+  "service": {
+    "active": false,
+    "name": "elizaos-agent.service",
+    "systemctl_is_active": "unknown"
+  },
+  "status": "blocked",
+  "transcript_path": "packages/chip/build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+  "validation": {
+    "problems": [
+      "agent transcript missing marker group: elizaos-agent-ready one of systemctl is-active elizaos-agent.service: active one of systemctl is-active elizaos-agent.service\nactive one of systemctl_is_active=active",
+      "agent transcript missing marker group: process.pid > 0 one of process.pid= one of PID=",
+      "agent transcript missing marker group: /opt/elizaos/bin/elizaos one of process.command= one of process.executable=",
+      "agent transcript missing marker group: GET /api/health HTTP 200 one of GET /api/health 200 one of /api/health 200 one of elizaos-curl-health-ready",
+      "agent transcript missing marker group: \"agentId\" one of agentId=",
+      "agent transcript missing marker group: full-agent one of \"agent\":\"full\" one of \"mode\":\"full-agent\"",
+      "agent transcript missing marker group: fallback_payload_used=false",
+      "agent transcript missing marker group: elizaos-tui-ready"
+    ],
+    "required_marker_groups": [
+      "elizaos-agent-ready one of systemctl is-active elizaos-agent.service: active one of systemctl is-active elizaos-agent.service\nactive one of systemctl_is_active=active",
+      "process.pid > 0 one of process.pid= one of PID=",
+      "/opt/elizaos/bin/elizaos one of process.command= one of process.executable=",
+      "GET /api/health HTTP 200 one of GET /api/health 200 one of /api/health 200 one of elizaos-curl-health-ready",
+      "\"agentId\" one of agentId=",
+      "full-agent one of \"agent\":\"full\" one of \"mode\":\"full-agent\"",
+      "fallback_payload_used=false",
+      "elizaos-tui-ready"
+    ]
+  }
+}

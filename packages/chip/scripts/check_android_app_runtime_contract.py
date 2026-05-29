@@ -10,6 +10,7 @@ contract agree closely enough for a riscv64 Android boot test to be meaningful.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import re
@@ -26,43 +27,49 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
 ELIZA_ROOT = ROOT.parents[1]
-OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else ELIZA_ROOT
 REPORT = ROOT / "build/reports/android_app_runtime_contract.json"
 SCHEMA = "eliza.android_app_runtime_contract.v1"
 CLAIM_BOUNDARY = "static_app_runtime_contract_only_not_android_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 
 
 def package_name_to_path(package_name: str) -> Path:
     return Path(*package_name.split("."))
 
 
-def read_outer_app_config() -> dict[str, str] | None:
-    config_path = OUTER_WORKSPACE / "apps/app/app.config.ts"
+def read_repo_app_config() -> dict[str, str] | None:
+    config_path = WORKSPACE / "app/app.config.ts"
     if not config_path.is_file():
         return None
     config = config_path.read_text(encoding="utf-8")
     values: dict[str, str] = {}
-    for key in ("appId", "appName", "vendorDir"):
+    for key in ("appId",):
         match = re.search(rf"\b{key}\s*:\s*[\"']([^\"']+)[\"']", config)
         if match:
             values[key] = match.group(1)
-    return values if {"appId", "appName", "vendorDir"}.issubset(values) else None
+    return values if "appId" in values else None
 
 
-BRAND_CONFIG = read_outer_app_config()
-APP_PACKAGE = BRAND_CONFIG["appId"] if BRAND_CONFIG else "ai.elizaos.app"
-APP_NAME = BRAND_CONFIG["appName"] if BRAND_CONFIG else "Eliza"
-VENDOR_DIR_NAME = BRAND_CONFIG["vendorDir"] if BRAND_CONFIG else "eliza"
-VENDOR_ROOT = (
-    OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME
-    if BRAND_CONFIG
-    else WORKSPACE / "os/android/vendor/eliza"
-)
+APP_CONFIG = read_repo_app_config()
+APP_SOURCE_PACKAGE = APP_CONFIG["appId"] if APP_CONFIG else "app.eliza"
+APP_PACKAGE = "ai.elizaos.app"
+APP_NAME = "Eliza"
+VENDOR_DIR_NAME = "eliza"
+VENDOR_ROOT = WORKSPACE / "os/android/vendor/eliza"
 
-APP_GRADLE = WORKSPACE / "app-core/platforms/android/app/build.gradle"
-APP_MANIFEST = WORKSPACE / "app-core/platforms/android/app/src/main/AndroidManifest.xml"
+APP_GRADLE = WORKSPACE / "app/android/app/build.gradle"
+APP_MANIFEST = WORKSPACE / "app/android/app/src/main/AndroidManifest.xml"
 APP_JAVA_DIR = (
-    WORKSPACE / "app-core/platforms/android/app/src/main/java" / package_name_to_path(APP_PACKAGE)
+    WORKSPACE / "app/android/app/src/main/java" / package_name_to_path(APP_SOURCE_PACKAGE)
 )
 AGENT_SERVICE_JAVA = APP_JAVA_DIR / "ElizaAgentService.java"
 NATIVE_BRIDGE_JAVA = APP_JAVA_DIR / "ElizaNativeBridge.java"
@@ -114,6 +121,17 @@ def rel(path: Path) -> str:
         return path.relative_to(WORKSPACE).as_posix()
     except ValueError:
         return str(path)
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def tool_source(value: str) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return path.name
+    return value
 
 
 def extract_gradle_application_id(text: str) -> str | None:
@@ -359,7 +377,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
     apk_path = Path(args.apk) if args.apk else PREBUILT_APK
     gradle_id = extract_gradle_application_id(read_text(APP_GRADLE))
-    apk_id, apk_id_source = apk_application_id(apk_path, args.apkanalyzer, args.apk_package_id)
+    apk_id, raw_apk_id_source = apk_application_id(
+        apk_path, args.apkanalyzer, args.apk_package_id
+    )
+    apk_id_source = tool_source(raw_apk_id_source)
     permission_packages: dict[str, set[str]] = {
         rel(path): extract_permission_packages(path) for path in VENDOR_PERMISSION_XMLS
     }
@@ -540,6 +561,8 @@ def report_payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[st
         "schema": SCHEMA,
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": utc_now(),
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "blockers": len(blockers),
             "findings": len(findings),

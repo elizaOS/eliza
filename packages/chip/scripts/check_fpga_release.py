@@ -4,10 +4,13 @@ import re
 import shutil
 import sys
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 import yaml
+
+from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "board/fpga/e1_demo_fpga.yaml"
@@ -121,6 +124,16 @@ RELEASE_REQUIRED_TOOLS = {"yosys", "nextpnr-ecp5", "ecppack"}
 
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
+
+
+def provenance_safe_value(value):
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    return value
 
 
 def resolve_tool(tool: str) -> tuple[str | None, str]:
@@ -887,7 +900,7 @@ def blocker_groups(findings: list[str]) -> dict[str, dict]:
             group_id,
             {
                 "status": "blocked",
-                "dependency_type": "repo_artifact_generation",
+                "dependency_type": "actionable_external_dependency",
                 "messages": [],
                 "next_step": "",
             },
@@ -1140,6 +1153,13 @@ def write_report(
     categories = release_blocker_categories(cfg, manifest, inventory, pin_diagnostics, build_probe)
     tools = tool_availability()
     generation_plan = repo_artifact_generation_plan(categories, tools)
+    blocker_dependency_counts = {
+        "repo_artifact_generation": generation_plan["repo_generatable_now_count"],
+        "live_device_validation": 0,
+        "actionable_external_dependency": len(findings)
+        if status == "blocked" and generation_plan["repo_generatable_now_count"] == 0
+        else 0,
+    }
     missing_release_tools = [
         tool
         for tool, data in tools.items()
@@ -1147,6 +1167,7 @@ def write_report(
     ]
     payload = {
         "schema": SCHEMA,
+        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "status": status,
         "blocked_state": (
             "known_fail_closed_release_evidence_blocked" if status == "blocked" else None
@@ -1183,11 +1204,13 @@ def write_report(
             ],
             "repo_generatable_now_count": generation_plan["repo_generatable_now_count"],
             "blocked_repo_generation_count": generation_plan["blocked_generation_count"],
+            "blocker_dependency_counts": blocker_dependency_counts,
             "diagnostic_only_artifacts": sum(
                 item["diagnostic_only_count"] for item in inventory.values()
             ),
         },
         "blocker_groups": groups,
+        "blocker_dependency_counts": blocker_dependency_counts,
         "release_blocker_categories": categories,
         "repo_artifact_generation_plan": generation_plan,
         "artifact_inventory": inventory,
@@ -1227,7 +1250,9 @@ def write_report(
                 "severity": "blocker" if status == "blocked" else "error",
                 "message": finding,
                 "group": blocker_group_for(finding),
-                "dependency_type": "repo_artifact_generation",
+                "dependency_type": "actionable_external_dependency"
+                if generation_plan["repo_generatable_now_count"] == 0
+                else "repo_artifact_generation",
                 "evidence": CFG.relative_to(ROOT).as_posix(),
                 "next_step": finding_next_step(finding),
             }
@@ -1235,7 +1260,10 @@ def write_report(
         ],
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    REPORT.write_text(
+        json.dumps(provenance_safe_value(payload), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def finding_next_step(finding: str) -> str:
@@ -1537,7 +1565,7 @@ def yosys_memory_rom_pressure(
     pressure_modules = []
     module_guidance = {
         "e1_behavioral_dram": (
-            "Replace the behavioral DRAM array with an FPGA-specific BRAM/external-memory stub "
+            "Replace the behavioral DRAM array with an FPGA-specific BRAM/external-memory model "
             "before route/pack attempts."
         ),
         "e1_bootrom": (

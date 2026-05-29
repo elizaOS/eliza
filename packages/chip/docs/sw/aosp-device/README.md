@@ -198,10 +198,33 @@ AOSP gate. Install or validate the nine current gate logs with
 Use `scripts/android/capture_e1_npu_nnapi_evidence.sh` only on a connected
 Android target that exposes a real `e1-npu` NNAPI accelerator. It captures
 the four NNAPI transcripts and a transcript manifest under
-`docs/evidence/android/e1-npu/`; it does not create
-`benchmarks/capabilities/e1_npu_nnapi.proof.json` or assert acceleration.
-That proof JSON still requires reviewed target counters, exact transcript
-hashes, model hash, DMA bytes, and zero CPU fallback.
+`docs/evidence/android/e1-npu/`. By default it does not assert acceleration.
+With `E1_NPU_WRITE_PROOF_JSON=1` plus the required measured counter
+environment variables, the same target job can also write
+`benchmarks/capabilities/e1_npu_nnapi.proof.json`; the script refuses to do so
+if the transcripts lack the required `e1-npu`, NNAPI, and DMA markers. That
+proof JSON still requires reviewed target counters, exact transcript hashes,
+model hash, DMA bytes, and zero CPU fallback.
+
+For a full target-side e1-NPU Android proof run, use
+`scripts/android/capture_e1_npu_android_proof_bundle.sh`. It runs the
+absent-device probe, VINTF capture, NNAPI transcript/proof capture, CTS smoke,
+VTS smoke, manifest assembly, and both strict proof checks in order. It is the
+preferred closure entry point once ADB sees exactly one booted Android target
+and `AOSP_TREE` points at the built checkout with CTS/VTS Tradefed tools.
+Use `python3 scripts/check_e1_npu_android_proof_bundle_preflight.py --json`
+to inspect those prerequisites before starting the full bundle.
+If the preflight reports missing `cts-tradefed` or `vts-tradefed`, build and
+verify the host bundles first:
+
+```sh
+AOSP_TREE=/path/to/aosp scripts/android/build_cts_vts_tradefed.sh
+```
+
+The helper runs `m cts vts`, verifies both executable paths, and writes
+`docs/evidence/android/e1-npu/cts-vts-tradefed-build.log` with pass/fail
+markers. Use `--verify-only` to re-check an already built tree without starting
+another AOSP build.
 
 Use `python3 scripts/check_e1_npu_android_proof_manifest.py --manifest
 docs/evidence/android/e1-npu/android-proof-manifest.json --require-pass` for

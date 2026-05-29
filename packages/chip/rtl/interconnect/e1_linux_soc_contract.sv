@@ -56,6 +56,34 @@ module e1_linux_soc_contract #(
     logic [31:0] dma_mmio_rdata_q;
     logic [1:0]  dma_mmio_rresp;
 
+    logic        npu_mmio_awvalid, npu_mmio_awready;
+    logic [31:0] npu_mmio_awaddr;
+    logic        npu_mmio_wvalid, npu_mmio_wready;
+    logic [31:0] npu_mmio_wdata;
+    logic [3:0]  npu_mmio_wstrb;
+    logic        npu_mmio_bvalid, npu_mmio_bready;
+    logic [1:0]  npu_mmio_bresp;
+    logic        npu_mmio_arvalid, npu_mmio_arready;
+    logic [31:0] npu_mmio_araddr;
+    logic        npu_mmio_rvalid, npu_mmio_rready;
+    logic [31:0] npu_mmio_rdata;
+    logic [31:0] npu_mmio_rdata_q;
+    logic [1:0]  npu_mmio_rresp;
+
+    logic        display_mmio_awvalid, display_mmio_awready;
+    logic [31:0] display_mmio_awaddr;
+    logic        display_mmio_wvalid, display_mmio_wready;
+    logic [31:0] display_mmio_wdata;
+    logic [3:0]  display_mmio_wstrb;
+    logic        display_mmio_bvalid, display_mmio_bready;
+    logic [1:0]  display_mmio_bresp;
+    logic        display_mmio_arvalid, display_mmio_arready;
+    logic [31:0] display_mmio_araddr;
+    logic        display_mmio_rvalid, display_mmio_rready;
+    logic [31:0] display_mmio_rdata;
+    logic [31:0] display_mmio_rdata_q;
+    logic [1:0]  display_mmio_rresp;
+
     logic        dma_mem_awvalid, dma_mem_awready;
     logic [31:0] dma_mem_awaddr;
     logic        dma_mem_wvalid, dma_mem_wready;
@@ -107,6 +135,27 @@ module e1_linux_soc_contract #(
     logic [31:0] unused_dbg_rdata;
     logic [2:0]  unused_grants;
     logic [2:0]  unused_timeouts;
+    logic        npu_irq;
+    logic        display_irq;
+    logic [NUM_IRQ_SOURCES-1:0] internal_irq_sources;
+    logic        npu_mem_awvalid, npu_mem_awready;
+    logic [31:0] npu_mem_awaddr;
+    logic        npu_mem_wvalid, npu_mem_wready;
+    logic [31:0] npu_mem_wdata;
+    logic [3:0]  npu_mem_wstrb;
+    logic        npu_mem_bvalid, npu_mem_bready;
+    logic [1:0]  npu_mem_bresp;
+    logic        npu_mem_arvalid, npu_mem_arready;
+    logic [31:0] npu_mem_araddr;
+    logic        npu_mem_rvalid, npu_mem_rready;
+    logic [31:0] npu_mem_rdata;
+    logic [1:0]  npu_mem_rresp;
+    logic        display_fb_read_valid;
+    logic [31:0] display_fb_read_addr;
+    logic        display_scan_hsync, display_scan_vsync, display_scan_active;
+    logic [15:0] display_scan_x, display_scan_y;
+    logic [31:0] display_scan_fb_addr;
+    logic [23:0] display_scan_rgb;
     /* verilator lint_off UNUSEDSIGNAL */
     logic        unused_dma_mmio;
     /* verilator lint_on UNUSEDSIGNAL */
@@ -119,7 +168,20 @@ module e1_linux_soc_contract #(
     wire grant_dma_rd = !cpu_rd_req && dma_rd_req;
     assign unused_dma_mmio = ^{dma_mmio_awaddr[31:8], dma_mmio_awaddr[1:0],
                                dma_mmio_wstrb,
-                               dma_mmio_araddr[31:8], dma_mmio_araddr[1:0]};
+                               dma_mmio_araddr[31:8], dma_mmio_araddr[1:0],
+                               npu_mmio_awaddr[31:8], npu_mmio_awaddr[1:0],
+                               npu_mmio_wstrb,
+                               npu_mmio_araddr[31:8], npu_mmio_araddr[1:0],
+                               display_mmio_awaddr[31:8], display_mmio_awaddr[1:0],
+                               display_mmio_wstrb,
+                               display_mmio_araddr[31:8], display_mmio_araddr[1:0],
+                               npu_mem_awvalid, npu_mem_awaddr, npu_mem_wvalid,
+                               npu_mem_wdata, npu_mem_wstrb, npu_mem_bready,
+                               npu_mem_arvalid, npu_mem_araddr, npu_mem_rready,
+                               display_fb_read_valid, display_fb_read_addr,
+                               display_scan_hsync, display_scan_vsync,
+                               display_scan_active, display_scan_x, display_scan_y,
+                               display_scan_fb_addr, display_scan_rgb};
 
     e1_axi_lite_interconnect u_interconnect (
         .clk(clk),
@@ -226,6 +288,40 @@ module e1_linux_soc_contract #(
         .dma_rready(dma_mmio_rready),
         .dma_rdata(dma_mmio_rdata_q),
         .dma_rresp(dma_mmio_rresp),
+        .npu_awvalid(npu_mmio_awvalid),
+        .npu_awready(npu_mmio_awready),
+        .npu_awaddr(npu_mmio_awaddr),
+        .npu_wvalid(npu_mmio_wvalid),
+        .npu_wready(npu_mmio_wready),
+        .npu_wdata(npu_mmio_wdata),
+        .npu_wstrb(npu_mmio_wstrb),
+        .npu_bvalid(npu_mmio_bvalid),
+        .npu_bready(npu_mmio_bready),
+        .npu_bresp(npu_mmio_bresp),
+        .npu_arvalid(npu_mmio_arvalid),
+        .npu_arready(npu_mmio_arready),
+        .npu_araddr(npu_mmio_araddr),
+        .npu_rvalid(npu_mmio_rvalid),
+        .npu_rready(npu_mmio_rready),
+        .npu_rdata(npu_mmio_rdata_q),
+        .npu_rresp(npu_mmio_rresp),
+        .display_awvalid(display_mmio_awvalid),
+        .display_awready(display_mmio_awready),
+        .display_awaddr(display_mmio_awaddr),
+        .display_wvalid(display_mmio_wvalid),
+        .display_wready(display_mmio_wready),
+        .display_wdata(display_mmio_wdata),
+        .display_wstrb(display_mmio_wstrb),
+        .display_bvalid(display_mmio_bvalid),
+        .display_bready(display_mmio_bready),
+        .display_bresp(display_mmio_bresp),
+        .display_arvalid(display_mmio_arvalid),
+        .display_arready(display_mmio_arready),
+        .display_araddr(display_mmio_araddr),
+        .display_rvalid(display_mmio_rvalid),
+        .display_rready(display_mmio_rready),
+        .display_rdata(display_mmio_rdata_q),
+        .display_rresp(display_mmio_rresp),
         .arb_grant(unused_grants),
         .timeout_irq(unused_timeouts)
     );
@@ -337,6 +433,126 @@ module e1_linux_soc_contract #(
         end
     end
 
+    e1_npu u_npu (
+        .clk(clk),
+        .rst_n(rst_n),
+        .valid((npu_mmio_awvalid && npu_mmio_wvalid && npu_mmio_awready && npu_mmio_wready) ||
+               (npu_mmio_arvalid && npu_mmio_arready)),
+        .write(npu_mmio_awvalid && npu_mmio_wvalid),
+        .addr((npu_mmio_awvalid && npu_mmio_wvalid) ? npu_mmio_awaddr[7:2] : npu_mmio_araddr[7:2]),
+        .wdata(npu_mmio_wdata),
+        .rdata(npu_mmio_rdata),
+        .irq(npu_irq),
+        .m_axil_awvalid(npu_mem_awvalid),
+        .m_axil_awready(npu_mem_awready),
+        .m_axil_awaddr(npu_mem_awaddr),
+        .m_axil_wvalid(npu_mem_wvalid),
+        .m_axil_wready(npu_mem_wready),
+        .m_axil_wdata(npu_mem_wdata),
+        .m_axil_wstrb(npu_mem_wstrb),
+        .m_axil_bvalid(npu_mem_bvalid),
+        .m_axil_bready(npu_mem_bready),
+        .m_axil_bresp(npu_mem_bresp),
+        .m_axil_arvalid(npu_mem_arvalid),
+        .m_axil_arready(npu_mem_arready),
+        .m_axil_araddr(npu_mem_araddr),
+        .m_axil_rvalid(npu_mem_rvalid),
+        .m_axil_rready(npu_mem_rready),
+        .m_axil_rdata(npu_mem_rdata),
+        .m_axil_rresp(npu_mem_rresp)
+    );
+
+    // The Linux contract exposes NPU MMIO but does not yet claim production
+    // descriptor DMA routing. Fail descriptor master traffic closed here so
+    // software cannot infer DRAM access support from the MMIO map.
+    assign npu_mem_awready = 1'b1;
+    assign npu_mem_wready  = 1'b1;
+    assign npu_mem_bvalid  = 1'b1;
+    assign npu_mem_bresp   = 2'b10;
+    assign npu_mem_arready = 1'b1;
+    assign npu_mem_rvalid  = 1'b1;
+    assign npu_mem_rdata   = 32'h0;
+    assign npu_mem_rresp   = 2'b10;
+
+    assign npu_mmio_awready = !npu_mmio_bvalid;
+    assign npu_mmio_wready  = !npu_mmio_bvalid;
+    assign npu_mmio_bresp   = 2'b00;
+    assign npu_mmio_arready = !npu_mmio_rvalid;
+    assign npu_mmio_rresp   = 2'b00;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            npu_mmio_bvalid <= 1'b0;
+            npu_mmio_rvalid <= 1'b0;
+            npu_mmio_rdata_q <= 32'h0;
+        end else begin
+            if (npu_mmio_bvalid && npu_mmio_bready) begin
+                npu_mmio_bvalid <= 1'b0;
+            end
+            if (npu_mmio_rvalid && npu_mmio_rready) begin
+                npu_mmio_rvalid <= 1'b0;
+            end
+            if (npu_mmio_awvalid && npu_mmio_awready && npu_mmio_wvalid && npu_mmio_wready) begin
+                npu_mmio_bvalid <= 1'b1;
+            end
+            if (npu_mmio_arvalid && npu_mmio_arready) begin
+                npu_mmio_rvalid <= 1'b1;
+                npu_mmio_rdata_q <= npu_mmio_rdata;
+            end
+        end
+    end
+
+    e1_display u_display (
+        .clk(clk),
+        .rst_n(rst_n),
+        .valid((display_mmio_awvalid && display_mmio_wvalid && display_mmio_awready && display_mmio_wready) ||
+               (display_mmio_arvalid && display_mmio_arready)),
+        .write(display_mmio_awvalid && display_mmio_wvalid),
+        .addr((display_mmio_awvalid && display_mmio_wvalid) ? display_mmio_awaddr[7:2] : display_mmio_araddr[7:2]),
+        .wdata(display_mmio_wdata),
+        .rdata(display_mmio_rdata),
+        .irq_vsync(display_irq),
+        .scan_hsync(display_scan_hsync),
+        .scan_vsync(display_scan_vsync),
+        .scan_active(display_scan_active),
+        .scan_x(display_scan_x),
+        .scan_y(display_scan_y),
+        .scan_fb_addr(display_scan_fb_addr),
+        .scan_rgb(display_scan_rgb),
+        .fb_read_valid(display_fb_read_valid),
+        .fb_read_addr(display_fb_read_addr),
+        .fb_read_data(32'h0),
+        .fb_read_ready(1'b0)
+    );
+
+    assign display_mmio_awready = !display_mmio_bvalid;
+    assign display_mmio_wready  = !display_mmio_bvalid;
+    assign display_mmio_bresp   = 2'b00;
+    assign display_mmio_arready = !display_mmio_rvalid;
+    assign display_mmio_rresp   = 2'b00;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            display_mmio_bvalid <= 1'b0;
+            display_mmio_rvalid <= 1'b0;
+            display_mmio_rdata_q <= 32'h0;
+        end else begin
+            if (display_mmio_bvalid && display_mmio_bready) begin
+                display_mmio_bvalid <= 1'b0;
+            end
+            if (display_mmio_rvalid && display_mmio_rready) begin
+                display_mmio_rvalid <= 1'b0;
+            end
+            if (display_mmio_awvalid && display_mmio_awready && display_mmio_wvalid && display_mmio_wready) begin
+                display_mmio_bvalid <= 1'b1;
+            end
+            if (display_mmio_arvalid && display_mmio_arready) begin
+                display_mmio_rvalid <= 1'b1;
+                display_mmio_rdata_q <= display_mmio_rdata;
+            end
+        end
+    end
+
     e1_axi_lite_dram u_dram (
         .clk(clk),
         .rst_n(rst_n),
@@ -364,7 +580,7 @@ module e1_linux_soc_contract #(
     ) u_interrupt_controller (
         .clk(clk),
         .rst_n(rst_n),
-        .irq_sources(irq_sources | {{(NUM_IRQ_SOURCES-1){1'b0}}, dma_irq}),
+        .irq_sources(internal_irq_sources),
         .cpu_external_irq(cpu_external_irq),
         .pending_status(irq_pending),
         .s_axil_awvalid(intc_awvalid),
@@ -385,5 +601,12 @@ module e1_linux_soc_contract #(
         .s_axil_rdata(intc_rdata),
         .s_axil_rresp(intc_rresp)
     );
+
+    always_comb begin
+        internal_irq_sources = irq_sources;
+        if (NUM_IRQ_SOURCES > 0) internal_irq_sources[0] = irq_sources[0] | dma_irq;
+        if (NUM_IRQ_SOURCES > 1) internal_irq_sources[1] = irq_sources[1] | npu_irq;
+        if (NUM_IRQ_SOURCES > 2) internal_irq_sources[2] = irq_sources[2] | display_irq;
+    end
 
 endmodule

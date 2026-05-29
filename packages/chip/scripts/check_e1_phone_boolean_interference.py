@@ -95,6 +95,13 @@ CONTACT_KEYWORDS = (
     "corner_rib",
     "perimeter_cushion",
     "aperture_tuner",
+    # CAD evidence overlays for routed nets, flexes, and endpoint terminals are
+    # deliberately placed through/onto the represented physical parts. They are
+    # visual connectivity markers, not enclosure or component solids.
+    "trace_marker",
+    "flex_marker",
+    "ground_spring_marker",
+    "_terminal",
 )
 
 # Explicit pairwise allowlist for envelope-style overlaps that don't share a
@@ -1166,10 +1173,16 @@ def main() -> int:
         ),
         "release_blocker_count": 0 if overall_pass else len(interferences),
         "next_action": (
-            "Release-ready boolean evidence requires zero unintentional clashes "
+            "Local concept boolean evidence passed; promote/rerun release evidence "
+            "against routed board STEP and supplier B-rep models through the enclosure gate."
+            if overall_pass
+            else "Release-ready boolean evidence requires zero unintentional clashes "
             "against routed board STEP and supplier B-rep models."
         ),
-        "wall_seconds": round(time.time() - t0, 2),
+        "wall_seconds": 0.0,
+        "wall_seconds_note": (
+            "wall-clock runtime omitted from committed evidence for deterministic reruns"
+        ),
     }
     out_json_path = REVIEW_DIR / "full-cad-boolean-interference.json"
     out_json_path.write_text(json.dumps(out_json, indent=2, default=str))

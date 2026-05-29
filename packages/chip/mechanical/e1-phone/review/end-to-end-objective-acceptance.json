@@ -214,12 +214,12 @@
       "release_required": true,
       "blockers": [
         "all E1Phone:* footprints are non-release placeholders excluded from BOM and position files",
-        "no routed copper segments or filled zones are present in the KiCad PCB",
+        "production concept source has no release-approved routed copper segments or filled zones",
         "supplier connector/module land patterns and STEP models have not replaced placeholders",
         "DRC, ERC, SI/PI, RF, fabrication, assembly, and routed enclosure clearance evidence are missing",
         "supplier pinouts, footprints, mating connector data, and STEP models are not frozen",
         "KiCad schematic remains scaffold text and has no ERC release report",
-        "production concept PCB has placeholder footprints, no routed tracks, and no filled zones; local routed real-footprint development board is non-release",
+        "production concept PCB has placeholder footprints, no release-approved routed tracks, and no filled zones; local routed real-footprint development board is non-release",
         "route feasibility and escape density are not proven with supplier footprints and a trial route",
         "module host integration closure is blocked on supplier pinouts, real schematic capture, routed host interfaces, firmware, RF, and bring-up evidence",
         "external interface design review is blocked on supplier drawings, routed STEP clearance, and measured USB-C, display, camera, and side-key validation",
@@ -343,8 +343,8 @@
   "mechanical_cases": [
     {
       "id": "routed_board_step_and_clearance",
-      "status": "blocked_waiting_for_routed_board_step",
-      "source_status": "blocked_concept_pcb_no_routed_step",
+      "status": "blocked_waiting_for_physical_routed_board_clearance_result",
+      "source_status": "blocked_local_routed_step_candidate_not_release",
       "pass": false,
       "required_evidence": [
         "board-step-readiness.json",
@@ -415,7 +415,7 @@
     },
     {
       "id": "manufacturing_release_readiness",
-      "status": "blocked",
+      "status": "cad_package_pass",
       "pass": false,
       "required_evidence": [
         "manufacturing-readiness.json"

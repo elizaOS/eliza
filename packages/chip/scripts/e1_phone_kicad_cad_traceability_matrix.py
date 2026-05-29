@@ -106,6 +106,16 @@ def declared_pin_count(pinout: dict[str, Any]) -> int:
     return 0
 
 
+def complete_pin_table_expected_count(pinout: dict[str, Any]) -> int:
+    mechanical = pinout.get("mechanical")
+    if not isinstance(mechanical, dict):
+        return 0
+    for key in ("electrical_pad_count_with_exposed_pads", "pin_count", "bump_count"):
+        if key in mechanical:
+            return int(mechanical[key])
+    return 0
+
+
 def recursive_pin_record_count(value: Any) -> int:
     if isinstance(value, dict):
         total = 1 if "pin" in value and str(value.get("pin")) != "ALL" else 0
@@ -237,6 +247,24 @@ def build_report() -> dict[str, Any]:
             "visual_route_span_mm": record.get("visual_route_span_mm"),
             "represented_net_count": record.get("represented_net_count"),
             "represented_nets": record.get("represented_nets", record.get("nets", [])),
+            "represented_route_count": record.get("represented_route_count"),
+            "represented_route_ids": record.get("represented_route_ids", []),
+            "represented_route_record_count": record.get("represented_route_record_count"),
+            "represented_route_records_with_layer_count": record.get(
+                "represented_route_records_with_layer_count"
+            ),
+            "represented_route_records_with_source_domain_count": record.get(
+                "represented_route_records_with_source_domain_count"
+            ),
+            "represented_route_records_with_route_class_count": record.get(
+                "represented_route_records_with_route_class_count"
+            ),
+            "represented_route_classification_gap_count": record.get(
+                "represented_route_classification_gap_count"
+            ),
+            "all_represented_routes_have_layer_source_and_class": record.get(
+                "all_represented_routes_have_layer_source_and_class"
+            ),
             "from_terminal_part": record.get("from_terminal_part"),
             "from_terminal_step": record.get("from_terminal_step"),
             "from_terminal_step_bytes": record.get("from_terminal_step_bytes"),
@@ -266,6 +294,12 @@ def build_report() -> dict[str, Any]:
             not row["pass"]
             or row["represented_nets"] != row["nets"]
             or int(row.get("represented_net_count") or 0) != len(row["represented_nets"])
+            or int(row.get("represented_route_count") or 0)
+            != len(row.get("represented_route_ids") or [])
+            or int(row.get("represented_route_record_count") or 0)
+            != int(row.get("represented_route_count") or 0)
+            or int(row.get("represented_route_classification_gap_count") or 0) != 0
+            or row.get("all_represented_routes_have_layer_source_and_class") is not True
         ):
             incomplete_connections.append(str(row["id"]))
         cad_rows.append(row)
@@ -283,11 +317,13 @@ def build_report() -> dict[str, Any]:
         pinout = load_yaml(path) if path.is_file() else {}
         urls = public_source_urls(pinout)
         declared_count = declared_pin_count(pinout)
+        complete_pin_table_count = complete_pin_table_expected_count(pinout)
         concrete_record_count = recursive_pin_record_count(pinout)
         row = {
             "file": file_name,
             "function": record.get("function"),
             "part": record.get("part"),
+            "manifest_completeness": record.get("completeness"),
             "schema": pinout.get("schema"),
             "evidence_class": pinout.get("evidence_class"),
             "manifest_evidence_class": record.get("evidence_class"),
@@ -296,7 +332,11 @@ def build_report() -> dict[str, Any]:
             "sha256": file_sha256(path) if path.is_file() else "",
             "public_source_url_count": len(urls),
             "declared_pin_count": declared_count,
+            "complete_pin_table_expected_count": complete_pin_table_count,
             "captured_pin_record_count": concrete_record_count,
+            "complete_pin_table_captured": bool(
+                complete_pin_table_count and concrete_record_count == complete_pin_table_count
+            ),
             "public_source_present": bool(urls),
             "release_credit": False,
         }
@@ -319,6 +359,7 @@ def build_report() -> dict[str, Any]:
         if not row["pass"]:
             incomplete_pinout_details.append(file_name)
         captured_pinout_rows.append(row)
+    expected_connection_count = int(connections.get("required_connection_count") or 0)
     status = (
         "local_traceability_complete_not_release"
         if not incomplete_footprints
@@ -329,7 +370,7 @@ def build_report() -> dict[str, Any]:
         and len(pad_records) == 32
         and len(binding_records) == 89
         and len(step_records) == 89
-        and len(connection_records) == 21
+        and len(connection_records) == expected_connection_count
         else "blocked_traceability_gap"
     )
     return {
@@ -362,6 +403,9 @@ def build_report() -> dict[str, Any]:
             "captured_pinout_record_count_total": sum(
                 int(row["captured_pin_record_count"] or 0) for row in captured_pinout_rows
             ),
+            "captured_pinout_complete_table_file_count": sum(
+                1 for row in captured_pinout_rows if row["complete_pin_table_captured"]
+            ),
             "captured_pinout_public_source_count": sum(
                 1 for row in captured_pinout_rows if row["public_source_present"]
             ),
@@ -372,6 +416,36 @@ def build_report() -> dict[str, Any]:
             "cad_connection_count": len(connection_records),
             "cad_connection_represented_net_count_total": sum(
                 int(record.get("represented_net_count") or len(record.get("nets", [])))
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_count_total": sum(
+                int(record.get("represented_route_count") or 0) for record in connection_records
+            ),
+            "cad_connection_represented_route_record_count_total": sum(
+                int(record.get("represented_route_record_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_records_with_layer_count_total": sum(
+                int(record.get("represented_route_records_with_layer_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_records_with_source_domain_count_total": sum(
+                int(record.get("represented_route_records_with_source_domain_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_records_with_route_class_count_total": sum(
+                int(record.get("represented_route_records_with_route_class_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_classification_gap_count": sum(
+                int(record.get("represented_route_classification_gap_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": bool(
+                connection_records
+            )
+            and all(
+                record.get("all_represented_routes_have_layer_source_and_class") is True
                 for record in connection_records
             ),
             "cad_connection_visual_route_span_total_mm": round(

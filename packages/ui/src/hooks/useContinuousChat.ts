@@ -71,8 +71,6 @@ export interface UseContinuousChatOptions {
    * speaker-id pipeline. Falls back to undefined when speaker-id is offline.
    */
   speaker?: VoiceSpeakerMetadata | null;
-  /** Most recent assistant message id (drives `speaking` status). */
-  assistantMessageId?: string | null;
   /** True while the runtime is generating an assistant reply. */
   assistantGenerating?: boolean;
   /** Called when continuous capture transitions on→off so callers can flush state. */
@@ -147,7 +145,6 @@ export function useContinuousChat(
     disabled = false,
     latency,
     speaker,
-    assistantMessageId,
     assistantGenerating,
     onContinuousStop,
   } = options;
@@ -300,9 +297,5 @@ export function useContinuousChat(
     startTurn,
     pause,
     resume,
-    // Silence the unused-variable warning during dev; the param is required
-    // for the orchestration contract (assistantMessageId is consumed by
-    // `useChatVoiceController` which sits above this hook).
-    ...(assistantMessageId ? {} : {}),
   };
 }

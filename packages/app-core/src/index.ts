@@ -14,7 +14,6 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
-export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
 export * from "./config/app-config";
 export * from "./diagnostics/integration-observability";

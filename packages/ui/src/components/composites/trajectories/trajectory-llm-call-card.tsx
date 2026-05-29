@@ -29,10 +29,9 @@ export interface TrajectoryLlmCallCardProps {
   callLabel: React.ReactNode;
   copyLabel: React.ReactNode;
   copyToClipboardLabel?: string;
-  costLabel: React.ReactNode;
-  costValue: React.ReactNode;
   inputLabel: React.ReactNode;
   latencyLabel: React.ReactNode;
+  latencyValue: React.ReactNode;
   maxLabel: React.ReactNode;
   maxValue: React.ReactNode;
   model: React.ReactNode;
@@ -61,10 +60,9 @@ export function TrajectoryLlmCallCard({
   callLabel,
   copyLabel,
   copyToClipboardLabel,
-  costLabel,
-  costValue,
   inputLabel,
   latencyLabel,
+  latencyValue,
   maxLabel,
   maxValue,
   model,
@@ -140,13 +138,8 @@ export function TrajectoryLlmCallCard({
           />
           <CallMetric
             label={latencyLabel}
-            value={response.length}
+            value={latencyValue}
             meta={outputLinesLabel}
-          />
-          <CallMetric
-            label={costLabel}
-            value={costValue}
-            meta={temperatureLabel}
           />
           <CallMetric
             label={tokensLabel}

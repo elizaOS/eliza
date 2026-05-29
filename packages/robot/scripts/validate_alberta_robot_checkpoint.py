@@ -38,8 +38,265 @@ def _finite_number(value: Any) -> bool:
         return False
 
 
+def _task_success_predicates(task_id: str) -> dict[str, Any]:
+    return {task.id: task.success for task in load_curriculum().tasks}.get(task_id, {})
+
+
+def _required_physical_check_keys(task_id: str) -> set[str]:
+    success = _task_success_predicates(task_id)
+    keys: set[str] = set()
+    if success.get("no_fall") is True:
+        keys.add("no_fall")
+    if "hold_s" in success:
+        keys.add("hold_s")
+    if "min_alternating_foot_contacts" in success:
+        keys.add("min_alternating_foot_contacts")
+    if "min_swing_foot_clearance_m" in success:
+        keys.add("min_swing_foot_clearance_m")
+    if "max_foot_slip_m_s" in success:
+        keys.add("max_foot_slip_m_s")
+    if "max_self_collision_count" in success:
+        keys.add("max_self_collision_count")
+    if task_id == "stand_up":
+        keys.update({"torso_height_gain", "tracked_height_gain"})
+    elif task_id == "sit_down":
+        keys.update(
+            {
+                "torso_height_seated",
+                "forward_drift_bound",
+                "lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "walk_forward":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_x_forward",
+                "tracked_lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "walk_backward":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_x_backward",
+                "tracked_lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "sidestep_left":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_y_left",
+                "tracked_forward_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "sidestep_right":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_y_right",
+                "tracked_forward_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "turn_left":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_left",
+                "tracked_translation_drift_bound",
+            }
+        )
+    elif task_id == "turn_right":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_right",
+                "tracked_translation_drift_bound",
+            }
+        )
+    elif task_id == "turn_around":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_turn_around",
+                "tracked_translation_drift_bound",
+            }
+        )
+    return keys
+
+
+def _physical_checks_cover_task(task_id: str, checks: Any) -> bool:
+    if not isinstance(checks, dict) or not checks:
+        return False
+    required = _required_physical_check_keys(task_id)
+    return (
+        all(value is True for value in checks.values())
+        and required.issubset(checks.keys())
+        and all(checks.get(key) is True for key in required)
+    )
+
+
+def _expected_locomotion_tracking_body(profile: Any) -> str | None:
+    sensors = getattr(profile, "sensors", None)
+    body = getattr(sensors, "locomotion_tracking_body", None)
+    return str(body) if body else None
+
+
+def _finite_float_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
+
+
+def _phase_numeric_motion_contract(
+    row: dict[str, Any],
+    task_id: str,
+    *,
+    expected_tracking_body: str | None,
+) -> bool:
+    tracked_body_name = row.get("tracked_body_name")
+    if not (
+        isinstance(tracked_body_name, str)
+        and bool(tracked_body_name)
+        and (expected_tracking_body is None or tracked_body_name == expected_tracking_body)
+    ):
+        return False
+    dx = _finite_float_value(row.get("mean_final_tracked_delta_x_m"))
+    dy = _finite_float_value(row.get("mean_final_tracked_delta_y_m"))
+    dz = _finite_float_value(row.get("mean_final_tracked_delta_z_m"))
+    z = _finite_float_value(row.get("mean_final_tracked_z_m"))
+    yaw = _finite_float_value(row.get("mean_final_delta_yaw_rad"))
+    torso_z = _finite_float_value(row.get("mean_final_torso_z_m"))
+    torso_dz = _finite_float_value(row.get("mean_final_torso_z_delta_m"))
+    if task_id == "stand_up":
+        return (
+            torso_z is not None
+            and torso_z > 0.0
+            and torso_dz is not None
+            and torso_dz >= 0.02
+            and dz is not None
+            and dz >= 0.02
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "walk_forward":
+        return (
+            dx is not None
+            and dx >= 0.30
+            and dy is not None
+            and abs(dy) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "walk_backward":
+        return (
+            dx is not None
+            and dx <= -0.20
+            and dy is not None
+            and abs(dy) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "sidestep_left":
+        return (
+            dy is not None
+            and dy >= 0.20
+            and dx is not None
+            and abs(dx) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "sidestep_right":
+        return (
+            dy is not None
+            and dy <= -0.20
+            and dx is not None
+            and abs(dx) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "turn_left":
+        return (
+            yaw is not None
+            and yaw >= 0.70
+            and dx is not None
+            and dy is not None
+            and math.hypot(dx, dy) <= 0.25
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "turn_right":
+        return (
+            yaw is not None
+            and yaw <= -0.70
+            and dx is not None
+            and dy is not None
+            and math.hypot(dx, dy) <= 0.25
+            and z is not None
+            and z > 0.0
+        )
+    return True
+
+
+def _phase_physical_contract(
+    row: dict[str, Any],
+    task_id: str,
+    *,
+    expected_tracking_body: str | None,
+) -> bool:
+    checks = row.get("physical_checks")
+    tracked_body_name = row.get("tracked_body_name")
+    return (
+        row.get("physical_success") is True
+        and isinstance(checks, dict)
+        and bool(checks)
+        and all(value is True for value in checks.values())
+        and _physical_checks_cover_task(task_id, checks)
+        and isinstance(tracked_body_name, str)
+        and bool(tracked_body_name)
+        and (
+            expected_tracking_body is None
+            or tracked_body_name == expected_tracking_body
+        )
+        and _finite_number(row.get("failure_rate"))
+        and float(row["failure_rate"]) <= 0.0
+        and _finite_number(row.get("mean_final_tracked_delta_x_m"))
+        and _finite_number(row.get("mean_final_tracked_delta_y_m"))
+        and _finite_number(row.get("mean_final_tracked_delta_z_m"))
+        and _finite_number(row.get("mean_final_tracked_z_m"))
+        and _phase_numeric_motion_contract(
+            row,
+            task_id,
+            expected_tracking_body=expected_tracking_body,
+        )
+    )
+
+
 def _controller_contract(value: Any, *, pca_dim: int) -> bool:
     if not isinstance(value, dict):
+        return False
+    controller_type = value.get("type", "linear_stream_ac_v1")
+    if controller_type == "cbp_stream_ac_v1":
+        return _cbp_controller_contract(value, pca_dim=pca_dim)
+    if controller_type not in {"linear_stream_ac_v1", "linear"}:
         return False
     features = value.get("features")
     if not isinstance(features, dict):
@@ -77,6 +334,64 @@ def _controller_contract(value: Any, *, pca_dim: int) -> bool:
         return False
 
 
+def _cbp_controller_contract(value: dict, *, pca_dim: int) -> bool:
+    required_scalars = (
+        "gamma",
+        "actor_step_size",
+        "critic_step_size",
+        "actor_lamda",
+        "critic_lamda",
+        "log_sigma_init",
+        "log_sigma_min",
+        "log_sigma_max",
+        "action_low",
+        "action_high",
+        "obgd_kappa",
+        "sparsity",
+        "leaky_relu_slope",
+        "normalizer_decay",
+    )
+    if not all(_finite_number(value.get(key)) for key in required_scalars):
+        return False
+    for key in ("normalize", "learn_log_sigma", "use_layer_norm"):
+        if not isinstance(value.get(key), bool):
+            return False
+    hidden_sizes = value.get("hidden_sizes")
+    if not isinstance(hidden_sizes, list) or not hidden_sizes:
+        return False
+    try:
+        if not all(int(size) > 0 for size in hidden_sizes):
+            return False
+    except Exception:
+        return False
+    cbp = value.get("cbp")
+    retention = value.get("retention")
+    if not isinstance(cbp, dict) or not isinstance(retention, dict):
+        return False
+    if not isinstance(cbp.get("enabled"), bool):
+        return False
+    if not all(
+        _finite_number(cbp.get(key))
+        for key in ("decay_rate", "replacement_rate", "maturity_threshold")
+    ):
+        return False
+    if retention.get("mode") not in {"none", "multihead"}:
+        return False
+    if not all(
+        _finite_number(retention.get(key))
+        for key in ("n_slots", "embed_dim", "trunk_step_scale", "trunk_freeze_after", "proto_seed")
+    ):
+        return False
+    try:
+        return (
+            int(retention.get("n_slots")) >= 1
+            and int(retention.get("embed_dim")) in {0, int(pca_dim)}
+            and int(retention.get("trunk_freeze_after")) >= 0
+        )
+    except Exception:
+        return False
+
+
 def _history_contract(history: Any, tasks: list[str]) -> bool:
     if not isinstance(history, list) or len(history) != len(tasks):
         return False
@@ -89,13 +404,112 @@ def _history_contract(history: Any, tasks: list[str]) -> bool:
             return False
         if not _finite_number(row.get("eval_mean_return")):
             return False
+        for optional_key in (
+            "pre_eval_mean_return",
+            "pre_eval_success_rate",
+            "learning_return_delta",
+            "learning_success_rate_delta",
+            "pre_mean_final_delta_x_m",
+            "eval_mean_final_delta_x_m",
+            "pre_mean_final_delta_y_m",
+            "eval_mean_final_delta_y_m",
+            "pre_mean_final_delta_yaw_rad",
+            "eval_mean_final_delta_yaw_rad",
+            "pre_mean_final_torso_z_m",
+            "eval_mean_final_torso_z_m",
+            "learning_delta_x_m",
+            "learning_delta_y_m",
+            "learning_delta_yaw_rad",
+        ):
+            if optional_key in row and not _finite_number(row.get(optional_key)):
+                return False
     return True
+
+
+def _phase_promotion_contract(
+    manifest: dict[str, Any],
+    tasks: list[str],
+    *,
+    total_steps: int,
+    eval_episodes: int,
+    require_phase_promotion: bool,
+    expected_tracking_body: str | None,
+) -> bool:
+    if manifest.get("phase_promotion_schema") is None and not require_phase_promotion:
+        return True
+    if manifest.get("phase_promotion_schema") != "alberta-phase-promotion-v1":
+        return False
+    promotion = manifest.get("phase_promotion")
+    if not isinstance(promotion, dict):
+        return False
+    threshold = promotion.get("success_threshold")
+    if not _finite_number(threshold):
+        return False
+    threshold = float(threshold)
+    phases = promotion.get("phases")
+    failed_phase = promotion.get("failed_phase")
+    try:
+        promoted_count = int(promotion.get("promoted_phase_count"))
+        requested_count = int(promotion.get("requested_phase_count"))
+        promotion_eval_episodes = int(promotion.get("eval_episodes"))
+    except Exception:
+        return False
+    if not (
+        promotion.get("status") == "completed"
+        and promotion.get("gate") == "curriculum_goal_checker"
+        and 0.0 < threshold <= 1.0
+        and promoted_count == requested_count == len(tasks)
+        and failed_phase is None
+        and promotion_eval_episodes == eval_episodes
+        and isinstance(phases, list)
+        and len(phases) == len(tasks)
+    ):
+        return False
+    last_cumulative = 0
+    for phase_idx, (row, task) in enumerate(zip(phases, tasks, strict=True)):
+        if not isinstance(row, dict):
+            return False
+        if int(row.get("phase", -1)) != phase_idx or row.get("task") != task:
+            return False
+        if row.get("promotion_passed") is not True:
+            return False
+        if not _phase_physical_contract(
+            row,
+            task,
+            expected_tracking_body=expected_tracking_body,
+        ):
+            return False
+        if not _finite_number(row.get("steps_trained")) or not _finite_number(
+            row.get("cumulative_steps")
+        ):
+            return False
+        if not _finite_number(row.get("eval_mean_return")) or not _finite_number(
+            row.get("eval_success_rate")
+        ):
+            return False
+        steps_trained = int(row["steps_trained"])
+        cumulative_steps = int(row["cumulative_steps"])
+        success_rate = float(row["eval_success_rate"])
+        try:
+            row_eval_episodes = int(row.get("eval_episodes"))
+        except Exception:
+            return False
+        if not (
+            steps_trained > 0
+            and cumulative_steps > last_cumulative
+            and row_eval_episodes == eval_episodes
+            and 0.0 <= success_rate <= 1.0
+            and success_rate >= threshold
+        ):
+            return False
+        last_cumulative = cumulative_steps
+    return last_cumulative == total_steps
 
 
 def _validate_inference(checkpoint: Path, manifest: dict[str, Any], prompts: list[str]) -> dict[str, Any]:
     from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy
 
-    policy = TextConditionedPolicy(checkpoint)
+    policy = TextConditionedPolicy(checkpoint, strict_manifest=True)
     proprio = np.zeros(int(manifest["proprio_dim"]), dtype=np.float32)
     output_dim = int(manifest["output_dim"])
     results = []
@@ -123,6 +537,7 @@ def validate_alberta_robot_checkpoint(
     min_steps: int = 1,
     require_domain_rand: bool = False,
     require_inference: bool = False,
+    require_phase_promotion: bool = False,
 ) -> dict[str, Any]:
     checkpoint = checkpoint.resolve()
     manifest = _load_json(checkpoint / "manifest.json", {})
@@ -177,6 +592,14 @@ def validate_alberta_robot_checkpoint(
         "domain_rand": (manifest.get("domain_rand") is True) if require_domain_rand else isinstance(manifest.get("domain_rand"), bool),
         "controller": _controller_contract(manifest.get("controller"), pca_dim=pca_dim),
         "history": _history_contract(manifest.get("history"), tasks),
+        "phase_promotion": _phase_promotion_contract(
+            manifest,
+            tasks,
+            total_steps=total_steps,
+            eval_episodes=int(manifest.get("eval_episodes", 0) or 0),
+            require_phase_promotion=require_phase_promotion,
+            expected_tracking_body=_expected_locomotion_tracking_body(profile),
+        ),
     }
     inference_report = None
     if require_inference and checks["policy_artifact"] and checks["manifest"] and checks["profile_loads"]:
@@ -211,6 +634,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-steps", type=int, default=1)
     parser.add_argument("--require-domain-rand", action="store_true")
     parser.add_argument("--require-inference", action="store_true")
+    parser.add_argument("--require-phase-promotion", action="store_true")
     args = parser.parse_args(argv)
     report = validate_alberta_robot_checkpoint(
         args.checkpoint,
@@ -219,6 +643,7 @@ def main(argv: list[str] | None = None) -> int:
         min_steps=args.min_steps,
         require_domain_rand=args.require_domain_rand,
         require_inference=args.require_inference,
+        require_phase_promotion=args.require_phase_promotion,
     )
     print(json.dumps(report, indent=2))
     return 0 if report["ok"] else 2

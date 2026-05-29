@@ -87,9 +87,27 @@ def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
-def resolve_dir_ref(value: str, base: Path) -> Path:
+def pdk_root_from_macro(macro: dict[str, Any]) -> Path | None:
+    for key in ("lef", "lib", "gds", "spice"):
+        value = macro.get(key)
+        if not isinstance(value, str):
+            continue
+        path = (ROOT / value).resolve()
+        parts = path.parts
+        if "libs.ref" not in parts:
+            continue
+        libs_index = parts.index("libs.ref")
+        return Path(*parts[:libs_index])
+    return None
+
+
+def resolve_dir_ref(value: str, base: Path, pdk_root: Path | None = None) -> Path:
     if value.startswith("dir::"):
         return (base / value.removeprefix("dir::")).resolve()
+    if value.startswith("pdk_dir::"):
+        if pdk_root is None:
+            return (ROOT / value).resolve()
+        return (pdk_root / value.removeprefix("pdk_dir::")).resolve()
     path = Path(value)
     return path if path.is_absolute() else (ROOT / path).resolve()
 
@@ -97,6 +115,12 @@ def resolve_dir_ref(value: str, base: Path) -> Path:
 def dir_ref_for(path_text: str, base: Path) -> str:
     path = ROOT / path_text
     return "dir::" + Path(os.path.relpath(path, base)).as_posix()
+
+
+def ref_matches(expected: str | None, actual: object, base: Path, pdk_root: Path | None) -> bool:
+    if not isinstance(expected, str) or not isinstance(actual, str):
+        return False
+    return resolve_dir_ref(expected, base, pdk_root) == resolve_dir_ref(actual, base, pdk_root)
 
 
 def macro_record(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -252,6 +276,7 @@ def build_report() -> dict[str, Any]:
     hard_macro_gate = load_yaml(HARD_MACRO_GATE)
     macro = macro_record(manifest)
     config_base = CONFIG.parent
+    pdk_root = pdk_root_from_macro(macro)
 
     verilog_files = listed_verilog_files(config)
     missing_verilog_entries = [path for path in REQUIRED_RTL if path not in verilog_files]
@@ -286,7 +311,7 @@ def build_report() -> dict[str, Any]:
     macro_ref_drift = [
         {"kind": key, "expected": expected_refs[key], "actual": actual_refs[key]}
         for key in sorted(expected_refs)
-        if expected_refs[key] != actual_refs[key]
+        if not ref_matches(expected_refs[key], actual_refs[key], config_base, pdk_root)
     ]
     macro_file_checks: dict[str, dict[str, Any]] = {}
     macro_file_failures: list[dict[str, Any]] = []
@@ -294,7 +319,7 @@ def build_report() -> dict[str, Any]:
         if not isinstance(value, str):
             macro_file_failures.append({"kind": kind, "path": None, "reason": "missing_reference"})
             continue
-        path = resolve_dir_ref(value, config_base)
+        path = resolve_dir_ref(value, config_base, pdk_root)
         size = path.stat().st_size if path.exists() and path.is_file() else 0
         macro_file_checks[kind] = {"path": rel(path), "exists": path.exists(), "bytes": size}
         if not path.exists() or size < MIN_MACRO_FILE_BYTES.get(kind, 1):
@@ -312,11 +337,13 @@ def build_report() -> dict[str, Any]:
             macro_ref_set_failures.append({"kind": key, "reason": "empty_reference_list"})
             continue
         for value in values:
-            if not isinstance(value, str) or not value.startswith("dir::"):
+            if not isinstance(value, str) or not (
+                value.startswith("dir::") or value.startswith("pdk_dir::")
+            ):
                 macro_ref_set_failures.append(
                     {"kind": key, "value": value, "reason": "invalid_dir_ref"}
                 )
-            elif not resolve_dir_ref(value, config_base).exists():
+            elif not resolve_dir_ref(value, config_base, pdk_root).exists():
                 macro_ref_set_failures.append(
                     {"kind": key, "value": value, "reason": "missing_file"}
                 )
@@ -500,11 +527,18 @@ def build_report() -> dict[str, Any]:
     input_contract_pass = not blockers
     return {
         "schema": "eliza.e1_soc_pd_input_contract.v1",
-        "status": (
+        "status": "draft_local_evidence",
+        "input_contract_status": (
             "pd_input_contract_pass_signoff_still_blocked"
             if input_contract_pass
             else "blocked_pd_input_contract_drift"
         ),
+        "release_use": "prohibited_until_external_review",
+        "scope": "e1_soc_pd_input_contract_for_openlane_sky130_hard_sram_macro",
+        "release_blockers": [
+            "Input contract validation is local setup evidence only; DRC/LVS/STA, antenna, IR, density, foundry/EDA review, and tapeout signoff remain required before release use.",
+            "Upstream hard-macro and PD signoff evidence remain prohibited for release until externally reviewed and replayed through the complete fail-closed OpenLane/signoff flow.",
+        ],
         "claim_boundary": "pd_input_contract_only_not_drc_lvs_sta_or_tapeout_signoff",
         "source_artifacts": [
             rel(CONFIG),
@@ -622,7 +656,11 @@ def main() -> int:
     else:
         print(output, end="")
     if args.strict and report["summary"]["blocker_count"]:
-        return 1
+        print(
+            "STATUS: BLOCKED E1 SoC PD input contract "
+            f"blockers={report['summary']['blocker_count']}"
+        )
+        return 2
     return 0
 
 

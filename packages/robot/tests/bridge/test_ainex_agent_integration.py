@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import unittest
 
+import pytest
 from websockets.asyncio.server import serve
 
 from eliza_robot.bridge.server import RuntimeConfig, _handler
@@ -15,6 +16,10 @@ from eliza_robot.bridge.server import RuntimeConfig, _handler
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "eliza/packages/python"))
 sys.path.insert(0, str(ROOT / "ainex-robot-code/eliza/packages/python"))
+
+# Cross-package integration test: the AiNex plugin lives in a separate
+# workspace package not installed in the robot venv. Skip cleanly when absent.
+pytest.importorskip("elizaos_plugin_ainex")
 
 from elizaos_plugin_ainex.agent import AiNexRobotAgent  # noqa: E402
 

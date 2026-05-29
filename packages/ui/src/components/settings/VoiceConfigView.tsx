@@ -369,7 +369,7 @@ function WakeWordSection({
   const { t } = useApp();
   const [triggers, setTriggers] = useState<string[]>(["eliza"]);
   const [triggerInput, setTriggerInput] = useState("");
-  const [sensitivity, setSensitivity] = useState(0.45);
+  const [postTriggerGap, setPostTriggerGap] = useState(0.45);
   const [modelSize, setModelSize] =
     useState<NonNullable<SwabbleConfig["modelSize"]>>("base");
   const [audioLevel, setAudioLevel] = useState(0);
@@ -389,7 +389,7 @@ function WakeWordSection({
         if (resolved) {
           if (resolved.triggers?.length) setTriggers(resolved.triggers);
           if (resolved.minPostTriggerGap != null)
-            setSensitivity(resolved.minPostTriggerGap);
+            setPostTriggerGap(resolved.minPostTriggerGap);
           if (resolved.modelSize) setModelSize(resolved.modelSize);
         }
         setEnabled(listening);
@@ -422,10 +422,10 @@ function WakeWordSection({
   const buildConfig = useCallback(
     (): SwabbleConfig => ({
       triggers,
-      minPostTriggerGap: sensitivity,
+      minPostTriggerGap: postTriggerGap,
       modelSize,
     }),
-    [triggers, sensitivity, modelSize],
+    [triggers, postTriggerGap, modelSize],
   );
 
   const handleTriggersChange = useCallback(async (next: string[]) => {
@@ -454,8 +454,8 @@ function WakeWordSection({
     [triggers, handleTriggersChange],
   );
 
-  const handleSensitivityChange = useCallback(async (val: number) => {
-    setSensitivity(val);
+  const handlePostTriggerGapChange = useCallback(async (val: number) => {
+    setPostTriggerGap(val);
     try {
       await getSwabblePlugin().updateConfig({
         config: { minPostTriggerGap: val },
@@ -569,23 +569,30 @@ function WakeWordSection({
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold">
-            {t("voiceconfigview.WakeSensitivity")}
+            {t("voiceconfigview.PostTriggerGap", {
+              defaultValue: "Post-trigger gap",
+            })}
           </span>
-          <span className="text-2xs text-muted">{sensitivity.toFixed(2)}s</span>
+          <span className="text-2xs text-muted">
+            {postTriggerGap.toFixed(2)}s
+          </span>
         </div>
         <input
           type="range"
           min={0.1}
           max={2.0}
           step={0.05}
-          value={sensitivity}
+          value={postTriggerGap}
           className="w-full accent-accent"
           onChange={(e) =>
-            void handleSensitivityChange(parseFloat(e.target.value))
+            void handlePostTriggerGapChange(parseFloat(e.target.value))
           }
         />
         <div className="text-2xs text-muted">
-          {t("voiceconfigview.LowerMoreSensiti")}
+          {t("voiceconfigview.PostTriggerGapHint", {
+            defaultValue:
+              "Minimum quiet time required after the wake word before listening resumes.",
+          })}
         </div>
       </div>
       <div className="flex flex-col gap-1.5">

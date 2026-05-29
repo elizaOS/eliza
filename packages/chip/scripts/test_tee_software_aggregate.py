@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECK_PATH = ROOT / "scripts/check_tee_software_aggregate.py"
@@ -40,9 +41,33 @@ def test_failed_software_check_emits_finding() -> None:
     print("PASS failed TEE software checker emits structured finding")
 
 
+def test_run_checker_sanitizes_host_local_output() -> None:
+    completed = check_tee_software_aggregate.subprocess.CompletedProcess(
+        args=["python3", "check.py"],
+        returncode=1,
+        stdout=(
+            "TEE policy valid: "
+            "/home/shaw/milady/eliza/packages/chip/docs/spec-db/tee-core-target.yaml\n"
+        ),
+        stderr="",
+    )
+    with mock.patch.object(
+        check_tee_software_aggregate.subprocess, "run", return_value=completed
+    ):
+        row = check_tee_software_aggregate.run_checker("core-target", "check.py")
+
+    encoded = str(row)
+    if "/home/shaw" in encoded:
+        raise AssertionError(encoded)
+    if "packages/chip/docs/spec-db/tee-core-target.yaml" not in encoded:
+        raise AssertionError(encoded)
+    print("PASS TEE aggregate sanitizes checker output")
+
+
 def main() -> None:
     test_blocked_hardware_gates_emit_findings()
     test_failed_software_check_emits_finding()
+    test_run_checker_sanitizes_host_local_output()
 
 
 if __name__ == "__main__":

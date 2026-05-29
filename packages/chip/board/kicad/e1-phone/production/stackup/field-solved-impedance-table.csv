@@ -1,2 +1,2 @@
-fixture_revision,limit,result
-not_run,not_approved,blocked_candidate_not_release
+measurement,limit,result
+factory_output_candidate,approved_release_record_required,blocked_candidate_not_release

@@ -39,6 +39,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from provenance_sanitize import sanitize_log_file
+
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / "fw/opensbi-cva6-boot/build_boot_image.py"
 BOOT_HEX = ROOT / "fw/opensbi-cva6-boot/build/boot.hex128"
@@ -50,6 +52,19 @@ TRANSCRIPT = ROOT / "docs/evidence/cpu_ap/opensbi_cva6_boot.transcript"
 REPORT = ROOT / "build/reports/opensbi_cva6_boot.json"
 GATE = "opensbi_cva6_boot"
 SUBSYSTEM = "cpu_ap"
+CLAIM_BOUNDARY = (
+    "opensbi_cva6_m_mode_banner_evidence_only_not_smode_linux_android_"
+    "phone_release_or_silicon_boot_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "smode_handoff_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "userland_boot_claim_allowed": False,
+}
 
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
 
@@ -75,6 +90,8 @@ def _write(
         "evidence_paths": evidence,
         "as_of": _now(),
         "subsystem": SUBSYSTEM,
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
     if extra:
         payload["detail"] = extra
@@ -90,7 +107,7 @@ def _run(cmd: list[str], cwd: Path, env: dict, log: Path, timeout: int) -> tuple
         proc = subprocess.run(
             cmd, cwd=str(cwd), env=env, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout
         )
-    return proc.returncode, log.read_text(encoding="utf-8", errors="replace")
+    return proc.returncode, sanitize_log_file(log)
 
 
 def _parse_results() -> tuple[bool, str]:

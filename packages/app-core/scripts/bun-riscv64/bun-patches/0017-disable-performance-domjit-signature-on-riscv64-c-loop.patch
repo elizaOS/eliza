@@ -1,7 +1,7 @@
-diff --git a/src/bun.js/bindings/webcore/JSPerformance.cpp b/src/bun.js/bindings/webcore/JSPerformance.cpp
-index 7c0f987..806846a 100644
---- a/src/bun.js/bindings/webcore/JSPerformance.cpp
-+++ b/src/bun.js/bindings/webcore/JSPerformance.cpp
+diff --git a/src/jsc/bindings/webcore/JSPerformance.cpp b/src/jsc/bindings/webcore/JSPerformance.cpp
+index 4aed2e5..71fff93 100644
+--- a/src/jsc/bindings/webcore/JSPerformance.cpp
++++ b/src/jsc/bindings/webcore/JSPerformance.cpp
 @@ -267,11 +267,16 @@ size_t JSPerformance::estimatedSize(JSCell* cell, VM& vm)
  void JSPerformance::finishCreation(VM& vm)
  {

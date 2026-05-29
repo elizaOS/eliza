@@ -74,7 +74,8 @@ PY
   # Production contract default: --min-steps 150000000
   uv run python scripts/validate_asimov1_production_checkpoint.py "$JOB_DIR" --min-steps "$BRAX_MJX_STEPS" --require-inference-check
   if [[ "$BRAX_MJX_SKIP_ROLLOUT_EVAL" != "1" ]]; then
-    uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt "$JOB_DIR" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes "$BRAX_MJX_EVAL_EPISODES" --max-steps "$BRAX_MJX_EVAL_MAX_STEPS"
+    mkdir -p evidence/curriculum_eval
+    uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt "$JOB_DIR" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes "$BRAX_MJX_EVAL_EPISODES" --max-steps "$BRAX_MJX_EVAL_MAX_STEPS" --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0
     uv run python scripts/sim_validation_gate.py --profile asimov-1 --checkpoint "$JOB_DIR" --require-asimov-model-provenance
   fi
 else

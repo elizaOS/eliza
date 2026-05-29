@@ -308,7 +308,7 @@ function isCloudServiceRouteSelected(route: unknown): boolean {
 }
 
 export function CloudServicesSection() {
-  const { t } = useApp();
+  const { t, setActionNotice } = useApp();
   const [services, setServices] = useState<Record<CloudServiceKey, boolean>>({
     rpc: false,
     media: false,
@@ -339,11 +339,23 @@ export function CloudServicesSection() {
         });
         setLoaded(true);
       })
-      .catch(() => setLoaded(true));
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setActionNotice(
+          t("configpageview.CloudServicesLoadFailed", {
+            defaultValue: `Could not load cloud service routing: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          }),
+          "error",
+          4000,
+        );
+        setLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setActionNotice, t]);
 
   const handleToggle = useCallback(
     async (key: CloudServiceKey) => {
@@ -372,13 +384,22 @@ export function CloudServicesSection() {
           },
         });
         setNeedsRestart(true);
-      } catch {
+      } catch (err: unknown) {
         setServices(services);
+        setActionNotice(
+          t("configpageview.CloudServicesSaveFailed", {
+            defaultValue: `Could not update cloud service routing: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          }),
+          "error",
+          4000,
+        );
       } finally {
         setSaving(false);
       }
     },
-    [services],
+    [services, setActionNotice, t],
   );
 
   if (!loaded) return null;

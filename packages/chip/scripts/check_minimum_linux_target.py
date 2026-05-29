@@ -5,14 +5,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs/project/minimum-linux-npu-target.md"
 REPORT = ROOT / "build/reports/minimum-linux-kernel-target.json"
+CLAIM_BOUNDARY = "minimum target gate only; not generated-AP boot evidence by itself"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "generated_ap_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 LINUX_DTS = ROOT / "sw/linux/dts/eliza-e1.dts"
 LINUX_EXTERNAL_STATUS = ROOT / "build/reports/linux-external-bsp-status.json"
 
@@ -68,6 +79,30 @@ def rel(path: Path) -> str:
         return path.relative_to(ROOT).as_posix()
     except ValueError:
         return str(path)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    safe = value.replace(str(ROOT), "<repo>")
+    home = os.environ.get("HOME")
+    if home:
+        safe = safe.replace(home, "<home>")
+    safe = safe.replace("/var/tmp/", "<var-tmp>/")
+    safe = safe.replace("/tmp/", "<tmp>/")
+    return safe
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(child) for child in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def read(path: Path) -> str:
@@ -176,8 +211,10 @@ def collect() -> dict[str, Any]:
 
     return {
         "schema": "eliza.minimum_linux_kernel_target.v1",
+        "generated_utc": utc_now(),
         "status": "fail" if errors else ("blocked" if blockers else "pass"),
-        "claim_boundary": "minimum target gate only; not generated-AP boot evidence by itself",
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "checklist": rel(DOC),
         "local_artifacts": artifacts,
         "dts_checks": dts_checks,
@@ -194,16 +231,19 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args(argv)
     report = collect()
+    output_report = provenance_safe_value(report)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    REPORT.write_text(
+        json.dumps(output_report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
+        print(json.dumps(output_report, indent=2, sort_keys=True))
     else:
         print(f"STATUS: {report['status'].upper()} minimum_linux_kernel_target")
         print(f"  report: {rel(REPORT)}")
-        for error in report["errors"]:
+        for error in output_report["errors"]:
             print(f"  - {error}")
-        for blocker in report["blockers"]:
+        for blocker in output_report["blockers"]:
             print(f"  - {blocker}")
     if report["status"] == "fail":
         return 1

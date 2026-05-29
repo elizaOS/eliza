@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -60,18 +61,14 @@ def docker_manifest_contains_digest(image: str, digest: str) -> bool | None:
 
 def pid_is_running(pid_text: str) -> bool:
     try:
-        int(pid_text.strip())
+        pid = int(pid_text.strip())
     except ValueError:
         return False
-    return (
-        subprocess.run(
-            ["kill", "-0", pid_text.strip()],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        ).returncode
-        == 0
-    )
+    if pid <= 0:
+        return False
+    # Linux-only repo environment: /proc lets the checker detect active locks
+    # without sending a signal to unrelated processes.
+    return (Path("/proc") / str(pid)).exists()
 
 
 def active_labeled_openlane_containers() -> list[str]:
@@ -355,6 +352,103 @@ def blocker_category_counts(blockers: list[str]) -> dict[str, int]:
     return counts
 
 
+def next_step_for_category(category: str, *, release: bool) -> str:
+    steps = {
+        "pd_release_gate_blocked": (
+            "Close the PD release gate by archiving one selected OpenLane/OpenROAD run "
+            "with complete clean signoff artifacts and external review metadata."
+        ),
+        "tapeout_release_gate_blocked": (
+            "Close tapeout release by adding SI/PI, PDN/current budget, package, "
+            "padframe, and final signoff evidence."
+        ),
+        "board_fabrication_release_gate_blocked": (
+            "Close board-fabrication release with DFM, footprint, package, SI/PI, "
+            "current-limit, and fabrication evidence."
+        ),
+        "run_incomplete_or_missing_final": (
+            "Rerun the pinned OpenLane flow to completion so the selected run has final outputs."
+        ),
+        "release_artifacts_missing": (
+            "Archive every required release artifact class from a single selected run."
+        ),
+        "dirty_signoff_reports": (
+            "Fix or formally waive dirty DRC/LVS/antenna/timing reports before release."
+        ),
+        "clean_markers_missing": (
+            "Regenerate reports with explicit clean/pass markers for each required signoff class."
+        ),
+        "release_artifacts_cross_run": (
+            "Select one OpenLane/OpenROAD run and re-archive all release artifacts from that run only."
+        ),
+        "runner_provenance_missing": (
+            "Archive pinned native-runner provenance or use the pinned Docker image digest."
+        ),
+        "runner_unavailable": (
+            "Install the pinned OpenLane Docker image or provide a pinned native runner."
+        ),
+        "orchestration_lock": (
+            "Wait for the active OpenLane launcher to finish, or manually inspect the stale lock."
+        ),
+        "orchestration_container_active": (
+            "Wait for the labeled OpenLane Docker container for this repo to finish."
+        ),
+        "release_config_not_fail_closed": (
+            "Make release configs fail-closed for timing, DRC, LVS, and slew violations."
+        ),
+    }
+    if category in steps:
+        return steps[category]
+    if release:
+        return "Run a complete pinned OpenLane release flow and archive release-clean signoff artifacts."
+    return "Run the pinned OpenLane preflight flow and archive current run/image evidence."
+
+
+def release_dependency_for_category(category: str, *, release: bool) -> str:
+    if not release:
+        return "repo_artifact_generation"
+    if category in {
+        "pd_release_gate_blocked",
+        "tapeout_release_gate_blocked",
+        "board_fabrication_release_gate_blocked",
+    }:
+        return "actionable_external_dependency"
+    if category in {
+        "runner_unavailable",
+        "runner_provenance_missing",
+        "run_incomplete_or_missing_final",
+        "release_config_not_fail_closed",
+    }:
+        return "repo_artifact_generation"
+    return "actionable_external_dependency"
+
+
+def action_inventory(blockers: list[str], *, release: bool) -> list[dict[str, object]]:
+    counts = blocker_category_counts(blockers)
+    samples: dict[str, list[str]] = {}
+    for blocker in blockers:
+        category = blocker_category(blocker)
+        samples.setdefault(category, [])
+        if len(samples[category]) < 3:
+            samples[category].append(blocker)
+    return [
+        {
+            "category": category,
+            "count": counts[category],
+            "dependency": release_dependency_for_category(category, release=release),
+            "next_step": next_step_for_category(category, release=release),
+            "sample_blockers": samples.get(category, []),
+            "validation_command": (
+                "python3 scripts/check_openlane_run_preflight.py --release"
+                if release
+                else "python3 scripts/check_openlane_run_preflight.py"
+            ),
+            "release_credit": False,
+        }
+        for category in sorted(counts, key=lambda key: (-counts[key], key))
+    ]
+
+
 def write_report(
     report_path: Path,
     status: str,
@@ -377,28 +471,56 @@ def write_report(
             }
         )
     for blocker in blockers:
+        category = blocker_category(blocker)
         findings.append(
             {
                 "code": "openlane_release_blocked",
                 "message": blocker,
-                "next_step": "run a complete pinned OpenLane flow and archive release-clean signoff artifacts",
+                "category": category,
+                "dependency": release_dependency_for_category(category, release=release),
+                "next_step": next_step_for_category(category, release=release),
                 "severity": "blocker",
             }
         )
+    actions = action_inventory(blockers, release=release)
+    dependency_counts = {
+        "repo_artifact_generation": sum(
+            row["count"] for row in actions if row["dependency"] == "repo_artifact_generation"
+        ),
+        "actionable_external_dependency": sum(
+            row["count"]
+            for row in actions
+            if row["dependency"] == "actionable_external_dependency"
+        ),
+        "live_device_validation": 0,
+    }
     report = {
         "schema": REPORT_SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "summary": {
             "release_mode": release,
+            "preflight_ready": status == "pass" and not release,
             "failure_count": len(failures),
             "blocker_count": len(blockers),
             "blocker_category_counts": blocker_category_counts(blockers),
             "blocked_release_gate_count": len(release_gate_records(manifest or {})),
-            "release_ready": status == "pass",
+            "release_ready": status == "pass" and release,
             "openlane_image": image,
             "openlane_image_digest": digest_pin,
         },
         "findings": findings,
+        "blocker_dependency_counts": dependency_counts,
+        "release_unblock_action_inventory": actions,
+        "next_command_by_dependency": {
+            dependency: [
+                row["validation_command"]
+                for row in actions
+                if row["dependency"] == dependency
+            ]
+            for dependency in dependency_counts
+            if dependency_counts[dependency] > 0
+        },
         "diagnostics": {
             "blocked_release_gates": release_gate_records(manifest or {}),
             "blocker_categories": [

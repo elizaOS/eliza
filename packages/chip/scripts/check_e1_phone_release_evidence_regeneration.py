@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import subprocess
 import sys
 import tempfile
@@ -134,8 +135,14 @@ def compare_outputs(outputs: list[OutputSpec]) -> list[DriftFinding]:
     return failures
 
 
+def display_token(token: str) -> str:
+    if token.startswith(ROOT.as_posix() + "/"):
+        return Path(token).relative_to(ROOT).as_posix()
+    return token
+
+
 def command_text(args: tuple[str, ...]) -> str:
-    return " ".join([PYTHON, *args])
+    return " ".join(["python3", *(display_token(arg) for arg in args)])
 
 
 def path_details(path: Path) -> dict[str, Any]:
@@ -154,10 +161,17 @@ def path_details(path: Path) -> dict[str, Any]:
 
 
 def drift_report(failures: list[DriftFinding]) -> dict[str, Any]:
+    status = "blocked_stale_generated_reports" if failures else "pass"
     return {
         "schema": "eliza.e1_phone_release_evidence_regeneration_drift.v1",
-        "status": "blocked_stale_generated_reports",
+        "status": status,
         "release_credit": False,
+        "generated_utc": _dt.datetime.now(_dt.UTC).isoformat(),
+        "claim_boundary": (
+            "Release-evidence regeneration drift diagnostic only. This report does "
+            "not grant release credit or satisfy fabrication, supplier, routed "
+            "board, factory, first-article, or mechanical evidence gates."
+        ),
         "summary": {
             "finding_count": len(failures),
             "stale_generated_report_count": sum(
@@ -176,7 +190,7 @@ def drift_report(failures: list[DriftFinding]) -> dict[str, Any]:
                 "message": failure.message,
                 "release_credit": False,
                 "committed_report": rel(failure.spec.committed),
-                "regenerated_report": failure.spec.generated.as_posix(),
+                "regenerated_report": display_path(failure.spec.generated),
                 "generator_command": command_text(failure.spec.generator_command),
                 "refresh_committed_command": (
                     "python3 scripts/check_e1_phone_release_evidence_regeneration.py "
@@ -392,6 +406,13 @@ def main() -> int:
                 str(production_presence),
                 "--mechanical-cad",
                 str(mechanical_cad),
+                "--public-cad-source-intake",
+                str(ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"),
+                "--public-bom-market-cost-bands",
+                str(
+                    ROOT
+                    / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
+                ),
                 "--report",
                 str(content_contract),
                 "--write-report",
@@ -504,6 +525,9 @@ def main() -> int:
                 ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/production/test/"
                 "bench-first-article-template-manifest-2026-05-22.yaml",
+                ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml",
+                ROOT
+                / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml",
             )
             content_contract_sources = (
                 committed_supplier_yaml,
@@ -516,6 +540,9 @@ def main() -> int:
                 / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
                 ROOT
                 / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
+                ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml",
+                ROOT
+                / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml",
             )
             release_gate_sources = (
                 committed_content_contract,
@@ -645,6 +672,7 @@ def main() -> int:
         write_drift_report(failures, args.diagnostic_report)
         print(f"  diagnostic_report: {display_path(args.diagnostic_report)}")
         return 2
+    write_drift_report([], args.diagnostic_report)
     print(f"STATUS: PASS E1 phone release evidence regeneration ({len(outputs)} reports)")
     return 0
 

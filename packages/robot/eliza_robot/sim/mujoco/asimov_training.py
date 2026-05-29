@@ -185,7 +185,7 @@ def asimov_full_training_job_spec(
             f"uv run python scripts/verify_brax_text_policy.py --ckpt {output_dir} --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25 --require-critic-obs-dim {45 + pca_dim + ASIMOV1_PRIVILEGED_OBSERVATION_EXTRA_DIM} --require-policy-obs-key state --require-value-obs-key privileged_state",
             f"uv run python scripts/validate_asimov1_production_checkpoint.py {output_dir} --min-steps {total_steps} --require-inference-check",
             f"uv run python scripts/validate_asimov1_full_training_run.py {output_dir}/full_training_run.json --job-dir {output_dir}",
-            f"uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {output_dir} --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200",
+            f"uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {output_dir} --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200 --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0",
             f"uv run python scripts/sim_validation_gate.py --profile asimov-1 --checkpoint {output_dir} --require-asimov-model-provenance",
         ],
     }

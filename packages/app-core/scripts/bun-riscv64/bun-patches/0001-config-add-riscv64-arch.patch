@@ -1,36 +1,18 @@
-From 3f3f8d9cafb3fc24a835fa4874d4b5505ce6a5ac Mon Sep 17 00:00:00 2001
-From: bun-riscv64 build <bun-riscv64@eliza.local>
-Date: Tue, 19 May 2026 04:34:49 -0700
-Subject: [PATCH 1/7] config: add riscv64 to Arch type and derive cfg.riscv64
-
-Extends Arch = "x64" | "aarch64" to include "riscv64", accepts
-
-riscv64 as a host architecture in detectHost, threads riscv64: boolean
-
-through the Config interface and resolveConfig return. Gates tinycc off
-
-on riscv64 (oven-sh/tinycc has no riscv64 backend) and asserts riscv64
-
-currently requires linux-musl.
----
- scripts/build/config.ts | 24 ++++++++++++++++++------
- 1 file changed, 18 insertions(+), 6 deletions(-)
-
 diff --git a/scripts/build/config.ts b/scripts/build/config.ts
-index f5a672b..8013cb3 100644
+index fd527a2..00fea58 100644
 --- a/scripts/build/config.ts
 +++ b/scripts/build/config.ts
 @@ -18,7 +18,7 @@ import { cyan, dim, green } from "./tty.ts";
- import { defaultZigCommit } from "./zig.ts";
+ import { ZIG_COMMIT } from "./zig.ts";
  
- export type OS = "linux" | "darwin" | "windows";
+ export type OS = "linux" | "darwin" | "windows" | "freebsd";
 -export type Arch = "x64" | "aarch64";
 +export type Arch = "x64" | "aarch64" | "riscv64";
- export type Abi = "gnu" | "musl";
+ export type Abi = "gnu" | "musl" | "android";
  export type BuildType = "Debug" | "Release" | "RelWithDebInfo" | "MinSizeRel";
  export type BuildMode = "full" | "cpp-only" | "zig-only" | "link-only";
-@@ -75,6 +75,8 @@ export interface Config {
-   unix: boolean;
+@@ -79,6 +79,8 @@ export interface Config {
+   kqueue: boolean;
    x64: boolean;
    arm64: boolean;
 +  /** RISC-V 64 (rv64gc/lp64d). Cross-compile only — no host build. */
@@ -38,7 +20,7 @@ index f5a672b..8013cb3 100644
  
    /**
     * What's running the build. Differs from os/arch/windows (target) in
-@@ -313,9 +315,13 @@ export function detectHost(): Host {
+@@ -365,9 +367,13 @@ export function detectHost(): Host {
        ? "x64"
        : a === "arm64"
          ? "aarch64"
@@ -55,27 +37,24 @@ index f5a672b..8013cb3 100644
  
    return { os, arch, exeSuffix: os === "windows" ? ".exe" : "" };
  }
-@@ -352,6 +358,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
-   const unix = linux || darwin;
+@@ -542,6 +548,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   const kqueue = darwin || freebsd;
    const x64 = arch === "x64";
    const arm64 = arch === "aarch64";
 +  const riscv64 = arch === "riscv64";
  
    // Platform file conventions — MSVC style on Windows, Unix everywhere else.
    const exeSuffix = windows ? ".exe" : "";
-@@ -421,8 +428,9 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
-   // failure is loud ("cannot find -l:libatomic.a") and the fix is obvious.
-   const staticLibatomic = partial.staticLibatomic ?? true;
- 
--  // TinyCC: off on Windows ARM64 (not supported), on elsewhere
--  const tinycc = partial.tinycc ?? !(windows && arm64);
-+  // TinyCC: off on Windows ARM64 (no arm64-coff backend) and on riscv64
-+  // (oven-sh/tinycc has no riscv64 backend). On elsewhere.
-+  const tinycc = partial.tinycc ?? !((windows && arm64) || riscv64);
+@@ -619,7 +626,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   // TinyCC: off on Windows ARM64 (not supported), Android (no upstream
+   // bionic support; FFI cc() falls back to dlopen-only), and FreeBSD
+   // (oven-sh/tinycc has no FreeBSD target).
+-  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd);
++  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd || riscv64);
  
    const valgrind = partial.valgrind ?? false;
    const fuzzilli = partial.fuzzilli ?? false;
-@@ -455,6 +463,9 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+@@ -652,6 +659,9 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
  
    // ─── Validation ───
    assert(!baseline || x64, "baseline=true requires arch=x64 (baseline disables AVX which is x64-only)");
@@ -84,15 +63,12 @@ index f5a672b..8013cb3 100644
 +  assert(!riscv64 || (linux && abi === "musl"), "arch=riscv64 currently requires os=linux abi=musl");
    assert(!valgrind || linux, "valgrind=true requires os=linux");
    assert(!(asan && valgrind), "Cannot enable both asan and valgrind simultaneously");
-   assert(os !== "linux" || abi !== undefined, "Linux builds require an abi (gnu or musl)");
-@@ -493,6 +504,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
-     unix,
+   assert(os !== "linux" || abi !== undefined, "Linux builds require an abi (gnu, musl, or android)");
+@@ -762,6 +772,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     kqueue,
      x64,
      arm64,
 +    riscv64,
      host,
      exeSuffix,
      objSuffix,
--- 
-2.43.0
-

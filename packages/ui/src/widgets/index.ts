@@ -6,7 +6,6 @@ export {
   registerBuiltinWidgetDeclarations,
   registerBuiltinWidgets,
   registerWidgetComponent,
-  resolveChatSidebarWidgets,
   resolveWidgetsForSlot,
 } from "./registry";
 export { seedLegacyWidgets } from "./registry-store";

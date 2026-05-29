@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -15,6 +16,7 @@ MEMORY_SUBSYSTEM = ROOT / "docs/arch/memory-subsystem.md"
 INTERCONNECT = ROOT / "docs/arch/interconnect.md"
 UMA = ROOT / "docs/project/uma-coherency-validation-strategy.yaml"
 GATE = ROOT / "docs/evidence/memory/uma-dram-evidence-gate.yaml"
+REPORT = ROOT / "build/reports/memory_interconnect_contract.json"
 
 INTERCONNECT_RTL = ROOT / "rtl/interconnect/e1_axi_lite_interconnect.sv"
 CONTRACT_RTL = ROOT / "rtl/interconnect/e1_linux_soc_contract.sv"
@@ -38,6 +40,23 @@ EXPECTED_E1_CHIP_DRAM_BASE = 0x80000000
 EXPECTED_E1_CHIP_DRAM_BYTES = 0x1000
 EXPECTED_LINUX_DRAM_BYTES = 0x10000000
 EXPECTED_AXI_LITE_WORD_BYTES = 4
+EXPECTED_LINUX_DEVICE_BYTES = 0x1000
+
+EVIDENCE_PATHS = [
+    "sw/platform/e1_platform_contract.json",
+    "docs/arch/memory-map.md",
+    "docs/arch/memory-subsystem.md",
+    "docs/arch/interconnect.md",
+    "docs/project/uma-coherency-validation-strategy.yaml",
+    "docs/evidence/memory/uma-dram-evidence-gate.yaml",
+    "rtl/interconnect/e1_axi_lite_interconnect.sv",
+    "rtl/interconnect/e1_linux_soc_contract.sv",
+    "rtl/memory/e1_axi_lite_dram.sv",
+]
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def read(path: Path) -> str:
@@ -110,6 +129,19 @@ def region(contract: dict, name: str) -> dict:
         if item["name"] == name:
             return item
     raise KeyError(name)
+
+
+def cpu_variant_device(contract: dict, name: str) -> dict:
+    variant = contract.get("e1_chip_cpu_variant")
+    if not isinstance(variant, dict):
+        raise KeyError("e1_chip_cpu_variant")
+    devices = variant.get("devices")
+    if not isinstance(devices, dict):
+        raise KeyError("e1_chip_cpu_variant.devices")
+    device = devices.get(name)
+    if not isinstance(device, dict):
+        raise KeyError(f"e1_chip_cpu_variant.devices.{name}")
+    return device
 
 
 def check_e1_chip_dram_contract(contract: dict, errors: list[str]) -> None:
@@ -240,6 +272,14 @@ def check_memory_map_consistency(contract: dict, errors: list[str]) -> None:
             rtl_localparam(interconnect_rtl, "DMA_BASE"),
             rtl_localparam(interconnect_rtl, "DMA_MASK"),
         ),
+        "NPU": (
+            rtl_localparam(interconnect_rtl, "NPU_BASE"),
+            rtl_localparam(interconnect_rtl, "NPU_MASK"),
+        ),
+        "DISP": (
+            rtl_localparam(interconnect_rtl, "DISP_BASE"),
+            rtl_localparam(interconnect_rtl, "DISP_MASK"),
+        ),
     }
     for name, (base, mask) in rtl_regions.items():
         fail_unless(base is not None and mask is not None, f"missing RTL decode for {name}", errors)
@@ -274,6 +314,22 @@ def check_memory_map_consistency(contract: dict, errors: list[str]) -> None:
             errors,
         )
 
+    for device_name, rtl_name in (("npu", "NPU"), ("display", "DISP")):
+        try:
+            device_contract = cpu_variant_device(contract, device_name)
+        except KeyError as exc:
+            errors.append(f"missing CPU-variant platform device contract: {exc}")
+            continue
+        base, mask = rtl_regions[rtl_name]
+        if base is not None and mask is not None:
+            fail_unless(
+                h(device_contract["base"]) == base
+                and h(device_contract["size"]) == mask + 1
+                and mask + 1 == EXPECTED_LINUX_DEVICE_BYTES,
+                f"CPU-variant {device_name} MMIO row must match the Linux AXI-Lite decode",
+                errors,
+            )
+
     depth = dram_depth_words(dram_rtl)
     fail_unless(depth is not None, "DRAM model missing DEPTH_WORDS parameter", errors)
     if depth is not None:
@@ -305,11 +361,30 @@ def check_rtl_decode(errors: list[str]) -> None:
         "INTC decode": r"\(addr\s*&\s*~INTC_MASK\)\s*==\s*INTC_BASE",
         "DMA base constant": r"DMA_BASE\s*=\s*32'h1001_0000",
         "DMA decode": r"\(addr\s*&\s*~DMA_MASK\)\s*==\s*DMA_BASE",
+        "NPU base constant": r"NPU_BASE\s*=\s*32'h1002_0000",
+        "NPU decode": r"\(addr\s*&\s*~NPU_MASK\)\s*==\s*NPU_BASE",
+        "Display base constant": r"DISP_BASE\s*=\s*32'h1003_0000",
+        "Display decode": r"\(addr\s*&\s*~DISP_MASK\)\s*==\s*DISP_BASE",
         "DECERR/SLVERR response": r"RESP_SLVERR\s*=\s*2'b10",
         "unmapped read value": r"32'hDEAD_BEEF",
     }
     for name, pattern in required_patterns.items():
         fail_unless(re.search(pattern, rtl) is not None, f"interconnect RTL missing {name}", errors)
+
+    linux_contract_tokens = {
+        "NPU MMIO target instance": "e1_npu u_npu",
+        "display MMIO target instance": "e1_display u_display",
+        "NPU AW route": ".npu_awvalid(npu_mmio_awvalid)",
+        "NPU AR route": ".npu_arvalid(npu_mmio_arvalid)",
+        "display AW route": ".display_awvalid(display_mmio_awvalid)",
+        "display AR route": ".display_arvalid(display_mmio_arvalid)",
+        "NPU descriptor write fail closed": "assign npu_mem_bresp   = 2'b10",
+        "NPU descriptor read fail closed": "assign npu_mem_rresp   = 2'b10",
+        "display framebuffer not ready": ".fb_read_ready(1'b0)",
+        "display framebuffer zero data": ".fb_read_data(32'h0)",
+    }
+    for name, token in linux_contract_tokens.items():
+        fail_unless(token in contract_rtl, f"Linux contract wrapper missing {name}", errors)
 
     fail_unless(
         "grant_dma_wr = !cpu_wr_req && dma_wr_req" in contract_rtl,
@@ -405,6 +480,69 @@ def check_no_claim_leak(errors: list[str]) -> None:
         fail_unless(claim not in combined, f"forbidden unsupported claim present: {claim}", errors)
 
 
+def write_report(status: str, errors: list[str]) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(
+        json.dumps(
+            {
+                "schema": "eliza.memory_interconnect_contract.local_report.v1",
+                "status": status,
+                "as_of": datetime.now(UTC).isoformat(),
+                "generated_utc": utc_now(),
+                "subsystem": "memory_interconnect",
+                "phone_claim_allowed": False,
+                "release_claim_allowed": False,
+                "production_fabric_claim_allowed": False,
+                "coherency_claim_allowed": False,
+                "iommu_claim_allowed": False,
+                "qos_claim_allowed": False,
+                "android_claim_allowed": False,
+                "production_npu_memory_fabric_claim_allowed": False,
+                "production_display_framebuffer_claim_allowed": False,
+                "claim_boundary": (
+                    "Local contract evidence only: checks the current AXI-Lite scaffold "
+                    "decode, CPU-wins arbitration wrapper, 4 KiB SRAM-backed e1-chip "
+                    "debug DRAM model, separate 256 MiB Linux scaffold aperture, "
+                    "Linux-contract NPU/display MMIO target exposure, fail-closed NPU "
+                    "descriptor traffic, fail-closed display framebuffer reads, and "
+                    "fail-closed UMA/IOMMU/QoS claim boundaries. This is not production "
+                    "SoC routing, ordering, coherency, cache hierarchy, IOMMU/SMMU, QoS, "
+                    "LPDDR/TileLink/AXI fabric, Android, NPU memory-fabric, display "
+                    "framebuffer, or phone-class memory evidence."
+                ),
+                "evidence_paths": EVIDENCE_PATHS,
+                "checked_contracts": [
+                    "e1_chip_dram_contract",
+                    "memory_docs_claim_boundary",
+                    "memory_map_vs_platform_vs_rtl_decode",
+                    "linux_npu_display_mmio_decode",
+                    "axi_lite_scaffold_decode_overlap",
+                    "cpu_wins_dma_arbitration_wrapper",
+                    "npu_display_memory_fabric_fail_closed",
+                    "uma_strategy_fail_closed",
+                    "unsupported_claim_leak_scan",
+                ],
+                "implemented_capacity": {
+                    "e1_chip_debug_dram_base": "0x80000000",
+                    "e1_chip_debug_dram_bytes": EXPECTED_E1_CHIP_DRAM_BYTES,
+                    "linux_scaffold_aperture_bytes": EXPECTED_LINUX_DRAM_BYTES,
+                },
+                "linux_mmio_targets": {
+                    "npu_base": "0x10020000",
+                    "display_base": "0x10030000",
+                    "target_bytes": EXPECTED_LINUX_DEVICE_BYTES,
+                    "npu_descriptor_master": "fail_closed_slverr",
+                    "display_framebuffer_path": "not_routed",
+                },
+                "errors": errors,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     errors: list[str] = []
     contract = json.loads(PLATFORM.read_text())
@@ -416,10 +554,12 @@ def main() -> int:
     check_no_claim_leak(errors)
 
     if errors:
+        write_report("FAIL", errors)
         print("Memory/interconnect contract check failed:")
         for error in errors:
             print(f"  - {error}")
         return 1
+    write_report("PASS", [])
     print("Memory/interconnect contract check passed.")
     return 0
 

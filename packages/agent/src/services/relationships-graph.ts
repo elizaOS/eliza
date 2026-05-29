@@ -52,10 +52,26 @@ type RelationshipsServiceWithGraph = RelationshipsServiceLike &
     }) => void;
   };
 
+/** Methods the {@link RelationshipsGraphService} return type promises to callers. */
+const REQUIRED_GRAPH_METHODS = [
+  "getGraphSnapshot",
+  "getPersonDetail",
+  "getCandidateMerges",
+  "acceptMerge",
+  "rejectMerge",
+  "proposeMerge",
+] as const satisfies readonly (keyof RelationshipsGraphService)[];
+
 function isRelationshipsServiceWithGraph(
   service: unknown,
 ): service is RelationshipsServiceWithGraph {
-  return typeof service === "object" && service !== null;
+  if (typeof service !== "object" || service === null) {
+    return false;
+  }
+  const candidate = service as Record<string, unknown>;
+  return REQUIRED_GRAPH_METHODS.every(
+    (method) => typeof candidate[method] === "function",
+  );
 }
 
 /**
@@ -76,9 +92,6 @@ export async function resolveRelationshipsGraphService(
   }
 
   const service = runtime.getService("relationships");
-  if (!service || typeof service !== "object") {
-    return null;
-  }
   if (!isRelationshipsServiceWithGraph(service)) {
     return null;
   }

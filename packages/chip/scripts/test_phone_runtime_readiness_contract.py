@@ -18,6 +18,13 @@ if str(ROOT / "scripts") not in sys.path:
 
 import check_phone_runtime_readiness_contract as gate  # noqa: E402
 
+
+def assert_false_claim_flags(testcase: unittest.TestCase, payload: dict[str, object]) -> None:
+    testcase.assertEqual(payload["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(payload.get(key), expected, key)
+
+
 PERIPHERAL_HELPER_PATH = ROOT / "scripts/android/capture_simulated_peripheral_evidence.py"
 peripheral_spec = importlib.util.spec_from_file_location(
     "capture_simulated_peripheral_evidence", PERIPHERAL_HELPER_PATH
@@ -63,6 +70,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with mock.patch.object(gate, "SCOPES", (blocked,)):
             payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "blocked")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["summary"]["blockers"], 1)
         self.assertEqual(payload["findings"][0]["code"], "media_runtime_surface_blocked")
         self.assertEqual(
@@ -73,6 +81,11 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["runtime_evidence_collection_scope_count"], 1)
         self.assertEqual(payload["summary"]["blocked_runtime_evidence_file_count"], 0)
         self.assertEqual(payload["summary"]["highest_priority_capture_area"], "media")
+        self.assertEqual(payload["summary"]["next_runtime_capture_area"], "media")
+        self.assertEqual(payload["summary"]["next_runtime_capture_blocked_file_count"], 0)
+        self.assertIsNotNone(payload["next_runtime_capture_action"])
+        self.assertEqual(payload["next_runtime_capture_action"]["capture_area"], "media")
+        self.assertFalse(payload["next_runtime_capture_action"]["release_credit"])
         self.assertEqual(
             payload["findings"][0]["blocker_dependency"],
             "live_device_validation",
@@ -90,7 +103,9 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with mock.patch.object(gate, "SCOPES", (spec("media"), spec("security"))):
             payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "pass")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["findings"], [])
+        self.assertRegex(payload["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
     def test_invalid_scope_report_is_failure(self) -> None:
         invalid = gate.ScopeSpec(
@@ -104,6 +119,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with mock.patch.object(gate, "SCOPES", (invalid,)):
             payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "fail")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["summary"]["failures"], 1)
         self.assertEqual(payload["findings"][0]["code"], "radio_scope_report_invalid")
 
@@ -339,7 +355,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(blocked_file["blocker_category"], "planned_incomplete_evidence")
         self.assertEqual(
             blocked_file["expected_output_files"],
-            ["docs/evidence/android/security/tampered_boot_rejection.log"],
+            ["packages/chip/docs/evidence/android/security/tampered_boot_rejection.log"],
         )
         self.assertTrue(blocked_file["capture_commands"])
         self.assertFalse(
@@ -376,7 +392,15 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         ][0]
         self.assertEqual(
             blocked_file["expected_output_files"],
-            ["docs/evidence/android/peripherals/rear_camera_sim.log"],
+            ["packages/chip/docs/evidence/android/peripherals/rear_camera_sim.log"],
+        )
+        self.assertEqual(
+            blocked_file["package_relative_expected_path"],
+            "docs/evidence/android/peripherals/rear_camera_sim.log",
+        )
+        self.assertEqual(
+            blocked_file["repo_relative_expected_path"],
+            "packages/chip/docs/evidence/android/peripherals/rear_camera_sim.log",
         )
         self.assertFalse(blocked_file["release_credit"])
         self.assertTrue(
@@ -694,9 +718,45 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "python3 packages/chip/scripts/aggregate_tapeout_readiness.py --scope phone --strict",
             inventory["next_commands"],
         )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["capture_area"],
+            "media",
+        )
+        self.assertIn(
+            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            payload["next_runtime_capture_action"]["validation_commands"],
+        )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["claim_boundary"],
+            "operator_capture_action_only_not_runtime_release_evidence",
+        )
         self.assertNotIn(
             "python3 scripts/check_phone_runtime_readiness_contract.py",
             inventory["next_commands"],
+        )
+        self.assertEqual(len(inventory["next_command_batches"]), 1)
+        batch = inventory["next_command_batches"][0]
+        self.assertEqual(
+            batch["artifact"],
+            "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+        )
+        self.assertEqual(
+            batch["package_relative_artifact"],
+            "docs/evidence/android/eliza_launcher_runtime_evidence.json",
+        )
+        self.assertEqual(
+            batch["claim_boundary"],
+            "operator_command_batch_only_not_runtime_evidence",
+        )
+        self.assertFalse(batch["release_credit"])
+        self.assertTrue(batch["capture_commands"])
+        self.assertEqual(
+            batch["validation_commands"],
+            ["python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"],
+        )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["next_command_batches"],
+            payload["runtime_capture_area_groups"][0]["next_command_batches"],
         )
 
     def test_prioritized_runtime_capture_plan_lists_live_evidence_without_release_credit(
@@ -746,10 +806,18 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(
             [row["capture_area"] for row in plan], ["security_lifecycle", "power_thermal"]
         )
+        self.assertEqual(
+            payload["summary"]["next_runtime_capture_area"],
+            "security_lifecycle",
+        )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["capture_area"],
+            "security_lifecycle",
+        )
         self.assertTrue(all(row["release_credit"] is False for row in plan))
         security = plan[0]
         self.assertIn(
-            "docs/evidence/android/security/rollback_rejection.log",
+            "packages/chip/docs/evidence/android/security/rollback_rejection.log",
             security["expected_output_files"],
         )
         self.assertTrue(
@@ -758,10 +826,19 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
                 for command in security["capture_commands"]
             )
         )
+        verified_boot = gate.evidence_capture_plan(
+            gate.ROOT / "docs/evidence/android/security/verified_boot_acceptance.log"
+        )
+        self.assertTrue(
+            any(
+                "verdict=pass" in command and "RESULT=%s" in command
+                for command in verified_boot["capture_commands"]
+            )
+        )
         self.assertFalse(any("<lab command" in command for command in security["capture_commands"]))
         power = plan[1]
         self.assertIn(
-            "docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
+            "packages/chip/docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
             power["expected_output_files"],
         )
         self.assertTrue(
@@ -808,6 +885,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             with mock.patch.object(gate, "SCOPES", (ready_with_file,)):
                 payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "pass")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["runtime_evidence_collection_inventory"], [])
         runtime_files = payload["evidence"]["scopes"]["media"]["runtime_evidence_files"]
         self.assertEqual(runtime_files[0]["status"], "pass")
@@ -877,6 +955,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             ):
                 payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "pass")
+        assert_false_claim_flags(self, payload)
         runtime_files = payload["evidence"]["scopes"]["media"]["runtime_evidence_files"]
         self.assertEqual(
             runtime_files[0]["json_expectations"],

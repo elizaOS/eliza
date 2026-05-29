@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_routed_release_plan.v1
 status: blocked_routed_release_requires_real_route_and_supplier_outputs
-date: '2026-05-21'
+date: '2026-05-27'
 release_target: EVT1-routed-first-article
 claim_boundary: Routed release checklist only. This is not a fabrication package, not a routed PCB, not enclosure-ready
   evidence, and not factory-test release evidence.
@@ -11,7 +11,6 @@ source_artifacts:
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/procurement-readiness.yaml
-  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/enclosure-placement-closure.yaml
   - board/kicad/e1-phone/power-thermal-budget.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
@@ -32,41 +31,7 @@ current_board_state:
 supplier_data_context:
   pinout_status: blocked_pinout_footprint_freeze_missing_supplier_evidence
   procurement_status: blocked_preliminary_bom_not_avl_or_purchase_order
-  supplier_rfq_response_normalization_status: blocked_response_normalization_ready_no_supplier_responses_received
   display_fit_status: missing
-selected_supplier_response_release_gate:
-  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
-  status: blocked_until_selected_supplier_response_packs_unlock_routed_release_outputs
-  required_response_gate_count: 3
-  blocked_response_gate_count: 3
-  required_response_gates:
-    - selected_display_camera_oem_response_gate
-    - selected_usb_sidekey_oem_response_gate
-    - selected_wireless_module_oem_response_gate
-  selected_release_functions:
-    - display_touch
-    - rear_camera
-    - front_camera
-    - usb_c_receptacle_evt0
-    - side_buttons
-    - cellular
-    - wifi_bluetooth
-  selected_response_pack_count: 7
-  routed_release_outputs_blocked_until_selected_response_packs:
-    - schematic_erc_report
-    - pcb_drc_report
-    - routed_kicad_pcb
-    - production_bom_avl
-    - board_step_with_supplier_models
-    - supplier_component_3d_model_manifest
-    - enclosure_clearance_report_using_routed_step
-    - si_pi_reports
-    - rf_reports
-    - power_thermal_measurements
-    - factory_test_limits
-    - first_article_traveler
-  all_selected_supplier_response_packs_absent: true
-  release_allowed_without_selected_supplier_packs: false
 required_release_output_manifest:
   schematic_erc_report:
     owner: ee
@@ -81,14 +46,15 @@ required_release_output_manifest:
     expected_path: board/kicad/e1-phone/production/reports/drc.json
     present: false
     release_required: true
-    blocker: PCB has no routed copper, filled zones, or DRC evidence
+    blocker: no release-approved routed copper, filled zones, or DRC evidence
   routed_kicad_pcb:
     owner: layout
     source: KiCad PCB editor
     expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
     present: false
     release_required: true
-    blocker: current KiCad PCB is a concept placeholder scaffold
+    blocker: routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder
+      scaffold
   filled_zones:
     owner: layout
     source: KiCad PCB editor
@@ -161,11 +127,11 @@ required_release_output_manifest:
     blocker: routed board STEP with supplier connector/module/shield models missing
   supplier_component_3d_model_manifest:
     owner: mechanical
-    source: selected supplier STEP/B-rep intake and KiCad 3D model binding review
+    source: supplier STEP/B-rep intake and component-to-footprint review
     expected_path: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
     present: false
     release_required: true
-    blocker: supplier-approved component 3D model manifest and model-to-footprint binding missing
+    blocker: supplier-approved component 3D model manifest and model-to-footprint approval missing
   enclosure_clearance_report_using_routed_step:
     owner: mechanical
     source: enclosure CAD clearance run

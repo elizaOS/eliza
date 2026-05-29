@@ -25,6 +25,35 @@ narrower basic Linux kernel gate is `make minimum-linux-target-check`; it writes
 DTS, console, driver/MMIO smoke, required artifacts, and required local blocker
 states before the ML workload is claimed.
 
+`build/reports/minimum_linux_npu_target.json` keeps diagnostic attempts separate
+from accepted transcripts. Accepted CPU/AP intake may identify the transcript
+with the archived `eliza-evidence: target=cpu_ap artifact=eliza_e1_linux_boot`
+envelope while the raw FireMarshal body may also contain the generated-AP smoke
+marker. `remaining_blockers` lists the accepted transcript path, whether any
+simulator log is diagnostic-only, and the exact missing or fallback markers that
+still block the integrated Linux+NPU claim.
+For the CPU/AP bundle, the aggregate report also names the current
+ISA/cache/MMU companion report at
+`build/evidence/cpu_ap/cpu_ap_isa_cache_mmu_probe.json`, the legacy fallback
+report path if that is the only local report available, the required Linux
+userspace marker `riscv_hwprobe: syscall rc=0`, and the AP benchmark dependency
+on an accepted `build/evidence/cpu_ap/eliza_e1_linux_boot.log` transcript.
+This gate imports the CPU/AP checker as a sidecar, but its minimum required
+subset is explicit: accepted OpenSBI boot, Linux boot, ISA/cache/MMU, and AP
+benchmark transcripts. Broader CPU/AP blockers, such as trap/timer/IRQ
+regeneration, stay visible as diagnostic context unless they affect that subset.
+The generated Linux/NPU sub-gate also carries the CPU/AP intake state for the
+accepted Linux transcript, so a marker-complete but stale archived transcript
+remains blocked until it is refreshed through intake.
+The strict gate treats `/dev/mem`, devmem-only, and any nonzero CPU fallback
+markers as negative proof even if other PASS strings are present. The accepted
+minimum evidence block names the exact fresh transcript paths:
+`build/evidence/cpu_ap/eliza_e1_linux_boot.log`,
+`build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log`, and
+`build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log`. ISA/cache/MMU evidence must
+include Linux userspace `riscv_hwprobe: syscall rc=0`, and AP benchmark evidence
+must be intaken after the accepted Linux boot transcript.
+
 The target is complete only when one generated-AP Linux transcript proves:
 
 1. The simulator is the e1-chip/generated AP target, not qemu-virt-only.
@@ -37,12 +66,15 @@ The target is complete only when one generated-AP Linux transcript proves:
    `sw/platform/e1_platform_contract.json`.
 5. The console transcript contains `OpenSBI`, `Linux version`,
    `Kernel command line:`, and a shell/init marker.
-6. The kernel exposes `/dev/e1-npu` or a documented first-bring-up
-   `/dev/mem` fallback for the e1 NPU MMIO range.
+6. The kernel exposes `/dev/e1-npu` for the e1 NPU path. `/dev/mem` MMIO
+   bring-up probes may remain diagnostic, but they do not satisfy the strict
+   generated Linux+NPU transcript gate.
 7. A userspace NPU ML smoke runs `GEMM_S8`, prints input hash, output hash or
    matrix values, and stable PASS/FAIL markers.
 8. A checker fails closed if the transcript is missing, if the simulator is a
-   reference platform, or if the ML command used CPU-only fallback.
+   reference platform, if the ML command used CPU-only fallback, if proof came
+   only through `/dev/mem`/devmem, or if AP benchmark or ISA/cache/MMU evidence
+   is missing or stale.
 
 ## Reference Map
 
@@ -57,6 +89,7 @@ The target is complete only when one generated-AP Linux transcript proves:
 | Linux BSP source | `docs/sw/linux/README.md` | `make linux-bsp-check` | Checks repo-local Linux BSP scaffold source. |
 | Linux import | `sw/linux/scripts/import-linux-bsp.sh` | `make linux-import-check` | Validates import into an external Linux tree when `LINUX_TREE` is set. |
 | Linux evidence capture | `sw/linux/scripts/capture-linux-bsp-evidence.sh` | `make linux-boot-artifacts-check` | Captures external kernel build, DTB, OpenSBI handoff, serial boot, and runtime MMIO smoke evidence. |
+| Linux NPU ML evidence capture | `sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux ml-smoke` | `E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' ...` | Captures target-side `/dev/e1-npu` userspace GEMM smoke output, hashes, counters, and zero-fallback PASS markers. |
 | Software BSP aggregate | `scripts/check_software_bsp.py` | `make software-bsp-check` | Keeps Linux, Buildroot, AOSP, OpenSBI, and U-Boot scaffold/evidence status fail-closed. |
 | Linux DTS | `sw/linux/dts/eliza-e1.dts` | `make linux-bsp-check` | Names CPU, timer, PLIC, UART, NPU, DMA, and display nodes for the scaffold. |
 | Linux config fragment | `sw/linux/configs/eliza_e1.fragment` | `make linux-bsp-check` | Names kernel symbols needed by the external Linux target. |
@@ -106,7 +139,11 @@ The target is complete only when one generated-AP Linux transcript proves:
    artifacts, locate or build the Linux payload, and run
    `make chipyard-generated-ap-boot chipyard-verilator-linux-smoke-check`.
 4. Capture complete generated-AP serial boot and runtime MMIO/NPU smoke logs.
-5. Run `make minimum-linux-target-check` and then
-   `make minimum-linux-npu-target-check`. Until the generated AP Linux
-   transcript contains both boot and NPU ML PASS markers, the aggregate target
-   must remain BLOCKED instead of inventing proof.
+   The Linux-side NPU smoke is captured with
+   `E1_NPU_ML_SMOKE_CMD='<target command>' sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux ml-smoke`.
+5. After CPU/AP intake and Linux doc sync, run
+   `python3 scripts/check_cpu_ap_evidence.py --require-evidence`,
+   `python3 scripts/check_minimum_linux_target.py --strict`, and
+   `python3 scripts/check_minimum_linux_npu_target.py --strict`. Until the
+   accepted generated AP Linux transcript contains both boot and NPU ML PASS
+   markers, the aggregate target must remain BLOCKED instead of inventing proof.

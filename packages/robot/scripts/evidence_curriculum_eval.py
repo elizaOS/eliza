@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
-import math
 import os
 import sys
 import time
@@ -41,7 +41,7 @@ import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
+import mujoco
 import numpy as np
 
 from eliza_robot.bridge.backends.dual_target import DualTargetBackend
@@ -59,6 +59,7 @@ from eliza_robot.rl.text_conditioned.inference_loop import (
     InferenceLoopConfig,
     run_inference,
 )
+from eliza_robot.sim.mujoco import ainex_constants as consts
 from eliza_robot.sim.mujoco.demo_env import DemoEnv
 
 
@@ -123,6 +124,13 @@ async def _evaluate_task(
     divergence_samples: list[float] = []
     sim_frames_for_video: list[np.ndarray] = []
     last_result = None
+    floor_ids = _geom_ids(sim_env.model, ["floor"])
+    foot_geom_ids = {
+        "left": _geom_ids(sim_env.model, consts.LEFT_FEET_GEOMS),
+        "right": _geom_ids(sim_env.model, consts.RIGHT_FEET_GEOMS),
+    }
+    prev_foot_xy = _foot_xy(sim_env, foot_geom_ids)
+    prev_foot_t_s = t0
 
     cfg = InferenceLoopConfig(
         hz=policy_hz,
@@ -131,15 +139,13 @@ async def _evaluate_task(
     )
 
     async def _watch():
-        nonlocal last_result
+        nonlocal last_result, prev_foot_t_s, prev_foot_xy
         frame_period = 1.0 / fps
         next_frame = time.time()
         t_end = time.time() + episode_s
         stand_height_m = None
-        try:
+        with contextlib.suppress(Exception):
             stand_height_m = float(sim_env.get_robot_position()[2])
-        except Exception:
-            pass
         while time.time() < t_end:
             now = time.time()
             if now < next_frame:
@@ -159,6 +165,14 @@ async def _evaluate_task(
             # Goal-checker sample from sim ground truth.
             try:
                 pos = sim_env.get_robot_position()
+                contacts = _foot_contacts(sim_env, foot_geom_ids, floor_ids)
+                foot_xy = _foot_xy(sim_env, foot_geom_ids)
+                foot_z = _foot_z(sim_env, foot_geom_ids)
+                foot_dt = max(now - prev_foot_t_s, 1e-6)
+                foot_slip = np.linalg.norm(foot_xy - prev_foot_xy, axis=1) / foot_dt
+                foot_slip = foot_slip * contacts
+                prev_foot_xy = foot_xy.copy()
+                prev_foot_t_s = now
                 sample = TelemetrySample(
                     t_s=now,
                     torso_x_m=float(pos[0]),
@@ -166,7 +180,22 @@ async def _evaluate_task(
                     torso_z_m=float(pos[2]),
                     yaw_rad=float(sim_env.get_robot_yaw()),
                     joint_positions=sim_pos,
-                    extra={"stand_height_m": stand_height_m},
+                    extra={
+                        "stand_height_m": stand_height_m,
+                        "tracked_x_m": float(pos[0]),
+                        "tracked_y_m": float(pos[1]),
+                        "tracked_z_m": float(pos[2]),
+                        "left_foot_contact": bool(contacts[0] > 0.5),
+                        "right_foot_contact": bool(contacts[1] > 0.5),
+                        "left_foot_z_m": float(foot_z[0]),
+                        "right_foot_z_m": float(foot_z[1]),
+                        "left_foot_slip_m_s": float(foot_slip[0]),
+                        "right_foot_slip_m_s": float(foot_slip[1]),
+                        "self_collision_count": _self_collision_count(
+                            sim_env,
+                            floor_ids,
+                        ),
+                    },
                 )
                 last_result = checker.update(sample)
             except Exception:
@@ -200,13 +229,11 @@ async def _evaluate_task(
         )
 
     # Stop walk + park.
-    try:
+    with contextlib.suppress(Exception):
         await backend.handle_command(CommandEnvelope(
             request_id=f"curric-stop-{task.id}", timestamp=utc_now_iso(),
             command="walk.command", payload={"action": "stop"}, preempt=True,
         ))
-    except Exception:
-        pass
 
     # Write per-task mp4.
     video_path = None
@@ -262,7 +289,9 @@ async def _build_evaluator(no_vlm: bool):
         return None
     try:
         from eliza_robot.perception.vlm_evaluator import (
-            VLMEvaluator, MockBackend, AnthropicBackend,
+            AnthropicBackend,
+            MockBackend,
+            VLMEvaluator,
         )
     except Exception as exc:
         print(f"[curriculum] VLM evaluator unavailable: {exc}")
@@ -273,6 +302,81 @@ async def _build_evaluator(no_vlm: bool):
         except Exception as exc:
             print(f"[curriculum] Anthropic backend init failed ({exc}); using mock")
     return VLMEvaluator(backend=MockBackend())
+
+
+def _geom_ids(model, names: list[str]) -> np.ndarray:
+    if mujoco is None:
+        return np.asarray([], dtype=np.int32)
+    ids: list[int] = []
+    for name in names:
+        geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name)
+        if geom_id >= 0:
+            ids.append(int(geom_id))
+    return np.asarray(ids, dtype=np.int32)
+
+
+def _foot_contacts(
+    sim_env,
+    foot_geom_ids: dict[str, np.ndarray],
+    floor_ids: np.ndarray,
+) -> np.ndarray:
+    contacts = np.zeros(2, dtype=np.float32)
+    if floor_ids.size == 0:
+        return contacts
+    floor_set = set(int(x) for x in floor_ids)
+    foot_sets = [
+        set(int(x) for x in foot_geom_ids["left"]),
+        set(int(x) for x in foot_geom_ids["right"]),
+    ]
+    for idx in range(int(sim_env.data.ncon)):
+        contact = sim_env.data.contact[idx]
+        pair = {int(contact.geom1), int(contact.geom2)}
+        if not pair & floor_set:
+            continue
+        for side_idx, foot_set in enumerate(foot_sets):
+            if pair & foot_set:
+                contacts[side_idx] = 1.0
+    return contacts
+
+
+def _foot_xy(sim_env, foot_geom_ids: dict[str, np.ndarray]) -> np.ndarray:
+    xy = np.zeros((2, 2), dtype=np.float32)
+    for side_idx, side in enumerate(("left", "right")):
+        geom_ids = foot_geom_ids[side]
+        if geom_ids.size:
+            xy[side_idx] = np.mean(sim_env.data.geom_xpos[geom_ids, :2], axis=0)
+    return xy
+
+
+def _foot_z(sim_env, foot_geom_ids: dict[str, np.ndarray]) -> np.ndarray:
+    z = np.zeros(2, dtype=np.float32)
+    for side_idx, side in enumerate(("left", "right")):
+        geom_ids = foot_geom_ids[side]
+        if geom_ids.size:
+            z[side_idx] = float(np.min(sim_env.data.geom_xpos[geom_ids, 2]))
+    return z
+
+
+def _self_collision_count(sim_env, floor_ids: np.ndarray) -> int:
+    floor_set = set(int(x) for x in floor_ids)
+    count = 0
+    for idx in range(int(sim_env.data.ncon)):
+        contact = sim_env.data.contact[idx]
+        geom1 = int(contact.geom1)
+        geom2 = int(contact.geom2)
+        if geom1 in floor_set or geom2 in floor_set:
+            continue
+        body1 = int(sim_env.model.geom_bodyid[geom1])
+        body2 = int(sim_env.model.geom_bodyid[geom2])
+        if body1 == body2:
+            continue
+        if (
+            int(sim_env.model.body_parentid[body1]) == body2
+            or int(sim_env.model.body_parentid[body2]) == body1
+        ):
+            continue
+        count += 1
+    return count
 
 
 async def _run(args) -> int:

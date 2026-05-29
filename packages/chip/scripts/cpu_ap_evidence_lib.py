@@ -39,6 +39,13 @@ DEFAULT_FORBIDDEN_EVIDENCE_TERMS = [
 ]
 
 UART_TX_RE = re.compile(r"^UART TX \(([0-9a-fA-F]{1,2})\):", re.MULTILINE)
+OPENSBI_VERSION_RE = re.compile(r"\bOpenSBI v(?P<version>[0-9]+(?:\.[0-9]+)*)\b")
+DOMAIN0_NEXT_ARG1_RE = re.compile(
+    r"^Domain0 Next Arg1\s*:\s*(?P<addr>0x[0-9a-fA-F]+)\s*$",
+    re.MULTILINE,
+)
+EXPECTED_OPENSBI_VERSION = "1.2"
+EXPECTED_OPENSBI_FDT_ADDR = "0x0000000080b00000"
 
 
 def rel(path: Path) -> str:
@@ -374,6 +381,53 @@ def validate_evidence_manifest(manifest: dict[str, Any], errors: list[str]) -> N
         for key in ("required_strings", "raw_required_strings"):
             if not isinstance(spec.get(key), list) or not spec.get(key):
                 errors.append(f"CPU/AP transcript {name} must list {key}")
+        if "ordered_required_strings" in spec and not isinstance(
+            spec.get("ordered_required_strings"), list
+        ):
+            errors.append(f"CPU/AP transcript {name} ordered_required_strings must be a list")
+        if "raw_ordered_required_strings" in spec and not isinstance(
+            spec.get("raw_ordered_required_strings"), list
+        ):
+            errors.append(f"CPU/AP transcript {name} raw_ordered_required_strings must be a list")
+        if name == "opensbi_boot_log":
+            raw_required = spec.get("raw_required_strings", [])
+            required = spec.get("required_strings", [])
+            forbidden = spec.get("forbidden_strings", [])
+            for marker in (
+                f"OpenSBI v{EXPECTED_OPENSBI_VERSION}",
+                "Domain0 Next Arg1",
+                EXPECTED_OPENSBI_FDT_ADDR,
+            ):
+                if marker not in raw_required or marker not in required:
+                    errors.append(
+                        "CPU/AP OpenSBI transcript must require real v1.2 Domain0/FDT "
+                        f"handoff marker: {marker}"
+                    )
+            for marker in ("diagnostic only", "fallback"):
+                if marker not in forbidden:
+                    errors.append(
+                        f"CPU/AP OpenSBI transcript must forbid diagnostic/fallback marker: {marker}"
+                    )
+
+
+def opensbi_handoff_problems(text: str, rel_path: str) -> list[str]:
+    problems: list[str] = []
+    versions = [match.group("version") for match in OPENSBI_VERSION_RE.finditer(text)]
+    if EXPECTED_OPENSBI_VERSION not in versions:
+        observed = ", ".join(f"v{version}" for version in versions) or "none"
+        problems.append(
+            f"{rel_path} must contain real OpenSBI v{EXPECTED_OPENSBI_VERSION} banner; "
+            f"observed OpenSBI versions: {observed}"
+        )
+    arg1_values = [match.group("addr").lower() for match in DOMAIN0_NEXT_ARG1_RE.finditer(text)]
+    expected_arg1 = EXPECTED_OPENSBI_FDT_ADDR.lower()
+    if expected_arg1 not in arg1_values:
+        observed = ", ".join(arg1_values) or "none"
+        problems.append(
+            f"{rel_path} must contain Domain0 Next Arg1 FDT handoff {EXPECTED_OPENSBI_FDT_ADDR}; "
+            f"observed Domain0 Next Arg1 values: {observed}"
+        )
+    return problems
 
 
 def text_problems(text: str, spec: dict[str, Any], rel_path: str, *, raw: bool) -> list[str]:
@@ -401,6 +455,29 @@ def text_problems(text: str, spec: dict[str, Any], rel_path: str, *, raw: bool) 
     if missing:
         problems.append(f"{rel_path} missing required transcript markers: " + ", ".join(missing))
 
+    if spec.get("manifest_key") == "opensbi_boot_log":
+        problems.extend(opensbi_handoff_problems(searchable_text, rel_path))
+
+    sequence_key = "raw_ordered_required_strings" if raw else "ordered_required_strings"
+    sequence = spec.get(sequence_key, [])
+    if sequence:
+        cursor = 0
+        missing_or_out_of_order: list[str] = []
+        for term in sequence:
+            if not isinstance(term, str) or not term:
+                problems.append(f"{rel_path} has invalid {sequence_key} rule in manifest")
+                continue
+            found_at = searchable_text.find(term, cursor)
+            if found_at < 0:
+                missing_or_out_of_order.append(term)
+            else:
+                cursor = found_at + len(term)
+        if missing_or_out_of_order:
+            problems.append(
+                f"{rel_path} missing ordered transcript sequence markers: "
+                + ", ".join(missing_or_out_of_order)
+            )
+
     for group in spec.get("at_least_one", []):
         if not isinstance(group, list) or not group:
             problems.append(f"{rel_path} has invalid at_least_one rule in manifest")
@@ -412,10 +489,15 @@ def text_problems(text: str, spec: dict[str, Any], rel_path: str, *, raw: bool) 
     return problems
 
 
-def transcript_metadata_problems(text: str, rel_path: str) -> list[str]:
+def transcript_metadata_problems(
+    text: str,
+    rel_path: str,
+    *,
+    generated_manifest: Path = GENERATED_MANIFEST,
+) -> list[str]:
     problems: list[str] = []
-    expected_manifest = rel(GENERATED_MANIFEST)
-    expected_sha = sha256_path(GENERATED_MANIFEST) if GENERATED_MANIFEST.is_file() else None
+    expected_manifest = rel(generated_manifest)
+    expected_sha = sha256_path(generated_manifest) if generated_manifest.is_file() else None
 
     manifest_marker = f"eliza-evidence: generated_manifest={expected_manifest}"
     if manifest_marker not in text:

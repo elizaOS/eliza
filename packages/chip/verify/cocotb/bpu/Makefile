@@ -24,6 +24,7 @@ WRAPPERS := \
 	$(REPO)/verify/cocotb/bpu/ftb_tb.sv \
 	$(REPO)/verify/cocotb/bpu/uftb_tb.sv \
 	$(REPO)/verify/cocotb/bpu/loop_predictor_tb.sv \
+	$(REPO)/verify/cocotb/bpu/h2p_tb.sv \
 	$(REPO)/verify/cocotb/bpu/tage_tb.sv \
 	$(REPO)/verify/cocotb/bpu/ittage_tb.sv \
 	$(REPO)/verify/cocotb/bpu/sc_tb.sv \

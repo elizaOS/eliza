@@ -7,6 +7,7 @@
  * checkExtensionStatus.
  */
 
+import { logger } from "@elizaos/core";
 import { resolveStylePresetByAvatarIndex } from "@elizaos/shared";
 import {
   type RefObject,
@@ -442,16 +443,14 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           return;
         }
 
-        const name = (cfg as Record<string, unknown>).ui as
-          | Record<string, unknown>
-          | undefined;
-        const persisted = normalizeOwnerName(name?.ownerName as string);
+        const persisted = normalizeOwnerName(cfg.ui?.ownerName);
         if (persisted) {
           setOwnerNameState(persisted);
         }
       })
-      .catch(() => {})
-      .catch(() => {});
+      .catch((error: unknown) => {
+        logger.warn({ error }, "[useDataLoaders] owner-name hydration failed");
+      });
 
     return () => {
       cancelled = true;

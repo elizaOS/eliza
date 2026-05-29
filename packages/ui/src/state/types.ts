@@ -86,13 +86,6 @@ export type CompanionVrmPowerMode = "quality" | "balanced" | "efficiency";
 export type CompanionHalfFramerateMode = "off" | "when_saving_power" | "always";
 export type ShellView = "companion" | "character" | "desktop";
 
-/** Emitted after each tab/shell-related layout commit (see `navigation` on app context). */
-export interface TabCommittedDetail {
-  tab: Tab;
-  previousTab: Tab | null;
-  uiShellMode: UiShellMode;
-}
-
 /**
  * Optional flags for {@link AppActions.completeFirstRun} when finishing the
  * first-run setup.
@@ -105,11 +98,8 @@ export interface CompleteFirstRunOptions {
   launchCompanionOverlay?: boolean;
 }
 
-/** Tab commit subscription + deferred work (for multi-step navigation). */
+/** Deferred work scheduling for multi-step navigation. */
 export interface NavigationEventsApi {
-  subscribeTabCommitted: (
-    listener: (detail: TabCommittedDetail) => void,
-  ) => () => void;
   /**
    * Run `fn` after the next layout commit where `tab` has been applied.
    * Use to chain `switchShellView` → `setTab` without the second call losing

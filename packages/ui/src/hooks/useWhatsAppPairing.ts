@@ -6,6 +6,23 @@ export type { WhatsAppPairingStatus } from "../api/client-types-core";
 
 import type { WhatsAppPairingStatus } from "../api/client-types-core";
 
+const WHATSAPP_PAIRING_STATUSES: ReadonlySet<WhatsAppPairingStatus> = new Set([
+  "idle",
+  "initializing",
+  "waiting_for_qr",
+  "connected",
+  "disconnected",
+  "timeout",
+  "error",
+]);
+
+function asPairingStatus(value: unknown): WhatsAppPairingStatus | null {
+  return typeof value === "string" &&
+    WHATSAPP_PAIRING_STATUSES.has(value as WhatsAppPairingStatus)
+    ? (value as WhatsAppPairingStatus)
+    : null;
+}
+
 interface WhatsAppPairingState {
   status: WhatsAppPairingStatus;
   qrDataUrl: string | null;
@@ -42,10 +59,12 @@ export function useWhatsAppPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
       "whatsapp-qr",
       (data: Record<string, unknown>) => {
         if (data.accountId !== accountId) return;
+        if (typeof data.qrDataUrl !== "string") return;
+        const qrDataUrl = data.qrDataUrl;
         setState((prev) => ({
           ...prev,
           status: "waiting_for_qr",
-          qrDataUrl: data.qrDataUrl as string,
+          qrDataUrl,
         }));
       },
     );
@@ -54,12 +73,17 @@ export function useWhatsAppPairing(accountId = DEFAULT_CONNECTOR_ACCOUNT_ID) {
       "whatsapp-status",
       (data: Record<string, unknown>) => {
         if (data.accountId !== accountId) return;
+        const status = asPairingStatus(data.status);
+        if (!status) return;
+        const phoneNumber =
+          typeof data.phoneNumber === "string" ? data.phoneNumber : null;
+        const error = typeof data.error === "string" ? data.error : null;
         setState((prev) => ({
           ...prev,
-          status: data.status as WhatsAppPairingStatus,
-          phoneNumber: (data.phoneNumber as string) ?? prev.phoneNumber,
-          error: (data.error as string) ?? null,
-          qrDataUrl: data.status === "connected" ? null : prev.qrDataUrl,
+          status,
+          phoneNumber: phoneNumber ?? prev.phoneNumber,
+          error,
+          qrDataUrl: status === "connected" ? null : prev.qrDataUrl,
         }));
       },
     );

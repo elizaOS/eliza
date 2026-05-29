@@ -9,8 +9,11 @@ trained one after another.
 Public surface:
 
 - :class:`AlbertaContinualController` / :class:`AlbertaControllerConfig` — the
-  streaming continuous-action controller (Alberta actor-critic + ObGD bounding +
-  a sparse, task-localized feature lift).
+  streaming continuous-action controller (linear Alberta actor-critic + ObGD
+  bounding + a sparse, task-localized frozen feature lift).
+- :class:`AlbertaCBPController` / :class:`CBPControllerConfig` — the *nonlinear*
+  sibling: Stream-AC(lambda) over a learned MLP kept plastic by Continual
+  Backprop (generate-and-test), instead of a frozen feature lift.
 - :func:`train_online` / :func:`evaluate` — online act->update control loops for
   any ``gymnasium.Env``.
 - :class:`JointReachEnv` — a fast, deterministic task-conditioned continual env.
@@ -34,6 +37,10 @@ from eliza_robot.rl.alberta.agent import (
     AlbertaContinualController,
     AlbertaControllerConfig,
 )
+from eliza_robot.rl.alberta.cbp_agent import (
+    AlbertaCBPController,
+    CBPControllerConfig,
+)
 from eliza_robot.rl.alberta.continual_env import (
     JointReachConfig,
     JointReachEnv,
@@ -51,6 +58,8 @@ from eliza_robot.rl.alberta.obstacle_course import (
 __all__ = [
     "AlbertaContinualController",
     "AlbertaControllerConfig",
+    "AlbertaCBPController",
+    "CBPControllerConfig",
     "FeatureConfig",
     "FeatureMap",
     "JointReachConfig",

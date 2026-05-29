@@ -110,15 +110,18 @@ export function GameViewOverlay() {
       return;
     }
 
+    // Fail closed: without a concrete http(s) origin we can neither verify the
+    // sender nor safely target the auth payload, so never send it.
+    if (!postMessageTargetOrigin) {
+      return;
+    }
+
     const onMessage = (event: MessageEvent<{ type?: string }>) => {
       if (authSentRef.current) return;
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
       if (event.data?.type !== expectedReadyType) return;
-      if (
-        postMessageTargetOrigin !== "*" &&
-        event.origin !== postMessageTargetOrigin
-      ) {
+      if (event.origin !== postMessageTargetOrigin) {
         return;
       }
 

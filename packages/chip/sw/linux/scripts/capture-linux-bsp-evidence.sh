@@ -2,7 +2,7 @@
 set -eu
 
 if [ "$#" -ne 2 ]; then
-	echo "usage: $0 /path/to/linux preflight|kernel-build|dtb-check|smoke" >&2
+	echo "usage: $0 /path/to/linux preflight|kernel-build|dtb-check|smoke|ml-smoke" >&2
 	exit 2
 fi
 
@@ -105,6 +105,8 @@ record_command() {
 	if [ "$rc" -eq 0 ]; then
 		if [ "$artifact" = "e1-mmio-smoke" ]; then
 			echo "E1_MMIO_SMOKE_PASS" >> "$log"
+		elif [ "$artifact" = "e1-npu-ml-smoke" ]; then
+			echo "E1_NPU_ML_SMOKE_PASS" >> "$log"
 		fi
 		echo "eliza-evidence: status=PASS" >> "$log"
 		echo "RESULT=PASS" >> "$log"
@@ -152,6 +154,16 @@ case "$mode" in
 			e1-mmio-smoke \
 			"$evidence_dir/e1-mmio-smoke.log" \
 			"$E1_SMOKE_CMD"
+		;;
+	ml-smoke)
+		if [ -z "${E1_NPU_ML_SMOKE_CMD:-}" ]; then
+			echo "error: E1_NPU_ML_SMOKE_CMD is required, for example: ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu" >&2
+			exit 2
+		fi
+		record_command \
+			e1-npu-ml-smoke \
+			"$evidence_dir/eliza_e1_npu_ml_smoke.log" \
+			"$E1_NPU_ML_SMOKE_CMD"
 		;;
 	*)
 		echo "error: unknown mode $mode" >&2

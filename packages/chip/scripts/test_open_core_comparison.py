@@ -28,6 +28,8 @@ def test_little_core_is_cva6() -> None:
 def test_bpu_axis_is_a_measured_win() -> None:
     verdict = _data()["e1_vs_ariane_verdict"]["branch_prediction"]
     assert verdict["verdict"] == "win"
+    # The BPU axis is backed by both the behavioural head-to-head model and its
+    # RTL corroboration, so the evidence is a list of paths.
     evidence = list(iter_evidence_paths(verdict["evidence"]))
     assert evidence == [
         "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json",

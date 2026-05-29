@@ -10,7 +10,7 @@
   <default>
     <joint limited="true" damping="5.0" armature="0.04" frictionloss="0.1"
            range="-1.57 1.57"/>
-    <geom contype="1" conaffinity="1" condim="3" friction="0.7 0.1 0.001"
+    <geom contype="0" conaffinity="0" condim="3" friction="0.7 0.1 0.001"
           rgba="0.3 0.3 0.35 1" type="mesh"/>
     <motor ctrllimited="true" ctrlrange="-6 6"/>
     <position kp="50" kv="5"/>
@@ -119,7 +119,7 @@
                     <inertial pos="0.02851 -0.01287 -0.01767" mass="0.0675"
                               fullinertia="4.217e-05 9.246e-05 0.00012567 -1.08e-06 -2.26e-06 3.04e-06"/>
                     <geom mesh="r_ank_roll_link" material="foot"
-                          friction="1.5 0.5 0.01" contype="1" conaffinity="1"
+                          friction="1.5 0.5 0.01" contype="0" conaffinity="0"
                           solimp="0.95 0.99 0.001" solref="0.004 1"/>
                     <site name="right_foot" pos="0.02 0 -0.02" size="0.005" rgba="1 0 0 0.5"/>
                     <geom name="r_foot1" type="box" size="0.04 0.025 0.005"
@@ -171,7 +171,7 @@
                     <inertial pos="0.02851 0.01287 -0.01767" mass="0.0675"
                               fullinertia="4.217e-05 9.246e-05 0.00012567 1.08e-06 -2.26e-06 -3.04e-06"/>
                     <geom mesh="l_ank_roll_link" material="foot"
-                          friction="1.5 0.5 0.01" contype="1" conaffinity="1"
+                          friction="1.5 0.5 0.01" contype="0" conaffinity="0"
                           solimp="0.95 0.99 0.001" solref="0.004 1"/>
                     <site name="left_foot" pos="0.02 0 -0.02" size="0.005" rgba="1 0 0 0.5"/>
                     <geom name="l_foot1" type="box" size="0.04 0.025 0.005"
@@ -376,7 +376,7 @@
   <keyframe>
     <!-- Standing straight (legs at zero, arms tucked) -->
     <!-- qpos order: root(7) + joints in body order -->
-    <!-- root: x y z qw qx qy qz = 0 0 0.28 1 0 0 0 -->
+    <!-- root: x y z qw qx qy qz = 0 0 0.24 1 0 0 0 -->
     <!-- ball: x y z = 0.5 0 0.04 -->
     <!-- joints: r_hip_yaw r_hip_roll r_hip_pitch r_knee r_ank_pitch r_ank_roll -->
     <!--         l_hip_yaw l_hip_roll l_hip_pitch l_knee l_ank_pitch l_ank_roll -->
@@ -386,7 +386,7 @@
     <!-- qpos order: ball_x ball_y ball_z (3) | root_x root_y root_z root_qw root_qx root_qy root_qz (7) | joints (24) -->
     <key name="stand"
          qpos="0.5 0 0.04
-               0 0 0.28 1 0 0 0
+               0 0 0.24 1 0 0 0
                0 0 0 0 0 0
                0 0 0 0 0 0
                0 0
@@ -394,7 +394,7 @@
                0 -1.403 0 -1.226 0"/>
     <key name="stand_bent_knees"
          qpos="0.5 0 0.04
-               0 0 0.28 1 0 0 0
+               0 0 0.24 1 0 0 0
                0 0 -0.3 0.6 -0.3 0
                0 0 0.3 -0.6 0.3 0
                0 0

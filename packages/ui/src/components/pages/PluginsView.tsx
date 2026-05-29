@@ -40,7 +40,6 @@ import {
 } from "./plugin-view-connectors";
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
-import { ConnectorSidebar } from "./plugin-view-sidebar";
 
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 
@@ -953,7 +952,6 @@ function PluginListView({
     contentContainerRef: connectorContentRef,
     queueContentAlignment: queueConnectorContentAlignment,
     registerContentItem: registerConnectorContentItem,
-    registerRailItem: registerConnectorRailItem,
     registerSidebarItem: registerConnectorSidebarItem,
     registerSidebarViewport: registerConnectorSidebarViewport,
     scrollContentToItem: scrollConnectorIntoView,
@@ -1110,35 +1108,6 @@ function PluginListView({
         : "This workspace will list plugins here as they become available.";
     const hasActivePluginFilters =
       pluginSearch.trim().length > 0 || subgroupFilter !== "all";
-    const _desktopSidebar = (
-      <ConnectorSidebar
-        collapseLabel={collapseLabel}
-        connectorExpandedIds={connectorExpandedIds}
-        connectorSelectedId={connectorSelectedId}
-        desktopConnectorLayout={desktopConnectorLayout}
-        expandLabel={expandLabel}
-        hasPluginToggleInFlight={hasPluginToggleInFlight}
-        mode={mode}
-        onConnectorSelect={handleConnectorSelect}
-        onConnectorSectionToggle={handleConnectorSectionToggle}
-        onSearchChange={(value: string) => setState("pluginSearch", value)}
-        onSearchClear={() => setState("pluginSearch", "")}
-        onSubgroupFilterChange={(value: string) => setSubgroupFilter(value)}
-        onTogglePlugin={handleTogglePlugin}
-        pluginSearch={pluginSearch}
-        registerConnectorRailItem={registerConnectorRailItem}
-        registerConnectorSidebarItem={registerConnectorSidebarItem}
-        registerConnectorSidebarViewport={registerConnectorSidebarViewport}
-        renderResolvedIcon={renderResolvedIcon}
-        resultLabel={resultLabel}
-        subgroupFilter={subgroupFilter}
-        subgroupTags={subgroupTags}
-        t={t}
-        togglingPlugins={togglingPlugins}
-        visiblePlugins={visiblePlugins}
-      />
-    );
-
     const connectorContent = (
       <div className="w-full">
         {hasPluginToggleInFlight && (

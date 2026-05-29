@@ -129,9 +129,11 @@ out/cf-riscv64/cts-vts/<UTC>/
   build-info.txt          # AOSP BUILD_ID, manifest sha256, host info
   device-info.txt         # adb getprop dump
   cts-stdout.log
+  cts-result.json         # copied/overridable path defaults to docs/evidence/android/e1-npu/cts-result.json
   cts-results/            # tradefed xml + html + device-info
   cts-triage.md
   vts-stdout.log
+  vts-result.json         # copied/overridable path defaults to docs/evidence/android/e1-npu/vts-result.json
   vts-results/
   vts-triage.md
 ```
@@ -141,6 +143,13 @@ out/cf-riscv64/cts-vts/<UTC>/
 `scripts/android/run_cts_smoke.sh` and `scripts/android/run_vts_smoke.sh` are
 the canonical entry points. They fail closed when `AOSP_TREE` is missing,
 tradefed is missing, or `adb` does not see exactly one ready device.
+On completion they also write manifest-ready JSON summaries to
+`docs/evidence/android/e1-npu/cts-result.json` and
+`docs/evidence/android/e1-npu/vts-result.json` by default. Those files only
+carry `RESULT=0` when Tradefed exits successfully; the Android e1-NPU proof
+manifest checker remains blocked otherwise. By default the wrappers refresh
+`docs/evidence/android/e1-npu/android-proof-manifest.json` after writing their
+result JSON; set `E1_NPU_REFRESH_ANDROID_MANIFEST=0` to skip that refresh.
 
 ## References
 

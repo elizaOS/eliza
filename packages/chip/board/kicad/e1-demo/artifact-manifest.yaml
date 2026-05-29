@@ -54,7 +54,7 @@ artifact_groups:
           - board/kicad/e1-demo/**/*.pretty/*.kicad_mod
   kicad_cli_outputs:
     owner: board_closure
-    status: missing
+    status: draft
     cli_commands:
       erc: kicad-cli sch erc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-erc-report.txt board/kicad/e1-demo/e1-demo.kicad_sch
       drc: kicad-cli pcb drc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-drc-report.txt board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -65,7 +65,7 @@ artifact_groups:
       fab_drawing: kicad-cli pcb export pdf --output board/reports/fab/e1-demo-2026-05-17/pdf/e1-demo-fab-drawing.pdf board/kicad/e1-demo/e1-demo.kicad_pcb
     artifacts:
       - name: erc_report
-        status: missing
+        status: draft
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli sch erc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-erc-report.txt board/kicad/e1-demo/e1-demo.kicad_sch
@@ -80,7 +80,7 @@ artifact_groups:
           - board/reports/fab/**/e1-demo-erc-report.txt
           - board/kicad/e1-demo/reports/erc*.txt
       - name: drc_report
-        status: missing
+        status: draft
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb drc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-drc-report.txt board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -108,7 +108,7 @@ artifact_groups:
           - board/reports/fab/**/gerbers/*.g*
           - board/kicad/e1-demo/fab/gerbers/*.gbr
       - name: drill
-        status: missing
+        status: draft
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb export drill --output board/reports/fab/e1-demo-2026-05-17/drill board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -121,7 +121,7 @@ artifact_groups:
           - board/reports/fab/**/drill/*.drl
           - board/kicad/e1-demo/fab/drill/*.drl
       - name: bom
-        status: missing
+        status: draft
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli sch export bom --output board/reports/fab/e1-demo-2026-05-17/e1-demo-bom.csv board/kicad/e1-demo/e1-demo.kicad_sch
@@ -135,7 +135,7 @@ artifact_groups:
           - board/kicad/e1-demo/fab/bom/*.csv
           - board/kicad/e1-demo/fab/bom/*.xml
       - name: pick_and_place
-        status: missing
+        status: draft
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb export pos --output board/reports/fab/e1-demo-2026-05-17/e1-demo-position.csv board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -149,7 +149,7 @@ artifact_groups:
           - board/kicad/e1-demo/fab/position/*.pos
           - board/kicad/e1-demo/fab/position/*.csv
       - name: fab_drawing
-        status: missing
+        status: draft
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb export pdf --output board/reports/fab/e1-demo-2026-05-17/pdf/e1-demo-fab-drawing.pdf board/kicad/e1-demo/e1-demo.kicad_pcb

@@ -1,0 +1,15 @@
+{
+  "artifacts": "<repo>/packages/os/linux/elizaos/artifacts/riscv64",
+  "claim_boundary": "qemu-user smoke of staged riscv64 Bun and agent bundle; not full ISO boot evidence",
+  "failures": [
+    "bun-script-file failed rc=1",
+    "agent-entrypoint failed rc=1",
+    "riscv64 Bun cannot execute JS file entrypoints under qemu-user",
+    "riscv64 Bun could not load the staged agent bundle"
+  ],
+  "generated_utc": "2026-05-23T08:19:32.522943+00:00",
+  "schema": "eliza.os.linux.riscv64_agent_runtime_smoke.v1",
+  "status": "fail",
+  "transcript": "evidence/riscv64_agent_runtime_smoke_20260523_script_entrypoint.log",
+  "transcript_sha256": "b6328a0d3715cc4f97ce84c09c484facdeedc1d6355a88f1f0ef0aad175c4523"
+}

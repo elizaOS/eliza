@@ -18,6 +18,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_android_launcher_runtime_evidence as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -85,7 +91,22 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
             ):
                 report = gate.run_check(Namespace(evidence=None))
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["findings"][0]["code"], "missing_launcher_runtime_evidence")
+        self.assertEqual(report["blocker_dependency_counts"], {"live_device_validation": 1})
+        self.assertEqual(
+            report["summary"]["blocker_dependency_counts"],
+            report["blocker_dependency_counts"],
+        )
+        self.assertEqual(report["summary"]["next_command_batch_count"], 1)
+        self.assertEqual(
+            report["next_command_plan"][0]["id"],
+            "capture_android_launcher_runtime_evidence",
+        )
+        self.assertIn(
+            "capture_launcher_runtime_evidence.py",
+            " ".join(report["next_command_plan"][0]["commands"]),
+        )
 
     def test_incomplete_evidence_reports_runtime_blockers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -163,8 +184,13 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
             ):
                 report = gate.run_check(Namespace(evidence=str(evidence)))
         self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["findings"], [])
+        self.assertEqual(report["next_command_plan"], [])
+        self.assertEqual(report["blocker_dependency_counts"], {})
+        self.assertEqual(report["summary"]["next_command_batch_count"], 0)
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
     def test_expected_artifact_id_mismatch_blocks_cross_target_reuse(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -327,6 +353,38 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
             {finding["code"] for finding in report["findings"]},
         )
         self.assertEqual(report["evidence"]["expected_package"], "ai.milady.milady")
+
+    def test_report_sanitizes_host_local_aosp_inventory_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_logcat.txt", "clean\n")
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_transcript.log", "clean\n")
+            payload = passing_payload()
+            payload["observations"] = {
+                "host_runtime": {
+                    "aosp_build_only": {
+                        "artifact_inventory": {
+                            "product_out": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+                            "records": [
+                                {
+                                    "name": "vendor.img",
+                                    "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img",
+                                }
+                            ],
+                        }
+                    }
+                }
+            }
+            evidence = write_json(tmp / "evidence.json", payload)
+            with (
+                mock.patch.object(gate, "ROOT", tmp),
+                mock.patch.object(gate, "ANDROID_APK_PAYLOAD_REPORT", tmp / "missing.json"),
+            ):
+                report = gate.run_check(Namespace(evidence=str(evidence)))
+
+        inventory = report["evidence"]["aosp_build_artifact_inventory"]
+        self.assertEqual(inventory["product_out"], "eliza_ai_soc")
+        self.assertEqual(inventory["records"][0]["path"], "vendor.img")
 
 
 if __name__ == "__main__":

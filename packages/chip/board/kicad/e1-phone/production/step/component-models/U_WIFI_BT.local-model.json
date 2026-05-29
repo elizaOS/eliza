@@ -1,10 +1,13 @@
 {
+  "all_pad_visuals_have_contract": true,
   "at_mm": {
     "rotation": 0.0,
     "x": 10.0,
     "y": 23.0
   },
   "claim_boundary": "Per-reference local model metadata only. This is not a discrete supplier-approved STEP/B-rep model and cannot satisfy routed-board release or enclosure clearance.",
+  "combined_step_assembly_name": "07_U_WIFI_BT_MURATA_TYPE_2EA_GEOMETRY_DEV",
+  "combined_step_locator_status": "development_envelope_named_subshape_in_combined_routed_step",
   "coverage": "exact_public_terminal_table_and_public_dxf_land_pattern",
   "discrete_supplier_step_file": "",
   "discrete_supplier_step_status": "missing_supplier_approved_component_step",
@@ -14,9 +17,29 @@
     "height": 1.7,
     "width": 12.5
   },
+  "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
+  "expected_supplier_step_file": "U_WIFI_BT.step",
   "footprint": "MURATA_TYPE_2EA_GEOMETRY_DEV",
   "land_pattern_basis": "",
   "layer": "F.Cu",
+  "local_discrete_step_bbox_matches_envelope": true,
+  "local_discrete_step_bbox_mm": {
+    "depth": 9.400000200000001,
+    "height": 1.7000001999999999,
+    "width": 12.5000002
+  },
+  "local_discrete_step_bytes": 15576,
+  "local_discrete_step_expected_bbox_mm": {
+    "depth": 9.4,
+    "height": 1.7,
+    "width": 12.5
+  },
+  "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-envelope.step",
+  "local_discrete_step_import_status": "pass",
+  "local_discrete_step_imported_as_solid": true,
+  "local_discrete_step_sha256": "fdf242490456e27c591b11a632dcf5dd7580b90ca9072fc7a8921cb78c7dedfb",
+  "local_discrete_step_solid_type": "Solid",
+  "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
   "local_terminal_contract": [
     "1",
@@ -232,6 +255,1203 @@
   "npth_mechanical_feature_contract_source": "",
   "npth_mechanical_feature_count": 0,
   "npth_mechanical_features": [],
+  "pad_contract_covered_count": 199,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "10"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "11"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "12"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "13"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "14"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "15"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "16"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "17"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "18"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "19"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "20"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "21"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "22"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "23"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "24"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "25"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "26"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "27"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "28"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "29"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "30"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "31"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "32"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "33"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "34"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "35"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "36"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "37"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "38"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "39"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "40"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "41"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "42"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "43"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "44"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "45"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "46"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "47"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "48"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "49"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "50"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "51"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "52"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "53"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "54"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "55"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "56"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "57"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "58"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "59"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "60"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "61"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "62"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "63"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "64"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "65"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "66"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "67"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "68"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "69"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "70"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "71"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "72"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "73"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "74"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "75"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "76"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "77"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "78"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "79"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "80"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "81"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "82"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "83"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "84"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "85"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "86"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "87"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "88"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "89"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "90"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "91"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "92"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "93"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "94"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "95"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "96"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "97"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "98"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "99"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "100"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "101"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "102"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "103"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "104"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "105"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "106"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "107"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "108"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "109"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "110"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "111"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "112"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "113"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "114"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "115"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "116"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "117"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "118"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "119"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "120"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "121"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "122"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "123"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "124"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "125"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "126"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "127"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "128"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "129"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "130"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "131"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "132"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "133"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "134"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "135"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "136"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "137"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "138"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "139"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "140"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "141"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "142"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "143"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "144"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "145"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "146"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "147"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "148"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "149"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "150"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "151"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "152"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "153"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "154"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "155"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "156"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "157"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "158"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "159"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "160"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "161"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "162"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "163"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "164"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "165"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "166"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "167"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "168"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "169"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "170"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "171"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "172"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "173"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "174"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "175"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "176"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "177"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "178"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "179"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "180"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "181"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "182"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "183"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "184"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "185"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "186"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "187"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "188"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "189"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "190"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "191"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "192"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "193"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "194"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "195"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "196"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "197"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "198"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/murata-type-2ea-pinout.yaml",
+      "covered": true,
+      "pad": "199"
+    }
+  ],
   "pad_count": 199,
   "pad_names": [
     "1",
@@ -442,13 +1662,20 @@
   "schema": "eliza.e1_phone_local_component_model_record.v1",
   "source_assembly_item": "U_WIFI_BT",
   "source_routed_step": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
-  "source_routed_step_bytes": 32959460,
-  "source_routed_step_sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+  "source_routed_step_bytes": 33644081,
+  "source_routed_step_sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
   "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
   "status": "blocked_local_development_envelope_not_supplier_step",
   "supplier_approved": false,
+  "supplier_sourcing_lane": "wifi_bluetooth",
+  "supplier_step_intake_bytes": 15640,
+  "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step",
+  "supplier_step_intake_release_credit": false,
+  "supplier_step_intake_sha256": "02092155682114ac5180eacd96e808f3da187e1d1b344f385cf4ff4c48d7bb8b",
+  "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 199,
   "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
   "visual_package_class": "pinout_bound_package_or_connector"
 }

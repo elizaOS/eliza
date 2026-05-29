@@ -76,26 +76,6 @@ export function normalizeConfigForLocalProviderPreference(
   return { ...config, cloud: nextCloud };
 }
 
-export function shouldMaskInactiveCloudStatus(args: {
-  config: StorageConfig | null | undefined;
-  status: unknown;
-}): boolean {
-  if (!shouldPreferLocalProviderConfig(args.config)) {
-    return false;
-  }
-
-  const status = asRecord(args.status);
-  if (!status) {
-    return false;
-  }
-
-  if (readString(status, "userId") || readString(status, "organizationId")) {
-    return false;
-  }
-
-  return status.connected === true || status.hasApiKey === true;
-}
-
 export function installLocalProviderCloudPreferencePatch(
   client: ClientLike,
 ): () => void {
@@ -109,8 +89,6 @@ export function installLocalProviderCloudPreferencePatch(
 
   patchableClient[PATCH_STATE] = {
     getConfig: client.getConfig,
-    getCloudStatus: client.getCloudStatus,
-    getCloudCredits: client.getCloudCredits,
   } satisfies PatchState;
 
   client.getConfig = (async () => {
@@ -130,12 +108,6 @@ export function installLocalProviderCloudPreferencePatch(
       return;
     }
     client.getConfig = patchState.getConfig;
-    client.getCloudStatus = patchState.getCloudStatus;
-    if (patchState.getCloudCredits) {
-      client.getCloudCredits = patchState.getCloudCredits;
-    } else {
-      delete client.getCloudCredits;
-    }
     delete patchableClient[PATCH_STATE];
   };
 }

@@ -187,8 +187,8 @@ def main() -> int:
 
     serial = os.environ.get("AOSP_ADB_SERIAL", "")
     apk = Path(env("AOSP_AGENT_APK"))
-    package = env("AOSP_AGENT_PACKAGE", "ai.milady.milady")
-    service = env("AOSP_AGENT_SERVICE", "ai.milady.milady/.ElizaAgentService")
+    package = env("AOSP_AGENT_PACKAGE", "ai.elizaos.app")
+    service = env("AOSP_AGENT_SERVICE", "ai.elizaos.app/.ElizaAgentService")
     host_port = env_int("AOSP_AGENT_HOST_PORT", 31337)
     device_port = env_int("AOSP_AGENT_DEVICE_PORT", 31337)
     service_wait = env_int("AOSP_AGENT_SERVICE_WAIT_SECONDS", 90)

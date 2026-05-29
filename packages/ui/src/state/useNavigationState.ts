@@ -2,8 +2,8 @@
  * Navigation state — extracted from AppContext.
  *
  * Owns: setTab wrappers, switchShellView, switchUiShellMode, setUiShellMode,
- * tab commit effects, uiShellMode persist, lastNativeTab persist,
- * tabFromPath logic, and the NavigationEventHub.
+ * deferred post-tab-commit work, uiShellMode persist, lastNativeTab persist,
+ * and tabFromPath logic.
  */
 
 import {
@@ -21,10 +21,8 @@ import {
   type ShellView,
   saveLastNativeTab,
   saveUiShellMode,
-  type TabCommittedDetail,
   type UiShellMode,
 } from "./internal";
-import { NavigationEventHub } from "./navigation-events";
 import { getTabForShellView } from "./shell-routing";
 
 function pathWithCurrentShellMode(path: string): string {
@@ -138,13 +136,10 @@ export function useNavigationState(deps: NavigationStateDeps) {
     [lastNativeTab, setTab],
   );
 
-  // ── Tab commit events ───────────────────────────────────────────────
+  // ── Deferred post-tab-commit work ───────────────────────────────────
 
-  const navigationHubRef = useRef(new NavigationEventHub());
   const pendingPostTabCommitRef = useRef<(() => void)[]>([]);
-  const prevTabCommittedRef = useRef<Tab | null>(null);
-  const prevUiShellCommittedRef = useRef<UiShellMode | null>(null);
-  const [_tabCommitFlushNonce, setTabCommitFlushNonce] = useState(0);
+  const [tabCommitFlushNonce, setTabCommitFlushNonce] = useState(0);
 
   const scheduleAfterTabCommit = useCallback((fn: () => void) => {
     pendingPostTabCommitRef.current.push(fn);
@@ -156,28 +151,14 @@ export function useNavigationState(deps: NavigationStateDeps) {
   }, []);
 
   const navigation = useMemo(
-    () => ({
-      subscribeTabCommitted: (
-        listener: (detail: TabCommittedDetail) => void,
-      ): (() => void) => navigationHubRef.current.subscribe(listener),
-      scheduleAfterTabCommit,
-    }),
+    () => ({ scheduleAfterTabCommit }),
     [scheduleAfterTabCommit],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tab/uiShellMode/tabCommitFlushNonce are intentional triggers — the flush must run after each tab/shell layout commit and after scheduleAfterTabCommit bumps the nonce.
   useLayoutEffect(() => {
-    const tabChanged = prevTabCommittedRef.current !== tab;
-    const shellChanged = prevUiShellCommittedRef.current !== uiShellMode;
     const pending = pendingPostTabCommitRef.current;
     pendingPostTabCommitRef.current = [];
-
-    if (tabChanged || shellChanged) {
-      const previousTab = prevTabCommittedRef.current;
-      prevTabCommittedRef.current = tab;
-      prevUiShellCommittedRef.current = uiShellMode;
-      navigationHubRef.current.emit({ tab, previousTab, uiShellMode });
-    }
-
     for (const task of pending) {
       try {
         task();
@@ -185,7 +166,7 @@ export function useNavigationState(deps: NavigationStateDeps) {
         // task errors must not block remaining scheduled work
       }
     }
-  }, [tab, uiShellMode]);
+  }, [tab, uiShellMode, tabCommitFlushNonce]);
 
   return {
     lastNativeTab,

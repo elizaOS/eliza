@@ -60,7 +60,7 @@ export function recentConversationTextsFromState(
     pushText(content.text);
   }
 
-  return dedupePreservingOrder(collected.slice(-Math.max(1, limit)));
+  return dedupePreservingOrder(collected).slice(-Math.max(1, limit));
 }
 
 export async function recentConversationTexts(args: {

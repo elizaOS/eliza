@@ -24,6 +24,9 @@ async def reset(dut):
     dut.upd_path_sig.value = 0
     dut.upd_target.value = 0
     dut.upd_taken.value = 0
+    dut.test_corrupt_parity_valid.value = 0
+    dut.test_corrupt_parity_pc.value = 0
+    dut.test_corrupt_parity_path_sig.value = 0
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -104,6 +107,46 @@ async def loop_trains_on_stable_trip_count(dut):
     await Timer(1, units="ps")
     assert int(dut.lkp_hit.value) == 1
     assert int(dut.lkp_taken.value) == 0
+    dut.lkp_valid.value = 0
+
+
+@cocotb.test()
+async def loop_parity_error_invalidates_confident_override(dut):
+    """A corrupted loop entry must miss instead of overriding direction."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_3000
+    target = pc - 0x40
+    trip_count = 8
+
+    for _ in range(8):
+        await drive_loop_trip(dut, pc, target, trip_count)
+    dut.upd_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    dut.lkp_path_sig.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 1
+
+    dut.test_corrupt_parity_pc.value = pc
+    dut.test_corrupt_parity_path_sig.value = 0
+    dut.test_corrupt_parity_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.test_corrupt_parity_valid.value = 0
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    dut.lkp_path_sig.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 0
+
+    await drive_loop_trip(dut, pc, target, trip_count)
+    dut.upd_valid.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 0
     dut.lkp_valid.value = 0
 
 

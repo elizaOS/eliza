@@ -33,6 +33,18 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def provenance_safe(value: Any) -> Any:
+    from provenance_sanitize import sanitize_host_local_paths
+
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    if isinstance(value, list):
+        return [provenance_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): provenance_safe(item) for key, item in value.items()}
+    return value
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -261,7 +273,7 @@ def main(argv: list[str]) -> int:
         "required_capture_commands": CAPTURE_COMMANDS,
     }
 
-    output = json.dumps(status, indent=2, sort_keys=True) + "\n"
+    output = json.dumps(provenance_safe(status), indent=2, sort_keys=True) + "\n"
     status_path = args.status_json if args.status_json.is_absolute() else root / args.status_json
     status_path.parent.mkdir(parents=True, exist_ok=True)
     status_path.write_text(output, encoding="utf-8")

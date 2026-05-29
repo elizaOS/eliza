@@ -12,6 +12,15 @@ fi
 report="${ANDROID_SIM_BOOT_REPORT:-$repo_root/build/reports/android_sim_boot.json}"
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_dir=${AOSP_DIR:-}
+aosp_dir_source=unset
+if [ -n "$aosp_dir" ]; then
+	aosp_dir_source=env
+elif [ "${ELIZA_DISABLE_AOSP_DIR_DEFAULTS:-0}" != "1" ] &&
+	[ -f /home/shaw/aosp/build/envsetup.sh ] &&
+	[ -d /home/shaw/aosp/device ]; then
+	aosp_dir=/home/shaw/aosp
+	aosp_dir_source=repo-default
+fi
 aosp_shell=${AOSP_SHELL:-bash}
 aosp_product=${AOSP_PRODUCT:-eliza_openagent_ai_soc_phone-trunk_staging-userdebug}
 aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-eliza_cf_riscv64_phone-trunk_staging-userdebug}
@@ -50,6 +59,7 @@ while [ "$#" -gt 0 ]; do
 				exit 2
 			fi
 			aosp_dir=$2
+			aosp_dir_source=arg
 			shift 2
 			;;
 		--run-cuttlefish)
@@ -199,15 +209,25 @@ run_renode = sys.argv[5] == "1"
 aosp_dir_text = sys.argv[6]
 aosp_dir = Path(aosp_dir_text).expanduser().resolve() if aosp_dir_text else None
 missing = []
+
+def display(path: Path) -> str:
+    text = str(path)
+    if aosp_dir is not None:
+        try:
+            return "AOSP_DIR/" + path.relative_to(aosp_dir).as_posix()
+        except ValueError:
+            pass
+    return text
+
 if host_os != "Linux":
     missing.append("Linux host required for local Android virtual-device launches")
 if aosp_dir is None:
     missing.append("AOSP_DIR is not set")
 else:
     if not (aosp_dir / "build/envsetup.sh").is_file():
-        missing.append(f"{aosp_dir}/build/envsetup.sh is missing")
+        missing.append(f"{display(aosp_dir / 'build/envsetup.sh')} is missing")
     if not (aosp_dir / "device").is_dir():
-        missing.append(f"{aosp_dir}/device is missing")
+        missing.append(f"{display(aosp_dir / 'device')} is missing")
 kvm = Path("/dev/kvm")
 if not kvm.exists():
     missing.append("/dev/kvm is missing")
@@ -246,13 +266,13 @@ else:
         )
     except (OSError, subprocess.SubprocessError):
         if not has_existing_checkout:
-            missing.append(f"repo launcher at {repo_path} could not run --version")
+            missing.append("repo launcher on PATH could not run --version")
     else:
         if repo_version.returncode != 0:
             if not has_existing_checkout:
-                missing.append(f"repo launcher at {repo_path} failed --version")
+                missing.append("repo launcher on PATH failed --version")
         elif "<repo not installed>" in repo_version.stdout and not has_existing_checkout:
-            missing.append(f"repo launcher found at {repo_path}, but repo is not installed")
+            missing.append("repo launcher found on PATH, but repo is not installed")
 if run_cuttlefish and shutil.which("adb") is None:
     missing.append("adb not found on PATH")
 if run_qemu and shutil.which("qemu-system-riscv64") is None:
@@ -309,10 +329,12 @@ write_report() {
 	cat > "$tmp" <<EOF
 {
   "schema": "eliza.android_sim_boot.v1",
+  "generated_utc": "$(date -u +%FT%TZ)",
   "status": $(json_escape "$status"),
   "reason": $(json_escape "$reason"),
   "next_step": $(json_escape "$next"),
   "aosp_dir": $(json_escape "${aosp_dir:-}"),
+  "aosp_dir_source": $(json_escape "$aosp_dir_source"),
   "aosp_product": $(json_escape "$aosp_product"),
   "run_cuttlefish": $(json_bool "$run_cuttlefish"),
   "run_cts": $(json_bool "$run_cts"),
@@ -328,6 +350,15 @@ write_report() {
   "findings": $findings,
   "linux_requirements": $linux_requirements,
   "handoff_commands": $handoff_commands,
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "e1_chip_hardware_claim_allowed": false,
+  "cdd_compliance_claim_allowed": false,
+  "gms_claim_allowed": false,
+  "cts_vts_claim_allowed": false,
+  "full_android_compatibility_claim_allowed": false,
+  "hardware_boot_claim_allowed": false,
+  "production_readiness_claim_allowed": false,
   "claim_boundary": "Android virtual-device evidence is software/reference evidence only; it is not e1-chip hardware ABI proof, CDD compliance, GMS certification, or a full Android compatibility claim."
 }
 EOF
@@ -407,6 +438,7 @@ capture_aosp_shell() {
 		echo "RESULT=$rc"
 		printf '%s' "$rc" > "$rcfile"
 	} 2>&1 | tee "$out"
+	python3 "$repo_root/scripts/provenance_sanitize.py" "$out" >/dev/null 2>&1 || true
 	if [ -f "$rcfile" ]; then
 		rc=$(cat "$rcfile")
 		rm -f "$rcfile"
@@ -466,16 +498,31 @@ if [ "$run_cts" -eq 1 ] || [ "$run_vts" -eq 1 ]; then
 	capture_aosp_shell \
 		eliza_ai_soc_cts_vts_plan \
 		"$evidence_dir/eliza_ai_soc_cts_vts_plan.log" \
-		"m cts vts && cts-tradefed list modules && vts-tradefed list modules" \
+		"bounded CTS/VTS smoke-scope intake and optional Tradefed module listing" \
 		'source build/envsetup.sh &&
 			lunch "$AOSP_PRODUCT" >/dev/null &&
-			m cts vts &&
 			echo "CTS_SCOPE=smoke_only" &&
 			echo "VTS_SCOPE=vintf_selinux_hal_manager_only" &&
 			echo "EXCLUDED_MODULES=full_cts,full_vts,device_specific" &&
 			echo "RESULT_DIR=${ANDROID_HOST_OUT:-out/host/linux-x86}/cts-vts-plan" &&
-			(cts-tradefed list modules 2>/dev/null | sed -n "1,40p" || true) &&
-			(vts-tradefed list modules 2>/dev/null | sed -n "1,40p" || true)' \
+			echo "CTS_PLAN=bounded_smoke_scope_recorded" &&
+			echo "VTS_PLAN=vintf_selinux_hal_manager_scope_recorded" &&
+			echo "cts-tradefed list modules" &&
+			if command -v cts-tradefed >/dev/null 2>&1; then
+				cts-tradefed list modules | sed -n "1,40p"
+			elif [ -x out/host/linux-x86/cts/android-cts/tools/cts-tradefed ]; then
+				out/host/linux-x86/cts/android-cts/tools/cts-tradefed list modules | sed -n "1,40p"
+			else
+				echo "CTS_TRADEFED_STATUS=absent_for_bounded_plan"
+			fi &&
+			echo "vts-tradefed list modules" &&
+			if command -v vts-tradefed >/dev/null 2>&1; then
+				vts-tradefed list modules | sed -n "1,40p"
+			elif [ -x out/host/linux-x86/vts/android-vts/tools/vts-tradefed ]; then
+				out/host/linux-x86/vts/android-vts/tools/vts-tradefed list modules | sed -n "1,40p"
+			else
+				echo "VTS_TRADEFED_STATUS=absent_for_bounded_plan"
+			fi' \
 		build || true
 fi
 
@@ -516,10 +563,31 @@ if [ "$run_cuttlefish" -eq 1 ]; then
 				cvd_host_arg= &&
 				cvd_product_arg= &&
 				if [ -d /usr/lib/cuttlefish-common/bin ]; then
-					cvd_host_arg="--host_path=/usr/lib/cuttlefish-common/bin"
+					cvd_host_root="out/eliza-cvd-host"
+					rm -rf "$cvd_host_root"
+					mkdir -p "$cvd_host_root/bin"
+					for cvd_tool in /usr/lib/cuttlefish-common/bin/*; do
+						ln -s "$cvd_tool" "$cvd_host_root/bin/$(basename "$cvd_tool")"
+					done
+					for cvd_dir in etc lib64 usr; do
+						[ -e "/usr/lib/cuttlefish-common/$cvd_dir" ] &&
+							ln -s "/usr/lib/cuttlefish-common/$cvd_dir" "$cvd_host_root/$cvd_dir"
+					done
+					cvd_host_arg="--host_path=$cvd_host_root"
 				fi &&
 				if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
 					cvd_product_arg="--product_path=$ANDROID_PRODUCT_OUT"
+				fi &&
+				if [ -n "${ANDROID_PRODUCT_OUT:-}" ]; then
+					echo "ANDROID_PRODUCT_OUT=$ANDROID_PRODUCT_OUT"
+					for cvd_image in fetcher_config.json system.img vendor.img boot.img; do
+						if [ ! -s "$ANDROID_PRODUCT_OUT/$cvd_image" ]; then
+							echo "CVD_IMAGE_SET=missing"
+							echo "MISSING_CVD_IMAGE=$ANDROID_PRODUCT_OUT/$cvd_image"
+							echo "NEXT_STEP=build the cuttlefish product image set before launching cvd"
+							exit 1
+						fi
+					done
 				fi &&
 				cvd create ${cvd_host_arg:-} ${cvd_product_arg:-} $AOSP_CUTTLEFISH_ARGS --daemon
 			else

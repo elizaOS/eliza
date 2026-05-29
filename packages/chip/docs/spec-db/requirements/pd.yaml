@@ -12,7 +12,7 @@ requirements:
     title: PD signoff manifest must enumerate all required closure evidence
     owner: pd
     source_doc: docs/evidence/pd/post-route-ppa-validator.yaml
-    source_doc_sha: fd19cd8b46846df0
+    source_doc_sha: 392b84f743f4e96e
     status: pd_evidence_template
     claim_boundary: manifest_template_no_post_route_signoff_claim
     links:
@@ -29,7 +29,7 @@ requirements:
     title: Multi-corner STA evidence must exist before timing-closure promotion
     owner: pd
     source_doc: docs/evidence/pd/multi-corner-sta-evidence.yaml
-    source_doc_sha: 5fecc188514fdd79
+    source_doc_sha: 1a8e1a9f909b3e47
     status: pd_evidence_template
     claim_boundary: sta_template_no_timing_signoff_claim
     links:
@@ -45,7 +45,7 @@ requirements:
     title: CTS evidence must exist before clock-tree closure promotion
     owner: pd
     source_doc: docs/evidence/pd/cts-evidence.yaml
-    source_doc_sha: 8a37bae5f0b289ed
+    source_doc_sha: 416a200108207677
     status: pd_evidence_template
     claim_boundary: cts_template_no_clock_signoff_claim
     links:
@@ -61,7 +61,7 @@ requirements:
     title: DFT/scan evidence must exist before testability promotion
     owner: pd
     source_doc: docs/evidence/pd/dft-evidence.yaml
-    source_doc_sha: 4beb4a7587b905ed
+    source_doc_sha: aecc6b64527d1a00
     status: pd_evidence_template
     claim_boundary: dft_template_no_atpg_coverage_signoff_claim
     links:
@@ -77,7 +77,7 @@ requirements:
     title: Macro-placement evidence must exist before floorplan promotion
     owner: pd
     source_doc: docs/evidence/pd/macro-placement-evidence.yaml
-    source_doc_sha: 8f8ac3c1df57e1be
+    source_doc_sha: cce0ad1f9e3b5548
     status: pd_evidence_template
     claim_boundary: placement_template_no_floorplan_signoff_claim
     links:
@@ -94,7 +94,7 @@ requirements:
     title: Die-area budget must be bounded before area/cost promotion
     owner: process
     source_doc: docs/evidence/process/die-area-budget.yaml
-    source_doc_sha: aff8b3052dc52e11
+    source_doc_sha: ccaa0b0f4bc9812d
     status: pd_evidence_template
     claim_boundary: area_budget_template_no_silicon_area_claim
     links:
@@ -111,7 +111,7 @@ requirements:
     title: Commercial-EDA partnership gate stays BLOCKED until vendor access lands
     owner: pd
     source_doc: docs/evidence/pd/commercial-eda-gate.yaml
-    source_doc_sha: b3d237f944921026
+    source_doc_sha: 344b4738f05b7803
     status: blocked
     claim_boundary: blocked_on_vendor_eda_access_no_signoff_claim
     links:

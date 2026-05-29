@@ -357,7 +357,6 @@
         "platforms/**/*.{ts,tsx}",
         "packaging/**/*.{mjs,ts}",
         "vitest.config.ts",
-        "vitest.node-sqlite.config.ts",
         "vitest.e2e.config.ts",
         "playwright.config.ts"
       ],
@@ -367,7 +366,6 @@
         "test/**/*.{ts,tsx}",
         "platforms/**/*.{ts,tsx}",
         "packaging/**/*.{mjs,ts}",
-        "vitest.node-sqlite.config.ts",
         "*.ts"
       ],
       "ignore": [

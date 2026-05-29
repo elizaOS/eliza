@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,30 @@ def rel(path: Path) -> str:
         return path.relative_to(ROOT).as_posix()
     except ValueError:
         return str(path)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    safe = value.replace(str(ROOT), "<repo>")
+    home = os.environ.get("HOME")
+    if home:
+        safe = safe.replace(home, "<home>")
+    safe = safe.replace("/var/tmp/", "<var-tmp>/")
+    safe = safe.replace("/tmp/", "<tmp>/")
+    return safe
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(child) for child in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def candidate_linux_tree(arg: str | None) -> Path:
@@ -219,6 +244,7 @@ def build_report(linux: Path) -> dict[str, Any]:
 
     return {
         "schema": "eliza.linux_external_bsp_status.v1",
+        "generated_utc": utc_now(),
         "status": "blocked" if blockers else "pass",
         "claim_boundary": "status_only_not_linux_boot_evidence",
         "linux_tree": str(linux),
@@ -247,16 +273,19 @@ def main(argv: list[str]) -> int:
     if not report_path.is_absolute():
         report_path = ROOT / report_path
     report = build_report(candidate_linux_tree(args.linux_tree))
+    output_report = provenance_safe_value(report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report_path.write_text(
+        json.dumps(output_report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
+        print(json.dumps(output_report, indent=2, sort_keys=True))
     else:
         print(f"STATUS: {report['status'].upper()} linux.external_bsp_status")
         print(f"  report: {rel(report_path)}")
-        for key, value in report["producer_commands"].items():
+        for key, value in output_report["producer_commands"].items():
             print(f"  command.{key}: {value}")
-        for blocker in report["blockers"]:
+        for blocker in output_report["blockers"]:
             print(f"  - {blocker['id']}: {blocker['detail']}")
     if report["status"] == "pass":
         return 0

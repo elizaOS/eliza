@@ -37,6 +37,9 @@ MODULE_RF = ROOT / "board/kicad/e1-phone/module-rf-pinout-execution.yaml"
 ENCLOSURE_FIT = ROOT / "board/kicad/e1-phone/enclosure-fit-execution-package.yaml"
 FACTORY_ACCEPTANCE = ROOT / "board/kicad/e1-phone/factory-production-acceptance-checklist.yaml"
 CONCEPT_PCB = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+ROUTED_CANDIDATE_PCB = (
+    ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+)
 ROUTE_INVENTORY = ROOT / "board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml"
 REAL_FOOTPRINT_BINDING = (
     ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"
@@ -65,6 +68,20 @@ def load_yaml(path: Path) -> Any:
 
 def rel(path: Path) -> str:
     return str(path.relative_to(ROOT))
+
+
+def board_text_counts(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    return {
+        "board_file": rel(path) if path.is_file() else str(path),
+        "present": path.is_file(),
+        "footprint_count": text.count('(footprint "'),
+        "placeholder_marker_count": text.count("placeholder_not_fabrication_footprint"),
+        "segment_count": text.count("\n  (segment "),
+        "via_count": text.count("\n  (via "),
+        "zone_count": text.count("\n  (zone "),
+        "filled_zone_count": text.count("(filled_polygon"),
+    }
 
 
 def phase_record(phase: dict[str, Any], release_outputs: dict[str, Any]) -> dict[str, Any]:
@@ -158,6 +175,7 @@ def main() -> int:
     real_footprint_step_intake = load_yaml(REAL_FOOTPRINT_STEP_INTAKE)
     routed_development_intake = load_yaml(ROUTED_DEVELOPMENT_INTAKE)
     routed_release_acceptance = load_yaml(ROUTED_RELEASE_ACCEPTANCE)
+    routed_candidate_counts = board_text_counts(ROUTED_CANDIDATE_PCB)
 
     release_outputs = routed_release["required_release_output_manifest"]
     live_counts = pcb_audit["live_pcb_counts"]
@@ -452,6 +470,14 @@ def main() -> int:
                 "and release approval."
             ),
         },
+        "local_routed_kicad_candidate_state": {
+            **routed_candidate_counts,
+            "metadata": rel(ROUTED_CANDIDATE_PCB) + ".metadata.yaml",
+            "release_credit": routed_release_acceptance["candidate_end_to_end_context"][
+                "release_credit"
+            ],
+            "release_state": "blocked_local_candidate_not_release",
+        },
         "routing_pressure_snapshot": {
             "board_bbox_mm": route_summary["board_bbox_mm"],
             "physical_pcb_island_area_mm2": route_summary["physical_pcb_island_area_mm2"],
@@ -584,6 +610,12 @@ def main() -> int:
                 and routed_release_acceptance["candidate_end_to_end_context"]["release_credit"]
                 is False
             ),
+            "local_candidate_routed_kicad_has_tracks_no_placeholder_markers": (
+                routed_candidate_counts["present"]
+                and routed_candidate_counts["segment_count"] > 0
+                and routed_candidate_counts["via_count"] > 0
+                and routed_candidate_counts["placeholder_marker_count"] == 0
+            ),
             "current_pcb_has_no_tracks_or_zones": (
                 live_counts["segment_count"] == 0
                 and live_counts["zone_count"] == 0
@@ -601,7 +633,7 @@ def main() -> int:
             "supplier-to-KiCad evidence records and EVT1 footprint capture work items are all still blocked",
             "hierarchical schematic capture and ERC evidence are missing",
             "screen, camera, USB-C, and side-button connector pinouts remain blocked before routable schematic capture",
-            "production concept KiCad PCB still has placeholder footprints, zero routed segments, and zero filled zones; local routed real-footprint development board exists but is non-release",
+            "production concept KiCad PCB still has placeholder footprints, zero routed segments, and zero filled zones; local routed KiCad candidate exists with real-footprint copper but is non-release",
             "supplier-footprint escape analysis and trial-route evidence are missing",
             "USB2 split-interconnect route topology is blocked until controlled-impedance flex or topology evidence exists",
             "cellular and Wi-Fi/Bluetooth module pinouts, reference layouts, firmware identity, and RF evidence are missing",

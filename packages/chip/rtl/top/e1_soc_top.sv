@@ -148,8 +148,10 @@ module e1_soc_top
     logic [63:0] clint_mtimecmp;
 
     // Shared MMIO address decode (rtl/peripherals/e1_mmio_decode.sv).
+    // Driven from the arbitrated fabric bus (fab_*), not the external port,
+    // so both the external debug bridge and the CPU are decoded identically.
     e1_mmio_decode u_mmio_decode (
-        .mmio_addr          (mmio_addr),
+        .mmio_addr          (fab_addr),
         .word_aligned       (word_aligned),
         .implemented_window (implemented_window),
         .bootrom_sel        (bootrom_sel),
@@ -173,10 +175,10 @@ module e1_soc_top
     e1_clint u_clint (
         .clk            (clk),
         .rst_n          (rst_n),
-        .mmio_valid     (mmio_valid),
-        .mmio_write     (mmio_write),
-        .mmio_word_addr (mmio_addr[15:2]),
-        .mmio_wdata     (mmio_wdata),
+        .mmio_valid     (fab_valid),
+        .mmio_write     (fab_write),
+        .mmio_word_addr (fab_addr[15:2]),
+        .mmio_wdata     (fab_wdata),
         .sel_i          (clint_sel),
         .clint_rdata    (legacy_clint_rdata),
         .msip_o         (legacy_msip),
@@ -233,7 +235,7 @@ module e1_soc_top
 
     // PLIC decode window: 0x0C00_0000 .. 0x0FFF_FFFF (64 MiB), word-aligned.
     logic        rs_plic_sel;
-    assign rs_plic_sel = word_aligned && (mmio_addr[31:26] == 6'b0000_11);
+    assign rs_plic_sel = word_aligned && (fab_addr[31:26] == 6'b0000_11);
 
     // The real subsys handles a region only when that real define is active;
     // otherwise the legacy block keeps the region (selects forced 0 here).
@@ -272,10 +274,10 @@ module e1_soc_top
     ) u_real_subsys (
         .clk          (clk),
         .rst_n        (rst_n),
-        .mmio_valid   (mmio_valid),
-        .mmio_write   (mmio_write),
-        .mmio_addr    (mmio_addr),
-        .mmio_wdata   (mmio_wdata),
+        .mmio_valid   (fab_valid),
+        .mmio_write   (fab_write),
+        .mmio_addr    (fab_addr),
+        .mmio_wdata   (fab_wdata),
         .clint_sel    (rs_clint_sel),
         .plic_sel     (rs_plic_sel_q),
         .dram_sel     (rs_dram_sel),
@@ -319,10 +321,10 @@ module e1_soc_top
     e1_behavioral_dram u_behavioral_dram (
         .clk                   (clk),
         .rst_n                 (rst_n),
-        .mmio_valid            (mmio_valid),
-        .mmio_write            (mmio_write),
-        .mmio_addr             (mmio_addr),
-        .mmio_wdata            (mmio_wdata),
+        .mmio_valid            (fab_valid),
+        .mmio_write            (fab_write),
+        .mmio_addr             (fab_addr),
+        .mmio_wdata            (fab_wdata),
         .dram_sel              (dram_sel),
         .mmio_dram_rdata       (mmio_dram_rdata),
         .dma_m_awvalid         (dma_m_awvalid),
@@ -631,51 +633,102 @@ module e1_soc_top
         .m_axil_rresp   (cpu_axil_rresp)
     );
 
-    // ── CPU AXI-Lite → SoC interconnect decode ─────────────────────────────
-    // The CPU's AXI-Lite master port feeds the same address-decode logic as the
-    // debug MMIO bridge.  For the MVP the CPU and debug bridge share the same
-    // decode mux; a proper crossbar or priority arbitration should replace this
-    // once both masters are active simultaneously.
-    //
-    // cpu_axil_* signals are currently wired but the decode mux below still
-    // uses the debug-bridge mmio_* signals as the primary master.  When the CPU
-    // is active (E1_HAVE_CVA6 defined) and debug bridge is quiescent, the
-    // CPU can drive the bus.  A full arbitration layer is a follow-on task.
+    // ── CPU AXI-Lite → simple MMIO master adapter ──────────────────────────
+    // Converts the CVA6 bridge's downstream AXI-Lite port into a single MMIO
+    // request at a time on the shared peripheral-fabric bus. The adapter output
+    // is master 1 of the e1_mmio_arb2 arbiter below; the external debug bridge
+    // (mmio_* port) is master 0 (priority). This is the real CPU→peripheral
+    // path that replaces the former 0xDEAD_BEEF tie-off.
+    logic        cpu_mmio_valid;
+    logic        cpu_mmio_write;
+    logic [31:0] cpu_mmio_addr;
+    logic [31:0] cpu_mmio_wdata;
+    logic [3:0]  cpu_mmio_wstrb;
+    logic [31:0] cpu_mmio_rdata;
+    logic        cpu_mmio_ready;
+
+    e1_axil_to_mmio u_cpu_axil_to_mmio (
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .s_axil_awvalid (cpu_axil_awvalid),
+        .s_axil_awready (cpu_axil_awready),
+        .s_axil_awaddr  (cpu_axil_awaddr),
+        .s_axil_wvalid  (cpu_axil_wvalid),
+        .s_axil_wready  (cpu_axil_wready),
+        .s_axil_wdata   (cpu_axil_wdata),
+        .s_axil_wstrb   (cpu_axil_wstrb),
+        .s_axil_bvalid  (cpu_axil_bvalid),
+        .s_axil_bready  (cpu_axil_bready),
+        .s_axil_bresp   (cpu_axil_bresp),
+        .s_axil_arvalid (cpu_axil_arvalid),
+        .s_axil_arready (cpu_axil_arready),
+        .s_axil_araddr  (cpu_axil_araddr),
+        .s_axil_rvalid  (cpu_axil_rvalid),
+        .s_axil_rready  (cpu_axil_rready),
+        .s_axil_rdata   (cpu_axil_rdata),
+        .s_axil_rresp   (cpu_axil_rresp),
+        .mmio_valid     (cpu_mmio_valid),
+        .mmio_write     (cpu_mmio_write),
+        .mmio_addr      (cpu_mmio_addr),
+        .mmio_wdata     (cpu_mmio_wdata),
+        .mmio_wstrb     (cpu_mmio_wstrb),
+        .mmio_rdata     (cpu_mmio_rdata),
+        .mmio_ready     (cpu_mmio_ready)
+    );
+
+    // ── 2-master MMIO arbiter (external debug bridge + CPU) ─────────────────
+    // Merges the external debug/MMIO bridge (port mmio_*, priority) and the CPU
+    // adapter (cpu_mmio_*) onto the single fabric bus (fab_*) consumed by the
+    // decode, peripherals, behavioural DRAM, and real subsystem below. The
+    // arbiter grant-locks per transaction so multi-cycle fabric regions are
+    // never torn mid-access.
+    logic        fab_valid;
+    logic        fab_write;
+    logic [31:0] fab_addr;
+    logic [31:0] fab_wdata;
     /* verilator lint_off UNUSEDSIGNAL */
-    logic unused_cpu_axil;
-    assign unused_cpu_axil = ^{
-        cpu_axil_awvalid, cpu_axil_awaddr,
-        cpu_axil_wvalid,  cpu_axil_wdata,   cpu_axil_wstrb,
-        cpu_axil_bready,
-        cpu_axil_arvalid, cpu_axil_araddr,
-        cpu_axil_rready
-    };
-    assign cpu_axil_awready = 1'b0;
-    assign cpu_axil_wready  = 1'b0;
-    assign cpu_axil_bvalid  = 1'b0;
-    assign cpu_axil_bresp   = 2'b00;
-    assign cpu_axil_arready = 1'b0;
-    assign cpu_axil_rvalid  = 1'b0;
-    assign cpu_axil_rdata   = 32'hDEAD_BEEF;
-    assign cpu_axil_rresp   = 2'b10;
+    logic [3:0]  fab_wstrb;  // word-granular fabric ignores strobes
     /* verilator lint_on UNUSEDSIGNAL */
-    // TODO: replace the stub AXI-Lite mux above with a proper 2-master
-    // arbitration crossbar once the debug bridge and CPU need simultaneous
-    // access.  The crossbar should priority-arbitrate with the CPU as the
-    // lower-priority master during debug sessions.
+    logic [31:0] fab_rdata;
+    logic        fab_ready;
+
+    e1_mmio_arb2 u_mmio_arb (
+        .clk        (clk),
+        .rst_n      (rst_n),
+        .m0_valid   (mmio_valid),
+        .m0_write   (mmio_write),
+        .m0_addr    (mmio_addr),
+        .m0_wdata   (mmio_wdata),
+        .m0_rdata   (mmio_rdata),
+        .m0_ready   (mmio_ready),
+        .m1_valid   (cpu_mmio_valid),
+        .m1_write   (cpu_mmio_write),
+        .m1_addr    (cpu_mmio_addr),
+        .m1_wdata   (cpu_mmio_wdata),
+        .m1_wstrb   (cpu_mmio_wstrb),
+        .m1_rdata   (cpu_mmio_rdata),
+        .m1_ready   (cpu_mmio_ready),
+        .mmio_valid (fab_valid),
+        .mmio_write (fab_write),
+        .mmio_addr  (fab_addr),
+        .mmio_wdata (fab_wdata),
+        .mmio_wstrb (fab_wstrb),
+        .mmio_rdata (fab_rdata),
+        .mmio_ready (fab_ready)
+    );
 
     e1_bootrom u_bootrom (
-        .addr(mmio_addr[15:2]),
+        .addr(fab_addr[15:2]),
         .rdata(bootrom_rdata)
     );
 
     e1_peripherals u_peripherals (
         .clk(clk),
         .rst_n(rst_n),
-        .valid(mmio_valid && periph_sel),
-        .write(mmio_write),
-        .addr(mmio_addr[7:2]),
-        .wdata(mmio_wdata),
+        .valid(fab_valid && periph_sel),
+        .write(fab_write),
+        .addr(fab_addr[7:2]),
+        .wdata(fab_wdata),
         .rdata(periph_rdata),
         .irq_timer(irq_timer),
         .gpio_out(gpio_out)
@@ -684,10 +737,10 @@ module e1_soc_top
     e1_dma u_dma (
         .clk(clk),
         .rst_n(rst_n),
-        .valid(mmio_valid && dma_sel),
-        .write(mmio_write),
-        .addr(mmio_addr[7:2]),
-        .wdata(mmio_wdata),
+        .valid(fab_valid && dma_sel),
+        .write(fab_write),
+        .addr(fab_addr[7:2]),
+        .wdata(fab_wdata),
         .rdata(dma_rdata),
         .irq(irq_dma),
         .m_axil_awvalid(dma_m_awvalid),
@@ -712,10 +765,10 @@ module e1_soc_top
     e1_npu u_npu (
         .clk(clk),
         .rst_n(rst_n),
-        .valid(mmio_valid && npu_sel),
-        .write(mmio_write),
-        .addr(mmio_addr[7:2]),
-        .wdata(mmio_wdata),
+        .valid(fab_valid && npu_sel),
+        .write(fab_write),
+        .addr(fab_addr[7:2]),
+        .wdata(fab_wdata),
         .rdata(npu_rdata),
         .irq(irq_npu),
         .m_axil_awvalid(npu_m_awvalid),
@@ -740,10 +793,10 @@ module e1_soc_top
     e1_display u_display (
         .clk(clk),
         .rst_n(rst_n),
-        .valid(mmio_valid && display_sel),
-        .write(mmio_write),
-        .addr(mmio_addr[7:2]),
-        .wdata(mmio_wdata),
+        .valid(fab_valid && display_sel),
+        .write(fab_write),
+        .addr(fab_addr[7:2]),
+        .wdata(fab_wdata),
         .rdata(display_rdata),
         .irq_vsync(irq_vsync),
         .scan_hsync(display_scan_hsync),
@@ -769,7 +822,7 @@ module e1_soc_top
     /* verilator lint_off UNUSEDSIGNAL */
     logic [31:0] wbuf_p1_dout_unused;
     /* verilator lint_on UNUSEDSIGNAL */
-    assign wbuf_wmask = {4{mmio_write}};
+    assign wbuf_wmask = {4{fab_write}};
     e1_weight_buffer_sram u_weight_buffer (
 `ifdef USE_POWER_PINS
         .VPWR    (VPWR),
@@ -777,11 +830,11 @@ module e1_soc_top
 `endif
         .clk     (clk),
         .rst_n   (rst_n),
-        .p0_csb  (~(mmio_valid && wbuf_sel)),
-        .p0_web  (~mmio_write),
+        .p0_csb  (~(fab_valid && wbuf_sel)),
+        .p0_web  (~fab_write),
         .p0_wmask(wbuf_wmask),
-        .p0_addr (mmio_addr[10:2]),
-        .p0_din  (mmio_wdata),
+        .p0_addr (fab_addr[10:2]),
+        .p0_din  (fab_wdata),
         .p0_dout (wbuf_rdata),
         .p1_csb  (1'b1),
         .p1_addr (9'h0),
@@ -805,34 +858,37 @@ module e1_soc_top
 `endif
     wire real_region = real_clint_region | real_plic_region | real_dram_region;
 
+    // Fabric return path. fab_ready / fab_rdata feed the e1_mmio_arb2 instance
+    // above, which routes them to whichever master (external debug bridge or
+    // CPU) currently holds the grant.
     always_comb begin
         // Real-subsys regions hold the bus until the AXI(-Lite) transfer
         // drains (rs_mmio_ready); every legacy region completes in one cycle.
 `ifdef E1_SOC_REAL_SUBSYS
-        mmio_ready = real_region ? (mmio_valid & rs_mmio_ready)
-                                 : mmio_valid;
+        fab_ready = real_region ? (fab_valid & rs_mmio_ready)
+                                : fab_valid;
 `else
-        mmio_ready = mmio_valid;
+        fab_ready = fab_valid;
 `endif
         // Legacy CLINT/DRAM arms are suppressed when the real subsystem owns
         // that region, so the case stays one-hot under `priority`.
         priority case (1'b1)
 `ifdef E1_SOC_REAL_IRQ
-            real_plic_region:                    mmio_rdata = rs_plic_rdata;
-            real_clint_region:                   mmio_rdata = rs_clint_rdata;
+            real_plic_region:                    fab_rdata = rs_plic_rdata;
+            real_clint_region:                   fab_rdata = rs_clint_rdata;
 `endif
 `ifdef E1_SOC_REAL_DRAM
-            real_dram_region:                    mmio_rdata = rs_dram_rdata;
+            real_dram_region:                    fab_rdata = rs_dram_rdata;
 `endif
-            bootrom_sel:                         mmio_rdata = bootrom_rdata;
-            periph_sel:                          mmio_rdata = periph_rdata;
-            dma_sel:                             mmio_rdata = dma_rdata;
-            npu_sel:                             mmio_rdata = npu_rdata;
-            display_sel:                         mmio_rdata = display_rdata;
-            wbuf_sel:                            mmio_rdata = wbuf_rdata;
-            (clint_sel && !real_clint_region):   mmio_rdata = clint_rdata;
-            (dram_sel  && !real_dram_region):    mmio_rdata = mmio_dram_rdata;
-            default:                             mmio_rdata = 32'hDEAD_BEEF;
+            bootrom_sel:                         fab_rdata = bootrom_rdata;
+            periph_sel:                          fab_rdata = periph_rdata;
+            dma_sel:                             fab_rdata = dma_rdata;
+            npu_sel:                             fab_rdata = npu_rdata;
+            display_sel:                         fab_rdata = display_rdata;
+            wbuf_sel:                            fab_rdata = wbuf_rdata;
+            (clint_sel && !real_clint_region):   fab_rdata = clint_rdata;
+            (dram_sel  && !real_dram_region):    fab_rdata = mmio_dram_rdata;
+            default:                             fab_rdata = 32'hDEAD_BEEF;
         endcase
     end
 

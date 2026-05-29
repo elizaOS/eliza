@@ -37,12 +37,13 @@ export COCOTB_RESULTS_FILE="results_userland_final.xml"
 
 echo "[run_userland_final] SIM_BUILD=$SIM_BUILD"
 echo "[run_userland_final] transcript=docs/evidence/cpu_ap/$TRANSCRIPT_NAME"
-echo "[run_userland_final] boot_hex=$BOOT_HEX"
+echo "[run_userland_final] boot_hex=fw/linux-cva6-boot/build/linux_boot.hex128"
 echo "[run_userland_final] max_cycles=$E1_BOOT_MAX_CYCLES idle_limit=$E1_BOOT_IDLE_LIMIT"
 
 rm -f "$COCOTB_DIR/results_userland_final.xml"
 cd "$COCOTB_DIR"
-exec make -f "$MAKEFILE" \
+make -f "$MAKEFILE" \
   SIM_BUILD="$SIM_BUILD" \
   MODULE=test_linux_boot_cva6 \
-  PLUSARGS="+E1_DRAM_PRELOAD_HEX=$BOOT_HEX"
+  PLUSARGS="+E1_DRAM_PRELOAD_HEX=$BOOT_HEX" 2>&1 \
+  | python3 "$ROOT/scripts/provenance_sanitize.py"

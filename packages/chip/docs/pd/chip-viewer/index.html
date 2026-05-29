@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eliza E1 Silicon Explorer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #11120f;
+        --panel: #191b16;
+        --panel-2: #22251f;
+        --line: #3a3e34;
+        --text: #f4f1e7;
+        --muted: #b9b4a5;
+        --accent: #f59f4a;
+        --accent-2: #00a878;
+        --warn: #e4564f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.35 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      body {
+        display: grid;
+        grid-template-columns: 320px minmax(0, 1fr);
+      }
+
+      aside {
+        min-width: 0;
+        height: 100vh;
+        overflow: auto;
+        border-right: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      main {
+        position: relative;
+        min-width: 0;
+        height: 100vh;
+        background: #0b0c0a;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+      }
+
+      canvas:active {
+        cursor: grabbing;
+      }
+
+      .section {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .source {
+        margin-top: 8px;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .stat {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        background: var(--panel-2);
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 18px;
+        line-height: 1.1;
+      }
+
+      .stat span {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 30px;
+      }
+
+      button,
+      input,
+      select {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel-2);
+        color: var(--text);
+        font: inherit;
+      }
+
+      button {
+        min-height: 32px;
+        padding: 0 10px;
+      }
+
+      button:hover,
+      button:focus-visible {
+        border-color: var(--accent);
+        outline: none;
+      }
+
+      input[type="search"] {
+        width: 100%;
+        min-height: 34px;
+        padding: 0 10px;
+      }
+
+      label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 30px;
+        color: var(--muted);
+      }
+
+      input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent);
+      }
+
+      .swatch {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        margin-right: 8px;
+        border-radius: 2px;
+        vertical-align: -1px;
+      }
+
+      .toolbar {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgb(17 18 15 / 0.88);
+        backdrop-filter: blur(8px);
+      }
+
+      .hud {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        max-width: min(520px, calc(100% - 24px));
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgb(17 18 15 / 0.88);
+        color: var(--muted);
+        backdrop-filter: blur(8px);
+        overflow-wrap: anywhere;
+      }
+
+      .results {
+        display: grid;
+        gap: 4px;
+        max-height: 180px;
+        overflow: auto;
+      }
+
+      .result {
+        display: block;
+        width: 100%;
+        min-height: 28px;
+        overflow: hidden;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .legend-count {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .metric-list,
+      .finding-list {
+        display: grid;
+        gap: 6px;
+      }
+
+      .metric,
+      .finding {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+        background: var(--panel-2);
+      }
+
+      .metric {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .metric span,
+      .finding span {
+        color: var(--muted);
+      }
+
+      .finding strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      @media (max-width: 820px) {
+        body {
+          grid-template-columns: 1fr;
+          grid-template-rows: minmax(180px, 42vh) minmax(0, 1fr);
+        }
+
+        aside {
+          height: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        main {
+          height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <section class="section">
+        <h1 id="title">Eliza E1 Silicon Explorer</h1>
+        <p class="source" id="source">Loading layout...</p>
+      </section>
+      <section class="section">
+        <h2>Die</h2>
+        <div class="stats" id="stats"></div>
+      </section>
+      <section class="section">
+        <h2>View</h2>
+        <div class="row"><button id="fit">Fit</button><button id="detail">Detailed</button></div>
+        <label><span>Rows</span><input id="showRows" type="checkbox" checked /></label>
+        <label><span>Instances</span><input id="showComponents" type="checkbox" checked /></label>
+        <label><span>Pins</span><input id="showPins" type="checkbox" checked /></label>
+        <label><span>Routing</span><input id="showRoutes" type="checkbox" checked /></label>
+        <label><span>GDS silicon</span><input id="showSilicon" type="checkbox" checked /></label>
+        <label><span>Density heat</span><input id="showHeat" type="checkbox" checked /></label>
+      </section>
+      <section class="section">
+        <h2>Metal Layers</h2>
+        <div id="layers"></div>
+      </section>
+      <section class="section">
+        <h2>Analysis</h2>
+        <div class="metric-list" id="analysisMetrics"></div>
+      </section>
+      <section class="section">
+        <h2>Findings</h2>
+        <div class="finding-list" id="analysisFindings"></div>
+      </section>
+      <section class="section">
+        <h2>Search</h2>
+        <input id="search" type="search" placeholder="Instance, master, net, pin" />
+        <div class="results" id="results"></div>
+      </section>
+    </aside>
+    <main>
+      <canvas id="canvas"></canvas>
+      <div class="toolbar">
+        <button id="zoomIn">+</button>
+        <button id="zoomOut">-</button>
+        <button id="home">Home</button>
+      </div>
+      <div class="hud" id="hud">Drag to pan. Wheel or pinch to zoom. Hover for coordinates.</div>
+    </main>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const state = {
+        layout: null,
+        scale: 1,
+        tx: 0,
+        ty: 0,
+        dragging: false,
+        lastX: 0,
+        lastY: 0,
+        selected: null,
+        detail: true,
+        layerVisible: new Map(),
+        siliconImage: null,
+        siliconTiles: new Map(),
+        overlayTiles: new Map(),
+        searchIndex: null,
+        searchIndexLoading: null,
+      };
+
+      const controls = {
+        rows: document.getElementById("showRows"),
+        components: document.getElementById("showComponents"),
+        pins: document.getElementById("showPins"),
+        routes: document.getElementById("showRoutes"),
+        silicon: document.getElementById("showSilicon"),
+        heat: document.getElementById("showHeat"),
+      };
+
+      function fmt(value) {
+        return new Intl.NumberFormat("en-US").format(value);
+      }
+
+      function fmtMetric(value) {
+        if (typeof value !== "number") return String(value);
+        if (Math.abs(value) >= 1000) return fmt(Math.round(value));
+        if (Math.abs(value) >= 1) return value.toFixed(3).replace(/\.?0+$/, "");
+        if (value === 0) return "0";
+        return value.toExponential(3);
+      }
+
+      function worldToScreen(x, y) {
+        const [, , , dieY1] = state.layout.diearea;
+        return [x * state.scale + state.tx, (dieY1 - y) * state.scale + state.ty];
+      }
+
+      function screenToWorld(x, y) {
+        const [, , , dieY1] = state.layout.diearea;
+        return [(x - state.tx) / state.scale, dieY1 - (y - state.ty) / state.scale];
+      }
+
+      function rectScreen(x, y, w, h) {
+        const [sx, sy] = worldToScreen(x, y + h);
+        return [sx, sy, Math.max(0.7, w * state.scale), Math.max(0.7, h * state.scale)];
+      }
+
+      function resize(redraw = true) {
+        const dpr = window.devicePixelRatio || 1;
+        const bounds = canvas.getBoundingClientRect();
+        canvas.width = Math.max(1, Math.floor(bounds.width * dpr));
+        canvas.height = Math.max(1, Math.floor(bounds.height * dpr));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (redraw) draw();
+      }
+
+      function fit() {
+        const [x0, y0, x1, y1] = state.layout.diearea;
+        const bounds = canvas.getBoundingClientRect();
+        const pad = Math.max(28, Math.min(bounds.width, bounds.height) * 0.06);
+        const sx = (bounds.width - pad * 2) / (x1 - x0);
+        const sy = (bounds.height - pad * 2) / (y1 - y0);
+        state.scale = Math.max(0.00001, Math.min(sx, sy));
+        state.tx = pad - x0 * state.scale + (bounds.width - pad * 2 - (x1 - x0) * state.scale) / 2;
+        state.ty = pad - y0 * state.scale + (bounds.height - pad * 2 - (y1 - y0) * state.scale) / 2;
+        draw();
+      }
+
+      function zoomAt(factor, sx, sy) {
+        const [wx, wy] = screenToWorld(sx, sy);
+        state.scale = Math.max(0.00001, Math.min(2, state.scale * factor));
+        const [nx, ny] = worldToScreen(wx, wy);
+        state.tx += sx - nx;
+        state.ty += sy - ny;
+        draw();
+      }
+
+      function drawDie() {
+        const [x0, y0, x1, y1] = state.layout.diearea;
+        const [sx, sy, sw, sh] = rectScreen(x0, y0, x1 - x0, y1 - y0);
+        ctx.fillStyle = "#10130f";
+        ctx.fillRect(sx, sy, sw, sh);
+        ctx.strokeStyle = "#f59f4a";
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(sx, sy, sw, sh);
+      }
+
+      function drawRows() {
+        if (!controls.rows.checked) return;
+        ctx.fillStyle = "rgb(244 241 231 / 0.055)";
+        for (const row of state.layout.rows) {
+          const w = row.count * row.step_x;
+          const h = row.step_y || state.layout.rowHeight || 2720;
+          const [sx, sy, sw, sh] = rectScreen(row.x, row.y, w, h);
+          ctx.fillRect(sx, sy, sw, Math.max(1, sh));
+        }
+      }
+
+      function drawSilicon() {
+        if (!controls.silicon.checked) return;
+        const tileSet = state.layout.silicon_image?.tiles;
+        if (tileSet) {
+          drawSiliconTiles(tileSet);
+          return;
+        }
+        if (!state.siliconImage) return;
+        const [x0, y0, x1, y1] = state.layout.diearea;
+        const [sx, sy, sw, sh] = rectScreen(x0, y0, x1 - x0, y1 - y0);
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(state.siliconImage, sx, sy, sw, sh);
+        ctx.globalAlpha = 1;
+      }
+
+      function chooseTileLevel(tileSet, dieScreenWidth) {
+        const targetScale = Math.max(0.001, dieScreenWidth / tileSet.width);
+        let best = tileSet.levels[0];
+        let bestScore = Math.abs(best.scale - targetScale);
+        for (const level of tileSet.levels) {
+          const score = Math.abs(level.scale - targetScale);
+          if (score < bestScore) {
+            best = level;
+            bestScore = score;
+          }
+        }
+        return best;
+      }
+
+      function getTile(path) {
+        if (state.siliconTiles.has(path)) return state.siliconTiles.get(path);
+        const image = new Image();
+        image.onload = draw;
+        image.src = path;
+        state.siliconTiles.set(path, image);
+        return image;
+      }
+
+      function visibleWorldBounds() {
+        const bounds = canvas.getBoundingClientRect();
+        const [aX, aY] = screenToWorld(0, 0);
+        const [bX, bY] = screenToWorld(bounds.width, bounds.height);
+        return {
+          x0: Math.min(aX, bX),
+          x1: Math.max(aX, bX),
+          y0: Math.min(aY, bY),
+          y1: Math.max(aY, bY),
+        };
+      }
+
+      function overlayTileRange(tileSet) {
+        const [x0, y0, x1, y1] = state.layout.diearea;
+        const view = visibleWorldBounds();
+        const tileW = (x1 - x0) / tileSet.tile_count;
+        const tileH = (y1 - y0) / tileSet.tile_count;
+        const minTx = Math.max(0, Math.floor((view.x0 - x0) / tileW));
+        const maxTx = Math.min(tileSet.tile_count - 1, Math.ceil((view.x1 - x0) / tileW));
+        const minTy = Math.max(0, Math.floor((view.y0 - y0) / tileH));
+        const maxTy = Math.min(tileSet.tile_count - 1, Math.ceil((view.y1 - y0) / tileH));
+        return { minTx, maxTx, minTy, maxTy };
+      }
+
+      function ensureOverlayTile(tileSet, tx, ty) {
+        const key = `${tx}_${ty}`;
+        if (state.overlayTiles.has(key)) return state.overlayTiles.get(key);
+        const entry = { status: "loading", components: [], routes: [] };
+        state.overlayTiles.set(key, entry);
+        fetch(`${tileSet.path}/${key}.json`)
+          .then((response) => (response.ok ? response.json() : { components: [], routes: [] }))
+          .then((tile) => {
+            entry.status = "loaded";
+            entry.components = tile.components || [];
+            entry.routes = tile.routes || [];
+            draw();
+          })
+          .catch(() => {
+            entry.status = "missing";
+          });
+        return entry;
+      }
+
+      function visibleOverlayItems(kind, minScale) {
+        const tileSet = state.layout.overlay_tiles;
+        if (!tileSet) return state.layout[kind];
+        if (state.scale < minScale) return [];
+        const range = overlayTileRange(tileSet);
+        const items = [];
+        for (let ty = range.minTy; ty <= range.maxTy; ty += 1) {
+          for (let tx = range.minTx; tx <= range.maxTx; tx += 1) {
+            const tile = ensureOverlayTile(tileSet, tx, ty);
+            if (tile.status === "loaded") items.push(...tile[kind]);
+          }
+        }
+        return items;
+      }
+
+      function drawSiliconTiles(tileSet) {
+        const [x0, y0, x1, y1] = state.layout.diearea;
+        const [dieX, dieY, dieW, dieH] = rectScreen(x0, y0, x1 - x0, y1 - y0);
+        const level = chooseTileLevel(tileSet, Math.abs(dieW));
+        const tileSize = tileSet.tile_size;
+        const tileWorldW = (x1 - x0) * (tileSize / level.width);
+        const tileWorldH = (y1 - y0) * (tileSize / level.height);
+        const [viewX0, viewY1] = screenToWorld(0, 0);
+        const [viewX1, viewY0] = screenToWorld(canvas.getBoundingClientRect().width, canvas.getBoundingClientRect().height);
+        const minTx = Math.max(0, Math.floor((Math.min(viewX0, viewX1) - x0) / tileWorldW));
+        const maxTx = Math.min(level.cols - 1, Math.ceil((Math.max(viewX0, viewX1) - x0) / tileWorldW));
+        const minTy = Math.max(0, Math.floor((y1 - Math.max(viewY0, viewY1)) / tileWorldH));
+        const maxTy = Math.min(level.rows - 1, Math.ceil((y1 - Math.min(viewY0, viewY1)) / tileWorldH));
+        ctx.globalAlpha = 0.94;
+        for (let ty = minTy; ty <= maxTy; ty += 1) {
+          for (let tx = minTx; tx <= maxTx; tx += 1) {
+            const path = `${level.path}/${tx}_${ty}.png`;
+            const image = getTile(path);
+            if (!image.complete) continue;
+            const sx = dieX + (tx * tileSize * dieW) / level.width;
+            const sy = dieY + (ty * tileSize * dieH) / level.height;
+            const sw = (image.naturalWidth * dieW) / level.width;
+            const sh = (image.naturalHeight * dieH) / level.height;
+            ctx.drawImage(image, sx, sy, sw, sh);
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function drawHeat() {
+        if (!controls.heat.checked) return;
+        const [x0, y0, x1, y1] = state.layout.diearea;
+        const tileCount = state.layout.overlay_tiles?.tile_count || 32;
+        const tileSizeX = (x1 - x0) / tileCount;
+        const tileSizeY = (y1 - y0) / tileCount;
+        const maxDensity = Math.max(1, ...state.layout.tiles.map((t) => t.components + t.routes * 0.1));
+        for (const tile of state.layout.tiles) {
+          const intensity = Math.min(0.5, (tile.components + tile.routes * 0.1) / maxDensity);
+          ctx.fillStyle = `rgb(245 159 74 / ${intensity})`;
+          const [sx, sy, sw, sh] = rectScreen(
+            x0 + tile.x * tileSizeX,
+            y0 + tile.y * tileSizeY,
+            tileSizeX,
+            tileSizeY,
+          );
+          ctx.fillRect(sx, sy, sw, sh);
+        }
+      }
+
+      function drawComponents() {
+        if (!controls.components.checked) return;
+        const colors = {
+          antenna: "#f1d65c",
+          clock: "#c56cf0",
+          decap: "#54615a",
+          filler: "#2d322b",
+          logic: "#d6d3c8",
+          register: "#00a878",
+        };
+        const components = visibleOverlayItems("components", 0.002);
+        const maxComponents = state.detail || state.scale > 0.006 ? components.length : 6000;
+        for (let i = 0; i < Math.min(maxComponents, components.length); i += 1) {
+          const c = components[i];
+          const [sx, sy, sw, sh] = rectScreen(c.x, c.y, c.w, c.h);
+          if (sw < 0.6 && sh < 0.6) continue;
+          ctx.fillStyle = colors[c.class] || "#d6d3c8";
+          ctx.globalAlpha = c.class === "filler" ? 0.35 : 0.78;
+          ctx.fillRect(sx, sy, sw, sh);
+        }
+        ctx.globalAlpha = 1;
+        if (state.selected?.type === "component") {
+          const c = state.selected.item;
+          const [sx, sy, sw, sh] = rectScreen(c.x, c.y, c.w, c.h);
+          ctx.strokeStyle = "#f1d65c";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(sx - 3, sy - 3, sw + 6, sh + 6);
+        }
+      }
+
+      function drawPins() {
+        if (!controls.pins.checked) return;
+        ctx.fillStyle = "#f1d65c";
+        ctx.strokeStyle = "#11120f";
+        for (const p of state.layout.pins) {
+          const [sx, sy] = worldToScreen(p.x, p.y);
+          ctx.beginPath();
+          ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      function drawRoutes() {
+        if (!controls.routes.checked) return;
+        const skipSmall = !state.detail && state.scale < 0.0025;
+        ctx.lineCap = "square";
+        for (const r of visibleOverlayItems("routes", 0.003)) {
+          if (!state.layerVisible.get(r.layer)) continue;
+          const layer = state.layout.layerMap.get(r.layer);
+          ctx.strokeStyle = layer?.color || "#d9d9d9";
+          ctx.fillStyle = layer?.color || "#d9d9d9";
+          ctx.globalAlpha = r.special ? 0.82 : 0.52;
+          if (r.layer === "rect") {
+            const x = Math.min(r.x1, r.x2);
+            const y = Math.min(r.y1, r.y2);
+            const [sx, sy, sw, sh] = rectScreen(x, y, Math.abs(r.x2 - r.x1), Math.abs(r.y2 - r.y1));
+            if (!skipSmall || sw > 0.6 || sh > 0.6) ctx.fillRect(sx, sy, sw, sh);
+            continue;
+          }
+          const [x1, y1] = worldToScreen(r.x1, r.y1);
+          const [x2, y2] = worldToScreen(r.x2, r.y2);
+          const width = Math.max(0.8, r.w * state.scale);
+          if (skipSmall && width < 1.3) continue;
+          ctx.lineWidth = width;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function draw() {
+        if (!state.layout) return;
+        const bounds = canvas.getBoundingClientRect();
+        ctx.clearRect(0, 0, bounds.width, bounds.height);
+        ctx.fillStyle = "#0b0c0a";
+        ctx.fillRect(0, 0, bounds.width, bounds.height);
+        drawDie();
+        drawSilicon();
+        drawRows();
+        drawHeat();
+        drawRoutes();
+        drawComponents();
+        drawPins();
+      }
+
+      function renderStats() {
+        const s = state.layout.summary;
+        const [x0, y0, x1, y1] = state.layout.diearea;
+        const upm = state.layout.units_per_micron;
+        const stats = [
+          [state.layout.design, "design"],
+          [`${((x1 - x0) / upm).toFixed(1)} x ${((y1 - y0) / upm).toFixed(1)} um`, "die size"],
+          [fmt(s.component_count), "instances"],
+          [fmt(s.route_segment_count), "route segments"],
+          [fmt(s.pin_count), "pins"],
+          [fmt(s.row_count), "placement rows"],
+        ];
+        document.getElementById("stats").innerHTML = stats
+          .map(([value, label]) => `<div class="stat"><strong>${value}</strong><span>${label}</span></div>`)
+          .join("");
+        document.getElementById("title").textContent = `${state.layout.design} silicon explorer`;
+        const silicon = state.layout.silicon_image;
+        const tileText = silicon?.tiles ? ` · ${silicon.tiles.levels.length} GDS tile levels` : "";
+        const overlayText = state.layout.overlay_tiles
+          ? ` · DEF overlay tiles: ${state.layout.overlay_tiles.files}/${state.layout.overlay_tiles.tile_count ** 2}`
+          : "";
+        const siliconText = silicon?.rendered
+          ? ` · GDS image: ${silicon.gds}${tileText}${overlayText}`
+          : silicon?.reason
+            ? ` · ${silicon.reason}${overlayText}`
+            : overlayText;
+        document.getElementById("source").textContent = `DEF: ${state.layout.source.def}${siliconText}`;
+      }
+
+      function renderLayers() {
+        const host = document.getElementById("layers");
+        host.innerHTML = "";
+        for (const layer of state.layout.layers) {
+          state.layerVisible.set(layer.name, true);
+          const label = document.createElement("label");
+          const count = state.layout.summary.layer_counts[layer.name] || 0;
+          label.innerHTML = `<span><span class="swatch" style="background:${layer.color}"></span>${layer.name} <span class="legend-count">${fmt(count)}</span></span>`;
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = true;
+          checkbox.addEventListener("change", () => {
+            state.layerVisible.set(layer.name, checkbox.checked);
+            draw();
+          });
+          label.appendChild(checkbox);
+          host.appendChild(label);
+        }
+      }
+
+      function renderAnalysis() {
+        const metricsHost = document.getElementById("analysisMetrics");
+        const findingsHost = document.getElementById("analysisFindings");
+        const analysis = state.layout.analysis;
+        metricsHost.innerHTML = "";
+        findingsHost.innerHTML = "";
+        if (!analysis) {
+          metricsHost.innerHTML = '<div class="metric"><span>No analysis metadata</span></div>';
+          return;
+        }
+        const metrics = analysis.openlane_metrics;
+        if (metrics?.available) {
+          const important = metrics.summary
+            .filter((item) =>
+              [
+                "design__instance__utilization",
+                "route__wirelength",
+                "route__vias",
+                "route__antenna_violation__count",
+                "route__drc_errors",
+                "timing__setup__wns",
+                "timing__hold__wns",
+                "power__total",
+                "design_powergrid__drop__worst",
+              ].includes(item.key),
+            )
+            .slice(0, 12);
+          metricsHost.innerHTML = important
+            .map(
+              (item) =>
+                `<div class="metric"><span>${item.label}</span><strong>${fmtMetric(item.value)}</strong></div>`,
+            )
+            .join("");
+          if (metrics.violations?.length) {
+            findingsHost.innerHTML += metrics.violations
+              .slice(0, 8)
+              .map(
+                (item) =>
+                  `<div class="finding"><strong>${item.label}</strong><span>${item.key} = ${fmtMetric(
+                    item.value,
+                  )}</span></div>`,
+              )
+              .join("");
+          }
+        } else {
+          metricsHost.innerHTML = `<div class="metric"><span>${metrics?.reason || "No OpenLane metrics"}</span></div>`;
+        }
+        for (const report of analysis.reports || []) {
+          const status = report.status || "unknown";
+          const releaseCredit = report.release_credit === true ? "release credit" : "no release credit";
+          findingsHost.innerHTML += `<div class="finding"><strong>${report.name}: ${status}</strong><span>${report.finding_count} findings · ${releaseCredit}</span></div>`;
+          for (const finding of (report.findings || []).slice(0, 2)) {
+            findingsHost.innerHTML += `<div class="finding"><strong>${finding.severity || "finding"} · ${
+              finding.code || report.name
+            }</strong><span>${finding.message || ""}</span></div>`;
+          }
+        }
+        if (!findingsHost.innerHTML) {
+          findingsHost.innerHTML = '<div class="finding"><span>No metric violations or report findings</span></div>';
+        }
+      }
+
+      async function loadSearchIndex() {
+        if (!state.layout.search_index) return null;
+        if (state.searchIndex) return state.searchIndex;
+        if (!state.searchIndexLoading) {
+          state.searchIndexLoading = fetch(state.layout.search_index.path)
+            .then((response) => response.json())
+            .then((index) => {
+              state.searchIndex = index;
+              return index;
+            });
+        }
+        return state.searchIndexLoading;
+      }
+
+      async function search(query) {
+        const q = query.trim().toLowerCase();
+        const results = document.getElementById("results");
+        results.innerHTML = "";
+        if (!q) return;
+        const index = state.layout.search_index ? await loadSearchIndex() : null;
+        if (document.getElementById("search").value.trim().toLowerCase() !== q) return;
+        const components = index?.components || state.layout.components;
+        const pins = index?.pins || state.layout.pins;
+        const nets = index?.nets || state.layout.routes;
+        const hits = [];
+        for (const c of components) {
+          if (c.name.toLowerCase().includes(q) || c.master.toLowerCase().includes(q)) {
+            hits.push({ type: "component", label: `${c.name} · ${c.master}`, item: c });
+          }
+          if (hits.length >= 40) break;
+        }
+        if (hits.length < 40) {
+          for (const p of pins) {
+            if (p.name.toLowerCase().includes(q)) hits.push({ type: "pin", label: `pin ${p.name}`, item: p });
+            if (hits.length >= 40) break;
+          }
+        }
+        if (hits.length < 40) {
+          const seen = new Set();
+          for (const r of nets) {
+            const netName = r.net || r.name;
+            if (netName.toLowerCase().includes(q) && !seen.has(netName)) {
+              seen.add(netName);
+              hits.push({ type: "route", label: `net ${netName} · ${r.layer}`, item: r });
+            }
+            if (hits.length >= 40) break;
+          }
+        }
+        for (const hit of hits) {
+          const button = document.createElement("button");
+          button.className = "result";
+          button.textContent = hit.label;
+          button.addEventListener("click", () => focusHit(hit));
+          results.appendChild(button);
+        }
+      }
+
+      function focusHit(hit) {
+        state.selected = hit;
+        const item = hit.item;
+        const x = item.x ?? item.x1;
+        const y = item.y ?? item.y1;
+        const bounds = canvas.getBoundingClientRect();
+        state.scale = Math.max(state.scale, 0.03);
+        const [sx, sy] = worldToScreen(x, y);
+        state.tx += bounds.width / 2 - sx;
+        state.ty += bounds.height / 2 - sy;
+        document.getElementById("hud").textContent = hit.label;
+        draw();
+      }
+
+      async function load() {
+        const response = await fetch("chip-layout.json");
+        const layout = await response.json();
+        layout.layerMap = new Map(layout.layers.map((layer) => [layer.name, layer]));
+        layout.rowHeight =
+          layout.rows.length > 1
+            ? Math.min(...layout.rows.slice(1).map((row, i) => row.y - layout.rows[i].y).filter((v) => v > 0))
+            : 2720;
+        state.layout = layout;
+        if (layout.silicon_image?.rendered && layout.silicon_image?.image) {
+          state.siliconImage = await new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = reject;
+            image.src = layout.silicon_image.image;
+          });
+        }
+        renderStats();
+        renderLayers();
+        renderAnalysis();
+        resize(false);
+        fit();
+      }
+
+      canvas.addEventListener("pointerdown", (event) => {
+        state.dragging = true;
+        state.lastX = event.clientX;
+        state.lastY = event.clientY;
+        canvas.setPointerCapture(event.pointerId);
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (state.dragging) {
+          state.tx += event.clientX - state.lastX;
+          state.ty += event.clientY - state.lastY;
+          state.lastX = event.clientX;
+          state.lastY = event.clientY;
+          draw();
+          return;
+        }
+        if (!state.layout) return;
+        const bounds = canvas.getBoundingClientRect();
+        const [wx, wy] = screenToWorld(event.clientX - bounds.left, event.clientY - bounds.top);
+        document.getElementById("hud").textContent = `x ${wx.toFixed(0)} dbu, y ${wy.toFixed(0)} dbu · zoom ${(
+          state.scale * state.layout.units_per_micron
+        ).toFixed(3)} px/um`;
+      });
+
+      canvas.addEventListener("pointerup", (event) => {
+        state.dragging = false;
+        canvas.releasePointerCapture(event.pointerId);
+      });
+
+      canvas.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        const bounds = canvas.getBoundingClientRect();
+        zoomAt(event.deltaY < 0 ? 1.18 : 0.84, event.clientX - bounds.left, event.clientY - bounds.top);
+      });
+
+      for (const input of Object.values(controls)) input.addEventListener("change", draw);
+      document.getElementById("fit").addEventListener("click", fit);
+      document.getElementById("home").addEventListener("click", fit);
+      document.getElementById("zoomIn").addEventListener("click", () => {
+        const bounds = canvas.getBoundingClientRect();
+        zoomAt(1.25, bounds.width / 2, bounds.height / 2);
+      });
+      document.getElementById("zoomOut").addEventListener("click", () => {
+        const bounds = canvas.getBoundingClientRect();
+        zoomAt(0.8, bounds.width / 2, bounds.height / 2);
+      });
+      document.getElementById("detail").addEventListener("click", (event) => {
+        state.detail = !state.detail;
+        event.currentTarget.textContent = state.detail ? "Detailed" : "Fast";
+        draw();
+      });
+      document.getElementById("search").addEventListener("input", (event) => search(event.target.value));
+      window.addEventListener("resize", resize);
+      load().catch((error) => {
+        document.getElementById("source").textContent = `Failed to load chip-layout.json: ${error.message}`;
+      });
+    </script>
+  </body>
+</html>

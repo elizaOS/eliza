@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -204,6 +205,7 @@ def build_report() -> dict[str, Any]:
         if row["status"] == "BLOCKED" and row["directory_exists"] and row["artifacts_present"]
     ]
     report: dict[str, Any] = {
+        "generated_utc": datetime.now(UTC).isoformat(),
         "contract_path": rel(CONTRACT_PATH),
         "contract_version": 1,
         "io_cell_classes_declared": IO_CELL_CLASSES,

@@ -184,14 +184,6 @@ export interface BenchmarkTurnMetadata {
   tool_names: string[];
 }
 
-export interface CuaServiceLike {
-  runTask(roomId: string, goal: string): Promise<unknown>;
-  approveLatest(roomId: string): Promise<unknown>;
-  cancelLatest(roomId: string): Promise<void>;
-  screenshotBase64(): Promise<string>;
-  getStatus(): Record<string, unknown>;
-}
-
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -463,85 +455,6 @@ export function parseBooleanValue(
     if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
   }
   return defaultValue;
-}
-
-export function compactCuaStep(
-  step: unknown,
-  includeScreenshots: boolean,
-): Record<string, unknown> {
-  if (!isRecord(step)) {
-    return { step };
-  }
-
-  const screenshot =
-    typeof step.screenshotAfterBase64 === "string"
-      ? step.screenshotAfterBase64
-      : undefined;
-  const { screenshotAfterBase64: _omit, ...rest } = step;
-
-  return includeScreenshots
-    ? {
-        ...rest,
-        screenshotAfterBase64: screenshot,
-        hasScreenshot: Boolean(screenshot),
-      }
-    : {
-        ...rest,
-        hasScreenshot: Boolean(screenshot),
-      };
-}
-
-export function compactCuaResult(
-  result: unknown,
-  includeScreenshots: boolean,
-): Record<string, unknown> {
-  if (!isRecord(result)) {
-    return { status: "unknown", raw: result };
-  }
-
-  const status = typeof result.status === "string" ? result.status : "unknown";
-
-  if (status === "completed" || status === "failed") {
-    const rawSteps = Array.isArray(result.steps) ? result.steps : [];
-    return {
-      ...result,
-      steps: rawSteps.map((step) => compactCuaStep(step, includeScreenshots)),
-    };
-  }
-
-  if (status === "paused_for_approval") {
-    const pending = isRecord(result.pending) ? result.pending : {};
-    const rawSteps = Array.isArray(pending.stepsSoFar)
-      ? pending.stepsSoFar
-      : [];
-    const screenshotBefore =
-      typeof pending.screenshotBeforeBase64 === "string"
-        ? pending.screenshotBeforeBase64
-        : undefined;
-    const { screenshotBeforeBase64: _omit, ...pendingRest } = pending;
-
-    return {
-      ...result,
-      pending: includeScreenshots
-        ? {
-            ...pendingRest,
-            stepsSoFar: rawSteps.map((step) =>
-              compactCuaStep(step, includeScreenshots),
-            ),
-            screenshotBeforeBase64: screenshotBefore,
-            hasScreenshotBefore: Boolean(screenshotBefore),
-          }
-        : {
-            ...pendingRest,
-            stepsSoFar: rawSteps.map((step) =>
-              compactCuaStep(step, includeScreenshots),
-            ),
-            hasScreenshotBefore: Boolean(screenshotBefore),
-          },
-    };
-  }
-
-  return { ...result };
 }
 
 export function formatUnknownError(error: unknown): string {

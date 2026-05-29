@@ -23,6 +23,8 @@ export interface SigningRequest {
   data: string;
   nonce?: number;
   gasLimit?: string;
+  maxFeePerGas?: string;
+  maxPriorityFeePerGas?: string;
   createdAt: number;
 }
 

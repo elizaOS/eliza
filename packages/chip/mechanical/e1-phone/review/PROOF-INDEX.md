@@ -55,10 +55,10 @@ Keyframes reviewed: t=0 (assembled front), t=3 (peak explode, distinct layers), 
 | Check | Path | Result |
 |---|---|---|
 | Parametric boolean interference (OCP) | `scripts/check_e1_phone_boolean_interference.py` | 11/11 envelope scopes PASS, 0 unintentional clashes, flush-back 0.0 mm |
-| Supplier-B-rep boolean release gate | `review/full-cad-boolean-interference.json` | fail-closed: 7 PASS + 3 BLOCKED (await supplier B-rep + routed STEP) |
+| Supplier-B-rep boolean release gate | `review/full-cad-boolean-interference.json` | local concept envelope PASS: 11/11 scopes, 0 unintentional clashes; release remains blocked pending supplier B-rep + routed STEP |
 | Min-gap matrix | `review/full-cad-min-gap-matrix.csv` | full assembly, no negative non-contact rows |
 | Button/aperture orientation | `review/button-orientation-validation.json` | 15/15 features + 2/2 coaxiality PASS |
-| Solid assembly STEP | `out/e1-phone-solid-assembly.step` | 155-part concept assembly; current STEP validation is fail-closed when CadQuery/OCP is unavailable |
+| Solid assembly STEP | `out/e1-phone-solid-assembly.step` | 222-part concept assembly; STEP re-import validation passes for all 222 local envelope parts |
 | Generators | `scripts/check_e1_phone_boolean_interference.py`, `scripts/check_e1_phone_button_orientation.py` | reproducible (~11 s / <1 s) |
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`. USB-C plug-insertion sweep (0→8 mm) and button press sweep (0→0.20 mm) both clash-free.
@@ -80,8 +80,12 @@ Closure gates (`routed_pcb_ready`, `fabrication_ready`, `enclosure_ready`) remai
 |---|---|
 | Costed BOM (machine) | `review/bom-unit-cost.yaml` |
 | Costed BOM (human) | `review/bom-unit-cost.md` |
+| Public market BOM cost bands (RFQ seed, not AVL) | `review/bom-public-market-cost-bands-2026-05-28.yaml` |
+| Public CAD/STEP source intake (not supplier-approved) | `board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml` |
 
 Ex-factory unit cost (PATH A — SoM, buildable from public data): **$123.90 @ 10k / $93.03 @ 100k** (EXW Shenzhen). PATH B (bare SoC, NDA cost-down): $116.80 @ 10k / $88.48 @ 100k. Chinese off-the-shelf parts; source URLs in the costed BOM.
+
+Public-market category bands for researched off-the-shelf parts only are **$148-180 @100**, **$122-149 @1k**, **$94-121 @10k**, **$70-96 @100k**, and **$56-79 @1M**. These bands exclude compute/AP or SoM, PCB fab/SMT, enclosure/tooling, calibration, RF certification, fixtures, packaging, logistics, tariffs, and warranty reserve. They are public sourcing evidence only, not signed quotes or release BOM proof.
 
 ## 5. Mass / size / tolerance / spec
 

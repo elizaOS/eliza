@@ -35,6 +35,9 @@ set +e
 		-o "$probe" &&
 		"$probe" --device "$device_path"
 	rc=$?
+	if [ "$rc" -eq 0 ]; then
+		echo "e1_npu_status=unsupported"
+	fi
 	end_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	if [ "$rc" -eq 0 ]; then
 		status=PASS

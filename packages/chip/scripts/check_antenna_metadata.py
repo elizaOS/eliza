@@ -6,25 +6,32 @@ from __future__ import annotations
 import json
 import sys
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "pd/openlane/runs"
+DERIVED_RUNS = ROOT / "build/evidence/openlane"
 PADFRAME = ROOT / "pd/padframe/e1_demo_padframe.yaml"
 REPORT = ROOT / "build/reports/antenna_metadata.json"
 SCHEMA = "eliza.antenna_metadata.v1"
 CLAIM_BOUNDARY = "antenna_metadata_validation_only_not_padframe_or_release_evidence"
 FAIL_EXIT = 1
 BLOCKED_EXIT = 2
-ANTENNA_REPORT_GLOB = "*/61-odb-checkdesignantennaproperties/report.yaml"
+ANTENNA_REPORT_GLOB = "*/*-odb-checkdesignantennaproperties/report.yaml"
+DERIVED_ANTENNA_REPORT_GLOB = "*/*-odb-checkdesignantennaproperties/report.yaml"
 RELEASE_PADFRAME_STEPS = (
     "select a foundry IO library with input, output, bidirectional, power, ground, ESD, corner, and filler cells",
     "instantiate those pad cells around e1_chip_top instead of using the padless core wrapper as the release top",
     "connect JTAG_TCK, JTAG_TDI, JTAG_TMS, TEST_MODE, DBG_READY, and JTAG_TDO either to real IO pads and tested internal logic or remove them from the release top",
     "archive padframe-inclusive KLayout/Magic DRC, LVS, antenna, and ESD evidence from one selected run",
 )
+
+
+class MissingTopCellError(ValueError):
+    """Raised when an OpenLane antenna report is for another design."""
 
 
 def write_report(
@@ -36,6 +43,7 @@ def write_report(
     missing: dict[str, list[str]] | None = None,
     blocker_categories: dict[str, int] | None = None,
     release_blocked: bool | None = None,
+    missing_top_cell: bool = False,
 ) -> None:
     evidence = ""
     if report_path is not None:
@@ -43,15 +51,18 @@ def write_report(
             evidence = report_path.relative_to(ROOT).as_posix()
         except ValueError:
             evidence = str(report_path)
-    try:
-        search_root = RUNS.relative_to(ROOT).as_posix()
-    except ValueError:
-        search_root = str(RUNS)
+    search_roots = []
+    for root in (RUNS, DERIVED_RUNS):
+        try:
+            search_roots.append(root.relative_to(ROOT).as_posix())
+        except ValueError:
+            search_roots.append(str(root))
     missing = missing or {}
     blocker_categories = blocker_categories or {}
     payload = {
         "schema": SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
         "mode": "release" if release else "preflight",
         "source_report": evidence,
@@ -62,6 +73,8 @@ def write_report(
             "blockers": len(findings) if status == "blocked" else 0,
             "failures": len(findings) if status == "fail" else 0,
             "source_report_present": report_path is not None and report_path.is_file(),
+            "source_report_missing_e1_chip_top": missing_top_cell,
+            "missing_e1_chip_top_report_count": 1 if missing_top_cell else 0,
             "missing_pin_count": sum(len(pins) for pins in missing.values()),
             "missing_input_gate_metadata_count": len(missing.get("input", [])),
             "missing_output_diffusion_metadata_count": len(missing.get("output", [])),
@@ -71,8 +84,8 @@ def write_report(
         },
         "blocker_categories": blocker_categories,
         "report_search": {
-            "root": search_root,
-            "glob": ANTENNA_REPORT_GLOB,
+            "roots": search_roots,
+            "globs": [ANTENNA_REPORT_GLOB, DERIVED_ANTENNA_REPORT_GLOB],
         },
         "missing_metadata": missing,
         "release_padframe_steps": list(RELEASE_PADFRAME_STEPS),
@@ -82,7 +95,12 @@ def write_report(
                 "severity": "blocker" if status == "blocked" else "error",
                 "message": finding,
                 "evidence": evidence,
-                "next_step": "Instantiate release IO/pad cells and archive padframe-inclusive antenna evidence.",
+                "next_step": (
+                    "Regenerate the OpenLane antenna metadata report for e1_chip_top, "
+                    "then instantiate release IO/pad cells and archive padframe-inclusive antenna evidence."
+                    if missing_top_cell
+                    else "Instantiate release IO/pad cells and archive padframe-inclusive antenna evidence."
+                ),
             }
             for index, finding in enumerate(findings, start=1)
         ],
@@ -93,7 +111,7 @@ def write_report(
 
 def latest_report() -> Path | None:
     reports = sorted(
-        RUNS.glob(ANTENNA_REPORT_GLOB),
+        [*RUNS.glob(ANTENNA_REPORT_GLOB), *DERIVED_RUNS.glob(DERIVED_ANTENNA_REPORT_GLOB)],
         key=lambda path: path.stat().st_mtime,
     )
     return reports[-1] if reports else None
@@ -120,15 +138,21 @@ def missing_metadata(report_path: Path) -> dict[str, list[str]]:
     missing: dict[str, list[str]] = {"input": [], "output": [], "inout": []}
     if not isinstance(payload, list):
         raise ValueError("OpenLane antenna report schema error: top-level payload is not a list")
+    top_cell_seen = False
     for cell in payload:
         if not isinstance(cell, dict):
             raise ValueError("OpenLane antenna report schema error: cell entry is not a mapping")
         if cell.get("cell") != "e1_chip_top":
             continue
+        top_cell_seen = True
         for direction in missing:
             pins = cell.get(direction, [])
             if isinstance(pins, list):
                 missing[direction].extend(str(pin) for pin in pins)
+    if not top_cell_seen:
+        raise MissingTopCellError(
+            "OpenLane antenna report does not include cell=e1_chip_top"
+        )
     return {direction: sorted(set(pins)) for direction, pins in missing.items() if pins}
 
 
@@ -166,6 +190,19 @@ def main() -> int:
 
     try:
         missing = missing_metadata(report_path)
+    except MissingTopCellError as exc:
+        finding = f"antenna metadata blocker: {exc}"
+        write_report(
+            "blocked",
+            report_path,
+            [finding],
+            args.release,
+            blocker_categories={"missing_e1_chip_top_antenna_metadata_report": 1},
+            release_blocked=padframe_release_blocked(),
+            missing_top_cell=True,
+        )
+        print(f"STATUS: BLOCKED {finding}")
+        return BLOCKED_EXIT
     except (OSError, ValueError, yaml.YAMLError) as exc:
         finding = f"antenna metadata schema error: {exc}"
         write_report(

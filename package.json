@@ -215,7 +215,7 @@
     "publish:packages": "bun packages/scripts/publish-from-dist.mjs --apply",
     "typecheck:dist": "NODE_OPTIONS='--max-old-space-size=8192' tsc --noEmit -p tsconfig.dist-paths.json"
   },
-  "packageManager": "bun@1.3.13",
+  "packageManager": "bun@1.3.14",
   "workspaces": [
     "packages/*",
     "!packages/feed",

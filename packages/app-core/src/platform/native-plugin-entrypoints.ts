@@ -23,3 +23,7 @@ import "@elizaos/capacitor-swabble";
 import "@elizaos/capacitor-system";
 import "@elizaos/capacitor-talkmode";
 import "@elizaos/capacitor-websiteblocker";
+// JS-runtime sandbox bridges register their factories as import-time side
+// effects so resolveJsRuntimeBridge() can find jsc-ios / quickjs-* on boot.
+import "../connectors/capacitor-jsc.ts";
+import "../connectors/capacitor-quickjs.ts";

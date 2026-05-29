@@ -40,7 +40,16 @@ def test_asimov_auto_eval_uses_mjx_backend_report_contract(monkeypatch) -> None:
     monkeypatch.setattr(
         eval_text_policy,
         "_roll_one_asimov_mjx",
-        lambda _env, _policy, task_id, **_kwargs: (1.25 if task_id == "stand_up" else 2.5, 3),
+        lambda _env, _policy, task_id, **_kwargs: {
+            "reward": 1.25 if task_id == "stand_up" else 2.5,
+            "steps": 3,
+            "success": True,
+            "failed": False,
+            "final_delta_x": 0.3 if task_id == "walk_forward" else 0.0,
+            "final_delta_y": 0.0,
+            "final_delta_yaw": 0.0,
+            "final_torso_z": 0.63,
+        },
     )
 
     report = eval_text_policy.evaluate(
@@ -59,6 +68,7 @@ def test_asimov_auto_eval_uses_mjx_backend_report_contract(monkeypatch) -> None:
         "domain_randomization": {},
     }
     assert report["profile_id"] == "asimov-1"
+    assert report["schema"] == "robot-text-policy-eval-v1"
     assert report["env"] == "asimov_mjx"
     assert report["policy"] == "untrained_zero"
     assert report["env_action_dim"] == 12
@@ -69,8 +79,11 @@ def test_asimov_auto_eval_uses_mjx_backend_report_contract(monkeypatch) -> None:
     assert report["env_text_dim"] == 32
     assert report["mujoco_actuators"] == 25
     assert report["tasks"]["stand_up"]["mean_reward"] == 1.25
+    assert report["tasks"]["stand_up"]["success_rate"] == 1.0
     assert report["tasks"]["walk_forward"]["mean_reward"] == 2.5
+    assert report["tasks"]["walk_forward"]["success_rate"] == 1.0
     assert report["mean_reward_overall"] == 1.875
+    assert report["mean_success_rate_overall"] == 1.0
 
 
 def test_mjx_eval_rejects_non_asimov_profile() -> None:

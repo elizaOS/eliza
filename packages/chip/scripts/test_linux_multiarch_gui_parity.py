@@ -20,19 +20,26 @@ sys.modules[spec.name] = gate
 spec.loader.exec_module(gate)
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data) + "\n", encoding="utf-8")
 
 
 class LinuxMultiarchGuiParityTests(unittest.TestCase):
-    def test_current_report_blocks_until_arm64_gui_and_boot_evidence_pass(self) -> None:
+    def test_current_report_passes_with_arm64_and_riscv64_gui_boot_evidence(self) -> None:
         report = gate.build_report()
         self.assertEqual(report["schema"], gate.SCHEMA)
-        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["arches"]["riscv64"]["proof_state"], "proven")
-        self.assertEqual(report["arches"]["arm64"]["proof_state"], "blocked")
-        self.assertGreaterEqual(len(report["findings"]), 1)
+        self.assertEqual(report["arches"]["arm64"]["proof_state"], "proven")
+        self.assertEqual(report["findings"], [])
 
     def test_all_arches_pass_when_gui_reports_and_matrix_are_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -129,6 +136,7 @@ class LinuxMultiarchGuiParityTests(unittest.TestCase):
                 gate.REPORTS = old_reports
 
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["proven_arches"], 1)
         self.assertEqual(report["summary"]["gui_payload_proven_arches"], 2)
         self.assertEqual(report["arches"]["arm64"]["gui_payload_state"], "proven")

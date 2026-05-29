@@ -1,5 +1,6 @@
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cocotb
@@ -37,6 +38,17 @@ NPU_OPCODES = (
     E1NpuRuntime.OP_EXP2_NEG_Q0_8,
 )
 AXI_RESP_BINS = ("OKAY", "SLVERR", "DECERR")
+NPU_FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_accelerator_claim_allowed": False,
+    "nnapi_claim_allowed": False,
+    "performance_claim_allowed": False,
+    "android_driver_claim_allowed": False,
+    "power_claim_allowed": False,
+    "thermal_claim_allowed": False,
+    "dma_backed_tensor_execution_claim_allowed": False,
+}
 
 
 async def poll_done(dut, cycles=32):
@@ -764,14 +776,38 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
 
     coverage = {
         "schema": "eliza.npu_cocotb_coverage.v1",
+        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "claim_boundary": "Local NPU cocotb runtime ABI coverage only; not NNAPI, phone-class throughput, power, thermal, Android driver, or release evidence.",
         "source": "verify/cocotb/test_e1_npu.py",
         "runtime_contract": "compiler/runtime/e1_npu_runtime.py",
+        **NPU_FALSE_CLAIM_FLAGS,
         "covered_opcodes": sorted(covered_opcodes),
         "covered_opcode_names": [case[0] for case in scalar_cases]
         + ["gemm_s8", "gemm_s4", "vrelu_s8"],
         "gemm_shapes": [{"m": 2, "n": 2, "k": 3, "precision": "int8"}],
         "gemm_s4_shapes": [{"m": 2, "n": 2, "k": 3, "precision": "int4"}],
         "vector_shapes": [{"length": 6, "op": "vrelu_s8", "precision": "int8"}],
+        "saturation_cases": {
+            "relu4_negative_lanes_zeroed": True,
+            "vrelu_negative_lanes_zeroed": True,
+        },
+        "invalid_programming_cases": {
+            "gemm_zero_dimensions": True,
+            "descriptor_timeout": True,
+            "empty_queue": True,
+            "unaligned_base": True,
+            "missing_valid_owner": True,
+            "malformed_writeback_request": True,
+            "ternary_reserved_encoding": True,
+        },
+        "irq_paths": {
+            "done_irq_asserted": True,
+            "done_irq_clear_deasserts": True,
+            "error_irq_asserted": True,
+            "error_irq_clear_deasserts": True,
+        },
         "status_bits": ["busy", "done", "error"],
         "descriptor_queue": {
             "registers": [
@@ -809,6 +845,9 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
             "errors",
             "desc_read_beats",
             "desc_write_beats",
+            "stall_cycles",
+            "scratch_bytes",
+            "thermal_throttle",
         ],
         "proof_boundary": {
             "nnapi_acceleration": False,

@@ -1,7 +1,7 @@
-diff --git a/src/bun.js/bindings/ConsoleObject.cpp b/src/bun.js/bindings/ConsoleObject.cpp
+diff --git a/src/jsc/bindings/ConsoleObject.cpp b/src/jsc/bindings/ConsoleObject.cpp
 index 6d8fdda..95b6e5f 100644
---- a/src/bun.js/bindings/ConsoleObject.cpp
-+++ b/src/bun.js/bindings/ConsoleObject.cpp
+--- a/src/jsc/bindings/ConsoleObject.cpp
++++ b/src/jsc/bindings/ConsoleObject.cpp
 @@ -34,11 +34,13 @@ void ConsoleObject::messageWithTypeAndLevel(MessageType type, MessageLevel level
      JSC::JSGlobalObject* globalObject,
      Ref<ScriptArguments>&& arguments)

@@ -1,0 +1,66 @@
+# elizaOS Linux — unified multi-arch live-build builder image.
+#
+# One image, three target architectures (amd64, arm64, riscv64). The
+# host arch must match ELIZAOS_ARCH or qemu-user-static must be
+# registered via binfmt_misc on the build host (foreign-arch builds
+# need CONFIG_BINFMT_MISC and `update-binfmts --enable`).
+#
+# Build:
+#   docker build -t elizaos-linux-builder .
+# Run (amd64 example):
+#   docker run --rm --privileged \
+#       -e ELIZAOS_ARCH=amd64 \
+#       -v "$(pwd):/build" -v "$(pwd)/out:/out" \
+#       elizaos-linux-builder
+FROM debian:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        debootstrap \
+        live-build \
+        squashfs-tools \
+        xorriso \
+        isolinux \
+        syslinux-common \
+        grub-pc-bin \
+        grub-efi-amd64-bin \
+        imagemagick \
+        librsvg2-bin \
+        mtools \
+        dosfstools \
+        qemu-user-static \
+        qemu-system-arm \
+        qemu-system-misc \
+        qemu-efi-aarch64 \
+        qemu-efi-riscv64 \
+        ovmf \
+        binfmt-support \
+        python3 \
+        python3-yaml \
+        apt-cacher-ng \
+        rsync \
+        git \
+        curl \
+        ca-certificates \
+        sudo \
+        mkosi \
+        systemd-container \
+        systemd-boot \
+        systemd-repart \
+        debian-archive-keyring \
+        zstd \
+    && if apt-cache show grub-efi-arm64-bin >/dev/null 2>&1; then \
+        apt-get install -y --no-install-recommends grub-efi-arm64-bin; \
+    else \
+        echo "grub-efi-arm64-bin unavailable for this builder architecture; skipping"; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable foreign-arch execution inside the container.
+RUN update-binfmts --enable qemu-aarch64 || true \
+ && update-binfmts --enable qemu-riscv64 || true
+
+WORKDIR /build
+ENTRYPOINT ["bash", "/build/build.sh"]

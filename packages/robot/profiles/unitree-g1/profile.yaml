@@ -249,8 +249,21 @@ gait:
   foot_offset_m: -0.79
   default_height_m: 0.79
   controller: rl
+contact:
+  floor_geom_names: [floor]
+  left_foot_geom_names:
+  - left_foot_rear_outer
+  - left_foot_rear_inner
+  - left_foot_front_outer
+  - left_foot_front_inner
+  right_foot_geom_names:
+  - right_foot_rear_inner
+  - right_foot_rear_outer
+  - right_foot_front_inner
+  - right_foot_front_outer
 sensors:
   imu_noise_std: 0.005
+  locomotion_tracking_body: torso_link
   cameras:
   - name: head_cam
     width: 320

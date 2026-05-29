@@ -214,8 +214,33 @@ gait:
   foot_offset_m: -0.63
   default_height_m: 0.63
   controller: rl
+contact:
+  floor_geom_names: [floor]
+  left_foot_geom_names:
+  - left_foot1_collision
+  - left_foot2_collision
+  - left_foot3_collision
+  - left_foot4_collision
+  - left_foot6_collision
+  - left_toe1_collision
+  - left_toe2_collision
+  - left_toe3_collision
+  - left_toe4_collision
+  - left_toe5_collision
+  right_foot_geom_names:
+  - right_foot1_collision
+  - right_foot2_collision
+  - right_foot3_collision
+  - right_foot4_collision
+  - right_foot5_collision
+  - right_toe1_collision
+  - right_toe2_collision
+  - right_toe3_collision
+  - right_toe4_collision
+  - right_toe5_collision
 sensors:
   imu_noise_std: 0.01
+  locomotion_tracking_body: pelvis_link
   cameras:
   - name: front_camera
     width: 640

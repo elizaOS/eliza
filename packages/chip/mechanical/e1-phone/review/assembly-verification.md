@@ -6,8 +6,8 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 
 ## Verdict: DEVICE IS ASSEMBLABLE
 
-- Parts in manifest: 222
-- Parts loaded (B-rep): 222
+- Parts in manifest: 258
+- Parts loaded (B-rep): 258
 - Parts placed across 20 assembly steps: 99
 - Trapped parts (no collision-free path): 0 
 - Fastener access (10 bosses + 8 snaps): PASS
@@ -68,8 +68,8 @@ Driver / snap-platen approach column (toward -Z, from the up-facing back) checke
 | Flex | Bend keepout | Connector | Unpinched | Min clearance (mm) | Pinching parts |
 |---|---|---|---|---|---|
 | display FPC | display_fpc_bend_keepout | display_fpc_connector | yes | 0.11 | - |
-| battery/PMIC interconnect (side service loop) | split_interconnect_side_flex | split_interconnect_top_connector | yes | 0.0 | - |
-| split top flex tail | split_interconnect_top_flex_tail | split_interconnect_top_connector | yes | 0.0 | - |
-| split bottom flex tail | split_interconnect_bottom_flex_tail | split_interconnect_bottom_connector | yes | 0.0 | - |
+| battery/PMIC interconnect (side service loop) | split_interconnect_side_flex | split_interconnect_top_connector | yes | 0.56 | - |
+| split top flex tail | split_interconnect_top_flex_tail | split_interconnect_top_connector | yes | 0.25 | - |
+| split bottom flex tail | split_interconnect_bottom_flex_tail | split_interconnect_bottom_connector | yes | 0.25 | - |
 
 All parts have a collision-free insertion path in the stated back-shell-up order; all fasteners are tool-accessible and all modeled FPC bend keepouts are unpinched. No trapped parts. The redesigned flush-back e1-phone is assemblable as sequenced.

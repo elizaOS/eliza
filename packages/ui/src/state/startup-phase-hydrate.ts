@@ -186,8 +186,7 @@ export async function runHydrating(
   let resolvedIdx = loadAvatarIndex();
   try {
     const cfg = await client.getConfig();
-    const cfgUi = cfg?.ui as Record<string, unknown> | undefined;
-    const cfgAvatarIdx = cfgUi?.avatarIndex;
+    const cfgAvatarIdx = cfg.ui?.avatarIndex;
     if (typeof cfgAvatarIdx === "number" && Number.isFinite(cfgAvatarIdx)) {
       const normalized = normalizeAvatarIndex(cfgAvatarIdx);
       if (normalized > 0) {

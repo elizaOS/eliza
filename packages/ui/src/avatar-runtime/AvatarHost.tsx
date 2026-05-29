@@ -1,7 +1,6 @@
 import { logger } from "@elizaos/core";
 import { useEffect, useRef, useState } from "react";
 import { createJarvisAvatar } from "./presets/jarvis";
-import { createVrmPlaceholderAvatar } from "./presets/vrm-placeholder";
 import { createWaveformAvatar } from "./presets/waveform-shader";
 import { getActiveAvatar, getAvatar, registerAvatar } from "./registry";
 import type {
@@ -17,7 +16,6 @@ function ensureDefaultsRegistered(): void {
   defaultsRegistered = true;
   registerAvatar(createWaveformAvatar());
   registerAvatar(createJarvisAvatar());
-  registerAvatar(createVrmPlaceholderAvatar());
 }
 
 export interface AvatarHostProps {
@@ -41,6 +39,13 @@ export function AvatarHost(props: AvatarHostProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [failed, setFailed] = useState(false);
 
+  // Keep the latest callbacks in refs so inline-closure props don't churn the
+  // mount effect's dependency array and force a teardown/remount every render.
+  const audioLevelRef = useRef(audioLevel);
+  const speakingStateRef = useRef(speakingState);
+  audioLevelRef.current = audioLevel;
+  speakingStateRef.current = speakingState;
+
   useEffect(() => {
     const target = containerRef.current;
     if (!target) return;
@@ -50,8 +55,8 @@ export function AvatarHost(props: AvatarHostProps): React.JSX.Element {
       return;
     }
     const ctx: AvatarContext = {
-      audioLevel: audioLevel ?? (() => 0),
-      speakingState: speakingState ?? (() => "idle"),
+      audioLevel: () => audioLevelRef.current?.() ?? 0,
+      speakingState: () => speakingStateRef.current?.() ?? "idle",
       theme: "sky",
       ownerName,
     };
@@ -78,7 +83,7 @@ export function AvatarHost(props: AvatarHostProps): React.JSX.Element {
         );
       }
     };
-  }, [moduleId, audioLevel, speakingState, ownerName]);
+  }, [moduleId, ownerName]);
 
   if (failed) {
     return (

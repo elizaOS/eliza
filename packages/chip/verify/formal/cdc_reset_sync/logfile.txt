@@ -1,60 +1,60 @@
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/cdc/reset_sync.1745226'.
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/../../rtl/clock/e1_reset_sync.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/reset_sync.1745226/src/e1_reset_sync.sv'.
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/reset_properties.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/reset_sync.1745226/src/reset_properties.sv'.
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/reset_sync_bind.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/reset_sync.1745226/src/reset_sync_bind.sv'.
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_0: smtbmc z3
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: smtbmc bitwuzla
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] base: starting process "cd ../../build/formal/cdc/reset_sync.1745226/src; yosys -ql ../model/design.log ../model/design.ys"
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] base: finished (returncode=0)
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] prep: starting process "cd ../../build/formal/cdc/reset_sync.1745226/model; yosys -ql design_prep.log design_prep.ys"
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] prep: finished (returncode=0)
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] smt2: starting process "cd ../../build/formal/cdc/reset_sync.1745226/model; yosys -ql design_smt2.log design_smt2.ys"
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] smt2: finished (returncode=0)
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_0: starting process "cd ../../build/formal/cdc/reset_sync.1745226; yosys-smtbmc -s z3 --presat --noprogress -t 16  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: starting process "cd ../../build/formal/cdc/reset_sync.1745226; yosys-smtbmc -s bitwuzla --presat --unroll --noprogress -t 16  --append 0 --dump-vcd engine_1/trace.vcd --dump-yw engine_1/trace.yw --dump-vlogtb engine_1/trace_tb.v --dump-smtc engine_1/trace.smtc model/design_smt2.smt2"
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Solver: bitwuzla
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_0: ##   0:00:00  Solver: z3
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 0..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_0: ##   0:00:00  Checking assumptions in step 0..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 0..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 1..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 1..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 2..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 2..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 3..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 3..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 4..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 4..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 5..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 5..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 6..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 6..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 7..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 7..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 8..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 8..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 9..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 9..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 10..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 10..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 11..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 11..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 12..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 12..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 13..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 13..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 14..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 14..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assumptions in step 15..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Checking assertions in step 15..
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: ##   0:00:00  Status: passed
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: finished (returncode=0)
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_1: Status returned by engine: pass
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] engine_0: terminating process
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] summary: engine_0 (smtbmc z3) did not return a status
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] summary: engine_0 did not produce any traces
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] summary: engine_1 (smtbmc bitwuzla) returned pass
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] summary: engine_1 did not produce any traces
-SBY 17:08:55 [../../build/formal/cdc/reset_sync.1745226] DONE (PASS, rc=0)
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/cdc/reset_sync.938180'.
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/../../rtl/clock/e1_reset_sync.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/reset_sync.938180/src/e1_reset_sync.sv'.
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/reset_properties.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/reset_sync.938180/src/reset_properties.sv'.
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/reset_sync_bind.sv' to '/home/shaw/milady/eliza/packages/chip/verify/properties/../../build/formal/cdc/reset_sync.938180/src/reset_sync_bind.sv'.
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_0: smtbmc z3
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: smtbmc bitwuzla
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] base: starting process "cd ../../build/formal/cdc/reset_sync.938180/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] base: finished (returncode=0)
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] prep: starting process "cd ../../build/formal/cdc/reset_sync.938180/model; yosys -ql design_prep.log design_prep.ys"
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] prep: finished (returncode=0)
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] smt2: starting process "cd ../../build/formal/cdc/reset_sync.938180/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] smt2: finished (returncode=0)
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_0: starting process "cd ../../build/formal/cdc/reset_sync.938180; yosys-smtbmc -s z3 --presat --noprogress -t 16  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: starting process "cd ../../build/formal/cdc/reset_sync.938180; yosys-smtbmc -s bitwuzla --presat --unroll --noprogress -t 16  --append 0 --dump-vcd engine_1/trace.vcd --dump-yw engine_1/trace.yw --dump-vlogtb engine_1/trace_tb.v --dump-smtc engine_1/trace.smtc model/design_smt2.smt2"
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_0: ##   0:00:00  Solver: z3
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_0: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Solver: bitwuzla
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 0..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 0..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 1..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 1..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 2..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 2..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 3..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 3..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 4..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 4..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 5..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 5..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 6..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 6..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 7..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 7..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 8..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 8..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 9..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 9..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 10..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 10..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 11..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 11..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 12..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 12..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 13..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 13..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 14..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 14..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assumptions in step 15..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Checking assertions in step 15..
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: ##   0:00:00  Status: passed
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: finished (returncode=0)
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_1: Status returned by engine: pass
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] engine_0: terminating process
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] summary: engine_0 (smtbmc z3) did not return a status
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] summary: engine_0 did not produce any traces
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] summary: engine_1 (smtbmc bitwuzla) returned pass
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] summary: engine_1 did not produce any traces
+SBY 19:31:54 [../../build/formal/cdc/reset_sync.938180] DONE (PASS, rc=0)

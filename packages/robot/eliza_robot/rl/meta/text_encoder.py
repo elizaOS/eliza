@@ -31,11 +31,18 @@ class BagOfWordsEncoder:
         for i, text in enumerate(texts):
             words = text.lower().split()
             for word in words:
-                h = hashlib.md5(word.encode()).digest()
-                for j in range(0, min(len(h), self.dim), 1):
-                    idx = h[j % len(h)] % self.dim
-                    val = (h[(j + 1) % len(h)] / 255.0) * 2 - 1  # [-1, 1]
-                    result[i, idx] += val
+                # md5 yields only 16 bytes; the old `min(len(h), self.dim)`
+                # loop therefore touched at most 16 of `dim` bins, collapsing
+                # the embedding to a ~16-dim signal. Stretch the hash with a
+                # counter so every one of `dim` dimensions gets a deterministic
+                # contribution from each word.
+                buf = bytearray()
+                counter = 0
+                while len(buf) < self.dim:
+                    buf += hashlib.md5(f"{word}#{counter}".encode()).digest()
+                    counter += 1
+                contrib = (np.frombuffer(bytes(buf[: self.dim]), dtype=np.uint8).astype(np.float32) / 255.0) * 2 - 1
+                result[i] += contrib
             norm = np.linalg.norm(result[i])
             if norm > 1e-8:
                 result[i] /= norm

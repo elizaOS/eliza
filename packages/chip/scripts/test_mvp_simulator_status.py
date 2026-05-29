@@ -154,6 +154,7 @@ def report_payload(*, status: str = "blocked", on_chip: bool = False) -> dict:
         "minimum_linux_npu_target_claim": on_chip,
         "qemu_virt_reference_only": True,
         "renode_reference_only": True,
+        **runner.FALSE_CLAIM_FLAGS,
         "blockers_to_on_chip_os_boot": blockers,
         "blockers_to_minimum_linux_npu_target": minimum_blockers,
         "remaining_blockers": blockers,

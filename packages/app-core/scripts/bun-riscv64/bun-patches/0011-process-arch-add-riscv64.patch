@@ -1,8 +1,8 @@
-diff --git a/src/bun.js/bindings/BunProcess.cpp b/src/bun.js/bindings/BunProcess.cpp
-index d3c8cf1..c972517 100644
---- a/src/bun.js/bindings/BunProcess.cpp
-+++ b/src/bun.js/bindings/BunProcess.cpp
-@@ -172,6 +172,8 @@ static JSValue constructArch(VM& vm, JSObject* processObject)
+diff --git a/src/jsc/bindings/BunProcess.cpp b/src/jsc/bindings/BunProcess.cpp
+index 6935f0c..56da7f0 100644
+--- a/src/jsc/bindings/BunProcess.cpp
++++ b/src/jsc/bindings/BunProcess.cpp
+@@ -183,6 +183,8 @@ static JSValue constructArch(VM& vm, JSObject* processObject)
      return JSC::jsString(vm, makeAtomString("x64"_s));
  #elif CPU(ARM64)
      return JSC::jsString(vm, makeAtomString("arm64"_s));
@@ -11,7 +11,7 @@ index d3c8cf1..c972517 100644
  #else
  #error "Unknown architecture"
  #endif
-@@ -2293,6 +2295,9 @@ JSC::JSValue generateNodeConfigBinding(JSC::JSGlobalObject* globalObject)
+@@ -2556,6 +2558,9 @@ static JSValue constructProcessConfigObject(VM& vm, JSObject* processObject)
  #elif CPU(ARM64)
      variables->putDirect(vm, JSC::Identifier::fromString(vm, "host_arch"_s), JSC::jsString(vm, String("arm64"_s)), 0);
      variables->putDirect(vm, JSC::Identifier::fromString(vm, "target_arch"_s), JSC::jsString(vm, String("arm64"_s)), 0);

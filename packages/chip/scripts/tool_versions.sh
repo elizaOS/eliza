@@ -2,6 +2,7 @@
 set -eu
 
 repo_dir="$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)"
+home_dir="${HOME:-}"
 mkdir -p "$repo_dir/build/reports"
 
 if [ -d "$repo_dir/tools/bin" ]; then
@@ -25,6 +26,21 @@ hash_file() {
         sha256sum "$file" | awk '{print $1}'
     else
         printf "UNAVAILABLE"
+    fi
+}
+
+sanitize_stream() {
+    if [ -n "$home_dir" ]; then
+        sed \
+            -e "s|$repo_dir|<repo>|g" \
+            -e "s|$home_dir|<home>|g" \
+            -e "s|/var/tmp/|<var-tmp>/|g" \
+            -e "s|/tmp/|<tmp>/|g"
+    else
+        sed \
+            -e "s|$repo_dir|<repo>|g" \
+            -e "s|/var/tmp/|<var-tmp>/|g" \
+            -e "s|/tmp/|<tmp>/|g"
     fi
 }
 
@@ -112,6 +128,6 @@ PY
         printf "git_head=%s\n" "$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || true)"
         printf "git_dirty=%s\n" "$(git -C "$repo_dir" status --short | wc -l | tr -d ' ')"
     fi
-} > "$repo_dir/build/reports/tool_versions.txt"
+} | sanitize_stream > "$repo_dir/build/reports/tool_versions.txt"
 
 echo "Tool versions: build/reports/tool_versions.txt"

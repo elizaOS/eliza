@@ -1,0 +1,89 @@
+schema: eliza.pd_chip_cva6_closure_gate.v1
+status: blocked_external_tool
+release_use: prohibited_until_external_review
+scope: cva6_inclusive_pd_closure_gate_only_not_signoff_or_release_evidence
+release_blockers:
+- CVA6-inclusive e1_chip_top sky130 OpenLane place-and-route has not reached final/ with reviewed DRC/LVS/STA/antenna evidence (foundry-PDK + long-runtime dependency; see to_close_this_gate).
+source_artifacts:
+- docs/evidence/pd/e1-chip-cva6-pd-closure-gate.yaml
+- scripts/check_pd_cva6_elaboration.sh
+- scripts/check_pd_config_elaboration.sh
+- pd/openlane/config.sky130.json
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+created: 2026-05-28
+current_committed_netlist:
+  cpu_state: stub_idle
+  pd_configs:
+  - pd/openlane/config.json
+  - pd/openlane/config.sky130.json
+  - pd/openlane/config.sky130.exploratory.json
+  - pd/openlane/config.gf180.json
+  - pd/openlane/config.gf180.exploratory.json
+  - pd/openlane/config.ihp-sg13g2.json
+  reason: "e1_cva6_wrapper.sv compiles the !E1_HAVE_CVA6 branch, which ties every\
+    \ AXI master output to idle (\"CPU appears powered-off to the interconnect\").\
+    \ The PD configs below do not define E1_HAVE_CVA6, so the placed-and-routed chip\
+    \ contains no processor datapath. The CPU AXI-Lite master is now wired into the\
+    \ peripheral fabric (e1_axil_to_mmio + e1_mmio_arb2; see cpu-axil-master-tied-off-in-tapeout-top),\
+    \ so the integration is real \u2014 only the synthesis define is absent.\n"
+design_name: e1_chip_top
+elaboration_proof_available:
+  command: scripts/check_pd_cva6_elaboration.sh
+  description: 'The CVA6-inclusive e1_chip_top elaborates cleanly with the real OpenHW
+    Group CVA6 RV64GC core present and bus-connected (hierarchy e1_chip_top.u_soc.u_cpu.u_cva6.issue_stage_i...).
+    242 modules elaborated. This proves the synthesizable top CAN contain the real
+    core reaching the bus; it does not perform place-and-route.
+
+    '
+  result: 'PASS: e1_chip_top elaborates with the real CVA6 core present and bus-connected.'
+  status: PASS
+  tool: Verilator 5.049 (native, tools/env.sh)
+gate: e1-chip-cva6-pd-closure
+generated_utc: '2026-05-29T02:45:05Z'
+missing_dependency:
+  kind: foundry_pdk_plus_long_runtime_pnr
+  why_not_local: 'The CVA6-inclusive netlist is ~240 modules of RV64GC logic; sky130
+    OpenLane P&R to final/ requires a capable host and multi-hour runtime, and reviewed
+    PPA signoff requires the sky130 PDK and signoff tooling. Elaboration is proven;
+    closure is not faked.
+
+    '
+owner_lane: top_integration
+severity: high
+stub_netlist_elaboration_proof:
+  command: scripts/check_pd_config_elaboration.sh
+  description: 'Every committed e1_chip_top PD config (stub-CPU form) elaborates with
+    its own VERILOG_DEFINES, guarding against the broken-file-list regression (config-json-broken-verilog-files-missing-cva6-modules).
+
+    '
+  result: 'PASS: all e1_chip_top PD configs elaborate.'
+  status: PASS
+summary: 'The committed e1_chip_top OpenLane PD configs synthesize the SoC with the
+  CVA6 application-processor wrapper in its safe-idle stub form (E1_HAVE_CVA6 is NOT
+  defined), i.e. a debug-MMIO test-chip netlist with no processor datapath. A CVA6-inclusive
+  signoff netlist (E1_HAVE_CVA6 defined + the pinned CVA6 source flist) is proven
+  to ELABORATE locally, but full sky130 OpenLane place-and-route of the ~240-module
+  CVA6-inclusive top is a foundry-PDK, multi-hour job that has not been closed locally.
+  This gate stays BLOCKED until a CVA6-inclusive run reaches final/ with reviewed
+  DRC/LVS/STA/antenna evidence. The configs are NOT silently flipped to imply a synthesized
+  CPU.
+
+  '
+to_close_this_gate:
+  step_1_clone_cva6: scripts/clone_cva6.sh
+  step_2_apply_patches: scripts/apply_cva6_patches.sh
+  step_3_assemble_cva6_inclusive_config: "Add +define+E1_HAVE_CVA6 to VERILOG_DEFINES\
+    \ of the target PD config and extend VERILOG_FILES (or VERILOG_INCLUDE_DIRS) with\
+    \ the expanded CVA6 flist produced by:\n  CVA6_REPO_DIR=external/cva6/cva6 \\\n\
+    \  HPDCACHE_DIR=external/cva6/cva6/core/cache_subsystem/hpdcache \\\n  TARGET_CFG=cv64a6_imafdc_sv39\
+    \ \\\n  python3 scripts/expand_cva6_flist.py \\\n    --flist external/cva6/cva6/core/Flist.cva6\
+    \ \\\n    --files-out <host-tmp>/cva6_files.txt --incdir-out <host-tmp>/cva6_incdir.txt\n\
+    plus rtl/top/adapters/e1_cva6_to_e1axi4.sv before rtl/cpu/e1_cva6_wrapper.sv.\n"
+  step_4_run_pnr: "Run OpenLane on a capable host (>= 64 GiB RAM; multi-hour):\n \
+    \ scripts/run_openlane.sh pd/openlane/config.sky130.json\nThe run must reach RUN_*/final/metrics.json\
+    \ with QUIT_ON_TIMING_VIOLATIONS, QUIT_ON_MAGIC_DRC, QUIT_ON_LVS_ERROR, QUIT_ON_SLEW_VIOLATIONS\
+    \ all honoured.\n"
+  step_5_record_evidence: 'Capture the final DRC/LVS/STA/antenna metrics and flip
+    this gate to PASS with the run path, mirroring docs/evidence/pd/e1-soc-hard-macro-signoff-gate.yaml.
+
+    '

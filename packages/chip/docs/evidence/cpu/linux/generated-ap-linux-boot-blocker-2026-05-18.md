@@ -36,7 +36,7 @@ eliza-evidence: seeded_bootrom=/work/external/chipyard/sims/verilator/generated-
 
 ## Current Blocker
 
-The smoke transcript is complete but not boot evidence:
+The smoke run produced a closed transcript, but it is not boot evidence:
 
 - Transcript: `build/chipyard/eliza_rocket/verilator-linux-smoke.log`
 - Report: `build/chipyard/eliza_rocket/verilator-linux-smoke.json`

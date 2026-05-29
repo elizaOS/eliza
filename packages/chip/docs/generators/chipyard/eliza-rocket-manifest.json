@@ -1,6 +1,6 @@
 {
   "schema": "eliza.cpu_ap_generator_manifest.v1",
-  "status": "selected_not_generated",
+  "status": "linux_complete",
   "chipyard": {
     "repo": "https://github.com/ucb-bar/chipyard.git",
     "tag": "main-2026-05-20",
@@ -79,8 +79,8 @@
   "evidence_manifest": "docs/evidence/cpu-ap-evidence-manifest.json",
   "capture_helper": "scripts/capture_cpu_ap_evidence.py",
   "claim_policy": {
-    "linux_capable_cpu_claim": false,
+    "linux_capable_cpu_claim": true,
     "platform_contract_has_cpu_may_flip_to_true": false,
-    "reason": "No generated Chipyard/Rocket RTL, simulator, DTS, firmware image, or boot evidence is present."
+    "reason": "Generated Chipyard/Rocket RV64GC RTL, simulator, DTS, firmware handoff evidence, Linux boot, trap/timer/IRQ, ISA/cache/MMU, and AP benchmark transcripts are present for the initial single-hart Linux bring-up claim only. Phone-class AP, Android compatibility, production silicon, and release claims remain blocked by phone_2028_target_boundary."
   }
 }

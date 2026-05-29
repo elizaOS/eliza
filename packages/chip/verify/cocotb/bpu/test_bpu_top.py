@@ -1247,6 +1247,45 @@ async def bpu_local_direction_corrector_enabled_by_default(dut):
 
 
 @cocotb.test()
+async def bpu_local_direction_parity_errors_disable_confidence(dut):
+    """Corrupted local-direction state must not expose a confident override."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_6500
+    target = 0x8000_6580
+    idx = (pc >> 2) & 0x3FF
+
+    for _ in range(16):
+        await resolve(dut, pc, target, taken=True, kind=BR_COND, misp=True)
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    await Timer(1, units="ps")
+    assert int(dut.u_bpu.local_dir_conf.value) == 1
+
+    hist = int(dut.u_bpu.local_dir_lkp_hist.value)
+    dut.u_bpu.local_dir_ctr_parity_q[idx][hist].value = (
+        0 if int(dut.u_bpu.local_dir_ctr_parity_q[idx][hist].value) else 1
+    )
+    await Timer(1, units="ps")
+    assert int(dut.u_bpu.local_dir_conf.value) == 0
+
+    dut.u_bpu.local_dir_ctr_parity_q[idx][hist].value = (
+        0 if int(dut.u_bpu.local_dir_ctr_parity_q[idx][hist].value) else 1
+    )
+    await Timer(1, units="ps")
+    assert int(dut.u_bpu.local_dir_conf.value) == 1
+
+    dut.u_bpu.local_dir_hist_parity_q[idx].value = (
+        0 if int(dut.u_bpu.local_dir_hist_parity_q[idx].value) else 1
+    )
+    await Timer(1, units="ps")
+    assert int(dut.u_bpu.local_dir_conf.value) == 0
+    dut.lkp_valid.value = 0
+
+
+@cocotb.test()
 async def bpu_suppresses_lookup_when_ftq_full_until_fetch_pops(dut):
     """A full FTQ must backpressure lookup-visible predictions, then accept
     a new prediction in the same cycle that fetch drains one entry."""

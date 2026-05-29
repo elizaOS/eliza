@@ -27,15 +27,37 @@ FORMAL_TARGETS = {
     "e1_dbg_mmio_bridge",
     "e1_npu",
     "e1_dma",
+    "e1_dma_axil",
+    "e1_display_scanout",
+    "e1_axi_lite_dram",
+    "e1_axi_lite_interconnect",
+    "e1_interrupt_controller",
     "e1_soc_top",
 }
 
 REQUIRED_SOURCE = [
     "scripts/check_software_bsp.py",
+    "scripts/check_linux_bsp_contract.py",
+    "scripts/test_linux_bsp_contract.py",
     "scripts/check_mvp_status.py",
     "scripts/check_prototype_status_dashboard.py",
     "scripts/check_sota_parity_audit.py",
     "scripts/test_sota_parity_audit.py",
+    "scripts/test_pipeline_formal_manifest.py",
+    "scripts/test_release_archive_simulator_evidence.py",
+    "scripts/test_platform_contract_linux_decode.py",
+    "scripts/test_dma_long_transfer_coverage.py",
+    "scripts/check_dma_long_transfer_coverage.py",
+    "scripts/test_dma_cocotb_coverage.py",
+    "scripts/check_dma_cocotb_coverage.py",
+    "verify/cocotb/test_e1_dma.py",
+    "verify/cocotb/dma/test_dma_long_transfer.py",
+    "scripts/test_display_cocotb_coverage.py",
+    "scripts/check_display_cocotb_coverage.py",
+    "verify/cocotb/test_e1_display.py",
+    "scripts/test_cpu_mem_intc_cocotb_coverage.py",
+    "scripts/check_cpu_mem_intc_cocotb_coverage.py",
+    "verify/cocotb/test_cpu_mem_intc_contract.py",
     "scripts/check_software_bsp_scope.py",
     "scripts/check_cpu_ap_scope.py",
     "scripts/check_npu_scope.py",
@@ -206,6 +228,15 @@ def validate_formal_manifest(root: Path, strict: bool) -> list[str]:
     errors: list[str] = []
     if data.get("schema") != "e1-chip-formal-evidence-v1":
         errors.append("formal manifest has unexpected schema")
+    if data.get("fallback_equivalent_to_sby") is not False:
+        errors.append("formal manifest must state fallback_equivalent_to_sby=false")
+    if data.get("deep_top_required_for_release") is not True:
+        errors.append("formal manifest must state deep_top_required_for_release=true")
+    expected_strict_claim = data.get("mode") == "sby-deep-top"
+    if data.get("strict_release_claim_allowed") is not expected_strict_claim:
+        errors.append(
+            "formal manifest strict_release_claim_allowed must match mode=sby-deep-top"
+        )
     entries = data.get("entries")
     if not isinstance(entries, dict):
         return errors + ["formal manifest missing entries"]
@@ -223,6 +254,26 @@ def validate_formal_manifest(root: Path, strict: bool) -> list[str]:
             errors.append(f"formal {name}: non-passing status {status}")
         if strict and not evidence_class.startswith("sby_"):
             errors.append(f"formal {name}: strict gate rejects {evidence_class}")
+        sby_meta = entry.get("sby")
+        if evidence_class.startswith("sby_"):
+            if not isinstance(sby_meta, dict):
+                errors.append(f"formal {name}: missing SBY metadata")
+            else:
+                engines = sby_meta.get("engines")
+                tasks = sby_meta.get("tasks")
+                covered_files = sby_meta.get("covered_files")
+                if not isinstance(engines, list) or not engines:
+                    errors.append(f"formal {name}: missing SBY engine metadata")
+                if not isinstance(tasks, dict) or not tasks:
+                    errors.append(f"formal {name}: missing SBY task metadata")
+                else:
+                    for task_name, task in tasks.items():
+                        if not isinstance(task, dict) or "mode" not in task or "depth" not in task:
+                            errors.append(
+                                f"formal {name}: SBY task {task_name} missing mode/depth"
+                            )
+                if not isinstance(covered_files, list) or not covered_files:
+                    errors.append(f"formal {name}: missing covered file metadata")
         for key in ("status", "log"):
             rel = paths.get(key)
             hash_value = paths.get(f"{key}_sha256")

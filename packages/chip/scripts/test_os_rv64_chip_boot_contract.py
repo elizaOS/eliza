@@ -28,6 +28,11 @@ def write_json(path: Path, payload: dict) -> Path:
     return write(path, json.dumps(payload, indent=2) + "\n")
 
 
+def assert_no_product_claims(report: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
+
+
 class OsRv64ChipBootContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         variant = tmp / "os/linux/elizaos"
@@ -152,6 +157,35 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
         self.assertIn("linux_agent_fallback_payload_allowed", codes)
         self.assertIn("missing_agent_liveness_marker", codes)
         self.assertIn("missing_tui_liveness_marker", codes)
+        self.assertEqual(
+            report["blocker_dependency_counts"],
+            {"live_device_validation": len(report["findings"])},
+        )
+        self.assertEqual(
+            report["summary"]["blocker_dependency_counts"],
+            report["blocker_dependency_counts"],
+        )
+        command_ids = {item["id"] for item in report["next_command_plan"]}
+        self.assertIn("write_blocked_boot_evidence_from_real_transcript", command_ids)
+        self.assertIn("write_blocked_agent_live_evidence_from_real_transcript", command_ids)
+        self.assertIn("target_agent_live_probe_transcript", command_ids)
+        self.assertIn("recheck_contract", command_ids)
+        self.assertEqual(
+            report["summary"]["next_command_count"],
+            len(report["next_command_plan"]),
+        )
+        blocked_boot = next(
+            item
+            for item in report["next_command_plan"]
+            if item["id"] == "write_blocked_boot_evidence_from_real_transcript"
+        )
+        self.assertIn("capture-chip-boot-evidence.py", blocked_boot["command"])
+        self.assertIn("--write-blocked", blocked_boot["command"])
+        self.assertEqual(
+            blocked_boot["claim_boundary"],
+            "diagnostic_blocked_evidence_only_not_live_capture_proof",
+        )
+        assert_no_product_claims(report)
 
     def test_agent_live_row_cannot_reuse_qemu_virt_reference_for_chip_objective(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -172,6 +206,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("agent_live_evidence_reuses_qemu_virt_reference", codes)
         self.assertEqual(report["evidence"]["agent_live_reference_rows"], ["elizaos-agent-live"])
+        assert_no_product_claims(report)
 
     def test_missing_generated_ap_files_are_reported_by_manifest_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -217,6 +252,7 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             "os/linux/elizaos/evidence/generated_eliza_ap_agent_live.json",
             findings["agent_live_evidence_file_missing"]["evidence"],
         )
+        assert_no_product_claims(report)
 
     def test_chip_boot_and_agent_live_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -335,7 +371,11 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
                 report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
+        self.assertEqual(report["next_command_plan"], [])
+        self.assertEqual(report["blocker_dependency_counts"], {})
+        self.assertEqual(report["summary"]["next_command_count"], 0)
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_no_product_claims(report)
 
 
 class PatchStack:

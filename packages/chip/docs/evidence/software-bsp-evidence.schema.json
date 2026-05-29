@@ -1,44 +1,68 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "software-bsp-evidence.schema.json",
-  "title": "Eliza software BSP evidence manifest",
-  "type": "object",
-  "required": ["schema_version", "claim_boundary", "targets"],
-  "additionalProperties": false,
-  "properties": {
-    "schema_version": { "const": 1 },
-    "claim_boundary": {
-      "type": "string",
-      "enum": ["external_transcripts_only"]
-    },
-    "targets": {
-      "type": "object",
-      "required": ["buildroot", "linux", "opensbi", "u-boot", "aosp"],
-      "additionalProperties": false,
-      "properties": {
-        "buildroot": { "$ref": "#/$defs/target" },
-        "linux": { "$ref": "#/$defs/target" },
-        "opensbi": { "$ref": "#/$defs/target" },
-        "u-boot": { "$ref": "#/$defs/target" },
-        "aosp": { "$ref": "#/$defs/target" }
-      }
-    }
-  },
   "$defs": {
-    "target": {
-      "type": "object",
-      "required": ["evidence"],
+    "evidence_item": {
       "additionalProperties": false,
       "properties": {
-        "evidence": {
-          "type": "array",
+        "artifact": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "at_least_one": {
+          "items": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
           "minItems": 1,
-          "items": { "$ref": "#/$defs/evidence_item" }
+          "type": "array"
+        },
+        "capture_command": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "claim_boundary": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "external_artifacts": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "forbidden_strings": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "min_bytes": {
+          "minimum": 80,
+          "type": "integer"
+        },
+        "path": {
+          "pattern": "^docs/evidence/(buildroot|linux|android)/[^/]+\\.(log|txt)$",
+          "type": "string"
+        },
+        "required_strings": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "validation_command": {
+          "pattern": "scripts/check_software_bsp.py .+ --require-evidence",
+          "type": "string"
         }
-      }
-    },
-    "evidence_item": {
-      "type": "object",
+      },
       "required": [
         "artifact",
         "path",
@@ -47,44 +71,74 @@
         "min_bytes",
         "required_strings"
       ],
+      "type": "object"
+    },
+    "target": {
       "additionalProperties": false,
       "properties": {
-        "artifact": { "type": "string", "minLength": 1 },
-        "claim_boundary": { "type": "string", "minLength": 1 },
-        "path": {
-          "type": "string",
-          "pattern": "^docs/evidence/(buildroot|linux|android)/[^/]+\\.(log|txt)$"
-        },
-        "capture_command": { "type": "string", "minLength": 1 },
-        "validation_command": {
-          "type": "string",
-          "pattern": "scripts/check_software_bsp.py .+ --require-evidence"
-        },
-        "min_bytes": { "type": "integer", "minimum": 80 },
-        "required_strings": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "at_least_one": {
-          "type": "array",
-          "minItems": 1,
+        "evidence": {
           "items": {
-            "type": "array",
-            "minItems": 1,
-            "items": { "type": "string", "minLength": 1 }
-          }
-        },
-        "external_artifacts": {
-          "type": "array",
+            "$ref": "#/$defs/evidence_item"
+          },
           "minItems": 1,
-          "items": { "type": "string", "minLength": 1 }
-        },
-        "forbidden_strings": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "type": "array"
         }
-      }
+      },
+      "required": [
+        "evidence"
+      ],
+      "type": "object"
     }
-  }
+  },
+  "$id": "software-bsp-evidence.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "generated_utc": "2026-05-20T10:12:30Z",
+  "properties": {
+    "claim_boundary": {
+      "enum": [
+        "external_transcripts_only"
+      ],
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "targets": {
+      "additionalProperties": false,
+      "properties": {
+        "aosp": {
+          "$ref": "#/$defs/target"
+        },
+        "buildroot": {
+          "$ref": "#/$defs/target"
+        },
+        "linux": {
+          "$ref": "#/$defs/target"
+        },
+        "opensbi": {
+          "$ref": "#/$defs/target"
+        },
+        "u-boot": {
+          "$ref": "#/$defs/target"
+        }
+      },
+      "required": [
+        "buildroot",
+        "linux",
+        "opensbi",
+        "u-boot",
+        "aosp"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "claim_boundary",
+    "targets"
+  ],
+  "title": "Eliza software BSP evidence manifest",
+  "type": "object"
 }

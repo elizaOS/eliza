@@ -152,8 +152,10 @@ route_domains:
       rf_feeds: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF, WIFI_BT_RF0, WIFI_BT_RF1]
       cellular_host: [CELL_USB2_DP, CELL_USB2_DN, CELL_PCIE_TX_P, CELL_PCIE_TX_N, CELL_PCIE_RX_P, CELL_PCIE_RX_N]
       wifi_host: [WIFI_PCIE_TX_P, WIFI_PCIE_TX_N, WIFI_PCIE_RX_P, WIFI_PCIE_RX_N, WIFI_SDIO_CLK, WIFI_SDIO_CMD, WIFI_SDIO_D0, WIFI_SDIO_D1, WIFI_SDIO_D2, WIFI_SDIO_D3]
-      control: [BT_UART_TX, BT_UART_RX, BT_UART_CTS, BT_UART_RTS, WLAN_EN, BT_EN, HOST_WAKE_WLAN, HOST_WAKE_BT]
-      identity: [USIM_VCC, USIM_CLK, USIM_RST, USIM_IO, ESIM_VCC, ESIM_CLK, ESIM_RST, ESIM_IO]
+      control: [BT_UART_TX, BT_UART_RX, BT_UART_CTS, BT_UART_RTS, WLAN_EN, BT_EN, HOST_WAKE_WLAN, HOST_WAKE_BT, CELL_RESET_N, CELL_W_DISABLE_N]
+      identity: [USIM_VCC, USIM_CLK, USIM_RST, USIM_IO, USIM_DET, ESIM_VCC, ESIM_CLK, ESIM_RST, ESIM_IO]
+      nfc: [NFC_I2C_SCL, NFC_I2C_SDA, NFC_IRQ_N, NFC_EN, NFC_RF_P, NFC_RF_N]
+      sensors: [SENSOR_I2C_SCL, SENSOR_I2C_SDA]
     constraints:
       rf_single_impedance_ohm: 50
       pcie_diff_impedance_ohm: 85
@@ -322,6 +324,13 @@ validation_evidence_required:
       - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
       - mechanical/e1-phone/review/routed-board-clearance.json
     acceptance_rule: routed_step_with_supplier_models_passes_clearance_against_display_battery_usb_buttons_cameras_antennas_acoustics_and_split_interconnect
+    present: false
+  component_3d_binding_gap_matrix:
+    required_artifacts:
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
+      - board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
+    acceptance_rule: every_board_footprint_has_fail_closed_component_3d_binding_supplier_step_intake_status_local_step_locator_and_release_credit_false
     present: false
 
 order_of_operations:

@@ -122,6 +122,68 @@ class LinuxBootArtifactsStatusTests(unittest.TestCase):
         )
         self.assertNotIn("<selected_payload>", updated[0]["unblock_command"])
 
+    def test_external_preflight_blocks_even_when_artifacts_pass(self) -> None:
+        preflight = [
+            {
+                "id": "external_linux_tree",
+                "state": "blocked",
+                "problems": ["ELIZA_LINUX_TREE is unset"],
+            }
+        ]
+        artifacts = [
+            {"id": "kernel_build", "state": "pass"},
+            {"id": "serial_boot_log", "state": "pass"},
+        ]
+
+        self.assertTrue(check.preflight_is_release_blocking(preflight, artifacts))
+        codes = {
+            item["code"]
+            for item in check.structured_findings(
+                preflight, {"state": "pass", "problems": []}, artifacts
+            )
+        }
+        self.assertIn("linux_boot_preflight_external_linux_tree_eliza_linux_tree_is_unset", codes)
+
+    def test_external_preflight_blocks_when_artifacts_are_missing(self) -> None:
+        preflight = [
+            {
+                "id": "external_linux_tree",
+                "state": "blocked",
+                "problems": ["ELIZA_LINUX_TREE is unset"],
+            }
+        ]
+        artifacts = [
+            {"id": "kernel_build", "state": "pass"},
+            {"id": "serial_boot_log", "state": "missing", "problems": []},
+        ]
+
+        self.assertTrue(check.preflight_is_release_blocking(preflight, artifacts))
+        codes = {
+            item["code"]
+            for item in check.structured_findings(
+                preflight, {"state": "pass", "problems": []}, artifacts
+            )
+        }
+        self.assertIn("linux_boot_preflight_external_linux_tree_eliza_linux_tree_is_unset", codes)
+
+    def test_payload_locator_only_blocks_when_serial_artifact_not_passed(self) -> None:
+        payload_locator = {
+            "state": "blocked",
+            "report": "build/chipyard/eliza_rocket/chipyard-linux-payload.json",
+            "problems": ["no runnable payload found"],
+        }
+
+        self.assertFalse(
+            check.payload_locator_is_release_blocking(
+                payload_locator, [{"id": "serial_boot_log", "state": "pass"}]
+            )
+        )
+        self.assertTrue(
+            check.payload_locator_is_release_blocking(
+                payload_locator, [{"id": "serial_boot_log", "state": "missing"}]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,15 @@ export interface ApiSuccessEnvelope<TData> {
   data: TData;
 }
 
+/**
+ * Raw transport shape for PostgreSQL `numeric` columns. The pg driver serializes
+ * `numeric` as a string to preserve precision, while `real`/`integer` columns
+ * arrive as numbers and nullable columns may be `null`. Monetization values are
+ * therefore expressed with this alias on the wire; consumers parse to a finite
+ * number at their own client boundary before display.
+ */
+export type NumericLike = string | number | null;
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;
@@ -137,12 +146,12 @@ export interface AppDto {
   github_repo: string | null;
   linked_character_ids: string[] | null;
   monetization_enabled: boolean;
-  inference_markup_percentage: number | null;
-  purchase_share_percentage: number | null;
-  platform_offset_amount: number | null;
+  inference_markup_percentage: NumericLike;
+  purchase_share_percentage: NumericLike;
+  platform_offset_amount: NumericLike;
   custom_pricing_enabled: boolean | null;
-  total_creator_earnings: string | number | null;
-  total_platform_revenue: string | number | null;
+  total_creator_earnings: NumericLike;
+  total_platform_revenue: NumericLike;
   discord_automation: unknown;
   telegram_automation: unknown;
   twitter_automation: unknown;
@@ -201,11 +210,11 @@ export interface UserCharacterDto {
   erc8004_tx_hash: string | null;
   erc8004_registered_at: DateLike | null;
   monetization_enabled: boolean;
-  inference_markup_percentage: string | number;
+  inference_markup_percentage: NumericLike;
   payout_wallet_address: string | null;
   total_inference_requests: number;
-  total_creator_earnings: string | number;
-  total_platform_revenue: string | number;
+  total_creator_earnings: NumericLike;
+  total_platform_revenue: NumericLike;
   a2a_enabled: boolean;
   mcp_enabled: boolean;
   created_at: DateLike;
@@ -249,6 +258,12 @@ export interface AnalyticsCostTrendingDto {
   burnChangePercent: number;
   projectedMonthlyBurn: number;
   daysUntilBalanceZero: number | null;
+  /** Projected monthly burn as a 0..N percent of credit balance (1dp). */
+  monthlyBurnPercent: number;
+  /** Same as monthlyBurnPercent clamped to 100 for progress bars (1dp). */
+  monthlyBurnPercentClamped: number;
+  /** True when projected monthly burn exceeds 80% of current balance. */
+  burnAlertThresholdExceeded: boolean;
 }
 
 export interface AnalyticsProviderBreakdownDto {
@@ -341,36 +356,6 @@ export interface ProjectionsDataDto {
   alerts: AnalyticsProjectionAlertDto[];
   alertEvents?: AnalyticsAlertEventDto[];
   creditBalance: number;
-}
-
-export type HttpMethod =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "PATCH"
-  | "DELETE"
-  | "OPTIONS"
-  | "HEAD";
-
-export interface ApiRouteMetaDto {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  requiresAuth: boolean;
-  pricing?: string | { type?: string; [key: string]: unknown };
-  rateLimit?:
-    | string
-    | { requests: number; window: string; [key: string]: unknown };
-  tags?: string[];
-}
-
-export interface DiscoveredApiRouteDto {
-  path: string;
-  methods: HttpMethod[];
-  filePath: string;
-  meta?: ApiRouteMetaDto;
-  metaByMethod?: Partial<Record<HttpMethod, ApiRouteMetaDto>>;
 }
 
 export interface CreditBalanceResponse {
@@ -582,4 +567,36 @@ export interface AdminModerationActionResponse {
   success: true;
   message: string;
   admin?: Pick<AdminUserDto, "id" | "walletAddress" | "role">;
+}
+
+// API-route discovery DTOs (merged from develop; consumed by
+// cloud-ui/components/docs/api-route-explorer-client.tsx).
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | "HEAD";
+
+export interface ApiRouteMetaDto {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  requiresAuth: boolean;
+  pricing?: string | { type?: string; [key: string]: unknown };
+  rateLimit?:
+    | string
+    | { requests: number; window: string; [key: string]: unknown };
+  tags?: string[];
+}
+
+export interface DiscoveredApiRouteDto {
+  path: string;
+  methods: HttpMethod[];
+  filePath: string;
+  meta?: ApiRouteMetaDto;
+  metaByMethod?: Partial<Record<HttpMethod, ApiRouteMetaDto>>;
 }

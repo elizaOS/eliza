@@ -47,7 +47,7 @@ fail_closed_policy:
 mechanical_missing_release_evidence:
 - gate: routed_board_step_intake
   required_evidence: physical routed-board release STEP with component height models
-  status: blocked_concept_pcb_no_routed_step
+  status: blocked_local_routed_step_candidate_not_release
   path: mechanical/e1-phone/review/board-step-readiness.json
   production_step_files: []
   approved_production_step_files: []
@@ -57,20 +57,20 @@ mechanical_missing_release_evidence:
   - path: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
     kind: real_footprint_development_step
     present: true
-    size_bytes: 32959460
-    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    size_bytes: 33644081
+    sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
     release_credit: false
   - path: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
     kind: routed_development_step
     present: true
-    size_bytes: 32959460
-    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    size_bytes: 33644081
+    sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
     release_credit: false
   - path: board/kicad/e1-phone/production/step/routed-board-with-components.step
     kind: blocked_routed_output_candidate_step
     present: true
-    size_bytes: 32959460
-    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    size_bytes: 33644081
+    sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
     release_credit: false
   detailed_routed_step_candidate:
     path: board/kicad/e1-phone/production/step/routed-board-with-components.step
@@ -80,23 +80,28 @@ mechanical_missing_release_evidence:
     reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
       physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models, and
       measured enclosure clearance
-    size_bytes: 32959460
-    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    size_bytes: 33644081
+    sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
     source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
-    source_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-    source_step_size_bytes: 32959460
+    source_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+    source_step_size_bytes: 33644081
     route_count: 153
     segment_count: 306
     footprint_envelope_count: 89
     pad_contact_visual_count: 1452
     route_segment_visual_count: 306
+    route_segment_net_name_count: 151
+    route_segment_trace_bound_count: 306
+    route_segment_trace_unbound_count: 0
+    controlled_impedance_segment_visual_count: 96
+    via_net_name_count: 16
     candidate_matches_routed_output_manifest: true
     candidate_matches_development_source: true
     routed_development_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
     routed_output_manifest: board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
 - gate: routed_board_clearance
   required_evidence: measured enclosure clearance against routed board STEP
-  status: blocked_waiting_for_routed_board_step
+  status: blocked_waiting_for_physical_routed_board_clearance_result
   path: mechanical/e1-phone/review/routed-board-clearance.json
   production_step_files: []
   blocked_candidate_step_files:
@@ -431,8 +436,8 @@ physical_interface_gap_map:
 routed_board_clearance_gap:
   release_allowed: false
   release_credit: false
-  board_step_status: blocked_concept_pcb_no_routed_step
-  routed_clearance_status: blocked_waiting_for_routed_board_step
+  board_step_status: blocked_local_routed_step_candidate_not_release
+  routed_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
   production_routed_step_release_count: 0
   candidate_routed_step_count: 3
   candidate_routed_step_paths:
@@ -465,8 +470,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -530,8 +535,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -605,8 +610,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -670,8 +675,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -737,8 +742,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -802,8 +807,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -879,8 +884,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -955,8 +960,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -1020,8 +1025,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -1096,8 +1101,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -1171,8 +1176,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -1236,8 +1241,8 @@ routed_board_clearance_gap:
       detailed_candidate:
         path: board/kicad/e1-phone/production/step/routed-board-with-components.step
         present: true
-        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-        size_bytes: 32959460
+        sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+        size_bytes: 33644081
         reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
           physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
           and measured enclosure clearance
@@ -1620,8 +1625,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -1703,8 +1708,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -1776,8 +1781,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -1851,8 +1856,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -1924,8 +1929,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -1997,8 +2002,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -2082,8 +2087,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -2166,8 +2171,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -2239,8 +2244,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -2323,8 +2328,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -2406,8 +2411,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance
@@ -2479,8 +2484,8 @@ routed_clearance_release_action_inventory:
     detailed_candidate:
       path: board/kicad/e1-phone/production/step/routed-board-with-components.step
       present: true
-      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-      size_bytes: 32959460
+      sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+      size_bytes: 33644081
       reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
         physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
         and measured enclosure clearance

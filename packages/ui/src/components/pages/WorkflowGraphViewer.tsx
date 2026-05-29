@@ -20,7 +20,6 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
-import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
@@ -223,55 +222,19 @@ function graphChrome(uiTheme: "light" | "dark") {
 // ── Generation progress overlay ───────────────────────────────────────────────
 
 /**
- * Stage messages for `WorkflowGenerationProgress`. The plugin's workflow
- * generation today is a single request/response, so the client cannot yet
- * observe the actual stage in real time. We cycle through plausible labels
- * on a fixed timer based on observed median latencies of each phase:
- *   1. extractKeywords (fast — runtime-context provider + keyword LLM call)
- *   2. searchNodes + credential filter + fetchRuntimeContext
- *   3. generateWorkflow (LLM, slowest)
- *   4. validateAndRepair + injectMissingCredentialBlocks
- *   5. deployWorkflow + resolveCredentials + activate
- *
- * When the plugin grows a server-sent-events streaming endpoint, the timer
- * can be replaced with real per-stage progress events.
+ * Phases the workflow generator runs through, shown as a static description of
+ * what the request does. The plugin's generation is a single request/response
+ * with no streaming, so the client cannot observe real per-stage progress — we
+ * therefore show an indeterminate spinner and never render fabricated per-stage
+ * completion. When the plugin grows a server-sent-events streaming endpoint,
+ * drive real per-stage state from those events.
  */
-const WORKFLOW_GENERATION_STAGES: ReadonlyArray<{
-  label: string;
-  hint: string;
-  /** Approximate seconds at which this stage takes over. */
-  startsAt: number;
-}> = [
-  {
-    label: "Understanding your prompt",
-    hint: "Extracting keywords + matching providers",
-    startsAt: 0,
-  },
-  {
-    label: "Finding the right nodes",
-    hint: "Searching catalog + checking credentials",
-    startsAt: 3,
-  },
-  {
-    label: "Generating workflow",
-    hint: "Asking the LLM with runtime facts",
-    startsAt: 6,
-  },
-  {
-    label: "Validating + repairing",
-    hint: "Clamping versions + auto-fixing references",
-    startsAt: 18,
-  },
-  {
-    label: "Deploying workflow",
-    hint: "Minting credentials + activating",
-    startsAt: 24,
-  },
-  {
-    label: "Almost done",
-    hint: "Wrapping up — this is taking a bit longer than usual",
-    startsAt: 35,
-  },
+const WORKFLOW_GENERATION_PHASES: ReadonlyArray<string> = [
+  "Understanding your prompt",
+  "Finding the right nodes",
+  "Generating workflow",
+  "Validating + repairing",
+  "Deploying workflow",
 ];
 
 function WorkflowGenerationProgress({
@@ -279,19 +242,6 @@ function WorkflowGenerationProgress({
 }: {
   chrome: ReturnType<typeof graphChrome>;
 }) {
-  const [elapsed, setElapsed] = useState(0);
-  const startRef = useRef(Date.now());
-  // Tick the elapsed counter only while the tab is visible. Elapsed is derived
-  // from wall-clock time, so it self-corrects after the tab regains focus.
-  useIntervalWhenDocumentVisible(() => {
-    setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
-  }, 500);
-
-  const currentIndex = WORKFLOW_GENERATION_STAGES.reduce(
-    (acc, stage, idx) => (elapsed >= stage.startsAt ? idx : acc),
-    0,
-  );
-
   return (
     <div
       className="w-full max-w-md rounded-sm border px-5 py-4 text-sm "
@@ -310,64 +260,9 @@ function WorkflowGenerationProgress({
               Generations usually take 10–30 seconds.
             </div>
           </div>
-          <ol className="space-y-1.5">
-            {WORKFLOW_GENERATION_STAGES.map((stage, idx) => {
-              const isDone = idx < currentIndex;
-              const isActive = idx === currentIndex;
-              return (
-                <li
-                  key={stage.label}
-                  className={`flex items-start gap-2 text-xs transition-opacity ${
-                    isDone || isActive ? "opacity-100" : "opacity-40"
-                  }`}
-                >
-                  <span
-                    className={`mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
-                      isDone
-                        ? "border-current bg-current/15"
-                        : isActive
-                          ? "border-current bg-current/15"
-                          : "border-current/40"
-                    }`}
-                    aria-hidden
-                  >
-                    {isDone ? (
-                      <svg
-                        viewBox="0 0 12 12"
-                        className="h-2.5 w-2.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        role="img"
-                        aria-label="completed"
-                      >
-                        <path
-                          d="M2.5 6.5l2.5 2.5 4.5-5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : isActive ? (
-                      <span
-                        className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
-                        aria-hidden
-                      />
-                    ) : null}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={`font-medium ${isActive ? "" : "opacity-70"}`}
-                    >
-                      {stage.label}
-                    </span>
-                    {(isDone || isActive) && (
-                      <span className="ml-1.5 opacity-60">— {stage.hint}</span>
-                    )}
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
+          <div className="text-xs opacity-70">
+            {WORKFLOW_GENERATION_PHASES.join(" → ")}
+          </div>
         </div>
       </div>
     </div>

@@ -1,0 +1,113 @@
+{
+  "artifacts": {
+    "absent_device_probe_log": {
+      "bytes": 875,
+      "path": "docs/evidence/android/e1-npu/absent-device-probe.log",
+      "sha256": "2b649c4de9cf2bdaa692064dbbe87f229525e5f72ecbb59f5809684abf91346d"
+    },
+    "cts_result": {
+      "bytes": 1,
+      "path": "docs/evidence/android/e1-npu/cts-result.json",
+      "sha256": "blocked:missing_or_empty_artifact"
+    },
+    "nnapi_query_log": {
+      "bytes": 1,
+      "path": "docs/evidence/android/e1-npu/nnapi-accelerator-query.log",
+      "sha256": "blocked:missing_or_empty_artifact"
+    },
+    "selinux_neverallow_log": {
+      "bytes": 105379,
+      "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
+      "sha256": "8a49bfb4233fb4e61766b239fa06055cb252cbf19a19b2dfca2409c10ebf83fd"
+    },
+    "selinux_policy_build_log": {
+      "bytes": 86070,
+      "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
+      "sha256": "16c6b7482be289346b994f011aa9c0f821e3dfdfd7965179f90ff98c2d76fca3"
+    },
+    "vintf_check_log": {
+      "bytes": 11217,
+      "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
+      "sha256": "917d5a0ef11f5241692d53d025a97afbfaf8f408ccac9e6178d168523e202d93"
+    },
+    "vts_result": {
+      "bytes": 1,
+      "path": "docs/evidence/android/e1-npu/vts-result.json",
+      "sha256": "blocked:missing_or_empty_artifact"
+    }
+  },
+  "capture_commands": {
+    "absent_device_probe": "scripts/android/capture_e1_npu_hal_absent_device.sh",
+    "aosp_build_evidence": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp {vendorimage|checkvintf|sepolicy-build|selinux-neverallow|cts-vts-plan}",
+    "cts_smoke": "AOSP_TREE=/path/to/aosp scripts/android/run_cts_smoke.sh",
+    "manifest_check": "python3 scripts/check_e1_npu_android_proof_manifest.py --manifest docs/evidence/android/e1-npu/android-proof-manifest.json --require-pass",
+    "nnapi_transcripts": "scripts/android/capture_e1_npu_nnapi_evidence.sh",
+    "vts_smoke": "AOSP_TREE=/path/to/aosp scripts/android/run_vts_smoke.sh"
+  },
+  "claim_boundary": "android_e1_npu_artifact_manifest_only_not_full_android_compatibility_claim",
+  "date_utc": "2026-05-27T22:15:56Z",
+  "generated_by": "scripts/assemble_e1_npu_android_proof_manifest.py",
+  "generated_utc": "2026-05-28T20:06:56Z",
+  "proof_gate": {
+    "android_boot_claim": "none_until_all_required_artifacts_pass",
+    "compatibility_claim": "none",
+    "nnapi_acceleration_claim": "none_without_all_required_artifacts_passed"
+  },
+  "required_markers": {
+    "absent_device_probe_log": [
+      "e1_npu_status=unsupported",
+      "device_node_present=false",
+      "runtime_supported=false",
+      "nnapi_acceleration=false",
+      "eliza-evidence: status=PASS",
+      "RESULT=0"
+    ],
+    "cts_result": [
+      "CTS_SCOPE",
+      "NNAPI",
+      "RESULT=0"
+    ],
+    "nnapi_query_log": [
+      "e1-npu",
+      "NNAPI",
+      "accelerator"
+    ],
+    "selinux_neverallow_log": [
+      "sepolicy_neverallows",
+      "e1_npu",
+      "eliza-evidence: status=PASS",
+      "RESULT=0"
+    ],
+    "selinux_policy_build_log": [
+      "e1_npu_device",
+      "hal_e1_npu_default",
+      "eliza-evidence: status=PASS",
+      "RESULT=0"
+    ],
+    "vintf_check_log": [
+      "checkvintf",
+      "vendor.eliza.e1_npu",
+      "eliza-evidence: status=PASS",
+      "RESULT=0"
+    ],
+    "vts_result": [
+      "VTS_SCOPE",
+      "e1_npu",
+      "RESULT=0"
+    ]
+  },
+  "required_statuses": {
+    "aidl_or_hidl_hal_declared": "passed",
+    "cts_nnapi_smoke": "blocked",
+    "fail_closed_absent_device": "passed",
+    "hal_binary_in_vendorimage": "passed",
+    "nnapi_accelerator_query": "blocked",
+    "selinux_neverallow": "passed",
+    "selinux_policy_build": "passed",
+    "vintf_check": "passed",
+    "vts_e1_npu": "blocked"
+  },
+  "schema": "eliza.e1_npu_android_proof_manifest.v1",
+  "status": "blocked",
+  "target": "eliza_ai_soc-userdebug"
+}
