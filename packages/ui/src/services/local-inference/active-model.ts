@@ -341,10 +341,16 @@ export async function resolveLocalInferenceLoadArgs(
 
   const mtp = runtime?.mtp;
   if (mtp) {
-    const drafterPath = resolveMtpDrafterPath(installed, catalog);
-    if (installed.bundleRoot && !drafterPath) {
+    // Same-file MTP (no `drafterFile`) embeds the NextN head in the text
+    // GGUF and runs with no separate draft model; separate-drafter MTP
+    // declares a `drafterFile` and requires it present on disk.
+    const sameFileMtp = !mtp.drafterFile;
+    const drafterPath = sameFileMtp
+      ? undefined
+      : resolveMtpDrafterPath(installed, catalog);
+    if (!sameFileMtp && installed.bundleRoot && !drafterPath) {
       throw new Error(
-        `[local-inference] ${installed.id} declares mandatory MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
+        `[local-inference] ${installed.id} declares a separate-drafter MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
       );
     }
     args.useGpu = true;

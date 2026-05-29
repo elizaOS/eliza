@@ -84,8 +84,8 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.kvOffload).toEqual({ gpuLayers: 10 });
   });
 
-  it("resolves the bundled MTP drafter path for every autoregressive Eliza-1 tier", async () => {
-    const bundle = makeTempElizaBundle("0_8b");
+  it("activates same-file MTP (no separate drafter) for every autoregressive Eliza-1 tier", async () => {
+    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
         "eliza-1-0_8b",
@@ -93,7 +93,9 @@ describe("resolveLocalInferenceLoadArgs", () => {
         bundle.bundleRoot,
       );
       const args = await resolveLocalInferenceLoadArgs(target);
-      expect(args.draftModelPath).toBe(bundle.drafterPath);
+      // Same-file MTP: NextN head embedded in the text GGUF, no separate
+      // draft model resolved.
+      expect(args.draftModelPath).toBeUndefined();
       expect(args.draftMin).toBeGreaterThan(0);
       expect(args.draftMax).toBeGreaterThan(0);
       expect(args.mobileSpeculative).toBe(true);
@@ -102,7 +104,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
     }
   });
 
-  it("throws when an MTP-enabled Eliza-1 bundle is missing its drafter", async () => {
+  it("does not throw when no drafter GGUF is present (same-file MTP needs none)", async () => {
     const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
     try {
       const target = makeInstalledModel(
@@ -110,9 +112,9 @@ describe("resolveLocalInferenceLoadArgs", () => {
         bundle.textPath,
         bundle.bundleRoot,
       );
-      await expect(resolveLocalInferenceLoadArgs(target)).rejects.toThrow(
-        /mandatory MTP/,
-      );
+      const args = await resolveLocalInferenceLoadArgs(target);
+      expect(args.modelPath).toBe(bundle.textPath);
+      expect(args.draftModelPath).toBeUndefined();
     } finally {
       rmSync(bundle.bundleRoot, { recursive: true, force: true });
     }
