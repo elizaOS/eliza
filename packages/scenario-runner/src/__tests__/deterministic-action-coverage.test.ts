@@ -7,8 +7,10 @@ import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
 import deviceFilesystemPlugin from "@elizaos/plugin-device-filesystem";
+import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
 import shellPlugin from "@elizaos/plugin-shell";
+import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
 import { describe, expect, it } from "vitest";
 
@@ -44,6 +46,8 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-coding-tools": codingToolsPlugin,
   "@elizaos/plugin-agent-skills": agentSkillsPlugin,
   "@elizaos/plugin-local-inference": localInferencePlugin,
+  "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
+  "@elizaos/plugin-todos": todosPlugin,
 };
 
 /** Expected action names for each imported core plugin (verified against live imports). */
@@ -61,6 +65,8 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "USE_SKILL",
   ],
   "@elizaos/plugin-local-inference": ["GENERATE_MEDIA"],
+  "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
+  "@elizaos/plugin-todos": ["TODO"],
 };
 
 /** Core plugins that intentionally expose no agent actions (service/registry only). */
@@ -118,6 +124,7 @@ const COVERED_ACTIONS: readonly string[] = [
   "BROWSER_WAIT",
   "FILE",
   "GENERATE_MEDIA",
+  "GIT_PATHOLOGY",
   "PLAY_EMOTE",
   "SKILL",
   "SKILL_DETAILS",
@@ -128,6 +135,7 @@ const COVERED_ACTIONS: readonly string[] = [
   "SKILL_UNINSTALL",
   "SHELL",
   "SCHEDULED_TASKS",
+  "TODO",
   "USE_SKILL",
   "VIEWS",
   "WORKTREE",
@@ -149,6 +157,8 @@ const LIVE_ONLY_REMAINDER: Record<string, string> = {
     "Beyond SCHEDULED_TASKS, actions need live connector creds (Gmail, calendar, messaging, owner data).",
   "@elizaos/plugin-browser":
     "Beyond web/JSDOM mode, actions need a real Chromium session or browser bridge.",
+  "@elizaos/plugin-agent-orchestrator":
+    "TASKS (+ TASKS_* virtuals) spawns and drives ACP coding sub-agents over PTY; the keyless mock cannot stand in for real sub-agent processes. Unit-covered in plugins/plugin-agent-orchestrator/__tests__.",
 };
 
 function collectActionNames(plugin: Plugin): string[] {

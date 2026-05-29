@@ -21,6 +21,7 @@ import {
   getCuratedAppDefinitions,
   packageNameToAppDisplayName,
 } from "@elizaos/shared";
+import { resetAppControlHttpStub } from "./_helpers/app-control-http-stub";
 
 const GENERATED_PACKAGE = "@scenario/app-generated-console";
 const GENERATED_SLUG = "generated-console";
@@ -555,7 +556,19 @@ function registerGeneratedRouteModule(): void {
 async function ensureRealAppRegistryService(
   runtime: RuntimeWithRoutes,
 ): Promise<void> {
-  if (runtime.getService?.("app-registry")) return;
+  const prototypeGetService = Object.getPrototypeOf(runtime)?.getService;
+  const baseGetService =
+    typeof prototypeGetService === "function"
+      ? prototypeGetService.bind(runtime)
+      : runtime.getService?.bind(runtime);
+  const currentGetService = runtime.getService?.bind(runtime);
+  if (baseGetService?.("app-registry")) {
+    runtime.getService = (serviceType: string) => {
+      if (serviceType === "app-registry") return baseGetService(serviceType);
+      return currentGetService?.(serviceType) ?? baseGetService?.(serviceType);
+    };
+    return;
+  }
 
   await runtime.registerPlugin?.(appControlPlugin);
 
@@ -566,6 +579,12 @@ async function ensureRealAppRegistryService(
   }
 
   await runtime.getServiceLoadPromise?.("app-registry");
+  runtime.getService = (serviceType: string) => {
+    if (serviceType === "app-registry") {
+      return baseGetService?.(serviceType) ?? currentGetService?.(serviceType);
+    }
+    return currentGetService?.(serviceType) ?? baseGetService?.(serviceType);
+  };
 }
 
 async function prepareScenarioState(
@@ -578,6 +597,7 @@ async function prepareScenarioState(
     appRuns.clear();
     packageRouteLedger.length = 0;
     viewBroadcastLedger.length = 0;
+    resetAppControlHttpStub();
     await fs.rm(SCENARIO_TEMP_ROOT, { recursive: true, force: true });
     await fs.mkdir(ACTION_APPS_ROOT, { recursive: true });
     await fs.mkdir(HTTP_APPS_ROOT, { recursive: true });
