@@ -315,20 +315,32 @@ def evaluate_and_render(
         qpos = np.asarray(st.data.qpos)
         return float(qpos[0]), float(qpos[1]), float(qpos[2])
 
+    # Derive stance/swing from the foot-site HEIGHT, not the env's
+    # ``last_contact`` flag: in H1JoystickGaitTracking that flag stays [1,1]
+    # even when the foot site rises ~0.3 m, so contact-based gait detection
+    # gives a false "skating" negative on a policy that is actually stepping.
+    # foot_z below STANCE_Z = on the ground; above = swing.
+    STANCE_Z = 0.06
+    feet_site_id = getattr(env, "_feet_site_id", None)
+
     def foot_contacts(st):
-        lc = st.info.get("last_contact")
-        if lc is None:
+        if feet_site_id is None:
             return None, None
-        arr = np.asarray(lc).ravel().astype(bool)
-        if arr.shape[0] < 2:
+        foot_z = np.asarray(st.data.site_xpos[feet_site_id][..., 2]).ravel()
+        if foot_z.shape[0] < 2:
             return None, None
-        return bool(arr[0]), bool(arr[1])
+        return bool(foot_z[0] < STANCE_Z), bool(foot_z[1] < STANCE_Z)
+
+    def foot_heights(st):
+        if feet_site_id is None:
+            return np.zeros(2)
+        return np.asarray(st.data.site_xpos[feet_site_id][..., 2]).ravel()[:2]
 
     states = [state]
     base_pts = [list(base_xy_z(state))]
     left_contacts, right_contacts = [], []
     rewards = []
-    max_air = np.zeros(2, dtype=np.float64)
+    max_foot_z = np.zeros(2, dtype=np.float64)
     fell = False
     for _ in range(eval_steps):
         act_rng, rng = jax.random.split(rng)
@@ -341,8 +353,7 @@ def evaluate_and_render(
         if lcc is not None:
             left_contacts.append(lcc)
             right_contacts.append(rcc)
-        if "feet_air_time" in state.info:
-            max_air = np.maximum(max_air, np.asarray(state.info["feet_air_time"]).ravel()[:2])
+        max_foot_z = np.maximum(max_foot_z, foot_heights(state))
         rewards.append(float(np.asarray(state.reward)))
         if bool(np.asarray(state.done)):
             fell = True
@@ -365,17 +376,23 @@ def evaluate_and_render(
     )
     report = {"env": env_name, "command": list(command), "mean_reward": float(np.mean(rewards)) if rewards else 0.0}
     report.update(metrics.to_dict())
-    # Direct foot-skating detector: if max swing air-time stays ~0 the feet
-    # never left the ground (gliding/skating, not stepping), regardless of how
-    # far it travelled or how high the reward was.
-    report["max_feet_air_time_s"] = [float(v) for v in max_air]
-    report["feet_leave_ground"] = bool(float(np.max(max_air)) > 0.05)
+    # Direct foot-skating detector from foot-site HEIGHT (the env's
+    # feet_air_time/last_contact stay ~0/[1,1] even when feet clearly lift, so
+    # they cannot be trusted here). If neither foot site rises above STANCE_Z
+    # the robot is gliding/skating, not stepping.
+    report["max_foot_height_m"] = [float(v) for v in max_foot_z]
+    report["feet_leave_ground"] = bool(float(np.max(max_foot_z)) > STANCE_Z + 0.03)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "walk_eval.json").write_text(json.dumps(report, indent=2))
 
     if render:
-        frames = env.render(states, height=240, width=320)
+        # 'track' camera follows the torso so the robot stays centred for the
+        # whole rollout (a fixed camera loses it once it walks a few metres).
+        try:
+            frames = env.render(states, height=480, width=640, camera="track")
+        except Exception:
+            frames = env.render(states, height=480, width=640)
         _write_mp4(frames, out_dir / "walk_forward.mp4", fps=int(round(1.0 / dt)))
         report["video"] = str(out_dir / "walk_forward.mp4")
     print(json.dumps(report, indent=2), flush=True)

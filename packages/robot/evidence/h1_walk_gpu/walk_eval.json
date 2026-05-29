@@ -1,0 +1,29 @@
+{
+  "env": "H1JoystickGaitTracking",
+  "command": [
+    1.0,
+    0.0,
+    0.0
+  ],
+  "mean_reward": 0.13391534273279831,
+  "steps": 400,
+  "elapsed_s": 8.0,
+  "delta_x_m": 3.7454099655151367,
+  "delta_y_m": -0.29144081473350525,
+  "distance_m": 3.7567317655473658,
+  "mean_forward_velocity_m_s": 0.4681762456893921,
+  "commanded_velocity_m_s": 1.0,
+  "velocity_tracking_abs_err_m_s": 0.5318237543106079,
+  "min_base_height_m": 0.9485352635383606,
+  "mean_base_height_m": 0.9981923506146951,
+  "lateral_drift_m": 0.29144081473350525,
+  "foot_contact_switches": 21,
+  "fell": false,
+  "walk_forward_pass": true,
+  "fail_reasons": [],
+  "max_foot_height_m": [
+    0.30098527669906616,
+    0.31892383098602295
+  ],
+  "feet_leave_ground": true
+}
