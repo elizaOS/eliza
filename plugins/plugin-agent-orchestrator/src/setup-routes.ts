@@ -124,6 +124,13 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/coding-agents/:sessionId/parent-context" },
   { type: "GET", path: "/api/coding-agents/:sessionId/memory" },
   { type: "GET", path: "/api/coding-agents/:sessionId/active-workspaces" },
+  // Sub-agent credential bridge. Registered so the runtime route matcher (which
+  // requires an exact-segment-count template) actually reaches handleBridgeRoutes
+  // over HTTP; the dispatcher mount alone is not enough. Same auth class as the
+  // parent-context bridge above (child carries the parent bearer token); the
+  // handler then enforces loopback + single-use scopedToken.
+  { type: "POST", path: "/api/coding-agents/:sessionId/credentials/request" },
+  { type: "GET", path: "/api/coding-agents/:sessionId/credentials/:key" },
   // Workspace routes
   { type: "POST", path: "/api/workspace/provision" },
   { type: "GET", path: "/api/workspace/:workspaceId" },

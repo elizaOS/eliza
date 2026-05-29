@@ -334,8 +334,11 @@ function taskWithResolvedRoute(
   workdir: string,
   swarm: ReturnType<typeof buildSwarmRoomMetadata>,
 ): string {
+  // Coerce non-null room ids to string (matching the old envelope's
+  // String(swarm.taskRoomId)) so the Task room line is still emitted when the
+  // id is a non-string value, not just a string.
   const taskRoomId =
-    typeof swarm.taskRoomId === "string" ? swarm.taskRoomId : undefined;
+    swarm.taskRoomId != null ? String(swarm.taskRoomId) : undefined;
   const worktreeRoomId = swarm.worktreeRoomId;
   const swarmRooms = swarm.swarmRooms.map((room) => ({
     roomId: String(room.roomId),

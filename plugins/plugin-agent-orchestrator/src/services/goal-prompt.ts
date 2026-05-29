@@ -88,7 +88,7 @@ function bulletList(items: string[]): string {
 const COMPLETION_CONTRACT: readonly string[] = [
   "Do not report the task finished until the goal is genuinely complete or you are truly blocked.",
   "Verify your work before any final answer: run the relevant tests/build/typecheck and confirm the acceptance criteria hold.",
-  "If you are blocked or need input, write the question as your reply text and stop — no routing-kind labels or banners; the orchestrator classifies routing from the session event, not your prose.",
+  "If you are blocked or need input, write the question as your reply text and stop — no routing-kind labels or banners (no QUESTION_FOR_TASK_CREATOR / AGENT_COORDINATION headers, no markdown banners); the orchestrator classifies routing from the session event, not your prose.",
   "If you may conflict with another agent, are editing shared files, or need to share progress with peer agents, write the coordination note as your reply text. Same rule: no routing-kind labels or banners in the text itself.",
   "Report token/tool status when the runtime exposes it.",
   "On completion, return a structured summary: what changed, tests run, remaining risks, and whether peer coordination is still needed.",
@@ -181,7 +181,7 @@ export function buildGoalPrompt(input: GoalPromptInput): string {
 
   sections.push(
     "--- Capabilities ---",
-    `Use only coding-relevant capabilities: ${capabilities.join(", ")}.`,
+    `Use only coding-relevant capabilities: ${capabilities.join(", ")}. Avoid unrelated connectors or broad personal-data tools.`,
     "--- Working Agreement ---",
     bulletList([...COMPLETION_CONTRACT]),
     "--- Task ---",

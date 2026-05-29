@@ -3427,7 +3427,11 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
     // OrchestratorTaskService). Fold them in so status reflects persisted task
     // threads, not just live ACP sessions. Threads degrade to empty if the
     // orchestrator surface is unavailable — the ACP status above still resolves.
-    const taskThreads = await this.listCodingAgentTaskThreads().catch(() => []);
+    // Normalize the resolved value too: a 200 response whose body lacks `tasks`
+    // resolves to undefined (not a rejection), so `.catch` alone wouldn't guard
+    // it and `.length` would throw and null the entire status.
+    const threadList = await this.listCodingAgentTaskThreads().catch(() => []);
+    const taskThreads = Array.isArray(threadList) ? threadList : [];
     return {
       supervisionLevel: "acp",
       taskCount: tasks.length,

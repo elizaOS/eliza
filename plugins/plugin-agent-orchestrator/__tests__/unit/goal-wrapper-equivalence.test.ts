@@ -5,8 +5,11 @@ import { buildGoalPrompt } from "../../src/services/goal-prompt.ts";
 // drift from the direct-API envelope. The API route calls
 // buildGoalPrompt({ goal, workdir, taskRoomId, worktreeRoomId }); the planner
 // action adapter (taskWithResolvedRoute) calls buildGoalPrompt with the same
-// core fields plus optional swarmRooms/route extras. For the shared field
-// subset the two envelopes are byte-identical.
+// core fields plus optional swarmRooms/route extras. The envelopes are
+// byte-identical ONLY when the action passes no swarmRooms/route extras (second
+// case); the real planner path adds a "Known swarm rooms:" line (first case),
+// so it is NOT byte-identical to the API path in production — only its
+// pre-Rooms prefix is.
 describe("goal-wrapper envelope equivalence (action spawn == API spawn)", () => {
   const goal = "Refactor the parser";
   const workdir = "/srv/work";
@@ -34,8 +37,8 @@ describe("goal-wrapper envelope equivalence (action spawn == API spawn)", () => 
       expect(actionEnvelope).toContain(header);
     }
 
-    // Everything up to the Rooms section (Goal, Workspace, Capabilities header
-    // ordering) is identical between the two entry points.
+    // Everything up to the Rooms section (the Goal and Workspace sections;
+    // Capabilities is emitted after Rooms) is identical between entry points.
     const upTo = (s: string, h: string) => s.slice(0, s.indexOf(h));
     expect(upTo(actionEnvelope, "--- Rooms ---")).toBe(
       upTo(apiEnvelope, "--- Rooms ---"),
