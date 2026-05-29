@@ -111,6 +111,14 @@ class TauBenchRunner:
                 provider=self.config.agent_provider,
                 temperature=self.config.agent_temperature,
             )
+        if harness == "smithers":
+            from smithers_adapter.tau_bench import SmithersTauAgent  # noqa: WPS433
+
+            return SmithersTauAgent(
+                model=self.config.agent_model,
+                provider=self.config.agent_provider,
+                temperature=self.config.agent_temperature,
+            )
         if harness == "eliza":
             from eliza_adapter.tau_bench import ElizaTauAgent  # noqa: WPS433
 
@@ -121,7 +129,7 @@ class TauBenchRunner:
             )
         raise ValueError(
             f"Unknown --agent-harness {harness!r}; "
-            "expected one of: litellm, hermes, openclaw, eliza"
+            "expected one of: litellm, hermes, openclaw, eliza, smithers"
         )
 
     # --- Per-trial -------------------------------------------------------

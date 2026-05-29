@@ -17,7 +17,9 @@ const repoRoot = path.resolve(
 // `src/` (not `dist/`) resolution plus workspace-source watching.
 const LEVELS = [
   { name: "app (packages/app)", file: "packages/app/src/main.tsx" },
-  { name: "@elizaos/ui", file: "packages/ui/src/browser.ts" },
+  // The app imports @elizaos/ui via subpaths (not the root barrel), so target
+  // the root App component that main.tsx renders — guaranteed in the live graph.
+  { name: "@elizaos/ui", file: "packages/ui/src/App.tsx" },
   { name: "@elizaos/shared", file: "packages/shared/src/brand/index.ts" },
 ] as const;
 

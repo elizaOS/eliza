@@ -497,19 +497,19 @@ async function submitFirstRun(apiBase: string): Promise<void> {
   }
 
   const runtimeConfig = buildFirstRunRuntimeConfig({
-    onboardingServerTarget: "local",
-    onboardingCloudApiKey: "",
-    onboardingProvider: LIVE_PROVIDER.name,
-    onboardingApiKey: LIVE_PROVIDER.apiKey,
-    onboardingVoiceProvider: "",
-    onboardingVoiceApiKey: "",
-    onboardingPrimaryModel: LIVE_PROVIDER.largeModel,
-    onboardingOpenRouterModel: LIVE_PROVIDER.largeModel,
-    onboardingRemoteConnected: false,
-    onboardingRemoteApiBase: "",
-    onboardingRemoteToken: "",
-    onboardingSmallModel: LIVE_PROVIDER.smallModel,
-    onboardingLargeModel: LIVE_PROVIDER.largeModel,
+    firstRunRuntimeTarget: "local",
+    firstRunCloudApiKey: "",
+    firstRunProvider: LIVE_PROVIDER.name,
+    firstRunApiKey: LIVE_PROVIDER.apiKey,
+    firstRunVoiceProvider: "",
+    firstRunVoiceApiKey: "",
+    firstRunPrimaryModel: LIVE_PROVIDER.largeModel,
+    firstRunOpenRouterModel: LIVE_PROVIDER.largeModel,
+    firstRunRemoteConnected: false,
+    firstRunRemoteApiBase: "",
+    firstRunRemoteToken: "",
+    firstRunSmallModel: LIVE_PROVIDER.smallModel,
+    firstRunLargeModel: LIVE_PROVIDER.largeModel,
   });
 
   const response = await fetch(`${apiBase}/api/first-run`, {

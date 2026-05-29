@@ -512,7 +512,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--agent-harness", agent])
             args.extend(["--agent-provider", model.provider or "cerebras"])
             if model.model:
