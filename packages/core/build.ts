@@ -58,6 +58,50 @@ function resolveTscBin(): string {
 	return existsSync(workspaceTsc) ? workspaceTsc : "tsc";
 }
 
+async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
+	const fs = await import("node:fs/promises");
+	const lockParent = join(process.cwd(), "../../.turbo");
+	const lockDir = join(lockParent, "core-build.lock");
+	const staleAfterMs = 30 * 60 * 1000;
+	let announcedWait = false;
+
+	await fs.mkdir(lockParent, { recursive: true });
+
+	for (;;) {
+		try {
+			await fs.mkdir(lockDir);
+			await fs.writeFile(
+				join(lockDir, "owner"),
+				`${process.pid}\n${new Date().toISOString()}\n`,
+			);
+			break;
+		} catch (error) {
+			const err = error as NodeJS.ErrnoException;
+			if (err.code !== "EEXIST") {
+				throw error;
+			}
+
+			const stat = await fs.stat(lockDir).catch(() => null);
+			if (stat && Date.now() - stat.mtimeMs > staleAfterMs) {
+				await fs.rm(lockDir, { recursive: true, force: true });
+				continue;
+			}
+
+			if (!announcedWait) {
+				console.log("⏳ Waiting for another @elizaos/core build to finish...");
+				announcedWait = true;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 250));
+		}
+	}
+
+	try {
+		return await build();
+	} finally {
+		await fs.rm(lockDir, { recursive: true, force: true }).catch(() => {});
+	}
+}
+
 /**
  * Creates a standardized Bun build configuration for elizaOS packages
  */
@@ -1027,7 +1071,7 @@ if (import.meta.main) {
 	const isNodeOnly = process.argv.includes("--node-only");
 	const build = isNodeOnly ? buildNodeOnly : buildAll;
 
-	build().catch((error) => {
+	withCoreBuildLock(build).catch((error) => {
 		console.error("Build script error:", error);
 		process.exit(1);
 	});

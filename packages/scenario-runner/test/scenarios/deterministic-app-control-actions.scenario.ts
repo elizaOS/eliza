@@ -1,3 +1,5 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -73,6 +75,9 @@ function expectActionTurn(
   return undefined;
 }
 
+const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
+const feedPluginDir = path.join(process.cwd(), "plugins", "plugin-feed");
+
 const views = [
   {
     id: "remote-ledger",
@@ -93,6 +98,16 @@ const views = [
     pluginName: "core",
     available: true,
     tags: ["settings"],
+  },
+  {
+    id: "feed-board",
+    label: "Feed Board",
+    viewType: "gui",
+    description: "Review feed posts and editorial queues.",
+    path: "/feed-board",
+    pluginName: "@elizaos/plugin-feed",
+    available: true,
+    tags: ["feed", "editorial"],
   },
 ];
 
@@ -150,6 +165,19 @@ function stopResponse(runId: string) {
     needsRestart: false,
     stopScope: "viewer-session",
     message: `Stopped run ${runId}`,
+  };
+}
+
+function unloadPluginResponse(pluginName: string) {
+  return {
+    success: true,
+    appName: "feed",
+    runId: null,
+    stoppedAt: "2026-05-29T12:02:00.000Z",
+    pluginUninstalled: true,
+    needsRestart: true,
+    stopScope: "plugin-uninstalled",
+    message: `Plugin ${pluginName} unloaded.`,
   };
 }
 
@@ -241,9 +269,7 @@ export default scenario({
             launchCount += 1;
             return jsonResponse(
               launchResponse(
-                launchCount === 1
-                  ? "run-feed-launch-1"
-                  : "run-feed-relaunch-2",
+                launchCount === 1 ? "run-feed-launch-1" : "run-feed-relaunch-2",
               ),
             );
           }
@@ -255,8 +281,125 @@ export default scenario({
             return jsonResponse(stopResponse("run-feed-old"));
           }
 
+          if (
+            request.method === "POST" &&
+            request.pathname === "/api/apps/stop"
+          ) {
+            return jsonResponse(unloadPluginResponse("@elizaos/plugin-feed"));
+          }
+
           return undefined;
         });
+
+        return undefined;
+      },
+    },
+    {
+      type: "custom",
+      name: "seed deterministic APP/VIEWS management dependencies",
+      apply: async (ctx) => {
+        const runtime = ctx.runtime as
+          | {
+              actions?: Array<{
+                name: string;
+                validate?: (...args: unknown[]) => Promise<boolean> | boolean;
+                handler?: (...args: unknown[]) => Promise<unknown> | unknown;
+              }>;
+              getService?: (serviceType: string) => unknown;
+            }
+          | undefined;
+        if (!runtime?.actions) {
+          return "runtime actions unavailable";
+        }
+
+        await fs.rm(path.dirname(appLoadDirectory), {
+          force: true,
+          recursive: true,
+        });
+        const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
+        await fs.mkdir(loadedAppDir, { recursive: true });
+        await fs.writeFile(
+          path.join(loadedAppDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@scenario/app-loaded-console",
+              version: "1.0.0",
+              elizaos: {
+                app: {
+                  slug: "loaded-console",
+                  displayName: "Loaded Console",
+                  aliases: ["loaded"],
+                  permissions: {},
+                  isolation: "worker",
+                },
+              },
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
+
+        if (
+          !runtime.actions.some((action) => action.name === "START_CODING_TASK")
+        ) {
+          runtime.actions.push({
+            name: "START_CODING_TASK",
+            validate: async () => true,
+            handler: async (_runtime, _message, _state, options) => {
+              const parameters =
+                options &&
+                typeof options === "object" &&
+                !Array.isArray(options) &&
+                "parameters" in options &&
+                typeof (options as { parameters?: unknown }).parameters ===
+                  "object" &&
+                (options as { parameters?: unknown }).parameters !== null
+                  ? (options as { parameters: Record<string, unknown> })
+                      .parameters
+                  : {};
+              const label =
+                typeof parameters.label === "string"
+                  ? parameters.label
+                  : "coding-task";
+              const workdir =
+                typeof parameters.workdir === "string"
+                  ? parameters.workdir
+                  : feedPluginDir;
+              const sessionId = `scenario-${label.replace(/[^a-z0-9-]/gi, "-")}`;
+              return {
+                success: true,
+                data: {
+                  agents: [
+                    {
+                      sessionId,
+                      agentType: "codex",
+                      workdir,
+                      label,
+                      status: "running",
+                      workspaceId: "scenario-workspace",
+                      branch: "shaw/scenario-app-control",
+                    },
+                  ],
+                },
+              };
+            },
+          });
+        }
+
+        const registeredApps: unknown[] = [];
+        const fakeRegistryService = {
+          register: async (entry: unknown) => {
+            registeredApps.push(entry);
+          },
+          recordManifestRejection: async () => undefined,
+          readRegisteredForTest: () => [...registeredApps],
+        };
+        const previousGetService = runtime.getService?.bind(runtime);
+        runtime.getService = (serviceType: string) => {
+          if (serviceType === "app-registry") return fakeRegistryService;
+          return previousGetService?.(serviceType) ?? null;
+        };
 
         return undefined;
       },
@@ -282,13 +425,14 @@ export default scenario({
           actionName: "VIEWS",
           parameters: { action: "list", viewType: "gui" },
           responseText:
-            "available_views:\n  type: gui\n  count: 2\nviews[2]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes",
+            "available_views:\n  type: gui\n  count: 3\nviews[3]{id,label,type,path,available}:\n  remote-ledger,Remote Ledger,gui,/remote-ledger,yes\n  settings,Settings,gui,/settings,yes\n  feed-board,Feed Board,gui,/feed-board,yes",
           resultFields: {
             "values.mode": "list",
-            "values.viewCount": 2,
+            "values.viewCount": 3,
             "values.viewType": "gui",
             "data.views.0.id": "remote-ledger",
             "data.views.1.id": "settings",
+            "data.views.2.id": "feed-board",
           },
         }),
     },
@@ -424,19 +568,233 @@ export default scenario({
           },
         }),
     },
+    {
+      kind: "action",
+      name: "offer feed view create choices",
+      text: "Create a feed editorial view",
+      actionName: "VIEWS",
+      options: {
+        action: "create",
+        intent: "Create a feed editorial view",
+      },
+      responseIncludesAny: ["[CHOICE:views-create", "Feed Board"],
+      assertTurn: (execution) => {
+        if (
+          !execution.responseText?.startsWith(
+            "[CHOICE:views-create id=views-create-",
+          )
+        ) {
+          return `expected VIEWS create choice block, saw ${JSON.stringify(execution.responseText)}`;
+        }
+        return expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "create",
+            intent: "Create a feed editorial view",
+          },
+          responseText: execution.responseText,
+          resultFields: {
+            "values.mode": "create",
+            "values.subMode": "choice",
+            "values.matchCount": 1,
+            "data.choices.1.pluginName": "@elizaos/plugin-feed",
+          },
+        });
+      },
+    },
+    {
+      kind: "action",
+      name: "cancel feed view create choices",
+      text: "cancel",
+      actionName: "VIEWS",
+      responseIncludesAny: ["Canceled. No view changes made."],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {},
+          responseText: "Canceled. No view changes made.",
+          resultFields: {
+            "values.mode": "create",
+            "values.subMode": "cancel",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "edit feed board view",
+      text: "Edit the feed board view",
+      actionName: "VIEWS",
+      options: {
+        action: "edit",
+        intent: "Make feed board show denser queue rows",
+        view: "feed-board",
+      },
+      responseIncludesAny: ["Started view edit task for Feed Board"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "edit",
+            intent: "Make feed board show denser queue rows",
+            view: "feed-board",
+          },
+          responseText: `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
+          resultFields: {
+            "values.mode": "edit",
+            "values.viewId": "feed-board",
+            "values.workdir": feedPluginDir,
+            "values.taskSessionId": "scenario-edit-view-feed-board",
+            "data.task.label": "edit-view:feed-board",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "delete feed board view",
+      text: "Delete the feed board view",
+      actionName: "VIEWS",
+      options: { action: "delete", confirm: "true", view: "feed-board" },
+      responseIncludesAny: ["Deleted Feed Board"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "delete",
+            confirm: "true",
+            view: "feed-board",
+          },
+          responseText:
+            "Deleted Feed Board (@elizaos/plugin-feed). Plugin @elizaos/plugin-feed unloaded.",
+          resultFields: {
+            "values.mode": "delete",
+            "values.viewId": "feed-board",
+            "values.pluginName": "@elizaos/plugin-feed",
+            "data.unloadResult.ok": true,
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "load apps from directory",
+      text: "Load apps from the scenario directory",
+      actionName: "APP",
+      options: { action: "load_from_directory", directory: appLoadDirectory },
+      responseIncludesAny: ["Registered 1 app", "Loaded Console"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "APP",
+          parameters: {
+            action: "load_from_directory",
+            directory: appLoadDirectory,
+          },
+          responseText: `Registered 1 app from ${appLoadDirectory}:\n  - Loaded Console (@scenario/app-loaded-console)\n\nApps are registered only — none were launched.`,
+          resultFields: {
+            "values.mode": "load_from_directory",
+            "values.directory": appLoadDirectory,
+            "values.registeredCount": 1,
+            "values.rejectedCount": 0,
+            "data.registered.0.slug": "loaded-console",
+            "data.registered.0.canonicalName": "@scenario/app-loaded-console",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "offer feed app create choices",
+      text: "Create a feed dashboard app",
+      actionName: "APP",
+      options: { action: "create", intent: "Create a feed dashboard app" },
+      responseIncludesAny: ["[CHOICE:app-create", "Feed"],
+      assertTurn: (execution) => {
+        if (
+          !execution.responseText?.startsWith(
+            "[CHOICE:app-create id=app-create-",
+          )
+        ) {
+          return `expected APP create choice block, saw ${JSON.stringify(execution.responseText)}`;
+        }
+        return expectActionTurn(execution, {
+          actionName: "APP",
+          parameters: {
+            action: "create",
+            intent: "Create a feed dashboard app",
+          },
+          responseText: execution.responseText,
+          resultFields: {
+            "values.mode": "create",
+            "values.subMode": "choice",
+            "values.matchCount": 1,
+            "data.choices.1.appName": "feed",
+          },
+        });
+      },
+    },
+    {
+      kind: "action",
+      name: "cancel feed app create choices",
+      text: "cancel",
+      actionName: "APP",
+      responseIncludesAny: ["Canceled. No app changes made."],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "APP",
+          parameters: {},
+          responseText: "Canceled. No app changes made.",
+          resultFields: {
+            "values.mode": "create",
+            "values.subMode": "cancel",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "edit feed app",
+      text: "Edit the feed app",
+      actionName: "APP",
+      options: {
+        action: "create",
+        editTarget: "feed",
+        intent: "Tighten the feed app table density",
+      },
+      responseIncludesAny: ["Started app edit task for Feed"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "APP",
+          parameters: {
+            action: "create",
+            editTarget: "feed",
+            intent: "Tighten the feed app table density",
+          },
+          responseText: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification will run when it emits APP_CREATE_DONE.`,
+          resultFields: {
+            "values.mode": "create",
+            "values.subMode": "edit",
+            "values.name": "feed",
+            "values.workdir": feedPluginDir,
+            "values.taskSessionId": "scenario-edit-app-feed",
+            "data.task.label": "edit-app:feed",
+          },
+        }),
+    },
   ],
   finalChecks: [
     {
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 4,
+      minCount: 8,
     },
     {
       type: "actionCalled",
       actionName: "APP",
       status: "success",
-      minCount: 3,
+      minCount: 7,
+    },
+    {
+      type: "actionCalled",
+      actionName: "START_CODING_TASK",
+      status: "success",
+      minCount: 2,
     },
     {
       type: "selectedActionArguments",
@@ -449,6 +807,10 @@ export default scenario({
         /wallet:refresh/,
         /remote-ledger/,
         /settings/,
+        /feed-board/,
+        /"create"/,
+        /"edit"/,
+        /"delete"/,
       ],
     },
     {
@@ -458,8 +820,22 @@ export default scenario({
         /"list"/,
         /"launch"/,
         /"relaunch"/,
+        /"load_from_directory"/,
+        /"create"/,
         /run-feed-launch-1/,
         /run-feed-relaunch-2/,
+        /loaded-console/,
+        /editTarget/,
+      ],
+    },
+    {
+      type: "selectedActionArguments",
+      actionName: "START_CODING_TASK",
+      includesAll: [
+        /edit-view:feed-board/,
+        /edit-app:feed/,
+        /APP_CREATE_DONE/,
+        /PLUGIN_CREATE_DONE/,
       ],
     },
     {
@@ -533,7 +909,10 @@ export default scenario({
             body: { name: "feed" },
             method: "POST",
             pathname: "/api/apps/launch",
-            response: { body: launchResponse("run-feed-launch-1"), status: 200 },
+            response: {
+              body: launchResponse("run-feed-launch-1"),
+              status: 200,
+            },
             search: "",
           },
           {
@@ -565,6 +944,51 @@ export default scenario({
               body: launchResponse("run-feed-relaunch-2"),
               status: 200,
             },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: { name: "@elizaos/plugin-feed" },
+            method: "POST",
+            pathname: "/api/apps/stop",
+            response: {
+              body: unloadPluginResponse("@elizaos/plugin-feed"),
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/apps/installed",
+            response: { body: installedApps, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/apps/installed",
+            response: { body: installedApps, status: 200 },
             search: "",
           },
         ];

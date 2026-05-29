@@ -89,6 +89,14 @@ type ScenarioApiServer = {
   close: () => Promise<void>;
 };
 
+type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
+  scenarioLlmFixtures?: {
+    clear?: () => void;
+    resetConsumption?: () => void;
+  };
+  assertScenarioLlmFixturesConsumed?: () => void;
+};
+
 type SeedRunResult = {
   now: Date;
   error?: string;
@@ -103,6 +111,32 @@ function stringifyForJudge(value: unknown, maxLength = 1_200): string {
     return `${serialized.slice(0, maxLength - 3)}...`;
   } catch {
     return String(value);
+  }
+}
+
+function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
+  const registry = (runtime as RuntimeWithScenarioLlmFixtures)
+    .scenarioLlmFixtures;
+  if (typeof registry?.clear === "function") {
+    registry.clear();
+    return;
+  }
+  registry?.resetConsumption?.();
+}
+
+function assertScenarioLlmFixturesConsumed(
+  runtime: AgentRuntime,
+): string | undefined {
+  const assertConsumed = (runtime as RuntimeWithScenarioLlmFixtures)
+    .assertScenarioLlmFixturesConsumed;
+  if (typeof assertConsumed !== "function") {
+    return undefined;
+  }
+  try {
+    assertConsumed();
+    return undefined;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
   }
 }
 
@@ -1538,6 +1572,8 @@ export async function runScenario(
   let apiServer: ScenarioApiServer | null = null;
 
   try {
+    resetScenarioLlmFixtures(runtime);
+
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", primaryRoom.userId, false);
     (
       runtime as {
@@ -1763,6 +1799,15 @@ export async function runScenario(
           detail: result.detail,
         });
       }
+    }
+
+    const fixtureFailure = assertScenarioLlmFixturesConsumed(runtime);
+    if (fixtureFailure) {
+      report.status = "failed";
+      report.failedAssertions.push({
+        label: "llmFixtures",
+        detail: fixtureFailure,
+      });
     }
 
     const cleanupFailures = await runScenarioCleanups(scenario);

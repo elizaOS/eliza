@@ -1,3 +1,4 @@
+import { ModelType } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -9,6 +10,12 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpStub,
 } from "./_helpers/app-control-http-stub";
+
+type RuntimeWithScenarioLlmFixtures = {
+  scenarioLlmFixtures?: {
+    register: (...fixtures: Array<Record<string, unknown>>) => void;
+  };
+};
 
 function readParameters(action: CapturedAction): Record<string, unknown> {
   return action.parameters &&
@@ -88,8 +95,51 @@ export default scenario({
     {
       type: "custom",
       name: "stub local view API for deterministic shell actions",
-      apply: () => {
+      apply: (ctx) => {
         resetAppControlHttpStub();
+        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        runtime.scenarioLlmFixtures?.register({
+          name: "pr-smoke-deterministic-reply",
+          match: {
+            modelType: ModelType.RESPONSE_HANDLER,
+            input: "hello deterministic proxy",
+            toolName: "HANDLE_RESPONSE",
+          },
+          response: {
+            text: JSON.stringify({
+              shouldRespond: "RESPOND",
+              contexts: ["simple"],
+              intents: ["deterministic reply"],
+              replyText: "deterministic-test-response: hello deterministic proxy",
+              candidateActionNames: [],
+              facts: [],
+              relationships: [],
+              addressedTo: [],
+              emotion: "none",
+            }),
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: "call-pr-smoke-handle-response",
+                name: "HANDLE_RESPONSE",
+                type: "function",
+                arguments: {
+                  shouldRespond: "RESPOND",
+                  contexts: ["simple"],
+                  intents: ["deterministic reply"],
+                  replyText:
+                    "deterministic-test-response: hello deterministic proxy",
+                  candidateActionNames: [],
+                  facts: [],
+                  relationships: [],
+                  addressedTo: [],
+                  emotion: "none",
+                },
+              },
+            ],
+          },
+          times: 1,
+        });
         registerAppControlHttpHandler((request) => {
           if (!request.pathname.startsWith("/api/views")) return undefined;
           if (request.pathname.endsWith("/interact")) {

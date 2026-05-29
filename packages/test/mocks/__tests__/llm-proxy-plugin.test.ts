@@ -1138,6 +1138,33 @@ describe("deterministic LLM proxy plugin", () => {
     ]);
   });
 
+  it("clears fixtures and call diagnostics between strict scenario runs", async () => {
+    const plugin = createDeterministicLlmProxyPlugin({ strict: true });
+    plugin.llmFixtures.register({
+      name: "scenario-one",
+      match: {
+        modelType: ModelType.TEXT_SMALL,
+        input: "first scenario",
+      },
+      response: { ok: true },
+      times: 1,
+    });
+
+    await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+      messages: [{ role: "user", content: "first scenario" }],
+    });
+    expect(plugin.getFixtureDiagnostics().calls).toHaveLength(1);
+
+    plugin.llmFixtures.clear();
+
+    expect(plugin.getFixtureDiagnostics()).toEqual({
+      calls: [],
+      fixtures: [],
+      unexpectedCalls: [],
+    });
+    plugin.assertFixturesConsumed();
+  });
+
   it("lets tests override responses dynamically from model type and action", async () => {
     const plugin = createDeterministicLlmProxyPlugin({
       resolve(call) {

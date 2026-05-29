@@ -90,6 +90,7 @@ export interface LlmProxyFixtureDiagnostic {
 export interface DeterministicLlmFixtureRegistry {
   register(...fixtures: LlmProxyFixture[]): void;
   assertConsumed(): void;
+  clear(): void;
   diagnostics(): LlmProxyFixtureDiagnostics;
   resetConsumption(): void;
 }
@@ -252,6 +253,11 @@ export function createDeterministicLlmFixtureRegistry(
         fixtures: entries.map(fixtureDiagnostic),
         unexpectedCalls: [...unexpectedCalls],
       };
+    },
+    clear(): void {
+      entries.length = 0;
+      calls.length = 0;
+      unexpectedCalls.length = 0;
     },
     resetConsumption(): void {
       calls.length = 0;

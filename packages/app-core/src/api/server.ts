@@ -1,4 +1,3 @@
-import "@elizaos/shared";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -34,7 +33,7 @@ import {
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
-import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
+import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
 import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
@@ -55,7 +54,7 @@ export {
   ensureCloudTtsApiKeyAlias,
   resolveCloudTtsBaseUrl,
   resolveElevenLabsApiKeyForCloudMode,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/server-cloud-tts";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -122,16 +121,16 @@ async function getLocalInferenceRoutes() {
   return _localInferenceRoutes;
 }
 
-// === Phase 4F: plugin compat routes moved to @elizaos/plugin-registry ===
-import { handlePluginsCompatRoutes } from "@elizaos/plugin-registry";
 import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
-  isElizaSettingsDebugEnabled,
   sanitizeIdentifier,
-  settingsDebugCloudSummary,
   sqlLiteral,
-} from "@elizaos/shared";
+} from "@elizaos/shared/utils/sql-compat";
+import {
+  isElizaSettingsDebugEnabled,
+  settingsDebugCloudSummary,
+} from "@elizaos/shared/settings-debug";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
@@ -157,7 +156,10 @@ import { handleWorkbenchCompatRoutes } from "./workbench-compat-routes";
 
 const _require = createRequire(import.meta.url);
 
-import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
+import {
+  syncAppEnvToEliza,
+  syncElizaEnvAliases,
+} from "@elizaos/shared/utils/env";
 
 // Lazy-imported to avoid circular dependency with runtime/eliza.ts
 const lazyEnsureTTS = () =>
@@ -172,7 +174,20 @@ const _LOCAL_TTS_PROVIDER_IDS = [
   "eliza-aosp-llama",
 ] as const;
 
-import { clearCloudSecrets, getCloudSecret } from "@elizaos/shared";
+let pluginRegistryApiPromise:
+  | Promise<typeof import("@elizaos/plugin-registry")>
+  | undefined;
+function getPluginRegistryApi(): Promise<
+  typeof import("@elizaos/plugin-registry")
+> {
+  pluginRegistryApiPromise ??= import("@elizaos/plugin-registry");
+  return pluginRegistryApiPromise;
+}
+
+import {
+  clearCloudSecrets,
+  getCloudSecret,
+} from "@elizaos/shared/elizacloud/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
@@ -185,7 +200,7 @@ import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-acti
 import {
   ensureCloudTtsApiKeyAlias,
   mirrorCompatHeaders,
-} from "@elizaos/shared";
+} from "@elizaos/shared/elizacloud/server-cloud-tts";
 import { filterConfigEnvForResponse as _filterConfigEnvForResponse } from "./server-config-filter";
 
 // ---------------------------------------------------------------------------
@@ -846,8 +861,13 @@ async function handleCompatRoute(
   // steward-compat, wallet-trade-compat) are now served via
   // stewardPlugin.routes (rawPath) on the runtime plugin route system.
 
-  // Plugin routes — extracted to plugins-routes.ts
-  if (await handlePluginsCompatRoutes(req, res, state)) return true;
+  // Plugin routes — extracted to @elizaos/plugin-registry. That package pulls
+  // in heavyweight registry/install code, so keep it out of the startup path
+  // and only load it for plugin-management requests.
+  if (url.pathname.startsWith("/api/plugins")) {
+    const { handlePluginsCompatRoutes } = await getPluginRegistryApi();
+    if (await handlePluginsCompatRoutes(req, res, state)) return true;
+  }
 
   // Catalog routes — registry SoT projections (apps, plugins, connectors)
   if (await handleCatalogRoutes(req, res, state)) return true;
@@ -863,9 +883,7 @@ async function handleCompatRoute(
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
-    const { buildPluginListResponse } = await import(
-      "@elizaos/plugin-registry"
-    );
+    const { buildPluginListResponse } = await getPluginRegistryApi();
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);
     if (!plugin) {

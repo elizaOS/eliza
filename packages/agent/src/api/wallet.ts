@@ -1,6 +1,6 @@
 /**
  * Wallet key generation, address derivation, and balance/NFT fetching.
- * Uses Node crypto primitives + ethers (keccak-256 / checksum).
+ * Uses Node crypto primitives + Noble curves/hashes for key derivation.
  * Balance data from Alchemy/Ankr (EVM), NodeReal/QuickNode (BSC RPC),
  * and Helius (Solana) REST APIs.
  *
@@ -20,7 +20,7 @@ import type {
   WalletKeys,
 } from "@elizaos/shared";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import * as ethers from "ethers";
+import { keccak_256 } from "@noble/hashes/sha3.js";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
 import { computeValueUsd } from "./wallet-dex-prices.ts";
 
@@ -236,9 +236,22 @@ export function deriveEvmAddress(privateKeyHex: string): string {
   const pubKey = secp256k1.getPublicKey(Buffer.from(cleaned, "hex"), false); // uncompressed (65 bytes)
   const pubNoPrefix = pubKey.subarray(1); // drop the 04 prefix
   // Ethereum address = last 20 bytes of keccak-256(pubkey).
-  const hash = ethers.keccak256(pubNoPrefix);
-  const raw = hash.slice(26); // drop '0x' + first 24 hex chars (12 bytes)
-  return ethers.getAddress(`0x${raw}`);
+  const hash = Buffer.from(keccak_256(pubNoPrefix)).toString("hex");
+  const raw = hash.slice(-40);
+  return toChecksumEvmAddress(raw);
+}
+
+function toChecksumEvmAddress(addressHex: string): string {
+  const lower = addressHex.toLowerCase().replace(/^0x/, "");
+  const hash = Buffer.from(keccak_256(Buffer.from(lower, "ascii"))).toString(
+    "hex",
+  );
+  let out = "0x";
+  for (let i = 0; i < lower.length; i += 1) {
+    const char = lower[i];
+    out += Number.parseInt(hash[i], 16) >= 8 ? char.toUpperCase() : char;
+  }
+  return out;
 }
 
 // ── Solana key derivation (Ed25519 via Node crypto) ───────────────────

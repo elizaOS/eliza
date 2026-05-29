@@ -44,29 +44,31 @@ import type {
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,
-  isMobilePlatform,
   normalizeCharacterLanguage,
-  parseClampedInteger,
+  resolveStylePresetByAvatarIndex,
+} from "@elizaos/shared/character-presets";
+import {
+  isMobilePlatform,
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
-  resolveStylePresetByAvatarIndex,
-} from "@elizaos/shared";
+} from "@elizaos/shared/runtime-env";
+import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
 // imported via module-scope top-level await, which forced both plugins to
 // load (and pulled their transitive native deps) whenever anything imported
 // `@elizaos/agent`. That blocked container boot in cloud sandboxes. They are
-// now lazily loaded. X402 is loaded during `startApiServer` because route
-// validation is synchronous; browser is loaded on first browser route hit so it
-// does not gate API bind.
+// now lazily loaded. X402 is loaded only when runtime routes need validation;
+// browser is loaded on first browser route hit so neither gates API bind.
 type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
 type X402PluginModule = typeof import("@elizaos/plugin-x402");
 
 let browserPluginModule: BrowserPluginModule | null = null;
 let x402PluginModule: X402PluginModule | null = null;
 let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
+let x402PluginModulePromise: Promise<X402PluginModule> | null = null;
 
 async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   if (browserPluginModule) return browserPluginModule;
@@ -79,18 +81,13 @@ async function getBrowserPlugin(): Promise<BrowserPluginModule> {
   return browserPluginModulePromise;
 }
 
-function getX402Plugin(): X402PluginModule {
-  if (!x402PluginModule) {
-    throw new Error(
-      "[server] @elizaos/plugin-x402 accessed before initializeServerOptionalPlugins()",
-    );
-  }
-  return x402PluginModule;
-}
-
-async function initializeServerOptionalPlugins(): Promise<void> {
-  if (x402PluginModule) return;
-  x402PluginModule = await import("@elizaos/plugin-x402");
+async function getX402Plugin(): Promise<X402PluginModule> {
+  if (x402PluginModule) return x402PluginModule;
+  x402PluginModulePromise ??= import("@elizaos/plugin-x402").then((x402) => {
+    x402PluginModule = x402;
+    return x402;
+  });
+  return x402PluginModulePromise;
 }
 
 const optionalPluginImports = {
@@ -169,6 +166,12 @@ let walletApiPromise:
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
   walletApiPromise ??= import("@elizaos/plugin-wallet");
   return walletApiPromise;
+}
+
+let coreWalletApiPromise: Promise<typeof import("./wallet.ts")> | undefined;
+function getCoreWalletApi(): Promise<typeof import("./wallet.ts")> {
+  coreWalletApiPromise ??= import("./wallet.ts");
+  return coreWalletApiPromise;
 }
 
 let pluginRegistryApiPromise:
@@ -312,18 +315,6 @@ import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
 import { registerBuiltinViews } from "./views-registry.ts";
 import { handleViewsRoutes } from "./views-routes.ts";
-import {
-  deriveSolanaAddress,
-  fetchEvmBalances,
-  fetchSolanaBalances,
-  fetchSolanaNativeBalanceViaRpc,
-  generateWalletForChain,
-  getWalletAddresses,
-  importWallet,
-  initStewardWalletCache,
-  setSolanaWalletEnv,
-  validatePrivateKey,
-} from "./wallet.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -767,6 +758,7 @@ async function handleBuiltinOptionalRoutes(
   method: string,
 ): Promise<boolean> {
   if (method === "GET" && pathname === "/api/wallet/steward-status") {
+    const { getWalletAddresses } = await getCoreWalletApi();
     const addresses = getWalletAddresses();
     json(res, {
       configured: false,
@@ -1827,7 +1819,14 @@ async function handleRequest(
       hasPersistedFirstRunState,
       ensureWalletKeysInEnvAndConfig,
       getWalletAddresses:
-        coerce<FirstRunRouteArg["getWalletAddresses"]>(getWalletAddresses),
+        pathname === "/api/wallet/keys"
+          ? coerce<FirstRunRouteArg["getWalletAddresses"]>(
+              (await getCoreWalletApi()).getWalletAddresses,
+            )
+          : coerce<FirstRunRouteArg["getWalletAddresses"]>(() => ({
+              evmAddress: null,
+              solanaAddress: null,
+            })),
       pickRandomNames,
       getStylePresets:
         coerce<FirstRunRouteArg["getStylePresets"]>(getStylePresets),
@@ -2246,6 +2245,17 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/wallet/")) {
     const { handleWalletRoutes } = await getWalletApi();
+    const {
+      deriveSolanaAddress,
+      fetchEvmBalances,
+      fetchSolanaBalances,
+      fetchSolanaNativeBalanceViaRpc,
+      generateWalletForChain,
+      getWalletAddresses,
+      importWallet,
+      setSolanaWalletEnv,
+      validatePrivateKey,
+    } = await getCoreWalletApi();
     if (
       await handleWalletRoutes({
         req,
@@ -2319,7 +2329,10 @@ async function handleRequest(
       error,
       readJsonBody,
       deps: {
-        getWalletAddresses,
+        getWalletAddresses:
+          pathname === "/api/agent/self-status"
+            ? (await getCoreWalletApi()).getWalletAddresses
+            : () => ({ evmAddress: null, solanaAddress: null }),
         resolveWalletCapabilityStatus: coerce<
           AgentStatusRouteArg["deps"]["resolveWalletCapabilityStatus"]
         >(resolveWalletCapabilityStatus),
@@ -2962,10 +2975,6 @@ export async function startApiServer(opts?: {
 }> {
   const apiStartTime = Date.now();
   logger.debug(`[eliza-api] startApiServer called`);
-  await initializeServerOptionalPlugins();
-  logger.debug(
-    `[eliza-api] Optional plugins initialized (${Date.now() - apiStartTime}ms)`,
-  );
 
   // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
   // the renderer's hardcoded API base reaches this server. CLI-mode
@@ -3036,6 +3045,7 @@ export async function startApiServer(opts?: {
   if (blockOnStewardWalletCache) {
     // Cloud/provisioned environments can opt into strict startup semantics
     // when wallet addresses must be available before the first request.
+    const { initStewardWalletCache } = await getCoreWalletApi();
     await initStewardWalletCache();
   }
 
@@ -3128,7 +3138,6 @@ export async function startApiServer(opts?: {
     connectorHealthMonitor: null,
     whatsappPairingSessions: new Map(),
   };
-  const trainingServiceCtor = await resolveTrainingServiceCtor();
   const trainingServiceOptions = {
     getRuntime: () => state.runtime,
     getConfig: () => state.config,
@@ -3137,15 +3146,23 @@ export async function startApiServer(opts?: {
       saveElizaConfig(nextConfig);
     },
   };
-  if (trainingServiceCtor) {
-    state.trainingService = new trainingServiceCtor(trainingServiceOptions);
-    await setActiveTrainingServiceIfAvailable(state.trainingService);
-  } else {
-    logger.info(
-      "[eliza-api] Training service package unavailable; training routes will be disabled",
-    );
+  const blockOnTrainingService =
+    process.env.ELIZA_API_TRAINING_BLOCKING?.trim() === "1";
+  const attachTrainingService = async (): Promise<void> => {
+    if (state.trainingService) return;
+    const trainingServiceCtor = await resolveTrainingServiceCtor();
+    if (trainingServiceCtor) {
+      state.trainingService = new trainingServiceCtor(trainingServiceOptions);
+      await setActiveTrainingServiceIfAvailable(state.trainingService);
+    } else {
+      logger.info(
+        "[eliza-api] Training service package unavailable; training routes will be disabled",
+      );
+    }
+  };
+  if (blockOnTrainingService) {
+    await attachTrainingService();
   }
-  // Register immediately so /api/training routes are available without a startup race.
   const configuredAdminEntityId = config.agents?.defaults?.adminEntityId;
   if (configuredAdminEntityId && isUuidLike(configuredAdminEntityId)) {
     state.adminEntityId = configuredAdminEntityId;
@@ -3538,13 +3555,15 @@ export async function startApiServer(opts?: {
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = () => {
     if (!blockOnStewardWalletCache) {
-      void initStewardWalletCache().catch((err) => {
-        logger.debug(
-          `[eliza-api] Steward wallet cache init failed after listen: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
+      void getCoreWalletApi()
+        .then(({ initStewardWalletCache }) => initStewardWalletCache())
+        .catch((err) => {
+          logger.debug(
+            `[eliza-api] Steward wallet cache init failed after listen: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
     }
 
     void (async () => {
@@ -3570,6 +3589,7 @@ export async function startApiServer(opts?: {
     })();
 
     void (async () => {
+      await attachTrainingService();
       const trainingService = state.trainingService;
       if (!trainingService) return;
       try {
@@ -4344,13 +4364,16 @@ export async function startApiServer(opts?: {
     registerClientChatSendHandler(opts.runtime, state);
   }
 
-  const assertX402RoutesValid = (rt: AgentRuntime | null | undefined): void => {
+  const assertX402RoutesValid = async (
+    rt: AgentRuntime | null | undefined,
+  ): Promise<void> => {
     if (!rt?.routes?.length) return;
     const agentId =
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
         : undefined;
-    const result = getX402Plugin().validateX402Startup(
+    const { validateX402Startup } = await getX402Plugin();
+    const result = validateX402Startup(
       rt.routes as Route[],
       rt.character,
       {
@@ -4375,7 +4398,13 @@ export async function startApiServer(opts?: {
 
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
-    assertX402RoutesValid(rt);
+    void assertX402RoutesValid(rt).catch((err) => {
+      logger.error(
+        `[x402] runtime route validation failed after update: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    });
     state.runtime = rt;
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
@@ -4451,11 +4480,7 @@ export async function startApiServer(opts?: {
   logger.debug(
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
-  try {
-    assertX402RoutesValid(state.runtime);
-  } catch (err) {
-    return Promise.reject(err);
-  }
+  await assertX402RoutesValid(state.runtime);
   return new Promise((resolve, reject) => {
     let currentPort = port;
     const strictPortBinding = strictPortBindingEnabled();

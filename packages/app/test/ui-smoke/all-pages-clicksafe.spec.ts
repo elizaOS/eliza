@@ -1,5 +1,9 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { DIRECT_ROUTE_CASES, escapeRegExp } from "./apps-session-route-cases";
+import {
+  DIRECT_ROUTE_CASES,
+  SAFE_APP_TILE_CASES,
+  escapeRegExp,
+} from "./apps-session-route-cases";
 import {
   assertReadyChecks,
   installDefaultAppRoutes,
@@ -273,7 +277,12 @@ const SAFE_APP_TILES: readonly {
   name: string;
   expectedPath: RegExp;
   readyChecks: readonly ReadyCheck[];
-}[] = [];
+}[] = SAFE_APP_TILE_CASES.map((tileCase) => ({
+  testId: tileCase.testId,
+  name: tileCase.name,
+  expectedPath: new RegExp(`${escapeRegExp(tileCase.expectedPath)}$`),
+  readyChecks: tileCase.readyChecks,
+}));
 
 const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Basics$/,

@@ -4,6 +4,7 @@ import {
   loadScenarioTestMocksForTests,
   resolveScenarioProviderConfig,
   shouldUseDeterministicLlmProxy,
+  shouldUseStrictDeterministicLlmProxy,
 } from "./runtime-factory";
 
 describe("scenario runtime deterministic LLM proxy mode", () => {
@@ -18,6 +19,15 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
     "ELIZA_SCENARIO_USE_LLM_PROXY",
   ])("can be enabled by %s", (name) => {
     expect(shouldUseDeterministicLlmProxy({}, { [name]: "1" })).toBe(true);
+  });
+
+  it.each([
+    "SCENARIO_LLM_PROXY_STRICT",
+    "ELIZA_SCENARIO_LLM_PROXY_STRICT",
+  ])("can enable strict fixture mode by %s", (name) => {
+    expect(shouldUseStrictDeterministicLlmProxy({ [name]: "true" })).toBe(
+      true,
+    );
   });
 
   it("resolves a no-key deterministic provider config in proxy mode", () => {

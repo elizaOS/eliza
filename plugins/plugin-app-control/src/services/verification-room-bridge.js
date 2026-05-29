@@ -59,19 +59,19 @@ const VERDICT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 const ATTACH_RETRY_INTERVAL_MS = 500;
 const ATTACH_MAX_RETRIES = 60;
 function isRecord(value) {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function readString(record, key) {
-	const value = record[key];
-	return typeof value === "string" && value.trim().length > 0
-		? value
-		: undefined;
+    const value = record[key];
+    return typeof value === "string" && value.trim().length > 0
+        ? value
+        : undefined;
 }
 function readNumber(record, key) {
-	const value = record[key];
-	return typeof value === "number" && Number.isFinite(value)
-		? value
-		: undefined;
+    const value = record[key];
+    return typeof value === "number" && Number.isFinite(value)
+        ? value
+        : undefined;
 }
 /**
  * Decode a SwarmEvent's data payload into a normalized bridge payload, or
@@ -80,208 +80,198 @@ function readNumber(record, key) {
  * non-actionable events — callers ignore those silently.
  */
 function decodeEvent(event) {
-	if (event.type !== "task_complete" && event.type !== "escalation") {
-		return null;
-	}
-	if (!isRecord(event.data)) return null;
-	const verification = isRecord(event.data.verification)
-		? event.data.verification
-		: null;
-	if (!verification) return null;
-	if (verification.source !== "custom-validator") return null;
-	const validator = isRecord(verification.validator)
-		? verification.validator
-		: null;
-	if (!validator || validator.service !== APP_VERIFICATION_SERVICE) return null;
-	if (
-		validator.method !== VERIFY_APP_METHOD &&
-		validator.method !== VERIFY_PLUGIN_METHOD
-	) {
-		return null;
-	}
-	// Validator params live on the `verification` payload (sibling of the
-	// `validator` descriptor) — that's how swarm-decision-loop.ts emits them.
-	const params = isRecord(verification.params) ? verification.params : null;
-	if (!params) return null;
-	const method = validator.method;
-	const targetName =
-		method === VERIFY_APP_METHOD
-			? readString(params, "appName")
-			: readString(params, "pluginName");
-	if (!targetName) return null;
-	const originRoomId = readString(event.data, "originRoomId");
-	if (!originRoomId) return null;
-	const verdict = verification.verdict;
-	if (verdict !== "pass" && verdict !== "fail") return null;
-	return {
-		originRoomId,
-		verdict,
-		method,
-		targetName,
-		label: readString(event.data, "label"),
-		workdir: readString(event.data, "workdir"),
-		summary: readString(event.data, "summary"),
-		retryCount: readNumber(event.data, "retryCount"),
-		maxRetries: readNumber(event.data, "maxRetries"),
-	};
+    if (event.type !== "task_complete" && event.type !== "escalation") {
+        return null;
+    }
+    if (!isRecord(event.data))
+        return null;
+    const verification = isRecord(event.data.verification)
+        ? event.data.verification
+        : null;
+    if (!verification)
+        return null;
+    if (verification.source !== "custom-validator")
+        return null;
+    const validator = isRecord(verification.validator)
+        ? verification.validator
+        : null;
+    if (!validator || validator.service !== APP_VERIFICATION_SERVICE)
+        return null;
+    if (validator.method !== VERIFY_APP_METHOD &&
+        validator.method !== VERIFY_PLUGIN_METHOD) {
+        return null;
+    }
+    // Validator params live on the `verification` payload (sibling of the
+    // `validator` descriptor) — that's how swarm-decision-loop.ts emits them.
+    const params = isRecord(verification.params) ? verification.params : null;
+    if (!params)
+        return null;
+    const method = validator.method;
+    const targetName = method === VERIFY_APP_METHOD
+        ? readString(params, "appName")
+        : readString(params, "pluginName");
+    if (!targetName)
+        return null;
+    const originRoomId = readString(event.data, "originRoomId");
+    if (!originRoomId)
+        return null;
+    const verdict = verification.verdict;
+    if (verdict !== "pass" && verdict !== "fail")
+        return null;
+    return {
+        originRoomId,
+        verdict,
+        method,
+        targetName,
+        label: readString(event.data, "label"),
+        workdir: readString(event.data, "workdir"),
+        summary: readString(event.data, "summary"),
+        retryCount: readNumber(event.data, "retryCount"),
+        maxRetries: readNumber(event.data, "maxRetries"),
+    };
 }
 function buildPassMessage(payload) {
-	const isApp = payload.method === VERIFY_APP_METHOD;
-	const noun = isApp ? "app" : "plugin";
-	const action = isApp
-		? `Reply 'launch ${payload.targetName}' to open it.`
-		: `Reply 'reinject ${payload.targetName}' to load it.`;
-	return `${payload.targetName} ${noun} built and verified. ${action}`;
+    const isApp = payload.method === VERIFY_APP_METHOD;
+    const noun = isApp ? "app" : "plugin";
+    const action = isApp
+        ? `Reply 'launch ${payload.targetName}' to open it.`
+        : `Reply 'reinject ${payload.targetName}' to load it.`;
+    return `${payload.targetName} ${noun} built and verified. ${action}`;
 }
 function buildFailMessage(payload) {
-	const retries =
-		typeof payload.retryCount === "number"
-			? `${payload.retryCount}${typeof payload.maxRetries === "number" ? `/${payload.maxRetries}` : ""}`
-			: "the maximum";
-	const summary = payload.summary ?? "no further details available";
-	const reply = "Reply 'retry' to keep going or 'cancel' to stop.";
-	return `${payload.targetName} hit verification failure ${retries} time(s). Last failure: ${summary}. ${reply}`;
+    const retries = typeof payload.retryCount === "number"
+        ? `${payload.retryCount}${typeof payload.maxRetries === "number" ? `/${payload.maxRetries}` : ""}`
+        : "the maximum";
+    const summary = payload.summary ?? "no further details available";
+    const reply = "Reply 'retry' to keep going or 'cancel' to stop.";
+    return `${payload.targetName} hit verification failure ${retries} time(s). Last failure: ${summary}. ${reply}`;
 }
 export class VerificationRoomBridgeService extends Service {
-	static serviceType = VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE;
-	capabilityDescription =
-		"Posts the AppVerificationService verdict back into the originating chat room when the orchestrator's custom-validator branch fires task_complete / escalation events.";
-	unsubscribe = null;
-	attachRetryTimer = null;
-	attachRetryAttempts = 0;
-	/**
-	 * Dedupe map: `${sessionId}:${verdict}` -> expiresAt epoch ms. Drops
-	 * replayed verdict events that would otherwise post duplicate chat
-	 * memories. Entries age out via `VERDICT_DEDUPE_TTL_MS`; we sweep
-	 * opportunistically on each insert (single-digit concurrent verdicts
-	 * in practice).
-	 */
-	verdictDedupe = new Map();
-	static async start(runtime) {
-		const service = new VerificationRoomBridgeService(runtime);
-		service.attach();
-		return service;
-	}
-	async stop() {
-		// Cancel any pending attach retry before tearing down so a late retry
-		// can't subscribe to a coordinator after stop() returned.
-		if (this.attachRetryTimer) {
-			clearTimeout(this.attachRetryTimer);
-			this.attachRetryTimer = null;
-		}
-		const unsub = this.unsubscribe;
-		// Always clear the field first so a retry of stop() can't double-call.
-		this.unsubscribe = null;
-		if (unsub === null) return;
-		if (typeof unsub !== "function") {
-			logger.warn(
-				"[VerificationRoomBridge] stored unsubscribe was not a function; skipping",
-			);
-			return;
-		}
-		// Single-purpose catch: a misbehaving coordinator must not crash
-		// service teardown. Translate the failure into a structured warn
-		// log and continue.
-		try {
-			unsub();
-		} catch (err) {
-			logger.warn(
-				`[VerificationRoomBridge] unsubscribe threw during stop(): ${err instanceof Error ? err.message : String(err)}`,
-			);
-		}
-	}
-	attach() {
-		const coordinator = this.runtime.getService("SWARM_COORDINATOR");
-		if (!coordinator || typeof coordinator.subscribe !== "function") {
-			// Orchestrator plugin isn't loaded yet — but plugin start ordering
-			// is not deterministic, so the orchestrator may register its
-			// SwarmCoordinator after we ran. Retry on a backoff up to
-			// `ATTACH_MAX_RETRIES` so the bridge ends up wired whenever the
-			// orchestrator IS in the plugin set. After the retry budget
-			// expires we give up quietly — `plugin-app-control` still works
-			// for non-create flows without the bridge.
-			this.scheduleAttachRetry();
-			return;
-		}
-		// Clear any pending retry timer — we succeeded on this pass.
-		if (this.attachRetryTimer) {
-			clearTimeout(this.attachRetryTimer);
-			this.attachRetryTimer = null;
-		}
-		this.unsubscribe = coordinator.subscribe((event) => {
-			this.handleEvent(event).catch((err) => {
-				logger.error(
-					`[VerificationRoomBridge] handleEvent failed: ${err instanceof Error ? err.message : String(err)}`,
-				);
-			});
-		});
-		logger.info(
-			`[VerificationRoomBridge] subscribed to SWARM_COORDINATOR event stream${
-				this.attachRetryAttempts > 0
-					? ` (after ${this.attachRetryAttempts} retr${this.attachRetryAttempts === 1 ? "y" : "ies"})`
-					: ""
-			}`,
-		);
-	}
-	scheduleAttachRetry() {
-		if (this.attachRetryAttempts >= ATTACH_MAX_RETRIES) {
-			// Final attempt exhausted — log once at debug level so this is
-			// silent in deployments that genuinely don't have the
-			// orchestrator plugin enabled (the common case for non-create
-			// agent deployments) while still being grep-able.
-			logger.debug(
-				`[VerificationRoomBridge] SWARM_COORDINATOR service still has no subscribe() after ${ATTACH_MAX_RETRIES} retries; bridge inactive. Verification verdicts will not be posted back to chat.`,
-			);
-			return;
-		}
-		this.attachRetryAttempts += 1;
-		this.attachRetryTimer = setTimeout(() => {
-			this.attachRetryTimer = null;
-			this.attach();
-		}, ATTACH_RETRY_INTERVAL_MS);
-	}
-	async handleEvent(event) {
-		const payload = decodeEvent(event);
-		if (!payload) return;
-		const dedupeKey = `${event.sessionId}:${payload.verdict}`;
-		const now = Date.now();
-		this.sweepExpiredDedupe(now);
-		const existingExpiry = this.verdictDedupe.get(dedupeKey);
-		if (existingExpiry !== undefined && existingExpiry > now) {
-			logger.debug(
-				`[VerificationRoomBridge] dedupe drop sessionId=${event.sessionId} verdict=${payload.verdict}`,
-			);
-			return;
-		}
-		this.verdictDedupe.set(dedupeKey, now + VERDICT_DEDUPE_TTL_MS);
-		const text =
-			payload.verdict === "pass"
-				? buildPassMessage(payload)
-				: buildFailMessage(payload);
-		const memory = {
-			id: randomUUID(),
-			entityId: this.runtime.agentId,
-			agentId: this.runtime.agentId,
-			roomId: payload.originRoomId,
-			createdAt: Date.now(),
-			content: {
-				text,
-				source: "verification-room-bridge",
-				// Structured field so UI and downstream consumers can filter by
-				// verdict without text-parsing the human-readable message.
-				metadata: { verdict: payload.verdict },
-			},
-		};
-		await this.runtime.createMemory(memory, "messages");
-		logger.info(
-			`[VerificationRoomBridge] posted ${payload.verdict} verdict for ${payload.targetName} into room=${payload.originRoomId}`,
-		);
-	}
-	sweepExpiredDedupe(now) {
-		for (const [key, expiresAt] of this.verdictDedupe) {
-			if (expiresAt <= now) this.verdictDedupe.delete(key);
-		}
-	}
+    static serviceType = VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE;
+    capabilityDescription = "Posts the AppVerificationService verdict back into the originating chat room when the orchestrator's custom-validator branch fires task_complete / escalation events.";
+    unsubscribe = null;
+    attachRetryTimer = null;
+    attachRetryAttempts = 0;
+    /**
+     * Dedupe map: `${sessionId}:${verdict}` -> expiresAt epoch ms. Drops
+     * replayed verdict events that would otherwise post duplicate chat
+     * memories. Entries age out via `VERDICT_DEDUPE_TTL_MS`; we sweep
+     * opportunistically on each insert (single-digit concurrent verdicts
+     * in practice).
+     */
+    verdictDedupe = new Map();
+    static async start(runtime) {
+        const service = new VerificationRoomBridgeService(runtime);
+        service.attach();
+        return service;
+    }
+    async stop() {
+        // Cancel any pending attach retry before tearing down so a late retry
+        // can't subscribe to a coordinator after stop() returned.
+        if (this.attachRetryTimer) {
+            clearTimeout(this.attachRetryTimer);
+            this.attachRetryTimer = null;
+        }
+        const unsub = this.unsubscribe;
+        // Always clear the field first so a retry of stop() can't double-call.
+        this.unsubscribe = null;
+        if (unsub === null)
+            return;
+        if (typeof unsub !== "function") {
+            logger.warn("[VerificationRoomBridge] stored unsubscribe was not a function; skipping");
+            return;
+        }
+        // Single-purpose catch: a misbehaving coordinator must not crash
+        // service teardown. Translate the failure into a structured warn
+        // log and continue.
+        try {
+            unsub();
+        }
+        catch (err) {
+            logger.warn(`[VerificationRoomBridge] unsubscribe threw during stop(): ${err instanceof Error ? err.message : String(err)}`);
+        }
+    }
+    attach() {
+        const coordinator = this.runtime.getService("SWARM_COORDINATOR");
+        if (!coordinator || typeof coordinator.subscribe !== "function") {
+            // Orchestrator plugin isn't loaded yet — but plugin start ordering
+            // is not deterministic, so the orchestrator may register its
+            // SwarmCoordinator after we ran. Retry on a backoff up to
+            // `ATTACH_MAX_RETRIES` so the bridge ends up wired whenever the
+            // orchestrator IS in the plugin set. After the retry budget
+            // expires we give up quietly — `plugin-app-control` still works
+            // for non-create flows without the bridge.
+            this.scheduleAttachRetry();
+            return;
+        }
+        // Clear any pending retry timer — we succeeded on this pass.
+        if (this.attachRetryTimer) {
+            clearTimeout(this.attachRetryTimer);
+            this.attachRetryTimer = null;
+        }
+        this.unsubscribe = coordinator.subscribe((event) => {
+            this.handleEvent(event).catch((err) => {
+                logger.error(`[VerificationRoomBridge] handleEvent failed: ${err instanceof Error ? err.message : String(err)}`);
+            });
+        });
+        logger.info(`[VerificationRoomBridge] subscribed to SWARM_COORDINATOR event stream${this.attachRetryAttempts > 0
+            ? ` (after ${this.attachRetryAttempts} retr${this.attachRetryAttempts === 1 ? "y" : "ies"})`
+            : ""}`);
+    }
+    scheduleAttachRetry() {
+        if (this.attachRetryAttempts >= ATTACH_MAX_RETRIES) {
+            // Final attempt exhausted — log once at debug level so this is
+            // silent in deployments that genuinely don't have the
+            // orchestrator plugin enabled (the common case for non-create
+            // agent deployments) while still being grep-able.
+            logger.debug(`[VerificationRoomBridge] SWARM_COORDINATOR service still has no subscribe() after ${ATTACH_MAX_RETRIES} retries; bridge inactive. Verification verdicts will not be posted back to chat.`);
+            return;
+        }
+        this.attachRetryAttempts += 1;
+        this.attachRetryTimer = setTimeout(() => {
+            this.attachRetryTimer = null;
+            this.attach();
+        }, ATTACH_RETRY_INTERVAL_MS);
+    }
+    async handleEvent(event) {
+        const payload = decodeEvent(event);
+        if (!payload)
+            return;
+        const dedupeKey = `${event.sessionId}:${payload.verdict}`;
+        const now = Date.now();
+        this.sweepExpiredDedupe(now);
+        const existingExpiry = this.verdictDedupe.get(dedupeKey);
+        if (existingExpiry !== undefined && existingExpiry > now) {
+            logger.debug(`[VerificationRoomBridge] dedupe drop sessionId=${event.sessionId} verdict=${payload.verdict}`);
+            return;
+        }
+        this.verdictDedupe.set(dedupeKey, now + VERDICT_DEDUPE_TTL_MS);
+        const text = payload.verdict === "pass"
+            ? buildPassMessage(payload)
+            : buildFailMessage(payload);
+        const memory = {
+            id: randomUUID(),
+            entityId: this.runtime.agentId,
+            agentId: this.runtime.agentId,
+            roomId: payload.originRoomId,
+            createdAt: Date.now(),
+            content: {
+                text,
+                source: "verification-room-bridge",
+                // Structured field so UI and downstream consumers can filter by
+                // verdict without text-parsing the human-readable message.
+                metadata: { verdict: payload.verdict },
+            },
+        };
+        await this.runtime.createMemory(memory, "messages");
+        logger.info(`[VerificationRoomBridge] posted ${payload.verdict} verdict for ${payload.targetName} into room=${payload.originRoomId}`);
+    }
+    sweepExpiredDedupe(now) {
+        for (const [key, expiresAt] of this.verdictDedupe) {
+            if (expiresAt <= now)
+                this.verdictDedupe.delete(key);
+        }
+    }
 }
 export default VerificationRoomBridgeService;
 //# sourceMappingURL=verification-room-bridge.js.map

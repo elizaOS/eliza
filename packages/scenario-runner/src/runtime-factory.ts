@@ -202,6 +202,15 @@ export function shouldUseDeterministicLlmProxy(
   );
 }
 
+export function shouldUseStrictDeterministicLlmProxy(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    envFlag(env.SCENARIO_LLM_PROXY_STRICT) ||
+    envFlag(env.ELIZA_SCENARIO_LLM_PROXY_STRICT)
+  );
+}
+
 function deterministicLlmProxyProviderConfig(): RuntimeFactoryResult["providerConfig"] {
   return {
     name: DETERMINISTIC_LLM_PROXY_PROVIDER_NAME,
@@ -382,9 +391,23 @@ export async function createScenarioRuntime(
 
   applyRuntimeSettings(runtime, providerConfig.env);
   if (providerConfig.name === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) {
-    await runtime.registerPlugin(createDeterministicLlmProxyPlugin());
+    const deterministicLlmProxyPlugin = createDeterministicLlmProxyPlugin({
+      strict: shouldUseStrictDeterministicLlmProxy(),
+    });
+    await runtime.registerPlugin(deterministicLlmProxyPlugin);
+    const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
+      scenarioLlmFixtures?: unknown;
+      assertScenarioLlmFixturesConsumed?: () => void;
+      getScenarioLlmFixtureDiagnostics?: () => unknown;
+    };
+    runtimeWithScenarioFixtures.scenarioLlmFixtures =
+      deterministicLlmProxyPlugin.llmFixtures;
+    runtimeWithScenarioFixtures.assertScenarioLlmFixturesConsumed =
+      deterministicLlmProxyPlugin.assertFixturesConsumed;
+    runtimeWithScenarioFixtures.getScenarioLlmFixtureDiagnostics =
+      deterministicLlmProxyPlugin.getFixtureDiagnostics;
     logger.info(
-      "[scenario-runner] Registered deterministic LLM proxy; no live provider key required.",
+      `[scenario-runner] Registered deterministic LLM proxy (${shouldUseStrictDeterministicLlmProxy() ? "strict" : "heuristic"} mode); no live provider key required.`,
     );
   } else {
     const providerModule = (await import(
