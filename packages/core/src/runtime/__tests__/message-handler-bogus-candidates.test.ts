@@ -728,6 +728,59 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.reply).toBe(reply);
 	});
 
+	it("treats a candidate that matches an exposed action's SIMILE (not its name) as runnable", () => {
+		// Live regression: the planner named SPAWN_AGENT, which is not the NAME
+		// of any exposed action but IS a simile of the exposed TASKS action. The
+		// old name-only validation dropped it as bogus, so the turn shipped a
+		// bare "On it." ack and never spawned the sub-agent. Simile-aware
+		// matching must treat it as a real, runnable candidate.
+		const tasks = makeAction("TASKS", ["SPAWN_AGENT", "DELEGATE"]);
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: ["SPAWN_AGENT"],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: [tasks] },
+		);
+
+		// Matched as a simile of TASKS → runnable → promotes to planning, not
+		// silently dropped to a simple ack.
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SPAWN_AGENT"]);
+	});
+
+	it("still drops a candidate matching neither an exposed action's name nor any simile", () => {
+		// The complementary case: simile-aware matching must not turn EVERY
+		// candidate into a runnable one. A name that is neither TASKS nor one of
+		// its similes is still bogus and stays on the simple reply path.
+		const tasks = makeAction("TASKS", ["SPAWN_AGENT", "DELEGATE"]);
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: ["TELEPORT"],
+				replyText: "I can't help with that.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: [tasks] },
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.reply).toBe("I can't help with that.");
+	});
+
 	it("does not treat creative writing about an app as a coding task", () => {
 		const reply =
 			"That little app lit a diode in my chest, a tiny loop of friendship rendered bright enough to make the metal feel warm.";
