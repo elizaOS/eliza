@@ -85,10 +85,10 @@ TORSO = dict(
 BREAST = dict(
     amp=0.027,        # peak +X projection (m) -- lower => rounder, less pointy
     y0=0.058,         # lateral offset of each mound centre (m)
-    z0=0.214,         # height of the mounds (m) -- higher up the chest
-    sigma_y=0.050, sigma_z=0.080,   # broad domes -> smooth round breasts, not cones
+    z0=0.232,         # height of the mounds (m) -- high on the chest
+    sigma_y=0.050, sigma_z=0.082,   # broad domes -> smooth round breasts, not cones
     front_halfdeg=88.0,
-    smooth_iter=44,   # Taubin passes that round off the apex
+    smooth_iter=14,   # light Taubin to round only the breast effector apex
 )
 
 # Features removed by delete-faces-in-box + cap (robust for engraved/separate
@@ -134,14 +134,27 @@ def _outer_ring(points2d, centre, n_ang):
         ext = np.concatenate([bins[good] - 2 * np.pi, bins[good], bins[good] + 2 * np.pi])
         rg = np.concatenate([r[good]] * 3)
         r = np.interp(bins, ext, rg)
-    return bins, _circ_smooth(r, passes=2, half=3)
+    return bins, r
 
 
-def _circ_smooth(r, passes=3, half=3):
-    k = np.ones(2 * half + 1); k /= k.sum()
-    for _ in range(passes):
-        r = np.convolve(np.concatenate([r[-half:], r, r[:half]]), k, "same")[half:-half]
-    return r
+def _smooth_field(R, C0, C1, harmonics, axial_sigma):
+    """Turn a noisy stack of per-slice radius profiles into genuinely smooth
+    surfaces with long flowing lines (not blurred noise):
+
+      * angular: keep only the lowest `harmonics` Fourier modes of r(theta) per
+        slice -> removes every high-frequency dimple/lump; the cross-section
+        becomes a clean low-order curve.
+      * axial: low-pass each angular component along the spine -> the radius and
+        the centreline vary smoothly from slice to slice (long lines), no banding.
+    """
+    from scipy.ndimage import gaussian_filter1d
+    F = np.fft.rfft(R, axis=1)
+    F[:, harmonics + 1:] = 0.0
+    R = np.fft.irfft(F, R.shape[1], axis=1)
+    R = gaussian_filter1d(R, axial_sigma, axis=0, mode="nearest")
+    C0 = gaussian_filter1d(C0, axial_sigma, mode="nearest")
+    C1 = gaussian_filter1d(C1, axial_sigma, mode="nearest")
+    return R, C0, C1
 
 
 def _torso_skin(mesh, n_ang=96, dz=0.005):
@@ -164,14 +177,8 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     zs = np.array(zs); cxs = np.array(cxs); cys = np.array(cys)
     R_arr = np.array(rings_r)            # (N, n_ang)
     bins = rings_b[0]
-    # de-band vertically with a light kernel (keep shoulder mounts + waist)
-    kz = np.ones(5); kz /= kz.sum()
-    for _ in range(2):
-        for k in range(n_ang):
-            R_arr[:, k] = np.convolve(np.pad(R_arr[:, k], 2, mode="edge"), kz, "same")[2:-2]
-    for _ in range(2):
-        cxs = np.convolve(np.pad(cxs, 2, mode="edge"), kz, "same")[2:-2]
-        cys = np.convolve(np.pad(cys, 2, mode="edge"), kz, "same")[2:-2]
+    # genuinely smooth base surface: low Fourier order + axial low-pass
+    R_arr, cxs, cys = _smooth_field(R_arr, cxs, cys, harmonics=6, axial_sigma=5.0)
 
     P, B = TORSO, BREAST
     reserved = C.reserved_levels("WAIST_YAW")
@@ -217,7 +224,7 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     return skin
 
 
-def _skin_part(mesh, spine, n_ang=72, dz=0.004, vpass=2, taubin=22, flat_bottom=False):
+def _skin_part(mesh, spine, n_ang=72, dz=0.004, vpass=2, taubin=8, flat_bottom=False):
     """Smooth watertight outer skin for a limb/head: loft per-slice outer
     envelopes along the spine axis about the slice centroid. Produces a clean
     single-solid futuristic shell with no bolt-boss lumps or voxel terracing.
@@ -239,12 +246,8 @@ def _skin_part(mesh, spine, n_ang=72, dz=0.004, vpass=2, taubin=22, flat_bottom=
         Rs.append(r); C0.append(c[0]); C1.append(c[1]); L.append(t)
     Rs = np.array(Rs); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
     bins = b
-    kz = np.ones(5) / 5
-    for _ in range(vpass):
-        for k in range(n_ang):
-            Rs[:, k] = np.convolve(np.pad(Rs[:, k], 2, mode="edge"), kz, "same")[2:-2]
-        C0 = np.convolve(np.pad(C0, 2, mode="edge"), kz, "same")[2:-2]
-        C1 = np.convolve(np.pad(C1, 2, mode="edge"), kz, "same")[2:-2]
+    # low Fourier order + axial low-pass -> long smooth lines, no dimples
+    Rs, C0, C1 = _smooth_field(Rs, C0, C1, harmonics=5, axial_sigma=6.0)
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
     for i, t in enumerate(L):
