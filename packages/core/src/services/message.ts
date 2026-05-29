@@ -5292,7 +5292,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				// If it yields nothing usable, keep the original Stage-1 reply so a
 				// valid-but-terse answer (e.g. "144" to a math question) is never
 				// dropped to an empty message.
-				if (typeof regenerated === "string" && regenerated.trim().length > 0) {
+				if (regenerated.trim().length > 0) {
 					reply = regenerated;
 				}
 			}
