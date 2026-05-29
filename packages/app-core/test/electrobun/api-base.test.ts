@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveDesktopRuntimeMode,
   resolveDesktopRuntimeModeSignal,
-} from "./api-base";
+} from "../../platforms/electrobun/src/api-base";
 
 describe("resolveDesktopRuntimeModeSignal", () => {
   it("returns null by default (no cloud-only opt-in)", () => {

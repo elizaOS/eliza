@@ -82,19 +82,16 @@ import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-d
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
-// Linux WebKitGTK: the dmabuf renderer emits a benign but noisy
+// Linux WebKitGTK: the dmabuf renderer can emit a benign but noisy
 // "X11 Error: GLXBadWindow (code 168)" at webview creation on common
-// XWayland/GLX driver combos. Apply the documented workaround here in the dev
-// orchestrator — BEFORE any child (Vite / API / Electrobun) is spawned — so it
-// is present in the environment from process start. Setting it later from inside
-// the desktop entry is too late: the GLX context is already created by then.
-// Linux-only, and only when unset so an explicit override always wins.
-if (
+// XWayland/GLX driver combos. Apply the documented workaround only to the
+// Electrobun child, before it starts, so Vite/API children do not inherit
+// WebKit-specific renderer policy. An explicit user override still wins.
+const linuxWebkitGtkEnv =
   process.platform === "linux" &&
   process.env.WEBKIT_DISABLE_DMABUF_RENDERER === undefined
-) {
-  process.env.WEBKIT_DISABLE_DMABUF_RENDERER = "1";
-}
+    ? { WEBKIT_DISABLE_DMABUF_RENDERER: "1" }
+    : {};
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // `_elizaRoot` is the eliza repo root itself (3 levels up from
@@ -959,6 +956,7 @@ async function launch() {
             ELIZA_ALLOW_UNSAFE_NATIVE_DEVTOOLS: desktopUnsafeDevtoolsEnv,
           }
         : {}),
+      ...linuxWebkitGtkEnv,
       ...(rendererUrlForShell
         ? { ELIZA_RENDERER_URL: rendererUrlForShell }
         : {}),
