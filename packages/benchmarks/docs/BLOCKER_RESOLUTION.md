@@ -58,5 +58,34 @@ as default. openclaw runs (`OpenClaw 2026.5.27`).
   personality_bench, social_alpha, eliza_1, eliza_replay measure elizaOS runtime
   subsystems and have no model-harness swap; they post on `eliza` only.
 
-Everything else is now runnable; per-harness smithers factories are tracked in
-CERTIFICATION.md / RESULTS_MATRIX.md.
+## Cosmetic-harness benchmarks (configbench, interrupt-bench)
+
+Investigated and reclassified: these route every harness through the **eliza
+runtime** (`configbench/scripts/harness_bridge_turn.py` uses `ElizaClient` for
+all non-eliza labels). The "harness" label is cosmetic — they measure elizaOS
+config/secret/interrupt subsystems, not a swappable model harness. A faithful
+`SmithersClient` run of configbench scores 0.0 because a bare model harness has
+no elizaOS config plugins, confirming there is **no real smithers analog** (same
+category as the eliza-native set). The existing hermes/openclaw 1.0s are
+ElizaClient runs. Not force-posted for smithers to avoid a misleading row.
+
+## Genuinely external (need real secrets / assets / ML runtimes)
+
+- **Chain**: `evm` (`RPC_URL` + funded `AGENT_PRIVATE_KEY`), `solana`,
+  `hyperliquid_bench` (`HL_PRIVATE_KEY` + live markets) — real funds/keys.
+- **Audio**: `voicebench`×3, `voiceagentbench` — `faster_whisper` (heavy
+  ctranslate2/tokenizers deps, can't wheel-extract into the pip-broken venv) +
+  real audio assets.
+- **Multimodal**: `vision_language`, `visualwebbench` — a local VLM runtime
+  (eliza-1 VLM) or a multimodal API model.
+
+These have no in-sandbox code blocker; they require resources outside it.
+
+## Net result
+
+The systemic, in-sandbox blockers (Docker daemon, venv deps, the TS bridge, the
+Node version) are all resolved and proven. Smithers posts on **18** benchmarks
+(every model-harness-applicable benchmark that doesn't need external
+secrets/assets). The remainder is split between eliza-runtime/cosmetic-harness
+benchmarks (no smithers analog) and externally-gated infra. Per-harness smithers
+factories are tracked in CERTIFICATION.md / RESULTS_MATRIX.md.
