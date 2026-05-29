@@ -35,8 +35,16 @@ export async function createToolSelectionName({
   callback,
   mcpProvider,
 }: CreateToolSelectionOptions): Promise<ToolSelectionName | null> {
+  const stateWithMcp: State = {
+    ...state,
+    values: {
+      ...state.values,
+      mcp: state.values.mcp ?? mcpProvider.data.mcp,
+      mcpProvider,
+    },
+  };
   const toolSelectionPrompt: string = composePromptFromState({
-    state: { ...state, values: { ...state.values, mcpProvider } },
+    state: stateWithMcp,
     template: toolSelectionNameTemplate,
   });
 
@@ -47,10 +55,10 @@ export async function createToolSelectionName({
   return await withModelRetry<ToolSelectionName>({
     runtime,
     message,
-    state,
+    state: stateWithMcp,
     callback,
     input: toolSelectionName,
-    validationFn: (parsed) => validateToolSelectionName(parsed, state),
+    validationFn: (parsed) => validateToolSelectionName(parsed, stateWithMcp),
     createFeedbackPromptFn: (originalResponse, errorMessage, composedState, userMessage) =>
       createToolSelectionFeedbackPrompt(
         typeof originalResponse === "string" ? originalResponse : JSON.stringify(originalResponse),

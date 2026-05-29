@@ -310,6 +310,9 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-agent-orchestrator") {
       return await import("@elizaos/plugin-agent-orchestrator");
     }
+    if (packageName === "@elizaos/plugin-task-coordinator") {
+      return await import("@elizaos/plugin-task-coordinator");
+    }
     if (packageName === "@elizaos/plugin-shell") {
       return await import("@elizaos/plugin-shell");
     }
@@ -484,6 +487,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginSql,
       pluginLocalEmbedding,
       pluginAgentOrchestrator,
+      pluginTaskCoordinator,
       pluginShell,
       pluginCodingTools,
       pluginCommands,
@@ -507,6 +511,11 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       trackImport(
         "@elizaos/plugin-agent-orchestrator",
         () => getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-task-coordinator",
+        () => getOptionalPlugin("@elizaos/plugin-task-coordinator"),
         { required: false },
       ),
       trackImport(
@@ -578,6 +587,9 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
       ...(pluginAgentOrchestrator
         ? { "agent-orchestrator": pluginAgentOrchestrator }
+        : {}),
+      ...(pluginTaskCoordinator
+        ? { "@elizaos/plugin-task-coordinator": pluginTaskCoordinator }
         : {}),
       ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
       ...(pluginCodingTools

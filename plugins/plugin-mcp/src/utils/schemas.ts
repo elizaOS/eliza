@@ -5,12 +5,10 @@ export const toolSelectionNameSchema = {
     serverName: {
       type: "string",
       minLength: 1,
-      errorMessage: "serverName must not be empty",
     },
     toolName: {
       type: "string",
       minLength: 1,
-      errorMessage: "toolName must not be empty",
     },
     reasoning: {
       type: "string",
@@ -49,12 +47,10 @@ export const ResourceSelectionSchema = {
     serverName: {
       type: "string",
       minLength: 1,
-      errorMessage: "serverName must not be empty",
     },
     uri: {
       type: "string",
       minLength: 1,
-      errorMessage: "uri must not be empty",
     },
     reasoning: {
       type: "string",

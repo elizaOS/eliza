@@ -4,8 +4,14 @@ import { brandStories } from "./stories/brand.tsx";
 import { cloudDashboardStories } from "./stories/cloud-dashboard.tsx";
 import { primitiveStories } from "./stories/primitives.tsx";
 import { shellFoundationStories } from "./stories/shell-foundation.tsx";
+import { voiceStories } from "./stories/voice.tsx";
 
 const groups: StoryGroup[] = [
+  {
+    id: "voice",
+    title: "Voice — @elizaos/ui/components/voice",
+    stories: voiceStories,
+  },
   {
     id: "primitives",
     title: "Primitives — @elizaos/ui/components/ui",

@@ -4,9 +4,9 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  computeBlobRadii,
   type FrequencyAnalyser,
   sampleFrequencyLevels,
+  summarizeLevels,
   VoiceWaveform,
 } from "./VoiceWaveform";
 
@@ -20,12 +20,6 @@ function fakeAnalyser(bins: number, value: number): FrequencyAnalyser {
       buf.fill(value);
     },
   };
-}
-
-function maxRadius(radii: Float32Array): number {
-  let max = -Infinity;
-  for (const r of radii) max = Math.max(max, r);
-  return max;
 }
 
 describe("VoiceWaveform", () => {
@@ -72,35 +66,31 @@ describe("sampleFrequencyLevels", () => {
   });
 });
 
-describe("computeBlobRadii", () => {
-  const base = { points: 24, baseRadius: 100, maxDeform: 40 };
-
-  it("pushes the outline further out as amplitude rises (reactive)", () => {
-    const silent = computeBlobRadii({
-      ...base,
-      levels: new Float32Array(base.points).fill(0),
-      time: 1,
-      mode: "listening",
+describe("summarizeLevels", () => {
+  it("returns zeros for an empty buffer", () => {
+    expect(summarizeLevels(new Float32Array(0))).toEqual({
+      energy: 0,
+      low: 0,
+      mid: 0,
+      high: 0,
     });
-    const loud = computeBlobRadii({
-      ...base,
-      levels: new Float32Array(base.points).fill(1),
-      time: 1,
-      mode: "listening",
-    });
-    expect(maxRadius(loud)).toBeGreaterThan(maxRadius(silent));
-    // Every vertex never collapses below the base radius.
-    expect(Math.min(...silent)).toBeGreaterThanOrEqual(base.baseRadius);
   });
 
-  it("breathes over time while idle, ignoring amplitude", () => {
-    const levels = new Float32Array(base.points).fill(1);
-    const t0 = computeBlobRadii({ ...base, levels, time: 0, mode: "idle" });
-    const t1 = computeBlobRadii({ ...base, levels, time: 5, mode: "idle" });
-    // Idle ignores levels, so the loud buffer must not blow the radius out.
-    expect(maxRadius(t0)).toBeLessThan(base.baseRadius + base.maxDeform * 0.5);
-    // The outline still moves between frames.
-    const moved = [...t0].some((r, i) => Math.abs(r - (t1[i] ?? 0)) > 1e-3);
-    expect(moved).toBe(true);
+  it("averages a uniform spectrum to equal bands and energy", () => {
+    const summary = summarizeLevels(new Float32Array(30).fill(1));
+    expect(summary.energy).toBeCloseTo(1, 5);
+    expect(summary.low).toBeCloseTo(1, 5);
+    expect(summary.mid).toBeCloseTo(1, 5);
+    expect(summary.high).toBeCloseTo(1, 5);
+  });
+
+  it("isolates energy into the band where it lives", () => {
+    const bass = new Float32Array(30);
+    bass.fill(1, 0, 10); // only the low third is loud
+    const summary = summarizeLevels(bass);
+    expect(summary.low).toBeCloseTo(1, 5);
+    expect(summary.mid).toBe(0);
+    expect(summary.high).toBe(0);
+    expect(summary.energy).toBeCloseTo(1 / 3, 5);
   });
 });

@@ -65,6 +65,18 @@
       "@elizaos/plugin-streaming": [
         "../../plugins/plugin-streaming/dist/index.d.ts"
       ],
+      "@elizaos/plugin-mcp": [
+        "../../plugins/plugin-mcp/src/index.ts"
+      ],
+      "@elizaos/plugin-mcp/*": [
+        "../../plugins/plugin-mcp/src/*"
+      ],
+      "@elizaos/plugin-todos": [
+        "../../plugins/plugin-todos/src/index.ts"
+      ],
+      "@elizaos/plugin-todos/*": [
+        "../../plugins/plugin-todos/src/*"
+      ],
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],

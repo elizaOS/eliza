@@ -820,7 +820,11 @@ async function auditPage(
       await locator.hover({ timeout: 1000 });
       // Let transitions/transforms settle before sampling.
       await page.waitForTimeout(200);
-      hover = await locator.evaluate((el) => {
+      const sampledHover = await page.evaluate((index) => {
+        const el = document.querySelector<HTMLElement>(
+          `[data-audit-btn="${index}"]`,
+        );
+        if (!el) return null;
         const cs = getComputedStyle(el);
         return {
           text: cs.color,
@@ -828,7 +832,8 @@ async function auditPage(
           borderColor: cs.borderTopColor,
           boxShadow: cs.boxShadow,
         };
-      });
+      }, b.index);
+      if (sampledHover) hover = sampledHover;
     } catch {
       // Off-screen / detached / overlapped — fall back to rest colors. The
       // button simply contributes no hover finding rather than a false one.

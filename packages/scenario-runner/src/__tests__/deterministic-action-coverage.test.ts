@@ -8,11 +8,16 @@ import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
 import deviceFilesystemPlugin from "@elizaos/plugin-device-filesystem";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
+import githubPlugin from "@elizaos/plugin-github";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
 import shellPlugin from "@elizaos/plugin-shell";
+import streamingPlugin from "@elizaos/plugin-streaming";
 import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
+import workflowPlugin from "@elizaos/plugin-workflow";
+import xrPlugin from "@elizaos/plugin-xr";
 import { describe, expect, it } from "vitest";
+import mcpPlugin from "../../../../plugins/plugin-mcp/src/index.ts";
 
 /**
  * Deterministic action-coverage gate.
@@ -36,18 +41,9 @@ import { describe, expect, it } from "vitest";
  * at module load, not inside a test where it would race the per-test timeout.
  */
 
-const repoRoot = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../..",
-);
-const scenarioDir = resolve(
-  repoRoot,
-  "packages/scenario-runner/test/scenarios",
-);
-const packageJsonPath = resolve(
-  repoRoot,
-  "packages/scenario-runner/package.json",
-);
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
+const scenarioDir = resolve(repoRoot, "packages/scenario-runner/test/scenarios");
+const packageJsonPath = resolve(repoRoot, "packages/scenario-runner/package.json");
 
 /** Stable core plugins whose action surface is read live by import. */
 const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
@@ -57,6 +53,11 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-local-inference": localInferencePlugin,
   "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
   "@elizaos/plugin-todos": todosPlugin,
+  "@elizaos/plugin-streaming": streamingPlugin,
+  "@elizaos/plugin-xr": xrPlugin,
+  "@elizaos/plugin-mcp": mcpPlugin,
+  "@elizaos/plugin-workflow": workflowPlugin,
+  "@elizaos/plugin-github": githubPlugin,
 };
 
 /** Expected action names for each imported core plugin (verified against live imports). */
@@ -76,6 +77,35 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   "@elizaos/plugin-local-inference": ["GENERATE_MEDIA"],
   "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
+  "@elizaos/plugin-streaming": ["STREAM"],
+  "@elizaos/plugin-xr": [
+    "XR_CLOSE_VIEW",
+    "XR_LIST_VIEWS",
+    "XR_OPEN_VIEW",
+    "XR_QUERY_VISION",
+    "XR_RESIZE_VIEW",
+    "XR_SWITCH_VIEW",
+  ],
+  "@elizaos/plugin-mcp": [
+    "MCP",
+    "MCP_CALL_TOOL",
+    "MCP_LIST_CONNECTIONS",
+    "MCP_READ_RESOURCE",
+    "MCP_SEARCH_ACTIONS",
+  ],
+  "@elizaos/plugin-workflow": ["WORKFLOW"],
+  "@elizaos/plugin-github": [
+    "GITHUB",
+    "GITHUB_ISSUE_ASSIGN",
+    "GITHUB_ISSUE_CLOSE",
+    "GITHUB_ISSUE_COMMENT",
+    "GITHUB_ISSUE_CREATE",
+    "GITHUB_ISSUE_LABEL",
+    "GITHUB_ISSUE_REOPEN",
+    "GITHUB_NOTIFICATION_TRIAGE",
+    "GITHUB_PR_LIST",
+    "GITHUB_PR_REVIEW",
+  ],
 };
 
 /** Core plugins that intentionally expose no agent actions (service/registry only). */
@@ -109,7 +139,7 @@ function stableCoreActions(): string[] {
 }
 
 /**
- * Stable-core keyless actions that do NOT yet have a deterministic scenario.
+ * Stable imported keyless actions that do NOT yet have a deterministic scenario.
  * This baseline may only shrink: cover one and delete it here; add a new
  * stable-core action and either cover it or add it here.
  */
@@ -134,6 +164,21 @@ const COVERED_ACTIONS: readonly string[] = [
   "FILE",
   "GENERATE_MEDIA",
   "GIT_PATHOLOGY",
+  "GITHUB",
+  "GITHUB_ISSUE_ASSIGN",
+  "GITHUB_ISSUE_CLOSE",
+  "GITHUB_ISSUE_COMMENT",
+  "GITHUB_ISSUE_CREATE",
+  "GITHUB_ISSUE_LABEL",
+  "GITHUB_ISSUE_REOPEN",
+  "GITHUB_NOTIFICATION_TRIAGE",
+  "GITHUB_PR_LIST",
+  "GITHUB_PR_REVIEW",
+  "MCP",
+  "MCP_CALL_TOOL",
+  "MCP_LIST_CONNECTIONS",
+  "MCP_READ_RESOURCE",
+  "MCP_SEARCH_ACTIONS",
   "PLAY_EMOTE",
   "SKILL",
   "SKILL_DETAILS",
@@ -144,10 +189,18 @@ const COVERED_ACTIONS: readonly string[] = [
   "SKILL_UNINSTALL",
   "SHELL",
   "SCHEDULED_TASKS",
+  "STREAM",
   "TODO",
   "USE_SKILL",
   "VIEWS",
   "WORKTREE",
+  "WORKFLOW",
+  "XR_CLOSE_VIEW",
+  "XR_LIST_VIEWS",
+  "XR_OPEN_VIEW",
+  "XR_QUERY_VISION",
+  "XR_RESIZE_VIEW",
+  "XR_SWITCH_VIEW",
 ];
 
 /** Deterministic coverage only grows: distinct covered actions must stay >= this. */
@@ -179,9 +232,7 @@ function sorted(values: Iterable<string>): string[] {
 }
 
 function scenarioFiles(): string[] {
-  return readdirSync(scenarioDir).filter((file) =>
-    file.endsWith(".scenario.ts"),
-  );
+  return readdirSync(scenarioDir).filter((file) => file.endsWith(".scenario.ts"));
 }
 
 function scenarioActionNames(): string[] {
@@ -252,9 +303,7 @@ describe("deterministic action coverage", () => {
 
   it("every covered action still has a scenario (no coverage regression)", () => {
     const covered = new Set(scenarioActionNames());
-    const regressed = sorted(COVERED_ACTIONS).filter(
-      (name) => !covered.has(name),
-    );
+    const regressed = sorted(COVERED_ACTIONS).filter((name) => !covered.has(name));
     expect(
       regressed,
       `actions in COVERED_ACTIONS no longer referenced by any scenario: ${regressed.join(", ")}`,
@@ -296,9 +345,7 @@ describe("deterministic action coverage", () => {
       const base = file.replace(/\.scenario\.ts$/, "");
       const id = declaredScenarioId(file);
       if (id !== base) {
-        problems.push(
-          `${file}: declared id ${JSON.stringify(id)} != filename base ${JSON.stringify(base)}`,
-        );
+        problems.push(`${file}: declared id ${JSON.stringify(id)} != filename base ${JSON.stringify(base)}`);
       }
       if (!wired.has(base)) {
         problems.push(

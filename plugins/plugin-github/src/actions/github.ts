@@ -62,14 +62,6 @@ function readAction(options: unknown): GitHubActionName | undefined {
     : undefined;
 }
 
-function withParameters(
-  options: unknown,
-  parameters: Record<string, unknown>,
-): { parameters: Record<string, unknown> } & Record<string, unknown> {
-  if (!options || typeof options !== "object") return { parameters };
-  return { ...(options as Record<string, unknown>), parameters };
-}
-
 function delegate(
   target: Action,
   runtime: IAgentRuntime,
@@ -213,7 +205,7 @@ export const githubAction: Action = {
         runtime,
         message,
         state,
-        withParameters(options, params),
+        params,
         callback,
       );
     }
@@ -230,7 +222,7 @@ export const githubAction: Action = {
         runtime,
         message,
         state,
-        withParameters(options, childParams),
+        childParams,
         callback,
       );
     }
@@ -241,7 +233,7 @@ export const githubAction: Action = {
         runtime,
         message,
         state,
-        withParameters(options, { ...params, op: issueOp }),
+        { ...params, op: issueOp },
         callback,
       );
     }

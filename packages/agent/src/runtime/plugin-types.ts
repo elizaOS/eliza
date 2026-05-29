@@ -70,12 +70,16 @@ function looksLikePlugin(value: unknown): value is Plugin {
 
   // Providers also expose { name, description } so we require at least one
   // plugin-like capability field before accepting named exports as plugins.
+  // `views` counts: view-only plugins (e.g. the task-coordinator/orchestrator
+  // console) ship no services or actions, only a `views` array that the view
+  // registry consumes — without this they'd be rejected and never registered.
   return (
     Array.isArray(obj.services) ||
     Array.isArray(obj.providers) ||
     Array.isArray(obj.actions) ||
     Array.isArray(obj.routes) ||
     Array.isArray(obj.events) ||
+    Array.isArray(obj.views) ||
     typeof obj.init === "function"
   );
 }

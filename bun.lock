@@ -2580,10 +2580,17 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-skills": "workspace:*",
+        "@elizaos/plugin-github": "workspace:*",
+        "@elizaos/plugin-gitpathologist": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",
         "@elizaos/plugin-lifeops": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
+        "@elizaos/plugin-mcp": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-streaming": "workspace:*",
+        "@elizaos/plugin-todos": "workspace:*",
+        "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/plugin-xr": "workspace:*",
       },
       "devDependencies": {
         "typescript": "^6.0.3",

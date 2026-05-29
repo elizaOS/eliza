@@ -37,13 +37,13 @@ export const feedbackTemplate = `{{{mcpProvider.text}}}
 Your previous selection could not be parsed or validated. Correct it as compact JSON.
 
 PREVIOUS RESPONSE:
-{{{originalResponse}}
+{{{originalResponse}}}
 
 ERROR:
-{{{errorMessage}}
+{{{errorMessage}}}
 
 Available {{{itemType}}}s:
-{{{itemsDescription}}
+{{{itemsDescription}}}
 
 User request: "{{{userMessage}}}"
 
@@ -86,10 +86,10 @@ Respond to the user's request using the resource "{{{uri}}}".
 Original user request: "{{{userMessage}}}"
 
 Resource metadata:
-{{{resourceMeta}}
+{{{resourceMeta}}}
 
 Resource content:
-{{{resourceContent}}
+{{{resourceContent}}}
 
 Instructions:
 1. Analyze how well the resource's content addresses the user's specific question or need

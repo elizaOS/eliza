@@ -142,18 +142,3 @@ const taskCoordinatorPlugin: Plugin = {
 };
 
 export default taskCoordinatorPlugin;
-export * from "./AgentTabsSection";
-export * from "./CodingAgentControlChip";
-export * from "./CodingAgentSettingsSection";
-export * from "./CodingAgentTasksPanel";
-export * from "./coding-agent-settings-shared";
-export * from "./GlobalPrefsSection";
-export * from "./LlmProviderSection";
-export * from "./ModelConfigSection";
-export * from "./PtyConsoleBase";
-export * from "./PtyConsoleDrawer";
-export * from "./PtyConsoleSidePanel";
-export * from "./PtyTerminalPane";
-export * from "./pty-status-dots";
-export * from "./register-slots";
-export * from "./session-hydration";

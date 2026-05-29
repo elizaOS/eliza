@@ -5,10 +5,10 @@ import { cn } from "../../lib/utils";
 /**
  * Visual mode for the voice avatar.
  *
- * - `idle`: no mic, no TTS. The orb breathes with a slow organic wobble.
- * - `listening`: mic is open. The blob deforms with live microphone amplitude.
- * - `responding`: the agent is speaking (TTS). The blob deforms with playback
- *   amplitude when an analyser is supplied, otherwise an animated active wobble.
+ * - `idle`: no mic, no TTS. The orb breathes and drifts on its own.
+ * - `listening`: mic is open. The swarm pulls inward and jitters with mic input.
+ * - `responding`: the agent is speaking. The orb flares and the swarm bursts
+ *   outward in waves, driven by playback amplitude when an analyser is supplied.
  */
 export type VoiceWaveformMode = "idle" | "listening" | "responding";
 
@@ -22,14 +22,14 @@ export interface VoiceWaveformProps {
   mode: VoiceWaveformMode;
   /**
    * Optional Web Audio analyser to read amplitude from. When provided it drives
-   * the blob from the active capture / playback node. The avatar never mutates
-   * or disconnects the node — it only reads.
+   * the orb from the active capture / playback node. The avatar never mutates or
+   * disconnects the node — it only reads.
    */
   analyser?: FrequencyAnalyser | null;
   /**
    * Open a private microphone analyser when listening and no analyser is
-   * supplied. Defaults to false so shells that already own voice capture do
-   * not create a second getUserMedia session just for visualization.
+   * supplied. Defaults to false so shells that already own voice capture do not
+   * create a second getUserMedia session just for visualization.
    */
   captureMic?: boolean;
   /** Diameter / square size in px. Default 220. */
@@ -40,8 +40,8 @@ export interface VoiceWaveformProps {
 }
 
 const DEFAULT_SIZE = 220;
-/** Vertices around the blob outline. Higher = smoother, rounder curve. */
-const POINTS = 72;
+/** Frequency buckets sampled from the analyser before summarizing into bands. */
+const BANDS = 32;
 
 /**
  * Average `analyser` frequency data into `count` normalized [0,1] buckets.
@@ -68,56 +68,56 @@ export function sampleFrequencyLevels(
   return out;
 }
 
-/**
- * Per-vertex blob radii. Pure: identical inputs yield identical output, which
- * is what the reactivity tests assert.
- *
- * - `idle` ignores `levels` and breathes from `time` alone.
- * - active modes blend an ambient organic wobble with the supplied amplitude,
- *   so louder input always pushes the outline further out.
- */
-export function computeBlobRadii(args: {
-  levels: Float32Array;
-  time: number;
-  mode: VoiceWaveformMode;
-  points: number;
-  baseRadius: number;
-  maxDeform: number;
-}): Float32Array {
-  const { levels, time, mode, points, baseRadius, maxDeform } = args;
-  const radii = new Float32Array(points);
-  const responding = mode === "responding";
-  for (let i = 0; i < points; i += 1) {
-    const angle = (i / points) * Math.PI * 2;
-    let deform: number;
-    if (mode === "idle") {
-      const breath = Math.sin(time * 0.9 + i * 0.35) * 0.5 + 0.5;
-      deform = maxDeform * (0.1 + 0.12 * breath);
-    } else {
-      const wobble =
-        (Math.sin(time * 1.6 + angle * 3) * 0.5 + 0.5) * 0.5 +
-        (Math.sin(time * 2.3 - angle * 5) * 0.5 + 0.5) * 0.5;
-      const ambient = maxDeform * (responding ? 0.26 : 0.2) * wobble;
-      const reactive = maxDeform * 0.78 * Math.min(1, levels[i] ?? 0);
-      deform = ambient + reactive;
-    }
-    radii[i] = baseRadius + deform;
-  }
-  return radii;
+export interface LevelSummary {
+  /** Mean amplitude across the whole spectrum, [0,1]. */
+  energy: number;
+  /** Mean amplitude of the low third (bass), [0,1]. */
+  low: number;
+  /** Mean amplitude of the middle third (mids), [0,1]. */
+  mid: number;
+  /** Mean amplitude of the upper third (treble), [0,1]. */
+  high: number;
 }
 
-/** Brand orange fallback as an "r, g, b" triple (matches --accent-rgb). */
-const FALLBACK_ACCENT_RGB = "255, 88, 0";
+/**
+ * Collapse per-bucket frequency levels into an overall energy plus low/mid/high
+ * band averages. Pure so the shader-driving math stays unit-testable.
+ */
+export function summarizeLevels(levels: Float32Array): LevelSummary {
+  const n = levels.length;
+  if (n === 0) return { energy: 0, low: 0, mid: 0, high: 0 };
+  const third = Math.max(1, Math.floor(n / 3));
+  let total = 0;
+  let low = 0;
+  let mid = 0;
+  let high = 0;
+  for (let i = 0; i < n; i += 1) {
+    const v = levels[i] ?? 0;
+    total += v;
+    if (i < third) low += v;
+    else if (i < third * 2) mid += v;
+    else high += v;
+  }
+  const highCount = Math.max(1, n - third * 2);
+  return {
+    energy: total / n,
+    low: low / third,
+    mid: mid / third,
+    high: high / highCount,
+  };
+}
+
+/** Brand orange fallback as an [r, g, b] triple (matches --accent-rgb). */
+const FALLBACK_ACCENT: readonly [number, number, number] = [255, 88, 0];
 
 /**
- * Resolve the `--accent-rgb` custom property to a concrete "r, g, b" string.
- * Canvas color strings cannot contain `var()`, so this must be resolved before
- * being handed to the 2D context. Returns the brand-orange fallback when the
- * property is undefined, empty, or not a valid comma-separated RGB triple.
+ * Resolve the `--accent-rgb` custom property to a concrete [r, g, b] triple so
+ * the surface accent can be fed into the shader as a color uniform. Falls back
+ * to brand orange when the property is undefined, empty, or malformed.
  */
-function resolveAccentRgb(): string {
+function resolveAccentRgb(): [number, number, number] {
   if (typeof window === "undefined" || typeof getComputedStyle !== "function") {
-    return FALLBACK_ACCENT_RGB;
+    return [...FALLBACK_ACCENT];
   }
   const raw = getComputedStyle(document.documentElement)
     .getPropertyValue("--accent-rgb")
@@ -125,13 +125,11 @@ function resolveAccentRgb(): string {
   const channels = raw.split(",").map((part) => Number(part.trim()));
   if (
     channels.length !== 3 ||
-    channels.some(
-      (channel) => !Number.isInteger(channel) || channel < 0 || channel > 255,
-    )
+    channels.some((c) => !Number.isFinite(c) || c < 0 || c > 255)
   ) {
-    return FALLBACK_ACCENT_RGB;
+    return [...FALLBACK_ACCENT];
   }
-  return channels.join(", ");
+  return [channels[0] ?? 0, channels[1] ?? 0, channels[2] ?? 0];
 }
 
 function prefersReducedMotion(): boolean {
@@ -142,6 +140,23 @@ function prefersReducedMotion(): boolean {
     return false;
   }
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * True when a GPU backend the WebGPURenderer can use is plausibly available.
+ * Probes on a throwaway canvas so the real canvas is left untouched, and keeps
+ * jsdom / headless environments from importing the multi-megabyte WebGPU build.
+ */
+function gpuAvailable(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return false;
+  }
+  if (typeof navigator !== "undefined" && "gpu" in navigator) return true;
+  try {
+    return document.createElement("canvas").getContext("webgl2") !== null;
+  } catch {
+    return false;
+  }
 }
 
 type MicAnalyser = {
@@ -188,45 +203,247 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
   return { analyser, stop };
 }
 
-/** Draw a smooth closed curve through the radial vertices (Catmull-Rom). */
-function strokeBlobPath(
-  c: CanvasRenderingContext2D,
-  center: number,
-  radii: Float32Array,
-): void {
-  const count = radii.length;
-  const point = (index: number): [number, number] => {
-    const i = ((index % count) + count) % count;
-    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
-    const r = radii[i] ?? 0;
-    return [center + Math.cos(angle) * r, center + Math.sin(angle) * r];
-  };
+type WebGPUModule = typeof import("three/webgpu");
+type TSLModule = typeof import("three/tsl");
 
-  c.beginPath();
-  const [startX, startY] = point(0);
-  c.moveTo(startX, startY);
-  for (let i = 0; i < count; i += 1) {
-    const [p0x, p0y] = point(i - 1);
-    const [p1x, p1y] = point(i);
-    const [p2x, p2y] = point(i + 1);
-    const [p3x, p3y] = point(i + 2);
-    const c1x = p1x + (p2x - p0x) / 6;
-    const c1y = p1y + (p2y - p0y) / 6;
-    const c2x = p2x - (p3x - p1x) / 6;
-    const c2y = p2y - (p3y - p1y) / 6;
-    c.bezierCurveTo(c1x, c1y, c2x, c2y, p2x, p2y);
-  }
-  c.closePath();
+/** Per-frame state pushed into the shader uniforms. All amplitudes are [0,1]. */
+interface OrbFrame {
+  time: number;
+  energy: number;
+  low: number;
+  mid: number;
+  high: number;
+  /** Smoothed 0→1 weight for listening mode. */
+  listen: number;
+  /** Smoothed 0→1 weight for responding mode. */
+  respond: number;
+}
+
+interface OrbHandle {
+  setAccent: (r: number, g: number, b: number) => void;
+  renderFrame: (frame: OrbFrame) => void;
+  setAnimationLoop: (cb: (() => void) | null) => void;
+  dispose: () => void;
 }
 
 /**
- * Voice-reactive avatar — a sci-fi orb whose organic outline morphs with live
- * audio. Reads amplitude from the supplied analyser (TTS playback in
- * `responding`, mic in `listening`), or opens a private mic when `captureMic`
- * is set. Idle breathes softly. Honors `prefers-reduced-motion`.
- *
- * Rendering lives in the canvas; the reactive math is factored into
- * `sampleFrequencyLevels` and `computeBlobRadii`, which are unit-tested.
+ * Build the WebGPU scene: a displaced, iridescent plasma core wrapped in a
+ * fresnel glow halo and an audio-reactive particle swarm. All deformation,
+ * color, and motion is expressed in TSL node graphs driven by uniforms, so the
+ * per-frame cost is a handful of uniform writes. Returns null only if the
+ * renderer fails to initialize.
+ */
+async function mountOrb(
+  THREE: WebGPUModule,
+  TSL: TSLModule,
+  canvas: HTMLCanvasElement,
+  size: number,
+): Promise<OrbHandle> {
+  const {
+    uniform,
+    vec3,
+    float,
+    positionLocal,
+    normalLocal,
+    normalView,
+    positionViewDirection,
+    mix,
+    mx_fractal_noise_float,
+    mx_noise_float,
+    attribute,
+  } = TSL;
+
+  const uTime = uniform(0);
+  const uEnergy = uniform(0);
+  const uLow = uniform(0);
+  const uMid = uniform(0);
+  const uHigh = uniform(0);
+  const uListen = uniform(0);
+  const uRespond = uniform(0);
+  const uAccent = uniform(new THREE.Color(1, 0.34, 0));
+
+  // --- core orb: icosphere displaced along its normals by domain-warped noise.
+  const orbGeo = new THREE.IcosahedronGeometry(1, 24);
+  const orbMat = new THREE.MeshBasicNodeMaterial();
+
+  const drift = vec3(0, uTime.mul(0.18), uTime.mul(0.05));
+  const noiseCoord = positionLocal.mul(1.5).add(drift);
+  const warp = mx_noise_float(noiseCoord.mul(0.7).add(uTime.mul(0.12)));
+  const turbulence = mx_fractal_noise_float(
+    noiseCoord.add(warp.mul(0.55)),
+    4,
+    2.0,
+    0.55,
+  );
+  const turb01 = turbulence.mul(0.5).add(0.5);
+  const baseAmp = float(0.09).add(uListen.mul(0.05)).add(uRespond.mul(0.06));
+  const reactAmp = uEnergy.mul(0.5).add(uLow.mul(0.28));
+  const displacement = turb01.mul(baseAmp.add(reactAmp));
+  orbMat.positionNode = positionLocal.add(normalLocal.mul(displacement));
+
+  // Fresnel: 0 at the lit center, 1 at the grazing silhouette.
+  const fresnel = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus();
+  const fresnelTight = fresnel.pow(2.2);
+  const innerBands = mx_fractal_noise_float(
+    positionLocal.mul(2.4).add(uTime.mul(0.3)),
+    3,
+    2.0,
+    0.5,
+  )
+    .mul(0.5)
+    .add(0.5);
+  const darkAccent = uAccent.mul(0.07);
+  // Hot zones push past the accent toward white so the core churns with bright
+  // plasma cells against deep troughs instead of reading as a flat fill.
+  const hotCore = mix(uAccent, vec3(1, 1, 1), float(0.6));
+  const plasma = mix(darkAccent, uAccent.mul(1.5), innerBands.pow(1.6));
+  // Keep the grazing rim accent-hot rather than milky white.
+  const litRim = mix(plasma, hotCore, fresnelTight.mul(0.6));
+  // Oil-slick rim shimmer — saturated cyan/magenta/gold cycling round the edge.
+  const shimmerPhase = fresnel.mul(8).add(uTime.mul(1.6));
+  const iridescence = vec3(
+    shimmerPhase.sin().mul(0.5).add(0.5),
+    shimmerPhase.add(2.094).sin().mul(0.5).add(0.5),
+    shimmerPhase.add(4.188).sin().mul(0.5).add(0.5),
+  );
+  const iridAmount = fresnel.mul(0.85).mul(float(0.5).add(uRespond.mul(0.6)));
+  const shimmered = mix(litRim, litRim.add(iridescence.mul(0.9)), iridAmount);
+  orbMat.colorNode = shimmered.mul(float(1).add(uEnergy.mul(0.8)));
+
+  // --- glow halo: a larger back-faced sphere whose fresnel-weighted accent
+  // bleeds past the orb silhouette, reading as bloom over the bright sky.
+  const glowGeo = new THREE.IcosahedronGeometry(1.34, 12);
+  const glowMat = new THREE.MeshBasicNodeMaterial();
+  glowMat.transparent = true;
+  glowMat.depthWrite = false;
+  glowMat.side = THREE.BackSide;
+  const haloFresnel = normalView
+    .dot(positionViewDirection)
+    .abs()
+    .oneMinus()
+    .pow(2.0);
+  glowMat.colorNode = mix(uAccent, vec3(1, 1, 1), haloFresnel.mul(0.12));
+  glowMat.opacityNode = haloFresnel.mul(
+    float(0.32).add(uEnergy.mul(0.5)).add(uRespond.mul(0.18)),
+  );
+
+  // --- particle swarm: points on a fibonacci sphere, displaced radially by
+  // mode + amplitude. Pull inward when listening, burst outward when responding.
+  const COUNT = 24000;
+  const positions = new Float32Array(COUNT * 3);
+  const seeds = new Float32Array(COUNT);
+  const golden = Math.PI * (1 + Math.sqrt(5));
+  for (let i = 0; i < COUNT; i += 1) {
+    const k = i + 0.5;
+    const phi = Math.acos(1 - (2 * k) / COUNT);
+    const theta = golden * k;
+    const sinPhi = Math.sin(phi);
+    positions[i * 3] = Math.cos(theta) * sinPhi * 1.12;
+    positions[i * 3 + 1] = Math.sin(theta) * sinPhi * 1.12;
+    positions[i * 3 + 2] = Math.cos(phi) * 1.12;
+    seeds[i] = Math.random();
+  }
+  const ptsGeo = new THREE.BufferGeometry();
+  ptsGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  ptsGeo.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+  const ptsMat = new THREE.PointsNodeMaterial();
+  ptsMat.transparent = true;
+  ptsMat.depthWrite = false;
+
+  const seed = attribute<"float">("aSeed", "float");
+  const radial = positionLocal.normalize();
+  const pNoise = mx_noise_float(positionLocal.mul(1.8).add(uTime.mul(0.25)));
+  const breathe = uTime.add(seed.mul(6.283)).sin().mul(0.035);
+  const pull = uListen.mul(0.22).mul(pNoise.mul(0.5).add(0.5));
+  const burst = uTime.mul(3.0).add(seed.mul(6.283)).sin().mul(0.5).add(0.5);
+  const push = uRespond.mul(0.5).mul(burst).add(uHigh.mul(0.3));
+  const jitter = pNoise.mul(uLow.mul(0.28));
+  const pRadius = float(1.18)
+    .add(breathe)
+    .sub(pull)
+    .add(push)
+    .add(jitter)
+    .add(uEnergy.mul(0.12));
+  ptsMat.positionNode = radial.mul(pRadius);
+  // Kept small so each point reads as a soft dot at retina DPR without a
+  // per-fragment sprite mask (point sprite UVs are under-typed upstream).
+  ptsMat.sizeNode = float(size * 0.013)
+    .mul(seed.mul(0.7).add(0.5))
+    .mul(float(1).add(uEnergy.mul(1.1)));
+  ptsMat.opacityNode = float(0.62)
+    .add(uEnergy.mul(0.38))
+    .mul(seed.mul(0.45).add(0.55));
+  ptsMat.colorNode = mix(
+    uAccent,
+    vec3(1, 1, 1),
+    seed.mul(0.55).add(uHigh.mul(0.5)).clamp(0, 1),
+  );
+
+  const scene = new THREE.Scene();
+  const group = new THREE.Group();
+  const ptsGroup = new THREE.Group();
+  const orb = new THREE.Mesh(orbGeo, orbMat);
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  glow.renderOrder = 1;
+  const points = new THREE.Points(ptsGeo, ptsMat);
+  points.renderOrder = 2;
+  ptsGroup.add(points);
+  group.add(orb);
+  group.add(glow);
+  group.add(ptsGroup);
+  scene.add(group);
+
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+  camera.position.set(0, 0, 4.6);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGPURenderer({ canvas, alpha: true });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(size, size, false);
+  await renderer.init();
+
+  return {
+    setAccent(r, g, b) {
+      uAccent.value.setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
+    },
+    renderFrame(frame) {
+      uTime.value = frame.time;
+      uEnergy.value = frame.energy;
+      uLow.value = frame.low;
+      uMid.value = frame.mid;
+      uHigh.value = frame.high;
+      uListen.value = frame.listen;
+      uRespond.value = frame.respond;
+      group.rotation.y = frame.time * 0.12;
+      group.rotation.x = Math.sin(frame.time * 0.08) * 0.16;
+      ptsGroup.rotation.y = -frame.time * (0.22 + frame.respond * 0.5);
+      ptsGroup.rotation.z = frame.time * 0.05;
+      renderer.render(scene, camera);
+    },
+    setAnimationLoop(cb) {
+      renderer.setAnimationLoop(cb);
+    },
+    dispose() {
+      renderer.setAnimationLoop(null);
+      orbGeo.dispose();
+      orbMat.dispose();
+      glowGeo.dispose();
+      glowMat.dispose();
+      ptsGeo.dispose();
+      ptsMat.dispose();
+      renderer.dispose();
+    },
+  };
+}
+
+/**
+ * Voice-reactive avatar — a WebGPU/three.js orb: a displaced iridescent plasma
+ * core inside a fresnel glow halo and a particle swarm, all morphing with live
+ * audio. Reads amplitude from the supplied analyser (TTS in `responding`, mic in
+ * `listening`), or opens a private mic when `captureMic` is set. Honors
+ * `prefers-reduced-motion` and degrades to nothing where no GPU is available, so
+ * the canvas simply stays transparent over the background.
  */
 export function VoiceWaveform({
   mode,
@@ -265,29 +482,11 @@ export function VoiceWaveform({
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return undefined;
-    const context = canvas.getContext("2d");
-    if (!context) return undefined;
-    const c: CanvasRenderingContext2D = context;
+    if (!canvas || !gpuAvailable()) return undefined;
 
-    const dpr =
-      typeof window === "undefined"
-        ? 1
-        : Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
-    c.scale(dpr, dpr);
-
-    const center = size / 2;
-    const baseRadius = size * 0.3;
-    const maxDeform = size * 0.16;
-    // Canvas 2D cannot parse CSS `var()` in color strings — it throws on every
-    // addColorStop/fillStyle assignment. Resolve --accent-rgb to a concrete
-    // "r, g, b" triple once at paint-setup, falling back to brand orange.
-    const accentRgb = resolveAccentRgb();
-    const accent = (alpha: number) => `rgba(${accentRgb}, ${alpha})`;
-
-    const smoothed = new Float32Array(POINTS).fill(baseRadius);
+    let disposed = false;
+    let handle: OrbHandle | null = null;
+    const reduced = prefersReducedMotion();
 
     function activeAnalyser(): FrequencyAnalyser | null {
       const phase = modeRef.current;
@@ -298,147 +497,69 @@ export function VoiceWaveform({
       return null;
     }
 
-    // Light comes from the upper-left, so the body gradient, specular hotspot,
-    // and contact shadow all bias toward that corner to read as a lit sphere
-    // rather than a flat disc.
-    const lightX = center - baseRadius * 0.42;
-    const lightY = center - baseRadius * 0.42;
+    void (async () => {
+      try {
+        const [three, tsl] = await Promise.all([
+          import("three/webgpu"),
+          import("three/tsl"),
+        ]);
+        if (disposed) return;
+        const orb = await mountOrb(three, tsl, canvas, size);
+        if (disposed) {
+          orb.dispose();
+          return;
+        }
+        handle = orb;
+        orb.setAccent(...resolveAccentRgb());
 
-    function paint(radii: Float32Array, glow: number): void {
-      c.clearRect(0, 0, size, size);
+        if (reduced) {
+          orb.renderFrame({
+            time: 0,
+            energy: 0,
+            low: 0,
+            mid: 0,
+            high: 0,
+            listen: modeRef.current === "listening" ? 1 : 0,
+            respond: modeRef.current === "responding" ? 1 : 0,
+          });
+          return;
+        }
 
-      // Volumetric body: the radial center is offset toward the light so the
-      // far side falls into shadow — the core depth cue for a 3D sphere.
-      const fill = c.createRadialGradient(
-        lightX,
-        lightY,
-        baseRadius * 0.05,
-        center,
-        center,
-        baseRadius + maxDeform,
-      );
-      fill.addColorStop(0, accent(0.5));
-      fill.addColorStop(0.45, accent(0.22));
-      fill.addColorStop(0.78, accent(0.1));
-      fill.addColorStop(1, accent(0.02));
-
-      c.save();
-      // Contact shadow cast down-right, opposite the light.
-      c.shadowColor = "rgba(0, 0, 0, 0.45)";
-      c.shadowBlur = size * (0.05 + glow * 0.1);
-      c.shadowOffsetX = size * 0.02;
-      c.shadowOffsetY = size * 0.035;
-      strokeBlobPath(c, center, radii);
-      c.fillStyle = fill;
-      c.fill();
-      c.restore();
-
-      // Clip to the body for every interior light/shadow layer so highlights
-      // never spill past the morphing outline.
-      c.save();
-      strokeBlobPath(c, center, radii);
-      c.clip();
-
-      // Terminator shading — a dark pool on the lower-right deepens the volume.
-      const shade = c.createRadialGradient(
-        center + baseRadius * 0.5,
-        center + baseRadius * 0.5,
-        baseRadius * 0.1,
-        center + baseRadius * 0.4,
-        center + baseRadius * 0.4,
-        baseRadius + maxDeform,
-      );
-      shade.addColorStop(0, "rgba(0, 0, 0, 0.32)");
-      shade.addColorStop(0.6, "rgba(0, 0, 0, 0.08)");
-      shade.addColorStop(1, "rgba(0, 0, 0, 0)");
-      c.fillStyle = shade;
-      c.fillRect(0, 0, size, size);
-
-      // Specular hotspot — a tight bright bloom near the light source.
-      const specular = c.createRadialGradient(
-        lightX,
-        lightY,
-        0,
-        lightX,
-        lightY,
-        baseRadius * 0.6,
-      );
-      specular.addColorStop(0, `rgba(255, 255, 255, ${0.5 + glow * 0.3})`);
-      specular.addColorStop(0.35, "rgba(255, 255, 255, 0.12)");
-      specular.addColorStop(1, "rgba(255, 255, 255, 0)");
-      c.fillStyle = specular;
-      c.fillRect(0, 0, size, size);
-      c.restore();
-
-      // Rim light on the shadowed edge — the glossy backlight that sells depth.
-      c.save();
-      strokeBlobPath(c, center, radii);
-      c.lineWidth = Math.max(1.5, size * 0.01);
-      c.strokeStyle = accent(0.85);
-      c.shadowColor = accent(0.5 + glow * 0.3);
-      c.shadowBlur = size * (0.04 + glow * 0.1);
-      c.stroke();
-      c.restore();
-
-      // Inner core that pulses with overall energy, offset toward the light.
-      c.beginPath();
-      c.arc(lightX, lightY, baseRadius * (0.3 + glow * 0.16), 0, Math.PI * 2);
-      const core = c.createRadialGradient(
-        lightX,
-        lightY,
-        0,
-        lightX,
-        lightY,
-        baseRadius * 0.5,
-      );
-      core.addColorStop(0, accent(0.7 + glow * 0.3));
-      core.addColorStop(1, accent(0));
-      c.fillStyle = core;
-      c.fill();
-    }
-
-    if (prefersReducedMotion()) {
-      paint(
-        computeBlobRadii({
-          levels: new Float32Array(POINTS),
-          time: 0,
-          mode: "idle",
-          points: POINTS,
-          baseRadius,
-          maxDeform,
-        }),
-        0,
-      );
-      return undefined;
-    }
-
-    let raf = 0;
-    let t = 0;
-
-    function frame(): void {
-      t += 0.03;
-      const levels = sampleFrequencyLevels(activeAnalyser(), POINTS);
-      const target = computeBlobRadii({
-        levels,
-        time: t,
-        mode: modeRef.current,
-        points: POINTS,
-        baseRadius,
-        maxDeform,
-      });
-      let energy = 0;
-      for (let i = 0; i < POINTS; i += 1) {
-        smoothed[i] =
-          (smoothed[i] ?? baseRadius) * 0.78 + (target[i] ?? 0) * 0.22;
-        energy += (smoothed[i] - baseRadius) / maxDeform;
+        let t = 0;
+        let frame = 0;
+        let energy = 0;
+        let low = 0;
+        let mid = 0;
+        let high = 0;
+        let listen = 0;
+        let respond = 0;
+        orb.setAnimationLoop(() => {
+          t += 0.016;
+          frame += 1;
+          const summary = summarizeLevels(
+            sampleFrequencyLevels(activeAnalyser(), BANDS),
+          );
+          energy += (summary.energy - energy) * 0.16;
+          low += (summary.low - low) * 0.2;
+          mid += (summary.mid - mid) * 0.2;
+          high += (summary.high - high) * 0.26;
+          listen += ((modeRef.current === "listening" ? 1 : 0) - listen) * 0.08;
+          respond +=
+            ((modeRef.current === "responding" ? 1 : 0) - respond) * 0.08;
+          if (frame % 30 === 0) orb.setAccent(...resolveAccentRgb());
+          orb.renderFrame({ time: t, energy, low, mid, high, listen, respond });
+        });
+      } catch {
+        handle?.dispose();
+        handle = null;
       }
-      const glow = Math.min(1, Math.max(0, energy / POINTS));
-      paint(smoothed, glow);
-      raf = requestAnimationFrame(frame);
-    }
+    })();
 
-    raf = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      disposed = true;
+      handle?.dispose();
+      handle = null;
+    };
   }, [size]);
 
   return (

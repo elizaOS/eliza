@@ -51,9 +51,9 @@
         "../../plugins/plugin-app-manager/src/*"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../app-core/src/*"],
+      "@elizaos/agent": ["./src/platform/empty-node-module.ts"],
+      "@elizaos/app-core": ["./src/platform/empty-node-module.ts"],
+      "@elizaos/app-core/*": ["./src/platform/empty-node-module.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -96,7 +96,7 @@
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
-      "@elizaos/agent/*": ["../agent/src/*"],
+      "@elizaos/agent/*": ["./src/platform/empty-node-module.ts"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
       "@elizaos/vault/*": ["../../packages/vault/src/*"],
       "@elizaos/security": ["../security/src/index.ts"],

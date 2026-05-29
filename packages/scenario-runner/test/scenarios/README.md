@@ -9,6 +9,39 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
 - `deterministic-app-control-actions` covers VIEWS list, search, show,
   broadcast, create/edit, direct edit, and confirmed delete plus APP list,
   launch, relaunch, `load_from_directory`, and create/edit.
+- `deterministic-generated-app-routes` covers a generated app loaded through the
+  real AppRegistryService and app-manager routes: registry persistence,
+  catalog tile data, generated hero SVG, `/api/apps/:slug/*` package routing,
+  run-scoped message/control dispatch, HTTP `load-from-directory`, and
+  app-control GUI/TUI view registration.
+- `deterministic-todos-actions` covers strict natural-language routing into
+  `TODO`, then the real `TODO` action against real TodosService DB state and
+  CURRENT_TODOS provider output for write, create, update, complete, cancel,
+  delete, list, clear, and active-only provider rendering.
+- `deterministic-streaming-actions` covers the real `STREAM` action and stream
+  route handler for start, status, stop, provider status rendering, exact
+  loopback route responses, and stream destination lifecycle side effects.
+- `deterministic-xr-view-actions` covers the real XRSessionService WebSocket,
+  XR view catalog/route surface, `XR_LIST_VIEWS`, `XR_OPEN_VIEW`,
+  `XR_SWITCH_VIEW`, `XR_RESIZE_VIEW`, `XR_CLOSE_VIEW`, and `XR_QUERY_VISION`
+  with a deterministic image-description model and binary camera frame.
+- `deterministic-mcp-actions-routes` covers the real `@elizaos/plugin-mcp`
+  service against a committed stdio MCP fixture, the parent `MCP` router,
+  `MCP_READ_RESOURCE`, `MCP_CALL_TOOL`, `MCP_SEARCH_ACTIONS`,
+  `MCP_LIST_CONNECTIONS`, strict deterministic LLM JSON for tool selection and
+  arguments, deterministic tool/resource response synthesis, and
+  `/api/mcp/status` route capability reporting for the discovered fixture tool
+  and resource.
+- `deterministic-workflow-actions-routes` covers real embedded workflow services
+  from `@elizaos/plugin-workflow` by seeding and executing a Manual Trigger ->
+  Set workflow, then asserting `WORKFLOW` execution listing, `/workflows/:id`,
+  `/executions`, and exact runData output.
+- `deterministic-github-actions-routes` covers the real GitHub promoted issue
+  parent `GITHUB` router, promoted issue actions (`GITHUB_ISSUE_CREATE`,
+  assign, close, reopen, comment, label), `GITHUB_PR_LIST`,
+  `GITHUB_PR_REVIEW`, and `GITHUB_NOTIFICATION_TRIAGE` with confirmation
+  gating where required, a fake Octokit client ledger, and
+  `/api/github/token` against an isolated empty state directory.
 - `deterministic-view-switching` covers every built-in view route through the
   VIEWS show action.
 - `deterministic-app-control-nl-routing` covers natural-language APP/VIEWS
@@ -63,3 +96,6 @@ requires a real provider key for live natural-language planner runs.
 - `GENERATE_MEDIA` and `PLAY_EMOTE` are covered at the action-contract layer
   with deterministic model/API stubs; they still do not render real model
   output or animate an actual companion scene in the zero-key PR catalog.
+- MCP resource reads and tool calls are keyless-covered with a real stdio MCP
+  fixture; the tool-call path uses strict LLM JSON fixtures for selection and
+  argument generation, then executes the real stdio tool.

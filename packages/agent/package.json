@@ -72,6 +72,11 @@
     "./package.json": "./package.json",
     "./api": {
       "types": "./src/api/index.ts",
+      "eliza-source": {
+        "types": "./src/api/index.ts",
+        "import": "./src/api/index.ts",
+        "default": "./src/api/index.ts"
+      },
       "bun": {
         "types": "./src/api/index.ts",
         "import": "./src/api/index.ts",
@@ -99,6 +104,11 @@
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./runtime": {
       "types": "./src/runtime/index.ts",
+      "eliza-source": {
+        "types": "./src/runtime/index.ts",
+        "import": "./src/runtime/index.ts",
+        "default": "./src/runtime/index.ts"
+      },
       "bun": {
         "types": "./src/runtime/index.ts",
         "import": "./src/runtime/index.ts",

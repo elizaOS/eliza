@@ -12,10 +12,27 @@ export interface RouteContext {
 // Max request body size (1 MB)
 const MAX_BODY_SIZE = 1024 * 1024;
 
-// Helper to parse JSON body with size limit
+/**
+ * Parse the JSON request body.
+ *
+ * The elizaOS runtime route dispatcher parses JSON bodies and attaches the
+ * result to `req.body` before invoking `rawPath` handlers (see
+ * `@elizaos/core` `readJsonBody`), draining the request stream in the process.
+ * Re-reading that already-ended stream would hang forever, so we return the
+ * pre-parsed body when present and only fall back to reading the stream for
+ * direct callers (e.g. unit tests) that pass an unconsumed request.
+ */
 export async function parseBody(
   req: IncomingMessage,
 ): Promise<Record<string, unknown>> {
+  const preParsed = (req as IncomingMessage & { body?: unknown }).body;
+  if (preParsed != null) {
+    if (typeof preParsed === "object" && !Array.isArray(preParsed)) {
+      return preParsed as Record<string, unknown>;
+    }
+    throw new Error("Invalid JSON body");
+  }
+
   return new Promise((resolve, reject) => {
     let body = "";
     let size = 0;

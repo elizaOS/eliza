@@ -80,6 +80,34 @@ const deterministicAppControlActionsScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-app-control-actions.scenario.ts",
 );
+const deterministicGeneratedAppRoutesScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-generated-app-routes.scenario.ts",
+);
+const deterministicTodosActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-todos-actions.scenario.ts",
+);
+const deterministicStreamingActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-streaming-actions.scenario.ts",
+);
+const deterministicXrViewActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-xr-view-actions.scenario.ts",
+);
+const deterministicMcpActionsRoutesScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-mcp-actions-routes.scenario.ts",
+);
+const deterministicWorkflowActionsRoutesScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-workflow-actions-routes.scenario.ts",
+);
+const deterministicGithubActionsRoutesScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-github-actions-routes.scenario.ts",
+);
 const deterministicAppControlNlRoutingScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-app-control-nl-routing.scenario.ts",
@@ -126,6 +154,34 @@ describe("scenario PR workflow contract", () => {
     );
     const deterministicAppControlActionsScenario = readFileSync(
       deterministicAppControlActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicGeneratedAppRoutesScenario = readFileSync(
+      deterministicGeneratedAppRoutesScenarioPath,
+      "utf8",
+    );
+    const deterministicTodosActionsScenario = readFileSync(
+      deterministicTodosActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicStreamingActionsScenario = readFileSync(
+      deterministicStreamingActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicXrViewActionsScenario = readFileSync(
+      deterministicXrViewActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicMcpActionsRoutesScenario = readFileSync(
+      deterministicMcpActionsRoutesScenarioPath,
+      "utf8",
+    );
+    const deterministicWorkflowActionsRoutesScenario = readFileSync(
+      deterministicWorkflowActionsRoutesScenarioPath,
+      "utf8",
+    );
+    const deterministicGithubActionsRoutesScenario = readFileSync(
+      deterministicGithubActionsRoutesScenarioPath,
       "utf8",
     );
     const deterministicAppControlNlRoutingScenario = readFileSync(
@@ -202,14 +258,16 @@ describe("scenario PR workflow contract", () => {
     expect(scenarioRunnerPackage.scripts?.["test:pr:e2e"]).toBe(
       "bun run test:deterministic:e2e",
     );
-    expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "SCENARIO_USE_LLM_PROXY=1",
-    );
-    expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "SCENARIO_LLM_PROXY_STRICT=1",
-    );
-    expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions",
+    expect(
+      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
+    ).toContain("SCENARIO_USE_LLM_PROXY=1");
+    expect(
+      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
+    ).toContain("SCENARIO_LLM_PROXY_STRICT=1");
+    expect(
+      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
+    ).toContain(
+      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-generated-app-routes,deterministic-todos-actions,deterministic-streaming-actions,deterministic-xr-view-actions,deterministic-mcp-actions-routes,deterministic-workflow-actions-routes,deterministic-github-actions-routes,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions,deterministic-gitpathology-actions",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",
@@ -283,13 +341,133 @@ describe("scenario PR workflow contract", () => {
       "run-feed-relaunch-2",
     );
     expect(deterministicAppControlActionsScenario).toContain(
-      'Broadcast view event "wallet:refresh"',
+      "Broadcast view event \"wallet:refresh\"",
     );
     expect(deterministicAppControlActionsScenario).toContain(
       "data.launch.run.runId",
     );
     expect(deterministicAppControlActionsScenario).toContain(
       "/api/apps/runs/run-feed-old/stop",
+    );
+    expect(deterministicGeneratedAppRoutesScenario).toContain(
+      "Real generated app registry, catalog tile, hero, and route dispatch",
+    );
+    expect(deterministicGeneratedAppRoutesScenario).toContain(
+      "ensureRealAppRegistryService",
+    );
+    expect(deterministicGeneratedAppRoutesScenario).toContain(
+      "/api/apps/hero/${GENERATED_SLUG}",
+    );
+    expect(deterministicGeneratedAppRoutesScenario).toContain(
+      "registerRuntimeAppRouteModule",
+    );
+    expect(deterministicTodosActionsScenario).toContain(
+      "Deterministic TODO action and CURRENT_TODOS provider coverage",
+    );
+    expect(deterministicTodosActionsScenario).toContain("currentTodosProvider");
+    expect(deterministicTodosActionsScenario).toContain("runPluginMigrations");
+    expect(deterministicTodosActionsScenario).toContain(
+      "ModelType.ACTION_PLANNER",
+    );
+    expect(deterministicTodosActionsScenario).toContain('actionName: "TODO"');
+    expect(deterministicStreamingActionsScenario).toContain(
+      "Deterministic STREAM action and route coverage",
+    );
+    expect(deterministicStreamingActionsScenario).toContain(
+      "handleStreamRoute",
+    );
+    expect(deterministicStreamingActionsScenario).toContain(
+      "streamStatusProvider",
+    );
+    expect(deterministicStreamingActionsScenario).toContain(
+      'actionName: "STREAM"',
+    );
+    expect(deterministicXrViewActionsScenario).toContain(
+      "Deterministic XR view actions with real WebSocket service",
+    );
+    expect(deterministicXrViewActionsScenario).toContain(
+      "XRSessionService",
+    );
+    expect(deterministicXrViewActionsScenario).toContain(
+      "encodeBinaryFrame",
+    );
+    expect(deterministicXrViewActionsScenario).toContain(
+      'actionName: "XR_QUERY_VISION"',
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      "Deterministic MCP action and route coverage",
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      "mcp-stdio-fixture.mjs",
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      'actionName: "MCP_READ_RESOURCE"',
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      'actionName: "MCP_CALL_TOOL"',
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      'actionName: "MCP"',
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      'actionName: "MCP_SEARCH_ACTIONS"',
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      'actionName: "MCP_LIST_CONNECTIONS"',
+    );
+    expect(deterministicMcpActionsRoutesScenario).toContain(
+      "/api/mcp/status",
+    );
+    expect(deterministicWorkflowActionsRoutesScenario).toContain(
+      "Deterministic workflow action and route coverage",
+    );
+    expect(deterministicWorkflowActionsRoutesScenario).toContain(
+      "EmbeddedWorkflowService",
+    );
+    expect(deterministicWorkflowActionsRoutesScenario).toContain(
+      'actionName: "WORKFLOW"',
+    );
+    expect(deterministicWorkflowActionsRoutesScenario).toContain(
+      "/executions?workflowId=",
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      "Deterministic GitHub action and route coverage",
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      "setClientForTesting",
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_ISSUE_CREATE"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_ISSUE_ASSIGN"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_ISSUE_CLOSE"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_ISSUE_REOPEN"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_ISSUE_COMMENT"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_ISSUE_LABEL"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_PR_LIST"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_PR_REVIEW"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      'actionName: "GITHUB_NOTIFICATION_TRIAGE"',
+    );
+    expect(deterministicGithubActionsRoutesScenario).toContain(
+      "/api/github/token",
     );
     expect(deterministicAppControlNlRoutingScenario).toContain(
       "deterministic-app-control-nl-routing",
@@ -312,7 +490,9 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicBrowserActionsScenario).toContain(
       "typed by strict browser scenario",
     );
-    expect(deterministicBrowserActionsScenario).toContain("BROWSER_SCREENSHOT");
+    expect(deterministicBrowserActionsScenario).toContain(
+      "BROWSER_SCREENSHOT",
+    );
     expect(deterministicLifeOpsScheduledTasksScenario).toContain(
       "Deterministic LifeOps ScheduledTask action execution",
     );
@@ -346,7 +526,9 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicMediaEmoteActionsScenario).toContain(
       "GENERATE_MEDIA_AUDIO",
     );
-    expect(deterministicMediaEmoteActionsScenario).toContain("PLAY_EMOTE");
+    expect(deterministicMediaEmoteActionsScenario).toContain(
+      "PLAY_EMOTE",
+    );
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );
@@ -363,6 +545,27 @@ describe("scenario PR workflow contract", () => {
       "mocked ClawHub registry/download endpoint",
     );
     expect(deterministicScenarioReadme).toContain(
+      "real AppRegistryService and app-manager routes",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "real TodosService DB state",
+    );
+    expect(deterministicScenarioReadme).toContain("CURRENT_TODOS");
+    expect(deterministicScenarioReadme).toContain("real `STREAM` action");
+    expect(deterministicScenarioReadme).toContain("route handler");
+    expect(deterministicScenarioReadme).toContain(
+      "real XRSessionService WebSocket",
+    );
+    expect(deterministicScenarioReadme).toContain("committed stdio MCP fixture");
+    expect(deterministicScenarioReadme).toContain("MCP_CALL_TOOL");
+    expect(deterministicScenarioReadme).toContain(
+      "real embedded workflow services",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "fake Octokit client",
+    );
+    expect(deterministicScenarioReadme).toContain("GITHUB_NOTIFICATION_TRIAGE");
+    expect(deterministicScenarioReadme).toContain(
       "deterministic runtime model handlers",
     );
     expect(deterministicScenarioReadme).toContain(
@@ -371,9 +574,7 @@ describe("scenario PR workflow contract", () => {
     expect(scenarioExecutor).toContain(
       "../../../plugins/plugin-app-control/src/index.ts",
     );
-    expect(scenarioExecutor).toContain(
-      "actions: [mod.appAction, mod.viewsAction]",
-    );
+    expect(scenarioExecutor).toContain("actions: [mod.appAction, mod.viewsAction]");
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",
     );

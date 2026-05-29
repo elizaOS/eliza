@@ -452,6 +452,15 @@ export function collectPluginNames(
       "agent-orchestrator",
       "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
     );
+    // The orchestrator's operator console (the `/orchestrator` view plus the
+    // task-coordinator GUI/TUI surfaces) ships in the companion view plugin.
+    // It registers no services or actions, only views — load it alongside the
+    // backend so the console is reachable wherever the orchestrator runs.
+    pluginsToLoad.add("@elizaos/plugin-task-coordinator");
+    track(
+      "@elizaos/plugin-task-coordinator",
+      "agent-orchestrator (companion view plugin)",
+    );
   }
   if (!onMobile && gitpathologistRequested(config)) {
     pluginsToLoad.add("@elizaos/plugin-gitpathologist");
