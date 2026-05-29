@@ -1,0 +1,61 @@
+# Full benchmark × harness results matrix
+
+Status of every discovered benchmark across all four harnesses. Cells: a score = posted to `benchmark_results/latest/`; `gated` = harness not compatible (needs infra/credentials not present — applies to all harnesses); `—` = compatible but not yet posted this pass.
+
+**8/53 benchmarks have a smithers post; 8/53 have a full 4-way post.** The remaining cells are blocked by infrastructure (Docker, real audio, multimodal runtime, chain keys, eliza TS bridge) or pending per-benchmark smithers wiring — see `CERTIFICATION.md` and `BENCHMARK_PARITY_ASSESSMENT.md`.
+
+| benchmark | eliza | hermes | openclaw | smithers |
+|---|---|---|---|---|
+| abliteration-robustness | 1.00 | 1.00 | 1.00 | 1.00 |
+| action-calling | 1.00 | 1.00 | 1.00 | 1.00 |
+| adhdbench | 1.00 | 1.00 | 1.00 | gated |
+| agentbench | 1.00 | 1.00 | 1.00 | gated |
+| app-eval | 1.00 | 1.00 | 1.00 | gated |
+| bfcl | 0.50 | 0.50 | 0.50 | 0.50 |
+| clawbench | 1.00 | 1.00 | 1.00 | gated |
+| compactbench | 1.00 | 1.00 | 1.00 | gated |
+| configbench | 1.00 | 1.00 | 1.00 | gated |
+| context_bench | 1.00 | 1.00 | 1.00 | 1.00 |
+| eliza_1 | 1.00 | 1.00 | 1.00 | gated |
+| eliza_replay | 1.00 | 1.00 | 1.00 | gated |
+| evm | 0.17 | 0.17 | 0.17 | gated |
+| experience | 1.00 | 1.00 | 1.00 | gated |
+| framework | 1.00 | 1.00 | 1.00 | gated |
+| gauntlet | 0.95 | 0.95 | 0.95 | gated |
+| gsm8k | 1.00 | 1.00 | 1.00 | 1.00 |
+| hermes_swe_env | 1.00 | 1.00 | 1.00 | gated |
+| hermes_tblite | 1.00 | 1.00 | 1.00 | gated |
+| hermes_terminalbench_2 | 1.00 | 1.00 | 1.00 | gated |
+| hermes_yc_bench | 0.56 | 0.56 | 0.56 | gated |
+| humaneval | 1.00 | 1.00 | 1.00 | 1.00 |
+| hyperliquid_bench | gated | gated | gated | gated |
+| interrupt_bench | 1.00 | 1.00 | 1.00 | gated |
+| lifeops_bench | 1.00 | 1.00 | 1.00 | gated |
+| loca_bench | 1.00 | 1.00 | 1.00 | gated |
+| mind2web | 1.00 | 1.00 | 1.00 | gated |
+| mint | 1.00 | 1.00 | 1.00 | gated |
+| mmau | 1.00 | 1.00 | 1.00 | gated |
+| mmlu | 1.00 | 1.00 | 1.00 | 1.00 |
+| mt_bench | 0.85 | 0.85 | 0.85 | gated |
+| openclaw_bench | 1.00 | 1.00 | 1.00 | gated |
+| orchestrator_lifecycle | 1.00 | 1.00 | 1.00 | gated |
+| osworld | 1.00 | 1.00 | 1.00 | gated |
+| personality_bench | 0.45 | 0.45 | 0.45 | gated |
+| realm | 1.00 | 1.00 | 1.00 | gated |
+| rlm_bench | 1.00 | 1.00 | 1.00 | gated |
+| scambench | 1.00 | 1.00 | 1.00 | 1.00 |
+| social_alpha | 0.86 | 0.86 | 0.86 | gated |
+| solana | 0.51 | 0.51 | 0.51 | gated |
+| swe_bench | 1.00 | 1.00 | 1.00 | gated |
+| swe_bench_orchestrated | 1.00 | 1.00 | 1.00 | gated |
+| tau_bench | 1.00 | 1.00 | 1.00 | gated |
+| terminal_bench | 1.00 | 1.00 | 1.00 | gated |
+| trust | 0.89 | 0.89 | 0.89 | gated |
+| vending_bench | 616.44 | 577.02 | 590.54 | gated |
+| vision_language | 0.05 | 0.05 | 0.05 | gated |
+| visualwebbench | 0.47 | 0.47 | 0.47 | gated |
+| voiceagentbench | gated | gated | gated | gated |
+| voicebench | gated | gated | gated | gated |
+| voicebench_quality | gated | gated | gated | gated |
+| webshop | 1.00 | 1.00 | 1.00 | gated |
+| woobench | 0.93 | 0.89 | 0.93 | gated |
