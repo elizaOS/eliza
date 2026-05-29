@@ -6,6 +6,7 @@ import {
 import { CloudVideoBackground } from "@elizaos/ui";
 import { ArrowRight, Download, ShoppingBag } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
+import { useT } from "./providers/I18nProvider";
 
 const CheckoutPage = lazy(() =>
   import("./CheckoutPage").then((module) => ({ default: module.CheckoutPage })),
@@ -118,6 +119,7 @@ function platformLabel(platform: string) {
 }
 
 function ReleaseDownloads() {
+  const t = useT();
   const [manifest, setManifest] = useState<ReleaseManifest>(releaseFallback);
 
   useEffect(() => {
@@ -153,9 +155,14 @@ function ReleaseDownloads() {
             <p className="section-kicker">
               {manifest.product} {manifest.channel}
             </p>
-            <h2>Download beta.</h2>
+            <h2>{t("homepage_os.release.title", { defaultValue: "Download beta." })}</h2>
           </div>
-          <p className="section-lede">Available {releaseDate}.</p>
+          <p className="section-lede">
+            {t("homepage_os.release.available", {
+              defaultValue: "Available {{date}}.",
+              date: releaseDate,
+            })}
+          </p>
         </div>
 
         <div className="release-grid">
@@ -168,12 +175,12 @@ function ReleaseDownloads() {
               <h3>{artifact.label}</h3>
               <div className="release-actions">
                 <a href={artifact.url} className="button button-dark">
-                  Download
+                  {t("homepage_os.release.download", { defaultValue: "Download" })}
                   <Download className="icon" />
                 </a>
                 {artifact.checksumUrl ? (
                   <a href={artifact.checksumUrl} className="checksum-link">
-                    SHA256
+                    {t("homepage_os.release.checksum", { defaultValue: "SHA256" })}
                   </a>
                 ) : null}
               </div>
@@ -204,6 +211,7 @@ function CloudHero({ children }: { children: ReactNode }) {
 }
 
 function HardwareTiles() {
+  const t = useT();
   return (
     <div className="hw-grid">
       {hardwareProducts.map((product) => (
@@ -215,7 +223,10 @@ function HardwareTiles() {
           <ProductImage product={product} />
           <div className="hw-tile-body">
             <div className="hw-tile-meta">
-              <span>{product.price ?? "Pre-order"}</span>
+              <span>
+                {product.price ??
+                  t("homepage_os.common.preOrder", { defaultValue: "Pre-order" })}
+              </span>
               {product.ships ? <span>{product.ships}</span> : null}
             </div>
             <h3>{product.name}</h3>
@@ -228,60 +239,94 @@ function HardwareTiles() {
 }
 
 function Header({ solid = false }: { solid?: boolean }) {
+  const t = useT();
   return (
     <header className={solid ? "site-header site-header-solid" : "site-header"}>
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[color:var(--brand-orange)]"
       >
-        Skip to content
+        {t("homepage_os.common.skipToContent", { defaultValue: "Skip to content" })}
       </a>
-      <a href="/" className="brand" aria-label="elizaOS home">
+      <a
+        href="/"
+        className="brand"
+        aria-label={t("homepage_os.common.brandHomeAria", {
+          defaultValue: "elizaOS home",
+        })}
+      >
         <img
           src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
-          alt="elizaOS"
+          alt={t("homepage_os.common.brandAlt", { defaultValue: "elizaOS" })}
           draggable={false}
         />
       </a>
-      <nav className="site-nav" aria-label="Product switcher">
-        <a href="/#download">Download</a>
-        <a href="/#hardware">Hardware</a>
+      <nav
+        className="site-nav"
+        aria-label={t("homepage_os.common.productSwitcherAria", {
+          defaultValue: "Product switcher",
+        })}
+      >
+        <a href="/#download">
+          {t("homepage_os.common.navDownload", { defaultValue: "Download" })}
+        </a>
+        <a href="/#hardware">
+          {t("homepage_os.common.navHardware", { defaultValue: "Hardware" })}
+        </a>
       </nav>
     </header>
   );
 }
 
 function Footer() {
+  const t = useT();
   return (
     <footer className="site-footer">
       <img
         src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
-        alt="elizaOS"
+        alt={t("homepage_os.common.brandAlt", { defaultValue: "elizaOS" })}
         draggable={false}
       />
-      <nav aria-label="Community">
-        <a href={appUrl}>App</a>
-        <a href={cloudUrl}>Cloud</a>
+      <nav
+        aria-label={t("homepage_os.common.communityNavAria", {
+          defaultValue: "Community",
+        })}
+      >
+        <a href={appUrl}>
+          {t("homepage_os.common.navApp", { defaultValue: "App" })}
+        </a>
+        <a href={cloudUrl}>
+          {t("homepage_os.common.navCloud", { defaultValue: "Cloud" })}
+        </a>
       </nav>
     </footer>
   );
 }
 
 function HomePage() {
+  const t = useT();
   return (
     <div className="os-shell">
       <Header />
       <main id="main">
         <CloudHero>
-          <h1>The agentic operating system.</h1>
-          <p className="hero-copy">For devices that run themselves.</p>
+          <h1>
+            {t("homepage_os.hero.title", {
+              defaultValue: "The agentic operating system.",
+            })}
+          </h1>
+          <p className="hero-copy">
+            {t("homepage_os.hero.copy", {
+              defaultValue: "For devices that run themselves.",
+            })}
+          </p>
           <div className="hero-actions">
             <a href="#download" className="button button-dark">
-              Download
+              {t("homepage_os.hero.download", { defaultValue: "Download" })}
               <Download className="icon" />
             </a>
             <a href="#hardware" className="button">
-              Hardware
+              {t("homepage_os.hero.hardware", { defaultValue: "Hardware" })}
               <ShoppingBag className="icon" />
             </a>
           </div>
@@ -292,12 +337,14 @@ function HomePage() {
         <section id="hardware" className="band band-blue">
           <div className="band-inner">
             <div className="section-head">
-              <h2>Hardware.</h2>
+              <h2>{t("homepage_os.hardware.title", { defaultValue: "Hardware." })}</h2>
               <a
                 href={`${checkoutPath}?collection=elizaos-hardware`}
                 className="button button-dark"
               >
-                Open checkout
+                {t("homepage_os.hardware.openCheckout", {
+                  defaultValue: "Open checkout",
+                })}
                 <ArrowRight className="icon" />
               </a>
             </div>
@@ -311,6 +358,7 @@ function HomePage() {
 }
 
 function RouteFallback() {
+  const t = useT();
   return (
     <div
       className="os-shell"
@@ -323,7 +371,9 @@ function RouteFallback() {
       }}
     >
       <div
-        aria-label="Loading"
+        aria-label={t("homepage_os.routeFallback.loading", {
+          defaultValue: "Loading",
+        })}
         role="status"
         style={{
           width: 32,

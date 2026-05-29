@@ -149,6 +149,11 @@ function buildDeploymentTarget(args: {
         : {}),
     };
   }
+  // Hybrid: the agent stays local while inference is routed through Eliza
+  // Cloud, so the runtime is local with the cloud provider attached.
+  if (args.serverTarget === "elizacloud-hybrid") {
+    return { runtime: "local", provider: "elizacloud" };
+  }
   if (args.useElizaCloudRuntime && !args.firstRunRemoteConnected) {
     return { runtime: "cloud", provider: "elizacloud" };
   }

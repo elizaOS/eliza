@@ -35,6 +35,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ensureAvatarUrl, isBuiltInAvatar } from "@/lib/utils/default-avatar";
+import { useT } from "@/providers/I18nProvider";
 
 export interface AgentCardData {
   id: string;
@@ -79,6 +80,7 @@ export function AgentCard({
   onRemoveSaved,
 }: AgentCardProps) {
   const navigate = useNavigate();
+  const t = useT();
 
   const bioText = Array.isArray(agent.bio) ? agent.bio[0] : agent.bio;
   const avatarUrl = agent.avatarUrl || agent.avatar_url;
@@ -100,7 +102,9 @@ export function AgentCard({
       e.stopPropagation();
       setDropdownOpen(false);
 
-      toast.info("Duplicating agent...");
+      toast.info(
+        t("cloud.agentCard.duplicating", { defaultValue: "Duplicating agent..." }),
+      );
 
       try {
         const response = await fetch(
@@ -114,18 +118,32 @@ export function AgentCard({
 
         if (response.ok) {
           const data = await response.json();
-          toast.success(`Created "${data.data.character.name}"`);
+          toast.success(
+            t("cloud.agentCard.created", {
+              name: data.data.character.name,
+              defaultValue: 'Created "{{name}}"',
+            }),
+          );
           window.dispatchEvent(new Event("characters-updated"));
           navigate("/dashboard/my-agents");
         } else {
           const error = await response.json();
-          toast.error(error.error || "Failed to duplicate agent");
+          toast.error(
+            error.error ||
+              t("cloud.agentCard.duplicateFailed", {
+                defaultValue: "Failed to duplicate agent",
+              }),
+          );
         }
       } catch {
-        toast.error("Failed to duplicate agent");
+        toast.error(
+          t("cloud.agentCard.duplicateFailed", {
+            defaultValue: "Failed to duplicate agent",
+          }),
+        );
       }
     },
-    [agent.id, agent.name, navigate],
+    [agent.id, agent.name, navigate, t],
   );
 
   const handleExport = useCallback(
@@ -142,9 +160,13 @@ export function AgentCard({
       link.download = `${agent.name || "agent"}.json`;
       link.click();
       URL.revokeObjectURL(url);
-      toast.success("Agent exported successfully");
+      toast.success(
+        t("cloud.agentCard.exported", {
+          defaultValue: "Agent exported successfully",
+        }),
+      );
     },
-    [agent],
+    [agent, t],
   );
 
   const handleToggleShare = useCallback(
@@ -167,18 +189,32 @@ export function AgentCard({
 
         if (response.ok) {
           toast.success(
-            newIsPublic ? "Agent is now public" : "Agent is now private",
+            newIsPublic
+              ? t("cloud.agentCard.nowPublic", {
+                  defaultValue: "Agent is now public",
+                })
+              : t("cloud.agentCard.nowPrivate", {
+                  defaultValue: "Agent is now private",
+                }),
           );
         } else {
           setIsPublic(!newIsPublic);
-          toast.error("Failed to update sharing");
+          toast.error(
+            t("cloud.agentCard.shareUpdateFailed", {
+              defaultValue: "Failed to update sharing",
+            }),
+          );
         }
       } catch {
         setIsPublic(!newIsPublic);
-        toast.error("Failed to update sharing");
+        toast.error(
+          t("cloud.agentCard.shareUpdateFailed", {
+            defaultValue: "Failed to update sharing",
+          }),
+        );
       }
     },
-    [agent.id, isPublic],
+    [agent.id, isPublic, t],
   );
 
   const handleCopyShareLink = useCallback(
@@ -188,18 +224,30 @@ export function AgentCard({
       setDropdownOpen(false);
 
       if (!agent.username) {
-        toast.error("Set a username first to share this agent");
+        toast.error(
+          t("cloud.agentCard.setUsernameFirst", {
+            defaultValue: "Set a username first to share this agent",
+          }),
+        );
         return;
       }
       const shareUrl = `${window.location.origin}/chat/@${agent.username}`;
       try {
         await navigator.clipboard.writeText(shareUrl);
-        toast.success("Share link copied!");
+        toast.success(
+          t("cloud.agentCard.shareLinkCopied", {
+            defaultValue: "Share link copied!",
+          }),
+        );
       } catch {
-        toast.error("Failed to copy link to clipboard");
+        toast.error(
+          t("cloud.agentCard.copyLinkFailed", {
+            defaultValue: "Failed to copy link to clipboard",
+          }),
+        );
       }
     },
-    [agent.username],
+    [agent.username, t],
   );
 
   const handleDeleteClick = useCallback((e: React.MouseEvent) => {
@@ -217,16 +265,22 @@ export function AgentCard({
     });
 
     if (response.ok) {
-      toast.success("Agent deleted");
+      toast.success(
+        t("cloud.agentCard.deleted", { defaultValue: "Agent deleted" }),
+      );
       setShowDeleteConfirm(false);
       window.dispatchEvent(new Event("characters-updated"));
       window.location.reload();
     } else {
-      toast.error("Failed to delete agent");
+      toast.error(
+        t("cloud.agentCard.deleteFailed", {
+          defaultValue: "Failed to delete agent",
+        }),
+      );
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
-  }, [agent.id]);
+  }, [agent.id, t]);
 
   const handleCancelDelete = useCallback(() => {
     setShowDeleteConfirm(false);
@@ -244,19 +298,33 @@ export function AgentCard({
         });
 
         if (response.ok) {
-          toast.success(`Removed ${agent.name} from saved agents`);
+          toast.success(
+            t("cloud.agentCard.removedFromSaved", {
+              name: agent.name,
+              defaultValue: "Removed {{name}} from saved agents",
+            }),
+          );
           onRemoveSaved?.(agent.id);
           window.dispatchEvent(new Event("characters-updated"));
           window.location.reload();
         } else {
           const error = await response.json();
-          toast.error(error.error || "Failed to remove saved agent");
+          toast.error(
+            error.error ||
+              t("cloud.agentCard.removeSavedFailed", {
+                defaultValue: "Failed to remove saved agent",
+              }),
+          );
         }
       } catch {
-        toast.error("Failed to remove saved agent");
+        toast.error(
+          t("cloud.agentCard.removeSavedFailed", {
+            defaultValue: "Failed to remove saved agent",
+          }),
+        );
       }
     },
-    [agent.id, agent.name, onRemoveSaved],
+    [agent.id, agent.name, onRemoveSaved, t],
   );
 
   const openAgentAdmin = useCallback(() => {
@@ -324,19 +392,32 @@ export function AgentCard({
             <div className="flex-1 min-w-0 overflow-hidden">
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-semibold text-white truncate">
-                  {agent.name || "Unnamed Agent"}
+                  {agent.name ||
+                    t("cloud.agentCard.unnamedAgent", {
+                      defaultValue: "Unnamed Agent",
+                    })}
                 </h3>
                 {!isPublic && isOwned && (
                   <Lock className="h-3.5 w-3.5 text-white/50 flex-shrink-0" />
                 )}
                 {!isOwned && (
                   <span className="text-xs text-white/50 flex-shrink-0">
-                    by @{agent.ownerUsername || "unknown"}
+                    {t("cloud.agentCard.byOwner", {
+                      owner:
+                        agent.ownerUsername ||
+                        t("cloud.agentCard.unknownOwner", {
+                          defaultValue: "unknown",
+                        }),
+                      defaultValue: "by @{{owner}}",
+                    })}
                   </span>
                 )}
               </div>
               <p className="text-sm text-white/50 truncate">
-                {bioText || "No description"}
+                {bioText ||
+                  t("cloud.agentCard.noDescription", {
+                    defaultValue: "No description",
+                  })}
               </p>
             </div>
 
@@ -346,7 +427,9 @@ export function AgentCard({
                 {isDeployed && (
                   <StatusBadge
                     status="success"
-                    label="Live"
+                    label={t("cloud.agentCard.statusLive", {
+                      defaultValue: "Live",
+                    })}
                     pulse
                     className="px-2 py-0.5 text-[10px]"
                   />
@@ -354,7 +437,9 @@ export function AgentCard({
                 {isStopped && (
                   <StatusBadge
                     status="warning"
-                    label="Stopped"
+                    label={t("cloud.agentCard.statusStopped", {
+                      defaultValue: "Stopped",
+                    })}
                     className="px-2 py-0.5 text-[10px]"
                   />
                 )}
@@ -367,7 +452,9 @@ export function AgentCard({
                 type="button"
                 onClick={handleRemoveSaved}
                 className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-red-500/20 transition-colors"
-                title="Remove from saved"
+                title={t("cloud.agentCard.removeFromSaved", {
+                  defaultValue: "Remove from saved",
+                })}
               >
                 <X className="h-4 w-4 text-white/70 hover:text-red-500" />
               </button>
@@ -389,14 +476,18 @@ export function AgentCard({
                       className="cursor-pointer"
                     >
                       <Copy className="h-4 w-4 mr-2" />
-                      Duplicate
+                      {t("cloud.agentCard.duplicate", {
+                        defaultValue: "Duplicate",
+                      })}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={handleExport}
                       className="cursor-pointer"
                     >
                       <Upload className="h-4 w-4 mr-2" />
-                      Export JSON
+                      {t("cloud.agentCard.exportJson", {
+                        defaultValue: "Export JSON",
+                      })}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -409,7 +500,13 @@ export function AgentCard({
                         ) : (
                           <Lock className="h-4 w-4 mr-4" />
                         )}
-                        {isPublic ? "Public" : "Private"}
+                        {isPublic
+                          ? t("cloud.agentCard.public", {
+                              defaultValue: "Public",
+                            })
+                          : t("cloud.agentCard.private", {
+                              defaultValue: "Private",
+                            })}
                       </span>
                       <Switch
                         checked={isPublic}
@@ -422,7 +519,7 @@ export function AgentCard({
                         className="cursor-pointer"
                       >
                         <LinkIcon className="h-4 w-4 mr-2" />
-                        Share
+                        {t("cloud.agentCard.share", { defaultValue: "Share" })}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
@@ -431,7 +528,7 @@ export function AgentCard({
                       className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
                     >
                       <Trash2 className="h-4 w-4 mr-2 text-red-500" />
-                      Delete
+                      {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
                     </DropdownMenuItem>
                   </>
                 ) : (
@@ -441,7 +538,9 @@ export function AgentCard({
                       className="cursor-pointer"
                     >
                       <Copy className="h-4 w-4 mr-2" />
-                      Fork Agent
+                      {t("cloud.agentCard.forkAgent", {
+                        defaultValue: "Fork Agent",
+                      })}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -449,7 +548,7 @@ export function AgentCard({
                       className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
                     >
                       <X className="h-4 w-4 mr-2 text-red-500" />
-                      Remove
+                      {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -464,21 +563,35 @@ export function AgentCard({
           >
             <AlertDialogContent onClick={(e) => e.stopPropagation()}>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+                <AlertDialogTitle>
+                  {t("cloud.agentCard.deleteTitle", {
+                    defaultValue: "Delete Agent",
+                  })}
+                </AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete{" "}
+                  {t("cloud.agentCard.deleteConfirmPrefix", {
+                    defaultValue: "Are you sure you want to delete",
+                  })}{" "}
                   <span className="font-semibold text-white">{agent.name}</span>
-                  ? This action cannot be undone.
+                  {t("cloud.agentCard.deleteConfirmSuffix", {
+                    defaultValue: "? This action cannot be undone.",
+                  })}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>
+                  {t("cloud.agentCard.cancel", { defaultValue: "Cancel" })}
+                </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleConfirmDelete}
                   disabled={isDeleting}
                   className="bg-red-600 hover:bg-red-700"
                 >
-                  {isDeleting ? "Deleting..." : "Delete"}
+                  {isDeleting
+                    ? t("cloud.agentCard.deleting", {
+                        defaultValue: "Deleting...",
+                      })
+                    : t("cloud.agentCard.delete", { defaultValue: "Delete" })}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -529,13 +642,20 @@ export function AgentCard({
           )}
           {!isOwned && (
             <span className="text-xs text-white/70 bg-black/30 px-2 py-0.5 rounded-md">
-              by @{agent.ownerUsername || "unknown"}
+              {t("cloud.agentCard.byOwner", {
+                owner:
+                  agent.ownerUsername ||
+                  t("cloud.agentCard.unknownOwner", {
+                    defaultValue: "unknown",
+                  }),
+                defaultValue: "by @{{owner}}",
+              })}
             </span>
           )}
           {showDeploymentStatus && isDeployed && (
             <StatusBadge
               status="success"
-              label="Live"
+              label={t("cloud.agentCard.statusLive", { defaultValue: "Live" })}
               pulse
               className="px-2 py-0.5 text-[10px]"
             />
@@ -543,7 +663,9 @@ export function AgentCard({
           {showDeploymentStatus && isStopped && (
             <StatusBadge
               status="warning"
-              label="Stopped"
+              label={t("cloud.agentCard.statusStopped", {
+                defaultValue: "Stopped",
+              })}
               className="px-2 py-0.5 text-[10px]"
             />
           )}
@@ -555,7 +677,9 @@ export function AgentCard({
             type="button"
             onClick={handleRemoveSaved}
             className="absolute top-3 right-12 z-20 flex items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-red-500/50 transition-colors"
-            title="Remove from saved"
+            title={t("cloud.agentCard.removeFromSaved", {
+              defaultValue: "Remove from saved",
+            })}
           >
             <X className="h-4 w-4 text-white" />
           </button>
@@ -645,7 +769,10 @@ export function AgentCard({
         <div className="absolute bottom-0 left-0 right-0 p-3 z-10">
           <h3 className="font-semibold text-white truncate">{agent.name}</h3>
           <p className="text-xs text-white/70 line-clamp-2 leading-relaxed">
-            {bioText || "No description"}
+            {bioText ||
+              t("cloud.agentCard.noDescription", {
+                defaultValue: "No description",
+              })}
           </p>
         </div>
 
@@ -656,21 +783,35 @@ export function AgentCard({
         >
           <AlertDialogContent onClick={(e) => e.stopPropagation()}>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+              <AlertDialogTitle>
+                {t("cloud.agentCard.deleteTitle", {
+                  defaultValue: "Delete Agent",
+                })}
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete{" "}
-                <span className="font-semibold text-white">{agent.name}</span>?
-                This action cannot be undone.
+                {t("cloud.agentCard.deleteConfirmPrefix", {
+                  defaultValue: "Are you sure you want to delete",
+                })}{" "}
+                <span className="font-semibold text-white">{agent.name}</span>
+                {t("cloud.agentCard.deleteConfirmSuffix", {
+                  defaultValue: "? This action cannot be undone.",
+                })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>
+                {t("cloud.agentCard.cancel", { defaultValue: "Cancel" })}
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
                 className="bg-red-600 hover:bg-red-700"
               >
-                {isDeleting ? "Deleting..." : "Delete"}
+                {isDeleting
+                  ? t("cloud.agentCard.deleting", {
+                      defaultValue: "Deleting...",
+                    })
+                  : t("cloud.agentCard.delete", { defaultValue: "Delete" })}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

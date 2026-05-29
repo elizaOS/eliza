@@ -1,4 +1,5 @@
 import { Download, ExternalLink, HardDrive, Info } from "lucide-react";
+import { useT } from "../providers/I18nProvider";
 
 export type OsArtifact = {
   id: string;
@@ -24,16 +25,21 @@ type CategoryKey = "linux" | "android" | "tools";
 
 interface Category {
   key: CategoryKey;
-  label: string;
-  description: string;
+  labelKey: string;
+  labelDefault: string;
+  descriptionKey: string;
+  descriptionDefault: string;
   filter: (artifact: OsArtifact) => boolean;
 }
 
 const CATEGORIES: Category[] = [
   {
     key: "linux",
-    label: "Linux Desktop",
-    description: "Bootable images, package manager installs, and VM bundles.",
+    labelKey: "homepage_os.downloads.categoryLinuxLabel",
+    labelDefault: "Linux Desktop",
+    descriptionKey: "homepage_os.downloads.categoryLinuxDescription",
+    descriptionDefault:
+      "Bootable images, package manager installs, and VM bundles.",
     filter: (a) =>
       a.platform === "linux" || a.platform === "cross-platform"
         ? ["iso", "deb", "ova"].includes(a.kind)
@@ -41,14 +47,18 @@ const CATEGORIES: Category[] = [
   },
   {
     key: "android",
-    label: "Android",
-    description: "Full OS replacement or sideloadable APK.",
+    labelKey: "homepage_os.downloads.categoryAndroidLabel",
+    labelDefault: "Android",
+    descriptionKey: "homepage_os.downloads.categoryAndroidDescription",
+    descriptionDefault: "Full OS replacement or sideloadable APK.",
     filter: (a) => a.platform === "android" && ["apk"].includes(a.kind),
   },
   {
     key: "tools",
-    label: "Install Tools",
-    description: "Make an elizaOS USB. Flash an Android device.",
+    labelKey: "homepage_os.downloads.categoryToolsLabel",
+    labelDefault: "Install Tools",
+    descriptionKey: "homepage_os.downloads.categoryToolsDescription",
+    descriptionDefault: "Make an elizaOS USB. Flash an Android device.",
     filter: (a) => a.kind === "desktop-app",
   },
 ];
@@ -96,6 +106,7 @@ function platformLabel(platform: OsArtifact["platform"]): string {
 }
 
 function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
+  const t = useT();
   const sizeLabel = formatBytes(artifact.sizeBytes);
   const isAvailable = artifact.downloadUrl !== null;
 
@@ -115,7 +126,9 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
           </span>
           {!isAvailable && (
             <span className="artifact-badge artifact-badge-soon">
-              Coming soon
+              {t("homepage_os.downloads.comingSoonBadge", {
+                defaultValue: "Coming soon",
+              })}
             </span>
           )}
         </div>
@@ -126,7 +139,12 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
       {artifact.requiresHardware && (
         <div className="artifact-prereq">
           <HardDrive className="artifact-prereq-icon" />
-          <span>Requires: {artifact.requiresHardware}</span>
+          <span>
+            {t("homepage_os.downloads.requires", {
+              defaultValue: "Requires: {{hardware}}",
+              hardware: artifact.requiresHardware,
+            })}
+          </span>
         </div>
       )}
 
@@ -138,20 +156,24 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
             <a
               href={artifact.checksumUrl}
               className="artifact-link"
-              aria-label="Checksum file"
+              aria-label={t("homepage_os.downloads.checksumAria", {
+                defaultValue: "Checksum file",
+              })}
             >
               <Info className="icon" />
-              Checksum
+              {t("homepage_os.downloads.checksum", { defaultValue: "Checksum" })}
             </a>
           )}
           {artifact.releaseNotesUrl && (
             <a
               href={artifact.releaseNotesUrl}
               className="artifact-link"
-              aria-label="Release notes"
+              aria-label={t("homepage_os.downloads.releaseNotesAria", {
+                defaultValue: "Release notes",
+              })}
             >
               <ExternalLink className="icon" />
-              Notes
+              {t("homepage_os.downloads.notes", { defaultValue: "Notes" })}
             </a>
           )}
           <a
@@ -166,7 +188,11 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
             download={isAvailable || undefined}
           >
             <Download className="icon" />
-            {isAvailable ? "Download" : "Coming soon"}
+            {isAvailable
+              ? t("homepage_os.downloads.download", { defaultValue: "Download" })
+              : t("homepage_os.downloads.comingSoon", {
+                  defaultValue: "Coming soon",
+                })}
           </a>
         </div>
       </div>
@@ -181,12 +207,17 @@ function CategorySection({
   category: Category;
   artifacts: OsArtifact[];
 }) {
+  const t = useT();
   if (artifacts.length === 0) return null;
   return (
     <div className="artifact-category">
       <div className="artifact-category-head">
-        <h2>{category.label}</h2>
-        <p className="artifact-category-desc">{category.description}</p>
+        <h2>{t(category.labelKey, { defaultValue: category.labelDefault })}</h2>
+        <p className="artifact-category-desc">
+          {t(category.descriptionKey, {
+            defaultValue: category.descriptionDefault,
+          })}
+        </p>
       </div>
       <div className="artifact-grid">
         {artifacts.map((artifact) => (
@@ -198,13 +229,17 @@ function CategorySection({
 }
 
 export function OsDownloads({ artifacts }: OsDownloadsProps) {
+  const t = useT();
   return (
     <section id="downloads" className="band band-black os-downloads">
       <div className="band-inner">
         <div className="section-head">
-          <h2>Downloads.</h2>
+          <h2>{t("homepage_os.downloads.title", { defaultValue: "Downloads." })}</h2>
           <p className="section-lede">
-            Linux PCs, Android, and virtual machines. Pick your target.
+            {t("homepage_os.downloads.lede", {
+              defaultValue:
+                "Linux PCs, Android, and virtual machines. Pick your target.",
+            })}
           </p>
         </div>
 
@@ -221,8 +256,15 @@ export function OsDownloads({ artifacts }: OsDownloadsProps) {
 
         <div className="artifact-channel-note">
           <p>
-            <strong>Beta</strong> — feature-complete, rough edges expected.
-            Checksums and signatures published with each build.
+            <strong>
+              {t("homepage_os.downloads.channelNoteBeta", {
+                defaultValue: "Beta",
+              })}
+            </strong>
+            {t("homepage_os.downloads.channelNoteBody", {
+              defaultValue:
+                " — feature-complete, rough edges expected. Checksums and signatures published with each build.",
+            })}
           </p>
         </div>
       </div>

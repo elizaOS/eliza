@@ -321,11 +321,19 @@ export default function MarketingPage() {
                   const available = Boolean(artifact.downloadUrl);
                   const statusLabel = available
                     ? artifact.channel === "stable"
-                      ? "Available"
+                      ? t("homepage_eliza.marketing.osStatusAvailable", {
+                          defaultValue: "Available",
+                        })
                       : artifact.channel === "beta"
-                        ? "Beta"
-                        : "Nightly"
-                    : "Coming soon";
+                        ? t("homepage_eliza.marketing.osStatusBeta", {
+                            defaultValue: "Beta",
+                          })
+                        : t("homepage_eliza.marketing.osStatusNightly", {
+                            defaultValue: "Nightly",
+                          })
+                    : t("homepage_eliza.marketing.osStatusComingSoon", {
+                        defaultValue: "Coming soon",
+                      });
                   const sizeLabel =
                     artifact.sizeBytes != null
                       ? ` · ${(artifact.sizeBytes / 1_048_576).toFixed(1)} MB`

@@ -24,6 +24,9 @@ export * from "./cloud-preference-patch";
 export * from "./desktop-permissions-client";
 export * from "./first-run-reset";
 export {
+  canHostLocalAgent,
+  canRunLocal,
+  canSelectLocalRuntime,
   type DeepLinkHandlers,
   dispatchShareTarget,
   handleDeepLink,

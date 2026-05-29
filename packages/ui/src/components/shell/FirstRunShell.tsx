@@ -9,8 +9,8 @@ import {
 import * as React from "react";
 import {
   type FirstRunDraftUpdate,
+  type FirstRunLocalInference,
   type FirstRunProfileDraft,
-  type FirstRunRuntime,
   type FirstRunStep,
   normalizeFirstRunName,
 } from "../../first-run/first-run";
@@ -24,6 +24,7 @@ const GLASS_PANEL =
 export interface FirstRunShellProps {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
+  localRuntimeAvailable: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   busyText: string | null;
@@ -46,29 +47,137 @@ export interface FirstRunShellProps {
   onPromptReady: (promptText: string) => void;
 }
 
-function RuntimeButton(props: {
+function RuntimeCard(props: {
   active: boolean;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   detail: string;
+  badge?: string;
+  emphasis?: "primary" | "muted";
+  testId: string;
   onClick: () => void;
+  children?: React.ReactNode;
 }) {
   const Icon = props.icon;
+  const muted = props.emphasis === "muted";
   return (
-    <button
-      type="button"
-      onClick={props.onClick}
+    <div
       className={[
-        "inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-sm border px-5 py-3 text-sm font-semibold transition",
+        "w-full rounded-md border text-left transition",
         props.active
-          ? "border-accent bg-accent text-accent-foreground hover:bg-accent-hover"
+          ? "border-accent bg-[var(--first-run-card-bg-hover)]"
           : GLASS_INTERACTIVE,
       ].join(" ")}
     >
-      <Icon className="h-4 w-4" />
-      <span>{props.label}</span>
-      <span className="sr-only">{props.detail}</span>
-    </button>
+      <button
+        type="button"
+        onClick={props.onClick}
+        aria-pressed={props.active}
+        data-testid={props.testId}
+        className={[
+          "flex w-full items-start gap-3 px-4",
+          muted ? "py-3" : "py-4",
+        ].join(" ")}
+      >
+        <Icon
+          className={[
+            "mt-0.5 shrink-0",
+            muted ? "h-4 w-4 text-[var(--first-run-text-muted)]" : "h-5 w-5",
+            props.active ? "text-accent" : "",
+          ].join(" ")}
+        />
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="flex items-center gap-2">
+            <span
+              className={[
+                "font-semibold",
+                muted
+                  ? "text-sm text-[var(--first-run-text-muted)]"
+                  : "text-base text-[var(--first-run-text-primary)]",
+              ].join(" ")}
+            >
+              {props.label}
+            </span>
+            {props.badge ? (
+              <span
+                className={[
+                  "ml-auto rounded-full border px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide",
+                  props.emphasis === "primary"
+                    ? "border-accent/40 bg-accent/10 text-accent"
+                    : "border-[var(--first-run-card-border)] text-[var(--first-run-text-muted)]",
+                ].join(" ")}
+              >
+                {props.badge}
+              </span>
+            ) : null}
+          </span>
+          <span className="text-xs leading-relaxed text-[var(--first-run-text-muted)]">
+            {props.detail}
+          </span>
+        </span>
+      </button>
+      {props.children ? (
+        <div className="border-t border-[var(--first-run-card-border)] px-4 py-3">
+          {props.children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LocalInferenceChoice(props: {
+  value: FirstRunLocalInference;
+  onChange: (value: FirstRunLocalInference) => void;
+}) {
+  const options: ReadonlyArray<{
+    value: FirstRunLocalInference;
+    label: string;
+    detail: string;
+  }> = [
+    {
+      value: "all-local",
+      label: "All local models",
+      detail: "Download and run everything on this machine.",
+    },
+    {
+      value: "cloud-inference",
+      label: "Connect Eliza Cloud",
+      detail: "Keep the agent local, route inference through the cloud.",
+    },
+  ];
+  return (
+    <div
+      className="flex flex-col gap-2"
+      role="radiogroup"
+      aria-label="Local inference"
+    >
+      {options.map((option) => {
+        const active = props.value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            data-testid={`first-run-local-${option.value}`}
+            onClick={() => props.onChange(option.value)}
+            className={[
+              "flex flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
+              active
+                ? "border-accent bg-accent/10"
+                : "border-[var(--first-run-card-border)] hover:bg-[var(--first-run-card-bg-hover)]",
+            ].join(" ")}
+          >
+            <span className="text-sm font-semibold text-[var(--first-run-text-primary)]">
+              {option.label}
+            </span>
+            <span className="text-xs text-[var(--first-run-text-muted)]">
+              {option.detail}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -144,8 +253,8 @@ function promptForStep(step: FirstRunStep, agentNameValue: string): string {
 }
 
 function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
-  const [rendered, setRendered] = React.useState(text);
-  const [complete, setComplete] = React.useState(true);
+  const [rendered, setRendered] = React.useState("");
+  const [complete, setComplete] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -175,21 +284,6 @@ function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
   }, [text]);
 
   return { rendered, complete };
-}
-
-function RuntimeDetail(props: {
-  runtime: FirstRunRuntime;
-  cloudConnected: boolean;
-}) {
-  const detail =
-    props.runtime === "cloud"
-      ? props.cloudConnected
-        ? "Cloud account connected."
-        : "Sign in before launch."
-      : props.runtime === "remote"
-        ? "Use an existing agent API."
-        : "Start the bundled local agent.";
-  return <p className="min-h-5 text-center text-sm text-muted">{detail}</p>;
 }
 
 function FirstRunStatus(props: {
@@ -254,6 +348,7 @@ function FirstRunVoiceControl(props: {
 function FirstRunControls(props: {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
+  localRuntimeAvailable: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   primaryLabel: string;
@@ -302,54 +397,72 @@ function FirstRunControls(props: {
 
   return (
     <div className="flex w-full flex-col items-center gap-4">
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        <RuntimeButton
-          active={props.draft.runtime === "local"}
-          icon={HardDrive}
-          label="Local"
-          detail="Start the bundled local agent."
-          onClick={() => props.updateDraft("runtime", "local")}
-        />
-        <RuntimeButton
+      <div className="flex w-full flex-col gap-3">
+        <RuntimeCard
           active={props.draft.runtime === "cloud"}
           icon={Cloud}
           label="Cloud"
+          badge="Recommended"
+          emphasis="primary"
+          testId="first-run-runtime-cloud"
           detail={
             props.elizaCloudConnected
-              ? "Cloud account connected."
-              : "Sign in before launch."
+              ? "Runs 24/7 persistent agents that never sleep. Account connected."
+              : "Runs 24/7 persistent agents that never sleep."
           }
           onClick={() => props.updateDraft("runtime", "cloud")}
         />
-        <RuntimeButton
+
+        {props.localRuntimeAvailable ? (
+          <RuntimeCard
+            active={
+              props.draft.runtime === "local" &&
+              props.draft.localInference === "all-local"
+            }
+            icon={HardDrive}
+            label="Local"
+            badge="Advanced"
+            testId="first-run-runtime-local"
+            detail="Runs on your machine. Use local inference or connect Eliza Cloud."
+            onClick={() => props.updateDraft("runtime", "local")}
+          >
+            {props.draft.runtime === "local" ? (
+              <LocalInferenceChoice
+                value={props.draft.localInference}
+                onChange={(value) => props.updateDraft("localInference", value)}
+              />
+            ) : null}
+          </RuntimeCard>
+        ) : null}
+
+        {props.draft.runtime === "cloud" ? (
+          <div
+            className={`flex items-center gap-2 rounded-sm border px-4 py-2 text-sm ${GLASS_PANEL}`}
+          >
+            <Checkbox
+              aria-label="Keep embeddings local"
+              checked={props.draft.useLocalEmbeddings}
+              onCheckedChange={(checked) =>
+                props.updateDraft("useLocalEmbeddings", checked === true)
+              }
+            />
+            <span>Keep embeddings local</span>
+          </div>
+        ) : null}
+
+        <RuntimeCard
           active={props.draft.runtime === "remote"}
           icon={Network}
-          label="Remote"
-          detail="Use an agent API already running elsewhere."
+          label="Use as remote"
+          emphasis="muted"
+          testId="first-run-runtime-remote"
+          detail="Connect to your local machine from another device."
           onClick={() => {
             props.updateDraft("runtime", "remote");
             props.setStep("remote");
           }}
         />
       </div>
-      <RuntimeDetail
-        runtime={props.draft.runtime}
-        cloudConnected={props.elizaCloudConnected}
-      />
-      {props.draft.runtime === "cloud" ? (
-        <div
-          className={`flex min-h-[2.5rem] items-center gap-2 rounded-sm border px-4 py-2 text-sm ${GLASS_PANEL}`}
-        >
-          <Checkbox
-            aria-label="Keep embeddings local"
-            checked={props.draft.useLocalEmbeddings}
-            onCheckedChange={(checked) =>
-              props.updateDraft("useLocalEmbeddings", checked === true)
-            }
-          />
-          <span>Keep embeddings local</span>
-        </div>
-      ) : null}
       <GlassButton
         variant="primary"
         disabled={props.submitting}
@@ -365,6 +478,7 @@ function FirstRunControls(props: {
 export function FirstRunShell({
   step,
   draft,
+  localRuntimeAvailable,
   elizaCloudConnected,
   submitting,
   busyText,
@@ -438,6 +552,7 @@ export function FirstRunShell({
               <FirstRunControls
                 step={step}
                 draft={draft}
+                localRuntimeAvailable={localRuntimeAvailable}
                 elizaCloudConnected={elizaCloudConnected}
                 submitting={submitting}
                 primaryLabel={primaryLabel}

@@ -3,7 +3,12 @@ import * as React from "react";
 import { client } from "../api";
 import { invokeDesktopBridgeRequest } from "../bridge";
 import { getBootConfig } from "../config/boot-config";
-import { isAndroid, isDesktopPlatform, isIOS } from "../platform/init";
+import {
+  canSelectLocalRuntime,
+  isAndroid,
+  isDesktopPlatform,
+  isIOS,
+} from "../platform/init";
 import {
   addAgentProfile,
   createPersistedActiveServer,
@@ -72,6 +77,7 @@ export interface FirstRunVoiceState {
 export interface FirstRunController {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
+  localRuntimeAvailable: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   busyText: string | null;
@@ -248,7 +254,8 @@ export function useFirstRunController(): FirstRunController {
   const initialDraft = React.useMemo<FirstRunProfileDraft>(
     () => ({
       agentName: normalizeFirstRunName(firstRunName) || "Eliza",
-      runtime: initialRuntimeTarget ?? "local",
+      runtime: initialRuntimeTarget ?? "cloud",
+      localInference: "all-local",
       remoteApiBase: "",
       remoteToken: "",
       useLocalEmbeddings: false,
@@ -265,9 +272,14 @@ export function useFirstRunController(): FirstRunController {
     if (initialRuntimeTarget === "remote") return "remote";
     return "runtime";
   });
-  const [draft, setDraft] = React.useState<FirstRunProfileDraft>(
-    () => persistedFirstRunState?.draft ?? initialDraft,
-  );
+  const localRuntimeAvailable = React.useMemo(canSelectLocalRuntime, []);
+  const [draft, setDraft] = React.useState<FirstRunProfileDraft>(() => {
+    const resolved = persistedFirstRunState?.draft ?? initialDraft;
+    if (!localRuntimeAvailable && resolved.runtime === "local") {
+      return { ...resolved, runtime: "cloud" };
+    }
+    return resolved;
+  });
   const [busyText, setBusyText] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [voice, setVoice] = React.useState<FirstRunVoiceState>(() => ({
@@ -784,6 +796,7 @@ export function useFirstRunController(): FirstRunController {
   return {
     step,
     draft,
+    localRuntimeAvailable,
     elizaCloudConnected,
     submitting,
     busyText,

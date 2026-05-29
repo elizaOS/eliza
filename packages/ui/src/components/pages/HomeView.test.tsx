@@ -29,10 +29,13 @@ const controllerMock = vi.hoisted(() => ({
   },
 }));
 
+const backgroundRenders = vi.hoisted(() => ({ count: 0 }));
+
 vi.mock("../../backgrounds/CloudVideoBackground", () => ({
-  CloudVideoBackground: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="cloud-background">{children}</div>
-  ),
+  CloudVideoBackground: ({ children }: { children?: React.ReactNode }) => {
+    backgroundRenders.count += 1;
+    return <div data-testid="cloud-background">{children}</div>;
+  },
 }));
 
 vi.mock("../voice/VoiceWaveform", () => ({
@@ -49,6 +52,7 @@ afterEach(() => {
   cleanup();
   controllerMock.value.send.mockClear();
   controllerMock.value.toggleRecording.mockClear();
+  backgroundRenders.count = 0;
 });
 
 describe("HomeView", () => {
@@ -78,6 +82,24 @@ describe("HomeView", () => {
 
     expect(controllerMock.value.send).toHaveBeenCalledWith("open terminal");
     expect(input.value).toBe("");
+  });
+
+  it("never re-renders the cloud background while typing into the composer", () => {
+    render(<HomeView />);
+
+    expect(backgroundRenders.count).toBe(1);
+
+    const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "h" } });
+    fireEvent.change(input, { target: { value: "he" } });
+    fireEvent.change(input, { target: { value: "hel" } });
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.blur(input);
+
+    // The memoized, child-free background layer must stay mounted without a
+    // single extra render across all of the composer's state churn.
+    expect(backgroundRenders.count).toBe(1);
   });
 
   it("starts voice input from the home surface", () => {

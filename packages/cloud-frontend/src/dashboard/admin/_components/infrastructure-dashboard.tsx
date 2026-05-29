@@ -76,6 +76,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 import { WarmPoolPanel } from "./warm-pool-panel";
 
 // Error boundary for tab content
@@ -611,9 +612,12 @@ function maskInspectForDisplay(data: DockerInspectData): DockerInspectData {
 // ---------------------------------------------------------------------------
 
 export function InfrastructureDashboard() {
+  const t = useT();
   useSetPageHeader({
-    title: "Infrastructure",
-    description: "Docker nodes, containers, and Headscale mesh management",
+    title: t("cloud.infra.pageTitle", { defaultValue: "Infrastructure" }),
+    description: t("cloud.infra.pageDescription", {
+      defaultValue: "Docker nodes, containers, and Headscale mesh management",
+    }),
   });
 
   // ---- Data state ----
@@ -733,12 +737,15 @@ export function InfrastructureDashboard() {
       setNodes(json.data?.nodes ?? []);
     } catch (err) {
       toast.error(
-        `Failed to load nodes: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.infra.loadNodesFailed", {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: "Failed to load nodes: {{error}}",
+        }),
       );
     } finally {
       setLoadingNodes(false);
     }
-  }, []);
+  }, [t]);
 
   const loadInfraSnapshot = useCallback(async () => {
     setLoadingInfra(true);
@@ -749,12 +756,15 @@ export function InfrastructureDashboard() {
       setInfraSnapshot(json.data);
     } catch (err) {
       toast.error(
-        `Failed to load infrastructure: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.infra.loadInfraFailed", {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: "Failed to load infrastructure: {{error}}",
+        }),
       );
     } finally {
       setLoadingInfra(false);
     }
-  }, []);
+  }, [t]);
 
   const loadHeadscale = useCallback(async () => {
     setLoadingHeadscale(true);
@@ -765,13 +775,16 @@ export function InfrastructureDashboard() {
       setHeadscale(json.data);
     } catch (err) {
       toast.error(
-        `Failed to load headscale: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.infra.loadHeadscaleFailed", {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: "Failed to load headscale: {{error}}",
+        }),
       );
       setHeadscale(null);
     } finally {
       setLoadingHeadscale(false);
     }
-  }, []);
+  }, [t]);
 
   // Initial load
   useEffect(() => {
@@ -993,7 +1006,11 @@ export function InfrastructureDashboard() {
       action: "restart" | "stop" | "start" | "pull-image",
     ) => {
       if (row.nodeId === "unassigned") {
-        toast.error("Cannot perform actions on unassigned containers");
+        toast.error(
+          t("cloud.infra.cannotActUnassigned", {
+            defaultValue: "Cannot perform actions on unassigned containers",
+          }),
+        );
         return;
       }
       const loadingKey = `${row.key}-${action}`;
@@ -1013,7 +1030,13 @@ export function InfrastructureDashboard() {
         );
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
-        toast.success(`${action} successful: ${row.containerName}`);
+        toast.success(
+          t("cloud.infra.actionSuccess", {
+            action,
+            name: row.containerName,
+            defaultValue: "{{action}} successful: {{name}}",
+          }),
+        );
         // Refresh infrastructure snapshot after a short delay to let Docker settle.
         // Timer is tracked in a ref so it can be cleared if the component unmounts.
         if (actionRefreshTimerRef.current !== null) {
@@ -1025,19 +1048,27 @@ export function InfrastructureDashboard() {
         }, 2000);
       } catch (err) {
         toast.error(
-          `${action} failed: ${err instanceof Error ? err.message : String(err)}`,
+          t("cloud.infra.actionFailed", {
+            action,
+            error: err instanceof Error ? err.message : String(err),
+            defaultValue: "{{action}} failed: {{error}}",
+          }),
         );
       } finally {
         setActionLoading((prev) => ({ ...prev, [loadingKey]: false }));
       }
     },
-    [loadInfraSnapshot],
+    [loadInfraSnapshot, t],
   );
 
   const viewContainerLogs = useCallback(
     async (row: ContainerRow, lines = 200) => {
       if (row.nodeId === "unassigned") {
-        toast.error("Cannot fetch logs for unassigned containers");
+        toast.error(
+          t("cloud.infra.cannotLogsUnassigned", {
+            defaultValue: "Cannot fetch logs for unassigned containers",
+          }),
+        );
         return;
       }
       setLogsTarget(row);
@@ -1060,23 +1091,34 @@ export function InfrastructureDashboard() {
         );
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
-        setLogsContent(json.data?.logs ?? "(no output)");
+        setLogsContent(
+          json.data?.logs ??
+            t("cloud.infra.noOutput", { defaultValue: "(no output)" }),
+        );
       } catch (err) {
         setLogsContent(
-          `Error: ${err instanceof Error ? err.message : String(err)}`,
+          t("cloud.infra.logsError", {
+            error: err instanceof Error ? err.message : String(err),
+            defaultValue: "Error: {{error}}",
+          }),
         );
       } finally {
         setLogsLoading(false);
       }
     },
-    [],
+    [t],
   );
 
-  const viewContainerDetails = useCallback(async (row: ContainerRow) => {
-    if (row.nodeId === "unassigned") {
-      toast.error("Cannot inspect unassigned containers");
-      return;
-    }
+  const viewContainerDetails = useCallback(
+    async (row: ContainerRow) => {
+      if (row.nodeId === "unassigned") {
+        toast.error(
+          t("cloud.infra.cannotInspectUnassigned", {
+            defaultValue: "Cannot inspect unassigned containers",
+          }),
+        );
+        return;
+      }
     setDetailsTarget(row);
     setDetailsData(null);
     setDetailsResources(null);
@@ -1099,15 +1141,20 @@ export function InfrastructureDashboard() {
       if (!json.success) throw new Error(json.error);
       setDetailsData(json.data?.inspect ?? null);
       setDetailsResources(json.data?.resourceUsage ?? null);
-    } catch (err) {
-      toast.error(
-        `Inspect failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      setDetailsOpen(false);
-    } finally {
-      setDetailsLoading(false);
-    }
-  }, []);
+      } catch (err) {
+        toast.error(
+          t("cloud.infra.inspectFailed", {
+            error: err instanceof Error ? err.message : String(err),
+            defaultValue: "Inspect failed: {{error}}",
+          }),
+        );
+        setDetailsOpen(false);
+      } finally {
+        setDetailsLoading(false);
+      }
+    },
+    [t],
+  );
 
   const toggleRowExpand = useCallback((key: string) => {
     setExpandedRows((prev) => {
@@ -1129,12 +1176,21 @@ export function InfrastructureDashboard() {
     });
   }, []);
 
-  const copyToClipboard = useCallback((text: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => toast.success("Copied to clipboard"),
-      () => toast.error("Failed to copy"),
-    );
-  }, []);
+  const copyToClipboard = useCallback(
+    (text: string) => {
+      navigator.clipboard.writeText(text).then(
+        () =>
+          toast.success(
+            t("cloud.infra.copied", { defaultValue: "Copied to clipboard" }),
+          ),
+        () =>
+          toast.error(
+            t("cloud.infra.copyFailed", { defaultValue: "Failed to copy" }),
+          ),
+      );
+    },
+    [t],
+  );
 
   // ---------------------------------------------------------------------------
   // Node Actions
@@ -1153,18 +1209,27 @@ export function InfrastructureDashboard() {
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
         toast.success(
-          `Health check complete: ${node.nodeId} is ${json.data?.status ?? "checked"}`,
+          t("cloud.infra.healthCheckComplete", {
+            nodeId: node.nodeId,
+            status:
+              json.data?.status ??
+              t("cloud.infra.checked", { defaultValue: "checked" }),
+            defaultValue: "Health check complete: {{nodeId}} is {{status}}",
+          }),
         );
         await loadNodes();
       } catch (err) {
         toast.error(
-          `Health check failed: ${err instanceof Error ? err.message : String(err)}`,
+          t("cloud.infra.healthCheckFailed", {
+            error: err instanceof Error ? err.message : String(err),
+            defaultValue: "Health check failed: {{error}}",
+          }),
         );
       } finally {
         setHealthChecking((prev) => ({ ...prev, [node.nodeId]: false }));
       }
     },
-    [loadNodes],
+    [loadNodes, t],
   );
 
   const openEditNode = useCallback((node: DockerNode) => {
@@ -1197,17 +1262,25 @@ export function InfrastructureDashboard() {
       );
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
-      toast.success(`Node ${editNodeTarget.nodeId} updated`);
+      toast.success(
+        t("cloud.infra.nodeUpdated", {
+          nodeId: editNodeTarget.nodeId,
+          defaultValue: "Node {{nodeId}} updated",
+        }),
+      );
       setEditNodeOpen(false);
       await loadNodes();
     } catch (err) {
       toast.error(
-        `Failed to update node: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.infra.updateNodeFailed", {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: "Failed to update node: {{error}}",
+        }),
       );
     } finally {
       setEditNodeLoading(false);
     }
-  }, [editNodeTarget, editNodeForm, loadNodes]);
+  }, [editNodeTarget, editNodeForm, loadNodes, t]);
 
   const submitDeleteNode = useCallback(async () => {
     if (!deleteNodeTarget) return;
@@ -1221,17 +1294,25 @@ export function InfrastructureDashboard() {
       );
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
-      toast.success(`Node ${deleteNodeTarget.nodeId} deregistered`);
+      toast.success(
+        t("cloud.infra.nodeDeregistered", {
+          nodeId: deleteNodeTarget.nodeId,
+          defaultValue: "Node {{nodeId}} deregistered",
+        }),
+      );
       setDeleteNodeTarget(null);
       await loadNodes();
     } catch (err) {
       toast.error(
-        `Failed to delete node: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.infra.deleteNodeFailed", {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: "Failed to delete node: {{error}}",
+        }),
       );
     } finally {
       setDeleteNodeLoading(false);
     }
-  }, [deleteNodeTarget, loadNodes]);
+  }, [deleteNodeTarget, loadNodes, t]);
 
   const submitAddNode = useCallback(async () => {
     setAddNodeLoading(true);
@@ -1249,7 +1330,12 @@ export function InfrastructureDashboard() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
-      toast.success(`Node ${addNodeForm.nodeId} registered`);
+      toast.success(
+        t("cloud.infra.nodeRegistered", {
+          nodeId: addNodeForm.nodeId,
+          defaultValue: "Node {{nodeId}} registered",
+        }),
+      );
       setAddNodeOpen(false);
       setAddNodeForm({
         nodeId: "",
@@ -1261,12 +1347,15 @@ export function InfrastructureDashboard() {
       await loadNodes();
     } catch (err) {
       toast.error(
-        `Failed to register node: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.infra.registerNodeFailed", {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: "Failed to register node: {{error}}",
+        }),
       );
     } finally {
       setAddNodeLoading(false);
     }
-  }, [addNodeForm, loadNodes]);
+  }, [addNodeForm, loadNodes, t]);
 
   const runAudit = useCallback(async () => {
     setAuditLoading(true);
@@ -1281,13 +1370,16 @@ export function InfrastructureDashboard() {
       setAuditResult(json.data);
     } catch (err) {
       toast.error(
-        `Audit failed: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.infra.auditFailed", {
+          error: err instanceof Error ? err.message : String(err),
+          defaultValue: "Audit failed: {{error}}",
+        }),
       );
       setAuditOpen(false);
     } finally {
       setAuditLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // ---------------------------------------------------------------------------
   // Overview stats from infrastructure snapshot
@@ -1324,13 +1416,21 @@ export function InfrastructureDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Infrastructure</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {t("cloud.infra.pageTitle", { defaultValue: "Infrastructure" })}
+          </h1>
           <p className="text-muted-foreground">
-            Docker nodes, containers, and Headscale mesh management
+            {t("cloud.infra.pageDescription", {
+              defaultValue:
+                "Docker nodes, containers, and Headscale mesh management",
+            })}
           </p>
           {infraSnapshot && (
             <p className="text-xs text-muted-foreground mt-1">
-              Last refreshed: {formatRelativeTime(infraSnapshot.refreshedAt)}
+              {t("cloud.infra.lastRefreshed", {
+                time: formatRelativeTime(infraSnapshot.refreshedAt),
+                defaultValue: "Last refreshed: {{time}}",
+              })}
             </p>
           )}
         </div>
@@ -1340,7 +1440,7 @@ export function InfrastructureDashboard() {
           ) : (
             <RefreshCw className="mr-2 h-4 w-4" />
           )}
-          Refresh All
+          {t("cloud.infra.refreshAll", { defaultValue: "Refresh All" })}
         </Button>
       </div>
 
@@ -1349,21 +1449,34 @@ export function InfrastructureDashboard() {
         {/* Nodes card */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Docker Nodes</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("cloud.infra.dockerNodes", { defaultValue: "Docker Nodes" })}
+            </CardTitle>
             <Server className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{nodes.length}</div>
             <p className="text-xs text-muted-foreground">
-              <span className="text-green-600">{nodesOnline} online</span>
+              <span className="text-green-600">
+                {t("cloud.infra.nOnline", {
+                  count: nodesOnline,
+                  defaultValue: "{{count}} online",
+                })}
+              </span>
               {nodesOffline > 0 && (
                 <span className="ml-2 text-red-500">
-                  {nodesOffline} offline
+                  {t("cloud.infra.nOffline", {
+                    count: nodesOffline,
+                    defaultValue: "{{count}} offline",
+                  })}
                 </span>
               )}
               {nodesUnknown > 0 && (
                 <span className="ml-2 text-muted-foreground">
-                  {nodesUnknown} unchecked
+                  {t("cloud.infra.nUnchecked", {
+                    count: nodesUnknown,
+                    defaultValue: "{{count}} unchecked",
+                  })}
                 </span>
               )}
             </p>
@@ -1373,7 +1486,9 @@ export function InfrastructureDashboard() {
         {/* Containers card */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Containers</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("cloud.infra.containers", { defaultValue: "Containers" })}
+            </CardTitle>
             <HardDrive className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -1407,13 +1522,19 @@ export function InfrastructureDashboard() {
         {/* Capacity card */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Capacity</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {t("cloud.infra.capacity", { defaultValue: "Capacity" })}
+            </CardTitle>
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{utilizationPct}%</div>
             <p className="text-xs text-muted-foreground">
-              {totalAllocated} / {totalCapacity} slots used
+              {t("cloud.infra.slotsUsed", {
+                allocated: totalAllocated,
+                total: totalCapacity,
+                defaultValue: "{{allocated}} / {{total}} slots used",
+              })}
             </p>
             {totalCapacity > 0 && (
               <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">

@@ -1088,7 +1088,9 @@ export default function Leaderboard() {
                   }
                 }
               }}
-              placeholder="Message Eliza..."
+              placeholder={t("homepage_eliza.leaderboard.placeholderEliza", {
+                defaultValue: "Message Eliza...",
+              })}
               className="flex-1 bg-transparent text-black placeholder-black/40 font-light text-lg outline-none resize-none py-1.5 max-h-80 leading-snug caret-blue-500 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none]"
             />
             <button

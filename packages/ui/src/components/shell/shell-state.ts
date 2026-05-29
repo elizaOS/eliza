@@ -17,11 +17,15 @@ export type ShellPhase =
   | "listening"
   | "responding";
 
+import type { ChatFailureKind } from "../../api";
+
 export interface ShellMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  /** Set on assistant turns the server flagged as failed (e.g. no provider). */
+  failureKind?: ChatFailureKind;
 }
 
 export interface ShellState {

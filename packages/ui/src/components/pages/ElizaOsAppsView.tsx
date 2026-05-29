@@ -30,6 +30,7 @@ import type {
   SmsMessageSummary,
 } from "../../bridge/native-plugins";
 import { getPlugins } from "../../bridge/plugin-bridge";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
@@ -38,20 +39,38 @@ type PhonePanel = "dialer" | "recents" | "contacts" | "import" | "transcripts";
 
 const PHONE_PANEL_ITEMS: Array<{
   id: PhonePanel;
-  label: string;
+  labelKey: string;
+  defaultLabel: string;
   icon: ReactNode;
 }> = [
-  { id: "dialer", label: "Dialer", icon: <PhoneCall className="h-4 w-4" /> },
-  { id: "recents", label: "Recents", icon: <Clock3 className="h-4 w-4" /> },
+  {
+    id: "dialer",
+    labelKey: "elizaosapps.phone.tab.dialer",
+    defaultLabel: "Dialer",
+    icon: <PhoneCall className="h-4 w-4" />,
+  },
+  {
+    id: "recents",
+    labelKey: "elizaosapps.phone.tab.recents",
+    defaultLabel: "Recents",
+    icon: <Clock3 className="h-4 w-4" />,
+  },
   {
     id: "contacts",
-    label: "Contacts",
+    labelKey: "elizaosapps.phone.tab.contacts",
+    defaultLabel: "Contacts",
     icon: <ContactRound className="h-4 w-4" />,
   },
-  { id: "import", label: "Import", icon: <FileUp className="h-4 w-4" /> },
+  {
+    id: "import",
+    labelKey: "elizaosapps.phone.tab.import",
+    defaultLabel: "Import",
+    icon: <FileUp className="h-4 w-4" />,
+  },
   {
     id: "transcripts",
-    label: "Transcripts",
+    labelKey: "elizaosapps.phone.tab.transcripts",
+    defaultLabel: "Transcripts",
     icon: <NotebookText className="h-4 w-4" />,
   },
 ];
@@ -320,6 +339,7 @@ function openMessagesForNumber(number: string): void {
 }
 
 export function PhonePageView() {
+  const { t } = useTranslation();
   const params = useLaunchParams();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [activePanel, setActivePanel] = useState<PhonePanel>("dialer");
@@ -603,14 +623,21 @@ export function PhonePageView() {
   const renderPanel = () => {
     if (activePanel === "recents") {
       return (
-        <Panel title="Recent Calls" description="Android call log entries.">
+        <Panel
+          title={t("elizaosapps.phone.recents.title", {
+            defaultValue: "Recent Calls",
+          })}
+          description={t("elizaosapps.phone.recents.description", {
+            defaultValue: "Android call log entries.",
+          })}
+        >
           <div className="mb-3 flex flex-wrap gap-2">
             <SecondaryButton
               disabled={busy}
               icon={<RefreshCw className="h-4 w-4" />}
               onClick={refresh}
             >
-              Refresh
+              {t("elizaosapps.phone.refresh", { defaultValue: "Refresh" })}
             </SecondaryButton>
           </div>
           <div className="grid max-h-[62vh] gap-2 overflow-y-auto">
@@ -635,7 +662,12 @@ export function PhonePageView() {
                     </span>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                    <span>{call.number || "unknown number"}</span>
+                    <span>
+                      {call.number ||
+                        t("elizaosapps.phone.unknownNumber", {
+                          defaultValue: "unknown number",
+                        })}
+                    </span>
                     <span>{formatTimestamp(call.date)}</span>
                   </div>
                   {call.agentTranscript || call.transcription ? (
@@ -648,7 +680,11 @@ export function PhonePageView() {
                 </button>
               ))
             ) : (
-              <EmptyState>No calls returned by Android.</EmptyState>
+              <EmptyState>
+                {t("elizaosapps.phone.recents.empty", {
+                  defaultValue: "No calls returned by Android.",
+                })}
+              </EmptyState>
             )}
           </div>
         </Panel>
@@ -657,11 +693,22 @@ export function PhonePageView() {
 
     if (activePanel === "contacts") {
       return (
-        <Panel title="Contacts" description="Android Contacts Provider.">
+        <Panel
+          title={t("elizaosapps.phone.contacts.title", {
+            defaultValue: "Contacts",
+          })}
+          description={t("elizaosapps.phone.contacts.description", {
+            defaultValue: "Android Contacts Provider.",
+          })}
+        >
           <div className="mb-3 grid gap-3 sm:grid-cols-[1fr_auto]">
             <TextInput
-              label="Search"
-              placeholder="Name, number, or email"
+              label={t("elizaosapps.phone.contacts.searchLabel", {
+                defaultValue: "Search",
+              })}
+              placeholder={t("elizaosapps.phone.contacts.searchPlaceholder", {
+                defaultValue: "Name, number, or email",
+              })}
               value={contactQuery}
               onChange={setContactQuery}
             />
@@ -671,7 +718,9 @@ export function PhonePageView() {
                 icon={<Search className="h-4 w-4" />}
                 onClick={refresh}
               >
-                Search
+                {t("elizaosapps.phone.contacts.search", {
+                  defaultValue: "Search",
+                })}
               </SecondaryButton>
             </div>
           </div>
@@ -687,12 +736,17 @@ export function PhonePageView() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium text-txt">
-                          {contact.displayName || "Unnamed contact"}
+                          {contact.displayName ||
+                            t("elizaosapps.phone.contacts.unnamed", {
+                              defaultValue: "Unnamed contact",
+                            })}
                         </div>
                         <div className="mt-1 text-muted">
                           {contact.phoneNumbers.length > 0
                             ? contact.phoneNumbers.join(", ")
-                            : "No phone numbers"}
+                            : t("elizaosapps.phone.contacts.noNumbers", {
+                                defaultValue: "No phone numbers",
+                              })}
                         </div>
                         {contact.emailAddresses.length > 0 ? (
                           <div className="mt-1 text-xs text-muted">
@@ -709,14 +763,14 @@ export function PhonePageView() {
                             setActivePanel("dialer");
                           }}
                         >
-                          Dial
+                          {t("elizaosapps.phone.dial", { defaultValue: "Dial" })}
                         </SecondaryButton>
                         <SecondaryButton
                           disabled={!contactNumber}
                           icon={<MessageSquare className="h-4 w-4" />}
                           onClick={() => openMessagesForNumber(contactNumber)}
                         >
-                          SMS
+                          {t("elizaosapps.phone.sms", { defaultValue: "SMS" })}
                         </SecondaryButton>
                       </div>
                     </div>
@@ -724,7 +778,11 @@ export function PhonePageView() {
                 );
               })
             ) : (
-              <EmptyState>No contacts returned by Android.</EmptyState>
+              <EmptyState>
+                {t("elizaosapps.phone.contacts.empty", {
+                  defaultValue: "No contacts returned by Android.",
+                })}
+              </EmptyState>
             )}
           </div>
         </Panel>
@@ -733,7 +791,14 @@ export function PhonePageView() {
 
     if (activePanel === "import") {
       return (
-        <Panel title="Import Contacts" description="vCard contacts import.">
+        <Panel
+          title={t("elizaosapps.phone.import.title", {
+            defaultValue: "Import Contacts",
+          })}
+          description={t("elizaosapps.phone.import.description", {
+            defaultValue: "vCard contacts import.",
+          })}
+        >
           <div className="grid gap-3">
             <input
               ref={fileInputRef}
@@ -748,18 +813,24 @@ export function PhonePageView() {
                 icon={<FileUp className="h-4 w-4" />}
                 onClick={() => fileInputRef.current?.click()}
               >
-                Choose vCard
+                {t("elizaosapps.phone.import.chooseVcard", {
+                  defaultValue: "Choose vCard",
+                })}
               </PrimaryButton>
               <SecondaryButton
                 disabled={busy || !vcardText.trim()}
                 icon={<Plus className="h-4 w-4" />}
                 onClick={() => importVCardText(vcardText)}
               >
-                Import Text
+                {t("elizaosapps.phone.import.importText", {
+                  defaultValue: "Import Text",
+                })}
               </SecondaryButton>
             </div>
             <TextArea
-              label="vCard Text"
+              label={t("elizaosapps.phone.import.vcardLabel", {
+                defaultValue: "vCard Text",
+              })}
               placeholder="BEGIN:VCARD"
               value={vcardText}
               onChange={setVcardText}
@@ -772,8 +843,12 @@ export function PhonePageView() {
     if (activePanel === "transcripts") {
       return (
         <Panel
-          title="Call Transcript"
-          description="Call log transcription and agent notes."
+          title={t("elizaosapps.phone.transcript.title", {
+            defaultValue: "Call Transcript",
+          })}
+          description={t("elizaosapps.phone.transcript.description", {
+            defaultValue: "Call log transcription and agent notes.",
+          })}
         >
           {selectedCall ? (
             <div className="grid gap-3">
@@ -782,7 +857,11 @@ export function PhonePageView() {
                   {callDisplayName(selectedCall)}
                 </div>
                 <div className="mt-1 text-xs text-muted">
-                  {selectedCall.number || "unknown number"} ·{" "}
+                  {selectedCall.number ||
+                    t("elizaosapps.phone.unknownNumber", {
+                      defaultValue: "unknown number",
+                    })}{" "}
+                  ·{" "}
                   {callTypeLabel(selectedCall.type)} ·{" "}
                   {formatTimestamp(selectedCall.date)}
                 </div>
@@ -790,18 +869,24 @@ export function PhonePageView() {
               {selectedCall.transcription ? (
                 <div className="rounded-sm border border-border bg-bg p-3 text-sm text-txt">
                   <div className="mb-1 text-xs font-medium uppercase text-muted">
-                    Voicemail transcription
+                    {t("elizaosapps.phone.transcript.voicemail", {
+                      defaultValue: "Voicemail transcription",
+                    })}
                   </div>
                   {selectedCall.transcription}
                 </div>
               ) : null}
               <TextArea
-                label="Agent Transcript"
+                label={t("elizaosapps.phone.transcript.agentTranscript", {
+                  defaultValue: "Agent Transcript",
+                })}
                 value={transcriptDraft}
                 onChange={setTranscriptDraft}
               />
               <TextInput
-                label="Agent Summary"
+                label={t("elizaosapps.phone.transcript.agentSummary", {
+                  defaultValue: "Agent Summary",
+                })}
                 value={summaryDraft}
                 onChange={setSummaryDraft}
               />
@@ -811,30 +896,45 @@ export function PhonePageView() {
                   icon={<NotebookText className="h-4 w-4" />}
                   onClick={saveTranscript}
                 >
-                  Save Transcript
+                  {t("elizaosapps.phone.transcript.save", {
+                    defaultValue: "Save Transcript",
+                  })}
                 </PrimaryButton>
                 <SecondaryButton
                   disabled={!selectedCall.number}
                   icon={<MessageSquare className="h-4 w-4" />}
                   onClick={() => openMessagesForNumber(selectedCall.number)}
                 >
-                  Reply SMS
+                  {t("elizaosapps.phone.transcript.replySms", {
+                    defaultValue: "Reply SMS",
+                  })}
                 </SecondaryButton>
               </div>
             </div>
           ) : (
-            <EmptyState>No call selected.</EmptyState>
+            <EmptyState>
+              {t("elizaosapps.phone.transcript.empty", {
+                defaultValue: "No call selected.",
+              })}
+            </EmptyState>
           )}
         </Panel>
       );
     }
 
     return (
-      <Panel title="Dialer" description="Android Telecom calling surface.">
+      <Panel
+        title={t("elizaosapps.phone.dialer.title", { defaultValue: "Dialer" })}
+        description={t("elizaosapps.phone.dialer.description", {
+          defaultValue: "Android Telecom calling surface.",
+        })}
+      >
         <div className="grid gap-4 lg:grid-cols-[minmax(240px,320px)_1fr]">
           <div className="grid gap-3">
             <TextInput
-              label="Number"
+              label={t("elizaosapps.phone.dialer.numberLabel", {
+                defaultValue: "Number",
+              })}
               placeholder="+15551234567"
               value={number}
               onChange={setNumber}
@@ -857,21 +957,23 @@ export function PhonePageView() {
                 icon={<PhoneCall className="h-4 w-4" />}
                 onClick={placeCall}
               >
-                Call
+                {t("elizaosapps.phone.dialer.call", { defaultValue: "Call" })}
               </PrimaryButton>
               <SecondaryButton
                 disabled={busy}
                 icon={<PhoneCall className="h-4 w-4" />}
                 onClick={openDialer}
               >
-                Open Dialer
+                {t("elizaosapps.phone.dialer.openDialer", {
+                  defaultValue: "Open Dialer",
+                })}
               </SecondaryButton>
               <SecondaryButton
                 disabled={!number.trim()}
                 icon={<MessageSquare className="h-4 w-4" />}
                 onClick={() => openMessagesForNumber(number.trim())}
               >
-                SMS
+                {t("elizaosapps.phone.sms", { defaultValue: "SMS" })}
               </SecondaryButton>
             </div>
           </div>
@@ -879,11 +981,15 @@ export function PhonePageView() {
             <div className="grid gap-1 rounded-sm border border-border bg-bg p-3 text-sm text-muted">
               {status.length > 0
                 ? status.map((line) => <div key={line}>{line}</div>)
-                : "No status loaded."}
+                : t("elizaosapps.phone.dialer.noStatus", {
+                    defaultValue: "No status loaded.",
+                  })}
             </div>
             <div className="grid gap-2 rounded-sm border border-border bg-bg p-3">
               <div className="text-sm font-medium text-txt">
-                Android default roles
+                {t("elizaosapps.phone.dialer.defaultRoles", {
+                  defaultValue: "Android default roles",
+                })}
               </div>
               {roles.length > 0 ? (
                 roles.map((role) => (
@@ -893,10 +999,20 @@ export function PhonePageView() {
                   >
                     <div className="min-w-0">
                       <div className="font-medium text-txt">
-                        {role.role}: {role.held ? "held" : "not held"}
+                        {role.role}:{" "}
+                        {role.held
+                          ? t("elizaosapps.phone.role.held", {
+                              defaultValue: "held",
+                            })
+                          : t("elizaosapps.phone.role.notHeld", {
+                              defaultValue: "not held",
+                            })}
                       </div>
                       <div className="truncate text-xs text-muted">
-                        holders: {roleHolderText(role)}
+                        {t("elizaosapps.phone.role.holders", {
+                          holders: roleHolderText(role),
+                          defaultValue: "holders: {{holders}}",
+                        })}
                       </div>
                     </div>
                     <SecondaryButton
@@ -904,38 +1020,52 @@ export function PhonePageView() {
                       icon={<ShieldCheck className="h-4 w-4" />}
                       onClick={() => requestAndroidRole(role)}
                     >
-                      Request
+                      {t("elizaosapps.phone.role.request", {
+                        defaultValue: "Request",
+                      })}
                     </SecondaryButton>
                   </div>
                 ))
               ) : (
-                <EmptyState>No Android roles returned.</EmptyState>
+                <EmptyState>
+                  {t("elizaosapps.phone.role.empty", {
+                    defaultValue: "No Android roles returned.",
+                  })}
+                </EmptyState>
               )}
               <SecondaryButton
                 disabled={busy}
                 icon={<Settings className="h-4 w-4" />}
                 onClick={openSystemSettings}
               >
-                Settings
+                {t("elizaosapps.phone.settings", { defaultValue: "Settings" })}
               </SecondaryButton>
             </div>
             <div className="rounded-sm border border-border bg-bg p-3">
               <div className="mb-3 text-sm font-medium text-txt">
-                New Contact
+                {t("elizaosapps.phone.newContact.title", {
+                  defaultValue: "New Contact",
+                })}
               </div>
               <div className="grid gap-3">
                 <TextInput
-                  label="Display Name"
+                  label={t("elizaosapps.phone.newContact.displayName", {
+                    defaultValue: "Display Name",
+                  })}
                   value={displayName}
                   onChange={setDisplayName}
                 />
                 <TextInput
-                  label="Phone Number"
+                  label={t("elizaosapps.phone.newContact.phoneNumber", {
+                    defaultValue: "Phone Number",
+                  })}
                   value={phoneNumber}
                   onChange={setPhoneNumber}
                 />
                 <TextInput
-                  label="Email"
+                  label={t("elizaosapps.phone.newContact.email", {
+                    defaultValue: "Email",
+                  })}
                   value={emailAddress}
                   onChange={setEmailAddress}
                 />
@@ -944,7 +1074,9 @@ export function PhonePageView() {
                   icon={<UserPlus className="h-4 w-4" />}
                   onClick={createContact}
                 >
-                  Create Contact
+                  {t("elizaosapps.phone.newContact.create", {
+                    defaultValue: "Create Contact",
+                  })}
                 </PrimaryButton>
               </div>
             </div>
@@ -958,9 +1090,13 @@ export function PhonePageView() {
     <div className="flex h-full min-h-0 w-full flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-txt">Phone</h1>
+          <h1 className="text-lg font-semibold text-txt">
+            {t("elizaosapps.phone.heading", { defaultValue: "Phone" })}
+          </h1>
           <div className="text-sm text-muted">
-            ElizaOS Android phone workspace
+            {t("elizaosapps.phone.subheading", {
+              defaultValue: "ElizaOS Android phone workspace",
+            })}
           </div>
         </div>
         <SecondaryButton
@@ -968,7 +1104,7 @@ export function PhonePageView() {
           icon={<RefreshCw className="h-4 w-4" />}
           onClick={refresh}
         >
-          Refresh
+          {t("elizaosapps.phone.refresh", { defaultValue: "Refresh" })}
         </SecondaryButton>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -984,7 +1120,9 @@ export function PhonePageView() {
             }`}
           >
             {item.icon}
-            <span>{item.label}</span>
+            <span>
+              {t(item.labelKey, { defaultValue: item.defaultLabel })}
+            </span>
           </button>
         ))}
       </div>
@@ -1072,6 +1210,7 @@ function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
 }
 
 export function MessagesPageView() {
+  const { t } = useTranslation();
   const params = useLaunchParams();
   const [address, setAddress] = useState(
     () => params.get("recipient") ?? params.get("sender") ?? "",
@@ -1221,37 +1360,63 @@ export function MessagesPageView() {
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 p-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
-      <Panel title="Compose" description="Send through Android SMS Manager.">
+      <Panel
+        title={t("elizaosapps.messages.compose.title", {
+          defaultValue: "Compose",
+        })}
+        description={t("elizaosapps.messages.compose.description", {
+          defaultValue: "Send through Android SMS Manager.",
+        })}
+      >
         <div className="grid gap-3">
           {incomingSms ? (
             <div className="rounded-sm border border-border bg-bg p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                <span>{incomingSms.sender || "unknown sender"}</span>
+                <span>
+                  {incomingSms.sender ||
+                    t("elizaosapps.messages.unknownSender", {
+                      defaultValue: "unknown sender",
+                    })}
+                </span>
                 <span>
                   {incomingSms.timestamp
                     ? formatTimestamp(incomingSms.timestamp)
-                    : "Unknown time"}
+                    : t("elizaosapps.messages.unknownTime", {
+                        defaultValue: "Unknown time",
+                      })}
                 </span>
               </div>
               <p className="mt-2 whitespace-pre-wrap text-txt">
-                {incomingSms.body || "Empty SMS body"}
+                {incomingSms.body ||
+                  t("elizaosapps.messages.emptyBody", {
+                    defaultValue: "Empty SMS body",
+                  })}
               </p>
               {incomingSms.messageId ? (
                 <div className="mt-2 text-xs text-muted">
-                  message {incomingSms.messageId}
+                  {t("elizaosapps.messages.messageId", {
+                    id: incomingSms.messageId,
+                    defaultValue: "message {{id}}",
+                  })}
                 </div>
               ) : null}
             </div>
           ) : null}
           <TextInput
-            label="Address"
+            label={t("elizaosapps.messages.addressLabel", {
+              defaultValue: "Address",
+            })}
             placeholder="+15551234567"
             value={address}
             onChange={setAddress}
           />
           <TextArea
-            label="Body"
-            placeholder="Message"
+            label={t("elizaosapps.messages.bodyLabel", {
+              defaultValue: "Body",
+            })}
+            placeholder={t("elizaosapps.messages.bodyPlaceholder", {
+              defaultValue: "Message",
+            })}
             value={body}
             onChange={setBody}
           />
@@ -1260,14 +1425,18 @@ export function MessagesPageView() {
             icon={<Send className="h-4 w-4" />}
             onClick={send}
           >
-            Send SMS
+            {t("elizaosapps.messages.send", { defaultValue: "Send SMS" })}
           </PrimaryButton>
           <StatusNotice error={error} notice={notice} />
         </div>
       </Panel>
       <Panel
-        title="Messages"
-        description="Recent rows from Android's SMS provider."
+        title={t("elizaosapps.messages.list.title", {
+          defaultValue: "Messages",
+        })}
+        description={t("elizaosapps.messages.list.description", {
+          defaultValue: "Recent rows from Android's SMS provider.",
+        })}
       >
         <div className="mb-3">
           <SecondaryButton
@@ -1275,7 +1444,7 @@ export function MessagesPageView() {
             icon={<RefreshCw className="h-4 w-4" />}
             onClick={refresh}
           >
-            Refresh
+            {t("elizaosapps.messages.refresh", { defaultValue: "Refresh" })}
           </SecondaryButton>
         </div>
         <div className="grid max-h-[60vh] gap-2 overflow-y-auto">
@@ -1286,7 +1455,12 @@ export function MessagesPageView() {
                 className="rounded-sm border border-border bg-bg p-3 text-sm"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                  <span>{message.address || "unknown address"}</span>
+                  <span>
+                    {message.address ||
+                      t("elizaosapps.messages.unknownAddress", {
+                        defaultValue: "unknown address",
+                      })}
+                  </span>
                   <span>
                     {messageTypeLabel(message.type)} ·{" "}
                     {new Date(message.date).toLocaleString()}
@@ -1298,7 +1472,11 @@ export function MessagesPageView() {
               </div>
             ))
           ) : (
-            <EmptyState>No messages returned by Android.</EmptyState>
+            <EmptyState>
+              {t("elizaosapps.messages.list.empty", {
+                defaultValue: "No messages returned by Android.",
+              })}
+            </EmptyState>
           )}
         </div>
       </Panel>
@@ -1307,6 +1485,7 @@ export function MessagesPageView() {
 }
 
 export function ContactsPageView() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -1375,22 +1554,32 @@ export function ContactsPageView() {
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 p-4 lg:grid-cols-[minmax(280px,360px)_1fr]">
       <Panel
-        title="Create Contact"
-        description="Write into Android Contacts Provider."
+        title={t("elizaosapps.contacts.create.title", {
+          defaultValue: "Create Contact",
+        })}
+        description={t("elizaosapps.contacts.create.description", {
+          defaultValue: "Write into Android Contacts Provider.",
+        })}
       >
         <div className="grid gap-3">
           <TextInput
-            label="Display Name"
+            label={t("elizaosapps.contacts.displayName", {
+              defaultValue: "Display Name",
+            })}
             value={displayName}
             onChange={setDisplayName}
           />
           <TextInput
-            label="Phone Number"
+            label={t("elizaosapps.contacts.phoneNumber", {
+              defaultValue: "Phone Number",
+            })}
             value={phoneNumber}
             onChange={setPhoneNumber}
           />
           <TextInput
-            label="Email"
+            label={t("elizaosapps.contacts.email", {
+              defaultValue: "Email",
+            })}
             value={emailAddress}
             onChange={setEmailAddress}
           />
@@ -1399,20 +1588,30 @@ export function ContactsPageView() {
             icon={<UserPlus className="h-4 w-4" />}
             onClick={create}
           >
-            Create
+            {t("elizaosapps.contacts.create.button", {
+              defaultValue: "Create",
+            })}
           </PrimaryButton>
           <StatusNotice error={error} notice={notice} />
         </div>
       </Panel>
       <Panel
-        title="Contacts"
-        description="Read from Android Contacts Provider."
+        title={t("elizaosapps.contacts.list.title", {
+          defaultValue: "Contacts",
+        })}
+        description={t("elizaosapps.contacts.list.description", {
+          defaultValue: "Read from Android Contacts Provider.",
+        })}
       >
         <div className="mb-3 flex flex-col gap-2 sm:flex-row">
           <div className="min-w-0 flex-1">
             <TextInput
-              label="Search"
-              placeholder="Name, number, or email"
+              label={t("elizaosapps.contacts.searchLabel", {
+                defaultValue: "Search",
+              })}
+              placeholder={t("elizaosapps.contacts.searchPlaceholder", {
+                defaultValue: "Name, number, or email",
+              })}
               value={query}
               onChange={setQuery}
             />
@@ -1423,7 +1622,7 @@ export function ContactsPageView() {
               icon={<RefreshCw className="h-4 w-4" />}
               onClick={refresh}
             >
-              Refresh
+              {t("elizaosapps.contacts.refresh", { defaultValue: "Refresh" })}
             </SecondaryButton>
           </div>
         </div>
@@ -1440,7 +1639,9 @@ export function ContactsPageView() {
                 <div className="mt-1 text-muted">
                   {contact.phoneNumbers.length > 0
                     ? contact.phoneNumbers.join(", ")
-                    : "No phone numbers"}
+                    : t("elizaosapps.contacts.noNumbers", {
+                        defaultValue: "No phone numbers",
+                      })}
                 </div>
                 {contact.emailAddresses.length > 0 ? (
                   <div className="mt-1 text-xs text-muted">
@@ -1450,7 +1651,11 @@ export function ContactsPageView() {
               </div>
             ))
           ) : (
-            <EmptyState>No contacts returned by Android.</EmptyState>
+            <EmptyState>
+              {t("elizaosapps.contacts.list.empty", {
+                defaultValue: "No contacts returned by Android.",
+              })}
+            </EmptyState>
           )}
         </div>
       </Panel>

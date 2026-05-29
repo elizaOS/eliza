@@ -18,11 +18,13 @@ function props(
     step: "runtime",
     draft: {
       agentName: "Eliza",
-      runtime: "local",
+      runtime: "cloud",
+      localInference: "all-local",
       remoteApiBase: "",
       remoteToken: "",
       useLocalEmbeddings: true,
     },
+    localRuntimeAvailable: true,
     elizaCloudConnected: false,
     submitting: false,
     busyText: null,
@@ -77,6 +79,104 @@ describe("FirstRunShell", () => {
     fireEvent.click(voiceToggle);
 
     expect(toggleVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it("stacks Cloud (recommended), Local (advanced), and Remote cards", async () => {
+    vi.useFakeTimers();
+    render(<FirstRunShell {...props()} />);
+    await revealPrompt();
+
+    const cloud = screen.getByTestId("first-run-runtime-cloud");
+    const local = screen.getByTestId("first-run-runtime-local");
+    const remote = screen.getByTestId("first-run-runtime-remote");
+
+    expect(cloud.textContent).toContain("Recommended");
+    expect(cloud.textContent).toContain("never sleep");
+    expect(local.textContent).toContain("Advanced");
+    expect(remote.textContent).toContain("Use as remote");
+
+    // Stacked top-to-bottom: Cloud, then Local, then Remote at the bottom.
+    expect(
+      cloud.compareDocumentPosition(local) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      local.compareDocumentPosition(remote) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("hides the Local card when the platform cannot run a local agent", async () => {
+    vi.useFakeTimers();
+    render(<FirstRunShell {...props({ localRuntimeAvailable: false })} />);
+    await revealPrompt();
+
+    expect(screen.getByTestId("first-run-runtime-cloud")).toBeTruthy();
+    expect(screen.getByTestId("first-run-runtime-remote")).toBeTruthy();
+    expect(screen.queryByTestId("first-run-runtime-local")).toBeNull();
+  });
+
+  it("exposes the local inference sub-choice only when Local is selected", async () => {
+    vi.useFakeTimers();
+    const updateDraft = vi.fn();
+    const { rerender } = render(<FirstRunShell {...props({ updateDraft })} />);
+    await revealPrompt();
+
+    expect(screen.queryByTestId("first-run-local-all-local")).toBeNull();
+
+    rerender(
+      <FirstRunShell
+        {...props({
+          updateDraft,
+          draft: {
+            agentName: "Eliza",
+            runtime: "local",
+            localInference: "all-local",
+            remoteApiBase: "",
+            remoteToken: "",
+            useLocalEmbeddings: false,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("first-run-local-all-local")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("first-run-local-cloud-inference"));
+    expect(updateDraft).toHaveBeenCalledWith(
+      "localInference",
+      "cloud-inference",
+    );
+  });
+
+  it("fires onPromptReady once per prompt even when its identity changes every render", async () => {
+    // Regression guard for the onboarding freeze: the prompt-ready effect used
+    // to depend on the `onPromptReady` identity. That handler ultimately derives
+    // from app-context callbacks whose identity flips while first-run state
+    // churns during agent start, so the effect re-fired on every render → the
+    // handler's setVoice re-rendered → infinite loop that froze onboarding.
+    // The effect now keys on the prompt text/completion only, called through a
+    // ref, so a fresh handler identity per render must NOT re-fire it.
+    vi.useFakeTimers();
+    let calls = 0;
+    // Stable base props so the only thing changing across rerenders is the
+    // `onPromptReady` identity — exactly the churn the freeze came from.
+    const base = props();
+    const render1 = (handler: FirstRunShellProps["onPromptReady"]) => (
+      <FirstRunShell {...base} onPromptReady={handler} />
+    );
+    const { rerender } = render(render1(() => void calls++));
+    await revealPrompt();
+    expect(calls).toBe(1);
+
+    for (let i = 0; i < 20; i++) {
+      // Fresh handler identity every render; nothing else changes.
+      rerender(render1(() => void calls++));
+      await act(async () => {
+        vi.runAllTimers();
+      });
+    }
+
+    // The effect keys on prompt text/completion, not the handler identity, so
+    // swapping the handler 20x must not re-fire it.
+    expect(calls).toBe(1);
   });
 
   it("changes the text toggle to listening when voice capture is active", async () => {

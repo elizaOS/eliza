@@ -20,6 +20,7 @@ import {
 const fallbackDraft: FirstRunProfileDraft = {
   agentName: "Fallback Agent",
   runtime: "local",
+  localInference: "all-local",
   remoteApiBase: "",
   remoteToken: "",
   useLocalEmbeddings: false,
@@ -51,6 +52,10 @@ describe("first-run flow", () => {
 
   it("maps runtime choices to canonical first-run targets", () => {
     expect(firstRunRuntimeTarget("local")).toBe("local");
+    expect(firstRunRuntimeTarget("local", "all-local")).toBe("local");
+    expect(firstRunRuntimeTarget("local", "cloud-inference")).toBe(
+      "elizacloud-hybrid",
+    );
     expect(firstRunRuntimeTarget("cloud")).toBe("elizacloud");
     expect(firstRunRuntimeTarget("remote")).toBe("remote");
   });
@@ -59,6 +64,7 @@ describe("first-run flow", () => {
     const draft: FirstRunProfileDraft = {
       agentName: "Eliza",
       runtime: "remote",
+      localInference: "all-local",
       remoteApiBase: "https://agent.example.com",
       remoteToken: "token",
       useLocalEmbeddings: true,
@@ -80,6 +86,7 @@ describe("first-run flow", () => {
       draft: {
         agentName: "Eliza",
         runtime: "local",
+        localInference: "all-local",
         remoteApiBase: "",
         remoteToken: "",
         useLocalEmbeddings: false,
@@ -100,12 +107,31 @@ describe("first-run flow", () => {
     expect(plan.runtimeConfig.needsProviderSetup).toBe(true);
   });
 
+  it("routes local + cloud-inference to the hybrid target with a cloud provider", () => {
+    const plan = buildFirstRunSubmitPlan({
+      uiLanguage: "en",
+      draft: {
+        agentName: "Eliza",
+        runtime: "local",
+        localInference: "cloud-inference",
+        remoteApiBase: "",
+        remoteToken: "",
+        useLocalEmbeddings: false,
+      },
+    });
+
+    expect(plan.payload).toMatchObject({
+      deploymentTarget: { runtime: "local", provider: "elizacloud" },
+    });
+  });
+
   it("falls back to the default agent name when none is provided", () => {
     const plan = buildFirstRunSubmitPlan({
       uiLanguage: "en",
       draft: {
         agentName: "",
         runtime: "local",
+        localInference: "all-local",
         remoteApiBase: "",
         remoteToken: "",
         useLocalEmbeddings: false,
@@ -134,6 +160,7 @@ describe("first-run flow", () => {
       draft: {
         agentName: "Remote Agent",
         runtime: "remote",
+        localInference: "all-local",
         remoteApiBase: "https://agent.example.com",
         remoteToken: "token",
         useLocalEmbeddings: false,

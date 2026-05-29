@@ -23,11 +23,7 @@ import {
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
 import { enableForceFreshFirstRun } from "../platform";
-import {
-  alertDesktopMessage,
-  confirmDesktopAction,
-  yieldHttpAfterNativeMessageBox,
-} from "../utils";
+import { alertDesktopMessage } from "../utils";
 import { inferAgentRuntimeTarget } from "./agent-runtime-target";
 import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
 import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
@@ -862,31 +858,9 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         return;
       }
     }
-    logResetInfo("handleReset: showing confirm dialog");
-    const confirmDetail =
-      resetTarget.kind === "local"
-        ? "Downloaded GGUF embedding models are kept. You will return to first-run runtime setup."
-        : "Local app settings and other runtime choices stay on this device. Only the selected agent is reset.";
-    const confirmed = await confirmDesktopAction({
-      title: `Reset ${resetTarget.label}`,
-      message: `This will reset the ${resetTargetName}: config, keys, conversations, and memory.`,
-      detail: confirmDetail,
-      confirmLabel: "Reset",
-      cancelLabel: "Cancel",
-      type: "warning",
-    });
-    if (!confirmed) {
-      logResetInfo("handleReset: cancelled by user");
-      return;
-    }
-    // Native message boxes (Electrobun/macOS) can return without letting the webview
-    // process network/RPC on the same turn — `fetch` and bridge requests then appear
-    // to "never run" until something else wakes the loop. Yield once before reset work.
-    logResetInfo(
-      "handleReset: confirmed — yielding after native dialog before reset",
-    );
-    await yieldHttpAfterNativeMessageBox();
-
+    // Confirmation is owned by the caller's modal (AdvancedSection danger
+    // zone). handleReset only runs after the user has accepted the warning,
+    // so it proceeds straight to the reset work — no second native dialog.
     if (!beginLifecycleAction("reset")) {
       logResetInfo(
         "handleReset: beginLifecycleAction raced with another action — waiting",

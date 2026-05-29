@@ -597,14 +597,19 @@ export default function GetStartedPage() {
       if (result.success) {
         navigate("/connected", { replace: true });
       } else {
-        setSolanaError(result.error ?? "Solana sign-in failed");
+        setSolanaError(
+          result.error ??
+            t("homepage_eliza.getStarted.errSolanaSignIn", {
+              defaultValue: "Solana sign-in failed",
+            }),
+        );
       }
     } catch (err) {
       setSolanaError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSolanaLoading(false);
     }
-  }, [loginWithSolana, navigate]);
+  }, [loginWithSolana, navigate, t]);
 
   const handleMethodSelect = (method: OnboardingMethod) => {
     setSelectedMethod(method);
@@ -1097,7 +1102,9 @@ export default function GetStartedPage() {
 
                 <button
                   type="button"
-                  aria-label="Sign in with Solana"
+                  aria-label={t("homepage_eliza.getStarted.solanaAria", {
+                    defaultValue: "Sign in with Solana",
+                  })}
                   data-testid="solana-signin"
                   disabled={isSolanaLoading}
                   onClick={() => handleMethodSelect("solana")}

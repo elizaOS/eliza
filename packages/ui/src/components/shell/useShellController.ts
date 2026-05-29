@@ -58,6 +58,7 @@ export function useShellController(): ShellController {
       role: message.role,
       content: message.text,
       createdAt: message.timestamp,
+      failureKind: message.failureKind,
     }));
   }, [conversationMessages]);
 

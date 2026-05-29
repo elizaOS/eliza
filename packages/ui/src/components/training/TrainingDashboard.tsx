@@ -1,5 +1,6 @@
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -29,6 +30,7 @@ function JobsTable({
   error: string | null;
   onRowClick: (jobId: string) => void;
 }) {
+  const { t } = useTranslation();
   if (error) {
     return (
       <div className="border border-border rounded-sm p-4 bg-red-500/10">
@@ -41,7 +43,11 @@ function JobsTable({
     return (
       <div className="border border-border rounded-sm p-4 flex items-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin" />
-        <span className="text-sm">Loading jobs...</span>
+        <span className="text-sm">
+          {t("trainingdashboard.jobs.loading", {
+            defaultValue: "Loading jobs...",
+          })}
+        </span>
       </div>
     );
   }
@@ -49,7 +55,11 @@ function JobsTable({
   if (!jobs || jobs.length === 0) {
     return (
       <div className="border border-border rounded-sm p-4 text-center">
-        <div className="text-sm text-muted">No training jobs</div>
+        <div className="text-sm text-muted">
+          {t("trainingdashboard.jobs.empty", {
+            defaultValue: "No training jobs",
+          })}
+        </div>
       </div>
     );
   }
@@ -60,22 +70,30 @@ function JobsTable({
         <thead>
           <tr className="border-b border-border">
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Job
+              {t("trainingdashboard.jobs.col.job", { defaultValue: "Job" })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Status
+              {t("trainingdashboard.jobs.col.status", {
+                defaultValue: "Status",
+              })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Step
+              {t("trainingdashboard.jobs.col.step", { defaultValue: "Step" })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Format
+              {t("trainingdashboard.jobs.col.format", {
+                defaultValue: "Format",
+              })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Content
+              {t("trainingdashboard.jobs.col.content", {
+                defaultValue: "Content",
+              })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Started
+              {t("trainingdashboard.jobs.col.started", {
+                defaultValue: "Started",
+              })}
             </th>
           </tr>
         </thead>
@@ -102,7 +120,9 @@ function JobsTable({
                     job.last_format_ok ? "text-green-500" : "text-red-500"
                   }`}
                 >
-                  {job.last_format_ok ? "Yes" : "No"}
+                  {job.last_format_ok
+                    ? t("trainingdashboard.yes", { defaultValue: "Yes" })
+                    : t("trainingdashboard.no", { defaultValue: "No" })}
                 </div>
               </td>
               <td className="px-3 py-2">
@@ -111,7 +131,9 @@ function JobsTable({
                     job.last_content_ok ? "text-green-500" : "text-red-500"
                   }`}
                 >
-                  {job.last_content_ok ? "Yes" : "No"}
+                  {job.last_content_ok
+                    ? t("trainingdashboard.yes", { defaultValue: "Yes" })
+                    : t("trainingdashboard.no", { defaultValue: "No" })}
                 </div>
               </td>
               <td className="px-3 py-2">
@@ -138,6 +160,7 @@ function ModelsTable({
   error: string | null;
   onTrainClick: (model: TrainingModel) => void;
 }) {
+  const { t } = useTranslation();
   if (error) {
     return (
       <div className="border border-border rounded-sm p-4 bg-red-500/10">
@@ -150,7 +173,11 @@ function ModelsTable({
     return (
       <div className="border border-border rounded-sm p-4 flex items-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin" />
-        <span className="text-sm">Loading models...</span>
+        <span className="text-sm">
+          {t("trainingdashboard.models.loading", {
+            defaultValue: "Loading models...",
+          })}
+        </span>
       </div>
     );
   }
@@ -158,7 +185,11 @@ function ModelsTable({
   if (!models || models.length === 0) {
     return (
       <div className="border border-border rounded-sm p-4 text-center">
-        <div className="text-sm text-muted">No models available</div>
+        <div className="text-sm text-muted">
+          {t("trainingdashboard.models.empty", {
+            defaultValue: "No models available",
+          })}
+        </div>
       </div>
     );
   }

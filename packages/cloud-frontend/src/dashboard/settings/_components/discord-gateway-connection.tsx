@@ -34,6 +34,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
+
+type TFn = ReturnType<typeof useT>;
 
 interface Character {
   id: string;
@@ -69,47 +72,50 @@ interface DiscordGatewayConnection {
   createdAt: string;
 }
 
-function getStatusBadge(status: DiscordGatewayConnection["status"]) {
+function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
   switch (status) {
     case "connected":
       return (
         <Badge variant="default" className="bg-green-500">
           <CheckCircle className="h-3 w-3 mr-1" />
-          Connected
+          {t("cloud.discord.statusConnected", { defaultValue: "Connected" })}
         </Badge>
       );
     case "connecting":
       return (
         <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          Connecting
+          {t("cloud.discord.statusConnecting", { defaultValue: "Connecting" })}
         </Badge>
       );
     case "pending":
       return (
         <Badge variant="secondary" className="bg-white/10 text-white/80">
           <Clock className="h-3 w-3 mr-1" />
-          Pending
+          {t("cloud.discord.statusPending", { defaultValue: "Pending" })}
         </Badge>
       );
     case "disconnected":
       return (
         <Badge variant="secondary" className="bg-gray-500/20 text-gray-500">
           <XCircle className="h-3 w-3 mr-1" />
-          Disconnected
+          {t("cloud.discord.statusDisconnected", {
+            defaultValue: "Disconnected",
+          })}
         </Badge>
       );
     case "error":
       return (
         <Badge variant="destructive">
           <AlertCircle className="h-3 w-3 mr-1" />
-          Error
+          {t("cloud.discord.statusError", { defaultValue: "Error" })}
         </Badge>
       );
   }
 }
 
 export function DiscordGatewayConnection() {
+  const t = useT();
   const [connections, setConnections] = useState<DiscordGatewayConnection[]>(
     [],
   );
@@ -153,10 +159,14 @@ export function DiscordGatewayConnection() {
       }
     } catch {
       if (!signal?.aborted) {
-        toast.error("Failed to fetch Discord connections");
+        toast.error(
+          t("cloud.discord.fetchConnectionsFailed", {
+            defaultValue: "Failed to fetch Discord connections",
+          }),
+        );
       }
     }
-  }, []);
+  }, [t]);
 
   const fetchCharacters = useCallback(async (signal?: AbortSignal) => {
     setIsLoadingCharacters(true);
@@ -173,14 +183,18 @@ export function DiscordGatewayConnection() {
       }
     } catch {
       if (!signal?.aborted) {
-        toast.error("Failed to fetch characters");
+        toast.error(
+          t("cloud.discord.fetchCharactersFailed", {
+            defaultValue: "Failed to fetch characters",
+          }),
+        );
       }
     } finally {
       if (!signal?.aborted) {
         setIsLoadingCharacters(false);
       }
     }
-  }, []);
+  }, [t]);
 
   const fetchData = useCallback(
     async (signal?: AbortSignal) => {
@@ -199,20 +213,36 @@ export function DiscordGatewayConnection() {
 
   const handleRefreshCharacters = () => {
     void fetchCharacters();
-    toast.success("Characters refreshed");
+    toast.success(
+      t("cloud.discord.charactersRefreshed", {
+        defaultValue: "Characters refreshed",
+      }),
+    );
   };
 
   const handleCreate = async () => {
     if (!applicationId.trim()) {
-      toast.error("Please enter an Application ID");
+      toast.error(
+        t("cloud.discord.enterApplicationId", {
+          defaultValue: "Please enter an Application ID",
+        }),
+      );
       return;
     }
     if (!botToken.trim()) {
-      toast.error("Please enter a Bot Token");
+      toast.error(
+        t("cloud.discord.enterBotToken", {
+          defaultValue: "Please enter a Bot Token",
+        }),
+      );
       return;
     }
     if (!characterId) {
-      toast.error("Please select a character");
+      toast.error(
+        t("cloud.discord.selectCharacter", {
+          defaultValue: "Please select a character",
+        }),
+      );
       return;
     }
 
@@ -236,7 +266,10 @@ export function DiscordGatewayConnection() {
 
       if (response.ok && data.success) {
         toast.success(
-          "Discord bot connected! It will be active within 30 seconds.",
+          t("cloud.discord.connectedToast", {
+            defaultValue:
+              "Discord bot connected! It will be active within 30 seconds.",
+          }),
         );
         setApplicationId("");
         setBotToken("");
@@ -245,12 +278,25 @@ export function DiscordGatewayConnection() {
         setShowForm(false);
         void fetchConnections();
       } else if (response.status === 409) {
-        toast.error("A connection already exists for this Application ID");
+        toast.error(
+          t("cloud.discord.connectionExists", {
+            defaultValue: "A connection already exists for this Application ID",
+          }),
+        );
       } else {
-        toast.error(data.error || "Failed to create connection");
+        toast.error(
+          data.error ||
+            t("cloud.discord.createFailed", {
+              defaultValue: "Failed to create connection",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.discord.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsCreating(false);
@@ -285,7 +331,11 @@ export function DiscordGatewayConnection() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        toast.success("Connection updated successfully");
+        toast.success(
+          t("cloud.discord.connectionUpdated", {
+            defaultValue: "Connection updated successfully",
+          }),
+        );
         // Clear the edit state for this connection
         setEditState((prev) => {
           const newState = { ...prev };
@@ -294,10 +344,19 @@ export function DiscordGatewayConnection() {
         });
         void fetchConnections();
       } else {
-        toast.error(data.error || "Failed to update connection");
+        toast.error(
+          data.error ||
+            t("cloud.discord.updateFailed", {
+              defaultValue: "Failed to update connection",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.discord.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setSavingId(null);
@@ -312,15 +371,28 @@ export function DiscordGatewayConnection() {
       });
 
       if (response.ok) {
-        toast.success("Discord bot disconnected");
+        toast.success(
+          t("cloud.discord.disconnected", {
+            defaultValue: "Discord bot disconnected",
+          }),
+        );
         setExpandedId(null);
         void fetchConnections();
       } else {
         const data = await response.json().catch(() => ({}));
-        toast.error(data.error || "Failed to disconnect");
+        toast.error(
+          data.error ||
+            t("cloud.discord.disconnectFailed", {
+              defaultValue: "Failed to disconnect",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.discord.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setDeletingId(null);
@@ -364,9 +436,13 @@ export function DiscordGatewayConnection() {
   if (isLoading) {
     return (
       <ConnectionCard
-        name="Discord Gateway Bot"
+        name={t("cloud.discord.cardName", {
+          defaultValue: "Discord Gateway Bot",
+        })}
         icon={<DiscordIcon className="text-[#5865F2]" />}
-        description="Connect Discord gateway bots for AI-powered automation"
+        description={t("cloud.discord.cardDescription", {
+          defaultValue: "Connect Discord gateway bots for AI-powered automation",
+        })}
         status="loading"
       />
     );
@@ -374,15 +450,23 @@ export function DiscordGatewayConnection() {
 
   return (
     <ConnectionCard
-      name="Discord Gateway Bot"
+      name={t("cloud.discord.cardName", {
+        defaultValue: "Discord Gateway Bot",
+      })}
       icon={<DiscordIcon className="text-[#5865F2]" />}
-      description="Connect Discord gateway bots for AI-powered automation"
+      description={t("cloud.discord.cardDescription", {
+        defaultValue: "Connect Discord gateway bots for AI-powered automation",
+      })}
       status={connections.length > 0 ? "connected" : "disconnected"}
       statusBadge={
         connections.length > 0 ? (
           <Badge variant="outline">
-            {connections.filter((c) => c.status === "connected").length} /{" "}
-            {connections.length} Active
+            {t("cloud.discord.activeCount", {
+              active: connections.filter((c) => c.status === "connected")
+                .length,
+              total: connections.length,
+              defaultValue: "{{active}} / {{total}} Active",
+            })}
           </Badge>
         ) : null
       }
@@ -415,31 +499,59 @@ export function DiscordGatewayConnection() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold truncate">
-                              App: {conn.applicationId}
+                              {t("cloud.discord.appLabel", {
+                                appId: conn.applicationId,
+                                defaultValue: "App: {{appId}}",
+                              })}
                             </span>
-                            {getStatusBadge(conn.status)}
+                            {getStatusBadge(conn.status, t)}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {character ? (
-                              <>Character: {character.name}</>
+                              <>
+                                {t("cloud.discord.characterLabel", {
+                                  name: character.name,
+                                  defaultValue: "Character: {{name}}",
+                                })}
+                              </>
                             ) : (
                               <span className="text-yellow-600">
-                                No character linked
+                                {t("cloud.discord.noCharacterLinked", {
+                                  defaultValue: "No character linked",
+                                })}
                               </span>
                             )}
                             {conn.metadata?.responseMode && (
-                              <> · Mode: {conn.metadata.responseMode}</>
+                              <>
+                                {" "}
+                                {t("cloud.discord.modeLabel", {
+                                  mode: conn.metadata.responseMode,
+                                  defaultValue: "· Mode: {{mode}}",
+                                })}
+                              </>
                             )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
                             <span>
-                              {conn.guildCount} server
-                              {conn.guildCount !== 1 ? "s" : ""}
+                              {t("cloud.discord.serverCount", {
+                                count: conn.guildCount,
+                                defaultValue: "{{count}} servers",
+                              })}
                             </span>
                             <span>·</span>
-                            <span>{conn.eventsReceived} events received</span>
+                            <span>
+                              {t("cloud.discord.eventsReceived", {
+                                count: conn.eventsReceived,
+                                defaultValue: "{{count}} events received",
+                              })}
+                            </span>
                             <span>·</span>
-                            <span>{conn.eventsRouted} routed</span>
+                            <span>
+                              {t("cloud.discord.eventsRouted", {
+                                count: conn.eventsRouted,
+                                defaultValue: "{{count}} routed",
+                              })}
+                            </span>
                           </div>
                           {conn.errorMessage && (
                             <div className="text-sm text-red-500 mt-1">
@@ -460,7 +572,9 @@ export function DiscordGatewayConnection() {
                             }}
                           >
                             <ExternalLink className="h-4 w-4 mr-1" />
-                            Add to Server
+                            {t("cloud.discord.addToServer", {
+                              defaultValue: "Add to Server",
+                            })}
                           </Button>
                           <Settings
                             className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -476,7 +590,11 @@ export function DiscordGatewayConnection() {
                             {/* Character Selection */}
                             <div className="grid gap-4 sm:grid-cols-2">
                               <div className="space-y-2">
-                                <Label>Character</Label>
+                                <Label>
+                                  {t("cloud.discord.character", {
+                                    defaultValue: "Character",
+                                  })}
+                                </Label>
                                 <div className="flex gap-2">
                                   <Select
                                     value={edit.characterId}
@@ -485,7 +603,12 @@ export function DiscordGatewayConnection() {
                                     }
                                   >
                                     <SelectTrigger className="flex-1">
-                                      <SelectValue placeholder="Select a character..." />
+                                      <SelectValue
+                                        placeholder={t(
+                                          "cloud.discord.selectCharacterPlaceholder",
+                                          { defaultValue: "Select a character..." },
+                                        )}
+                                      />
                                     </SelectTrigger>
                                     <SelectContent>
                                       {characters.map((char) => (
@@ -512,7 +635,11 @@ export function DiscordGatewayConnection() {
                               </div>
 
                               <div className="space-y-2">
-                                <Label>Response Mode</Label>
+                                <Label>
+                                  {t("cloud.discord.responseMode", {
+                                    defaultValue: "Response Mode",
+                                  })}
+                                </Label>
                                 <Select
                                   value={edit.responseMode}
                                   onValueChange={(v) =>
@@ -524,13 +651,19 @@ export function DiscordGatewayConnection() {
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="always">
-                                      Every message
+                                      {t("cloud.discord.modeEveryMessage", {
+                                        defaultValue: "Every message",
+                                      })}
                                     </SelectItem>
                                     <SelectItem value="mention">
-                                      Only when @mentioned
+                                      {t("cloud.discord.modeMention", {
+                                        defaultValue: "Only when @mentioned",
+                                      })}
                                     </SelectItem>
                                     <SelectItem value="keyword">
-                                      On keywords
+                                      {t("cloud.discord.modeKeyword", {
+                                        defaultValue: "On keywords",
+                                      })}
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
@@ -539,10 +672,20 @@ export function DiscordGatewayConnection() {
 
                             {/* Bot Token Update */}
                             <div className="space-y-2">
-                              <Label>Update Bot Token (optional)</Label>
+                              <Label>
+                                {t("cloud.discord.updateBotToken", {
+                                  defaultValue: "Update Bot Token (optional)",
+                                })}
+                              </Label>
                               <Input
                                 type="password"
-                                placeholder="Leave empty to keep current token"
+                                placeholder={t(
+                                  "cloud.discord.keepCurrentToken",
+                                  {
+                                    defaultValue:
+                                      "Leave empty to keep current token",
+                                  },
+                                )}
                                 value={edit.botToken}
                                 onChange={(e) =>
                                   updateEditState(
@@ -553,18 +696,26 @@ export function DiscordGatewayConnection() {
                                 }
                               />
                               <p className="text-xs text-muted-foreground">
-                                Only fill this if you need to change the bot
-                                token. The bot will reconnect after saving.
+                                {t("cloud.discord.tokenChangeHint", {
+                                  defaultValue:
+                                    "Only fill this if you need to change the bot token. The bot will reconnect after saving.",
+                                })}
                               </p>
                             </div>
 
                             {/* Active Toggle */}
                             <div className="flex items-center justify-between">
                               <div>
-                                <Label>Connection Active</Label>
+                                <Label>
+                                  {t("cloud.discord.connectionActive", {
+                                    defaultValue: "Connection Active",
+                                  })}
+                                </Label>
                                 <p className="text-xs text-muted-foreground">
-                                  Disable to temporarily stop the bot without
-                                  deleting
+                                  {t("cloud.discord.disableHint", {
+                                    defaultValue:
+                                      "Disable to temporarily stop the bot without deleting",
+                                  })}
                                 </p>
                               </div>
                               <Button
@@ -578,19 +729,35 @@ export function DiscordGatewayConnection() {
                                   )
                                 }
                               >
-                                {edit.isActive ? "Active" : "Inactive"}
+                                {edit.isActive
+                                  ? t("cloud.discord.active", {
+                                      defaultValue: "Active",
+                                    })
+                                  : t("cloud.discord.inactive", {
+                                      defaultValue: "Inactive",
+                                    })}
                               </Button>
                             </div>
 
                             {/* Action Buttons */}
                             <div className="flex items-center justify-between pt-2">
                               <ConnectionDisconnectAction
-                                title="Delete Discord Bot Connection?"
-                                description="This will disconnect the bot and remove it from all servers. The bot will stop responding to messages immediately."
+                                title={t("cloud.discord.deleteTitle", {
+                                  defaultValue:
+                                    "Delete Discord Bot Connection?",
+                                })}
+                                description={t("cloud.discord.deleteDescription", {
+                                  defaultValue:
+                                    "This will disconnect the bot and remove it from all servers. The bot will stop responding to messages immediately.",
+                                })}
                                 onDisconnect={() => handleDelete(conn.id)}
                                 isDisconnecting={deletingId === conn.id}
-                                buttonLabel="Delete Connection"
-                                confirmLabel="Delete"
+                                buttonLabel={t("cloud.discord.deleteConnection", {
+                                  defaultValue: "Delete Connection",
+                                })}
+                                confirmLabel={t("cloud.discord.confirmDelete", {
+                                  defaultValue: "Delete",
+                                })}
                               />
 
                               <Button
@@ -602,7 +769,9 @@ export function DiscordGatewayConnection() {
                                 ) : (
                                   <Save className="h-4 w-4 mr-2" />
                                 )}
-                                Save Changes
+                                {t("cloud.discord.saveChanges", {
+                                  defaultValue: "Save Changes",
+                                })}
                               </Button>
                             </div>
                           </>
@@ -623,7 +792,9 @@ export function DiscordGatewayConnection() {
               onClick={() => setShowForm(true)}
             >
               <Plus className="h-4 w-4 mr-2" />
-              Add Another Bot
+              {t("cloud.discord.addAnotherBot", {
+                defaultValue: "Add Another Bot",
+              })}
             </Button>
           )}
 
@@ -631,7 +802,11 @@ export function DiscordGatewayConnection() {
           {showForm && (
             <div className="border rounded-sm p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="font-medium">Add New Discord Bot</h4>
+                <h4 className="font-medium">
+                  {t("cloud.discord.addNewBot", {
+                    defaultValue: "Add New Discord Bot",
+                  })}
+                </h4>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -643,7 +818,9 @@ export function DiscordGatewayConnection() {
 
               {/* Instructions */}
               <ConnectionInstructions
-                title="How to create a Discord bot"
+                title={t("cloud.discord.howToTitle", {
+                  defaultValue: "How to create a Discord bot",
+                })}
                 open={showInstructions}
                 onOpenChange={setShowInstructions}
                 triggerClassName="p-3 text-sm"
@@ -651,40 +828,77 @@ export function DiscordGatewayConnection() {
               >
                 <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                   <li>
-                    Go to the{" "}
+                    {t("cloud.discord.stepGoTo", { defaultValue: "Go to the" })}{" "}
                     <a
                       href="https://discord.com/developers/applications"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[#5865F2] hover:underline"
                     >
-                      Discord Developer Portal
+                      {t("cloud.discord.devPortal", {
+                        defaultValue: "Discord Developer Portal",
+                      })}
                     </a>
                   </li>
-                  <li>Click &quot;New Application&quot; and give it a name</li>
                   <li>
-                    Copy the <strong>Application ID</strong> from the General
-                    Information page
-                  </li>
-                  <li>Go to the &quot;Bot&quot; section in the left sidebar</li>
-                  <li>
-                    Click &quot;Reset Token&quot; to generate a new bot token
+                    {t("cloud.discord.stepNewApp", {
+                      defaultValue: 'Click "New Application" and give it a name',
+                    })}
                   </li>
                   <li>
-                    Copy the <strong>Bot Token</strong> (you&apos;ll only see it
-                    once!)
+                    {t("cloud.discord.stepCopyAppIdPrefix", {
+                      defaultValue: "Copy the",
+                    })}{" "}
+                    <strong>
+                      {t("cloud.discord.applicationId", {
+                        defaultValue: "Application ID",
+                      })}
+                    </strong>{" "}
+                    {t("cloud.discord.stepCopyAppIdSuffix", {
+                      defaultValue: "from the General Information page",
+                    })}
                   </li>
                   <li>
-                    Enable &quot;Message Content Intent&quot; under Privileged
-                    Gateway Intents
+                    {t("cloud.discord.stepBotSection", {
+                      defaultValue: 'Go to the "Bot" section in the left sidebar',
+                    })}
                   </li>
                   <li>
-                    Paste both values below, select a character, and click
-                    Connect
+                    {t("cloud.discord.stepResetToken", {
+                      defaultValue:
+                        'Click "Reset Token" to generate a new bot token',
+                    })}
                   </li>
                   <li>
-                    After connecting, click &quot;Add to Server&quot; to invite
-                    the bot
+                    {t("cloud.discord.stepCopyTokenPrefix", {
+                      defaultValue: "Copy the",
+                    })}{" "}
+                    <strong>
+                      {t("cloud.discord.botToken", {
+                        defaultValue: "Bot Token",
+                      })}
+                    </strong>{" "}
+                    {t("cloud.discord.stepCopyTokenSuffix", {
+                      defaultValue: "(you'll only see it once!)",
+                    })}
+                  </li>
+                  <li>
+                    {t("cloud.discord.stepMessageIntent", {
+                      defaultValue:
+                        'Enable "Message Content Intent" under Privileged Gateway Intents',
+                    })}
+                  </li>
+                  <li>
+                    {t("cloud.discord.stepPasteValues", {
+                      defaultValue:
+                        "Paste both values below, select a character, and click Connect",
+                    })}
+                  </li>
+                  <li>
+                    {t("cloud.discord.stepAddToServer", {
+                      defaultValue:
+                        'After connecting, click "Add to Server" to invite the bot',
+                    })}
                   </li>
                 </ol>
               </ConnectionInstructions>
@@ -698,43 +912,83 @@ export function DiscordGatewayConnection() {
         <div className="space-y-4">
           {/* Instructions */}
           <ConnectionInstructions
-            title="How to create a Discord bot"
+            title={t("cloud.discord.howToTitle", {
+              defaultValue: "How to create a Discord bot",
+            })}
             open={showInstructions}
             onOpenChange={setShowInstructions}
           >
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
-                Go to the{" "}
+                {t("cloud.discord.stepGoTo", { defaultValue: "Go to the" })}{" "}
                 <a
                   href="https://discord.com/developers/applications"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#5865F2] hover:underline"
                 >
-                  Discord Developer Portal
+                  {t("cloud.discord.devPortal", {
+                    defaultValue: "Discord Developer Portal",
+                  })}
                 </a>
               </li>
-              <li>Click &quot;New Application&quot; and give it a name</li>
               <li>
-                Copy the <strong>Application ID</strong> from the General
-                Information page
-              </li>
-              <li>Go to the &quot;Bot&quot; section in the left sidebar</li>
-              <li>Click &quot;Reset Token&quot; to generate a new bot token</li>
-              <li>
-                Copy the <strong>Bot Token</strong> (you&apos;ll only see it
-                once!)
+                {t("cloud.discord.stepNewApp", {
+                  defaultValue: 'Click "New Application" and give it a name',
+                })}
               </li>
               <li>
-                Enable &quot;Message Content Intent&quot; under Privileged
-                Gateway Intents
+                {t("cloud.discord.stepCopyAppIdPrefix", {
+                  defaultValue: "Copy the",
+                })}{" "}
+                <strong>
+                  {t("cloud.discord.applicationId", {
+                    defaultValue: "Application ID",
+                  })}
+                </strong>{" "}
+                {t("cloud.discord.stepCopyAppIdSuffix", {
+                  defaultValue: "from the General Information page",
+                })}
               </li>
               <li>
-                Paste both values below, select a character, and click Connect
+                {t("cloud.discord.stepBotSection", {
+                  defaultValue: 'Go to the "Bot" section in the left sidebar',
+                })}
               </li>
               <li>
-                After connecting, click &quot;Add to Server&quot; to invite the
-                bot
+                {t("cloud.discord.stepResetToken", {
+                  defaultValue:
+                    'Click "Reset Token" to generate a new bot token',
+                })}
+              </li>
+              <li>
+                {t("cloud.discord.stepCopyTokenPrefix", {
+                  defaultValue: "Copy the",
+                })}{" "}
+                <strong>
+                  {t("cloud.discord.botToken", { defaultValue: "Bot Token" })}
+                </strong>{" "}
+                {t("cloud.discord.stepCopyTokenSuffix", {
+                  defaultValue: "(you'll only see it once!)",
+                })}
+              </li>
+              <li>
+                {t("cloud.discord.stepMessageIntent", {
+                  defaultValue:
+                    'Enable "Message Content Intent" under Privileged Gateway Intents',
+                })}
+              </li>
+              <li>
+                {t("cloud.discord.stepPasteValues", {
+                  defaultValue:
+                    "Paste both values below, select a character, and click Connect",
+                })}
+              </li>
+              <li>
+                {t("cloud.discord.stepAddToServer", {
+                  defaultValue:
+                    'After connecting, click "Add to Server" to invite the bot',
+                })}
               </li>
             </ol>
           </ConnectionInstructions>
@@ -744,12 +998,23 @@ export function DiscordGatewayConnection() {
 
           {/* Features */}
           <ConnectionCallout
-            title="What your Discord bot can do:"
+            title={t("cloud.discord.calloutTitle", {
+              defaultValue: "What your Discord bot can do:",
+            })}
             items={[
-              "Handle both server channels and direct messages (DMs)",
-              "React only when mentioned (configurable)",
-              "Process voice messages automatically",
-              "Handle multiple Discord servers simultaneously",
+              t("cloud.discord.calloutItem1", {
+                defaultValue:
+                  "Handle both server channels and direct messages (DMs)",
+              }),
+              t("cloud.discord.calloutItem2", {
+                defaultValue: "React only when mentioned (configurable)",
+              }),
+              t("cloud.discord.calloutItem3", {
+                defaultValue: "Process voice messages automatically",
+              }),
+              t("cloud.discord.calloutItem4", {
+                defaultValue: "Handle multiple Discord servers simultaneously",
+              }),
             ]}
           />
         </div>
@@ -762,7 +1027,11 @@ export function DiscordGatewayConnection() {
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="applicationId">Application ID</Label>
+            <Label htmlFor="applicationId">
+              {t("cloud.discord.applicationId", {
+                defaultValue: "Application ID",
+              })}
+            </Label>
             <Input
               id="applicationId"
               placeholder="123456789012345678"
@@ -770,11 +1039,16 @@ export function DiscordGatewayConnection() {
               onChange={(e) => setApplicationId(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Found in Discord Developer Portal → General Information
+              {t("cloud.discord.appIdHint", {
+                defaultValue:
+                  "Found in Discord Developer Portal → General Information",
+              })}
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="botToken">Bot Token</Label>
+            <Label htmlFor="botToken">
+              {t("cloud.discord.botToken", { defaultValue: "Bot Token" })}
+            </Label>
             <Input
               id="botToken"
               type="password"
@@ -783,23 +1057,35 @@ export function DiscordGatewayConnection() {
               onChange={(e) => setBotToken(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Found in Discord Developer Portal → Bot → Reset Token
+              {t("cloud.discord.botTokenHint", {
+                defaultValue:
+                  "Found in Discord Developer Portal → Bot → Reset Token",
+              })}
             </p>
           </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="character">Character</Label>
+            <Label htmlFor="character">
+              {t("cloud.discord.character", { defaultValue: "Character" })}
+            </Label>
             <div className="flex gap-2">
               <Select value={characterId} onValueChange={setCharacterId}>
                 <SelectTrigger id="character" className="flex-1">
-                  <SelectValue placeholder="Select a character..." />
+                  <SelectValue
+                    placeholder={t(
+                      "cloud.discord.selectCharacterPlaceholder",
+                      { defaultValue: "Select a character..." },
+                    )}
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {characters.length === 0 ? (
                     <SelectItem value="none" disabled>
-                      No characters available
+                      {t("cloud.discord.noCharactersAvailable", {
+                        defaultValue: "No characters available",
+                      })}
                     </SelectItem>
                   ) : (
                     characters.map((char) => (
@@ -815,7 +1101,9 @@ export function DiscordGatewayConnection() {
                 size="icon"
                 onClick={handleRefreshCharacters}
                 disabled={isLoadingCharacters}
-                title="Refresh characters"
+                title={t("cloud.discord.refreshCharacters", {
+                  defaultValue: "Refresh characters",
+                })}
               >
                 <RefreshCw
                   className={`h-4 w-4 ${isLoadingCharacters ? "animate-spin" : ""}`}
@@ -823,11 +1111,17 @@ export function DiscordGatewayConnection() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              The AI character that will respond to messages
+              {t("cloud.discord.characterHint", {
+                defaultValue: "The AI character that will respond to messages",
+              })}
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="responseMode">Response Mode</Label>
+            <Label htmlFor="responseMode">
+              {t("cloud.discord.responseMode", {
+                defaultValue: "Response Mode",
+              })}
+            </Label>
             <Select
               value={responseMode}
               onValueChange={(v) => setResponseMode(v as typeof responseMode)}
@@ -836,13 +1130,27 @@ export function DiscordGatewayConnection() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="always">Every message</SelectItem>
-                <SelectItem value="mention">Only when @mentioned</SelectItem>
-                <SelectItem value="keyword">On keywords</SelectItem>
+                <SelectItem value="always">
+                  {t("cloud.discord.modeEveryMessage", {
+                    defaultValue: "Every message",
+                  })}
+                </SelectItem>
+                <SelectItem value="mention">
+                  {t("cloud.discord.modeMention", {
+                    defaultValue: "Only when @mentioned",
+                  })}
+                </SelectItem>
+                <SelectItem value="keyword">
+                  {t("cloud.discord.modeKeyword", {
+                    defaultValue: "On keywords",
+                  })}
+                </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              When should the bot respond to messages?
+              {t("cloud.discord.responseModeHint", {
+                defaultValue: "When should the bot respond to messages?",
+              })}
             </p>
           </div>
         </div>
@@ -860,20 +1168,24 @@ export function DiscordGatewayConnection() {
           {isCreating ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              Connecting...
+              {t("cloud.discord.connecting", { defaultValue: "Connecting..." })}
             </>
           ) : (
             <>
               <DiscordIcon className="h-4 w-4 mr-2" />
-              Connect Discord Bot
+              {t("cloud.discord.connectBot", {
+                defaultValue: "Connect Discord Bot",
+              })}
             </>
           )}
         </Button>
 
         {characters.length === 0 && (
           <p className="text-sm text-center text-yellow-600">
-            You need to create a character first before connecting a Discord
-            bot.
+            {t("cloud.discord.needCharacterFirst", {
+              defaultValue:
+                "You need to create a character first before connecting a Discord bot.",
+            })}
           </p>
         )}
       </div>

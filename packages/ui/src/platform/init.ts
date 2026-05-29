@@ -59,6 +59,18 @@ export function canRunLocal(): boolean {
 }
 
 /**
+ * True when the onboarding runtime selector should offer the **Local** card.
+ *
+ * Local is a first-class option on platforms that own their hardware: desktop
+ * (Electrobun), the AOSP ElizaOS system build, and the dev server. Stock
+ * mobile installs (iOS App Store / Play Store APK) and the web app cannot run
+ * a bundled local agent, so they only see Cloud + Remote.
+ */
+export function canSelectLocalRuntime(): boolean {
+  return canRunLocal() || isElizaOS();
+}
+
+/**
  * True when the platform might host a local agent that the UI can reach over
  * the app. Used to decide whether the local first-run option should run a
  * liveness probe before being shown. Desktop and dev mode

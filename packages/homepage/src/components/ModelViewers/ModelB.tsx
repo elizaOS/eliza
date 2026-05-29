@@ -70,7 +70,7 @@ let switcherProgress = 0;
 let switcherShiftProgress = 0;
 let switcherFinalProgress = 0;
 
-const botResponses = [
+const DEFAULT_BOT_RESPONSES = [
   "sure thing! i'll take care of that right away",
   "on it — give me just a sec",
   "great idea, let me set that up for you and send a confirmation when it's done",
@@ -82,6 +82,7 @@ const botResponses = [
   "all done! organized everything so it's easier to find next time",
   "consider it handled",
 ];
+let botResponses = DEFAULT_BOT_RESPONSES;
 let botResponseIndex = 0;
 let backBtnScreenRect: { x: number; y: number; w: number; h: number } | null =
   null;
@@ -741,6 +742,12 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   useEffect(() => {
     currentLoginSubtitle = loginSubtitle;
   }, [loginSubtitle]);
+
+  useEffect(() => {
+    botResponses = DEFAULT_BOT_RESPONSES.map((defaultValue, i) =>
+      t(`homepage_eliza.model.botResponse${i}`, { defaultValue }),
+    );
+  }, [t]);
 
   useEffect(() => {
     platformRef.current = platform;

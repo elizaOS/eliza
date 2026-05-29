@@ -20,6 +20,7 @@ import {
 import { StewardAuth } from "@stwd/sdk";
 import { CreditCard } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useT } from "./providers/I18nProvider";
 
 const cloudApiUrl =
   import.meta.env.VITE_ELIZA_CLOUD_API_URL || "https://api.elizacloud.ai";
@@ -158,40 +159,65 @@ function ProductImage({
 }
 
 function Header() {
+  const t = useT();
   return (
     <header className="site-header site-header-solid">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[color:var(--brand-orange)]"
       >
-        Skip to content
+        {t("homepage_os.common.skipToContent", { defaultValue: "Skip to content" })}
       </a>
-      <a href="/" className="brand" aria-label="elizaOS home">
+      <a
+        href="/"
+        className="brand"
+        aria-label={t("homepage_os.common.brandHomeAria", {
+          defaultValue: "elizaOS home",
+        })}
+      >
         <img
           src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
-          alt="elizaOS"
+          alt={t("homepage_os.common.brandAlt", { defaultValue: "elizaOS" })}
           draggable={false}
         />
       </a>
-      <nav className="site-nav" aria-label="Product switcher">
-        <a href="/#download">Download</a>
-        <a href="/#hardware">Hardware</a>
+      <nav
+        className="site-nav"
+        aria-label={t("homepage_os.common.productSwitcherAria", {
+          defaultValue: "Product switcher",
+        })}
+      >
+        <a href="/#download">
+          {t("homepage_os.common.navDownload", { defaultValue: "Download" })}
+        </a>
+        <a href="/#hardware">
+          {t("homepage_os.common.navHardware", { defaultValue: "Hardware" })}
+        </a>
       </nav>
     </header>
   );
 }
 
 function Footer() {
+  const t = useT();
   return (
     <footer className="site-footer">
       <img
         src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
-        alt="elizaOS"
+        alt={t("homepage_os.common.brandAlt", { defaultValue: "elizaOS" })}
         draggable={false}
       />
-      <nav aria-label="Community">
-        <a href="https://app.elizaos.ai">App</a>
-        <a href="https://elizacloud.ai/login?intent=launch">Cloud</a>
+      <nav
+        aria-label={t("homepage_os.common.communityNavAria", {
+          defaultValue: "Community",
+        })}
+      >
+        <a href="https://app.elizaos.ai">
+          {t("homepage_os.common.navApp", { defaultValue: "App" })}
+        </a>
+        <a href="https://elizacloud.ai/login?intent=launch">
+          {t("homepage_os.common.navCloud", { defaultValue: "Cloud" })}
+        </a>
       </nav>
     </footer>
   );
@@ -204,20 +230,41 @@ export function CheckoutResult({
   success?: boolean;
   canceled?: boolean;
 }) {
+  const t = useT();
   return (
     <div className="os-shell">
       <Header />
       <main id="main">
         <section className="band band-blue checkout-result">
           <div className="band-inner">
-            <h1>{success ? "Pre-order received." : "Checkout canceled."}</h1>
+            <h1>
+              {success
+                ? t("homepage_os.checkoutResult.successTitle", {
+                    defaultValue: "Pre-order received.",
+                  })
+                : t("homepage_os.checkoutResult.canceledTitle", {
+                    defaultValue: "Checkout canceled.",
+                  })}
+            </h1>
             <p>
               {success
-                ? "Your ElizaOS hardware order is connected to your Eliza Cloud account."
-                : "No payment was completed. You can return to the store when ready."}
+                ? t("homepage_os.checkoutResult.successBody", {
+                    defaultValue:
+                      "Your ElizaOS hardware order is connected to your Eliza Cloud account.",
+                  })
+                : t("homepage_os.checkoutResult.canceledBody", {
+                    defaultValue:
+                      "No payment was completed. You can return to the store when ready.",
+                  })}
             </p>
             <a href="/#hardware" className="button">
-              {canceled ? "Return to hardware" : "Back to elizaOS"}
+              {canceled
+                ? t("homepage_os.checkoutResult.returnToHardware", {
+                    defaultValue: "Return to hardware",
+                  })
+                : t("homepage_os.checkoutResult.backToElizaOs", {
+                    defaultValue: "Back to elizaOS",
+                  })}
             </a>
           </div>
         </section>
@@ -228,6 +275,7 @@ export function CheckoutResult({
 }
 
 export function CheckoutPage() {
+  const t = useT();
   const [product, setProduct] = useState(getCheckoutProduct);
   const [selectedColor, setSelectedColor] = useState(product.colors[0]);
   const [email, setEmail] = useState("");
@@ -261,7 +309,9 @@ export function CheckoutPage() {
           setMessage(
             error instanceof Error
               ? error.message
-              : "Could not complete Eliza Cloud sign-in.",
+              : t("homepage_os.checkout.errorSignIn", {
+                  defaultValue: "Could not complete Eliza Cloud sign-in.",
+                }),
           );
         })
         .finally(() => setStatus("idle"));
@@ -314,11 +364,13 @@ export function CheckoutPage() {
         setMessage(
           error instanceof Error
             ? error.message
-            : "Could not sync Eliza Cloud session.",
+            : t("homepage_os.checkout.errorSyncSession", {
+                defaultValue: "Could not sync Eliza Cloud session.",
+              }),
         );
       })
       .finally(() => setStatus("idle"));
-  }, [product]);
+  }, [product, t]);
 
   useEffect(() => {
     setSelectedColor(product.colors[0]);
@@ -326,7 +378,11 @@ export function CheckoutPage() {
 
   async function sendMagicLink() {
     if (!email.trim()) {
-      setMessage("Enter your email first.");
+      setMessage(
+        t("homepage_os.checkout.enterEmailFirst", {
+          defaultValue: "Enter your email first.",
+        }),
+      );
       return;
     }
     setStatus("syncing");
@@ -337,7 +393,11 @@ export function CheckoutPage() {
     } catch (error) {
       setStatus("idle");
       setMessage(
-        error instanceof Error ? error.message : "Could not send magic link.",
+        error instanceof Error
+          ? error.message
+          : t("homepage_os.checkout.errorMagicLink", {
+              defaultValue: "Could not send magic link.",
+            }),
       );
     }
   }
@@ -363,7 +423,11 @@ export function CheckoutPage() {
         setIsAuthed(false);
       }
       setMessage(
-        error instanceof Error ? error.message : "Could not start checkout.",
+        error instanceof Error
+          ? error.message
+          : t("homepage_os.checkout.errorStartCheckout", {
+              defaultValue: "Could not start checkout.",
+            }),
       );
     }
   }
@@ -375,7 +439,11 @@ export function CheckoutPage() {
         <section className="band band-blue checkout-hero">
           <div className="band-inner checkout-grid">
             <div className="checkout-copy">
-              <p className="section-kicker">Pre-order</p>
+              <p className="section-kicker">
+                {t("homepage_os.checkout.preOrderKicker", {
+                  defaultValue: "Pre-order",
+                })}
+              </p>
               <h1>{product.name}</h1>
               <p>{product.detail}</p>
               <div className="detail-meta">
@@ -392,10 +460,16 @@ export function CheckoutPage() {
         <section className="band band-white checkout-flow">
           <div className="band-inner checkout-grid">
             <div>
-              <h2>Checkout on elizaOS.</h2>
+              <h2>
+                {t("homepage_os.checkout.title", {
+                  defaultValue: "Checkout on elizaOS.",
+                })}
+              </h2>
               <p className="section-lede">
-                Login, customer records, credits, and Stripe payments are
-                provided by Eliza Cloud.
+                {t("homepage_os.checkout.lede", {
+                  defaultValue:
+                    "Login, customer records, credits, and Stripe payments are provided by Eliza Cloud.",
+                })}
               </p>
             </div>
             <div className="checkout-panel">
@@ -419,12 +493,22 @@ export function CheckoutPage() {
                     }}
                   >
                     <span>{item.name}</span>
-                    <strong>{item.price ?? "Pre-order"}</strong>
+                    <strong>
+                      {item.price ??
+                        t("homepage_os.checkout.preOrder", {
+                          defaultValue: "Pre-order",
+                        })}
+                    </strong>
                   </button>
                 ))}
               </div>
 
-              <fieldset className="color-row" aria-label="Hardware color">
+              <fieldset
+                className="color-row"
+                aria-label={t("homepage_os.checkout.colorRowAria", {
+                  defaultValue: "Hardware color",
+                })}
+              >
                 {product.colors.map((color) => (
                   <button
                     type="button"
@@ -445,7 +529,10 @@ export function CheckoutPage() {
                               : BRAND_COLORS.white,
                     }}
                     onClick={() => setSelectedColor(color)}
-                    aria-label={`Select ${color.name}`}
+                    aria-label={t("homepage_os.checkout.selectColorAria", {
+                      defaultValue: "Select {{color}}",
+                      color: color.name,
+                    })}
                   />
                 ))}
               </fieldset>
@@ -458,7 +545,13 @@ export function CheckoutPage() {
                   disabled={status === "checkout"}
                 >
                   <CreditCard className="icon" />
-                  {status === "checkout" ? "Opening Stripe..." : "Pay deposit"}
+                  {status === "checkout"
+                    ? t("homepage_os.checkout.openingStripe", {
+                        defaultValue: "Opening Stripe...",
+                      })
+                    : t("homepage_os.checkout.payDeposit", {
+                        defaultValue: "Pay deposit",
+                      })}
                 </button>
               ) : (
                 <div className="login-box">
@@ -466,7 +559,9 @@ export function CheckoutPage() {
                     <input
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
-                      placeholder="you@example.com"
+                      placeholder={t("homepage_os.checkout.emailPlaceholder", {
+                        defaultValue: "you@example.com",
+                      })}
                       type="email"
                     />
                     <button
@@ -474,18 +569,36 @@ export function CheckoutPage() {
                       onClick={sendMagicLink}
                       disabled={status === "syncing"}
                     >
-                      Email link
+                      {t("homepage_os.checkout.emailLink", {
+                        defaultValue: "Email link",
+                      })}
                     </button>
                   </div>
                   <div className="oauth-row">
-                    <a href={buildOAuthUrl("google")}>Google</a>
-                    <a href={buildOAuthUrl("github")}>GitHub</a>
-                    <a href={buildOAuthUrl("discord")}>Discord</a>
+                    <a href={buildOAuthUrl("google")}>
+                      {t("homepage_os.checkout.oauthGoogle", {
+                        defaultValue: "Google",
+                      })}
+                    </a>
+                    <a href={buildOAuthUrl("github")}>
+                      {t("homepage_os.checkout.oauthGitHub", {
+                        defaultValue: "GitHub",
+                      })}
+                    </a>
+                    <a href={buildOAuthUrl("discord")}>
+                      {t("homepage_os.checkout.oauthDiscord", {
+                        defaultValue: "Discord",
+                      })}
+                    </a>
                   </div>
                 </div>
               )}
               {status === "email-sent" ? (
-                <p className="checkout-message">Check your inbox.</p>
+                <p className="checkout-message">
+                  {t("homepage_os.checkout.checkInbox", {
+                    defaultValue: "Check your inbox.",
+                  })}
+                </p>
               ) : null}
               {message ? (
                 <p className="checkout-message" role="alert">

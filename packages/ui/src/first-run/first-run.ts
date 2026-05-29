@@ -12,6 +12,14 @@ import type { FirstRunRuntimeTarget } from "./runtime-target";
 export type FirstRunStep = "runtime" | "remote";
 export type FirstRunRuntime = "local" | "cloud" | "remote";
 
+/**
+ * When the user picks the Local runtime, this is the inference sub-choice:
+ * - `all-local` runs every model on-device (kicks off model downloads now).
+ * - `cloud-inference` keeps the agent local but routes inference through Eliza
+ *   Cloud (maps to the `elizacloud-hybrid` server target).
+ */
+export type FirstRunLocalInference = "all-local" | "cloud-inference";
+
 export const FIRST_RUN_STEPS: readonly FirstRunStep[] = [
   "runtime",
   "remote",
@@ -25,6 +33,7 @@ export const DEFAULT_AGENT_NAME = getDefaultStylePreset().name;
 export interface FirstRunProfileDraft {
   agentName: string;
   runtime: FirstRunRuntime;
+  localInference: FirstRunLocalInference;
   remoteApiBase: string;
   remoteToken: string;
   useLocalEmbeddings: boolean;
@@ -76,6 +85,12 @@ function isFirstRunRuntime(value: unknown): value is FirstRunRuntime {
   return value === "local" || value === "cloud" || value === "remote";
 }
 
+function isFirstRunLocalInference(
+  value: unknown,
+): value is FirstRunLocalInference {
+  return value === "all-local" || value === "cloud-inference";
+}
+
 function readStringField(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   return typeof value === "string" ? value : "";
@@ -102,6 +117,9 @@ function normalizePersistedDraft(
     runtime: isFirstRunRuntime(record.runtime)
       ? record.runtime
       : fallback.runtime,
+    localInference: isFirstRunLocalInference(record.localInference)
+      ? record.localInference
+      : fallback.localInference,
     remoteApiBase: readStringField(record, "remoteApiBase"),
     remoteToken: readStringField(record, "remoteToken"),
     useLocalEmbeddings: readBooleanField(record, "useLocalEmbeddings"),
@@ -162,10 +180,11 @@ export function previousFirstRunStep(step: FirstRunStep): FirstRunStep | null {
 
 export function firstRunRuntimeTarget(
   runtime: FirstRunRuntime,
+  localInference: FirstRunLocalInference = "all-local",
 ): FirstRunRuntimeTarget {
   if (runtime === "cloud") return "elizacloud";
   if (runtime === "remote") return "remote";
-  return "local";
+  return localInference === "cloud-inference" ? "elizacloud-hybrid" : "local";
 }
 
 function stripFirstRunVoicePrefix(value: string): string {
@@ -306,13 +325,18 @@ export function buildFirstRunSubmitPlan(args: {
 }): FirstRunSubmitPlan {
   const style = getDefaultStylePreset(args.uiLanguage);
   const agentName = trimmedOrDefault(args.draft.agentName, style.name);
-  const serverTarget = firstRunRuntimeTarget(args.draft.runtime);
+  const serverTarget = firstRunRuntimeTarget(
+    args.draft.runtime,
+    args.draft.localInference,
+  );
+  const cloudInference =
+    args.draft.runtime === "cloud" || serverTarget === "elizacloud-hybrid";
   const runtimeConfig = buildFirstRunRuntimeConfig({
     firstRunRuntimeTarget: serverTarget,
     firstRunCloudApiKey: "",
-    firstRunProvider: args.draft.runtime === "cloud" ? "elizacloud" : "",
+    firstRunProvider: cloudInference ? "elizacloud" : "",
     firstRunApiKey: "",
-    omitRuntimeProvider: args.draft.runtime !== "cloud",
+    omitRuntimeProvider: !cloudInference,
     firstRunVoiceProvider: "",
     firstRunVoiceApiKey: "",
     firstRunPrimaryModel: "",

@@ -298,41 +298,97 @@ export function VoiceWaveform({
       return null;
     }
 
+    // Light comes from the upper-left, so the body gradient, specular hotspot,
+    // and contact shadow all bias toward that corner to read as a lit sphere
+    // rather than a flat disc.
+    const lightX = center - baseRadius * 0.42;
+    const lightY = center - baseRadius * 0.42;
+
     function paint(radii: Float32Array, glow: number): void {
       c.clearRect(0, 0, size, size);
 
+      // Volumetric body: the radial center is offset toward the light so the
+      // far side falls into shadow — the core depth cue for a 3D sphere.
       const fill = c.createRadialGradient(
-        center,
-        center,
-        baseRadius * 0.1,
+        lightX,
+        lightY,
+        baseRadius * 0.05,
         center,
         center,
         baseRadius + maxDeform,
       );
-      fill.addColorStop(0, accent(0.32));
-      fill.addColorStop(0.6, accent(0.16));
-      fill.addColorStop(1, accent(0.04));
+      fill.addColorStop(0, accent(0.5));
+      fill.addColorStop(0.45, accent(0.22));
+      fill.addColorStop(0.78, accent(0.1));
+      fill.addColorStop(1, accent(0.02));
 
       c.save();
-      c.shadowColor = accent(0.45);
-      c.shadowBlur = size * (0.06 + glow * 0.12);
+      // Contact shadow cast down-right, opposite the light.
+      c.shadowColor = "rgba(0, 0, 0, 0.45)";
+      c.shadowBlur = size * (0.05 + glow * 0.1);
+      c.shadowOffsetX = size * 0.02;
+      c.shadowOffsetY = size * 0.035;
       strokeBlobPath(c, center, radii);
       c.fillStyle = fill;
       c.fill();
+      c.restore();
+
+      // Clip to the body for every interior light/shadow layer so highlights
+      // never spill past the morphing outline.
+      c.save();
+      strokeBlobPath(c, center, radii);
+      c.clip();
+
+      // Terminator shading — a dark pool on the lower-right deepens the volume.
+      const shade = c.createRadialGradient(
+        center + baseRadius * 0.5,
+        center + baseRadius * 0.5,
+        baseRadius * 0.1,
+        center + baseRadius * 0.4,
+        center + baseRadius * 0.4,
+        baseRadius + maxDeform,
+      );
+      shade.addColorStop(0, "rgba(0, 0, 0, 0.32)");
+      shade.addColorStop(0.6, "rgba(0, 0, 0, 0.08)");
+      shade.addColorStop(1, "rgba(0, 0, 0, 0)");
+      c.fillStyle = shade;
+      c.fillRect(0, 0, size, size);
+
+      // Specular hotspot — a tight bright bloom near the light source.
+      const specular = c.createRadialGradient(
+        lightX,
+        lightY,
+        0,
+        lightX,
+        lightY,
+        baseRadius * 0.6,
+      );
+      specular.addColorStop(0, `rgba(255, 255, 255, ${0.5 + glow * 0.3})`);
+      specular.addColorStop(0.35, "rgba(255, 255, 255, 0.12)");
+      specular.addColorStop(1, "rgba(255, 255, 255, 0)");
+      c.fillStyle = specular;
+      c.fillRect(0, 0, size, size);
+      c.restore();
+
+      // Rim light on the shadowed edge — the glossy backlight that sells depth.
+      c.save();
+      strokeBlobPath(c, center, radii);
+      c.lineWidth = Math.max(1.5, size * 0.01);
       c.strokeStyle = accent(0.85);
-      c.lineWidth = Math.max(1.5, size * 0.006);
+      c.shadowColor = accent(0.5 + glow * 0.3);
+      c.shadowBlur = size * (0.04 + glow * 0.1);
       c.stroke();
       c.restore();
 
-      // Inner core that pulses with overall energy.
+      // Inner core that pulses with overall energy, offset toward the light.
       c.beginPath();
-      c.arc(center, center, baseRadius * (0.34 + glow * 0.16), 0, Math.PI * 2);
+      c.arc(lightX, lightY, baseRadius * (0.3 + glow * 0.16), 0, Math.PI * 2);
       const core = c.createRadialGradient(
-        center,
-        center,
+        lightX,
+        lightY,
         0,
-        center,
-        center,
+        lightX,
+        lightY,
         baseRadius * 0.5,
       );
       core.addColorStop(0, accent(0.7 + glow * 0.3));
