@@ -882,7 +882,9 @@ async function handleCompatRoute(
   if (uiSpecMatch) {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
-    const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
+    const { buildPluginConfigUiSpec } = await import(
+      "@elizaos/shared/config/plugin-ui-spec"
+    );
     const { buildPluginListResponse } = await getPluginRegistryApi();
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);

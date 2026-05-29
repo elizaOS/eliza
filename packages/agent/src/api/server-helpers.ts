@@ -20,16 +20,18 @@ import {
   sendJsonError,
   type UUID,
 } from "@elizaos/core";
-import type { ConversationMetadata } from "@elizaos/shared";
+import type { ConversationMetadata } from "@elizaos/shared/contracts/conversation-routes";
 import {
   normalizeCharacterLanguage,
-  normalizeFirstRunProviderId,
-  resolveDeploymentTargetInConfig,
-  resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared";
+} from "@elizaos/shared/character-presets";
+import {
+  normalizeFirstRunProviderId,
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
+} from "@elizaos/shared/contracts/first-run-options";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
@@ -184,7 +186,7 @@ export function initializeOGCodeInState(): void {
 // ---------------------------------------------------------------------------
 
 // AgentStartupDiagnostics is canonical in @elizaos/shared.
-export type { AgentStartupDiagnostics } from "@elizaos/shared";
+export type { AgentStartupDiagnostics } from "@elizaos/shared/api/agent-api-types";
 
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {

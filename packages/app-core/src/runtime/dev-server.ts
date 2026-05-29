@@ -1,8 +1,15 @@
 // Timing: Track when the script starts
 const SCRIPT_START = Date.now();
 
-import "@elizaos/shared";
-import { getLogPrefix } from "@elizaos/shared";
+import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
+import { formatError } from "@elizaos/shared/format-error";
+import {
+  resolveApiToken,
+  resolveDesktopApiPort,
+  syncResolvedApiPort,
+} from "@elizaos/shared/runtime-env";
+import { setRestartHandler } from "@elizaos/shared/restart";
+import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
 import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
@@ -24,14 +31,6 @@ console.log(`${getLogPrefix()} Script starting...`);
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  colorizeDevSettingsStartupBanner,
-  formatError,
-  resolveApiToken,
-  resolveDesktopApiPort,
-  setRestartHandler,
-  syncResolvedApiPort,
-} from "@elizaos/shared";
 import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
 import { startApiServer } from "../api/server";
 import { formatApiDevSettingsBannerText } from "./api-dev-settings-banner.js";

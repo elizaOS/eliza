@@ -55,7 +55,7 @@
     "prepublishOnly": "bun run build",
     "build": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts --passWithNoTests",
-    "test:deterministic:e2e": "SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 bun src/cli.ts run test/scenarios --scenario deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching --report-dir ../../reports/scenarios/pr-deterministic --run-dir ../../reports/scenarios/pr-deterministic",
+    "test:deterministic:e2e": "SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 bun src/cli.ts run test/scenarios --scenario deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing --report-dir ../../reports/scenarios/pr-deterministic --run-dir ../../reports/scenarios/pr-deterministic",
     "test:live:e2e": "bun src/cli.ts run ../../plugins/plugin-app-control/test/scenarios --report-dir ../../reports/scenarios/live --run-dir ../../reports/scenarios/live",
     "test:pr:e2e": "bun run test:deterministic:e2e",
     "typecheck": "tsgo --noEmit"
