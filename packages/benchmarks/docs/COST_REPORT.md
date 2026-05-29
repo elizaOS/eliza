@@ -11,7 +11,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 
 | benchmark | eliza | hermes | openclaw | smithers |
 |---|---|---|---|---|
-| abliteration_robustness | $0.0024 | $0.0002 | $0.0002 | $0.0002* |
+| abliteration_robustness | $0.0024 | $0.0002 | $0.0002 | $0.0002† |
 | action_calling | $0.0017 | $0.0015 | $0.0015 | $0.0015† |
 | adhdbench | $0.0095 | $0.0005 | $0.0005 | $0.0005* |
 | agentbench | $0.0048 | $0.0002 | $0.0311 | $0.0002* |
@@ -44,7 +44,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | osworld | $0.0000 | $0.0000 | $0.0000 | $0.0000* |
 | realm | $0.0732 | $0.0064 | $0.0069 | $0.0064* |
 | rlm_bench | $0.0128 | $0.0023 | $0.0022 | $0.0023* |
-| scambench | $0.0034 | $0.0003 | $0.0128 | $0.0003* |
+| scambench | $0.0034 | $0.0003 | $0.0128 | $0.0003† |
 | swe_bench | $0.0039 | $0.0038 | $0.0067 | $0.0038* |
 | swe_bench_orchestrated | $0.0020 | $0.0038 | $0.0044 | $0.0038* |
 | tau_bench | $0.0273 | $0.0126 | $0.0154 | $0.0126* |
@@ -63,7 +63,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 
 | benchmark | eliza | hermes | openclaw | smithers |
 |---|---|---|---|---|
-| abliteration_robustness | $0.1360 | $0.0216 | $0.0216 | $0.0216* |
+| abliteration_robustness | $0.1360 | $0.0216 | $0.0216 | $0.0216† |
 | action_calling | $0.0982 | $0.0764 | $0.0766 | $0.0754† |
 | adhdbench | $0.5159 | $0.0251 | $0.0283 | $0.0251* |
 | agentbench | $0.2463 | $0.0101 | $1.3308 | $0.0101* |
@@ -96,7 +96,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | osworld | $0.0005 | $0.0005 | $0.0005 | $0.0005* |
 | realm | $3.3580 | $0.3198 | $0.3096 | $0.3198* |
 | rlm_bench | $0.6664 | $0.1186 | $0.1144 | $0.1186* |
-| scambench | $0.2103 | $0.0139 | $0.5473 | $0.0139* |
+| scambench | $0.2103 | $0.0139 | $0.5473 | $0.0137† |
 | swe_bench | $0.1865 | $0.1810 | $0.3693 | $0.1810* |
 | swe_bench_orchestrated | $0.1017 | $0.1844 | $0.2364 | $0.1844* |
 | tau_bench | $1.4568 | $0.5832 | $0.7175 | $0.5832* |

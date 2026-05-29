@@ -27,6 +27,8 @@ Published through the real orchestrator path, same
 | gsm8k | 1.00 | 1.00 | 1.00 | **1.00** |
 | mmlu | 1.00 | 1.00 | 1.00 | **1.00** |
 | context_bench | 1.00 | 1.00 | 1.00 | **1.00** |
+| abliteration-robustness | 1.00 | 1.00 | 1.00 | **1.00** |
+| scambench | 1.00 | 1.00 | 1.00 | **1.00** |
 
 - All posted benchmarks: exact 4-way parity. The smithers harness emits native
   ai-SDK `ToolCallPart` / `ToolResultPart` messages, so multi-turn
