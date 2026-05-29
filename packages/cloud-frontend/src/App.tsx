@@ -20,6 +20,7 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import RootLayout from "./RootLayout";
 
 /**
@@ -453,10 +454,17 @@ function SuspenseRoute({
 }
 
 function NotFound() {
+  const t = useT();
   return (
     <div className="p-8 max-w-prose mx-auto text-sm text-neutral-400">
-      <h1 className="text-lg font-semibold text-white mb-3">Not found</h1>
-      <p>The page you requested doesn't exist.</p>
+      <h1 className="text-lg font-semibold text-white mb-3">
+        {t("cloud.notFound.title", { defaultValue: "Not found" })}
+      </h1>
+      <p>
+        {t("cloud.notFound.body", {
+          defaultValue: "The page you requested doesn't exist.",
+        })}
+      </p>
     </div>
   );
 }
@@ -534,6 +542,7 @@ function DashboardRedirect({ to }: { to: string }) {
 const DashboardChatRedirect = lazy(() => import("./dashboard/chat-redirect"));
 
 function ElizaOsCheckoutRedirect() {
+  const t = useT();
   const location = useLocation();
   const target = `https://elizaos.ai/checkout${location.search}`;
 
@@ -543,7 +552,11 @@ function ElizaOsCheckoutRedirect() {
 
   return (
     <main className="min-h-screen bg-black p-8 text-white">
-      <a href={target}>Continue to elizaOS checkout</a>
+      <a href={target}>
+        {t("cloud.checkout.continue", {
+          defaultValue: "Continue to elizaOS checkout",
+        })}
+      </a>
     </main>
   );
 }

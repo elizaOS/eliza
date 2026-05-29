@@ -1,5 +1,6 @@
 import { Component, lazy, type ReactNode, Suspense, useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 /**
  * Lazy boundary for the wallet stack (wagmi + RainbowKit + Solana wallet
@@ -90,6 +91,7 @@ export function ConditionalWalletProviders({
 }: {
   children: ReactNode;
 }) {
+  const t = useT();
   const { pathname } = useLocation();
   const needsWallet = useMemo(() => isWalletRoute(pathname), [pathname]);
 
@@ -102,7 +104,11 @@ export function ConditionalWalletProviders({
       fallback={
         <div className="flex min-h-screen items-center justify-center p-6 text-center text-sm text-muted-foreground">
           <div>
-            <p>Failed to load the wallet module.</p>
+            <p>
+              {t("cloud.wallet.loadFailed", {
+                defaultValue: "Failed to load the wallet module.",
+              })}
+            </p>
             <p className="mt-2">
               <button
                 className="underline"
@@ -114,7 +120,7 @@ export function ConditionalWalletProviders({
                 }}
                 type="button"
               >
-                Reload page
+                {t("cloud.wallet.reloadPage", { defaultValue: "Reload page" })}
               </button>
             </p>
           </div>

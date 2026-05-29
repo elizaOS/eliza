@@ -37,6 +37,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 
 interface DomainInfo {
   id: string;
@@ -75,6 +76,7 @@ interface AppDomainsProps {
 }
 
 export function AppDomains({ appId }: AppDomainsProps) {
+  const t = useT();
   const [domains, setDomains] = useState<DomainInfo[]>([]);
   const [sandboxUrl, setSandboxUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,17 +117,24 @@ export function AppDomains({ appId }: AppDomainsProps) {
         setLastChecked(new Date());
         if (data.verified) {
           if (!silent) {
-            toast.success("Domain verified!", {
-              description: "SSL certificate is now being provisioned",
-              icon: <CheckCircle2 className="h-4 w-4 text-green-400" />,
-            });
+            toast.success(
+              t("cloud.appDomains.domainVerified", {
+                defaultValue: "Domain verified!",
+              }),
+              {
+                description: t("cloud.appDomains.sslProvisioningNow", {
+                  defaultValue: "SSL certificate is now being provisioned",
+                }),
+                icon: <CheckCircle2 className="h-4 w-4 text-green-400" />,
+              },
+            );
           }
           await fetchDomains();
         }
       }
       if (!silent) setIsChecking(false);
     },
-    [appId, fetchDomains],
+    [appId, fetchDomains, t],
   );
 
   useEffect(() => {
@@ -156,7 +165,12 @@ export function AppDomains({ appId }: AppDomainsProps) {
   const copyToClipboard = async (text: string, label: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedValue(text);
-    toast.success(`${label} copied to clipboard`);
+    toast.success(
+      t("cloud.appDomains.copiedToClipboard", {
+        label,
+        defaultValue: "{{label}} copied to clipboard",
+      }),
+    );
     setTimeout(() => setCopiedValue(null), 2000);
   };
 
@@ -166,10 +180,17 @@ export function AppDomains({ appId }: AppDomainsProps) {
 
     const domainRegex = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
     if (!domainRegex.test(domain)) {
-      toast.error("Invalid domain", {
-        description:
-          "Please enter a valid domain like example.com or app.example.com",
-      });
+      toast.error(
+        t("cloud.appDomains.invalidDomain", {
+          defaultValue: "Invalid domain",
+        }),
+        {
+          description: t("cloud.appDomains.invalidDomainHint", {
+            defaultValue:
+              "Please enter a valid domain like example.com or app.example.com",
+          }),
+        },
+      );
       return;
     }
 
@@ -184,11 +205,22 @@ export function AppDomains({ appId }: AppDomainsProps) {
 
     if (data.success) {
       toast.success(
-        data.verified ? "Domain verified!" : "Domain added successfully",
+        data.verified
+          ? t("cloud.appDomains.domainVerified", {
+              defaultValue: "Domain verified!",
+            })
+          : t("cloud.appDomains.domainAdded", {
+              defaultValue: "Domain added successfully",
+            }),
         {
           description: data.verified
-            ? "SSL certificate is being provisioned automatically"
-            : "Configure your DNS records to complete setup",
+            ? t("cloud.appDomains.sslProvisioningAuto", {
+                defaultValue:
+                  "SSL certificate is being provisioned automatically",
+              })
+            : t("cloud.appDomains.configureDnsToComplete", {
+                defaultValue: "Configure your DNS records to complete setup",
+              }),
         },
       );
       setDomainStatus({
@@ -206,7 +238,12 @@ export function AppDomains({ appId }: AppDomainsProps) {
       setShowAddForm(false);
       await fetchDomains();
     } else {
-      toast.error("Failed to add domain", { description: data.error });
+      toast.error(
+        t("cloud.appDomains.failedToAdd", {
+          defaultValue: "Failed to add domain",
+        }),
+        { description: data.error },
+      );
     }
     setIsAdding(false);
   };
@@ -222,11 +259,20 @@ export function AppDomains({ appId }: AppDomainsProps) {
     const data = await response.json();
 
     if (data.success) {
-      toast.success("Domain removed successfully");
+      toast.success(
+        t("cloud.appDomains.domainRemoved", {
+          defaultValue: "Domain removed successfully",
+        }),
+      );
       setDomainStatus(null);
       await fetchDomains();
     } else {
-      toast.error("Failed to remove domain", { description: data.error });
+      toast.error(
+        t("cloud.appDomains.failedToRemove", {
+          defaultValue: "Failed to remove domain",
+        }),
+        { description: data.error },
+      );
     }
     setIsRemoving(false);
   };
@@ -246,10 +292,12 @@ export function AppDomains({ appId }: AppDomainsProps) {
             <div>
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
                 <Globe className="h-4 w-4 text-[#FF5800]" />
-                Domains
+                {t("cloud.appDomains.title", { defaultValue: "Domains" })}
               </h3>
               <p className="text-xs text-neutral-500 mt-1">
-                Connect custom domains to your app
+                {t("cloud.appDomains.subtitle", {
+                  defaultValue: "Connect custom domains to your app",
+                })}
               </p>
             </div>
             {primaryDomain &&
@@ -262,7 +310,9 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   className="bg-[#FF5800] hover:bg-black hover:text-white text-white rounded-sm"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
-                  Add Domain
+                  {t("cloud.appDomains.addDomain", {
+                    defaultValue: "Add Domain",
+                  })}
                 </Button>
               )}
           </div>
@@ -289,11 +339,15 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   <Info className="h-4 w-4 text-white/70 shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs text-white/90 font-medium">
-                      Development URL
+                      {t("cloud.appDomains.developmentUrl", {
+                        defaultValue: "Development URL",
+                      })}
                     </p>
                     <p className="text-xs text-white/60 mt-0.5">
-                      Deploy your app to get a permanent subdomain and add
-                      custom domains.
+                      {t("cloud.appDomains.developmentUrlHint", {
+                        defaultValue:
+                          "Deploy your app to get a permanent subdomain and add custom domains.",
+                      })}
                     </p>
                   </div>
                 </div>
@@ -306,11 +360,15 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 <AlertTriangle className="h-6 w-6 text-orange-400" />
               </div>
               <h4 className="text-sm font-medium text-white mb-1">
-                No App Deployed
+                {t("cloud.appDomains.noAppDeployed", {
+                  defaultValue: "No App Deployed",
+                })}
               </h4>
               <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-                Deploy your app first to get a subdomain. Once deployed, you can
-                add custom domains here.
+                {t("cloud.appDomains.noAppDeployedHint", {
+                  defaultValue:
+                    "Deploy your app first to get a subdomain. Once deployed, you can add custom domains here.",
+                })}
               </p>
             </div>
           ) : (
@@ -361,10 +419,14 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   >
                     <div className="p-6 rounded-sm border border-white/5 bg-black/20">
                       <h4 className="text-sm font-medium text-white mb-1">
-                        Add Custom Domain
+                        {t("cloud.appDomains.addCustomDomain", {
+                          defaultValue: "Add Custom Domain",
+                        })}
                       </h4>
                       <p className="text-xs text-neutral-500 mb-4">
-                        Enter your domain name below
+                        {t("cloud.appDomains.enterDomainName", {
+                          defaultValue: "Enter your domain name below",
+                        })}
                       </p>
                       <div className="flex flex-col sm:flex-row gap-3">
                         <Input
@@ -397,7 +459,9 @@ export function AppDomains({ appId }: AppDomainsProps) {
                             {isAdding ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                              "Add Domain"
+                              t("cloud.appDomains.addDomain", {
+                                defaultValue: "Add Domain",
+                              })
                             )}
                           </Button>
                           <Button
@@ -408,7 +472,9 @@ export function AppDomains({ appId }: AppDomainsProps) {
                             }}
                             className="h-9 px-4 border-white/20 text-white hover:bg-white/10"
                           >
-                            Cancel
+                            {t("cloud.appDomains.cancel", {
+                              defaultValue: "Cancel",
+                            })}
                           </Button>
                         </div>
                       </div>
@@ -421,11 +487,15 @@ export function AppDomains({ appId }: AppDomainsProps) {
               {primaryDomain && !hasCustomDomain && !showAddForm && (
                 <div className="p-6 rounded-sm border border-white/5 bg-black/20 text-center">
                   <h4 className="text-sm font-medium text-white">
-                    Use Your Own Domain
+                    {t("cloud.appDomains.useYourOwnDomain", {
+                      defaultValue: "Use Your Own Domain",
+                    })}
                   </h4>
                   <p className="text-xs text-neutral-500 max-w-xs mx-auto mt-2">
-                    Connect a custom domain to make your app accessible at your
-                    own branded URL
+                    {t("cloud.appDomains.useYourOwnDomainHint", {
+                      defaultValue:
+                        "Connect a custom domain to make your app accessible at your own branded URL",
+                    })}
                   </p>
                 </div>
               )}
@@ -459,12 +529,18 @@ export function AppDomains({ appId }: AppDomainsProps) {
         {/* Quick Reference */}
         <div className="bg-neutral-900 rounded-sm p-4">
           <h3 className="text-sm font-medium text-white mb-4">
-            Quick DNS Reference
+            {t("cloud.appDomains.quickDnsReference", {
+              defaultValue: "Quick DNS Reference",
+            })}
           </h3>
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="flex items-center justify-between p-4 rounded-sm bg-black/40">
               <div>
-                <p className="text-sm font-medium text-white">Subdomains</p>
+                <p className="text-sm font-medium text-white">
+                  {t("cloud.appDomains.subdomains", {
+                    defaultValue: "Subdomains",
+                  })}
+                </p>
                 <p className="text-xs text-neutral-500 font-mono mt-1">
                   app.example.com
                 </p>
@@ -478,7 +554,11 @@ export function AppDomains({ appId }: AppDomainsProps) {
             </div>
             <div className="flex items-center justify-between p-4 rounded-sm bg-black/40">
               <div>
-                <p className="text-sm font-medium text-white">Root Domains</p>
+                <p className="text-sm font-medium text-white">
+                  {t("cloud.appDomains.rootDomains", {
+                    defaultValue: "Root Domains",
+                  })}
+                </p>
                 <p className="text-xs text-neutral-500 font-mono mt-1">
                   example.com
                 </p>
@@ -490,7 +570,10 @@ export function AppDomains({ appId }: AppDomainsProps) {
             </div>
           </div>
           <p className="mt-3 text-xs text-neutral-500">
-            DNS changes typically propagate within 5 minutes to 48 hours
+            {t("cloud.appDomains.dnsPropagationNote", {
+              defaultValue:
+                "DNS changes typically propagate within 5 minutes to 48 hours",
+            })}
           </p>
         </div>
       </div>
@@ -523,6 +606,7 @@ function DomainCard({
   copyToClipboard: (text: string, label: string) => void;
   copiedValue: string | null;
 }) {
+  const t = useT();
   const fullUrl = url || `https://${domain}`;
   const isVerified = status === "verified";
 
@@ -542,20 +626,28 @@ function DomainCard({
             <DomainStatusBadge status={status} sslStatus={sslStatus} />
             {type === "subdomain" && (
               <span className="text-[10px] text-neutral-500 uppercase tracking-wider">
-                Default
+                {t("cloud.appDomains.default", { defaultValue: "Default" })}
               </span>
             )}
           </div>
           {isVerified && (
             <div className="flex items-center gap-1 text-green-400/80 mt-2">
               <Lock className="h-3 w-3" />
-              <span className="text-xs">SSL/TLS Secured</span>
+              <span className="text-xs">
+                {t("cloud.appDomains.sslTlsSecured", {
+                  defaultValue: "SSL/TLS Secured",
+                })}
+              </span>
             </div>
           )}
           {!isVerified && type === "custom" && (
             <div className="flex items-center gap-1 text-orange-400/80 mt-2">
               <AlertTriangle className="h-3 w-3" />
-              <span className="text-xs">DNS verification pending</span>
+              <span className="text-xs">
+                {t("cloud.appDomains.dnsVerificationPending", {
+                  defaultValue: "DNS verification pending",
+                })}
+              </span>
             </div>
           )}
         </div>
@@ -566,7 +658,12 @@ function DomainCard({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => copyToClipboard(fullUrl, "URL")}
+                onClick={() =>
+                  copyToClipboard(
+                    fullUrl,
+                    t("cloud.appDomains.urlLabel", { defaultValue: "URL" }),
+                  )
+                }
                 className="h-8 w-8 p-0 text-neutral-400 hover:text-white hover:bg-white/10"
               >
                 {copiedValue === fullUrl ? (
@@ -580,7 +677,7 @@ function DomainCard({
               side="bottom"
               className="bg-neutral-800 text-white border-white/10"
             >
-              Copy URL
+              {t("cloud.appDomains.copyUrl", { defaultValue: "Copy URL" })}
             </TooltipContent>
           </Tooltip>
 
@@ -600,7 +697,9 @@ function DomainCard({
                 side="bottom"
                 className="bg-neutral-800 text-white border-white/10"
               >
-                Open in new tab
+                {t("cloud.appDomains.openInNewTab", {
+                  defaultValue: "Open in new tab",
+                })}
               </TooltipContent>
             </Tooltip>
           )}
@@ -624,7 +723,9 @@ function DomainCard({
                 side="bottom"
                 className="bg-neutral-800 text-white border-white/10"
               >
-                Check DNS status
+                {t("cloud.appDomains.checkDnsStatus", {
+                  defaultValue: "Check DNS status",
+                })}
               </TooltipContent>
             </Tooltip>
           )}
@@ -652,28 +753,42 @@ function DomainCard({
                   side="bottom"
                   className="bg-neutral-800 text-white border-white/10"
                 >
-                  Remove domain
+                  {t("cloud.appDomains.removeDomainTooltip", {
+                    defaultValue: "Remove domain",
+                  })}
                 </TooltipContent>
               </Tooltip>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Remove Domain</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    {t("cloud.appDomains.removeDomainTitle", {
+                      defaultValue: "Remove Domain",
+                    })}
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to remove{" "}
+                    {t("cloud.appDomains.removeDomainConfirmPre", {
+                      defaultValue: "Are you sure you want to remove",
+                    })}{" "}
                     <code className="px-1.5 py-0.5 bg-white/10 rounded-sm font-mono text-white">
                       {domain}
                     </code>
-                    ? Users will no longer be able to access your app via this
-                    domain.
+                    {t("cloud.appDomains.removeDomainConfirmPost", {
+                      defaultValue:
+                        "? Users will no longer be able to access your app via this domain.",
+                    })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>
+                    {t("cloud.appDomains.cancel", { defaultValue: "Cancel" })}
+                  </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={onRemove}
                     className="bg-red-600 hover:bg-red-700"
                   >
-                    Remove Domain
+                    {t("cloud.appDomains.removeDomainTitle", {
+                      defaultValue: "Remove Domain",
+                    })}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -692,6 +807,7 @@ function DomainStatusBadge({
   status: string;
   sslStatus: string;
 }) {
+  const t = useT();
   if (status === "verified" && sslStatus === "active") {
     return (
       <Badge className="bg-green-500/10 text-green-400 border-green-500/30 gap-1 text-[10px]">
@@ -699,7 +815,7 @@ function DomainStatusBadge({
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-50" />
           <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-400" />
         </span>
-        Active
+        {t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
       </Badge>
     );
   }
@@ -708,7 +824,9 @@ function DomainStatusBadge({
     return (
       <Badge className="bg-white/10 text-white/80 border-white/20 gap-1 text-[10px]">
         <Loader2 className="h-3 w-3 animate-spin" />
-        SSL Provisioning
+        {t("cloud.appDomains.statusSslProvisioning", {
+          defaultValue: "SSL Provisioning",
+        })}
       </Badge>
     );
   }
@@ -716,7 +834,7 @@ function DomainStatusBadge({
   return (
     <Badge className="bg-orange-500/10 text-orange-400 border-orange-500/30 gap-1 text-[10px]">
       <Clock className="h-3 w-3" />
-      Pending
+      {t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
     </Badge>
   );
 }
@@ -738,6 +856,7 @@ function DnsConfigPanel({
   copyToClipboard: (text: string, label: string) => void;
   copiedValue: string | null;
 }) {
+  const t = useT();
   const isApex = domain.split(".").length === 2;
   const currentStatus = domainStatus?.status || "pending";
 
@@ -761,16 +880,25 @@ function DnsConfigPanel({
         <div className="flex items-center gap-2">
           <Zap className="h-4 w-4 text-orange-400" />
           <div>
-            <h3 className="text-sm font-medium text-white">Configure DNS</h3>
+            <h3 className="text-sm font-medium text-white">
+              {t("cloud.appDomains.configureDns", {
+                defaultValue: "Configure DNS",
+              })}
+            </h3>
             <p className="text-xs text-neutral-500">
-              Add these records at your DNS provider
+              {t("cloud.appDomains.addRecordsHint", {
+                defaultValue: "Add these records at your DNS provider",
+              })}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {lastChecked && (
             <span className="text-xs text-neutral-500 hidden sm:block">
-              Last checked: {lastChecked.toLocaleTimeString()}
+              {t("cloud.appDomains.lastChecked", {
+                time: lastChecked.toLocaleTimeString(),
+                defaultValue: "Last checked: {{time}}",
+              })}
             </span>
           )}
           <Button
@@ -785,7 +913,7 @@ function DnsConfigPanel({
             ) : (
               <RefreshCw className="h-4 w-4 mr-1.5" />
             )}
-            Verify
+            {t("cloud.appDomains.verify", { defaultValue: "Verify" })}
           </Button>
         </div>
       </div>
@@ -804,9 +932,15 @@ function DnsConfigPanel({
           <>
             <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs text-green-300 font-medium">DNS Verified</p>
+              <p className="text-xs text-green-300 font-medium">
+                {t("cloud.appDomains.dnsVerified", {
+                  defaultValue: "DNS Verified",
+                })}
+              </p>
               <p className="text-xs text-green-300/70">
-                SSL certificate is being provisioned
+                {t("cloud.appDomains.sslProvisioning", {
+                  defaultValue: "SSL certificate is being provisioned",
+                })}
               </p>
             </div>
           </>
@@ -815,10 +949,14 @@ function DnsConfigPanel({
             <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
             <div>
               <p className="text-xs text-red-300 font-medium">
-                DNS Configuration Issue
+                {t("cloud.appDomains.dnsConfigIssue", {
+                  defaultValue: "DNS Configuration Issue",
+                })}
               </p>
               <p className="text-xs text-red-300/70">
-                Please check your records match exactly
+                {t("cloud.appDomains.dnsConfigIssueHint", {
+                  defaultValue: "Please check your records match exactly",
+                })}
               </p>
             </div>
           </>
@@ -827,10 +965,14 @@ function DnsConfigPanel({
             <Loader2 className="h-4 w-4 text-orange-400 animate-spin shrink-0 mt-0.5" />
             <div>
               <p className="text-xs text-orange-300 font-medium">
-                Waiting for DNS Propagation
+                {t("cloud.appDomains.waitingForPropagation", {
+                  defaultValue: "Waiting for DNS Propagation",
+                })}
               </p>
               <p className="text-xs text-orange-300/70">
-                This may take a few minutes
+                {t("cloud.appDomains.waitingFewMinutes", {
+                  defaultValue: "This may take a few minutes",
+                })}
               </p>
             </div>
           </>
@@ -842,7 +984,9 @@ function DnsConfigPanel({
         {txtRecords.length > 0 && (
           <div>
             <h4 className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-2">
-              Verification Record
+              {t("cloud.appDomains.verificationRecord", {
+                defaultValue: "Verification Record",
+              })}
             </h4>
             <div className="space-y-2">
               {txtRecords.map((record) => (
@@ -861,7 +1005,11 @@ function DnsConfigPanel({
 
         <div>
           <h4 className="text-[10px] font-medium text-neutral-500 uppercase tracking-wider mb-2">
-            {isApex ? "A Record" : "CNAME Record"}
+            {isApex
+              ? t("cloud.appDomains.aRecord", { defaultValue: "A Record" })
+              : t("cloud.appDomains.cnameRecord", {
+                  defaultValue: "CNAME Record",
+                })}
           </h4>
           <div className="space-y-2">
             {dnsRecords.map((record) => (
@@ -894,6 +1042,11 @@ function DnsRecordRow({
   copyToClipboard: (text: string, label: string) => void;
   copiedValue: string | null;
 }) {
+  const t = useT();
+  const valueLabel = t("cloud.appDomains.recordValueLabel", {
+    type,
+    defaultValue: "{{type}} value",
+  });
   return (
     <div className="group bg-black/30 rounded-sm border border-white/5 p-3">
       {/* Desktop */}
@@ -913,7 +1066,7 @@ function DnsRecordRow({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => copyToClipboard(value, `${type} value`)}
+          onClick={() => copyToClipboard(value, valueLabel)}
           className="h-7 w-7 p-0 text-neutral-500 hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
         >
           {copiedValue === value ? (
@@ -936,7 +1089,7 @@ function DnsRecordRow({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => copyToClipboard(value, `${type} value`)}
+            onClick={() => copyToClipboard(value, valueLabel)}
             className="h-7 px-2 text-neutral-500 hover:text-white"
           >
             {copiedValue === value ? (
@@ -944,17 +1097,25 @@ function DnsRecordRow({
             ) : (
               <Copy className="h-3.5 w-3.5" />
             )}
-            <span className="ml-1.5 text-[10px]">Copy</span>
+            <span className="ml-1.5 text-[10px]">
+              {t("cloud.appDomains.copy", { defaultValue: "Copy" })}
+            </span>
           </Button>
         </div>
         <div className="space-y-1.5">
           <div>
-            <p className="text-[10px] text-neutral-500 mb-0.5">Name / Host</p>
+            <p className="text-[10px] text-neutral-500 mb-0.5">
+              {t("cloud.appDomains.nameHost", {
+                defaultValue: "Name / Host",
+              })}
+            </p>
             <p className="font-mono text-xs text-white break-all">{name}</p>
           </div>
           <div>
             <p className="text-[10px] text-neutral-500 mb-0.5">
-              Value / Target
+              {t("cloud.appDomains.valueTarget", {
+                defaultValue: "Value / Target",
+              })}
             </p>
             <p className="font-mono text-xs text-neutral-400 break-all">
               {value}

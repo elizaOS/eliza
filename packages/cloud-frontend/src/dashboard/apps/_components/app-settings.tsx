@@ -31,6 +31,7 @@ import {
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 import type { App } from "../../../lib/data/apps";
 import { storeOneTimeAppApiKey } from "./one-time-app-api-key";
 
@@ -39,6 +40,7 @@ interface AppSettingsProps {
 }
 
 export function AppSettings({ app }: AppSettingsProps) {
+  const t = useT();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -75,15 +77,33 @@ export function AppSettings({ app }: AppSettingsProps) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to update app");
+        throw new Error(
+          error.error ||
+            t("cloud.appSettings.updateFailed", {
+              defaultValue: "Failed to update app",
+            }),
+        );
       }
 
-      toast.success("App updated successfully");
+      toast.success(
+        t("cloud.appSettings.updateSuccess", {
+          defaultValue: "App updated successfully",
+        }),
+      );
     } catch (error) {
-      toast.error("Failed to update app", {
-        description:
-          error instanceof Error ? error.message : "Please try again",
-      });
+      toast.error(
+        t("cloud.appSettings.updateFailed", {
+          defaultValue: "Failed to update app",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.appSettings.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
     } finally {
       setIsLoading(false);
     }
@@ -101,28 +121,53 @@ export function AppSettings({ app }: AppSettingsProps) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to regenerate API key");
+        throw new Error(
+          error.error ||
+            t("cloud.appSettings.regenerateFailed", {
+              defaultValue: "Failed to regenerate API key",
+            }),
+        );
       }
 
       const data = await response.json();
       if (typeof data.apiKey !== "string" || data.apiKey.length === 0) {
-        throw new Error("Regeneration response did not include an API key");
+        throw new Error(
+          t("cloud.appSettings.regenerateNoKey", {
+            defaultValue: "Regeneration response did not include an API key",
+          }),
+        );
       }
       storeOneTimeAppApiKey(app.id, data.apiKey);
 
-      toast.success("API key regenerated", {
-        description:
-          "Your new API key has been generated. Make sure to save it!",
-      });
+      toast.success(
+        t("cloud.appSettings.regenerateSuccess", {
+          defaultValue: "API key regenerated",
+        }),
+        {
+          description: t("cloud.appSettings.regenerateSuccessDescription", {
+            defaultValue:
+              "Your new API key has been generated. Make sure to save it!",
+          }),
+        },
+      );
 
       navigate(`/dashboard/apps/${app.id}?tab=overview`, {
         preventScrollReset: true,
       });
     } catch (error) {
-      toast.error("Failed to regenerate API key", {
-        description:
-          error instanceof Error ? error.message : "Please try again",
-      });
+      toast.error(
+        t("cloud.appSettings.regenerateFailed", {
+          defaultValue: "Failed to regenerate API key",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.appSettings.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
     } finally {
       setIsRegenerating(false);
     }
@@ -137,16 +182,34 @@ export function AppSettings({ app }: AppSettingsProps) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to delete app");
+        throw new Error(
+          error.error ||
+            t("cloud.appSettings.deleteFailed", {
+              defaultValue: "Failed to delete app",
+            }),
+        );
       }
 
-      toast.success("App deleted successfully");
+      toast.success(
+        t("cloud.appSettings.deleteSuccess", {
+          defaultValue: "App deleted successfully",
+        }),
+      );
       navigate("/dashboard/apps");
     } catch (error) {
-      toast.error("Failed to delete app", {
-        description:
-          error instanceof Error ? error.message : "Please try again",
-      });
+      toast.error(
+        t("cloud.appSettings.deleteFailed", {
+          defaultValue: "Failed to delete app",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.appSettings.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
     } finally {
       setIsDeleting(false);
     }
@@ -169,13 +232,15 @@ export function AppSettings({ app }: AppSettingsProps) {
       <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <h3 className="text-sm font-medium text-white flex items-center gap-2">
           <Settings className="h-4 w-4 text-[var(--brand-orange)]" />
-          Basic Settings
+          {t("cloud.appSettings.basicSettings", {
+            defaultValue: "Basic Settings",
+          })}
         </h3>
 
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name" className="text-xs text-neutral-400">
-              App Name
+              {t("cloud.appSettings.appName", { defaultValue: "App Name" })}
             </Label>
             <Input
               id="name"
@@ -183,14 +248,18 @@ export function AppSettings({ app }: AppSettingsProps) {
               onChange={(e) =>
                 setFormData({ ...formData, name: e.target.value })
               }
-              placeholder="My Awesome App"
+              placeholder={t("cloud.appSettings.appNamePlaceholder", {
+                defaultValue: "My Awesome App",
+              })}
               className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="description" className="text-xs text-neutral-400">
-              Description
+              {t("cloud.appSettings.description", {
+                defaultValue: "Description",
+              })}
             </Label>
             <Textarea
               id="description"
@@ -198,7 +267,9 @@ export function AppSettings({ app }: AppSettingsProps) {
               onChange={(e) =>
                 setFormData({ ...formData, description: e.target.value })
               }
-              placeholder="A brief description of your app..."
+              placeholder={t("cloud.appSettings.descriptionPlaceholder", {
+                defaultValue: "A brief description of your app...",
+              })}
               rows={3}
               className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 resize-none rounded-sm"
             />
@@ -207,7 +278,7 @@ export function AppSettings({ app }: AppSettingsProps) {
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="app_url" className="text-xs text-neutral-400">
-                App URL
+                {t("cloud.appSettings.appUrl", { defaultValue: "App URL" })}
               </Label>
               <Input
                 id="app_url"
@@ -223,7 +294,9 @@ export function AppSettings({ app }: AppSettingsProps) {
 
             <div className="space-y-2">
               <Label htmlFor="website_url" className="text-xs text-neutral-400">
-                Website URL
+                {t("cloud.appSettings.websiteUrl", {
+                  defaultValue: "Website URL",
+                })}
               </Label>
               <Input
                 id="website_url"
@@ -240,7 +313,9 @@ export function AppSettings({ app }: AppSettingsProps) {
 
           <div className="space-y-2">
             <Label htmlFor="contact_email" className="text-xs text-neutral-400">
-              Contact Email
+              {t("cloud.appSettings.contactEmail", {
+                defaultValue: "Contact Email",
+              })}
             </Label>
             <Input
               id="contact_email"
@@ -256,9 +331,15 @@ export function AppSettings({ app }: AppSettingsProps) {
 
           <div className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/10">
             <div>
-              <p className="text-sm font-medium text-white">Active Status</p>
+              <p className="text-sm font-medium text-white">
+                {t("cloud.appSettings.activeStatus", {
+                  defaultValue: "Active Status",
+                })}
+              </p>
               <p className="text-xs text-neutral-500 mt-0.5">
-                Inactive apps cannot make API requests
+                {t("cloud.appSettings.activeStatusHint", {
+                  defaultValue: "Inactive apps cannot make API requests",
+                })}
               </p>
             </div>
             <Switch
@@ -278,10 +359,14 @@ export function AppSettings({ app }: AppSettingsProps) {
         <div>
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
             <Shield className="h-4 w-4 text-white/70" />
-            Allowed Origins
+            {t("cloud.appSettings.allowedOrigins", {
+              defaultValue: "Allowed Origins",
+            })}
           </h3>
           <p className="text-xs text-neutral-500 mt-1">
-            API requests are only accepted from these domains
+            {t("cloud.appSettings.allowedOriginsHint", {
+              defaultValue: "API requests are only accepted from these domains",
+            })}
           </p>
         </div>
 
@@ -340,12 +425,14 @@ export function AppSettings({ app }: AppSettingsProps) {
           {isLoading ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Saving...
+              {t("cloud.appSettings.saving", { defaultValue: "Saving..." })}
             </>
           ) : (
             <>
               <Save className="h-4 w-4 mr-2" />
-              Save Changes
+              {t("cloud.appSettings.saveChanges", {
+                defaultValue: "Save Changes",
+              })}
             </>
           )}
         </Button>
@@ -355,17 +442,21 @@ export function AppSettings({ app }: AppSettingsProps) {
       <div className="bg-red-500/10 rounded-sm p-4 space-y-4 border border-red-500/20">
         <h3 className="text-sm font-medium text-red-400 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
-          Danger Zone
+          {t("cloud.appSettings.dangerZone", { defaultValue: "Danger Zone" })}
         </h3>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-sm font-medium text-white">
-                Regenerate API Key
+                {t("cloud.appSettings.regenerateApiKey", {
+                  defaultValue: "Regenerate API Key",
+                })}
               </p>
               <p className="text-xs text-neutral-400 mt-1">
-                This will invalidate the current API key
+                {t("cloud.appSettings.regenerateApiKeyHint", {
+                  defaultValue: "This will invalidate the current API key",
+                })}
               </p>
             </div>
             <AlertDialog>
@@ -380,7 +471,9 @@ export function AppSettings({ app }: AppSettingsProps) {
                   ) : (
                     <>
                       <Key className="h-4 w-4 mr-1.5" />
-                      Regenerate
+                      {t("cloud.appSettings.regenerate", {
+                        defaultValue: "Regenerate",
+                      })}
                     </>
                   )}
                 </Button>
@@ -388,23 +481,28 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogContent className="bg-neutral-900 border-white/10">
                 <AlertDialogHeader>
                   <AlertDialogTitle className="text-white">
-                    Regenerate API Key?
+                    {t("cloud.appSettings.regenerateDialogTitle", {
+                      defaultValue: "Regenerate API Key?",
+                    })}
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-neutral-400">
-                    This action will immediately invalidate your current API
-                    key. Your app will stop working until you update it with the
-                    new key. This cannot be undone.
+                    {t("cloud.appSettings.regenerateDialogDescription", {
+                      defaultValue:
+                        "This action will immediately invalidate your current API key. Your app will stop working until you update it with the new key. This cannot be undone.",
+                    })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel className="border-white/10 text-white hover:bg-white/10">
-                    Cancel
+                    {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
                     className="bg-red-600 hover:bg-red-700 text-white"
                   >
-                    Regenerate API Key
+                    {t("cloud.appSettings.regenerateApiKey", {
+                      defaultValue: "Regenerate API Key",
+                    })}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -413,9 +511,15 @@ export function AppSettings({ app }: AppSettingsProps) {
 
           <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
             <div className="min-w-0 flex-1 mr-3">
-              <p className="text-sm font-medium text-white">Delete App</p>
+              <p className="text-sm font-medium text-white">
+                {t("cloud.appSettings.deleteApp", {
+                  defaultValue: "Delete App",
+                })}
+              </p>
               <p className="text-xs text-neutral-400 mt-1">
-                Permanently delete this app and all data
+                {t("cloud.appSettings.deleteAppHint", {
+                  defaultValue: "Permanently delete this app and all data",
+                })}
               </p>
             </div>
             <AlertDialog>
@@ -430,7 +534,9 @@ export function AppSettings({ app }: AppSettingsProps) {
                   ) : (
                     <>
                       <Trash2 className="h-4 w-4 mr-1.5" />
-                      Delete App
+                      {t("cloud.appSettings.deleteApp", {
+                        defaultValue: "Delete App",
+                      })}
                     </>
                   )}
                 </Button>
@@ -438,25 +544,33 @@ export function AppSettings({ app }: AppSettingsProps) {
               <AlertDialogContent className="bg-neutral-900 border-white/10">
                 <AlertDialogHeader>
                   <AlertDialogTitle className="text-white">
-                    Delete App?
+                    {t("cloud.appSettings.deleteDialogTitle", {
+                      defaultValue: "Delete App?",
+                    })}
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-neutral-400">
-                    This action cannot be undone. This will permanently delete
-                    the app
-                    <strong className="text-white"> {app.name}</strong> and
-                    remove all associated data including analytics and user
-                    tracking.
+                    {t("cloud.appSettings.deleteDialogIntro", {
+                      defaultValue:
+                        "This action cannot be undone. This will permanently delete the app",
+                    })}
+                    <strong className="text-white"> {app.name}</strong>{" "}
+                    {t("cloud.appSettings.deleteDialogOutro", {
+                      defaultValue:
+                        "and remove all associated data including analytics and user tracking.",
+                    })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel className="border-white/10 text-white hover:bg-white/10">
-                    Cancel
+                    {t("cloud.appSettings.cancel", { defaultValue: "Cancel" })}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDelete}
                     className="bg-red-600 hover:bg-red-700 text-white"
                   >
-                    Delete App
+                    {t("cloud.appSettings.deleteApp", {
+                      defaultValue: "Delete App",
+                    })}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>

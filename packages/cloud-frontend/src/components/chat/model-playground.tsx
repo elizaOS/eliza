@@ -20,6 +20,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 import { useAvailableModels } from "./hooks/use-available-models";
 import {
   buildResponsesInput,
@@ -41,7 +42,10 @@ interface TranscriptMessage {
   usage?: PlaygroundUsage | null;
 }
 
-function formatMetricList(message: TranscriptMessage): string | null {
+function formatMetricList(
+  message: TranscriptMessage,
+  t: ReturnType<typeof useT>,
+): string | null {
   const parts: string[] = [];
 
   if (message.modelId) {
@@ -53,16 +57,26 @@ function formatMetricList(message: TranscriptMessage): string | null {
   }
 
   if (message.usage?.totalTokens) {
-    parts.push(`${message.usage.totalTokens.toLocaleString()} tokens`);
+    parts.push(
+      t("cloud.modelPlayground.tokens", {
+        count: message.usage.totalTokens.toLocaleString(),
+        defaultValue: "{{count}} tokens",
+      }),
+    );
   }
 
   return parts.length > 0 ? parts.join(" - ") : null;
 }
 
 export function ModelPlayground() {
+  const t = useT();
   const { models, isLoading, error } = useAvailableModels();
   const [selectedModelId, setSelectedModelId] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
+  const [systemPrompt, setSystemPrompt] = useState(() =>
+    t("cloud.modelPlayground.defaultSystemPrompt", {
+      defaultValue: DEFAULT_SYSTEM_PROMPT,
+    }),
+  );
   const [draft, setDraft] = useState("");
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
@@ -105,7 +119,11 @@ export function ModelPlayground() {
     }
 
     if (!selectedModelId) {
-      toast.error("Select a model before sending a message.");
+      toast.error(
+        t("cloud.modelPlayground.selectModelFirst", {
+          defaultValue: "Select a model before sending a message.",
+        }),
+      );
       return;
     }
 
@@ -147,7 +165,11 @@ export function ModelPlayground() {
 
       const responseText = extractPlaygroundResponseText(payload);
       if (!responseText) {
-        throw new Error("The model returned an empty response.");
+        throw new Error(
+          t("cloud.modelPlayground.emptyResponse", {
+            defaultValue: "The model returned an empty response.",
+          }),
+        );
       }
 
       setMessages((currentMessages) => [
@@ -165,7 +187,9 @@ export function ModelPlayground() {
       const message =
         error instanceof Error
           ? error.message
-          : "The model request failed. Please try again.";
+          : t("cloud.modelPlayground.requestFailed", {
+              defaultValue: "The model request failed. Please try again.",
+            });
       setLastError(message);
       toast.error(message);
     } finally {
@@ -184,11 +208,15 @@ export function ModelPlayground() {
               </div>
               <div>
                 <div className="text-sm font-medium text-white">
-                  Model Playground
+                  {t("cloud.modelPlayground.title", {
+                    defaultValue: "Model Playground",
+                  })}
                 </div>
                 <div className="text-sm text-white/45">
-                  Direct chat for evaluating models without opening the agent
-                  builder.
+                  {t("cloud.modelPlayground.subtitle", {
+                    defaultValue:
+                      "Direct chat for evaluating models without opening the agent builder.",
+                  })}
                 </div>
               </div>
             </div>
@@ -200,7 +228,7 @@ export function ModelPlayground() {
               disabled={isSending || messages.length === 0}
             >
               <RotateCcw className="h-4 w-4" />
-              New chat
+              {t("cloud.modelPlayground.newChat", { defaultValue: "New chat" })}
             </Button>
           </div>
 
@@ -209,22 +237,27 @@ export function ModelPlayground() {
               <div className="flex h-full items-center justify-center">
                 <div className="max-w-xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
                   <Badge className="border-[#FF5800]/20 bg-[#FF5800]/10 text-[#FF9A62]">
-                    Prompt Lab
+                    {t("cloud.modelPlayground.promptLab", {
+                      defaultValue: "Prompt Lab",
+                    })}
                   </Badge>
                   <h2 className="mt-4 text-xl font-semibold text-white">
-                    Test raw model behavior
+                    {t("cloud.modelPlayground.emptyTitle", {
+                      defaultValue: "Test raw model behavior",
+                    })}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-white/55">
-                    Pick a model, set the system prompt, and run direct chats
-                    here. Agent conversations still work when you open a
-                    specific agent conversation.
+                    {t("cloud.modelPlayground.emptyDescription", {
+                      defaultValue:
+                        "Pick a model, set the system prompt, and run direct chats here. Agent conversations still work when you open a specific agent conversation.",
+                    })}
                   </p>
                 </div>
               </div>
             ) : (
               <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
                 {messages.map((message) => {
-                  const metrics = formatMetricList(message);
+                  const metrics = formatMetricList(message, t);
 
                   return (
                     <article
@@ -256,7 +289,9 @@ export function ModelPlayground() {
                 {isSending ? (
                   <div className="flex items-center gap-2 px-1 text-sm text-white/45">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Waiting for model response...
+                    {t("cloud.modelPlayground.waiting", {
+                      defaultValue: "Waiting for model response...",
+                    })}
                   </div>
                 ) : null}
               </div>
@@ -279,14 +314,19 @@ export function ModelPlayground() {
                   void handleSend();
                 }
               }}
-              placeholder="Ask for a comparison, benchmark interpretation, prompt rewrite, or anything else."
+              placeholder={t("cloud.modelPlayground.draftPlaceholder", {
+                defaultValue:
+                  "Ask for a comparison, benchmark interpretation, prompt rewrite, or anything else.",
+              })}
               className="min-h-28 resize-y border-white/10 bg-black/50 text-sm"
               disabled={isSending}
             />
 
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-white/35">
-                Enter sends. Shift+Enter inserts a new line.
+                {t("cloud.modelPlayground.enterHint", {
+                  defaultValue: "Enter sends. Shift+Enter inserts a new line.",
+                })}
               </div>
               <Button
                 onClick={() => void handleSend()}
@@ -298,7 +338,7 @@ export function ModelPlayground() {
                 ) : (
                   <ArrowUp className="h-4 w-4" />
                 )}
-                Send
+                {t("cloud.modelPlayground.send", { defaultValue: "Send" })}
               </Button>
             </div>
           </div>
@@ -308,7 +348,7 @@ export function ModelPlayground() {
           <div className="border border-white/10 bg-white/[0.02] p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-white">
               <SlidersHorizontal className="h-4 w-4 text-[#FF5800]" />
-              Session
+              {t("cloud.modelPlayground.session", { defaultValue: "Session" })}
             </div>
 
             <div className="mt-4 space-y-2">
@@ -316,7 +356,7 @@ export function ModelPlayground() {
                 htmlFor="model-select"
                 className="text-xs uppercase tracking-[0.22em] text-white/40"
               >
-                Model
+                {t("cloud.modelPlayground.model", { defaultValue: "Model" })}
               </label>
               <Select
                 value={selectedModelId}
@@ -326,7 +366,13 @@ export function ModelPlayground() {
                 <SelectTrigger id="model-select" className="w-full">
                   <SelectValue
                     placeholder={
-                      isLoading ? "Loading models..." : "Select a model"
+                      isLoading
+                        ? t("cloud.modelPlayground.loadingModels", {
+                            defaultValue: "Loading models...",
+                          })
+                        : t("cloud.modelPlayground.selectModel", {
+                            defaultValue: "Select a model",
+                          })
                     }
                   />
                 </SelectTrigger>
@@ -354,16 +400,23 @@ export function ModelPlayground() {
 
           <div className="flex min-h-[280px] flex-1 flex-col border border-white/10 bg-white/[0.02] p-4">
             <div className="text-xs uppercase tracking-[0.22em] text-white/40">
-              System prompt
+              {t("cloud.modelPlayground.systemPrompt", {
+                defaultValue: "System prompt",
+              })}
             </div>
             <p className="mt-2 text-sm leading-6 text-white/50">
-              This instruction is sent with every turn in the current chat.
+              {t("cloud.modelPlayground.systemPromptHint", {
+                defaultValue:
+                  "This instruction is sent with every turn in the current chat.",
+              })}
             </p>
             <Textarea
               value={systemPrompt}
               onChange={(event) => setSystemPrompt(event.target.value)}
               className="mt-4 min-h-[220px] flex-1 resize-none border-white/10 bg-black/50 text-sm"
-              placeholder="Describe the behavior you want from the model."
+              placeholder={t("cloud.modelPlayground.systemPromptPlaceholder", {
+                defaultValue: "Describe the behavior you want from the model.",
+              })}
               disabled={isSending}
             />
           </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 import {
   ADDITIONAL_MODELS,
   type CatalogModel,
@@ -35,6 +36,7 @@ const FALLBACK_MODELS: SelectorModel[] = sortSelectorModels([
 );
 
 export function useAvailableModels() {
+  const t = useT();
   const { authenticated, ready } = useSessionAuth();
   const [models, setModels] = useState<SelectorModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,12 +85,20 @@ export function useAvailableModels() {
         console.error("[useAvailableModels] Error fetching models:", err);
 
         const errorMessage =
-          err instanceof Error ? err.message : "Failed to load models";
+          err instanceof Error
+            ? err.message
+            : t("cloud.models.loadFailed", {
+                defaultValue: "Failed to load models",
+              });
         if (
           errorMessage.includes("Unauthorized") ||
           errorMessage.includes("Authentication")
         ) {
-          setError("Please log in to view available models");
+          setError(
+            t("cloud.models.loginRequired", {
+              defaultValue: "Please log in to view available models",
+            }),
+          );
         } else {
           setError(errorMessage);
         }

@@ -34,21 +34,39 @@ import {
   type SandboxStatus,
   useSandboxStatusPoll,
 } from "@/lib/hooks/use-sandbox-status-poll";
+import { useT } from "@/providers/I18nProvider";
 
 // ----------------------------------------------------------------
 // Provisioning Steps
 // ----------------------------------------------------------------
 
 interface StepConfig {
-  label: string;
+  labelKey: string;
+  defaultLabel: string;
   matchStatuses: SandboxStatus[];
 }
 
 const PROVISIONING_STEPS: StepConfig[] = [
-  { label: "Agent created", matchStatuses: [] },
-  { label: "Provisioning database", matchStatuses: ["pending"] },
-  { label: "Starting container", matchStatuses: ["provisioning"] },
-  { label: "Agent running", matchStatuses: ["running"] },
+  {
+    labelKey: "cloud.createAgent.stepCreated",
+    defaultLabel: "Agent created",
+    matchStatuses: [],
+  },
+  {
+    labelKey: "cloud.createAgent.stepProvisioningDb",
+    defaultLabel: "Provisioning database",
+    matchStatuses: ["pending"],
+  },
+  {
+    labelKey: "cloud.createAgent.stepStartingContainer",
+    defaultLabel: "Starting container",
+    matchStatuses: ["provisioning"],
+  },
+  {
+    labelKey: "cloud.createAgent.stepRunning",
+    defaultLabel: "Agent running",
+    matchStatuses: ["running"],
+  },
 ];
 
 function getActiveStepIndex(status: SandboxStatus): number {
@@ -131,6 +149,7 @@ function ProvisioningProgress({
   onClose: () => void;
   onRetry: () => void;
 }) {
+  const t = useT();
   const activeIndex = getActiveStepIndex(status);
   const hasError = status === "error";
   const isComplete = status === "running";
@@ -141,10 +160,16 @@ function ProvisioningProgress({
       <div className="flex items-center justify-between">
         <p className="text-sm text-white/70">
           {isComplete
-            ? "Your agent is ready"
+            ? t("cloud.createAgent.ready", {
+                defaultValue: "Your agent is ready",
+              })
             : hasError
-              ? "Something went wrong"
-              : "Setting up your agent…"}
+              ? t("cloud.createAgent.wentWrong", {
+                  defaultValue: "Something went wrong",
+                })
+              : t("cloud.createAgent.settingUp", {
+                  defaultValue: "Setting up your agent…",
+                })}
         </p>
         {!isComplete && !hasError && (
           <span className="text-[11px] tabular-nums text-white/30">
@@ -162,7 +187,7 @@ function ProvisioningProgress({
           const state = getStepState(i, activeIndex, hasError);
           const isLast = i === PROVISIONING_STEPS.length - 1;
           return (
-            <div key={step.label} className="flex items-start gap-3 relative">
+            <div key={step.labelKey} className="flex items-start gap-3 relative">
               {/* Vertical connector */}
               {!isLast && (
                 <div
@@ -193,7 +218,7 @@ function ProvisioningProgress({
                           : "text-white/25"
                   }`}
                 >
-                  {step.label}
+                  {t(step.labelKey, { defaultValue: step.defaultLabel })}
                 </p>
               </div>
             </div>
@@ -211,7 +236,9 @@ function ProvisioningProgress({
             className="inline-flex items-center gap-1.5 text-xs text-red-300 hover:text-white transition-colors"
           >
             <RotateCcw className="h-3 w-3" />
-            Retry provisioning
+            {t("cloud.createAgent.retryProvisioning", {
+              defaultValue: "Retry provisioning",
+            })}
           </button>
         </div>
       )}
@@ -225,15 +252,15 @@ function ProvisioningProgress({
               onClick={() => openWebUIWithPairing(agentId)}
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              Open Web UI
+              {t("cloud.createAgent.openWebUi", { defaultValue: "Open Web UI" })}
             </BrandButton>
             <BrandButton variant="outline" size="sm" onClick={onClose}>
-              Done
+              {t("cloud.createAgent.done", { defaultValue: "Done" })}
             </BrandButton>
           </>
         ) : (
           <BrandButton variant="outline" size="sm" onClick={onClose}>
-            Close
+            {t("cloud.createAgent.close", { defaultValue: "Close" })}
           </BrandButton>
         )}
       </div>
@@ -259,6 +286,7 @@ export function CreateElizaAgentDialog({
   onProvisionQueued,
   onCreated,
 }: CreateElizaAgentDialogProps) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [agentName, setAgentName] = useState("");
   const [flavorId, setFlavorId] = useState(getDefaultFlavor().id);
@@ -305,9 +333,13 @@ export function CreateElizaAgentDialog({
   // When provisioning completes, notify via toast (refresh happens in handleClose)
   useEffect(() => {
     if (isProvisioningPhase && pollResult.status === "running") {
-      toast.success("Agent is up and running!");
+      toast.success(
+        t("cloud.createAgent.upAndRunning", {
+          defaultValue: "Agent is up and running!",
+        }),
+      );
     }
-  }, [isProvisioningPhase, pollResult.status]);
+  }, [isProvisioningPhase, pollResult.status, t]);
 
   function resetForm() {
     setAgentName("");
@@ -357,13 +389,20 @@ export function CreateElizaAgentDialog({
       if (!createRes.ok) {
         throw new Error(
           (createData as { error?: string }).error ??
-            `Create failed (${createRes.status})`,
+            t("cloud.createAgent.createFailed", {
+              status: createRes.status,
+              defaultValue: "Create failed ({{status}})",
+            }),
         );
       }
 
       const agentId = (createData as { data?: { id?: string } }).data?.id;
       if (!agentId) {
-        throw new Error("Agent created but no agent id was returned");
+        throw new Error(
+          t("cloud.createAgent.noAgentId", {
+            defaultValue: "Agent created but no agent id was returned",
+          }),
+        );
       }
 
       setCreatedAgentId(agentId);
@@ -390,17 +429,29 @@ export function CreateElizaAgentDialog({
           // Stay in provisioning view — the polling hook will track status
         } else if (provisionRes.ok) {
           // Already running (synchronous provision)
-          toast.success("Agent is running");
+          toast.success(
+            t("cloud.createAgent.agentRunning", {
+              defaultValue: "Agent is running",
+            }),
+          );
           handleClose();
         } else {
           toast.warning(
             (provisionData as { error?: string }).error ??
-              "Agent created, but auto-start failed. You can start it from the table.",
+              t("cloud.createAgent.autoStartFailed", {
+                defaultValue:
+                  "Agent created, but auto-start failed. You can start it from the table.",
+              }),
           );
           handleClose();
         }
       } else {
-        toast.success(`Agent "${trimmedName}" created`);
+        toast.success(
+          t("cloud.createAgent.agentCreated", {
+            name: trimmedName,
+            defaultValue: 'Agent "{{name}}" created',
+          }),
+        );
         handleClose();
       }
     } catch (err) {
@@ -429,13 +480,25 @@ export function CreateElizaAgentDialog({
         if (jobId) {
           onProvisionQueued?.(createdAgentId, jobId);
         }
-        toast.info("Retrying provisioning…");
+        toast.info(
+          t("cloud.createAgent.retrying", {
+            defaultValue: "Retrying provisioning…",
+          }),
+        );
       } else if (!res.ok) {
-        toast.error((data as { error?: string }).error ?? "Retry failed");
+        toast.error(
+          (data as { error?: string }).error ??
+            t("cloud.createAgent.retryFailed", {
+              defaultValue: "Retry failed",
+            }),
+        );
       }
     } catch (err) {
       toast.error(
-        `Retry failed: ${err instanceof Error ? err.message : String(err)}`,
+        t("cloud.createAgent.retryFailedDetail", {
+          message: err instanceof Error ? err.message : String(err),
+          defaultValue: "Retry failed: {{message}}",
+        }),
       );
     }
   }
@@ -453,7 +516,7 @@ export function CreateElizaAgentDialog({
       ) : (
         <BrandButton size="sm" onClick={() => setOpen(true)} disabled={busy}>
           <Plus className="h-4 w-4" />
-          New Agent
+          {t("cloud.createAgent.newAgent", { defaultValue: "New Agent" })}
         </BrandButton>
       )}
 
@@ -468,7 +531,13 @@ export function CreateElizaAgentDialog({
         <DialogContent className="sm:max-w-md bg-neutral-900 border-white/10">
           <DialogHeader>
             <DialogTitle className="text-white">
-              {isProvisioningPhase ? "Launching Agent" : "New Agent"}
+              {isProvisioningPhase
+                ? t("cloud.createAgent.launchingAgent", {
+                    defaultValue: "Launching Agent",
+                  })
+                : t("cloud.createAgent.newAgent", {
+                    defaultValue: "New Agent",
+                  })}
             </DialogTitle>
           </DialogHeader>
 
@@ -490,11 +559,15 @@ export function CreateElizaAgentDialog({
                     htmlFor="eliza-agent-name"
                     className="text-white/60 text-xs"
                   >
-                    Agent Name
+                    {t("cloud.createAgent.agentName", {
+                      defaultValue: "Agent Name",
+                    })}
                   </Label>
                   <Input
                     id="eliza-agent-name"
-                    placeholder="e.g. eliza-alpha"
+                    placeholder={t("cloud.createAgent.agentNamePlaceholder", {
+                      defaultValue: "e.g. eliza-alpha",
+                    })}
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
                     disabled={busy}
@@ -516,7 +589,7 @@ export function CreateElizaAgentDialog({
                     htmlFor="eliza-flavor"
                     className="text-white/60 text-xs"
                   >
-                    Type
+                    {t("cloud.createAgent.type", { defaultValue: "Type" })}
                   </Label>
                   <Select
                     value={flavorId}
@@ -527,7 +600,11 @@ export function CreateElizaAgentDialog({
                       id="eliza-flavor"
                       className="bg-black/40 border-white/10 text-white"
                     >
-                      <SelectValue placeholder="Select flavor" />
+                      <SelectValue
+                        placeholder={t("cloud.createAgent.selectFlavor", {
+                          defaultValue: "Select flavor",
+                        })}
+                      />
                     </SelectTrigger>
                     <SelectContent className="border-white/10 bg-neutral-900">
                       {AGENT_FLAVORS.map((flavor) => (
@@ -553,11 +630,15 @@ export function CreateElizaAgentDialog({
                       htmlFor="eliza-custom-image"
                       className="text-white/60 text-xs"
                     >
-                      Docker Image
+                      {t("cloud.createAgent.dockerImage", {
+                        defaultValue: "Docker Image",
+                      })}
                     </Label>
                     <Input
                       id="eliza-custom-image"
-                      placeholder="e.g. myregistry/agent:latest"
+                      placeholder={t("cloud.createAgent.dockerImagePlaceholder", {
+                        defaultValue: "e.g. myregistry/agent:latest",
+                      })}
                       value={customImage}
                       onChange={(e) => setCustomImage(e.target.value)}
                       disabled={busy}
@@ -574,10 +655,14 @@ export function CreateElizaAgentDialog({
                       htmlFor="eliza-auto-start"
                       className="text-sm text-white/70"
                     >
-                      Start immediately
+                      {t("cloud.createAgent.startImmediately", {
+                        defaultValue: "Start immediately",
+                      })}
                     </Label>
                     <p className="text-[11px] text-white/35">
-                      Start right after creation
+                      {t("cloud.createAgent.startAfterCreation", {
+                        defaultValue: "Start right after creation",
+                      })}
                     </p>
                   </div>
                   <Switch
@@ -594,13 +679,20 @@ export function CreateElizaAgentDialog({
                     <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-[#FF5800] rounded-full" />
                     <div className="space-y-0.5">
                       <p className="text-[11px] font-mono text-white/70">
-                        {formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)}
-                        /hr running ·{" "}
-                        {formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE)}/hr
-                        idle
+                        {t("cloud.createAgent.hourlyRates", {
+                          running: formatHourlyRate(
+                            AGENT_PRICING.RUNNING_HOURLY_RATE,
+                          ),
+                          idle: formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE),
+                          defaultValue:
+                            "{{running}}/hr running · {{idle}}/hr idle",
+                        })}
                       </p>
                       <p className="text-[10px] font-mono text-white/35">
-                        Min. deposit {formatUSD(AGENT_PRICING.MINIMUM_DEPOSIT)}
+                        {t("cloud.createAgent.minDeposit", {
+                          amount: formatUSD(AGENT_PRICING.MINIMUM_DEPOSIT),
+                          defaultValue: "Min. deposit {{amount}}",
+                        })}
                       </p>
                     </div>
                   </div>
@@ -620,7 +712,7 @@ export function CreateElizaAgentDialog({
                   onClick={handleClose}
                   disabled={busy}
                 >
-                  Cancel
+                  {t("cloud.createAgent.cancel", { defaultValue: "Cancel" })}
                 </BrandButton>
                 <BrandButton
                   onClick={() => void handleCreate()}
@@ -631,7 +723,17 @@ export function CreateElizaAgentDialog({
                   }
                 >
                   {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {busy ? "Creating…" : autoStart ? "Deploy" : "Create"}
+                  {busy
+                    ? t("cloud.createAgent.creating", {
+                        defaultValue: "Creating…",
+                      })
+                    : autoStart
+                      ? t("cloud.createAgent.deploy", {
+                          defaultValue: "Deploy",
+                        })
+                      : t("cloud.createAgent.create", {
+                          defaultValue: "Create",
+                        })}
                 </BrandButton>
               </DialogFooter>
             </>

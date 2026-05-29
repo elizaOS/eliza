@@ -16,6 +16,7 @@ import { useCopyFeedback } from "@/hooks/use-copy-feedback";
 import { getAppUrl } from "@/lib/utils/app-url";
 import { copyTextToClipboard } from "@/lib/utils/copy-to-clipboard";
 import { buildReferralInviteLoginUrl } from "@/lib/utils/referral-invite-url";
+import { useT } from "@/providers/I18nProvider";
 import { useDashboardReferralMe } from "./use-dashboard-referral-me";
 
 interface AffiliateData {
@@ -26,6 +27,7 @@ interface AffiliateData {
 }
 
 export function AffiliatesPageClient() {
+  const t = useT();
   const [affiliateData, setAffiliateData] = useState<AffiliateData | null>(
     null,
   );
@@ -51,7 +53,11 @@ export function AffiliatesPageClient() {
     });
 
     if (!res.ok) {
-      throw new Error("Failed to create affiliate code");
+      throw new Error(
+        t("cloud.affiliates.failedToCreate", {
+          defaultValue: "Failed to create affiliate code",
+        }),
+      );
     }
 
     const data = await res.json();
@@ -60,7 +66,7 @@ export function AffiliatesPageClient() {
       setMarkupPercent(data.code.markup_percent);
     }
     return data.code as AffiliateData;
-  }, []);
+  }, [t]);
 
   const fetchAffiliateData = useCallback(async () => {
     try {
@@ -75,11 +81,15 @@ export function AffiliatesPageClient() {
         }
       }
     } catch (_e) {
-      toast.error("Failed to load affiliate data");
+      toast.error(
+        t("cloud.affiliates.failedToLoad", {
+          defaultValue: "Failed to load affiliate data",
+        }),
+      );
     } finally {
       setLoading(false);
     }
-  }, [createAffiliateCode]);
+  }, [createAffiliateCode, t]);
 
   useEffect(() => {
     fetchAffiliateData();
@@ -91,16 +101,28 @@ export function AffiliatesPageClient() {
     const ok = await copyTextToClipboard(url);
     if (ok) {
       markAffiliateCopied();
-      toast.success("Link copied to clipboard!");
+      toast.success(
+        t("cloud.affiliates.linkCopied", {
+          defaultValue: "Link copied to clipboard!",
+        }),
+      );
     } else {
-      toast.error("Could not copy to clipboard");
+      toast.error(
+        t("cloud.affiliates.couldNotCopy", {
+          defaultValue: "Could not copy to clipboard",
+        }),
+      );
     }
   };
 
   const handleSaveMarkup = async () => {
     const numericValue = parseFloat(markupPercent);
     if (Number.isNaN(numericValue) || numericValue < 0 || numericValue > 1000) {
-      toast.error("Invalid markup. Must be between 0 and 1000%.");
+      toast.error(
+        t("cloud.affiliates.invalidMarkup", {
+          defaultValue: "Invalid markup. Must be between 0 and 1000%.",
+        }),
+      );
       return;
     }
 
@@ -116,13 +138,26 @@ export function AffiliatesPageClient() {
         const data = await res.json();
         setAffiliateData(data.code);
         setMarkupPercent(data.code.markup_percent);
-        toast.success("Markup percentage updated!");
+        toast.success(
+          t("cloud.affiliates.markupUpdated", {
+            defaultValue: "Markup percentage updated!",
+          }),
+        );
       } else {
         const err = await res.json();
-        toast.error(err.error || "Failed to save markup");
+        toast.error(
+          err.error ||
+            t("cloud.affiliates.failedToSave", {
+              defaultValue: "Failed to save markup",
+            }),
+        );
       }
     } catch (_e) {
-      toast.error("An unexpected error occurred");
+      toast.error(
+        t("cloud.affiliates.unexpectedError", {
+          defaultValue: "An unexpected error occurred",
+        }),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -149,24 +184,33 @@ export function AffiliatesPageClient() {
           <UserCog className="h-5 w-5 text-[var(--brand-orange)] mt-0.5 shrink-0" />
           <div>
             <h3 className="text-xl font-semibold text-white mb-2">
-              Affiliate Program
+              {t("cloud.affiliates.programTitle", {
+                defaultValue: "Affiliate Program",
+              })}
             </h3>
             <p className="text-sm text-white/60 mb-2">
-              Share your customized affiliate link with your users and partners
-              to earn a percentage of their marked-up top-ups and MCP usage.
+              {t("cloud.affiliates.programIntro", {
+                defaultValue:
+                  "Share your customized affiliate link with your users and partners to earn a percentage of their marked-up top-ups and MCP usage.",
+              })}
             </p>
             <p className="text-sm text-white/60">
-              When a user signs up using your link, you get a direct cut (your
-              markup percentage) of their activity forever. You can track this
-              revenue in your
+              {t("cloud.affiliates.programDetailPre", {
+                defaultValue:
+                  "When a user signs up using your link, you get a direct cut (your markup percentage) of their activity forever. You can track this revenue in your",
+              })}
               <Link
                 to="/dashboard/earnings"
                 className="text-[var(--brand-orange)] hover:underline mx-1"
               >
-                Earnings
+                {t("cloud.affiliates.earnings", {
+                  defaultValue: "Earnings",
+                })}
               </Link>
-              dashboard, which can be withdrawn to any EVM or Solana wallet as
-              $ELIZA tokens.
+              {t("cloud.affiliates.programDetailPost", {
+                defaultValue:
+                  "dashboard, which can be withdrawn to any EVM or Solana wallet as $ELIZA tokens.",
+              })}
             </p>
           </div>
         </div>
@@ -183,11 +227,15 @@ export function AffiliatesPageClient() {
           <Users className="h-5 w-5 text-[var(--brand-orange)] mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-semibold text-white mb-1">
-              Invite friends
+              {t("cloud.affiliates.inviteFriends", {
+                defaultValue: "Invite friends",
+              })}
             </h3>
             <p className="text-sm text-white/60">
-              Share your invite link—you both earn bonus credits when they sign
-              up, and you earn a share of their purchases on Eliza Cloud.
+              {t("cloud.affiliates.inviteFriendsDesc", {
+                defaultValue:
+                  "Share your invite link—you both earn bonus credits when they sign up, and you earn a share of their purchases on Eliza Cloud.",
+              })}
             </p>
           </div>
         </div>
@@ -197,7 +245,9 @@ export function AffiliatesPageClient() {
         ) : referralFetchFailed || !referralMe ? (
           <div className="flex items-center gap-3">
             <p className="text-sm text-white/74">
-              Could not load your invite link.
+              {t("cloud.affiliates.couldNotLoadInvite", {
+                defaultValue: "Could not load your invite link.",
+              })}
             </p>
             <Button
               variant="secondary"
@@ -205,21 +255,28 @@ export function AffiliatesPageClient() {
               className="shrink-0 bg-white/10 hover:bg-foreground hover:text-background text-white"
               onClick={() => refetchReferral()}
             >
-              Retry
+              {t("cloud.affiliates.retry", { defaultValue: "Retry" })}
             </Button>
           </div>
         ) : !referralMe.is_active ? (
           <div className="rounded-sm border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-100/90">
-            <p className="font-medium text-orange-100">Invite link inactive</p>
+            <p className="font-medium text-orange-100">
+              {t("cloud.affiliates.inviteInactive", {
+                defaultValue: "Invite link inactive",
+              })}
+            </p>
             <p className="mt-1 text-orange-100/80">
-              Your referral code is turned off for new signups. Only an Eliza
-              Cloud administrator can re-enable it. If you believe this is a
-              mistake,{" "}
+              {t("cloud.affiliates.inviteInactiveDesc", {
+                defaultValue:
+                  "Your referral code is turned off for new signups. Only an Eliza Cloud administrator can re-enable it. If you believe this is a mistake,",
+              })}{" "}
               <a
                 href="mailto:support@eliza.cloud?subject=Referral%20code%20inactive"
                 className="text-white/80 underline hover:text-white"
               >
-                email support@eliza.cloud
+                {t("cloud.affiliates.emailSupport", {
+                  defaultValue: "email support@eliza.cloud",
+                })}
               </a>
               .
             </p>
@@ -231,10 +288,19 @@ export function AffiliatesPageClient() {
           <>
             <p className="text-xs text-white/60 mb-3">
               {referralMe.total_referrals === 0
-                ? "No friends have joined yet—share your link to get started."
+                ? t("cloud.affiliates.noFriendsJoined", {
+                    defaultValue:
+                      "No friends have joined yet—share your link to get started.",
+                  })
                 : referralMe.total_referrals === 1
-                  ? "1 friend has joined with your link."
-                  : `${referralMe.total_referrals} friends have joined with your link.`}
+                  ? t("cloud.affiliates.oneFriendJoined", {
+                      defaultValue: "1 friend has joined with your link.",
+                    })
+                  : t("cloud.affiliates.friendsJoined", {
+                      count: referralMe.total_referrals,
+                      defaultValue:
+                        "{{count}} friends have joined with your link.",
+                    })}
             </p>
             <div className="flex items-center gap-3 bg-white/5 border border-[var(--brand-orange)]/20 rounded-sm p-3">
               <LinkIcon className="h-5 w-5 text-[var(--brand-orange)]/60 shrink-0" />
@@ -247,7 +313,11 @@ export function AffiliatesPageClient() {
                 onClick={() => {
                   void (async () => {
                     if (!pageOrigin) {
-                      toast.error("Could not build invite link");
+                      toast.error(
+                        t("cloud.affiliates.couldNotBuildInvite", {
+                          defaultValue: "Could not build invite link",
+                        }),
+                      );
                       return;
                     }
                     const url = buildReferralInviteLoginUrl(
@@ -257,9 +327,17 @@ export function AffiliatesPageClient() {
                     const ok = await copyTextToClipboard(url);
                     if (ok) {
                       markReferralCopied();
-                      toast.success("Invite link copied!");
+                      toast.success(
+                        t("cloud.affiliates.inviteCopied", {
+                          defaultValue: "Invite link copied!",
+                        }),
+                      );
                     } else {
-                      toast.error("Could not copy to clipboard");
+                      toast.error(
+                        t("cloud.affiliates.couldNotCopy", {
+                          defaultValue: "Could not copy to clipboard",
+                        }),
+                      );
                     }
                   })();
                 }}
@@ -269,7 +347,9 @@ export function AffiliatesPageClient() {
                 ) : (
                   <Copy className="h-4 w-4 mr-2" />
                 )}
-                {referralCopied ? "Copied" : "Copy"}
+                {referralCopied
+                  ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
+                  : t("cloud.affiliates.copy", { defaultValue: "Copy" })}
               </Button>
             </div>
           </>
@@ -279,12 +359,15 @@ export function AffiliatesPageClient() {
       {/* Affiliate Link */}
       <BrandCard corners={false}>
         <h3 className="text-lg font-semibold text-white mb-1">
-          Your Affiliate Link
+          {t("cloud.affiliates.yourAffiliateLink", {
+            defaultValue: "Your Affiliate Link",
+          })}
         </h3>
         <p className="text-sm text-white/60 mb-4">
-          Copy this link and share it anywhere. Users who sign up with it are
-          tracked as your affiliate signups for marked-up top-ups and MCP
-          usage—not the same as friend invites above.
+          {t("cloud.affiliates.yourAffiliateLinkDesc", {
+            defaultValue:
+              "Copy this link and share it anywhere. Users who sign up with it are tracked as your affiliate signups for marked-up top-ups and MCP usage—not the same as friend invites above.",
+          })}
         </p>
 
         <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-sm p-3">
@@ -304,7 +387,9 @@ export function AffiliatesPageClient() {
             ) : (
               <Copy className="h-4 w-4 mr-2" />
             )}
-            {copied ? "Copied" : "Copy"}
+            {copied
+              ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
+              : t("cloud.affiliates.copy", { defaultValue: "Copy" })}
           </Button>
         </div>
       </BrandCard>
@@ -314,18 +399,23 @@ export function AffiliatesPageClient() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-white mb-1">
-              Fee Markup Setting
+              {t("cloud.affiliates.feeMarkupSetting", {
+                defaultValue: "Fee Markup Setting",
+              })}
             </h3>
             <p className="text-sm text-white/60 max-w-xl">
-              Set the exact percentage you want to charge your referred users on
-              top of base elizaOS prices. This fee applies to credit top-ups and
-              exact usage cost for MCPs/Agents.
+              {t("cloud.affiliates.feeMarkupDesc", {
+                defaultValue:
+                  "Set the exact percentage you want to charge your referred users on top of base elizaOS prices. This fee applies to credit top-ups and exact usage cost for MCPs/Agents.",
+              })}
             </p>
           </div>
 
           <div className="p-3 bg-white/5 border border-white/10 rounded-sm text-center min-w-[120px]">
             <span className="block text-xs text-white/40 mb-1">
-              Current Markup
+              {t("cloud.affiliates.currentMarkup", {
+                defaultValue: "Current Markup",
+              })}
             </span>
             <span className="block text-xl font-bold text-[var(--brand-orange)]">
               {affiliateData?.markup_percent}%
@@ -339,7 +429,9 @@ export function AffiliatesPageClient() {
               htmlFor="affiliate-markup-percent"
               className="text-sm text-white/60 mb-2 block"
             >
-              Your Markup Percentage (0 - 1000%)
+              {t("cloud.affiliates.markupPercentLabel", {
+                defaultValue: "Your Markup Percentage (0 - 1000%)",
+              })}
             </label>
             <Input
               id="affiliate-markup-percent"
@@ -359,17 +451,26 @@ export function AffiliatesPageClient() {
             }
             className="bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white min-w-[100px]"
           >
-            {isSaving ? "Saving..." : "Save Config"}
+            {isSaving
+              ? t("cloud.affiliates.saving", { defaultValue: "Saving..." })
+              : t("cloud.affiliates.saveConfig", {
+                  defaultValue: "Save Config",
+                })}
           </Button>
         </div>
 
         <div className="mt-4 p-4 rounded-sm bg-yellow-500/10 border border-yellow-500/20 flex gap-3 text-sm">
           <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
           <div className="text-yellow-500/90">
-            <strong>Pricing Example:</strong> If an API normally costs 10
-            credits and you set a 20% markup, your user pays 12 credits. You
-            will earn exactly 2 credits which drops instantly into your
-            redeemable token balance.
+            <strong>
+              {t("cloud.affiliates.pricingExampleLabel", {
+                defaultValue: "Pricing Example:",
+              })}
+            </strong>{" "}
+            {t("cloud.affiliates.pricingExampleBody", {
+              defaultValue:
+                "If an API normally costs 10 credits and you set a 20% markup, your user pays 12 credits. You will earn exactly 2 credits which drops instantly into your redeemable token balance.",
+            })}
           </div>
         </div>
       </BrandCard>
@@ -377,18 +478,23 @@ export function AffiliatesPageClient() {
       {/* API Integration Snippet */}
       <BrandCard corners={false}>
         <h3 className="text-lg font-semibold text-white mb-1">
-          Developer API Integration (SKUs)
+          {t("cloud.affiliates.devApiTitle", {
+            defaultValue: "Developer API Integration (SKUs)",
+          })}
         </h3>
         <p className="text-sm text-white/60 mb-4">
-          Embed your affiliate code directly into your API calls. All users
-          passing your code header will automatically generate marked-up revenue
-          for you on every inference.
+          {t("cloud.affiliates.devApiDesc", {
+            defaultValue:
+              "Embed your affiliate code directly into your API calls. All users passing your code header will automatically generate marked-up revenue for you on every inference.",
+          })}
         </p>
 
         <div className="bg-[#0A0A0A] rounded-sm border border-white/10 overflow-hidden relative group">
           <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/[0.02]">
             <span className="text-xs font-mono text-white/40">
-              cURL Example
+              {t("cloud.affiliates.curlExample", {
+                defaultValue: "cURL Example",
+              })}
             </span>
             <Button
               variant="ghost"
@@ -405,9 +511,17 @@ export function AffiliatesPageClient() {
   }'`;
                   const ok = await copyTextToClipboard(codeSnippet);
                   if (ok) {
-                    toast.success("Code snippet copied!");
+                    toast.success(
+                      t("cloud.affiliates.snippetCopied", {
+                        defaultValue: "Code snippet copied!",
+                      }),
+                    );
                   } else {
-                    toast.error("Could not copy to clipboard");
+                    toast.error(
+                      t("cloud.affiliates.couldNotCopy", {
+                        defaultValue: "Could not copy to clipboard",
+                      }),
+                    );
                   }
                 })();
               }}

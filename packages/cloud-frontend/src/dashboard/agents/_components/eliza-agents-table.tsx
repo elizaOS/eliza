@@ -57,6 +57,7 @@ import {
   type SandboxListAgent,
   useSandboxListPoll,
 } from "@/lib/hooks/use-sandbox-status-poll";
+import { useT } from "@/providers/I18nProvider";
 import { AgentCostBadge } from "./agent-cost-badge";
 import { CreateElizaAgentDialog } from "./create-eliza-agent-dialog";
 
@@ -120,6 +121,7 @@ function StatusCell({
   trackedJob?: { jobId: string } | null;
   errorMessage: string | null;
 }) {
+  const t = useT();
   const [prevStatus, setPrevStatus] = useState(displayStatus);
   const [animate, setAnimate] = useState<"success" | "error" | null>(null);
 
@@ -168,7 +170,10 @@ function StatusCell({
       {isProvisioning && trackedJob && (
         <span className="text-[10px] text-white/60 flex items-center gap-1 pl-0.5">
           <Loader2 className="h-2.5 w-2.5 animate-spin" />
-          Job {trackedJob.jobId.slice(0, 8)}
+          {t("cloud.elizaAgentsTable.jobLabel", {
+            jobId: trackedJob.jobId.slice(0, 8),
+            defaultValue: "Job {{jobId}}",
+          })}
         </span>
       )}
       {errorMessage && (
@@ -194,6 +199,7 @@ function StatusCell({
 export function ElizaAgentsTable({
   sandboxes: initialSandboxes,
 }: ElizaAgentsTableProps) {
+  const t = useT();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
@@ -280,13 +286,32 @@ export function ElizaAgentsTable({
     onComplete: (job) => {
       const action = jobActionById.current.get(job.jobId);
       jobActionById.current.delete(job.jobId);
-      toast.success(`${action ?? "Agent job"} completed`);
+      toast.success(
+        t("cloud.elizaAgentsTable.jobCompleted", {
+          action:
+            action ??
+            t("cloud.elizaAgentsTable.agentJob", {
+              defaultValue: "Agent job",
+            }),
+          defaultValue: "{{action}} completed",
+        }),
+      );
       void refreshData();
     },
     onFailed: (job) => {
       const action = jobActionById.current.get(job.jobId);
       jobActionById.current.delete(job.jobId);
-      toast.error(job.error ?? `${action ?? "Agent job"} failed`);
+      toast.error(
+        job.error ??
+          t("cloud.elizaAgentsTable.jobFailed", {
+            action:
+              action ??
+              t("cloud.elizaAgentsTable.agentJob", {
+                defaultValue: "Agent job",
+              }),
+            defaultValue: "{{action}} failed",
+          }),
+      );
       void refreshData();
     },
   });
@@ -301,7 +326,14 @@ export function ElizaAgentsTable({
     {
       intervalMs: 10_000,
       onTransitionToRunning: (_id, name) => {
-        toast.success(`${name ?? "Agent"} is now running!`);
+        toast.success(
+          t("cloud.elizaAgentsTable.nowRunning", {
+            name:
+              name ??
+              t("cloud.elizaAgentsTable.agent", { defaultValue: "Agent" }),
+            defaultValue: "{{name}} is now running!",
+          }),
+        );
       },
       onDataRefresh: mergeApiData,
     },
@@ -377,9 +409,13 @@ export function ElizaAgentsTable({
       if (res.status === 409) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
-          jobActionById.current.set(jobId, "Agent provisioning");
+          jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
           poller.track(id, jobId);
-          toast.info("Provisioning already in progress");
+          toast.info(
+            t("cloud.elizaAgentsTable.provisioningInProgress", {
+              defaultValue: "Provisioning already in progress",
+            }),
+          );
           return;
         }
       }
@@ -388,29 +424,49 @@ export function ElizaAgentsTable({
         // Revert optimistic update
         void refreshData();
         throw new Error(
-          (data as { error?: string }).error ?? "Provision failed",
+          (data as { error?: string }).error ??
+            t("cloud.elizaAgentsTable.provisionFailed", {
+              defaultValue: "Provision failed",
+            }),
         );
       }
 
       if (res.status === 202) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
-          jobActionById.current.set(jobId, "Agent provisioning");
+          jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
           poller.track(id, jobId);
-          toast.success("Agent provisioning queued");
+          toast.success(
+            t("cloud.elizaAgentsTable.provisioningQueued", {
+              defaultValue: "Agent provisioning queued",
+            }),
+          );
           return;
         }
 
-        toast.success("Agent provisioning started");
+        toast.success(
+          t("cloud.elizaAgentsTable.provisioningStarted", {
+            defaultValue: "Agent provisioning started",
+          }),
+        );
         void refreshData();
         return;
       }
 
-      toast.success("Agent is already running");
+      toast.success(
+        t("cloud.elizaAgentsTable.alreadyRunning", {
+          defaultValue: "Agent is already running",
+        }),
+      );
       void refreshData();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      toast.error(`Failed to start agent: ${message}`);
+      toast.error(
+        t("cloud.elizaAgentsTable.failedToStart", {
+          message,
+          defaultValue: "Failed to start agent: {{message}}",
+        }),
+      );
     } finally {
       setActionInProgress(null);
     }
@@ -432,16 +488,25 @@ export function ElizaAgentsTable({
       const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
 
       if (res.status === 409 && jobId) {
-        jobActionById.current.set(jobId, "Agent suspend");
+        jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentSuspend", { defaultValue: "Agent suspend" }));
         poller.track(id, jobId);
-        toast.info("Suspend already in progress");
+        toast.info(
+          t("cloud.elizaAgentsTable.suspendInProgress", {
+            defaultValue: "Suspend already in progress",
+          }),
+        );
         return;
       }
 
       if (!res.ok && res.status !== 202) {
         // Revert optimistic update
         void refreshData();
-        throw new Error((data as { error?: string }).error ?? "Suspend failed");
+        throw new Error(
+          (data as { error?: string }).error ??
+            t("cloud.elizaAgentsTable.suspendFailed", {
+              defaultValue: "Suspend failed",
+            }),
+        );
       }
 
       // 202 + jobId: the daemon executes the suspend asynchronously.
@@ -449,16 +514,28 @@ export function ElizaAgentsTable({
       // the success toast doesn't lie before the container actually
       // stops).
       if (res.status === 202 && jobId) {
-        jobActionById.current.set(jobId, "Agent suspend");
+        jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentSuspend", { defaultValue: "Agent suspend" }));
         poller.track(id, jobId);
-        toast.success("Suspend queued");
+        toast.success(
+          t("cloud.elizaAgentsTable.suspendQueued", {
+            defaultValue: "Suspend queued",
+          }),
+        );
         return;
       }
 
-      toast.success("Agent suspended (snapshot saved)");
+      toast.success(
+        t("cloud.elizaAgentsTable.suspended", {
+          defaultValue: "Agent suspended (snapshot saved)",
+        }),
+      );
       void refreshData();
     } catch {
-      toast.error("Failed to suspend agent");
+      toast.error(
+        t("cloud.elizaAgentsTable.failedToSuspend", {
+          defaultValue: "Failed to suspend agent",
+        }),
+      );
     } finally {
       setActionInProgress(null);
     }
@@ -477,14 +554,27 @@ export function ElizaAgentsTable({
       if (!res.ok) {
         // Revert optimistic removal
         setLocalSandboxes(previousSandboxes);
-        throw new Error((data as { error?: string }).error ?? "Delete failed");
+        throw new Error(
+          (data as { error?: string }).error ??
+            t("cloud.elizaAgentsTable.deleteFailed", {
+              defaultValue: "Delete failed",
+            }),
+        );
       }
-      toast.success("Agent deleted");
+      toast.success(
+        t("cloud.elizaAgentsTable.agentDeleted", {
+          defaultValue: "Agent deleted",
+        }),
+      );
       // Confirm with a refresh (already removed optimistically)
       void refreshData();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to delete agent";
+        err instanceof Error
+          ? err.message
+          : t("cloud.elizaAgentsTable.failedToDelete", {
+              defaultValue: "Failed to delete agent",
+            });
       toast.error(message);
     } finally {
       setIsDeleting(false);
@@ -499,13 +589,17 @@ export function ElizaAgentsTable({
   if (localSandboxes.length === 0) {
     return (
       <DataListEmptyState
-        title="No agents yet"
-        description="Deploy your first agent to get started."
+        title={t("cloud.elizaAgentsTable.noAgentsYet", {
+          defaultValue: "No agents yet",
+        })}
+        description={t("cloud.elizaAgentsTable.noAgentsYetDesc", {
+          defaultValue: "Deploy your first agent to get started.",
+        })}
         icon={Boxes}
         action={
           <CreateElizaAgentDialog
             onProvisionQueued={(agentId, jobId) => {
-              jobActionById.current.set(jobId, "Agent provisioning");
+              jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
               poller.track(agentId, jobId);
             }}
             onCreated={refreshData}
@@ -523,7 +617,9 @@ export function ElizaAgentsTable({
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
             <Input
-              placeholder="Search agents…"
+              placeholder={t("cloud.elizaAgentsTable.searchAgents", {
+                defaultValue: "Search agents…",
+              })}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 h-9 border-white/10 bg-black/40 text-white placeholder:text-white/30 focus-visible:ring-[var(--brand-orange)]/50"
@@ -531,21 +627,51 @@ export function ElizaAgentsTable({
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full sm:w-[150px] h-9 border-white/10 bg-black/40 text-sm">
-              <SelectValue placeholder="All statuses" />
+              <SelectValue
+                placeholder={t("cloud.elizaAgentsTable.allStatuses", {
+                  defaultValue: "All statuses",
+                })}
+              />
             </SelectTrigger>
             <SelectContent className="border-white/10 bg-neutral-900">
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="running">Running</SelectItem>
-              <SelectItem value="provisioning">Provisioning</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="stopped">Stopped</SelectItem>
-              <SelectItem value="disconnected">Disconnected</SelectItem>
-              <SelectItem value="error">Error</SelectItem>
+              <SelectItem value="all">
+                {t("cloud.elizaAgentsTable.allStatuses", {
+                  defaultValue: "All statuses",
+                })}
+              </SelectItem>
+              <SelectItem value="running">
+                {t("cloud.elizaAgentsTable.running", {
+                  defaultValue: "Running",
+                })}
+              </SelectItem>
+              <SelectItem value="provisioning">
+                {t("cloud.elizaAgentsTable.provisioning", {
+                  defaultValue: "Provisioning",
+                })}
+              </SelectItem>
+              <SelectItem value="pending">
+                {t("cloud.elizaAgentsTable.pending", {
+                  defaultValue: "Pending",
+                })}
+              </SelectItem>
+              <SelectItem value="stopped">
+                {t("cloud.elizaAgentsTable.stopped", {
+                  defaultValue: "Stopped",
+                })}
+              </SelectItem>
+              <SelectItem value="disconnected">
+                {t("cloud.elizaAgentsTable.disconnected", {
+                  defaultValue: "Disconnected",
+                })}
+              </SelectItem>
+              <SelectItem value="error">
+                {t("cloud.elizaAgentsTable.error", { defaultValue: "Error" })}
+              </SelectItem>
             </SelectContent>
           </Select>
           <CreateElizaAgentDialog
             onProvisionQueued={(agentId, jobId) => {
-              jobActionById.current.set(jobId, "Agent provisioning");
+              jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
               poller.track(agentId, jobId);
             }}
             onCreated={refreshData}
@@ -556,7 +682,9 @@ export function ElizaAgentsTable({
           <DashboardDataListFilteredCount
             filtered={filtered.length}
             total={localSandboxes.length}
-            label="agents"
+            label={t("cloud.elizaAgentsTable.agentsLabel", {
+              defaultValue: "agents",
+            })}
           />
         )}
 
@@ -571,7 +699,9 @@ export function ElizaAgentsTable({
                     onClick={() => handleSort("name")}
                     className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
                   >
-                    Agent
+                    {t("cloud.elizaAgentsTable.colAgent", {
+                      defaultValue: "Agent",
+                    })}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
@@ -581,15 +711,21 @@ export function ElizaAgentsTable({
                     onClick={() => handleSort("status")}
                     className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
                   >
-                    Status
+                    {t("cloud.elizaAgentsTable.colStatus", {
+                      defaultValue: "Status",
+                    })}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="text-[11px] font-medium uppercase tracking-widest text-white/40">
-                  Runtime
+                  {t("cloud.elizaAgentsTable.colRuntime", {
+                    defaultValue: "Runtime",
+                  })}
                 </TableHead>
                 <TableHead className="text-[11px] font-medium uppercase tracking-widest text-white/40">
-                  Web UI
+                  {t("cloud.elizaAgentsTable.colWebUi", {
+                    defaultValue: "Web UI",
+                  })}
                 </TableHead>
                 <TableHead>
                   <button
@@ -597,12 +733,16 @@ export function ElizaAgentsTable({
                     onClick={() => handleSort("created")}
                     className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
                   >
-                    Created
+                    {t("cloud.elizaAgentsTable.colCreated", {
+                      defaultValue: "Created",
+                    })}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="text-right text-[11px] font-medium uppercase tracking-widest text-white/40">
-                  Actions
+                  {t("cloud.elizaAgentsTable.colActions", {
+                    defaultValue: "Actions",
+                  })}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -612,7 +752,11 @@ export function ElizaAgentsTable({
                   <TableCell colSpan={6} className="h-24 text-center">
                     <div className="flex flex-col items-center justify-center gap-1 text-white/40">
                       <Search className="h-5 w-5 mb-1" />
-                      <p className="text-sm">No agents match your filters</p>
+                      <p className="text-sm">
+                        {t("cloud.elizaAgentsTable.noMatch", {
+                          defaultValue: "No agents match your filters",
+                        })}
+                      </p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -645,7 +789,10 @@ export function ElizaAgentsTable({
                               href={`/dashboard/agents/${sb.id}`}
                               className="font-medium text-white hover:opacity-75 transition-opacity"
                             >
-                              {sb.agent_name ?? "Unnamed Agent"}
+                              {sb.agent_name ??
+                                t("cloud.elizaAgentsTable.unnamedAgent", {
+                                  defaultValue: "Unnamed Agent",
+                                })}
                             </a>
                             <AgentCostBadge status={displayStatus} />
                           </div>
@@ -656,7 +803,13 @@ export function ElizaAgentsTable({
                               ) : (
                                 <Cloud className="h-2.5 w-2.5" />
                               )}
-                              {isDocker ? "Docker" : "Sandbox"}
+                              {isDocker
+                                ? t("cloud.elizaAgentsTable.docker", {
+                                    defaultValue: "Docker",
+                                  })
+                                : t("cloud.elizaAgentsTable.sandbox", {
+                                    defaultValue: "Sandbox",
+                                  })}
                             </span>
                             <span className="text-[10px] text-white/20 font-mono tabular-nums">
                               {sb.id.slice(0, 8)}
@@ -679,10 +832,16 @@ export function ElizaAgentsTable({
                       <TableCell>
                         <span className="text-xs text-white/50">
                           {isDocker
-                            ? "Managed runtime"
+                            ? t("cloud.elizaAgentsTable.managedRuntime", {
+                                defaultValue: "Managed runtime",
+                              })
                             : sb.sandbox_id
-                              ? "Cloud sandbox"
-                              : "Not provisioned"}
+                              ? t("cloud.elizaAgentsTable.cloudSandbox", {
+                                  defaultValue: "Cloud sandbox",
+                                })
+                              : t("cloud.elizaAgentsTable.notProvisioned", {
+                                  defaultValue: "Not provisioned",
+                                })}
                         </span>
                       </TableCell>
 
@@ -695,11 +854,17 @@ export function ElizaAgentsTable({
                             className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors bg-transparent border-0 p-0"
                           >
                             <ExternalLink className="h-3 w-3" />
-                            Open
+                            {t("cloud.elizaAgentsTable.open", {
+                              defaultValue: "Open",
+                            })}
                           </button>
                         ) : (
                           <span className="text-xs text-white/20">
-                            {displayStatus === "running" ? "Unavailable" : "—"}
+                            {displayStatus === "running"
+                              ? t("cloud.elizaAgentsTable.unavailable", {
+                                  defaultValue: "Unavailable",
+                                })
+                              : "—"}
                           </span>
                         )}
                       </TableCell>
@@ -712,7 +877,10 @@ export function ElizaAgentsTable({
                           </p>
                           {sb.last_heartbeat_at && (
                             <p className="text-[10px] text-white/30 tabular-nums">
-                              Heartbeat {formatRelative(sb.last_heartbeat_at)}
+                              {t("cloud.elizaAgentsTable.heartbeat", {
+                                time: formatRelative(sb.last_heartbeat_at),
+                                defaultValue: "Heartbeat {{time}}",
+                              })}
                             </p>
                           )}
                         </div>
@@ -731,7 +899,9 @@ export function ElizaAgentsTable({
                               </a>
                             </TooltipTrigger>
                             <TooltipContent className="bg-neutral-900 border-white/10">
-                              View details
+                              {t("cloud.elizaAgentsTable.viewDetails", {
+                                defaultValue: "View details",
+                              })}
                             </TooltipContent>
                           </Tooltip>
 
@@ -747,7 +917,9 @@ export function ElizaAgentsTable({
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-neutral-900 border-white/10">
-                                Open Web UI
+                                {t("cloud.elizaAgentsTable.openWebUi", {
+                                  defaultValue: "Open Web UI",
+                                })}
                               </TooltipContent>
                             </Tooltip>
                           )}
@@ -765,7 +937,9 @@ export function ElizaAgentsTable({
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-neutral-900 border-white/10">
-                                Resume agent
+                                {t("cloud.elizaAgentsTable.resumeAgent", {
+                                  defaultValue: "Resume agent",
+                                })}
                               </TooltipContent>
                             </Tooltip>
                           )}
@@ -783,7 +957,9 @@ export function ElizaAgentsTable({
                                 </button>
                               </TooltipTrigger>
                               <TooltipContent className="bg-neutral-900 border-white/10">
-                                Suspend agent
+                                {t("cloud.elizaAgentsTable.suspendAgent", {
+                                  defaultValue: "Suspend agent",
+                                })}
                               </TooltipContent>
                             </Tooltip>
                           )}
@@ -800,7 +976,9 @@ export function ElizaAgentsTable({
                               </button>
                             </TooltipTrigger>
                             <TooltipContent className="bg-neutral-900 border-white/10">
-                              Delete agent
+                              {t("cloud.elizaAgentsTable.deleteAgent", {
+                                defaultValue: "Delete agent",
+                              })}
                             </TooltipContent>
                           </Tooltip>
                         </div>
@@ -819,7 +997,9 @@ export function ElizaAgentsTable({
             <div className="border border-white/10 bg-black/40 p-6 text-center">
               <Search className="h-5 w-5 mx-auto mb-2 text-white/30" />
               <p className="text-sm text-white/40">
-                No agents match your filters
+                {t("cloud.elizaAgentsTable.noMatch", {
+                  defaultValue: "No agents match your filters",
+                })}
               </p>
             </div>
           ) : (
@@ -849,7 +1029,10 @@ export function ElizaAgentsTable({
                         href={`/dashboard/agents/${sb.id}`}
                         className="font-medium text-white hover:opacity-75 transition-opacity block truncate"
                       >
-                        {sb.agent_name ?? "Unnamed Agent"}
+                        {sb.agent_name ??
+                          t("cloud.elizaAgentsTable.unnamedAgent", {
+                            defaultValue: "Unnamed Agent",
+                          })}
                       </a>
                       <AgentCostBadge status={displayStatus} />
                       <div className="flex items-center gap-2">
@@ -859,7 +1042,13 @@ export function ElizaAgentsTable({
                           ) : (
                             <Cloud className="h-2.5 w-2.5" />
                           )}
-                          {isDocker ? "Docker" : "Sandbox"}
+                          {isDocker
+                            ? t("cloud.elizaAgentsTable.docker", {
+                                defaultValue: "Docker",
+                              })
+                            : t("cloud.elizaAgentsTable.sandbox", {
+                                defaultValue: "Sandbox",
+                              })}
                         </span>
                         <span className="text-[10px] text-white/20 font-mono tabular-nums">
                           {sb.id.slice(0, 8)}
@@ -881,7 +1070,10 @@ export function ElizaAgentsTable({
                     </span>
                     {sb.last_heartbeat_at && (
                       <span className="tabular-nums">
-                        Heartbeat {formatRelative(sb.last_heartbeat_at)}
+                        {t("cloud.elizaAgentsTable.heartbeat", {
+                          time: formatRelative(sb.last_heartbeat_at),
+                          defaultValue: "Heartbeat {{time}}",
+                        })}
                       </span>
                     )}
                   </div>
@@ -893,7 +1085,9 @@ export function ElizaAgentsTable({
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-white/50 hover:text-white hover:bg-white/5 transition-colors"
                     >
                       <FileText className="h-3.5 w-3.5" />
-                      Details
+                      {t("cloud.elizaAgentsTable.details", {
+                        defaultValue: "Details",
+                      })}
                     </a>
 
                     {displayStatus === "running" && (
@@ -903,7 +1097,9 @@ export function ElizaAgentsTable({
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--brand-orange)] hover:bg-white/5 transition-colors"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
-                        Web UI
+                        {t("cloud.elizaAgentsTable.webUi", {
+                          defaultValue: "Web UI",
+                        })}
                       </button>
                     )}
 
@@ -953,17 +1149,25 @@ export function ElizaAgentsTable({
         <AlertDialogContent className="bg-neutral-900 border-white/10">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">
-              Delete Agent
+              {t("cloud.elizaAgentsTable.deleteAgentTitle", {
+                defaultValue: "Delete Agent",
+              })}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-white/74">
               {deleteTargetBusy
-                ? "This agent is still provisioning. Wait for the job to finish before deleting."
-                : "This will permanently delete the agent and stop any running container."}
+                ? t("cloud.elizaAgentsTable.deleteBusyDesc", {
+                    defaultValue:
+                      "This agent is still provisioning. Wait for the job to finish before deleting.",
+                  })
+                : t("cloud.elizaAgentsTable.deleteDesc", {
+                    defaultValue:
+                      "This will permanently delete the agent and stop any running container.",
+                  })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5">
-              Cancel
+              {t("cloud.elizaAgentsTable.cancel", { defaultValue: "Cancel" })}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() =>
@@ -972,7 +1176,13 @@ export function ElizaAgentsTable({
               disabled={isDeleting || deleteTargetBusy}
               className="bg-red-500 hover:bg-red-600 text-white disabled:opacity-50"
             >
-              {isDeleting ? "Deleting…" : "Delete"}
+              {isDeleting
+                ? t("cloud.elizaAgentsTable.deleting", {
+                    defaultValue: "Deleting…",
+                  })
+                : t("cloud.elizaAgentsTable.delete", {
+                    defaultValue: "Delete",
+                  })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -21,6 +21,7 @@ import {
 import { Loader2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 import type {
   OrgInviteDto,
   OrgMemberDto,
@@ -35,6 +36,7 @@ interface MembersTabProps {
 }
 
 export function MembersTab({ user }: MembersTabProps) {
+  const t = useT();
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [members, setMembers] = useState<OrgMemberDto[]>([]);
   const [invites, setInvites] = useState<OrgInviteDto[]>([]);
@@ -50,10 +52,14 @@ export function MembersTab({ user }: MembersTabProps) {
     if (data.success) {
       setMembers(data.data);
     } else {
-      toast.error("Failed to load members");
+      toast.error(
+        t("cloud.membersTab.loadMembersFailed", {
+          defaultValue: "Failed to load members",
+        }),
+      );
     }
     setIsLoadingMembers(false);
-  }, []);
+  }, [t]);
 
   const fetchInvites = useCallback(async () => {
     setIsLoadingInvites(true);
@@ -63,10 +69,14 @@ export function MembersTab({ user }: MembersTabProps) {
     if (data.success) {
       setInvites(data.data);
     } else {
-      toast.error("Failed to load invites");
+      toast.error(
+        t("cloud.membersTab.loadInvitesFailed", {
+          defaultValue: "Failed to load invites",
+        }),
+      );
     }
     setIsLoadingInvites(false);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // Use queueMicrotask to defer execution and avoid synchronous setState
@@ -79,7 +89,11 @@ export function MembersTab({ user }: MembersTabProps) {
   const handleInviteSuccess = () => {
     setIsInviteDialogOpen(false);
     fetchInvites();
-    toast.success("Invitation sent successfully");
+    toast.success(
+      t("cloud.membersTab.inviteSent", {
+        defaultValue: "Invitation sent successfully",
+      }),
+    );
   };
 
   const handleRevokeInvite = async (inviteId: string) => {
@@ -90,10 +104,19 @@ export function MembersTab({ user }: MembersTabProps) {
     const data = await response.json();
 
     if (data.success) {
-      toast.success("Invitation revoked");
+      toast.success(
+        t("cloud.membersTab.inviteRevoked", {
+          defaultValue: "Invitation revoked",
+        }),
+      );
       fetchInvites();
     } else {
-      toast.error(data.error || "Failed to revoke invitation");
+      toast.error(
+        data.error ||
+          t("cloud.membersTab.revokeFailed", {
+            defaultValue: "Failed to revoke invitation",
+          }),
+      );
     }
   };
 
@@ -107,10 +130,19 @@ export function MembersTab({ user }: MembersTabProps) {
     const data = await response.json();
 
     if (data.success) {
-      toast.success("Member role updated");
+      toast.success(
+        t("cloud.membersTab.roleUpdated", {
+          defaultValue: "Member role updated",
+        }),
+      );
       fetchMembers();
     } else {
-      toast.error(data.error || "Failed to update member role");
+      toast.error(
+        data.error ||
+          t("cloud.membersTab.roleUpdateFailed", {
+            defaultValue: "Failed to update member role",
+          }),
+      );
     }
   };
 
@@ -130,10 +162,19 @@ export function MembersTab({ user }: MembersTabProps) {
     const data = await response.json();
 
     if (data.success) {
-      toast.success("Member removed");
+      toast.success(
+        t("cloud.membersTab.memberRemoved", {
+          defaultValue: "Member removed",
+        }),
+      );
       fetchMembers();
     } else {
-      toast.error(data.error || "Failed to remove member");
+      toast.error(
+        data.error ||
+          t("cloud.membersTab.removeFailed", {
+            defaultValue: "Failed to remove member",
+          }),
+      );
     }
   };
 
@@ -147,10 +188,12 @@ export function MembersTab({ user }: MembersTabProps) {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-base md:text-lg font-mono font-semibold text-white">
-              Team Members
+              {t("cloud.membersTab.title", { defaultValue: "Team Members" })}
             </h3>
             <p className="text-xs md:text-sm font-mono text-white/60">
-              Manage who has access to your organization
+              {t("cloud.membersTab.subtitle", {
+                defaultValue: "Manage who has access to your organization",
+              })}
             </p>
           </div>
           {canManageMembers && (
@@ -168,7 +211,9 @@ export function MembersTab({ user }: MembersTabProps) {
               />
               <UserPlus className="relative z-10 h-4 w-4 text-black" />
               <span className="relative z-10 text-black font-mono font-medium text-sm md:text-base">
-                Invite Member
+                {t("cloud.membersTab.inviteMember", {
+                  defaultValue: "Invite Member",
+                })}
               </span>
             </button>
           )}
@@ -194,7 +239,9 @@ export function MembersTab({ user }: MembersTabProps) {
         {canManageMembers && (
           <div className="pt-4 md:pt-6 border-t border-white/10">
             <h3 className="text-base md:text-lg font-mono font-semibold mb-3 md:mb-4 text-white">
-              Pending Invitations
+              {t("cloud.membersTab.pendingInvitations", {
+                defaultValue: "Pending Invitations",
+              })}
             </h3>
             {isLoadingInvites ? (
               <div className="flex items-center justify-center py-8">
@@ -224,19 +271,27 @@ export function MembersTab({ user }: MembersTabProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Member</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("cloud.membersTab.removeMemberTitle", {
+                defaultValue: "Remove Member",
+              })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove this member? They will lose access
-              to the organization.
+              {t("cloud.membersTab.removeMemberConfirm", {
+                defaultValue:
+                  "Are you sure you want to remove this member? They will lose access to the organization.",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("cloud.membersTab.cancel", { defaultValue: "Cancel" })}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmRemove}
               className="bg-red-600 hover:bg-red-700"
             >
-              Remove
+              {t("cloud.membersTab.remove", { defaultValue: "Remove" })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -24,10 +24,12 @@ import {
   setTrajectoryLoggingEnabled,
   setVisionEnabled,
 } from "@/lib/security/consent-store";
+import { useT } from "@/providers/I18nProvider";
 
 const DELETE_CONFIRM_PHRASE = "delete my account";
 
 export function PrivacyPanel() {
+  const t = useT();
   const [vision, setVision] = useState(false);
   const [trajectory, setTrajectory] = useState(false);
   useEffect(() => {
@@ -67,16 +69,29 @@ export function PrivacyPanel() {
         result: "allow",
         metadata: { scope: "all" },
       });
-      toast.success("Export ready — your download should start automatically.");
+      toast.success(
+        t("cloud.privacyPanel.exportReady", {
+          defaultValue:
+            "Export ready — your download should start automatically.",
+        }),
+      );
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         toast.info(
-          "Data export is coming soon — not yet available on this server.",
+          t("cloud.privacyPanel.exportComingSoon", {
+            defaultValue:
+              "Data export is coming soon — not yet available on this server.",
+          }),
         );
         return;
       }
       const message = err instanceof Error ? err.message : String(err);
-      toast.error(`Export failed: ${message}`);
+      toast.error(
+        t("cloud.privacyPanel.exportFailed", {
+          message,
+          defaultValue: "Export failed: {{message}}",
+        }),
+      );
     }
   };
 
@@ -86,7 +101,12 @@ export function PrivacyPanel() {
 
   const deleteAccount = async () => {
     if (deleteConfirmText.trim().toLowerCase() !== DELETE_CONFIRM_PHRASE) {
-      toast.error(`Please type "${DELETE_CONFIRM_PHRASE}" to confirm.`);
+      toast.error(
+        t("cloud.privacyPanel.confirmPhrasePrompt", {
+          phrase: DELETE_CONFIRM_PHRASE,
+          defaultValue: 'Please type "{{phrase}}" to confirm.',
+        }),
+      );
       return;
     }
     setDeleteSubmitting(true);
@@ -98,20 +118,31 @@ export function PrivacyPanel() {
         metadata: { scope: "account" },
       });
       toast.success(
-        "Deletion scheduled. You have 30 days to recover before purge.",
+        t("cloud.privacyPanel.deletionScheduled", {
+          defaultValue:
+            "Deletion scheduled. You have 30 days to recover before purge.",
+        }),
       );
       setDeleteOpen(false);
       setDeleteConfirmText("");
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         toast.info(
-          "Account deletion is coming soon — not yet available on this server.",
+          t("cloud.privacyPanel.deletionComingSoon", {
+            defaultValue:
+              "Account deletion is coming soon — not yet available on this server.",
+          }),
         );
         setDeleteOpen(false);
         return;
       }
       const message = err instanceof Error ? err.message : String(err);
-      toast.error(`Delete request failed: ${message}`);
+      toast.error(
+        t("cloud.privacyPanel.deleteRequestFailed", {
+          message,
+          defaultValue: "Delete request failed: {{message}}",
+        }),
+      );
     } finally {
       setDeleteSubmitting(false);
     }
@@ -122,9 +153,14 @@ export function PrivacyPanel() {
       <CornerBrackets size="sm" className="opacity-50" />
       <div className="relative z-10 space-y-4">
         <div>
-          <h3 className="text-lg font-bold text-white">Privacy</h3>
+          <h3 className="text-lg font-bold text-white">
+            {t("cloud.privacyPanel.title", { defaultValue: "Privacy" })}
+          </h3>
           <p className="text-sm text-white/60">
-            Control optional data capture and exercise your data rights.
+            {t("cloud.privacyPanel.subtitle", {
+              defaultValue:
+                "Control optional data capture and exercise your data rights.",
+            })}
           </p>
         </div>
 
@@ -136,12 +172,15 @@ export function PrivacyPanel() {
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-white">
-                Allow vision / screen capture
+                {t("cloud.privacyPanel.visionTitle", {
+                  defaultValue: "Allow vision / screen capture",
+                })}
               </p>
               <p className="text-xs text-white/60">
-                Off by default. When on, plugins may request screen frames or
-                webcam capture. Remote models charge per image — review your
-                model's per-call fee in Settings → Billing before enabling.
+                {t("cloud.privacyPanel.visionDescription", {
+                  defaultValue:
+                    "Off by default. When on, plugins may request screen frames or webcam capture. Remote models charge per image — review your model's per-call fee in Settings → Billing before enabling.",
+                })}
               </p>
             </div>
           </div>
@@ -160,12 +199,15 @@ export function PrivacyPanel() {
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-white">
-                Trajectory logging
+                {t("cloud.privacyPanel.trajectoryTitle", {
+                  defaultValue: "Trajectory logging",
+                })}
               </p>
               <p className="text-xs text-white/60">
-                Off by default. When on, Eliza records per-step plan/action
-                traces locally with a 30-day retention. Redacted content is
-                marked separately from raw.
+                {t("cloud.privacyPanel.trajectoryDescription", {
+                  defaultValue:
+                    "Off by default. When on, Eliza records per-step plan/action traces locally with a 30-day retention. Redacted content is marked separately from raw.",
+                })}
               </p>
             </div>
           </div>
@@ -183,10 +225,16 @@ export function PrivacyPanel() {
               <Download className="h-4 w-4 text-green-300" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-medium text-white">Download my data</p>
+              <p className="text-sm font-medium text-white">
+                {t("cloud.privacyPanel.downloadTitle", {
+                  defaultValue: "Download my data",
+                })}
+              </p>
               <p className="text-xs text-white/60">
-                Bundle your conversations, agents, and connector data into a
-                portable archive (GDPR / CCPA right-to-export).
+                {t("cloud.privacyPanel.downloadDescription", {
+                  defaultValue:
+                    "Bundle your conversations, agents, and connector data into a portable archive (GDPR / CCPA right-to-export).",
+                })}
               </p>
             </div>
           </div>
@@ -195,7 +243,7 @@ export function PrivacyPanel() {
             variant="outline"
             onClick={() => void exportData()}
           >
-            Export
+            {t("cloud.privacyPanel.export", { defaultValue: "Export" })}
           </BrandButton>
         </div>
 
@@ -207,11 +255,15 @@ export function PrivacyPanel() {
             </div>
             <div className="space-y-1">
               <p className="text-sm font-medium text-white">
-                Delete my account
+                {t("cloud.privacyPanel.deleteTitle", {
+                  defaultValue: "Delete my account",
+                })}
               </p>
               <p className="text-xs text-white/60">
-                Schedules a 30-day soft-delete. You can sign back in during the
-                window to cancel. After 30 days, all data is purged.
+                {t("cloud.privacyPanel.deleteDescription", {
+                  defaultValue:
+                    "Schedules a 30-day soft-delete. You can sign back in during the window to cancel. After 30 days, all data is purged.",
+                })}
               </p>
             </div>
           </div>
@@ -222,7 +274,9 @@ export function PrivacyPanel() {
             onClick={() => setDeleteOpen(true)}
             data-testid="delete-account-trigger"
           >
-            Delete account…
+            {t("cloud.privacyPanel.deleteAccount", {
+              defaultValue: "Delete account…",
+            })}
           </BrandButton>
         </div>
       </div>
@@ -236,10 +290,20 @@ export function PrivacyPanel() {
       >
         <AlertDialogContent data-testid="delete-account-dialog">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("cloud.privacyPanel.dialogTitle", {
+                defaultValue: "Delete your account?",
+              })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              We'll keep your data for 30 days in case you change your mind. To
-              confirm, type <code>{DELETE_CONFIRM_PHRASE}</code> below.
+              {t("cloud.privacyPanel.dialogIntro", {
+                defaultValue:
+                  "We'll keep your data for 30 days in case you change your mind. To confirm, type",
+              })}{" "}
+              <code>{DELETE_CONFIRM_PHRASE}</code>{" "}
+              {t("cloud.privacyPanel.dialogBelow", {
+                defaultValue: "below.",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Input
@@ -250,7 +314,7 @@ export function PrivacyPanel() {
           />
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteSubmitting}>
-              Cancel
+              {t("cloud.privacyPanel.cancel", { defaultValue: "Cancel" })}
             </AlertDialogCancel>
             <AlertDialogAction
               disabled={
@@ -263,7 +327,13 @@ export function PrivacyPanel() {
               }}
               data-testid="delete-account-confirm"
             >
-              {deleteSubmitting ? "Submitting…" : "Schedule deletion"}
+              {deleteSubmitting
+                ? t("cloud.privacyPanel.submitting", {
+                    defaultValue: "Submitting…",
+                  })
+                : t("cloud.privacyPanel.scheduleDeletion", {
+                    defaultValue: "Schedule deletion",
+                  })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

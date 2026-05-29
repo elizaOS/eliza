@@ -34,25 +34,31 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useT } from "@/providers/I18nProvider";
 import type { ProjectionsDataDto } from "@/types/cloud-api";
 
 interface ProjectionsChartProps {
   data: ProjectionsDataDto;
 }
 
-const chartConfig = {
-  historical: {
-    label: "Historical",
-    color: "#FF5800",
-  },
-  projected: {
-    label: "Projected",
-    color: "#F59E0B",
-  },
-} as const;
-
 export function ProjectionsChart({ data }: ProjectionsChartProps) {
+  const t = useT();
   const { projections, alerts, creditBalance } = data;
+
+  const chartConfig = {
+    historical: {
+      label: t("cloud.projectionsChart.historical", {
+        defaultValue: "Historical",
+      }),
+      color: "#FF5800",
+    },
+    projected: {
+      label: t("cloud.projectionsChart.projected", {
+        defaultValue: "Projected",
+      }),
+      color: "#F59E0B",
+    },
+  } as const;
 
   const chartData = useMemo(() => {
     return projections.map((point) => ({
@@ -99,12 +105,16 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
         <CardHeader className="flex flex-col gap-3 p-6 pb-5">
           <div className="flex items-center gap-3">
             <CardTitle className="text-base font-semibold">
-              Usage projections
+              {t("cloud.projectionsChart.title", {
+                defaultValue: "Usage projections",
+              })}
             </CardTitle>
             <Badge
               variant="outline"
               className="rounded-full text-xs"
-              title="Predictive analytics"
+              title={t("cloud.projectionsChart.predictiveAnalytics", {
+                defaultValue: "Predictive analytics",
+              })}
             >
               <Activity className="mr-1 h-3 w-3" />
             </Badge>
@@ -115,7 +125,9 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <div className="rounded-sm border border-border/60 bg-muted/30 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Balance
+                  {t("cloud.projectionsChart.balance", {
+                    defaultValue: "Balance",
+                  })}
                 </p>
                 <p className="mt-1 text-lg font-semibold text-foreground">
                   {formatCurrency(creditBalance)}
@@ -123,7 +135,9 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
               </div>
               <div className="rounded-sm border border-border/60 bg-muted/30 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Historical points
+                  {t("cloud.projectionsChart.historicalPoints", {
+                    defaultValue: "Historical points",
+                  })}
                 </p>
                 <p className="mt-1 text-lg font-semibold text-foreground">
                   {chartData.filter((d) => !d.isProjected).length}
@@ -131,7 +145,9 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
               </div>
               <div className="rounded-sm border border-border/60 bg-muted/30 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Projected points
+                  {t("cloud.projectionsChart.projectedPoints", {
+                    defaultValue: "Projected points",
+                  })}
                 </p>
                 <p className="mt-1 text-lg font-semibold text-foreground">
                   {chartData.filter((d) => d.isProjected).length}
@@ -211,7 +227,12 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                           const confidence = inner.payload?.confidence;
 
                           if (isProjected && confidence) {
-                            return `${fullDate} (${confidence}% confidence)`;
+                            return t("cloud.projectionsChart.confidenceLabel", {
+                              date: fullDate,
+                              confidence,
+                              defaultValue:
+                                "{{date}} ({{confidence}}% confidence)",
+                            });
                           }
                           return fullDate;
                         }
@@ -228,7 +249,9 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                   fill="url(#fill-historical)"
                   strokeWidth={2}
                   dot={false}
-                  name="Cost"
+                  name={t("cloud.projectionsChart.cost", {
+                    defaultValue: "Cost",
+                  })}
                 />
 
                 <Line
@@ -246,7 +269,12 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                     x={lastHistoricalDate}
                     stroke="#6B7280"
                     strokeDasharray="2 2"
-                    label={{ value: "Today", position: "top" }}
+                    label={{
+                      value: t("cloud.projectionsChart.today", {
+                        defaultValue: "Today",
+                      }),
+                      position: "top",
+                    }}
                   />
                 )}
               </AreaChart>
@@ -258,7 +286,11 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                   className="h-3 w-3 rounded-full"
                   style={{ backgroundColor: chartConfig.historical.color }}
                 />
-                <span className="text-muted-foreground">Historical data</span>
+                <span className="text-muted-foreground">
+                  {t("cloud.projectionsChart.historicalData", {
+                    defaultValue: "Historical data",
+                  })}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <div
@@ -266,7 +298,9 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                   style={{ backgroundColor: chartConfig.projected.color }}
                 />
                 <span className="text-muted-foreground">
-                  Projected (with variance)
+                  {t("cloud.projectionsChart.projectedVariance", {
+                    defaultValue: "Projected (with variance)",
+                  })}
                 </span>
               </div>
             </div>
@@ -278,7 +312,9 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
         <Card className="border-border/70 bg-background/60 shadow-sm">
           <CardHeader className="p-6 pb-5">
             <CardTitle className="text-base font-semibold">
-              Projection alerts
+              {t("cloud.projectionsChart.projectionAlerts", {
+                defaultValue: "Projection alerts",
+              })}
             </CardTitle>
           </CardHeader>
           <CardContent className="border-t border-border/60 p-6">

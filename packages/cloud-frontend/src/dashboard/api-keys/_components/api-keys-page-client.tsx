@@ -46,6 +46,7 @@ import {
   copyApiKeyToClipboard,
   getClientApiKeySecret,
 } from "@/lib/client/api-keys";
+import { useT } from "@/providers/I18nProvider";
 import type { ApiKeyDisplay, ApiKeysSummaryData } from "./types";
 
 interface ApiKeysPageClientProps {
@@ -54,39 +55,91 @@ interface ApiKeysPageClientProps {
 }
 
 const rateLimitPresets = [
-  { value: "standard", label: "Standard - 1,000 req/min" },
-  { value: "high", label: "High throughput - 5,000 req/min" },
-  { value: "custom", label: "Custom" },
+  {
+    value: "standard",
+    labelKey: "cloud.apiKeys.rateLimitStandard",
+    defaultLabel: "Standard - 1,000 req/min",
+  },
+  {
+    value: "high",
+    labelKey: "cloud.apiKeys.rateLimitHigh",
+    defaultLabel: "High throughput - 5,000 req/min",
+  },
+  {
+    value: "custom",
+    labelKey: "cloud.apiKeys.rateLimitCustom",
+    defaultLabel: "Custom",
+  },
 ] as const;
 
 const permissionGroups = [
   {
-    title: "Core",
+    titleKey: "cloud.apiKeys.permGroupCore",
+    defaultTitle: "Core",
     permissions: [
-      { id: "read", label: "Read data" },
-      { id: "write", label: "Write data" },
-      { id: "usage", label: "View usage" },
+      {
+        id: "read",
+        labelKey: "cloud.apiKeys.permReadData",
+        defaultLabel: "Read data",
+      },
+      {
+        id: "write",
+        labelKey: "cloud.apiKeys.permWriteData",
+        defaultLabel: "Write data",
+      },
+      {
+        id: "usage",
+        labelKey: "cloud.apiKeys.permViewUsage",
+        defaultLabel: "View usage",
+      },
     ],
   },
   {
-    title: "Generations",
+    titleKey: "cloud.apiKeys.permGroupGenerations",
+    defaultTitle: "Generations",
     permissions: [
-      { id: "text", label: "Text generation" },
-      { id: "image", label: "Image generation" },
-      { id: "video", label: "Video generation" },
+      {
+        id: "text",
+        labelKey: "cloud.apiKeys.permTextGen",
+        defaultLabel: "Text generation",
+      },
+      {
+        id: "image",
+        labelKey: "cloud.apiKeys.permImageGen",
+        defaultLabel: "Image generation",
+      },
+      {
+        id: "video",
+        labelKey: "cloud.apiKeys.permVideoGen",
+        defaultLabel: "Video generation",
+      },
     ],
   },
   {
-    title: "Management",
+    titleKey: "cloud.apiKeys.permGroupManagement",
+    defaultTitle: "Management",
     permissions: [
-      { id: "billing", label: "Billing" },
-      { id: "team", label: "Team management" },
-      { id: "keys", label: "Manage API keys" },
+      {
+        id: "billing",
+        labelKey: "cloud.apiKeys.permBilling",
+        defaultLabel: "Billing",
+      },
+      {
+        id: "team",
+        labelKey: "cloud.apiKeys.permTeam",
+        defaultLabel: "Team management",
+      },
+      {
+        id: "keys",
+        labelKey: "cloud.apiKeys.permManageKeys",
+        defaultLabel: "Manage API keys",
+      },
     ],
   },
 ] as const;
 
 export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
+  const t = useT();
   const queryClient = useQueryClient();
   const refreshApiKeys = () => {
     void queryClient.invalidateQueries({ queryKey: ["api-keys"] });
@@ -116,7 +169,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
 
   useSetPageHeader(
     {
-      title: "API Keys",
+      title: t("cloud.apiKeys.pageTitle", { defaultValue: "API Keys" }),
       // Only surface the header CTA when there is at least one key — the
       // empty state already renders a centred primary "Create API Key"
       // button, and having both visible at once duplicates the action.
@@ -128,11 +181,11 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
           onClick={() => setCreateDialogOpen(true)}
         >
           <Plus className="h-4 w-4" />
-          Create API Key
+          {t("cloud.apiKeys.createApiKey", { defaultValue: "Create API Key" })}
         </BrandButton>
       ) : undefined,
     },
-    [hasKeys],
+    [hasKeys, t],
   );
 
   const handleCreateKey = async () => {
@@ -158,7 +211,12 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "Failed to create API key");
+      throw new Error(
+        data.error ||
+          t("cloud.apiKeys.createFailed", {
+            defaultValue: "Failed to create API key",
+          }),
+      );
     }
 
     // Plaintext secret is only returned on this create response — persist it in
@@ -168,9 +226,17 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
     setSelectedPermissions([]);
     setRateLimitPreset("standard");
     setCreateDialogOpen(false);
-    toast.success("API key created successfully", {
-      description: `${data.apiKey.name} has been created and is ready to use.`,
-    });
+    toast.success(
+      t("cloud.apiKeys.createdSuccess", {
+        defaultValue: "API key created successfully",
+      }),
+      {
+        description: t("cloud.apiKeys.createdSuccessDesc", {
+          name: data.apiKey.name,
+          defaultValue: "{{name}} has been created and is ready to use.",
+        }),
+      },
+    );
     refreshApiKeys();
     setIsCreating(false);
   };
@@ -178,16 +244,28 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
   const handleCopyKey = async (plainKey: string) => {
     try {
       await copyApiKeyToClipboard(plainKey);
-      toast.success("Copied to clipboard", {
-        description: "Full API key copied to your clipboard.",
-      });
+      toast.success(
+        t("cloud.apiKeys.copied", { defaultValue: "Copied to clipboard" }),
+        {
+          description: t("cloud.apiKeys.copiedDesc", {
+            defaultValue: "Full API key copied to your clipboard.",
+          }),
+        },
+      );
     } catch (error) {
-      toast.error("Failed to copy API key", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "Clipboard access was blocked.",
-      });
+      toast.error(
+        t("cloud.apiKeys.copyFailed", {
+          defaultValue: "Failed to copy API key",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.apiKeys.clipboardBlocked", {
+                  defaultValue: "Clipboard access was blocked.",
+                }),
+        },
+      );
     }
   };
 
@@ -196,23 +274,39 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
       const plainKey = await getClientApiKeySecret(id);
       await handleCopyKey(plainKey);
     } catch (error) {
-      toast.error("Failed to load API key", {
-        description:
-          error instanceof Error ? error.message : "Please try again.",
-      });
+      toast.error(
+        t("cloud.apiKeys.loadFailed", {
+          defaultValue: "Failed to load API key",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.apiKeys.tryAgain", {
+                  defaultValue: "Please try again.",
+                }),
+        },
+      );
     }
   };
 
   const handleDisableKey = async (id: string) => {
     const key = keys.find((k) => k.id === id);
     const isCurrentlyActive = key?.status === "active";
-    const action = isCurrentlyActive ? "disable" : "enable";
 
     setPendingAction({
       type: "disable",
       id,
-      title: `${action.charAt(0).toUpperCase() + action.slice(1)} API Key`,
-      description: `Are you sure you want to ${action} this API key?`,
+      title: isCurrentlyActive
+        ? t("cloud.apiKeys.disableTitle", { defaultValue: "Disable API Key" })
+        : t("cloud.apiKeys.enableTitle", { defaultValue: "Enable API Key" }),
+      description: isCurrentlyActive
+        ? t("cloud.apiKeys.disableConfirm", {
+            defaultValue: "Are you sure you want to disable this API key?",
+          })
+        : t("cloud.apiKeys.enableConfirm", {
+            defaultValue: "Are you sure you want to enable this API key?",
+          }),
     });
   };
 
@@ -220,9 +314,11 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
     setPendingAction({
       type: "delete",
       id,
-      title: "Delete API Key",
-      description:
-        "Are you sure you want to delete this API key? This action cannot be undone.",
+      title: t("cloud.apiKeys.deleteTitle", { defaultValue: "Delete API Key" }),
+      description: t("cloud.apiKeys.deleteConfirm", {
+        defaultValue:
+          "Are you sure you want to delete this API key? This action cannot be undone.",
+      }),
     });
   };
 
@@ -230,9 +326,13 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
     setPendingAction({
       type: "regenerate",
       id,
-      title: "Regenerate API Key",
-      description:
-        "Are you sure you want to regenerate this API key? The old key will stop working immediately.",
+      title: t("cloud.apiKeys.regenerateTitle", {
+        defaultValue: "Regenerate API Key",
+      }),
+      description: t("cloud.apiKeys.regenerateConfirm", {
+        defaultValue:
+          "Are you sure you want to regenerate this API key? The old key will stop working immediately.",
+      }),
     });
   };
 
@@ -244,7 +344,6 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
     if (type === "disable") {
       const key = keys.find((k) => k.id === id);
       const isCurrentlyActive = key?.status === "active";
-      const action = isCurrentlyActive ? "disable" : "enable";
 
       const response = await fetch(`/api/v1/api-keys/${id}`, {
         method: "PATCH",
@@ -254,12 +353,32 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || `Failed to ${action} API key`);
+        throw new Error(
+          data.error ||
+            (isCurrentlyActive
+              ? t("cloud.apiKeys.disableFailed", {
+                  defaultValue: "Failed to disable API key",
+                })
+              : t("cloud.apiKeys.enableFailed", {
+                  defaultValue: "Failed to enable API key",
+                })),
+        );
       }
 
-      toast.success(`API key ${action}d`, {
-        description: `The API key has been ${action}d successfully.`,
-      });
+      toast.success(
+        isCurrentlyActive
+          ? t("cloud.apiKeys.disabled", { defaultValue: "API key disabled" })
+          : t("cloud.apiKeys.enabled", { defaultValue: "API key enabled" }),
+        {
+          description: isCurrentlyActive
+            ? t("cloud.apiKeys.disabledDesc", {
+                defaultValue: "The API key has been disabled successfully.",
+              })
+            : t("cloud.apiKeys.enabledDesc", {
+                defaultValue: "The API key has been enabled successfully.",
+              }),
+        },
+      );
       refreshApiKeys();
     } else if (type === "delete") {
       const response = await fetch(`/api/v1/api-keys/${id}`, {
@@ -268,12 +387,22 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || "Failed to delete API key");
+        throw new Error(
+          data.error ||
+            t("cloud.apiKeys.deleteFailed", {
+              defaultValue: "Failed to delete API key",
+            }),
+        );
       }
 
-      toast.success("API key deleted", {
-        description: "The API key has been permanently deleted.",
-      });
+      toast.success(
+        t("cloud.apiKeys.deleted", { defaultValue: "API key deleted" }),
+        {
+          description: t("cloud.apiKeys.deletedDesc", {
+            defaultValue: "The API key has been permanently deleted.",
+          }),
+        },
+      );
       refreshApiKeys();
     } else if (type === "regenerate") {
       const response = await fetch(`/api/v1/api-keys/${id}/regenerate`, {
@@ -283,15 +412,29 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to regenerate API key");
+        throw new Error(
+          data.error ||
+            t("cloud.apiKeys.regenerateFailed", {
+              defaultValue: "Failed to regenerate API key",
+            }),
+        );
       }
 
       // Same as create: plaintext is only returned now — keep it on screen
       // and refetch the list separately.
       setCreatedKey({ plainKey: data.plainKey, name: data.apiKey.name });
-      toast.success("API key regenerated", {
-        description: `${data.apiKey.name} has been regenerated. The old key is no longer valid.`,
-      });
+      toast.success(
+        t("cloud.apiKeys.regenerated", {
+          defaultValue: "API key regenerated",
+        }),
+        {
+          description: t("cloud.apiKeys.regeneratedDesc", {
+            name: data.apiKey.name,
+            defaultValue:
+              "{{name}} has been regenerated. The old key is no longer valid.",
+          }),
+        },
+      );
       refreshApiKeys();
     }
   };
@@ -301,7 +444,11 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Create API key</DialogTitle>
+            <DialogTitle>
+              {t("cloud.apiKeys.createDialogTitle", {
+                defaultValue: "Create API key",
+              })}
+            </DialogTitle>
           </DialogHeader>
           <div className="grid gap-6">
             <div className="grid gap-2">
@@ -309,11 +456,13 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                 htmlFor="api-key-name"
                 className="text-xs font-medium text-white/70 uppercase tracking-wide"
               >
-                Name
+                {t("cloud.apiKeys.nameLabel", { defaultValue: "Name" })}
               </label>
               <Input
                 id="api-key-name"
-                placeholder="Production integration"
+                placeholder={t("cloud.apiKeys.namePlaceholder", {
+                  defaultValue: "Production integration",
+                })}
                 value={formData.name}
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
@@ -328,11 +477,16 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                 htmlFor="api-key-description"
                 className="text-xs font-medium text-white/70 uppercase tracking-wide"
               >
-                Description
+                {t("cloud.apiKeys.descriptionLabel", {
+                  defaultValue: "Description",
+                })}
               </label>
               <Textarea
                 id="api-key-description"
-                placeholder="Used by our backend services for customer facing features"
+                placeholder={t("cloud.apiKeys.descriptionPlaceholder", {
+                  defaultValue:
+                    "Used by our backend services for customer facing features",
+                })}
                 value={formData.description}
                 onChange={(e) =>
                   setFormData({ ...formData, description: e.target.value })
@@ -344,13 +498,15 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
 
             <div className="grid gap-2">
               <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
-                Permissions
+                {t("cloud.apiKeys.permissionsLabel", {
+                  defaultValue: "Permissions",
+                })}
               </p>
               <div className="grid gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
                 {permissionGroups.map((group) => (
-                  <div key={group.title} className="space-y-2">
+                  <div key={group.titleKey} className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-white/50">
-                      {group.title}
+                      {t(group.titleKey, { defaultValue: group.defaultTitle })}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {group.permissions.map((permission) => {
@@ -372,7 +528,9 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                               );
                             }}
                           >
-                            {permission.label}
+                            {t(permission.labelKey, {
+                              defaultValue: permission.defaultLabel,
+                            })}
                           </BrandButton>
                         );
                       })}
@@ -384,7 +542,9 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
 
             <div className="grid gap-2">
               <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
-                Rate limit
+                {t("cloud.apiKeys.rateLimitLabel", {
+                  defaultValue: "Rate limit",
+                })}
               </p>
               <Select
                 value={rateLimitPreset}
@@ -395,7 +555,11 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                 }
               >
                 <SelectTrigger className="rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
-                  <SelectValue placeholder="Select a limit" />
+                  <SelectValue
+                    placeholder={t("cloud.apiKeys.selectLimit", {
+                      defaultValue: "Select a limit",
+                    })}
+                  />
                 </SelectTrigger>
                 <SelectContent className="rounded-sm border-white/10 bg-black/90">
                   {rateLimitPresets.map((preset) => (
@@ -404,7 +568,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                       value={preset.value}
                       className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
                     >
-                      {preset.label}
+                      {t(preset.labelKey, { defaultValue: preset.defaultLabel })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -415,12 +579,16 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                     htmlFor="api-key-rate-custom"
                     className="text-xs font-medium text-white/70 uppercase tracking-wide"
                   >
-                    Custom requests / minute
+                    {t("cloud.apiKeys.customRateLabel", {
+                      defaultValue: "Custom requests / minute",
+                    })}
                   </label>
                   <Input
                     id="api-key-rate-custom"
                     type="number"
-                    placeholder="Enter custom rate limit"
+                    placeholder={t("cloud.apiKeys.customRatePlaceholder", {
+                      defaultValue: "Enter custom rate limit",
+                    })}
                     value={
                       rateLimitPreset === "custom" ? formData.rate_limit : ""
                     }
@@ -444,14 +612,16 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
               onClick={() => setCreateDialogOpen(false)}
               disabled={isCreating}
             >
-              Cancel
+              {t("cloud.apiKeys.cancel", { defaultValue: "Cancel" })}
             </BrandButton>
             <BrandButton
               variant="primary"
               onClick={handleCreateKey}
               disabled={isCreating || !formData.name.trim()}
             >
-              {isCreating ? "Creating..." : "Create key"}
+              {isCreating
+                ? t("cloud.apiKeys.creating", { defaultValue: "Creating..." })
+                : t("cloud.apiKeys.createKey", { defaultValue: "Create key" })}
             </BrandButton>
           </DialogFooter>
         </DialogContent>
@@ -463,16 +633,22 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
         <Dialog open={!!createdKey} onOpenChange={() => setCreatedKey(null)}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>API key created successfully</DialogTitle>
+              <DialogTitle>
+                {t("cloud.apiKeys.createdDialogTitle", {
+                  defaultValue: "API key created successfully",
+                })}
+              </DialogTitle>
               <DialogDescription>
-                Make sure to copy your API key now. You won&apos;t be able to
-                see it again!
+                {t("cloud.apiKeys.createdDialogDesc", {
+                  defaultValue:
+                    "Make sure to copy your API key now. You won't be able to see it again!",
+                })}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid gap-2">
                 <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
-                  Key name
+                  {t("cloud.apiKeys.keyName", { defaultValue: "Key name" })}
                 </p>
                 <div className="font-mono text-sm font-semibold text-white">
                   {createdKey.name}
@@ -480,7 +656,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
               </div>
               <div className="grid gap-2">
                 <p className="text-xs font-medium text-white/70 uppercase tracking-wide">
-                  API Key
+                  {t("cloud.apiKeys.apiKeyLabel", { defaultValue: "API Key" })}
                 </p>
                 <div className="flex gap-2">
                   <Input
@@ -502,7 +678,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                 variant="primary"
                 onClick={() => setCreatedKey(null)}
               >
-                Done
+                {t("cloud.apiKeys.done", { defaultValue: "Done" })}
               </BrandButton>
             </DialogFooter>
           </DialogContent>
@@ -536,7 +712,9 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
             </AlertDialogDescComp>
           </AlertDialogHeaderComp>
           <AlertDialogFooterComp>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("cloud.apiKeys.cancel", { defaultValue: "Cancel" })}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmAction}
               className={
@@ -545,7 +723,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   : ""
               }
             >
-              Confirm
+              {t("cloud.apiKeys.confirm", { defaultValue: "Confirm" })}
             </AlertDialogAction>
           </AlertDialogFooterComp>
         </AlertDialogContentComp>
