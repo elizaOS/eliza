@@ -124,6 +124,48 @@ describe("parseFactsAndRelationshipsOutput", () => {
 		expect(result.facts).toEqual(["a"]);
 	});
 
+	it("parses AI SDK v5 / Cerebras tool-call shape (toolCalls[0].input)", () => {
+		// Live regression on 2026-05-28 (tj-80ba4e3920d7bd): the user said
+		// "my dogs name is Jeff", Stage 1 extracted the fact, and the validate
+		// model returned a correct tool call — but the args were under `input`
+		// (AI SDK v5 / Cerebras gpt-oss-120b shape), not `arguments`. The old
+		// extractText only read `arguments`, so the parse came back empty and
+		// the fact was silently dropped (written.facts=0). Nothing persisted,
+		// so cross-turn recall only worked while the source message stayed in
+		// the recent-message window. Pin all tool-arg field names.
+		const result = parseFactsAndRelationshipsOutput({
+			text: "",
+			toolCalls: [
+				{
+					type: "tool-call",
+					toolName: "FACTS_AND_RELATIONSHIPS_VALIDATE",
+					input: {
+						facts: ["my dog's name is Jeff"],
+						relationships: [
+							{ subject: "user", predicate: "has_dog_named", object: "Jeff" },
+						],
+						thought: "new, not duplicated",
+					},
+				},
+			],
+		});
+		expect(result.facts).toEqual(["my dog's name is Jeff"]);
+		expect(result.relationships).toEqual([
+			{ subject: "user", predicate: "has_dog_named", object: "Jeff" },
+		]);
+	});
+
+	it("parses tool-call args under `args` and `params` keys too", () => {
+		const viaArgs = parseFactsAndRelationshipsOutput({
+			toolCalls: [{ args: { facts: ["x"], relationships: [], thought: "" } }],
+		});
+		expect(viaArgs.facts).toEqual(["x"]);
+		const viaParams = parseFactsAndRelationshipsOutput({
+			toolCalls: [{ params: { facts: ["y"], relationships: [], thought: "" } }],
+		});
+		expect(viaParams.facts).toEqual(["y"]);
+	});
+
 	it("drops malformed relationship entries", () => {
 		const result = parseFactsAndRelationshipsOutput(
 			JSON.stringify({
