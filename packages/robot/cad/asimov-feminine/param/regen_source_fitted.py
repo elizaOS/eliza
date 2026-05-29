@@ -112,14 +112,64 @@ def _slice_centroids(v, axis_z, lo, hi, step=0.005):
     return levels, cx, cy
 
 
+def _vertex_neighbors(faces, n):
+    nbr = [set() for _ in range(n)]
+    for a, b, c in faces:
+        nbr[a].update((b, c)); nbr[b].update((a, c)); nbr[c].update((a, b))
+    return [np.fromiter(s, dtype=np.int64) for s in nbr]
+
+
+def _smooth_region(mesh, mask, iters):
+    """Laplacian (umbrella) smoothing of only the masked vertices; boundary of the
+    region is held fixed, so a shallow engraving is filled while the surrounding
+    panel keeps its shape."""
+    nbr = _vertex_neighbors(mesh.faces, len(mesh.vertices))
+    v = mesh.vertices.copy()
+    idx = np.flatnonzero(mask)
+    for _ in range(iters):
+        nv = v.copy()
+        for i in idx:
+            ns = nbr[i]
+            if len(ns):
+                nv[i] = 0.6 * v[i] + 0.4 * v[ns].mean(0)
+        v = nv
+    mesh.vertices = v
+    return mesh
+
+
+def _erase_feature(mesh, box, iters):
+    v = mesh.vertices
+    m = ((v[:, 0] >= box["x"][0]) & (v[:, 0] <= box["x"][1])
+         & (v[:, 1] >= box["y"][0]) & (v[:, 1] <= box["y"][1])
+         & (v[:, 2] >= box["z"][0]) & (v[:, 2] <= box["z"][1]))
+    if m.any():
+        _smooth_region(mesh, m, iters)
+    return mesh
+
+
+def _remove_handle(mesh, box):
+    """Delete faces inside the handle box (the grab-bar + its tunnel) and cap the
+    resulting boundary loops so the back stays watertight."""
+    v = mesh.vertices
+    inb = ((v[:, 0] >= box["x"][0]) & (v[:, 0] <= box["x"][1])
+           & (v[:, 1] >= box["y"][0]) & (v[:, 1] <= box["y"][1])
+           & (v[:, 2] >= box["z"][0]) & (v[:, 2] <= box["z"][1]))
+    fmask = inb[mesh.faces].any(axis=1)
+    keep = mesh.faces[~fmask]
+    out = trimesh.Trimesh(mesh.vertices.copy(), keep, process=True)
+    out.remove_unreferenced_vertices()
+    out.fill_holes()
+    return out
+
+
 def _torso_warp(mesh):
     reserved = C.reserved_levels("WAIST_YAW")
     P = TORSO
+    B = BREAST
     m = mesh.copy()
     v = m.vertices.copy()
     z = v[:, 2]
     w = W.connection_weight(z, reserved, ramp=0.03)
-    # confine shaping to the mid torso band (smooth window)
     band = np.clip((z - P["z_lo"]) / 0.04, 0, 1) * np.clip((P["z_hi"] - z) / 0.04, 0, 1)
     w = w * band
     levels, cx, _ = _slice_centroids(v, z, mesh.bounds[0][2], mesh.bounds[1][2])
@@ -127,19 +177,20 @@ def _torso_warp(mesh):
 
     # 1) waist cinch in Y only (drum axis) -> circular faces preserved
     gy = 1.0 + (P["cinch_y_min"] - 1.0) * np.exp(-((z - P["cinch_z"]) ** 2) / (2 * P["cinch_sigma"] ** 2))
-    fy = 1.0 + (gy - 1.0) * w
-    v[:, 1] = v[:, 1] * fy  # centroid Y ~ 0
+    v[:, 1] = v[:, 1] * (1.0 + (gy - 1.0) * w)
 
-    # angle of each vertex about the per-slice X centre (front = +X)
     dx = v[:, 0] - cxz
     ang = np.degrees(np.arctan2(v[:, 1], dx))
 
-    # 2) bust: push +X front sector outward in X (cosine falloff, clear of drums)
-    gb = (P["bust_gain"] - 1.0) * np.exp(-((z - P["bust_z"]) ** 2) / (2 * P["bust_sigma"] ** 2))
-    front = (np.abs(ang) <= P["bust_halfdeg"]) & (dx > 0)
-    fall = np.where(front, 0.5 * (1 + np.cos(np.pi * np.abs(ang) / P["bust_halfdeg"])), 0.0)
-    push = 1.0 + gb * fall * w
-    v[front, 0] = cxz[front] + dx[front] * push[front]
+    # 2) breasts: two outward (+X) effector mounds, gated to the front face so the
+    #    lateral drums (ang ~ +-90deg) are not touched.
+    front = (np.abs(ang) <= B["front_halfdeg"]) & (dx > 0)
+    bump = np.zeros(len(v))
+    for sgn in (-1.0, +1.0):
+        gy2 = np.exp(-((v[:, 1] - sgn * B["y0"]) ** 2) / (2 * B["sigma_y"] ** 2))
+        gz2 = np.exp(-((z - B["z0"]) ** 2) / (2 * B["sigma_z"] ** 2))
+        bump = np.maximum(bump, B["amp"] * gy2 * gz2)
+    v[front, 0] += bump[front] * w[front]
 
     # 3) back relief: pull -X back sector in slightly
     gk = (P["back_in"] - 1.0) * np.exp(-((z - P["back_z"]) ** 2) / (2 * P["back_sigma"] ** 2))
@@ -149,6 +200,10 @@ def _torso_warp(mesh):
     v[back, 0] = cxz[back] + dx[back] * pullb[back]
 
     m.vertices = v
+    # 4) erase surface features, then remove the back handle (delete + cap)
+    for box in FEATURE_BOXES.values():
+        _erase_feature(m, box, box["iters"])
+    m = _remove_handle(m, HANDLE_BOX)
     return m
 
 
