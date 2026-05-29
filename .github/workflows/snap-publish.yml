@@ -19,8 +19,14 @@ on:
         required: true
         type: string
     secrets:
+      # Marked `required: false` so this reusable workflow's secret contract
+      # validates even when SNAPCRAFT_STORE_CREDENTIALS is unset. GitHub
+      # validates the contract before any job runs, so `required: true` on an
+      # unset secret aborts release-all.yml at startup with no logs. The body's
+      # creds_check guard already skips the Store upload (build still runs) when
+      # the credential is empty.
       SNAPCRAFT_STORE_CREDENTIALS:
-        required: true
+        required: false
 
   workflow_dispatch:
     inputs:

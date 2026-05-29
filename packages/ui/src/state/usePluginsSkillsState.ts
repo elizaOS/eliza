@@ -7,7 +7,7 @@
  * Accepts `{ setActionNotice }` for cross-domain notifications.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   type CatalogSkill,
   client,
@@ -182,12 +182,19 @@ export function usePluginsSkillsState({
     }
   }, []);
 
+  // Read pluginsLoaded through a ref so this callback keeps a stable identity.
+  // Putting pluginsLoaded in the deps made the callback (and therefore the
+  // whole AppContext value) bust the moment the first load flipped the flag,
+  // re-rendering every useApp() consumer on boot.
+  const pluginsLoadedRef = useRef(pluginsLoaded);
+  pluginsLoadedRef.current = pluginsLoaded;
   const ensurePluginsLoaded = useCallback(
     async (options?: { refresh?: boolean }) => {
-      if (pluginsLoaded && !options?.refresh) return;
-      await loadPlugins(pluginsLoaded ? { silent: true } : undefined);
+      const alreadyLoaded = pluginsLoadedRef.current;
+      if (alreadyLoaded && !options?.refresh) return;
+      await loadPlugins(alreadyLoaded ? { silent: true } : undefined);
     },
-    [loadPlugins, pluginsLoaded],
+    [loadPlugins],
   );
 
   const handlePluginToggle = useCallback(

@@ -699,6 +699,7 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
   );
+  ensureWorkspaceRuntimePackageBuilt("@elizaos/ui", UI_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-local-inference",
     PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR,

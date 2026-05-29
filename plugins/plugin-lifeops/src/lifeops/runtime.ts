@@ -2,7 +2,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
 import {
+  isMissingLifeOpsRelationError,
   LIFEOPS_TASK_NAME,
+  rerunLifeOpsPluginMigrations,
   resolveLifeOpsTaskIntervalMs,
 } from "./scheduler-task.js";
 import { LifeOpsService } from "./service.js";
@@ -62,7 +64,24 @@ export async function executeLifeOpsSchedulerTask(
   const now = resolveSchedulerNowIso(options);
 
   const service = new LifeOpsService(runtime);
-  const scheduledWork = await service.processScheduledWork({ now });
+  let scheduledWork: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >;
+  try {
+    scheduledWork = await service.processScheduledWork({ now });
+  } catch (error) {
+    // A persisted scheduler task can fire from the task queue on restart
+    // before this plugin's schema migration finishes. Run migrations once
+    // and retry rather than dropping the tick.
+    if (!isMissingLifeOpsRelationError(error)) {
+      throw error;
+    }
+    logger.warn(
+      "[lifeops-scheduler] LifeOps schema not ready; running plugin migrations and retrying tick",
+    );
+    await rerunLifeOpsPluginMigrations(runtime);
+    scheduledWork = await service.processScheduledWork({ now });
+  }
 
   // Escalate any unacknowledged intents from desktop to mobile
   const { escalateUnacknowledgedIntents } = await import("./intent-sync.js");

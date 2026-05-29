@@ -90,7 +90,8 @@
 		"@elizaos/plugin-computeruse": "workspace:*",
 		"@elizaos/plugin-aosp-local-inference": "workspace:*",
 		"@elizaos/shared": "workspace:*",
-		"phonemizer": "^1.2.1"
+		"phonemizer": "^1.2.1",
+		"ws": "^8.20.1"
 	},
 	"optionalDependencies": {
 		"node-llama-cpp": "3.18.1"
@@ -110,6 +111,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",
 		"@types/node": "24.12.2",
+		"@types/ws": "^8.18.1",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.4"
 	},

@@ -16,6 +16,11 @@ import {
 } from "../../first-run/first-run";
 import { Checkbox } from "../ui/checkbox";
 
+const GLASS_INTERACTIVE =
+  "border-[var(--first-run-card-border)] bg-[var(--first-run-card-bg)] text-[var(--first-run-text-primary)] hover:bg-[var(--first-run-card-bg-hover)]";
+const GLASS_PANEL =
+  "border-[var(--first-run-card-border)] bg-[var(--first-run-card-bg)] text-[var(--first-run-text-muted)]";
+
 export interface FirstRunShellProps {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
@@ -57,7 +62,7 @@ function RuntimeButton(props: {
         "inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-sm border px-5 py-3 text-sm font-semibold transition",
         props.active
           ? "border-accent bg-accent text-accent-foreground hover:bg-accent-hover"
-          : "border-border bg-bg-elevated text-txt hover:bg-bg-hover",
+          : GLASS_INTERACTIVE,
       ].join(" ")}
     >
       <Icon className="h-4 w-4" />
@@ -84,7 +89,7 @@ function GlassButton(props: {
         "inline-flex min-h-[3rem] min-w-[7rem] items-center justify-center gap-2 rounded-sm border px-5 py-3 text-sm font-semibold transition disabled:pointer-events-none disabled:opacity-45",
         props.variant === "primary"
           ? "border-accent bg-accent text-accent-foreground hover:bg-accent-hover"
-          : "border-border bg-bg-elevated text-txt hover:bg-bg-hover",
+          : GLASS_INTERACTIVE,
       ].join(" ")}
     >
       {Icon ? (
@@ -194,7 +199,9 @@ function FirstRunStatus(props: {
 }) {
   if (props.busyText) {
     return (
-      <p className="inline-flex min-h-[2.5rem] items-center justify-center gap-2 rounded-sm border border-border bg-bg-elevated px-4 py-2 text-sm text-muted">
+      <p
+        className={`inline-flex min-h-[2.5rem] items-center justify-center gap-2 rounded-sm border px-4 py-2 text-sm ${GLASS_PANEL}`}
+      >
         <Loader2 className="h-4 w-4 animate-spin" />
         {props.busyText}
       </p>
@@ -330,7 +337,9 @@ function FirstRunControls(props: {
         cloudConnected={props.elizaCloudConnected}
       />
       {props.draft.runtime === "cloud" ? (
-        <div className="flex min-h-[2.5rem] items-center gap-2 rounded-sm border border-border bg-bg-elevated px-4 py-2 text-sm text-muted">
+        <div
+          className={`flex min-h-[2.5rem] items-center gap-2 rounded-sm border px-4 py-2 text-sm ${GLASS_PANEL}`}
+        >
           <Checkbox
             aria-label="Keep embeddings local"
             checked={props.draft.useLocalEmbeddings}
@@ -393,7 +402,7 @@ export function FirstRunShell({
             <button
               type="button"
               onClick={goBack}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-sm border border-border bg-bg-elevated text-txt transition hover:bg-bg-hover"
+              className={`inline-flex h-11 w-11 items-center justify-center rounded-sm border transition ${GLASS_INTERACTIVE}`}
               aria-label="Back"
             >
               <ArrowLeft className="h-5 w-5" />

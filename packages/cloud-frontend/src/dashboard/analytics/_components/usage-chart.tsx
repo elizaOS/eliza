@@ -9,7 +9,7 @@
 
 "use client";
 
-import { formatUsd } from "@elizaos/shared";
+import { formatUsd } from "@elizaos/shared/utils/format";
 import {
   Badge,
   Button,
