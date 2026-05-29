@@ -287,12 +287,33 @@ const factsProvider: Provider = {
 				partitionByKind(dedupedPool);
 
 			const nowMs = Date.now();
-			const durableFacts = rankByKeywordScore(
+			let durableFacts = rankByKeywordScore(
 				durableCandidates,
 				"durable",
 				queryText,
 				nowMs,
 			).slice(0, TOP_PER_KIND);
+			// Durable facts are identity-level claims ("my dog's name is Jeff",
+			// "my car is named Bertha") and few in number. Keyword/BM25 ranking
+			// against the current message drops them whenever the question does
+			// not lexically overlap the stored fact — e.g. "whats my cars name?"
+			// vs "my car's name is Bertha" (no stemming for cars->car, and the
+			// shared term "name" has ~0 IDF across a small pool), which scores 0
+			// and hides a fact the user is directly asking to recall. When
+			// relevance ranking surfaces no durable facts, fall back to the
+			// highest-prior durable facts (confidence × recency, via
+			// scoreFactPrior) so direct recall still works and a high-confidence
+			// identity fact is preferred over a newer low-confidence one. Bounded
+			// to TOP_PER_KIND, so this never floods the prompt.
+			if (durableFacts.length === 0 && durableCandidates.length > 0) {
+				durableFacts = [...durableCandidates]
+					.sort(
+						(left, right) =>
+							scoreFactPrior(right, "durable", nowMs) -
+							scoreFactPrior(left, "durable", nowMs),
+					)
+					.slice(0, TOP_PER_KIND);
+			}
 			const currentFacts = rankByKeywordScore(
 				currentCandidates,
 				"current",
