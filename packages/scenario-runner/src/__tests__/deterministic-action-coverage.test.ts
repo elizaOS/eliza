@@ -176,7 +176,10 @@ function scenarioActionNames(): string[] {
 
 function declaredScenarioId(file: string): string | null {
   const source = readFileSync(resolve(scenarioDir, file), "utf8");
-  return source.match(/\bid:\s*"([^"]+)"/)?.[1] ?? null;
+  return (
+    source.match(/export\s+default\s+scenario\(\{\s*id:\s*"([^"]+)"/s)?.[1] ??
+    null
+  );
 }
 
 function ciScenarioList(): string[] {

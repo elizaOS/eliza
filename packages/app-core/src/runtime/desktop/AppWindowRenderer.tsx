@@ -170,10 +170,13 @@ function AppWindowError({ message }: { message: string }): JSX.Element {
 }
 
 function AppWindowSpinner({ label }: { label: string }): JSX.Element {
+  const { t } = useApp();
   return (
     <div className="flex h-screen min-h-0 w-screen flex-col items-center justify-center gap-2 bg-bg text-txt">
       <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-      <div className="text-sm text-muted">Launching {label}…</div>
+      <div className="text-sm text-muted">
+        {t("appwindow.Launching", { defaultValue: "Launching {{label}}…", label })}
+      </div>
     </div>
   );
 }

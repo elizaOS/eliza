@@ -140,6 +140,7 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleFirstRunRoute } from "./first-run-routes";
+import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleFirstRunTtsRoute } from "./first-run-tts-route";
 import { handleInternalWakeRoute } from "./internal-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
@@ -699,6 +700,9 @@ async function handleCompatRoute(
       runtime: state.current,
     });
   }
+
+  // Public language suggestion from IP-geo + Accept-Language (pre-auth).
+  if (await handleI18nLocaleRoute(req, res)) return true;
 
   // Dev observability routes — extracted to dev-compat-routes.ts
   if (await handleDevCompatRoutes(req, res, state)) return true;

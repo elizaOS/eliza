@@ -14,7 +14,7 @@ import type {
   CompanionVrmPowerMode,
   SetupStep,
 } from "./types";
-import type { UiShellMode, UiTheme } from "./ui-preferences";
+import type { UiShellMode, UiTheme, UiThemeMode } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
 
 /* ── Shared localStorage helper ──────────────────────────────────────── */
@@ -445,6 +445,14 @@ export function saveUiLanguage(language: UiLanguage): void {
   tryLocalStorage(() => {
     localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, normalizeLanguage(language));
   }, undefined);
+}
+
+/** Whether the user has a persisted UI language (vs. a fresh first visit). */
+export function hasStoredUiLanguage(): boolean {
+  return tryLocalStorage(
+    () => localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) != null,
+    false,
+  );
 }
 
 function normalizeUiShellMode(mode: unknown): UiShellMode {

@@ -8,7 +8,7 @@ import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import {
-  DESKTOP_TRAY_MENU_ITEMS,
+  buildLocalizedTrayMenu,
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
@@ -104,9 +104,11 @@ import {
   shouldInstallMainWindowFirstRunPatches,
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
+import { createTranslator } from "@elizaos/ui/i18n";
 import { AppProvider } from "@elizaos/ui/state";
 import {
   applyUiTheme,
+  loadUiLanguage,
   loadUiThemeMode,
   resolveUiTheme,
 } from "@elizaos/ui/state/persistence";
@@ -1565,7 +1567,7 @@ async function initializeDesktopShell(): Promise<void> {
   });
 
   await Desktop.setTrayMenu({
-    menu: [...DESKTOP_TRAY_MENU_ITEMS],
+    menu: buildLocalizedTrayMenu(createTranslator(loadUiLanguage())),
   });
 
   await Desktop.addListener(

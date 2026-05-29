@@ -488,7 +488,10 @@ async function ensureUiDistReady(): Promise<void> {
   child.stdout.on("data", (chunk) => logs.push(String(chunk)));
   child.stderr.on("data", (chunk) => logs.push(String(chunk)));
 
-  const RENDERER_BUILD_TIMEOUT_MS = 600_000;
+  // Cold renderer build transforms ~3000 modules and measures ~12 min on a
+  // clean dist; cap at 18 min so a legitimately slow first build is not killed
+  // mid-flight (the previous 5/10 min caps produced spurious "service stopped").
+  const RENDERER_BUILD_TIMEOUT_MS = 1_080_000;
   const exited = await waitForChildExit(child, RENDERER_BUILD_TIMEOUT_MS);
   if (!exited) {
     child.kill("SIGKILL");

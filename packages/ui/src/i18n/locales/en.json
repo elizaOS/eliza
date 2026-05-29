@@ -7428,5 +7428,18 @@
   "cloud.successClient.couldNotLoadBalanceWithError": "Could not load balance: {{error}}",
   "cloud.successClient.couldNotLoadBalance": "Could not load balance",
   "cloud.successClient.refreshBalance": "Refresh balance",
-  "settings.appearance.system": "System"
+  "settings.appearance.system": "System",
+  "appwindow.Launching": "Launching {{label}}…",
+  "desktop.tray.openChat": "Open Chat",
+  "desktop.tray.openPlugins": "Open Plugins",
+  "desktop.tray.openDesktopWorkspace": "Open Desktop Workspace",
+  "desktop.tray.openVoiceControls": "Open Voice Controls",
+  "desktop.tray.toggleLifecycle": "Start/Stop Agent",
+  "desktop.tray.restartAgent": "Restart Agent",
+  "desktop.tray.sendTestNotification": "Send Test Notification",
+  "desktop.tray.showWindow": "Show Window",
+  "desktop.tray.hideWindow": "Hide Window",
+  "desktop.tray.quit": "Quit",
+  "desktop.tray.testNotification.title": "Desktop",
+  "desktop.tray.testNotification.body": "Renderer tray actions are wired and responding."
 }

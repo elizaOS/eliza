@@ -60,7 +60,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Scenario runner unit coverage
-        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
+        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts src/__tests__/deterministic-action-coverage.test.ts
 
       - name: Deterministic LLM proxy unit coverage
         working-directory: packages

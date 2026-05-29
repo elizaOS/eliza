@@ -36,7 +36,6 @@ export interface FirstRunProfileDraft {
   localInference: FirstRunLocalInference;
   remoteApiBase: string;
   remoteToken: string;
-  useLocalEmbeddings: boolean;
 }
 
 export type FirstRunDraftUpdate = <K extends keyof FirstRunProfileDraft>(
@@ -78,7 +77,6 @@ export function normalizeCloudOnlyFirstRunState(
       runtime: "cloud",
       remoteApiBase: "",
       remoteToken: "",
-      useLocalEmbeddings: false,
     },
   };
 }
@@ -111,13 +109,6 @@ function readStringField(record: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-function readBooleanField(
-  record: Record<string, unknown>,
-  key: string,
-): boolean {
-  return record[key] === true;
-}
-
 function normalizePersistedDraft(
   value: unknown,
   fallback: FirstRunProfileDraft,
@@ -137,7 +128,6 @@ function normalizePersistedDraft(
       : fallback.localInference,
     remoteApiBase: readStringField(record, "remoteApiBase"),
     remoteToken: readStringField(record, "remoteToken"),
-    useLocalEmbeddings: readBooleanField(record, "useLocalEmbeddings"),
   };
 }
 
@@ -395,7 +385,6 @@ export function buildFirstRunSubmitPlan(args: {
     firstRunMegaModel: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
     firstRunFeatureCrypto: true,
     firstRunFeatureBrowser: true,
-    firstRunUseLocalEmbeddings: args.draft.useLocalEmbeddings,
   });
   const systemPrompt =
     style.system?.replace(/\{\{name\}\}/g, agentName) ??

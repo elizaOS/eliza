@@ -84,13 +84,10 @@ test("first-run onboarding renders without a render loop and lets the runtime be
     await cloud.click();
   } else {
     // Stay on the runtime step (clicking Remote navigates away). Re-selecting
-    // Cloud and toggling its "Keep embeddings local" checkbox re-renders the
-    // selector repeatedly — the same churn path that previously froze it.
-    await cloud.click();
-    const keepLocal = page.getByLabel("Keep embeddings local");
-    await expect(keepLocal).toBeVisible({ timeout: 10_000 });
+    // Cloud repeatedly re-renders the selector — the same churn path that
+    // previously froze onboarding.
     for (let i = 0; i < 4; i++) {
-      await keepLocal.click();
+      await cloud.click();
     }
   }
 

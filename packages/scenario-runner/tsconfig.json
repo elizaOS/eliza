@@ -35,6 +35,12 @@
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/dist/index.d.ts"
       ],
+      "@elizaos/plugin-coding-tools": [
+        "../../plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/plugin-coding-tools/*": [
+        "../../plugins/plugin-coding-tools/src/*"
+      ],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/dist/node/index.d.ts"
       ],

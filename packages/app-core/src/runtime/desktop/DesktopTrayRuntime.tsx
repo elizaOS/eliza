@@ -13,24 +13,73 @@ import { useEffect } from "react";
 interface DesktopTrayMenuItem {
   id: string;
   label?: string;
+  /** i18n key for {@link label}; resolved at menu-build time. */
+  labelKey?: string;
   type?: "normal" | "separator";
 }
 
 export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
-  { id: "tray-open-chat", label: "Open Chat" },
-  { id: "tray-open-plugins", label: "Open Plugins" },
-  { id: "tray-open-desktop-workspace", label: "Open Desktop Workspace" },
-  { id: "tray-open-voice-controls", label: "Open Voice Controls" },
+  { id: "tray-open-chat", label: "Open Chat", labelKey: "desktop.tray.openChat" },
+  {
+    id: "tray-open-plugins",
+    label: "Open Plugins",
+    labelKey: "desktop.tray.openPlugins",
+  },
+  {
+    id: "tray-open-desktop-workspace",
+    label: "Open Desktop Workspace",
+    labelKey: "desktop.tray.openDesktopWorkspace",
+  },
+  {
+    id: "tray-open-voice-controls",
+    label: "Open Voice Controls",
+    labelKey: "desktop.tray.openVoiceControls",
+  },
   { id: "tray-sep-0", type: "separator" },
-  { id: "tray-toggle-lifecycle", label: "Start/Stop Agent" },
-  { id: "tray-restart", label: "Restart Agent" },
-  { id: "tray-notify", label: "Send Test Notification" },
+  {
+    id: "tray-toggle-lifecycle",
+    label: "Start/Stop Agent",
+    labelKey: "desktop.tray.toggleLifecycle",
+  },
+  {
+    id: "tray-restart",
+    label: "Restart Agent",
+    labelKey: "desktop.tray.restartAgent",
+  },
+  {
+    id: "tray-notify",
+    label: "Send Test Notification",
+    labelKey: "desktop.tray.sendTestNotification",
+  },
   { id: "tray-sep-1", type: "separator" },
-  { id: "tray-show-window", label: "Show Window" },
-  { id: "tray-hide-window", label: "Hide Window" },
+  {
+    id: "tray-show-window",
+    label: "Show Window",
+    labelKey: "desktop.tray.showWindow",
+  },
+  {
+    id: "tray-hide-window",
+    label: "Hide Window",
+    labelKey: "desktop.tray.hideWindow",
+  },
   { id: "tray-sep-2", type: "separator" },
-  { id: "quit", label: "Quit" },
+  { id: "quit", label: "Quit", labelKey: "desktop.tray.quit" },
 ] as const;
+
+/**
+ * Build the tray menu with labels translated by `t`. Separators and any item
+ * without a `labelKey` pass through unchanged. The native tray is rebuilt from
+ * this at desktop boot, so it reflects the resolved UI language.
+ */
+export function buildLocalizedTrayMenu(
+  t: (key: string, vars?: { defaultValue?: string }) => string,
+): DesktopTrayMenuItem[] {
+  return DESKTOP_TRAY_MENU_ITEMS.map((item) =>
+    item.labelKey
+      ? { ...item, label: t(item.labelKey, { defaultValue: item.label }) }
+      : { ...item },
+  );
+}
 
 export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
   {
@@ -140,6 +189,7 @@ export function DesktopTrayRuntime() {
     handleStop,
     setTab,
     switchShellView,
+    t,
   } = useApp();
 
   // App menu "Reset App…" reuses the same push channel as tray `navigate-*`.
@@ -260,8 +310,13 @@ export function DesktopTrayRuntime() {
               rpcMethod: "desktopShowNotification",
               ipcChannel: "desktop:showNotification",
               params: {
-                title: "Desktop",
-                body: "Renderer tray actions are wired and responding.",
+                title: t("desktop.tray.testNotification.title", {
+                  defaultValue: "Desktop",
+                }),
+                body: t("desktop.tray.testNotification.body", {
+                  defaultValue:
+                    "Renderer tray actions are wired and responding.",
+                }),
                 urgency: "normal",
               },
             });
@@ -300,6 +355,7 @@ export function DesktopTrayRuntime() {
     handleStop,
     setTab,
     switchShellView,
+    t,
   ]);
 
   return null;

@@ -53,7 +53,6 @@ export interface ProviderSelection {
    */
   cloudRuntimeLocked: boolean;
   routingModeSaving: boolean;
-  localEmbeddings: boolean;
   resolvedSelectedId: string | null;
   visibleProviderPanelId: ProviderPanelId;
   isCloudSelected: boolean;
@@ -65,7 +64,6 @@ export interface ProviderSelection {
   ) => Promise<void>;
   handleSelectCloud: () => Promise<void>;
   handleSelectLocalOnly: () => Promise<void>;
-  handleToggleLocalEmbeddings: (next: boolean) => Promise<void>;
   handleProviderPanelSelect: (panelId: string) => void;
 }
 
@@ -79,7 +77,6 @@ export function useProviderSelection(
     branding.cloudOnly === true || isElizaCloudRuntimeLocked();
   const [cloudCallsDisabled, setCloudCallsDisabled] = useState(false);
   const [routingModeSaving, setRoutingModeSaving] = useState(false);
-  const [localEmbeddings, setLocalEmbeddings] = useState(false);
   const hasManualSelection = useRef(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
@@ -107,18 +104,6 @@ export function useProviderSelection(
     [],
   );
 
-  const readLocalEmbeddingsFromConfig = useCallback(
-    (cfg: Record<string, unknown>): boolean => {
-      const embeddings = resolveServiceRoutingInConfig(cfg)?.embeddings;
-      if (embeddings === undefined) return true;
-      return !(
-        embeddings.transport === "cloud-proxy" &&
-        embeddings.backend === "elizacloud"
-      );
-    },
-    [],
-  );
-
   const initializeFromConfig = useCallback(
     (cfg: Record<string, unknown>) => {
       const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
@@ -137,9 +122,8 @@ export function useProviderSelection(
         setSelectedProviderId(nextSelectedId);
       }
       setCloudCallsDisabled(readCloudCallsDisabled(cfg));
-      setLocalEmbeddings(readLocalEmbeddingsFromConfig(cfg));
     },
-    [readCloudCallsDisabled, readLocalEmbeddingsFromConfig],
+    [readCloudCallsDisabled],
   );
 
   const resolvedSelectedId = useMemo(
@@ -276,22 +260,6 @@ export function useProviderSelection(
     restoreSelection,
   ]);
 
-  const handleToggleLocalEmbeddings = useCallback(
-    async (nextValue: boolean) => {
-      const previous = localEmbeddings;
-      setLocalEmbeddings(nextValue);
-      try {
-        await client.switchProvider("elizacloud", undefined, undefined, {
-          useLocalEmbeddings: nextValue,
-        });
-      } catch (err) {
-        setLocalEmbeddings(previous);
-        notifySelectionFailure("Failed to update embeddings preference", err);
-      }
-    },
-    [localEmbeddings, notifySelectionFailure],
-  );
-
   const isCloudSelected =
     resolvedSelectedId === "__cloud__" || resolvedSelectedId === null;
   // When the runtime is locked to cloud, ignore local persistence in the
@@ -328,7 +296,6 @@ export function useProviderSelection(
     cloudCallsDisabled: effectiveCloudCallsDisabled,
     cloudRuntimeLocked,
     routingModeSaving,
-    localEmbeddings,
     resolvedSelectedId,
     visibleProviderPanelId,
     isCloudSelected,
@@ -337,7 +304,6 @@ export function useProviderSelection(
     handleSelectSubscription,
     handleSelectCloud,
     handleSelectLocalOnly,
-    handleToggleLocalEmbeddings,
     handleProviderPanelSelect,
   };
 }

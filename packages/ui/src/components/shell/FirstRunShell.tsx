@@ -18,7 +18,6 @@ import {
   type TranslationContextValue,
   useTranslation,
 } from "../../state/TranslationContext";
-import { Checkbox } from "../ui/checkbox";
 
 type TranslateFn = TranslationContextValue["t"];
 
@@ -491,27 +490,6 @@ function FirstRunControls(props: {
               />
             ) : null}
           </RuntimeCard>
-        ) : null}
-
-        {props.draft.runtime === "cloud" && !props.cloudOnly ? (
-          <div
-            className={`flex items-center gap-2 rounded-sm border px-4 py-2 text-sm ${GLASS_PANEL}`}
-          >
-            <Checkbox
-              aria-label={t("firstrunshell.keepEmbeddingsLocal", {
-                defaultValue: "Keep embeddings local",
-              })}
-              checked={props.draft.useLocalEmbeddings}
-              onCheckedChange={(checked) =>
-                props.updateDraft("useLocalEmbeddings", checked === true)
-              }
-            />
-            <span>
-              {t("firstrunshell.keepEmbeddingsLocal", {
-                defaultValue: "Keep embeddings local",
-              })}
-            </span>
-          </div>
         ) : null}
 
         {props.cloudOnly ? null : (

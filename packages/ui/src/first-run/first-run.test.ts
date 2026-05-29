@@ -26,7 +26,6 @@ const fallbackDraft: FirstRunProfileDraft = {
   localInference: "all-local",
   remoteApiBase: "",
   remoteToken: "",
-  useLocalEmbeddings: false,
 };
 
 beforeEach(() => {
@@ -101,7 +100,6 @@ describe("first-run flow", () => {
       localInference: "all-local",
       remoteApiBase: "https://agent.example.com",
       remoteToken: "token",
-      useLocalEmbeddings: true,
     };
 
     savePersistedFirstRunState({ step: "remote", draft });
@@ -123,7 +121,6 @@ describe("first-run flow", () => {
         localInference: "all-local",
         remoteApiBase: "https://agent.example.com",
         remoteToken: "secret",
-        useLocalEmbeddings: true,
       },
     });
 
@@ -135,7 +132,6 @@ describe("first-run flow", () => {
         localInference: "all-local",
         remoteApiBase: "",
         remoteToken: "",
-        useLocalEmbeddings: false,
       },
     });
   });
@@ -149,7 +145,6 @@ describe("first-run flow", () => {
         localInference: "all-local",
         remoteApiBase: "",
         remoteToken: "",
-        useLocalEmbeddings: false,
       },
     });
 
@@ -176,7 +171,6 @@ describe("first-run flow", () => {
         localInference: "cloud-inference",
         remoteApiBase: "",
         remoteToken: "",
-        useLocalEmbeddings: false,
       },
     });
 
@@ -194,7 +188,6 @@ describe("first-run flow", () => {
         localInference: "all-local",
         remoteApiBase: "",
         remoteToken: "",
-        useLocalEmbeddings: false,
       },
     });
     expect(plan.payload).toMatchObject({ name: DEFAULT_AGENT_NAME });
@@ -223,7 +216,6 @@ describe("first-run flow", () => {
         localInference: "all-local",
         remoteApiBase: "https://agent.example.com",
         remoteToken: "token",
-        useLocalEmbeddings: false,
       },
     });
 

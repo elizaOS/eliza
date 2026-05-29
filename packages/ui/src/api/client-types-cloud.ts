@@ -984,6 +984,39 @@ export interface AgentPreflightResult {
   };
 }
 
+/** Token/cost usage rolled up per provider+model. Mirrors the orchestrator
+ * route's `TaskUsageSummary`. `state` lets the UI render measured / estimated /
+ * unavailable distinctly instead of a misleading confident `0`. */
+export interface CodingAgentTaskUsageProvider {
+  provider: string;
+  model?: string;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  state: "measured" | "estimated" | "unavailable";
+}
+
+export interface CodingAgentTaskUsageSummary {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  state: "measured" | "estimated" | "unavailable";
+  byProvider: CodingAgentTaskUsageProvider[];
+}
+
+/** Provider/model/subscription policy applied to a task's sub-agents. */
+export interface CodingAgentTaskProviderPolicy {
+  preferredFramework?: string;
+  providerSource?: string;
+  model?: string;
+}
+
 export interface CodingAgentTaskThread {
   id: string;
   title: string;
@@ -1000,6 +1033,8 @@ export interface CodingAgentTaskThread {
     | "failed"
     | "archived"
     | "interrupted";
+  priority: "low" | "normal" | "high" | "urgent";
+  paused: boolean;
   originalRequest: string;
   summary?: string;
   sessionCount: number;
@@ -1010,6 +1045,7 @@ export interface CodingAgentTaskThread {
   latestRepo?: string | null;
   latestActivityAt?: number | null;
   decisionCount: number;
+  usage: CodingAgentTaskUsageSummary;
   createdAt: string;
   updatedAt: string;
   closedAt?: string | null;

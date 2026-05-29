@@ -22,7 +22,6 @@ function props(
       localInference: "all-local",
       remoteApiBase: "",
       remoteToken: "",
-      useLocalEmbeddings: true,
     },
     localRuntimeAvailable: true,
     cloudOnly: false,
@@ -127,7 +126,6 @@ describe("FirstRunShell", () => {
     expect(screen.getByTestId("first-run-runtime-cloud")).toBeTruthy();
     expect(screen.queryByTestId("first-run-runtime-local")).toBeNull();
     expect(screen.queryByTestId("first-run-runtime-remote")).toBeNull();
-    expect(screen.queryByLabelText("Keep embeddings local")).toBeNull();
   });
 
   it("does not render the remote form from a stale remote step in cloud-only mode", async () => {
@@ -160,7 +158,6 @@ describe("FirstRunShell", () => {
             localInference: "all-local",
             remoteApiBase: "",
             remoteToken: "",
-            useLocalEmbeddings: false,
           },
         })}
       />,

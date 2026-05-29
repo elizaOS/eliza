@@ -214,10 +214,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               modelSaving={cloudModel.modelSaving}
               modelSaveSuccess={cloudModel.modelSaveSuccess}
               onModelFieldChange={cloudModel.handleModelFieldChange}
-              localEmbeddings={selection.localEmbeddings}
-              onToggleLocalEmbeddings={(v) =>
-                void selection.handleToggleLocalEmbeddings(v)
-              }
             />
           ) : null}
 

@@ -268,7 +268,6 @@ export function useFirstRunController(): FirstRunController {
       localInference: "all-local",
       remoteApiBase: "",
       remoteToken: "",
-      useLocalEmbeddings: false,
     }),
     [cloudOnly, initialRuntimeTarget, firstRunName],
   );

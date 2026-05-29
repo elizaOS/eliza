@@ -16,6 +16,7 @@ import {
   useState,
 } from "react";
 import { client } from "../api";
+import { fetchSuggestedLanguage } from "../api/i18n-locale-client";
 import {
   appNameInterpolationVars,
   type BrandingConfig,
@@ -27,7 +28,11 @@ import {
   normalizeLanguage,
   type UiLanguage,
 } from "../i18n";
-import { loadUiLanguage, saveUiLanguage } from "./persistence";
+import {
+  hasStoredUiLanguage,
+  loadUiLanguage,
+  saveUiLanguage,
+} from "./persistence";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -62,6 +67,10 @@ export function TranslationProvider({
   branding?: Partial<BrandingConfig>;
 }) {
   const [uiLanguage, setUiLanguageRaw] = useState<UiLanguage>(loadUiLanguage);
+  // Captured during the initial render, before the persist effect writes the
+  // (possibly browser-detected) language to storage. Distinguishes a genuine
+  // first visit from a returning/explicit choice.
+  const [hadStoredLanguage] = useState(hasStoredUiLanguage);
   // Bumped after async locale loads complete so consumers re-render with the
   // freshly populated MESSAGES dictionary.
   const [, setLocaleRevision] = useState(0);
@@ -100,6 +109,25 @@ export function TranslationProvider({
     },
     [onLanguageSyncError],
   );
+
+  // First-visit IP-geo fallback: when the browser gave no usable language
+  // hint, ask the server (which can read the CDN geo + Accept-Language headers)
+  // for a better guess. Skipped for returning users and when a browser hint
+  // already resolved a non-English locale.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only; uiLanguage read is the initial value by design
+  useEffect(() => {
+    if (hadStoredLanguage || uiLanguage !== "en") return;
+    let cancelled = false;
+    void fetchSuggestedLanguage().then((suggested) => {
+      if (!cancelled && suggested && suggested !== "en") {
+        setUiLanguage(suggested);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Mount only.
+  }, []);
 
   // Persist + sync to client on change
   useEffect(() => {

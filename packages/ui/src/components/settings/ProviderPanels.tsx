@@ -125,8 +125,6 @@ export interface CloudPanelProps {
   modelSaving: boolean;
   modelSaveSuccess: boolean;
   onModelFieldChange: (key: string, value: unknown) => void;
-  localEmbeddings: boolean;
-  onToggleLocalEmbeddings: (next: boolean) => void;
 }
 
 export function CloudPanel({
@@ -142,8 +140,6 @@ export function CloudPanel({
   modelSaving,
   modelSaveSuccess,
   onModelFieldChange,
-  localEmbeddings,
-  onToggleLocalEmbeddings,
 }: CloudPanelProps) {
   const { t } = useApp();
   const cloudActive = !cloudCallsDisabled && isCloudSelected;
@@ -186,8 +182,6 @@ export function CloudPanel({
         modelSaving={modelSaving}
         modelSaveSuccess={modelSaveSuccess}
         onModelFieldChange={onModelFieldChange}
-        localEmbeddings={localEmbeddings}
-        onToggleLocalEmbeddings={onToggleLocalEmbeddings}
         showCloudControls={cloudActive}
         elizaCloudConnected={elizaCloudConnected}
       />

@@ -306,10 +306,10 @@ describe("scenario PR workflow contract", () => {
       "strict Stage 1 and planner fixtures",
     );
     expect(deterministicScenarioReadme).toContain(
-      "keyless web/JSDOM command path",
+      "browser plugin's keyless web/JSDOM",
     );
     expect(deterministicScenarioReadme).toContain(
-      "repository-backed `ScheduledTask` state transitions",
+      "`SCHEDULED_TASKS` handler and repository-backed",
     );
     expect(deterministicScenarioReadme).toContain(
       "runtime currently removes `UPDATE_ENTITY`",

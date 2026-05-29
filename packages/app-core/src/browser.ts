@@ -51,6 +51,7 @@ export {
   registerAutomationNodeContributor,
 } from "./api/automation-node-contributors";
 export {
+  buildLocalizedTrayMenu,
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
