@@ -3423,13 +3423,18 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
           (task) => !TERMINAL_STATUSES.has(task.status),
         )
       : [];
+    // Durable task threads live behind /api/orchestrator/tasks (served by
+    // OrchestratorTaskService). Fold them in so status reflects persisted task
+    // threads, not just live ACP sessions. Threads degrade to empty if the
+    // orchestrator surface is unavailable — the ACP status above still resolves.
+    const taskThreads = await this.listCodingAgentTaskThreads().catch(() => []);
     return {
       supervisionLevel: "acp",
       taskCount: tasks.length,
       tasks,
       pendingConfirmations: 0,
-      taskThreadCount: 0,
-      taskThreads: [],
+      taskThreadCount: taskThreads.length,
+      taskThreads,
     } satisfies CodingAgentStatus;
   } catch {
     return null;

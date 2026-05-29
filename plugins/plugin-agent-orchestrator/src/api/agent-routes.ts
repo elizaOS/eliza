@@ -273,6 +273,11 @@ export async function handleAgentRoutes(
   }
 
   // GET /api/coding-agents/metrics
+  // Intentionally empty: there is no per-ACP-session metrics source. The real
+  // usage/cost/status rollup lives in OrchestratorTaskService.getStatus()/
+  // getUsage() and is served at GET /api/orchestrator/status and
+  // GET /api/orchestrator/tasks/:id/usage, which the UI consumes. No client
+  // calls this route; it is retained only as a 200-stub for legacy probes.
   if (method === "GET" && pathname === "/api/coding-agents/metrics") {
     if (!ctx.acpService) {
       sendError(res, "ACP service not available", 503);
@@ -355,6 +360,11 @@ export async function handleAgentRoutes(
         return true;
       }
 
+      // No backing source: this route keys off agentType, not a session or
+      // workdir, and CodingWorkspaceService exposes no file-listing method.
+      // Returns an empty manifest by contract. Unconsumed by the current UI; do
+      // not add filesystem traversal here without a real session-scoped workdir
+      // input (and path-escape hardening).
       sendJson(res, {
         agentType,
         memoryFilePath: null,
