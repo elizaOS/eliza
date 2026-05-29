@@ -1,3 +1,4 @@
+import { detectClientLanguage } from "@elizaos/ui/i18n/region";
 import {
   createContext,
   type ReactNode,
@@ -167,12 +168,7 @@ export function resolveInitialLang(): UiLanguage {
   } catch {
     // storage disabled — fall through
   }
-  const navLang =
-    typeof navigator !== "undefined"
-      ? (navigator.languages?.[0] ?? navigator.language)
-      : undefined;
-  if (navLang) return normalizeLanguage(navLang);
-  return DEFAULT_UI_LANGUAGE;
+  return detectClientLanguage() ?? DEFAULT_UI_LANGUAGE;
 }
 
 export interface I18nProviderProps {

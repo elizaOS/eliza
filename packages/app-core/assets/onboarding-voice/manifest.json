@@ -1,8 +1,13 @@
 {
-  "generatedAt": "2026-05-29T10:37:18.989Z",
-  "instruct": "female, young adult, moderate pitch",
+  "generatedAt": "2026-05-29T12:50:06.055Z",
   "lang": "English",
   "seed": "0",
+  "voice": {
+    "mode": "cloned-from-reference",
+    "license": "generic synthetic (not the research-only Eliza 'same' voice)",
+    "instruct": "female, young adult, moderate pitch",
+    "referenceText": "The birch canoe slid on the smooth planks. Glue the sheet to the dark blue background. It is easy to tell the depth of a well. These days a chicken leg is a rare dish. Rice is often served in round bowls."
+  },
   "lines": [
     {
       "id": "runtime",

@@ -84,6 +84,14 @@ const deterministicAppControlNlRoutingScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-app-control-nl-routing.scenario.ts",
 );
+const deterministicBrowserActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-browser-actions.scenario.ts",
+);
+const deterministicLifeOpsScheduledTasksScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-lifeops-scheduled-tasks.scenario.ts",
+);
 const deterministicScenarioReadmePath = resolve(
   import.meta.dirname,
   "../test/scenarios/README.md",
@@ -110,6 +118,14 @@ describe("scenario PR workflow contract", () => {
     );
     const deterministicAppControlNlRoutingScenario = readFileSync(
       deterministicAppControlNlRoutingScenarioPath,
+      "utf8",
+    );
+    const deterministicBrowserActionsScenario = readFileSync(
+      deterministicBrowserActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicLifeOpsScheduledTasksScenario = readFileSync(
+      deterministicLifeOpsScheduledTasksScenarioPath,
       "utf8",
     );
     const deterministicScenarioReadme = readFileSync(
@@ -171,7 +187,7 @@ describe("scenario PR workflow contract", () => {
     expect(
       scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
     ).toContain(
-      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing",
+      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",
@@ -268,8 +284,32 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicAppControlNlRoutingScenario).toContain(
       "strict natural-language routing hit exact app-control APIs",
     );
+    expect(deterministicBrowserActionsScenario).toContain(
+      "Deterministic browser workspace action catalog",
+    );
+    expect(deterministicBrowserActionsScenario).toContain(
+      "typed by strict browser scenario",
+    );
+    expect(deterministicBrowserActionsScenario).toContain(
+      "BROWSER_SCREENSHOT",
+    );
+    expect(deterministicLifeOpsScheduledTasksScenario).toContain(
+      "Deterministic LifeOps ScheduledTask action execution",
+    );
+    expect(deterministicLifeOpsScheduledTasksScenario).toContain(
+      "SCHEDULED_TASKS action ledger is exact and successful",
+    );
+    expect(deterministicLifeOpsScheduledTasksScenario).toContain(
+      "snoozed until ",
+    );
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "keyless web/JSDOM command path",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "repository-backed `ScheduledTask` state transitions",
     );
     expect(deterministicScenarioReadme).toContain(
       "runtime currently removes `UPDATE_ENTITY`",

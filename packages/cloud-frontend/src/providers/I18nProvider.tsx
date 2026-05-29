@@ -5,6 +5,7 @@ import {
   type UiLanguage,
 } from "@elizaos/ui/i18n/index";
 import { ensureLanguageLoaded } from "@elizaos/ui/i18n/messages";
+import { detectClientLanguage } from "@elizaos/ui/i18n/region";
 import {
   createContext,
   type ReactNode,
@@ -31,7 +32,7 @@ const I18nContext = createContext<I18nContextValue | null>(null);
  * Resolution order:
  *   1. ?lang= URL query (overrides everything; useful for QA / Playwright)
  *   2. localStorage.cloud.lang
- *   3. navigator.languages[0] / navigator.language (browser hint)
+ *   3. browser languages + region subtag (detectClientLanguage)
  *   4. DEFAULT_UI_LANGUAGE
  *
  * Account-level preference from /api/v1/users/me is wired in via
@@ -52,12 +53,7 @@ export function resolveInitialLang(): UiLanguage {
   } catch {
     // SSR or storage disabled — fall through
   }
-  const navLang =
-    typeof navigator !== "undefined"
-      ? (navigator.languages?.[0] ?? navigator.language)
-      : undefined;
-  if (navLang) return normalizeLanguage(navLang);
-  return DEFAULT_UI_LANGUAGE;
+  return detectClientLanguage() ?? DEFAULT_UI_LANGUAGE;
 }
 
 export interface I18nProviderProps {

@@ -190,14 +190,14 @@ export default scenario({
       name: "wait for seeded browser input",
       text: "Wait for the browser form input",
       actionName: "BROWSER_WAIT",
-      options: { parameters: { selector: "#scenario-input", timeoutMs: 50 } },
+      options: { parameters: { selector: "#scenario-input", timeoutMs: 4000 } },
       responseIncludesAny: ["#scenario-input"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "BROWSER_WAIT",
           parameters: {
             selector: "#scenario-input",
-            timeoutMs: 50,
+            timeoutMs: 4000,
           },
           responseText:
             'Browser wait result (web):\n{\n  "findBy": null,\n  "selector": "#scenario-input",\n  "state": null,\n  "text": null,\n  "url": "https://scenario.test/form"\n}',

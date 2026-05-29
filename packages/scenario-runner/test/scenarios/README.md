@@ -15,6 +15,12 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
   routing with strict Stage 1 and planner fixtures, proving the real message
   runtime selects APP/VIEWS and then executes the real handlers without a live
   provider key.
+- `deterministic-browser-actions` covers the browser plugin's keyless web/JSDOM
+  command path through promoted BROWSER subactions: get, wait, type, click,
+  screenshot, open, list tabs, and close.
+- `deterministic-lifeops-scheduled-tasks` covers the real LifeOps
+  `SCHEDULED_TASKS` handler and repository-backed `ScheduledTask` state
+  transitions for create, list, get, snooze, complete, and history.
 
 The direct action scenarios assert handler parameters, `ActionResult` fields,
 and exact loopback request/response ledgers. The natural-language scenario
@@ -34,10 +40,13 @@ requires a real provider key for live natural-language planner runs.
 
 ## Residual Gaps
 
-- Cross-plugin LifeOps/Gmail/calendar action flows remain live or mock-ledger
-  coverage outside this PR catalog. They should not be promoted to zero-key
-  deterministic PR scenarios until their action names and structured payloads
-  are supplied by the strict registry.
+- Cross-plugin LifeOps/Gmail/calendar action flows beyond `SCHEDULED_TASKS`
+  remain live or mock-ledger coverage outside this PR catalog. They should not
+  be promoted to zero-key deterministic PR scenarios until their action names
+  and structured payloads are supplied by the strict registry.
+- Browser bridge, desktop Chromium, and autofill-login branches remain outside
+  the zero-key browser scenario because they require a real browser session,
+  paired companion, or credential vault state.
 - The scenario runtime currently removes `UPDATE_ENTITY` from
   `runtime.actions`, so entity-update realism is intentionally lower than a
   production runtime until action-selection ambiguity is resolved.

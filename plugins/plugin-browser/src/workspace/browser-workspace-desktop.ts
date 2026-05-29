@@ -778,7 +778,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
       const deadline = Date.now() + (Number(command.timeoutMs) || 4000);
       const check = () => {
         try {
-          if (command.selector && findTarget()) {
+          if (command.selector) {
             const found = findTarget();
             const visible =
               command.state === "hidden"
