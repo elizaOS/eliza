@@ -97,10 +97,9 @@ describe("AcpService.findResumableSessionByLabel", () => {
   }
 
   async function writeStateFile(root: string, acpxSessionId: string) {
-    await writeFile(
-      join(root, "sessions", `${acpxSessionId}.stream.ndjson`),
-      "",
-    );
+    // The resume probe reads the real `<acpxSessionId>.json` artifact (the
+    // never-written `.stream.ndjson` was the state-lost false-positive bug).
+    await writeFile(join(root, "sessions", `${acpxSessionId}.json`), "{}");
   }
 
   function pointStateRootAt(service: AcpService, root: string) {
@@ -228,10 +227,9 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
     await fn(root);
   }
   async function writeStateFile(root: string, acpxSessionId: string) {
-    await writeFile(
-      join(root, "sessions", `${acpxSessionId}.stream.ndjson`),
-      "",
-    );
+    // The resume probe reads the real `<acpxSessionId>.json` artifact (the
+    // never-written `.stream.ndjson` was the state-lost false-positive bug).
+    await writeFile(join(root, "sessions", `${acpxSessionId}.json`), "{}");
   }
   function pointStateRootAt(service: AcpService, root: string) {
     Object.defineProperty(service, "acpxStateRoot", {

@@ -11,6 +11,11 @@ import type {
 import { Service } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
+import {
+  captureChangeSet,
+  summarizeChangeSet,
+  type WorkspaceChangeSet,
+} from "./workspace-diff.js";
 
 // IAgentRuntime extension: some runtimes expose sendMessageToTarget for
 // connector-aware reply routing. This is not part of the core interface.
@@ -24,6 +29,7 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 const DEFAULT_ROUND_TRIP_CAP = 32;
+const DEFAULT_STATE_LOST_RESPAWN_CAP = 3;
 const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
 const AGENT_COORDINATION = "AGENT_COORDINATION";
 const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
@@ -315,6 +321,14 @@ export class SubAgentRouter extends Service {
   private readonly roundTripCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
+  // Backstop for the cross-session "state lost -> spawn a fresh sub-agent"
+  // respawn cascade. Each respawn is a NEW session, so roundTripCounts (keyed
+  // by sessionId) never catches it. Count session_state_lost respawns per
+  // STABLE origin lineage (taskRoomId+agentType) and stop re-injecting the
+  // event past the cap. Reset on the first task_complete for that lineage so
+  // a genuinely-progressing task is never starved.
+  private readonly stateLostRespawnCounts = new Map<string, number>();
+  private readonly stateLostCapNotified = new Set<string>();
   // Maps completion lineage key → the FIRST session id that posted a
   // task_complete for it. When a later task_complete arrives for the
   // same lineage from a DIFFERENT session, we absorb it: that's a
@@ -353,6 +367,7 @@ export class SubAgentRouter extends Service {
   }
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
+  private stateLostRespawnCap = DEFAULT_STATE_LOST_RESPAWN_CAP;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
   private stopped = false;
 
@@ -381,6 +396,11 @@ export class SubAgentRouter extends Service {
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
     const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
     if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
+    const slCapRaw = readSetting(this.runtime, "ACPX_STATE_LOST_RESPAWN_CAP");
+    const slParsed = slCapRaw ? Number.parseInt(slCapRaw, 10) : NaN;
+    if (Number.isFinite(slParsed) && slParsed > 0) {
+      this.stateLostRespawnCap = slParsed;
+    }
     // Service registration runs in parallel — when router.start() executes,
     // AcpService may not yet be registered with the runtime, so getService
     // returns null. Static `dependencies` is not enough to order startup.
@@ -449,6 +469,8 @@ export class SubAgentRouter extends Service {
     this.capExceededSessions.clear();
     this.verifyRetryHandedOffSessions.clear();
     this.completionFirstPostedSession.clear();
+    this.stateLostRespawnCounts.clear();
+    this.stateLostCapNotified.clear();
   }
 
   private async handleEvent(
@@ -499,6 +521,51 @@ export class SubAgentRouter extends Service {
         },
       );
       return;
+    }
+
+    // A successful task_complete means this origin task is making progress —
+    // reset its state_lost respawn counter so a later genuine restart is not
+    // pre-capped by an earlier transient one.
+    if (event === "task_complete") {
+      const lk = respawnLineageKey(session, origin);
+      this.stateLostRespawnCounts.delete(lk);
+      this.stateLostCapNotified.delete(lk);
+    }
+
+    // Backstop for the cross-session state_lost respawn cascade. Each respawn
+    // is a NEW session, so the per-session roundTripCap below never fires.
+    // Count state_lost events per stable origin lineage; once past the cap,
+    // stop re-injecting the event into the planner (suppress the synthetic
+    // inbound) so the parent is no longer prompted to spawn yet another one.
+    if (
+      event === "error" &&
+      pickPayloadString(data, "failureKind") === "session_state_lost"
+    ) {
+      const lineageKey = respawnLineageKey(session, origin);
+      const respawnCount =
+        (this.stateLostRespawnCounts.get(lineageKey) ?? 0) + 1;
+      this.stateLostRespawnCounts.set(lineageKey, respawnCount);
+      while (this.stateLostRespawnCounts.size > 1024) {
+        const oldest = this.stateLostRespawnCounts.keys().next().value;
+        if (oldest === undefined) break;
+        this.stateLostRespawnCounts.delete(oldest);
+      }
+      if (respawnCount > this.stateLostRespawnCap) {
+        if (!this.stateLostCapNotified.has(lineageKey)) {
+          this.stateLostCapNotified.add(lineageKey);
+          this.log(
+            "warn",
+            "state_lost respawn cap reached; suppressing further respawn injections for this origin lineage",
+            {
+              sessionId,
+              count: respawnCount,
+              cap: this.stateLostRespawnCap,
+            },
+          );
+        }
+        await acp.stopSession(sessionId).catch(() => {});
+        return;
+      }
     }
 
     const nextCount = (this.roundTripCounts.get(sessionId) ?? 0) + 1;
@@ -561,6 +628,41 @@ export class SubAgentRouter extends Service {
           error: err instanceof Error ? err.message : String(err),
         });
       });
+    // Capture the real git change set the sub-agent produced, scoped to the
+    // baseline recorded at spawn. This is ground truth — it replaces the
+    // model's raw step transcript in the completion narration (which leaked
+    // verbatim to the user and read as unfinished work to the planner) and
+    // is persisted so "what did you change / show me the diff" can be
+    // answered from the actual change set instead of a confabulated edit.
+    let changeSet: WorkspaceChangeSet | undefined;
+    if (event === "task_complete" && this.acp) {
+      try {
+        const meta = session.metadata as Record<string, unknown> | undefined;
+        const baseline = pickPlainString(meta?.codingBaselineSha);
+        const baselineDirty = Array.isArray(meta?.codingBaselineDirty)
+          ? (meta.codingBaselineDirty as unknown[]).map(String)
+          : [];
+        changeSet = await captureChangeSet(
+          session.workdir,
+          baseline,
+          this.acp.getChangedPaths(sessionId),
+          baselineDirty,
+        );
+        // Persist only a real change set. A no-op completion stores nothing,
+        // so the provider — which selects the most-recently-completed session
+        // and reads ITS change set — can't bleed an older task's diff.
+        if (changeSet) {
+          await this.acp.updateSessionMetadata(sessionId, {
+            lastChangeSet: changeSet,
+          });
+        }
+      } catch (err) {
+        this.log("debug", "change-set capture failed", {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     // Normalize URLs in the sub-agent's narration before anything else
     // reads it. Weak coding models (gpt-oss-class) emit Unicode look-alike
     // dashes (non-breaking hyphen U+2011, en/em dashes) inside URLs, so the
@@ -569,7 +671,7 @@ export class SubAgentRouter extends Service {
     const baseText = normalizeUrlsInText(
       capExceeded
         ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-        : composeNarration(event, origin.label, session, data),
+        : composeNarration(event, origin.label, session, data, changeSet),
     );
     // Fact-check any URLs the sub-agent claimed. Weak coding models
     // routinely report "the app is live at <url>" without writing the
@@ -1120,6 +1222,17 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
   };
 }
 
+// Stable across respawns: a new session is spawned each cascade iteration
+// (new sessionId, new synthetic-inbound messageId), but the origin task's
+// room and agent type stay constant. Keyed on those so the respawn cap
+// actually accumulates instead of resetting every loop.
+function respawnLineageKey(session: SessionInfo, origin: OriginInfo): string {
+  return JSON.stringify({
+    taskRoomId: origin.taskRoomId,
+    agentType: session.agentType,
+  });
+}
+
 function completionLineageKey(
   session: SessionInfo,
   origin: OriginInfo,
@@ -1450,11 +1563,25 @@ function pickPayloadString(data: unknown, key: string): string | undefined {
   return v;
 }
 
+function stripToolTranscript(text: string): string {
+  // Remove the orchestrator's OWN captured tool-output envelope blocks
+  // ("[tool output: <title>]\n<output>\n[/tool output]", emitted by
+  // captureTerminalToolOutput in acp-service). These are our structured
+  // markers, not model prose, so dropping them keeps raw tool results from
+  // leaking into the user-facing completion narration — distinct from
+  // matching semantic LLM output, which we do not do.
+  return text
+    .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function composeNarration(
   event: SessionEventName,
   label: string,
   session: SessionInfo,
   data: unknown,
+  changeSet?: WorkspaceChangeSet,
 ): string {
   const header = `[sub-agent: ${label} (${session.agentType}) — ${event}]`;
   if (event === QUESTION_FOR_TASK_CREATOR) {
@@ -1486,10 +1613,46 @@ function composeNarration(
     return `${header}\n${stripRoutingKindBanner(message)}`;
   }
   const response =
-    pickPayloadString(data, "response") ??
-    pickPayloadString(data, "finalText") ??
-    "sub-agent reports task complete (no captured output).";
-  return `${header}\n${stripRoutingKindBanner(response)}`;
+    pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
+  if (changeSet) {
+    // Build the completion narration from the real git change set, not the
+    // sub-agent's raw step transcript. For weak coding models that transcript
+    // is a dump of tool plans + tool outputs that (a) leaked verbatim to the
+    // user and (b) read as unfinished work to the planner, driving respawns.
+    // Preserve any deployed URL the sub-agent claimed so the downstream
+    // reachability verification still runs.
+    const urls = collectVerifiableUrlCandidates(response ?? "");
+    const lines = [
+      summarizeChangeSet(changeSet),
+      changeSet.diffStat,
+      ...urls,
+    ].filter((line) => typeof line === "string" && line.trim().length > 0);
+    return `${header}\n${lines.join("\n")}`;
+  }
+  // Genuinely no captured output — keep the explicit note.
+  if (response === undefined) {
+    return `${header}\nsub-agent reports task complete (no captured output).`;
+  }
+  // A verification-retry attempt (re-dispatched by retryIncompleteBuild) that
+  // produced no change set: never narrate its raw step prose. On weak coding
+  // models that prose is tool-loop reasoning ("I need to call read properly.
+  // Seems stuck. Let's retry.") that leaks verbatim to the user and reads as
+  // unfinished work to the planner. Surface only the public URL(s) it claimed
+  // (loopback dropped, verified downstream); a genuine failure is covered by
+  // the separate build-incomplete report.
+  const retryCount = (session.metadata as Record<string, unknown> | undefined)
+    ?.buildVerifyRetryCount;
+  if (typeof retryCount === "number" && retryCount > 0) {
+    const urls = collectVerifiableUrlCandidates(response).filter(
+      (url) => !isLoopbackUrl(url),
+    );
+    return urls.length > 0 ? `${header}\n${urls.join("\n")}` : header;
+  }
+  // Non-retry completion: keep the (transcript-stripped, banner-stripped) prose
+  // so legitimate results ("PR opened: …", a question) still reach the user.
+  const cleaned = stripToolTranscript(response);
+  if (!cleaned) return header;
+  return `${header}\n${stripRoutingKindBanner(cleaned)}`;
 }
 
 function stripRoutingKindBanner(text: string): string {
