@@ -5229,14 +5229,22 @@ export async function runV5MessageRuntimeStage1(args: {
 			// emits it inline with no extra model call. `generateDirectReplyOnce`
 			// runs when Stage-1 produced no usable reply text or a known
 			// low-quality scaffold/fragment pattern from strict JSON generation.
-			const reply = shouldRegenerateStage1ReplyText(route.reply)
-				? await generateDirectReplyOnce({
-						runtime: args.runtime,
-						message: args.message,
-						state: args.state,
-						messageHandler,
-					})
-				: route.reply;
+			let reply = route.reply;
+			if (shouldRegenerateStage1ReplyText(route.reply)) {
+				const regenerated = await generateDirectReplyOnce({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					messageHandler,
+				});
+				// Regeneration is an enhancement (terse fragment -> fuller reply).
+				// If it yields nothing usable, keep the original Stage-1 reply so a
+				// valid-but-terse answer (e.g. "144" to a math question) is never
+				// dropped to an empty message.
+				if (typeof regenerated === "string" && regenerated.trim().length > 0) {
+					reply = regenerated;
+				}
+			}
 			return {
 				kind: "direct_reply",
 				messageHandler,
