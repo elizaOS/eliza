@@ -66,8 +66,7 @@ const ADMIN_SECTIONS = [
     titleKey: "cloud.myAgents.sectionAppDevices",
     defaultTitle: "App devices",
     descriptionKey: "cloud.myAgents.sectionAppDevicesDesc",
-    defaultDescription:
-      "Manage connected apps and device-facing integrations.",
+    defaultDescription: "Manage connected apps and device-facing integrations.",
     to: "/dashboard/apps",
     icon: MonitorSmartphone,
   },
@@ -202,7 +201,9 @@ function AgentConsoleOverview({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-3">
                   <span className="text-sm font-medium text-white">
-                    {t(section.titleKey, { defaultValue: section.defaultTitle })}
+                    {t(section.titleKey, {
+                      defaultValue: section.defaultTitle,
+                    })}
                   </span>
                   <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-white" />
                 </span>

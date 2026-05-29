@@ -6,6 +6,7 @@ import type {
   ModelAssignments,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTranslation } from "../../state/TranslationContext";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
 interface SlotAssignmentsProps {
@@ -26,6 +27,7 @@ export function SlotAssignments({
   onChange,
 }: SlotAssignmentsProps) {
   useRenderGuard("SlotAssignments");
+  const { t } = useTranslation();
   const requestSeqRef = useRef(new Map<AgentModelSlot, number>());
   const [busySlots, setBusySlots] = useState<Set<AgentModelSlot>>(
     () => new Set(),
@@ -68,7 +70,10 @@ export function SlotAssignments({
   if (installed.length === 0) {
     return (
       <div className="rounded-sm border border-dashed border-border p-4 text-sm text-muted-foreground">
-        Download or scan at least one model to use local inference.
+        {t("slotassignments.empty", {
+          defaultValue:
+            "Download or scan at least one model to use local inference.",
+        })}
       </div>
     );
   }
@@ -76,12 +81,15 @@ export function SlotAssignments({
   return (
     <section className="flex flex-col gap-3">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Local model assignments
+        {t("slotassignments.title", {
+          defaultValue: "Local model assignments",
+        })}
       </h3>
       <p className="text-xs text-muted-foreground">
-        Eliza defaults both text routes to the largest installed local model so
-        only one model has to stay in memory. Override a slot only when you
-        explicitly want a different local model.
+        {t("slotassignments.description", {
+          defaultValue:
+            "Eliza defaults both text routes to the largest installed local model so only one model has to stay in memory. Override a slot only when you explicitly want a different local model.",
+        })}
       </p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {LOCAL_INFERENCE_SLOT_DESCRIPTORS.map(
@@ -104,12 +112,17 @@ export function SlotAssignments({
                   }
                   className="mt-1 rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm"
                 >
-                  <option value="">Auto</option>
+                  <option value="">
+                    {t("slotassignments.auto", { defaultValue: "Auto" })}
+                  </option>
                   {installed.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.displayName}
                       {m.source === "external-scan"
-                        ? ` · via ${m.externalOrigin}`
+                        ? t("slotassignments.viaOrigin", {
+                            origin: m.externalOrigin,
+                            defaultValue: " · via {{origin}}",
+                          })
                         : ""}
                     </option>
                   ))}

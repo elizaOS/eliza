@@ -1,6 +1,12 @@
 import { Loader2 } from "lucide-react";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
 import { useTrainingBudget } from "./hooks/useTrainingApi";
 import type { TrainingBudget } from "./types";
+
+type TranslateFn = TranslationContextValue["t"];
 
 interface BudgetPanelProps {
   jobId: string;
@@ -10,7 +16,13 @@ function formatUsd(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-function BudgetGauge({ budget }: { budget: TrainingBudget }) {
+function BudgetGauge({
+  budget,
+  t,
+}: {
+  budget: TrainingBudget;
+  t: TranslateFn;
+}) {
   // Compute the bar fill percentage as a fraction of the hard cap (1.5×
   // soft). When no cap is configured we anchor against $50 just so the
   // bar has a sensible visible domain — the gauge is informational only
@@ -40,10 +52,20 @@ function BudgetGauge({ budget }: { budget: TrainingBudget }) {
       <div className="flex justify-between text-[10px] text-muted">
         <span>{formatUsd(0)}</span>
         {budget.soft_cap_usd !== null && (
-          <span>soft {formatUsd(budget.soft_cap_usd)}</span>
+          <span>
+            {t("budgetpanel.softCap", {
+              amount: formatUsd(budget.soft_cap_usd),
+              defaultValue: "soft {{amount}}",
+            })}
+          </span>
         )}
         {budget.hard_cap_usd !== null && (
-          <span>hard {formatUsd(budget.hard_cap_usd)}</span>
+          <span>
+            {t("budgetpanel.hardCap", {
+              amount: formatUsd(budget.hard_cap_usd),
+              defaultValue: "hard {{amount}}",
+            })}
+          </span>
         )}
       </div>
     </div>
@@ -59,13 +81,18 @@ function BudgetGauge({ budget }: { budget: TrainingBudget }) {
  * does not call any destructive endpoint.
  */
 export function BudgetPanel({ jobId }: BudgetPanelProps) {
+  const { t } = useTranslation();
   const { data: budget, loading, error } = useTrainingBudget(jobId);
 
   if (loading && !budget) {
     return (
       <div className="border border-border rounded-sm p-3 bg-card flex items-center gap-2">
         <Loader2 className="w-3 h-3 animate-spin" />
-        <span className="text-xs text-muted">Loading running cost...</span>
+        <span className="text-xs text-muted">
+          {t("budgetpanel.loading", {
+            defaultValue: "Loading running cost...",
+          })}
+        </span>
       </div>
     );
   }
@@ -73,7 +100,12 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
   if (error) {
     return (
       <div className="border border-border rounded-sm p-3 bg-red-500/10">
-        <div className="text-xs text-red-500">Budget unavailable: {error}</div>
+        <div className="text-xs text-red-500">
+          {t("budgetpanel.unavailable", {
+            error,
+            defaultValue: "Budget unavailable: {{error}}",
+          })}
+        </div>
       </div>
     );
   }
@@ -82,8 +114,10 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
     return (
       <div className="border border-border rounded-sm p-3 bg-card">
         <div className="text-xs text-muted">
-          No Vast instance provisioned yet — running cost will appear once the
-          instance is up.
+          {t("budgetpanel.noInstance", {
+            defaultValue:
+              "No Vast instance provisioned yet — running cost will appear once the instance is up.",
+          })}
         </div>
       </div>
     );
@@ -100,53 +134,71 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs text-muted uppercase tracking-wide">
-            Running Cost
+            {t("budgetpanel.runningCost", { defaultValue: "Running Cost" })}
           </div>
           <div className="text-lg font-semibold text-txt-strong font-mono">
             {formatUsd(budget.total_so_far_usd)}
           </div>
           <div className="text-[11px] text-muted">
-            {formatUsd(budget.dph_total)}/hr × {budget.uptime_pretty}
+            {t("budgetpanel.rateUptime", {
+              rate: formatUsd(budget.dph_total),
+              uptime: budget.uptime_pretty,
+              defaultValue: "{{rate}}/hr × {{uptime}}",
+            })}
           </div>
         </div>
         <div className="text-right">
           <div className="text-xs text-muted uppercase tracking-wide">
-            Pipeline
+            {t("budgetpanel.pipeline", { defaultValue: "Pipeline" })}
           </div>
           <div className="text-xs font-mono text-txt">{budget.pipeline}</div>
           <div className="text-[11px] text-muted">{budget.gpu_sku}</div>
         </div>
       </div>
 
-      <BudgetGauge budget={budget} />
+      <BudgetGauge budget={budget} t={t} />
 
       <div className="grid grid-cols-2 gap-2 text-[11px]">
         <div>
-          <div className="text-muted">Soft cap</div>
+          <div className="text-muted">
+            {t("budgetpanel.softCapLabel", { defaultValue: "Soft cap" })}
+          </div>
           <div className="text-txt font-mono">
             {budget.soft_cap_usd !== null
               ? formatUsd(budget.soft_cap_usd)
-              : "unset"}
+              : t("budgetpanel.unset", { defaultValue: "unset" })}
           </div>
         </div>
         <div>
-          <div className="text-muted">Hard cap (auto-teardown)</div>
+          <div className="text-muted">
+            {t("budgetpanel.hardCapLabel", {
+              defaultValue: "Hard cap (auto-teardown)",
+            })}
+          </div>
           <div className="text-txt font-mono">
             {budget.hard_cap_usd !== null
               ? formatUsd(budget.hard_cap_usd)
-              : "unset"}
+              : t("budgetpanel.unset", { defaultValue: "unset" })}
           </div>
         </div>
       </div>
 
       <div className={`text-[11px] font-semibold ${stateClass}`}>
         {budget.over_hard
-          ? "OVER HARD CAP — auto-teardown initiated"
+          ? t("budgetpanel.overHard", {
+              defaultValue: "OVER HARD CAP — auto-teardown initiated",
+            })
           : budget.over_soft
-            ? "OVER SOFT CAP — warning"
+            ? t("budgetpanel.overSoft", {
+                defaultValue: "OVER SOFT CAP — warning",
+              })
             : budget.soft_cap_usd !== null
-              ? "Within budget"
-              : "Enforcement disabled (set ELIZA_VAST_MAX_USD)"}
+              ? t("budgetpanel.withinBudget", {
+                  defaultValue: "Within budget",
+                })
+              : t("budgetpanel.enforcementDisabled", {
+                  defaultValue: "Enforcement disabled (set ELIZA_VAST_MAX_USD)",
+                })}
       </div>
     </div>
   );

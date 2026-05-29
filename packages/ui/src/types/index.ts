@@ -1,1 +1,1 @@
-export type * from "@elizaos/shared/types/index";
+export * from "@elizaos/shared/types/index";

@@ -72,12 +72,18 @@ export function LocalProviderPanel({
   routingModeSaving: boolean;
   onSelectLocalOnly: () => void;
 }) {
+  const { t } = useApp();
   return (
     <div className="min-w-0">
       <ProviderPanelHeader
         icon={Cpu}
-        title="Local provider"
-        description="Manage local downloads, active models, routing, and device pairing in one place."
+        title={t("providerpanels.localProvider", {
+          defaultValue: "Local provider",
+        })}
+        description={t("providerpanels.localProviderDesc", {
+          defaultValue:
+            "Manage local downloads, active models, routing, and device pairing in one place.",
+        })}
       >
         <Button
           type="button"
@@ -85,12 +91,18 @@ export function LocalProviderPanel({
           className="h-8 rounded-sm px-2.5 text-xs"
           disabled={routingModeSaving}
           aria-label={
-            cloudCallsDisabled ? "Local only active" : "Use local only"
+            cloudCallsDisabled
+              ? t("providerpanels.localOnlyActive", {
+                  defaultValue: "Local only active",
+                })
+              : t("providerpanels.useLocalOnly", {
+                  defaultValue: "Use local only",
+                })
           }
           onClick={onSelectLocalOnly}
         >
           <ShieldCheck className="h-4 w-4" aria-hidden />
-          Local only
+          {t("providerpanels.localOnly", { defaultValue: "Local only" })}
         </Button>
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
@@ -133,24 +145,36 @@ export function CloudPanel({
   localEmbeddings,
   onToggleLocalEmbeddings,
 }: CloudPanelProps) {
+  const { t } = useApp();
   const cloudActive = !cloudCallsDisabled && isCloudSelected;
   return (
     <div className="min-w-0">
       <ProviderPanelHeader
         icon={Cloud}
         title="Eliza Cloud"
-        description="Use managed models, cloud routing, and account credits."
+        description={t("providerpanels.cloudDesc", {
+          defaultValue:
+            "Use managed models, cloud routing, and account credits.",
+        })}
       >
         <Button
           type="button"
           variant={cloudActive ? "default" : "outline"}
           className="h-8 rounded-sm px-2.5 text-xs"
           disabled={routingModeSaving}
-          aria-label={cloudActive ? "Cloud active" : "Use Eliza Cloud"}
+          aria-label={
+            cloudActive
+              ? t("providerpanels.cloudActive", {
+                  defaultValue: "Cloud active",
+                })
+              : t("providerpanels.useCloud", {
+                  defaultValue: "Use Eliza Cloud",
+                })
+          }
           onClick={onSelectCloud}
         >
           <Cloud className="h-4 w-4" aria-hidden />
-          Cloud
+          {t("providerpanels.cloud", { defaultValue: "Cloud" })}
         </Button>
       </ProviderPanelHeader>
       <CloudDashboard />
@@ -222,14 +246,19 @@ export function SubscriptionPanel({
             className="h-8 rounded-sm px-2.5 text-xs"
             onClick={() => void onSelectSubscription(selection.id)}
           >
-            Use subscription
+            {t("providerpanels.useSubscription", {
+              defaultValue: "Use subscription",
+            })}
           </Button>
         ) : null}
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
         {cloudCallsDisabled ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
-            Local-only active. Remote subscription routing is paused.
+            {t("providerpanels.localOnlySubscriptionPaused", {
+              defaultValue:
+                "Local-only active. Remote subscription routing is paused.",
+            })}
           </div>
         ) : null}
         <SubscriptionStatus
@@ -279,6 +308,7 @@ export function ApiKeyPanel({
   handlePluginConfigSave,
   loadPlugins,
 }: ApiKeyPanelProps) {
+  const { t } = useApp();
   const showUseButton =
     cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
   return (
@@ -286,7 +316,9 @@ export function ApiKeyPanel({
       <ProviderPanelHeader
         icon={KeyRound}
         title={panelLabel}
-        description="Use your own provider API key and model routing."
+        description={t("providerpanels.apiKeyDesc", {
+          defaultValue: "Use your own provider API key and model routing.",
+        })}
       >
         {showUseButton ? (
           <Button
@@ -295,14 +327,16 @@ export function ApiKeyPanel({
             className="h-8 rounded-sm px-2.5 text-xs"
             onClick={() => onSwitchProvider(visibleProviderPanelId)}
           >
-            Use provider
+            {t("providerpanels.useProvider", { defaultValue: "Use provider" })}
           </Button>
         ) : null}
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
         {cloudCallsDisabled ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
-            Local-only active. Remote API routing is paused.
+            {t("providerpanels.localOnlyApiPaused", {
+              defaultValue: "Local-only active. Remote API routing is paused.",
+            })}
           </div>
         ) : null}
         <ApiKeyConfig

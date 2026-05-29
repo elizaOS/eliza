@@ -12,9 +12,9 @@ import { memo, useMemo, useState } from "react";
 import { CloudVideoBackground } from "../../backgrounds/CloudVideoBackground";
 import { cn } from "../../lib/utils";
 import type { Tab } from "../../navigation";
+import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import { useTranslation } from "../../state/TranslationContext";
-import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { AppIdentityTile } from "../apps/app-identity";
 import {
   getInternalToolApps,

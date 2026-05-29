@@ -16,8 +16,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
-import { useApp } from "../../state/useApp";
 import type { TranslationContextValue } from "../../state/TranslationContext";
+import { useApp } from "../../state/useApp";
 import { openExternalUrl } from "../../utils";
 import { getWidgetComponent } from "../../widgets/registry";
 import type { PluginWidgetDeclaration } from "../../widgets/types";

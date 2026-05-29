@@ -12,6 +12,7 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsMergeCandidate,
 } from "../../../api/client-types-relationships";
+import { useTranslation } from "../../../state/TranslationContext";
 import { formatDateTime } from "../../../utils/format";
 import { PagePanel } from "../../composites/page-panel";
 import { MetaPill } from "../../composites/page-panel/page-panel-header";
@@ -25,6 +26,7 @@ export function RelationshipsCandidateMergesPanel({
   graph: RelationshipsGraphSnapshot;
   onResolved: () => void;
 }) {
+  const { t } = useTranslation();
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Map<string, string>>(new Map());
   const candidates = graph.candidateMerges;
@@ -75,7 +77,13 @@ export function RelationshipsCandidateMergesPanel({
         candidate.id,
         err instanceof Error
           ? err.message
-          : `Failed to ${action} merge proposal.`,
+          : action === "accept"
+            ? t("relationshipsmerges.acceptError", {
+                defaultValue: "Failed to accept merge proposal.",
+              })
+            : t("relationshipsmerges.rejectError", {
+                defaultValue: "Failed to reject merge proposal.",
+              }),
       );
     } finally {
       setPendingState(candidate.id, false);
@@ -86,14 +94,20 @@ export function RelationshipsCandidateMergesPanel({
     <PagePanel
       as="section"
       variant="surface"
-      aria-label="Identity merges"
+      aria-label={t("relationshipsmerges.sectionLabel", {
+        defaultValue: "Identity merges",
+      })}
       className="px-3 py-3"
     >
       <div className="mb-2 flex justify-end">
         <MetaPill
           compact
-          aria-label="Identity merge count"
-          title="Identity merges"
+          aria-label={t("relationshipsmerges.countLabel", {
+            defaultValue: "Identity merge count",
+          })}
+          title={t("relationshipsmerges.sectionLabel", {
+            defaultValue: "Identity merges",
+          })}
         >
           <Fingerprint className="mr-1 h-3 w-3" />
           {candidates.length}
@@ -115,7 +129,9 @@ export function RelationshipsCandidateMergesPanel({
                 <MetaPill compact>
                   <span
                     role="img"
-                    aria-label="Confidence"
+                    aria-label={t("relationshipsmerges.confidence", {
+                      defaultValue: "Confidence",
+                    })}
                     className="inline-flex items-center gap-1"
                   >
                     <Gauge className="h-3 w-3" />
@@ -125,7 +141,9 @@ export function RelationshipsCandidateMergesPanel({
                 <MetaPill compact>
                   <span
                     role="img"
-                    aria-label="Evidence count"
+                    aria-label={t("relationshipsmerges.evidenceCount", {
+                      defaultValue: "Evidence count",
+                    })}
                     className="inline-flex items-center gap-1"
                   >
                     <FileText className="h-3 w-3" />
@@ -135,7 +153,9 @@ export function RelationshipsCandidateMergesPanel({
                 <MetaPill compact>
                   <span
                     role="img"
-                    aria-label="Proposed at"
+                    aria-label={t("relationshipsmerges.proposedAt", {
+                      defaultValue: "Proposed at",
+                    })}
                     className="inline-flex items-center gap-1"
                   >
                     <CalendarClock className="h-3 w-3" />
@@ -170,7 +190,13 @@ export function RelationshipsCandidateMergesPanel({
                   }}
                 >
                   <Check className="h-3 w-3" />
-                  {isPending ? "Working…" : "Accept"}
+                  {isPending
+                    ? t("relationshipsmerges.working", {
+                        defaultValue: "Working…",
+                      })
+                    : t("relationshipsmerges.accept", {
+                        defaultValue: "Accept",
+                      })}
                 </Button>
                 <Button
                   type="button"
@@ -183,7 +209,7 @@ export function RelationshipsCandidateMergesPanel({
                   }}
                 >
                   <X className="h-3 w-3" />
-                  Reject
+                  {t("relationshipsmerges.reject", { defaultValue: "Reject" })}
                 </Button>
               </div>
             </div>

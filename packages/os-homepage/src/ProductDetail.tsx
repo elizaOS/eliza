@@ -40,7 +40,9 @@ function Header() {
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[color:var(--brand-orange)]"
       >
-        {t("homepage_os.common.skipToContent", { defaultValue: "Skip to content" })}
+        {t("homepage_os.common.skipToContent", {
+          defaultValue: "Skip to content",
+        })}
       </a>
       <a
         href="/"

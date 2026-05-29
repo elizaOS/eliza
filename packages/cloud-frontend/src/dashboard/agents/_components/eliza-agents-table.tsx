@@ -409,7 +409,12 @@ export function ElizaAgentsTable({
       if (res.status === 409) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
-          jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
+          jobActionById.current.set(
+            jobId,
+            t("cloud.elizaAgentsTable.agentProvisioning", {
+              defaultValue: "Agent provisioning",
+            }),
+          );
           poller.track(id, jobId);
           toast.info(
             t("cloud.elizaAgentsTable.provisioningInProgress", {
@@ -434,7 +439,12 @@ export function ElizaAgentsTable({
       if (res.status === 202) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
-          jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
+          jobActionById.current.set(
+            jobId,
+            t("cloud.elizaAgentsTable.agentProvisioning", {
+              defaultValue: "Agent provisioning",
+            }),
+          );
           poller.track(id, jobId);
           toast.success(
             t("cloud.elizaAgentsTable.provisioningQueued", {
@@ -488,7 +498,12 @@ export function ElizaAgentsTable({
       const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
 
       if (res.status === 409 && jobId) {
-        jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentSuspend", { defaultValue: "Agent suspend" }));
+        jobActionById.current.set(
+          jobId,
+          t("cloud.elizaAgentsTable.agentSuspend", {
+            defaultValue: "Agent suspend",
+          }),
+        );
         poller.track(id, jobId);
         toast.info(
           t("cloud.elizaAgentsTable.suspendInProgress", {
@@ -514,7 +529,12 @@ export function ElizaAgentsTable({
       // the success toast doesn't lie before the container actually
       // stops).
       if (res.status === 202 && jobId) {
-        jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentSuspend", { defaultValue: "Agent suspend" }));
+        jobActionById.current.set(
+          jobId,
+          t("cloud.elizaAgentsTable.agentSuspend", {
+            defaultValue: "Agent suspend",
+          }),
+        );
         poller.track(id, jobId);
         toast.success(
           t("cloud.elizaAgentsTable.suspendQueued", {
@@ -599,7 +619,12 @@ export function ElizaAgentsTable({
         action={
           <CreateElizaAgentDialog
             onProvisionQueued={(agentId, jobId) => {
-              jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
+              jobActionById.current.set(
+                jobId,
+                t("cloud.elizaAgentsTable.agentProvisioning", {
+                  defaultValue: "Agent provisioning",
+                }),
+              );
               poller.track(agentId, jobId);
             }}
             onCreated={refreshData}
@@ -671,7 +696,12 @@ export function ElizaAgentsTable({
           </Select>
           <CreateElizaAgentDialog
             onProvisionQueued={(agentId, jobId) => {
-              jobActionById.current.set(jobId, t("cloud.elizaAgentsTable.agentProvisioning", { defaultValue: "Agent provisioning" }));
+              jobActionById.current.set(
+                jobId,
+                t("cloud.elizaAgentsTable.agentProvisioning", {
+                  defaultValue: "Agent provisioning",
+                }),
+              );
               poller.track(agentId, jobId);
             }}
             onCreated={refreshData}

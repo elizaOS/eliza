@@ -18,6 +18,7 @@
 
 import { Eye, EyeOff, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -63,6 +64,7 @@ function entryDisplayLabel(meta: VaultEntryMeta): string {
 }
 
 export function WalletKeysSection() {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<VaultEntryMeta[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revealMap, setRevealMap] = useState<Record<string, string>>({});
@@ -89,42 +91,53 @@ export function WalletKeysSection() {
       }
       setEntries(json.entries);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "load failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("walletkeys.loadFailed", { defaultValue: "load failed" }),
+      );
       setEntries([]);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const onReveal = useCallback(async (key: string) => {
-    setRevealLoading((prev) => ({ ...prev, [key]: true }));
-    try {
-      const res = await fetch(
-        `/api/secrets/inventory/${encodeURIComponent(key)}`,
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as RevealPayload;
-      setRevealMap((prev) => ({ ...prev, [key]: json.value }));
-      // Auto-hide after 10s (matches the Vault tab's reveal lifecycle).
-      window.setTimeout(() => {
-        setRevealMap((prev) => {
+  const onReveal = useCallback(
+    async (key: string) => {
+      setRevealLoading((prev) => ({ ...prev, [key]: true }));
+      try {
+        const res = await fetch(
+          `/api/secrets/inventory/${encodeURIComponent(key)}`,
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as RevealPayload;
+        setRevealMap((prev) => ({ ...prev, [key]: json.value }));
+        // Auto-hide after 10s (matches the Vault tab's reveal lifecycle).
+        window.setTimeout(() => {
+          setRevealMap((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+        }, 10_000);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("walletkeys.revealFailed", { defaultValue: "reveal failed" }),
+        );
+      } finally {
+        setRevealLoading((prev) => {
           const next = { ...prev };
           delete next[key];
           return next;
         });
-      }, 10_000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "reveal failed");
-    } finally {
-      setRevealLoading((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-    }
-  }, []);
+      }
+    },
+    [t],
+  );
 
   const onHide = useCallback((key: string) => {
     setRevealMap((prev) => {
@@ -137,7 +150,10 @@ export function WalletKeysSection() {
   const onDelete = useCallback(
     async (entry: VaultEntryMeta) => {
       const ok = window.confirm(
-        `Delete wallet key "${entry.key}"? This cannot be undone.`,
+        t("walletkeys.deleteConfirm", {
+          key: entry.key,
+          defaultValue: 'Delete wallet key "{{key}}"? This cannot be undone.',
+        }),
       );
       if (!ok) return;
       const res = await fetch(
@@ -150,7 +166,7 @@ export function WalletKeysSection() {
       }
       await load();
     },
-    [load],
+    [load, t],
   );
 
   const onAdd = useCallback(
@@ -189,10 +205,14 @@ export function WalletKeysSection() {
     <section data-testid="wallet-keys-section" className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">Wallet keys</p>
+          <p className="text-sm font-medium text-txt">
+            {t("walletkeys.title", { defaultValue: "Wallet keys" })}
+          </p>
           <p className="text-2xs text-muted">
-            Private keys stored in the local vault. Same data the Vault tab
-            shows under "Wallet" — edit either place.
+            {t("walletkeys.description", {
+              defaultValue:
+                'Private keys stored in the local vault. Same data the Vault tab shows under "Wallet" — edit either place.',
+            })}
           </p>
         </div>
         <Button
@@ -203,7 +223,7 @@ export function WalletKeysSection() {
           data-testid="wallet-keys-add-toggle"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          Add wallet key
+          {t("walletkeys.addKey", { defaultValue: "Add wallet key" })}
         </Button>
       </div>
 
@@ -224,12 +244,20 @@ export function WalletKeysSection() {
           data-testid="wallet-keys-add-form"
         >
           <p className="text-2xs text-muted">
-            Stored sensitively in the encrypted vault. Use the env-var name
-            (e.g. <code>EVM_PRIVATE_KEY</code>, <code>SOLANA_PRIVATE_KEY</code>)
-            so other surfaces pick it up automatically.
+            {t("walletkeys.addFormLeadIn", {
+              defaultValue:
+                "Stored sensitively in the encrypted vault. Use the env-var name (e.g.",
+            })}{" "}
+            <code>EVM_PRIVATE_KEY</code>, <code>SOLANA_PRIVATE_KEY</code>
+            {") "}
+            {t("walletkeys.addFormTrailing", {
+              defaultValue: "so other surfaces pick it up automatically.",
+            })}
           </p>
           <div>
-            <Label className="text-2xs text-muted">Key name</Label>
+            <Label className="text-2xs text-muted">
+              {t("walletkeys.keyName", { defaultValue: "Key name" })}
+            </Label>
             <Input
               value={addKey}
               onChange={(e) => setAddKey(e.target.value)}
@@ -240,7 +268,9 @@ export function WalletKeysSection() {
             />
           </div>
           <div>
-            <Label className="text-2xs text-muted">Private key</Label>
+            <Label className="text-2xs text-muted">
+              {t("walletkeys.privateKey", { defaultValue: "Private key" })}
+            </Label>
             <Input
               type="password"
               value={addValue}
@@ -259,7 +289,7 @@ export function WalletKeysSection() {
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("walletkeys.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               type="submit"
@@ -271,10 +301,10 @@ export function WalletKeysSection() {
               {submitting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  Saving…
+                  {t("walletkeys.saving", { defaultValue: "Saving…" })}
                 </>
               ) : (
-                "Save"
+                t("walletkeys.save", { defaultValue: "Save" })
               )}
             </Button>
           </div>
@@ -283,15 +313,18 @@ export function WalletKeysSection() {
 
       {entries === null ? (
         <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading…
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />{" "}
+          {t("walletkeys.loading", { defaultValue: "Loading…" })}
         </div>
       ) : entries.length === 0 ? (
         <div
           data-testid="wallet-keys-empty"
           className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
-          No wallet keys yet. Add one with the button above, or generate one per
-          agent from the Agents page.
+          {t("walletkeys.empty", {
+            defaultValue:
+              "No wallet keys yet. Add one with the button above, or generate one per agent from the Agents page.",
+          })}
         </div>
       ) : (
         <ul
@@ -314,7 +347,10 @@ export function WalletKeysSection() {
                   <p className="truncate font-mono text-2xs text-muted">
                     {revealed
                       ? address
-                        ? `address: ${address}`
+                        ? t("walletkeys.address", {
+                            address,
+                            defaultValue: "address: {{address}}",
+                          })
                         : maskValue(revealed)
                       : entry.key}
                   </p>
@@ -324,7 +360,15 @@ export function WalletKeysSection() {
                   size="sm"
                   className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-txt"
                   aria-label={
-                    revealed ? `Hide ${entry.key}` : `Reveal ${entry.key}`
+                    revealed
+                      ? t("walletkeys.hide", {
+                          key: entry.key,
+                          defaultValue: "Hide {{key}}",
+                        })
+                      : t("walletkeys.reveal", {
+                          key: entry.key,
+                          defaultValue: "Reveal {{key}}",
+                        })
                   }
                   onClick={() =>
                     revealed ? onHide(entry.key) : void onReveal(entry.key)
@@ -344,7 +388,10 @@ export function WalletKeysSection() {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-                  aria-label={`Delete ${entry.key}`}
+                  aria-label={t("walletkeys.delete", {
+                    key: entry.key,
+                    defaultValue: "Delete {{key}}",
+                  })}
                   onClick={() => void onDelete(entry)}
                   data-testid={`wallet-keys-delete-${entry.key}`}
                 >

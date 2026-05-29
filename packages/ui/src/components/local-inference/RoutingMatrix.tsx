@@ -7,36 +7,58 @@ import type {
   RoutingPreferences,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTranslation } from "../../state/TranslationContext";
 import { LOCAL_INFERENCE_SLOT_DESCRIPTORS } from "./slot-metadata";
 
 const DEFAULT_POLICY: RoutingPolicy = "prefer-local";
 
-const POLICIES: Array<{ value: RoutingPolicy; label: string; hint: string }> = [
+const POLICIES: Array<{
+  value: RoutingPolicy;
+  labelKey: string;
+  label: string;
+  hintKey: string;
+  hint: string;
+}> = [
   {
     value: "manual",
+    labelKey: "routingmatrix.policy.manual.label",
     label: "Manual",
+    hintKey: "routingmatrix.policy.manual.hint",
     hint: "Use the preferred provider below.",
   },
   {
     value: "cheapest",
+    labelKey: "routingmatrix.policy.cheapest.label",
     label: "Cheapest",
+    hintKey: "routingmatrix.policy.cheapest.hint",
     hint: "Lowest $/token. Local is free.",
   },
-  { value: "fastest", label: "Fastest", hint: "Lowest measured p50 latency." },
+  {
+    value: "fastest",
+    labelKey: "routingmatrix.policy.fastest.label",
+    label: "Fastest",
+    hintKey: "routingmatrix.policy.fastest.hint",
+    hint: "Lowest measured p50 latency.",
+  },
   {
     value: "prefer-local",
+    labelKey: "routingmatrix.policy.preferLocal.label",
     label: "Prefer local",
+    hintKey: "routingmatrix.policy.preferLocal.hint",
     hint: "Try on-device first, fall through to cloud.",
   },
   {
     value: "round-robin",
+    labelKey: "routingmatrix.policy.roundRobin.label",
     label: "Round robin",
+    hintKey: "routingmatrix.policy.roundRobin.hint",
     hint: "Distribute load across all eligible providers.",
   },
 ];
 
 export function RoutingMatrix() {
   useRenderGuard("RoutingMatrix");
+  const { t } = useTranslation();
   const [registrations, setRegistrations] = useState<PublicRegistration[]>([]);
   const [preferences, setPreferences] = useState<RoutingPreferences>({
     preferredProvider: {},
@@ -72,7 +94,11 @@ export function RoutingMatrix() {
       } catch (err) {
         if (active) {
           setError(
-            err instanceof Error ? err.message : "Failed to load routing",
+            err instanceof Error
+              ? err.message
+              : t("routingmatrix.loadError", {
+                  defaultValue: "Failed to load routing",
+                }),
           );
         }
       }
@@ -83,7 +109,7 @@ export function RoutingMatrix() {
       active = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [t]);
 
   const handlePolicy = useCallback(
     async (slot: AgentModelSlot, policy: RoutingPolicy) => {
@@ -99,7 +125,11 @@ export function RoutingMatrix() {
       } catch (err) {
         if (requestSeqRef.current.get(slot) === requestId) {
           setError(
-            err instanceof Error ? err.message : "Failed to update policy",
+            err instanceof Error
+              ? err.message
+              : t("routingmatrix.policyError", {
+                  defaultValue: "Failed to update policy",
+                }),
           );
         }
       } finally {
@@ -108,7 +138,7 @@ export function RoutingMatrix() {
         }
       }
     },
-    [setSlotBusy],
+    [setSlotBusy, t],
   );
 
   const handlePreferred = useCallback(
@@ -130,7 +160,9 @@ export function RoutingMatrix() {
           setError(
             err instanceof Error
               ? err.message
-              : "Failed to update preferred provider",
+              : t("routingmatrix.updateError", {
+                  defaultValue: "Failed to update preferred provider",
+                }),
           );
         }
       } finally {
@@ -139,14 +171,14 @@ export function RoutingMatrix() {
         }
       }
     },
-    [setSlotBusy],
+    [setSlotBusy, t],
   );
 
   return (
     <section className="flex flex-col gap-3">
       <header>
         <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted">
-          Model routing
+          {t("routingmatrix.title", { defaultValue: "Model routing" })}
         </h3>
       </header>
       {error ? (
@@ -177,15 +209,18 @@ export function RoutingMatrix() {
                   className={`h-2 w-2 rounded-full ${
                     candidates.length > 0 ? "bg-ok" : "bg-muted"
                   }`}
-                  title={`${candidates.length} available provider${
-                    candidates.length === 1 ? "" : "s"
-                  }`}
+                  title={t("routingmatrix.availableProviders", {
+                    count: candidates.length,
+                    defaultValue: "{{count}} available providers",
+                  })}
                   aria-hidden
                 />
               </div>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 <label className="flex flex-col gap-1 text-xs">
-                  <span className="text-muted-foreground">Policy</span>
+                  <span className="text-muted-foreground">
+                    {t("routingmatrix.policyLabel", { defaultValue: "Policy" })}
+                  </span>
                   <select
                     value={policy}
                     disabled={disabled}
@@ -195,16 +230,25 @@ export function RoutingMatrix() {
                     className="rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm"
                   >
                     {POLICIES.map((p) => (
-                      <option key={p.value} value={p.value} title={p.hint}>
-                        {p.label}
+                      <option
+                        key={p.value}
+                        value={p.value}
+                        title={t(p.hintKey, { defaultValue: p.hint })}
+                      >
+                        {t(p.labelKey, { defaultValue: p.label })}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-muted-foreground">
-                    Preferred provider
-                    {policy !== "manual" && " (manual only)"}
+                    {t("routingmatrix.preferredProvider", {
+                      defaultValue: "Preferred provider",
+                    })}
+                    {policy !== "manual" &&
+                      t("routingmatrix.manualOnly", {
+                        defaultValue: " (manual only)",
+                      })}
                   </span>
                   <select
                     value={preferred}
@@ -214,12 +258,17 @@ export function RoutingMatrix() {
                     }
                     className="rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm disabled:opacity-60"
                   >
-                    <option value="">Auto</option>
+                    <option value="">
+                      {t("routingmatrix.auto", { defaultValue: "Auto" })}
+                    </option>
                     {candidates.map((c) => (
                       <option key={c.provider} value={c.provider}>
                         {c.provider}
                         {typeof c.priority === "number"
-                          ? ` (priority ${c.priority})`
+                          ? t("routingmatrix.priority", {
+                              priority: c.priority,
+                              defaultValue: " (priority {{priority}})",
+                            })
                           : ""}
                       </option>
                     ))}
@@ -228,7 +277,10 @@ export function RoutingMatrix() {
               </div>
               {candidates.length === 0 ? (
                 <div className="text-xs text-muted-foreground italic">
-                  No provider has registered a handler for this slot yet.
+                  {t("routingmatrix.noProvider", {
+                    defaultValue:
+                      "No provider has registered a handler for this slot yet.",
+                  })}
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1">

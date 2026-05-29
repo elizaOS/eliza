@@ -79,6 +79,30 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
  * delegates internally based on the actual `req.url`, so several entries
  * resolve to the same dispatcher. */
 const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
+  // Orchestrator durable-task surface
+  { type: "GET", path: "/api/orchestrator/status" },
+  { type: "POST", path: "/api/orchestrator/pause-all" },
+  { type: "POST", path: "/api/orchestrator/resume-all" },
+  { type: "GET", path: "/api/orchestrator/tasks" },
+  { type: "POST", path: "/api/orchestrator/tasks" },
+  { type: "GET", path: "/api/orchestrator/tasks/:taskId" },
+  { type: "PATCH", path: "/api/orchestrator/tasks/:taskId" },
+  { type: "DELETE", path: "/api/orchestrator/tasks/:taskId" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/pause" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/resume" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/archive" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/reopen" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/fork" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/validate" },
+  { type: "GET", path: "/api/orchestrator/tasks/:taskId/messages" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/messages" },
+  { type: "GET", path: "/api/orchestrator/tasks/:taskId/events" },
+  { type: "GET", path: "/api/orchestrator/tasks/:taskId/usage" },
+  { type: "POST", path: "/api/orchestrator/tasks/:taskId/agents" },
+  {
+    type: "POST",
+    path: "/api/orchestrator/tasks/:taskId/agents/:sessionId/stop",
+  },
   // Static paths
   { type: "GET", path: "/api/coding-agents" },
   { type: "POST", path: "/api/coding-agents" },

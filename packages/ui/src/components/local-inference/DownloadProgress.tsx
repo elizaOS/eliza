@@ -1,4 +1,5 @@
 import type { DownloadJob } from "../../api/client-local-inference";
+import { useTranslation } from "../../state/TranslationContext";
 import { formatByteSize } from "../../utils/format";
 import { formatEta, progressPercent } from "./hub-utils";
 
@@ -10,6 +11,7 @@ interface DownloadProgressProps {
 }
 
 export function DownloadProgress({ job }: DownloadProgressProps) {
+  const { t } = useTranslation();
   const pct = progressPercent(job);
   const eta = formatEta(job.etaMs);
   const speed = job.bytesPerSec > 0 ? `${formatBytes(job.bytesPerSec)}/s` : "";
@@ -30,11 +32,21 @@ export function DownloadProgress({ job }: DownloadProgressProps) {
       </div>
       <div className="mt-1 flex justify-between text-xs text-muted-foreground">
         <span>
-          {formatBytes(job.received)} of {formatBytes(job.total)} · {pct}%
+          {t("downloadprogress.progress", {
+            received: formatBytes(job.received),
+            total: formatBytes(job.total),
+            pct,
+            defaultValue: "{{received}} of {{total}} · {{pct}}%",
+          })}
         </span>
         <span>
           {speed}
-          {eta ? ` · ${eta} left` : ""}
+          {eta
+            ? t("downloadprogress.etaLeft", {
+                eta,
+                defaultValue: " · {{eta}} left",
+              })
+            : ""}
         </span>
       </div>
     </div>

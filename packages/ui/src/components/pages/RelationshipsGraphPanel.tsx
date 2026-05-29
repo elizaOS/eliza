@@ -25,6 +25,10 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import {
   Tooltip,
@@ -32,6 +36,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
+
+type TranslateFn = TranslationContextValue["t"];
 
 const GRAPH_WIDTH = 1320;
 const GRAPH_HEIGHT = 760;
@@ -603,23 +609,23 @@ function GraphIconButton({
   );
 }
 
-function GraphLegend() {
+function GraphLegend({ t }: { t: TranslateFn }) {
   const items: Array<{ icon: ReactNode; label: string }> = [
     {
       icon: <Crown className="h-3.5 w-3.5 text-accent" />,
-      label: "Owner",
+      label: t("relationshipsgraph.owner", { defaultValue: "Owner" }),
     },
     {
       icon: <Smile className="h-3.5 w-3.5 text-[rgba(34,197,94,0.9)]" />,
-      label: "Positive",
+      label: t("relationshipsgraph.positive", { defaultValue: "Positive" }),
     },
     {
       icon: <Meh className="h-3.5 w-3.5 text-[rgba(240,185,11,0.9)]" />,
-      label: "Neutral",
+      label: t("relationshipsgraph.neutral", { defaultValue: "Neutral" }),
     },
     {
       icon: <Frown className="h-3.5 w-3.5 text-[rgba(239,68,68,0.9)]" />,
-      label: "Negative",
+      label: t("relationshipsgraph.negative", { defaultValue: "Negative" }),
     },
   ];
   return (
@@ -733,6 +739,7 @@ export function RelationshipsGraphPanel({
   compact?: boolean;
   onSelectPersonId: (primaryEntityId: string) => void;
 }) {
+  const { t } = useTranslation();
   const [tooltip, setTooltip] = useState<TooltipState>(null);
   const fittedZoom = compact ? 0.68 : 0.9;
   const [zoom, setZoom] = useState(fittedZoom);
@@ -1001,10 +1008,12 @@ export function RelationshipsGraphPanel({
     <TooltipProvider delayDuration={160} skipDelayDuration={80}>
       <div className={compact ? "space-y-3" : "space-y-4"}>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <GraphLegend />
+          <GraphLegend t={t} />
           <div className="inline-flex items-center gap-0.5 rounded-full border border-border/24 bg-card/40 px-1 py-0.5">
             <GraphIconButton
-              label="Zoom out"
+              label={t("relationshipsgraph.zoomOut", {
+                defaultValue: "Zoom out",
+              })}
               disabled={zoom <= MIN_ZOOM}
               onClick={zoomOut}
             >
@@ -1016,15 +1025,23 @@ export function RelationshipsGraphPanel({
                   type="button"
                   onClick={handleZoomPercentClick}
                   className="min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums text-muted transition hover:text-txt"
-                  aria-label="Toggle zoom (fit / 100%)"
+                  aria-label={t("relationshipsgraph.toggleZoomAria", {
+                    defaultValue: "Toggle zoom (fit / 100%)",
+                  })}
                 >
                   {zoomPercent}
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Toggle fit / 100%</TooltipContent>
+              <TooltipContent>
+                {t("relationshipsgraph.toggleFit", {
+                  defaultValue: "Toggle fit / 100%",
+                })}
+              </TooltipContent>
             </Tooltip>
             <GraphIconButton
-              label="Zoom in"
+              label={t("relationshipsgraph.zoomIn", {
+                defaultValue: "Zoom in",
+              })}
               disabled={zoom >= MAX_ZOOM}
               onClick={zoomIn}
             >
@@ -1051,7 +1068,9 @@ export function RelationshipsGraphPanel({
             className="block max-w-none"
             style={{ width: graphWidth, height: graphHeight }}
             role="img"
-            aria-label="Relationships graph"
+            aria-label={t("relationshipsgraph.graphAria", {
+              defaultValue: "Relationships graph",
+            })}
           >
             <defs>
               <radialGradient
@@ -1218,7 +1237,10 @@ export function RelationshipsGraphPanel({
                       onMouseMove={(event) => showTooltipForNode(person, event)}
                       onMouseLeave={hideTooltip}
                       className="h-full w-full rounded-sm bg-transparent"
-                      aria-label={`Select ${person.displayName}`}
+                      aria-label={t("relationshipsgraph.selectPerson", {
+                        name: person.displayName,
+                        defaultValue: "Select {{name}}",
+                      })}
                     />
                   </foreignObject>
                 </g>

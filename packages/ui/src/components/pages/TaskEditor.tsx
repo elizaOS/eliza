@@ -14,6 +14,7 @@ import { Calendar, Clock3, Zap } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api";
 import type { WorkbenchTask } from "../../api/client-types-config";
+import { useTranslation } from "../../state/TranslationContext";
 import { CRON_PRESETS, formatSchedule } from "../../utils/cron-format";
 import {
   encodeScheduleTags,
@@ -59,6 +60,7 @@ export function TaskEditor({
   onSaved,
   onCancel,
 }: TaskEditorProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState(initial?.name ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [scheduleKind, setScheduleKind] = useState<TaskScheduleKind>(
@@ -82,11 +84,15 @@ export function TaskEditor({
     const trimmedName = name.trim();
     const trimmedPrompt = prompt.trim();
     if (!trimmedName) {
-      setError("Title is required.");
+      setError(
+        t("taskeditor.titleRequired", { defaultValue: "Title is required." }),
+      );
       return;
     }
     if (!trimmedPrompt) {
-      setError("Prompt is required.");
+      setError(
+        t("taskeditor.promptRequired", { defaultValue: "Prompt is required." }),
+      );
       return;
     }
     setError(null);
@@ -103,21 +109,29 @@ export function TaskEditor({
         : await client.createWorkbenchTask(payload);
       onSaved?.(res.task);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save task.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("taskeditor.saveError", { defaultValue: "Failed to save task." }),
+      );
     } finally {
       setBusy(false);
     }
-  }, [name, prompt, scheduleKind, cron, eventName, initial?.id, onSaved]);
+  }, [name, prompt, scheduleKind, cron, eventName, initial?.id, onSaved, t]);
 
   return (
     <PagePanel variant="padded" className="space-y-5">
       <div className="space-y-1.5">
         <h2 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-          {initial?.id ? "Edit task" : "New task"}
+          {initial?.id
+            ? t("taskeditor.editTitle", { defaultValue: "Edit task" })
+            : t("taskeditor.newTitle", { defaultValue: "New task" })}
         </h2>
         <p className="text-sm text-muted-strong">
-          A task is a single prompt the agent runs — once, on a schedule, or in
-          response to an event.
+          {t("taskeditor.description", {
+            defaultValue:
+              "A task is a single prompt the agent runs — once, on a schedule, or in response to an event.",
+          })}
         </p>
       </div>
 
@@ -128,47 +142,59 @@ export function TaskEditor({
       )}
 
       <div className="space-y-2">
-        <FieldLabel>Title</FieldLabel>
+        <FieldLabel>
+          {t("taskeditor.titleLabel", { defaultValue: "Title" })}
+        </FieldLabel>
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Summarise yesterday's emails"
+          placeholder={t("taskeditor.titlePlaceholder", {
+            defaultValue: "Summarise yesterday's emails",
+          })}
           autoFocus
           data-testid="task-editor-name"
         />
       </div>
 
       <div className="space-y-2">
-        <FieldLabel>Prompt</FieldLabel>
+        <FieldLabel>
+          {t("taskeditor.promptLabel", { defaultValue: "Prompt" })}
+        </FieldLabel>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="What should the agent do when this task runs?"
+          placeholder={t("taskeditor.promptPlaceholder", {
+            defaultValue: "What should the agent do when this task runs?",
+          })}
           rows={5}
           data-testid="task-editor-prompt"
         />
       </div>
 
       <fieldset className="space-y-3">
-        <legend className="text-sm font-medium text-txt">Schedule</legend>
+        <legend className="text-sm font-medium text-txt">
+          {t("taskeditor.scheduleLegend", { defaultValue: "Schedule" })}
+        </legend>
         <div className="flex flex-wrap gap-2">
           <ScheduleRadio
             id="task-sched-once"
-            label="Once"
+            label={t("taskeditor.scheduleOnce", { defaultValue: "Once" })}
             icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
             checked={scheduleKind === "once"}
             onSelect={() => setScheduleKind("once")}
           />
           <ScheduleRadio
             id="task-sched-recurring"
-            label="Recurring"
+            label={t("taskeditor.scheduleRecurring", {
+              defaultValue: "Recurring",
+            })}
             icon={<Clock3 className="h-3.5 w-3.5" aria-hidden />}
             checked={scheduleKind === "recurring"}
             onSelect={() => setScheduleKind("recurring")}
           />
           <ScheduleRadio
             id="task-sched-event"
-            label="On event"
+            label={t("taskeditor.scheduleEvent", { defaultValue: "On event" })}
             icon={<Calendar className="h-3.5 w-3.5" aria-hidden />}
             checked={scheduleKind === "event"}
             onSelect={() => setScheduleKind("event")}
@@ -203,7 +229,7 @@ export function TaskEditor({
             />
             {cronPreview && (
               <div className="text-xs text-muted-strong">
-                Runs{" "}
+                {t("taskeditor.runsPrefix", { defaultValue: "Runs " })}
                 <span className="text-txt">{cronPreview.toLowerCase()}</span>.
               </div>
             )}
@@ -229,7 +255,7 @@ export function TaskEditor({
       <div className="flex items-center justify-end gap-2 border-t border-border/40 pt-4">
         {onCancel && (
           <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("taskeditor.cancel", { defaultValue: "Cancel" })}
           </Button>
         )}
         <Button
@@ -240,7 +266,9 @@ export function TaskEditor({
           data-testid="task-editor-save"
         >
           {busy ? <Spinner className="mr-2 h-3.5 w-3.5" /> : null}
-          {initial?.id ? "Save task" : "Create task"}
+          {initial?.id
+            ? t("taskeditor.saveTask", { defaultValue: "Save task" })
+            : t("taskeditor.createTask", { defaultValue: "Create task" })}
         </Button>
       </div>
     </PagePanel>

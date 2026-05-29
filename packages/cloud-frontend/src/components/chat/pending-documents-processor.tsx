@@ -198,7 +198,8 @@ export function PendingDocumentsProcessor({
                 {
                   description: t("cloud.pendingDocs.knowledgeReadyDesc", {
                     successCount,
-                    defaultValue: "{{successCount}} file(s) processed successfully",
+                    defaultValue:
+                      "{{successCount}} file(s) processed successfully",
                   }),
                 },
               );

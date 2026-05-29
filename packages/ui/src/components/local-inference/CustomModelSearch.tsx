@@ -16,6 +16,7 @@ import {
   listLocalModelSearchProviders,
   wrapLocalModelSearchResults,
 } from "../../services/local-inference/custom-search";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { ModelCard } from "./ModelCard";
 
@@ -65,6 +66,7 @@ export function CustomModelSearch({
   busy,
 }: CustomModelSearchProps) {
   useRenderGuard("CustomModelSearch");
+  const { t } = useTranslation();
   const [providerId, setProviderId] = useState<LocalModelSearchProviderId>(
     DEFAULT_LOCAL_MODEL_SEARCH_PROVIDER_ID,
   );
@@ -119,7 +121,13 @@ export function CustomModelSearch({
         }
       } catch (err) {
         if (active && lastRequestRef.current === requestKey) {
-          setError(err instanceof Error ? err.message : "Search failed");
+          setError(
+            err instanceof Error
+              ? err.message
+              : t("customsearch.searchFailed", {
+                  defaultValue: "Search failed",
+                }),
+          );
           setResults([]);
           setResultsRequestKey("");
         }
@@ -134,7 +142,7 @@ export function CustomModelSearch({
       active = false;
       clearTimeout(handle);
     };
-  }, [provider.searchSupported, providerId, query]);
+  }, [provider.searchSupported, providerId, query, t]);
   const visibleResults =
     resultsRequestKey === currentRequestKey ? results : EMPTY_SEARCH_RESULTS;
 
@@ -151,7 +159,9 @@ export function CustomModelSearch({
       <div className="flex flex-wrap items-center gap-2">
         <fieldset
           className="inline-flex h-8 items-center rounded-sm border border-border/60 bg-bg/40 p-0.5"
-          aria-label="Custom model search provider"
+          aria-label={t("customsearch.providerAria", {
+            defaultValue: "Custom model search provider",
+          })}
         >
           {SEARCH_PROVIDERS.map((candidate) => {
             const activeProvider = providerId === candidate.id;
@@ -195,7 +205,7 @@ export function CustomModelSearch({
               setResultsRequestKey("");
             }}
           >
-            Clear
+            {t("customsearch.clear", { defaultValue: "Clear" })}
           </Button>
         )}
       </div>
@@ -207,7 +217,10 @@ export function CustomModelSearch({
       )}
       {loading && (
         <div className="text-muted-foreground text-sm">
-          Searching {provider.label}...
+          {t("customsearch.searching", {
+            provider: provider.label,
+            defaultValue: "Searching {{provider}}...",
+          })}
         </div>
       )}
       {error && (
@@ -221,7 +234,10 @@ export function CustomModelSearch({
         query.trim().length >= 2 &&
         visibleResults.length === 0 && (
           <div className="text-muted-foreground text-sm">
-            No GGUF repos matched. Try a different keyword or owner/model id.
+            {t("customsearch.noMatches", {
+              defaultValue:
+                "No GGUF repos matched. Try a different keyword or owner/model id.",
+            })}
           </div>
         )}
 
@@ -249,8 +265,10 @@ export function CustomModelSearch({
       )}
 
       <p className="text-muted-foreground text-xs">
-        Custom search results are explicit opt-in only. They are never
-        recommended, auto-selected, or used as the default local model.
+        {t("customsearch.optInNote", {
+          defaultValue:
+            "Custom search results are explicit opt-in only. They are never recommended, auto-selected, or used as the default local model.",
+        })}
       </p>
     </div>
   );

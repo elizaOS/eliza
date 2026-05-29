@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import { useT } from "@/providers/I18nProvider";
 import {
   ADDITIONAL_MODELS,
   type CatalogModel,
@@ -12,6 +11,7 @@ import {
   sortSelectorModels,
   toSelectorModel,
 } from "@/lib/models";
+import { useT } from "@/providers/I18nProvider";
 
 interface ModelsResponse {
   object: string;

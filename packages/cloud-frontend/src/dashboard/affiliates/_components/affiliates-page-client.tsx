@@ -45,28 +45,31 @@ export function AffiliatesPageClient() {
     refetch: refetchReferral,
   } = useDashboardReferralMe();
 
-  const createAffiliateCode = useCallback(async (initialMarkup = 20) => {
-    const res = await fetch("/api/v1/affiliates", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ markupPercent: initialMarkup }),
-    });
+  const createAffiliateCode = useCallback(
+    async (initialMarkup = 20) => {
+      const res = await fetch("/api/v1/affiliates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markupPercent: initialMarkup }),
+      });
 
-    if (!res.ok) {
-      throw new Error(
-        t("cloud.affiliates.failedToCreate", {
-          defaultValue: "Failed to create affiliate code",
-        }),
-      );
-    }
+      if (!res.ok) {
+        throw new Error(
+          t("cloud.affiliates.failedToCreate", {
+            defaultValue: "Failed to create affiliate code",
+          }),
+        );
+      }
 
-    const data = await res.json();
-    if (data.code) {
-      setAffiliateData(data.code);
-      setMarkupPercent(data.code.markup_percent);
-    }
-    return data.code as AffiliateData;
-  }, [t]);
+      const data = await res.json();
+      if (data.code) {
+        setAffiliateData(data.code);
+        setMarkupPercent(data.code.markup_percent);
+      }
+      return data.code as AffiliateData;
+    },
+    [t],
+  );
 
   const fetchAffiliateData = useCallback(async () => {
     try {

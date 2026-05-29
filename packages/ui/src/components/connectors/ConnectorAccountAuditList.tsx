@@ -3,9 +3,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import type { ConnectorAccountAuditEventRecord } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
+
+type TranslateFn = TranslationContextValue["t"];
 
 export interface ConnectorAccountAuditListProps {
   provider: string;
@@ -14,10 +20,13 @@ export interface ConnectorAccountAuditListProps {
   className?: string;
 }
 
-function formatAuditTime(value: number | undefined): string {
-  if (!value) return "Unknown time";
+function formatAuditTime(value: number | undefined, t: TranslateFn): string {
+  const unknown = t("connectoraudit.unknownTime", {
+    defaultValue: "Unknown time",
+  });
+  if (!value) return unknown;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? unknown : date.toLocaleString();
 }
 
 function metadataPreview(
@@ -41,6 +50,7 @@ export function ConnectorAccountAuditList({
   limit = 25,
   className,
 }: ConnectorAccountAuditListProps) {
+  const { t } = useTranslation();
   const [events, setEvents] = useState<ConnectorAccountAuditEventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,12 +82,14 @@ export function ConnectorAccountAuditList({
       setError(
         err instanceof Error && err.message.trim()
           ? err.message
-          : "Failed to load audit events",
+          : t("connectoraudit.loadError", {
+              defaultValue: "Failed to load audit events",
+            }),
       );
     } finally {
       setLoading(false);
     }
-  }, [provider, query]);
+  }, [provider, query, t]);
 
   useEffect(() => {
     void refresh();
@@ -93,7 +105,7 @@ export function ConnectorAccountAuditList({
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-border/35 px-3 py-2">
         <div className="min-w-0">
           <div className="text-xs font-semibold uppercase text-muted">
-            Audit trail
+            {t("connectoraudit.title", { defaultValue: "Audit trail" })}
           </div>
           <div className="truncate text-xs text-muted">
             {provider}
@@ -106,8 +118,12 @@ export function ConnectorAccountAuditList({
           size="sm"
           disabled={loading}
           onClick={() => void refresh()}
-          aria-label="Refresh connector audit events"
-          title="Refresh connector audit events"
+          aria-label={t("connectoraudit.refreshAria", {
+            defaultValue: "Refresh connector audit events",
+          })}
+          title={t("connectoraudit.refreshAria", {
+            defaultValue: "Refresh connector audit events",
+          })}
           className="h-8 w-8 p-0"
         >
           {loading ? (
@@ -124,7 +140,7 @@ export function ConnectorAccountAuditList({
 
       {!loading && !error && events.length === 0 ? (
         <div className="px-3 py-6 text-center text-xs text-muted">
-          No audit events.
+          {t("connectoraudit.empty", { defaultValue: "No audit events." })}
         </div>
       ) : null}
 
@@ -140,13 +156,25 @@ export function ConnectorAccountAuditList({
                 />
                 <span className="font-medium text-txt">{event.action}</span>
                 <span className="ml-auto text-xs text-muted">
-                  {formatAuditTime(event.createdAt)}
+                  {formatAuditTime(event.createdAt, t)}
                 </span>
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
-                {event.actorId ? <span>Actor {event.actorId}</span> : null}
+                {event.actorId ? (
+                  <span>
+                    {t("connectoraudit.actor", {
+                      actor: event.actorId,
+                      defaultValue: "Actor {{actor}}",
+                    })}
+                  </span>
+                ) : null}
                 {event.accountId ? (
-                  <span>Account {event.accountId}</span>
+                  <span>
+                    {t("connectoraudit.account", {
+                      account: event.accountId,
+                      defaultValue: "Account {{account}}",
+                    })}
+                  </span>
                 ) : null}
               </div>
               <pre className="max-h-24 overflow-auto rounded-sm border border-border/30 bg-bg/35 p-2 text-[11px] leading-relaxed text-muted">

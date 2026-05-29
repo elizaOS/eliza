@@ -1,5 +1,6 @@
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTranslation } from "../../state/TranslationContext";
 
 /**
  * Multi-device panel. Lists every connected bridge device (desktop +
@@ -13,6 +14,7 @@ export function DevicesPanel({
   status: DeviceBridgeStatus | null;
 }) {
   useRenderGuard("DevicesPanel");
+  const { t } = useTranslation();
 
   if (!status || status.devices.length === 0) {
     return null;
@@ -21,12 +23,13 @@ export function DevicesPanel({
   return (
     <section className="flex flex-col gap-2">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Connected bridge devices
+        {t("devicespanel.title", { defaultValue: "Connected bridge devices" })}
       </h3>
       <p className="text-xs text-muted-foreground">
-        Requests route to the highest-scoring device available. Scoring favours
-        desktops over phones, more RAM, and an available GPU. The primary device
-        is the one ranked first.
+        {t("devicespanel.description", {
+          defaultValue:
+            "Requests route to the highest-scoring device available. Scoring favours desktops over phones, more RAM, and an available GPU. The primary device is the one ranked first.",
+        })}
       </p>
       <div className="flex flex-col gap-2">
         {status.devices.map((device) => (
@@ -49,7 +52,7 @@ export function DevicesPanel({
                 {device.capabilities.deviceModel}
                 {device.isPrimary && (
                   <span className="ml-2 text-[10px] uppercase tracking-wide text-primary">
-                    primary
+                    {t("devicespanel.primary", { defaultValue: "primary" })}
                   </span>
                 )}
               </div>
@@ -62,15 +65,24 @@ export function DevicesPanel({
                         ? ` ${device.capabilities.gpu.totalVramGb.toFixed(1)} GB`
                         : ""
                     }`
-                  : "CPU only"}
+                  : t("devicespanel.cpuOnly", { defaultValue: "CPU only" })}
                 {device.loadedPath &&
-                  ` · loaded: ${device.loadedPath.split(/[/\\]/).pop()}`}
+                  t("devicespanel.loaded", {
+                    file: device.loadedPath.split(/[/\\]/).pop(),
+                    defaultValue: " · loaded: {{file}}",
+                  })}
               </div>
             </div>
             <div className="text-xs text-muted-foreground">
-              score {Math.round(device.score)}
+              {t("devicespanel.score", {
+                score: Math.round(device.score),
+                defaultValue: "score {{score}}",
+              })}
               {device.activeRequests > 0 &&
-                ` · ${device.activeRequests} active`}
+                t("devicespanel.active", {
+                  count: device.activeRequests,
+                  defaultValue: " · {{count}} active",
+                })}
             </div>
           </div>
         ))}

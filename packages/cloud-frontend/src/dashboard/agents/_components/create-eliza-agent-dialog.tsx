@@ -187,7 +187,10 @@ function ProvisioningProgress({
           const state = getStepState(i, activeIndex, hasError);
           const isLast = i === PROVISIONING_STEPS.length - 1;
           return (
-            <div key={step.labelKey} className="flex items-start gap-3 relative">
+            <div
+              key={step.labelKey}
+              className="flex items-start gap-3 relative"
+            >
               {/* Vertical connector */}
               {!isLast && (
                 <div
@@ -252,7 +255,9 @@ function ProvisioningProgress({
               onClick={() => openWebUIWithPairing(agentId)}
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              {t("cloud.createAgent.openWebUi", { defaultValue: "Open Web UI" })}
+              {t("cloud.createAgent.openWebUi", {
+                defaultValue: "Open Web UI",
+              })}
             </BrandButton>
             <BrandButton variant="outline" size="sm" onClick={onClose}>
               {t("cloud.createAgent.done", { defaultValue: "Done" })}
@@ -636,9 +641,12 @@ export function CreateElizaAgentDialog({
                     </Label>
                     <Input
                       id="eliza-custom-image"
-                      placeholder={t("cloud.createAgent.dockerImagePlaceholder", {
-                        defaultValue: "e.g. myregistry/agent:latest",
-                      })}
+                      placeholder={t(
+                        "cloud.createAgent.dockerImagePlaceholder",
+                        {
+                          defaultValue: "e.g. myregistry/agent:latest",
+                        },
+                      )}
                       value={customImage}
                       onChange={(e) => setCustomImage(e.target.value)}
                       disabled={busy}
@@ -683,7 +691,9 @@ export function CreateElizaAgentDialog({
                           running: formatHourlyRate(
                             AGENT_PRICING.RUNNING_HOURLY_RATE,
                           ),
-                          idle: formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE),
+                          idle: formatHourlyRate(
+                            AGENT_PRICING.IDLE_HOURLY_RATE,
+                          ),
                           defaultValue:
                             "{{running}}/hr running · {{idle}}/hr idle",
                         })}

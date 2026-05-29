@@ -71,12 +71,36 @@ const CATEGORY_INPUT_OPTIONS: Array<{
   labelKey: string;
   defaultLabel: string;
 }> = [
-  { value: "provider", labelKey: "vaultinventory.category.provider", defaultLabel: "Provider" },
-  { value: "plugin", labelKey: "vaultinventory.category.plugin", defaultLabel: "Plugin" },
-  { value: "wallet", labelKey: "vaultinventory.category.wallet", defaultLabel: "Wallet" },
-  { value: "credential", labelKey: "vaultinventory.category.credential", defaultLabel: "Saved login" },
-  { value: "session", labelKey: "vaultinventory.category.session", defaultLabel: "Session" },
-  { value: "system", labelKey: "vaultinventory.category.system", defaultLabel: "System" },
+  {
+    value: "provider",
+    labelKey: "vaultinventory.category.provider",
+    defaultLabel: "Provider",
+  },
+  {
+    value: "plugin",
+    labelKey: "vaultinventory.category.plugin",
+    defaultLabel: "Plugin",
+  },
+  {
+    value: "wallet",
+    labelKey: "vaultinventory.category.wallet",
+    defaultLabel: "Wallet",
+  },
+  {
+    value: "credential",
+    labelKey: "vaultinventory.category.credential",
+    defaultLabel: "Saved login",
+  },
+  {
+    value: "session",
+    labelKey: "vaultinventory.category.session",
+    defaultLabel: "Session",
+  },
+  {
+    value: "system",
+    labelKey: "vaultinventory.category.system",
+    defaultLabel: "System",
+  },
 ];
 
 // ── Public component ───────────────────────────────────────────────

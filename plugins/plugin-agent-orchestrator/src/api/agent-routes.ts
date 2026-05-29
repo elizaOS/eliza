@@ -17,6 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import type { AgentType, ApprovalPreset } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
@@ -550,11 +551,35 @@ export async function handleAgentRoutes(
         ? (agentType as string).toLowerCase()
         : String((await ctx.acpService.resolveAgentType?.({})) ?? "codex");
 
+      const callerMetadata = (metadata as Record<string, unknown>) ?? {};
+      const taskRoomId =
+        typeof callerMetadata.taskRoomId === "string"
+          ? callerMetadata.taskRoomId
+          : typeof callerMetadata.roomId === "string"
+            ? callerMetadata.roomId
+            : undefined;
+      const worktreeRoomId =
+        typeof callerMetadata.worktreeRoomId === "string"
+          ? callerMetadata.worktreeRoomId
+          : undefined;
+
+      // Every direct-API spawn passes through the same goal wrapper the
+      // orchestrator and planner action emit, so worker behaviour is identical
+      // regardless of entry point.
+      const goalPrompt = taskText
+        ? buildGoalPrompt({
+            goal: taskText,
+            workdir,
+            taskRoomId,
+            worktreeRoomId,
+          })
+        : undefined;
+
       const session = await ctx.acpService.spawnSession({
         name: `agent-${Date.now()}`,
         agentType: agentStr as AgentType,
         workdir: workdir as string,
-        initialTask: taskText,
+        initialTask: goalPrompt,
         memoryContent: memoryContent as string | undefined,
         approvalPreset: approvalPreset as ApprovalPreset | undefined,
         customCredentials: customCredentials as
@@ -562,7 +587,10 @@ export async function handleAgentRoutes(
           | undefined,
         metadata: {
           requestedType: agentStr,
-          ...(metadata as Record<string, unknown>),
+          ...callerMetadata,
+          // Persist the bare goal so follow-up sends can re-anchor through
+          // buildGoalFollowUp instead of parsing it out of the wrapped prompt.
+          ...(taskText ? { goal: taskText } : {}),
         },
       });
 
@@ -625,7 +653,29 @@ export async function handleAgentRoutes(
         sendError(res, "ACP sessions do not support raw key input", 400);
         return true;
       } else if (input && typeof input === "string") {
-        await ctx.acpService.sendToSession(sessionId, input);
+        const session = await ctx.acpService.getSession(sessionId);
+        if (!session) {
+          sendError(res, "Agent session not found", 404);
+          return true;
+        }
+        const goal =
+          typeof session.metadata?.goal === "string"
+            ? session.metadata.goal
+            : undefined;
+        const followUpRoomId =
+          typeof session.metadata?.roomId === "string"
+            ? session.metadata.roomId
+            : undefined;
+        // Direct-API follow-ups get the same goal envelope as planner and
+        // orchestrator sends. When the session carries a goal we re-anchor to
+        // it; an un-goaled session treats the message as its own objective.
+        const wrapped = buildGoalFollowUp({
+          goal: goal ?? input,
+          message: input,
+          reason: "user_message",
+          taskRoomId: followUpRoomId,
+        });
+        await ctx.acpService.sendToSession(sessionId, wrapped);
         sendJson(res, { success: true });
       } else {
         sendError(

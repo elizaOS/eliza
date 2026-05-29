@@ -193,9 +193,7 @@ describe("HomeView", () => {
 
     const panel = screen.getByTestId("home-model-status");
     expect(panel.getAttribute("data-kind")).toBe("missing");
-    expect(
-      screen.getByRole("button", { name: "Manage models" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Manage models" })).toBeTruthy();
   });
 
   it("surfaces the failure message when model activation errors", () => {

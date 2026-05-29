@@ -1,3 +1,4 @@
+import { useTranslation } from "../../state/TranslationContext";
 import { Label } from "../ui/label";
 import { Slider } from "../ui/slider";
 import type { RateLimitConfig } from "./types";
@@ -45,10 +46,11 @@ export function RateLimitSection({
   config: RateLimitConfig;
   onChange: (config: RateLimitConfig) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-4">
       <LabeledSlider
-        label="Per Hour"
+        label={t("ratelimit.perHour", { defaultValue: "Per Hour" })}
         value={config.maxTxPerHour}
         min={1}
         max={100}
@@ -57,7 +59,7 @@ export function RateLimitSection({
         onChange={(v) => onChange({ ...config, maxTxPerHour: v })}
       />
       <LabeledSlider
-        label="Per Day"
+        label={t("ratelimit.perDay", { defaultValue: "Per Day" })}
         value={config.maxTxPerDay}
         min={1}
         max={1000}

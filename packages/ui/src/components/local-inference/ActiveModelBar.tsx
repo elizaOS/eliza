@@ -2,6 +2,7 @@ import type {
   ActiveModelState,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { displayModelName } from "./hub-utils";
 
@@ -18,16 +19,24 @@ export function ActiveModelBar({
   onUnload,
   busy,
 }: ActiveModelBarProps) {
+  const { t } = useTranslation();
   if (!active.modelId) return null;
 
   const current = installed.find((m) => m.id === active.modelId);
   const label = current ? displayModelName(current) : active.modelId;
   const status =
     active.status === "loading"
-      ? "loading"
+      ? t("activemodelbar.loading", { defaultValue: "loading" })
       : active.status === "ready"
-        ? "ready"
-        : `error: ${active.error ?? "unknown"}`;
+        ? t("activemodelbar.ready", { defaultValue: "ready" })
+        : t("activemodelbar.error", {
+            error:
+              active.error ??
+              t("activemodelbar.unknown", {
+                defaultValue: "unknown",
+              }),
+            defaultValue: "error: {{error}}",
+          });
   const dotClass =
     active.status === "error"
       ? "bg-danger"
@@ -55,7 +64,7 @@ export function ActiveModelBar({
         onClick={onUnload}
         disabled={busy}
       >
-        Unload
+        {t("activemodelbar.unload", { defaultValue: "Unload" })}
       </Button>
     </div>
   );

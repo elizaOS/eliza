@@ -2,8 +2,14 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import { useFetchData } from "../../hooks";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
+
+type TranslateFn = TranslationContextValue["t"];
 
 type CuratedStatus = "active" | "proposed" | "disabled";
 type CuratedSource = "human" | "agent-generated" | "agent-refined";
@@ -35,6 +41,7 @@ function formatDate(iso: string): string {
 }
 
 export function CharacterLearnedSkillsSection() {
+  const { t } = useTranslation();
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(
     null,
   );
@@ -98,11 +105,19 @@ export function CharacterLearnedSkillsSection() {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-txt">Skills</h2>
+          <h2 className="text-lg font-semibold text-txt">
+            {t("learnedskills.title", { defaultValue: "Skills" })}
+          </h2>
           <div className="mt-1 text-2xs text-muted">
             {loading
-              ? "Loading"
-              : `${grouped.proposed.length} proposed · ${grouped.active.length} active · ${grouped.disabled.length} disabled`}
+              ? t("learnedskills.loading", { defaultValue: "Loading" })
+              : t("learnedskills.summary", {
+                  proposed: grouped.proposed.length,
+                  active: grouped.active.length,
+                  disabled: grouped.disabled.length,
+                  defaultValue:
+                    "{{proposed}} proposed · {{active}} active · {{disabled}} disabled",
+                })}
           </div>
         </div>
         <Button
@@ -114,8 +129,10 @@ export function CharacterLearnedSkillsSection() {
             refresh();
           }}
           disabled={loading}
-          aria-label="Refresh learned skills"
-          title="Refresh"
+          aria-label={t("learnedskills.refreshAria", {
+            defaultValue: "Refresh learned skills",
+          })}
+          title={t("learnedskills.refresh", { defaultValue: "Refresh" })}
         >
           <RefreshCw
             className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
@@ -132,35 +149,44 @@ export function CharacterLearnedSkillsSection() {
 
         {grouped.proposed.length > 0 ? (
           <SkillSection
-            title="Pending proposals"
+            title={t("learnedskills.pendingProposals", {
+              defaultValue: "Pending proposals",
+            })}
             skills={grouped.proposed}
             busyName={busyName}
             onPromote={(name) => performAction(name, "POST", "promote")}
             onDelete={(name) => performAction(name, "DELETE", "delete")}
+            t={t}
           />
         ) : null}
         {grouped.active.length > 0 ? (
           <SkillSection
-            title="Active learned skills"
+            title={t("learnedskills.activeSkills", {
+              defaultValue: "Active learned skills",
+            })}
             skills={grouped.active}
             busyName={busyName}
             onDisable={(name) => performAction(name, "POST", "disable")}
             onDelete={(name) => performAction(name, "DELETE", "delete")}
+            t={t}
           />
         ) : null}
         {grouped.disabled.length > 0 ? (
           <SkillSection
-            title="Disabled"
+            title={t("learnedskills.disabled", { defaultValue: "Disabled" })}
             skills={grouped.disabled}
             busyName={busyName}
             onDelete={(name) => performAction(name, "DELETE", "delete")}
+            t={t}
           />
         ) : null}
 
         {isEmpty ? (
           <div className="rounded-sm border border-dashed border-border/60 bg-bg-hover/40 px-3 py-3 text-xs-tight leading-5 text-muted">
-            I haven&rsquo;t picked up any abilities yet. Browse the catalog or
-            add one by example, and I&rsquo;ll start using it.
+            {t("learnedskills.empty", {
+              defaultValue:
+                "I haven’t picked up any abilities yet. Browse the catalog or add one by example, and I’ll start using it.",
+            })}
           </div>
         ) : null}
       </div>
@@ -175,6 +201,7 @@ interface SkillSectionProps {
   onPromote?: (name: string) => void;
   onDisable?: (name: string) => void;
   onDelete: (name: string) => void;
+  t: TranslateFn;
 }
 
 function SkillSection({
@@ -184,6 +211,7 @@ function SkillSection({
   onPromote,
   onDisable,
   onDelete,
+  t,
 }: SkillSectionProps) {
   return (
     <div className="flex flex-col gap-2">
@@ -205,13 +233,25 @@ function SkillSection({
                     </div>
                     <div className="flex flex-wrap gap-x-2 gap-y-1 text-2xs uppercase tracking-wide text-muted">
                       <span>{skill.source}</span>
-                      <span>{skill.refinedCount} refinements</span>
-                      <span>{formatScore(skill.lastEvalScore)} score</span>
+                      <span>
+                        {t("learnedskills.refinements", {
+                          count: skill.refinedCount,
+                          defaultValue: "{{count}} refinements",
+                        })}
+                      </span>
+                      <span>
+                        {t("learnedskills.score", {
+                          score: formatScore(skill.lastEvalScore),
+                          defaultValue: "{{score}} score",
+                        })}
+                      </span>
                       <span>{formatDate(skill.createdAt)}</span>
                     </div>
                     {skill.derivedFromTrajectory ? (
                       <div className="text-2xs text-muted">
-                        Derived from trajectory:{" "}
+                        {t("learnedskills.derivedFrom", {
+                          defaultValue: "Derived from trajectory:",
+                        })}{" "}
                         <a
                           href={`/trajectories/${skill.derivedFromTrajectory}`}
                           className="underline"
@@ -229,7 +269,9 @@ function SkillSection({
                         disabled={busyName === skill.name}
                         onClick={() => onPromote(skill.name)}
                       >
-                        Promote
+                        {t("learnedskills.promote", {
+                          defaultValue: "Promote",
+                        })}
                       </Button>
                     ) : null}
                     {onDisable ? (
@@ -239,7 +281,9 @@ function SkillSection({
                         disabled={busyName === skill.name}
                         onClick={() => onDisable(skill.name)}
                       >
-                        Disable
+                        {t("learnedskills.disable", {
+                          defaultValue: "Disable",
+                        })}
                       </Button>
                     ) : null}
                     <Button
@@ -248,7 +292,7 @@ function SkillSection({
                       disabled={busyName === skill.name}
                       onClick={() => onDelete(skill.name)}
                     >
-                      Delete
+                      {t("learnedskills.delete", { defaultValue: "Delete" })}
                     </Button>
                   </div>
                 </div>

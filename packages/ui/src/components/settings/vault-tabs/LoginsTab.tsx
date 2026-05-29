@@ -476,11 +476,13 @@ function AgentAutoallowToggle({
   const label = allowed
     ? t("logins.autoallow.enabled", {
         domain,
-        defaultValue: "Agent autofill enabled for {{domain}}. Click to disable.",
+        defaultValue:
+          "Agent autofill enabled for {{domain}}. Click to disable.",
       })
     : t("logins.autoallow.disabled", {
         domain,
-        defaultValue: "Allow the agent to autofill {{domain}} without prompting.",
+        defaultValue:
+          "Allow the agent to autofill {{domain}} without prompting.",
       });
   return (
     <Button

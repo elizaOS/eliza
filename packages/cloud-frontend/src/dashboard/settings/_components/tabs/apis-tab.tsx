@@ -298,8 +298,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
               <div className="flex flex-col items-center justify-center p-8 border border-brand-surface gap-2">
                 <p className="text-sm text-white/60 font-mono">
                   {t("cloud.apisTab.noKeys", {
-                    defaultValue:
-                      "No API keys yet. Create one to get started.",
+                    defaultValue: "No API keys yet. Create one to get started.",
                   })}
                 </p>
               </div>

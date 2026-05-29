@@ -68,16 +68,16 @@
   --first-run-card-bg: rgba(255, 255, 255, 0.42);
   --first-run-card-bg-hover: rgba(255, 255, 255, 0.52);
   --first-run-card-border: transparent;
-  --first-run-card-border-strong: rgba(240, 185, 11, 0.32);
+  --first-run-card-border-strong: rgba(255, 138, 36, 0.32);
   --first-run-card-shadow: none;
-  --first-run-recommended-bg: rgba(240, 185, 11, 0.16);
-  --first-run-recommended-bg-hover: rgba(240, 185, 11, 0.22);
-  --first-run-recommended-border: rgba(240, 185, 11, 0.28);
-  --first-run-recommended-border-strong: rgba(240, 185, 11, 0.44);
-  --first-run-accent-bg: rgba(240, 185, 11, 0.18);
-  --first-run-accent-bg-hover: rgba(240, 185, 11, 0.24);
-  --first-run-accent-border: rgba(240, 185, 11, 0.3);
-  --first-run-accent-border-hover: rgba(240, 185, 11, 0.46);
+  --first-run-recommended-bg: rgba(255, 138, 36, 0.16);
+  --first-run-recommended-bg-hover: rgba(255, 138, 36, 0.22);
+  --first-run-recommended-border: rgba(255, 138, 36, 0.28);
+  --first-run-recommended-border-strong: rgba(255, 138, 36, 0.44);
+  --first-run-accent-bg: rgba(255, 138, 36, 0.18);
+  --first-run-accent-bg-hover: rgba(255, 138, 36, 0.24);
+  --first-run-accent-border: rgba(255, 138, 36, 0.3);
+  --first-run-accent-border-hover: rgba(255, 138, 36, 0.46);
   --first-run-accent-foreground: rgba(24, 20, 10, 0.96);
   --first-run-panel-bg: rgba(255, 255, 255, 0.42);
   --first-run-panel-border: transparent;
@@ -88,14 +88,14 @@
   --first-run-text-support-shadow: none;
   --first-run-divider: rgba(31, 41, 55, 0.16);
   --first-run-footer-border: rgba(31, 41, 55, 0.14);
-  --first-run-link: var(--highlight-gold);
-  --first-run-ripple: rgba(240, 185, 11, 0.12);
-  --first-run-secondary-hover-bg: rgba(240, 185, 11, 0.08);
-  --first-run-secondary-pressed-bg: rgba(240, 185, 11, 0.14);
-  --first-run-secondary-focus-ring: rgba(240, 185, 11, 0.42);
+  --first-run-link: var(--accent);
+  --first-run-ripple: rgba(255, 138, 36, 0.12);
+  --first-run-secondary-hover-bg: rgba(255, 138, 36, 0.08);
+  --first-run-secondary-pressed-bg: rgba(255, 138, 36, 0.14);
+  --first-run-secondary-focus-ring: rgba(255, 138, 36, 0.42);
   --first-run-roster-bg: rgba(255, 255, 255, 0.68);
   --first-run-roster-border: rgba(31, 41, 55, 0.16);
-  --first-run-field-focus-border: rgba(240, 185, 11, 0.46);
+  --first-run-field-focus-border: rgba(255, 138, 36, 0.46);
   --first-run-field-focus-shadow: none;
 }
 
@@ -117,18 +117,18 @@
   --first-run-card-bg: rgba(255, 255, 255, 0.42);
   --first-run-card-bg-hover: rgba(255, 255, 255, 0.52);
   --first-run-card-border: transparent;
-  --first-run-card-border-strong: rgba(240, 185, 11, 0.32);
+  --first-run-card-border-strong: rgba(255, 138, 36, 0.32);
   --first-run-card-shadow: none;
 
-  --first-run-recommended-bg: rgba(240, 185, 11, 0.12);
-  --first-run-recommended-bg-hover: rgba(240, 185, 11, 0.18);
-  --first-run-recommended-border: rgba(240, 185, 11, 0.28);
-  --first-run-recommended-border-strong: rgba(240, 185, 11, 0.44);
+  --first-run-recommended-bg: rgba(255, 138, 36, 0.12);
+  --first-run-recommended-bg-hover: rgba(255, 138, 36, 0.18);
+  --first-run-recommended-border: rgba(255, 138, 36, 0.28);
+  --first-run-recommended-border-strong: rgba(255, 138, 36, 0.44);
 
-  --first-run-accent-bg: rgba(240, 185, 11, 0.16);
-  --first-run-accent-bg-hover: rgba(240, 185, 11, 0.24);
-  --first-run-accent-border: rgba(240, 185, 11, 0.24);
-  --first-run-accent-border-hover: rgba(240, 185, 11, 0.46);
+  --first-run-accent-bg: rgba(255, 138, 36, 0.16);
+  --first-run-accent-bg-hover: rgba(255, 138, 36, 0.24);
+  --first-run-accent-border: rgba(255, 138, 36, 0.24);
+  --first-run-accent-border-hover: rgba(255, 138, 36, 0.46);
   --first-run-accent-foreground: rgba(24, 20, 10, 0.96);
 
   --first-run-panel-bg: rgba(255, 255, 255, 0.42);
@@ -141,14 +141,14 @@
 
   --first-run-divider: rgba(31, 41, 55, 0.16);
   --first-run-footer-border: rgba(31, 41, 55, 0.14);
-  --first-run-link: var(--classic-gold);
-  --first-run-ripple: rgba(240, 185, 11, 0.08);
-  --first-run-secondary-hover-bg: rgba(240, 185, 11, 0.08);
-  --first-run-secondary-pressed-bg: rgba(240, 185, 11, 0.14);
-  --first-run-secondary-focus-ring: rgba(240, 185, 11, 0.42);
+  --first-run-link: var(--accent);
+  --first-run-ripple: rgba(255, 138, 36, 0.08);
+  --first-run-secondary-hover-bg: rgba(255, 138, 36, 0.08);
+  --first-run-secondary-pressed-bg: rgba(255, 138, 36, 0.14);
+  --first-run-secondary-focus-ring: rgba(255, 138, 36, 0.42);
   --first-run-roster-bg: rgba(255, 255, 255, 0.68);
   --first-run-roster-border: rgba(31, 41, 55, 0.16);
-  --first-run-field-focus-border: rgba(240, 185, 11, 0.42);
+  --first-run-field-focus-border: rgba(255, 138, 36, 0.42);
   --first-run-field-focus-shadow: none;
 }
 

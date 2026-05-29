@@ -24,6 +24,10 @@ import { client } from "../../api";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
 import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
+import {
   SetupField,
   setupDetailStackClassName,
   setupHelperTextClassName,
@@ -99,21 +103,33 @@ type SubmitState =
 
 function describeError(
   result: BootstrapExchangeResult & { ok: false },
+  t: TranslationContextValue["t"],
 ): string {
   if (result.status === 429) {
-    return "Too many attempts — wait a minute and try again.";
+    return t("bootstrapstep.errorRateLimited", {
+      defaultValue: "Too many attempts — wait a minute and try again.",
+    });
   }
   if (result.status === 503) {
-    return "The server is not ready. Reload the page and try again.";
+    return t("bootstrapstep.errorServerNotReady", {
+      defaultValue: "The server is not ready. Reload the page and try again.",
+    });
   }
   if (result.status === 400) {
-    return "No token provided. Paste the token from your Eliza Cloud dashboard.";
+    return t("bootstrapstep.errorNoToken", {
+      defaultValue:
+        "No token provided. Paste the token from your Eliza Cloud dashboard.",
+    });
   }
   // 401 — invalid / expired / already used
-  return "Token invalid, expired, or already used. Bootstrap tokens are single-use — rotate from your Eliza Cloud dashboard to get a new one.";
+  return t("bootstrapstep.errorInvalidToken", {
+    defaultValue:
+      "Token invalid, expired, or already used. Bootstrap tokens are single-use — rotate from your Eliza Cloud dashboard to get a new one.",
+  });
 }
 
 export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
+  const { t } = useTranslation();
   const fieldId = useId().replace(/:/g, "");
   const [token, setToken] = useState("");
   // Lazy-init to "submitting" when an auto-activate token is present so the
@@ -144,7 +160,10 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         const message =
           err instanceof Error && err.message
             ? err.message
-            : "Network error — check your connection and try again.";
+            : t("bootstrapstep.errorNetwork", {
+                defaultValue:
+                  "Network error — check your connection and try again.",
+              });
         setSubmitState({ phase: "error", message, tone: "danger" });
         return;
       }
@@ -152,7 +171,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
       if (result.ok === false) {
         setSubmitState({
           phase: "error",
-          message: describeError(result),
+          message: describeError(result, t),
           tone: "danger",
         });
         return;
@@ -171,7 +190,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
       setSubmitState({ phase: "success" });
       onAdvance();
     },
-    [exchangeFn, onAdvance],
+    [exchangeFn, onAdvance, t],
   );
 
   const handleSubmit = useCallback(
@@ -200,7 +219,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      aria-label="Bootstrap token entry"
+      aria-label={t("bootstrapstep.formLabel", {
+        defaultValue: "Bootstrap token entry",
+      })}
       className="flex w-full flex-col gap-6"
     >
       {/* Header */}
@@ -210,11 +231,15 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         </p>
         <SetupStepDivider />
         <h1 className={setupTitleClass} style={setupTextShadowStyle}>
-          Finish setting up your container
+          {t("bootstrapstep.title", {
+            defaultValue: "Finish setting up your container",
+          })}
         </h1>
         <p className={setupDescriptionClass} style={setupBodyTextShadowStyle}>
-          Paste the bootstrap token from your Eliza Cloud dashboard to activate
-          this container.
+          {t("bootstrapstep.description", {
+            defaultValue:
+              "Paste the bootstrap token from your Eliza Cloud dashboard to activate this container.",
+          })}
         </p>
       </div>
 
@@ -222,7 +247,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
       <div className={setupDetailStackClassName}>
         <SetupField
           controlId={fieldId}
-          label="Bootstrap token"
+          label={t("bootstrapstep.tokenLabel", {
+            defaultValue: "Bootstrap token",
+          })}
           message={
             submitState.phase === "error" ? submitState.message : undefined
           }
@@ -237,7 +264,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder="Paste your bootstrap token here"
+              placeholder={t("bootstrapstep.tokenPlaceholder", {
+                defaultValue: "Paste your bootstrap token here",
+              })}
               value={token}
               onChange={(e) => {
                 setToken(e.target.value);
@@ -273,19 +302,22 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
             className={setupReadableTextMutedClassName}
             style={{ fontFamily: MONO_FONT }}
           >
-            Where do I get this?
+            {t("bootstrapstep.whereToGet", {
+              defaultValue: "Where do I get this?",
+            })}
           </span>{" "}
           <span className={setupReadableTextFaintClassName}>
-            Open your Eliza Cloud dashboard, select this container, and copy the
-            token shown under &ldquo;Bootstrap token&rdquo;. It is valid for 24
-            hours and can only be used once.{" "}
+            {t("bootstrapstep.whereToGetDetail", {
+              defaultValue:
+                "Open your Eliza Cloud dashboard, select this container, and copy the token shown under “Bootstrap token”. It is valid for 24 hours and can only be used once.",
+            })}{" "}
             <a
               href="/docs/security/bootstrap-token"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-[var(--first-run-text-muted)] transition-colors"
             >
-              Learn more
+              {t("bootstrapstep.learnMore", { defaultValue: "Learn more" })}
             </a>
           </span>
         </p>
@@ -299,7 +331,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
           className={setupPrimaryActionClass}
           style={setupPrimaryActionTextShadowStyle}
         >
-          {isSubmitting ? "Verifying…" : "Activate"}
+          {isSubmitting
+            ? t("bootstrapstep.verifying", { defaultValue: "Verifying…" })
+            : t("bootstrapstep.activate", { defaultValue: "Activate" })}
         </button>
       </div>
     </form>

@@ -4,22 +4,37 @@ import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import type { ProviderStatus } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTranslation } from "../../state/TranslationContext";
 
 const KIND_ICON: Record<
   ProviderStatus["kind"],
   {
     Icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+    labelKey: string;
     label: string;
   }
 > = {
-  "cloud-api": { Icon: KeyRound, label: "Cloud API" },
-  "cloud-subscription": { Icon: Cloud, label: "Subscription" },
-  local: { Icon: Cpu, label: "Local" },
-  "device-bridge": { Icon: Smartphone, label: "Device bridge" },
+  "cloud-api": {
+    Icon: KeyRound,
+    labelKey: "providerslist.kind.cloudApi",
+    label: "Cloud API",
+  },
+  "cloud-subscription": {
+    Icon: Cloud,
+    labelKey: "providerslist.kind.subscription",
+    label: "Subscription",
+  },
+  local: { Icon: Cpu, labelKey: "providerslist.kind.local", label: "Local" },
+  "device-bridge": {
+    Icon: Smartphone,
+    labelKey: "providerslist.kind.deviceBridge",
+    label: "Device bridge",
+  },
 };
 
 export function ProvidersList() {
   useRenderGuard("ProvidersList");
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<ProviderStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,9 +45,15 @@ export function ProvidersList() {
       setProviders(nextProviders);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load providers");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("providerslist.loadError", {
+              defaultValue: "Failed to load providers",
+            }),
+      );
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void refresh();
@@ -50,14 +71,18 @@ export function ProvidersList() {
     );
   }
   if (!providers) {
-    return <p className="text-sm text-muted-foreground">Loading providers…</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {t("providerslist.loading", { defaultValue: "Loading providers…" })}
+      </p>
+    );
   }
 
   return (
     <section className="flex flex-col gap-3">
       <header>
         <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted">
-          Providers
+          {t("providerslist.title", { defaultValue: "Providers" })}
         </h3>
       </header>
 
@@ -66,7 +91,7 @@ export function ProvidersList() {
           const dot = p.enableState.enabled
             ? "bg-emerald-500"
             : "bg-muted-foreground/40";
-          const { Icon, label } = KIND_ICON[p.kind];
+          const { Icon, labelKey, label } = KIND_ICON[p.kind];
           return (
             <div
               key={p.id}
@@ -79,7 +104,9 @@ export function ProvidersList() {
                 />
                 <Icon className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
                 <span className="font-medium truncate">{p.label}</span>
-                <span className="sr-only">{label}</span>
+                <span className="sr-only">
+                  {t(labelKey, { defaultValue: label })}
+                </span>
               </div>
               <p className="text-xs text-muted-foreground line-clamp-2">
                 {p.description}
@@ -97,8 +124,13 @@ export function ProvidersList() {
                       }`}
                       title={
                         active
-                          ? "Handler currently registered"
-                          : "Supported but not currently registered"
+                          ? t("providerslist.handlerRegistered", {
+                              defaultValue: "Handler currently registered",
+                            })
+                          : t("providerslist.handlerNotRegistered", {
+                              defaultValue:
+                                "Supported but not currently registered",
+                            })
                       }
                     >
                       {slot}
@@ -114,8 +146,13 @@ export function ProvidersList() {
                   <a
                     href={p.configureHref}
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/60 text-muted transition-colors hover:bg-bg hover:text-txt"
-                    title="Configure"
-                    aria-label={`Configure ${p.label}`}
+                    title={t("providerslist.configure", {
+                      defaultValue: "Configure",
+                    })}
+                    aria-label={t("providerslist.configureAria", {
+                      provider: p.label,
+                      defaultValue: "Configure {{provider}}",
+                    })}
                   >
                     <Settings className="h-3.5 w-3.5" aria-hidden />
                   </a>

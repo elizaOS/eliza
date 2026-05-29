@@ -361,7 +361,7 @@ export async function initCapacitorLlama(
 	const loaded = await loadDesktopLlama(loadOptions);
 	if (!loaded) {
 		throw new Error(
-			"[capacitor-llama] desktop FFI load failed — bun:ffi unavailable or dlopen errored. Check ELIZA_STATE_DIR/local-inference/bin/mtp/<platform>-<arch>-<backend>/.",
+			"[capacitor-llama] desktop FFI load failed — bun:ffi unavailable or dlopen errored. Check ELIZA_STATE_DIR/local-inference/bin/llama-cpp/<platform>-<arch>-<backend>/.",
 		);
 	}
 	logger.info(

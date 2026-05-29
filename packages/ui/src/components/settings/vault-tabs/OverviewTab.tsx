@@ -138,7 +138,8 @@ export function OverviewTab(props: OverviewTabProps) {
       <div className="flex items-center justify-between pb-1">
         <p className="text-2xs text-muted">
           {t("vault.overview.routeHint", {
-            defaultValue: "Sensitive values route to the first enabled backend.",
+            defaultValue:
+              "Sensitive values route to the first enabled backend.",
           })}
         </p>
         <Button

@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { CryptoStatusResponse } from "@/lib/types/crypto-status";
+import { useT } from "@/providers/I18nProvider";
 import { AutoTopUpCard } from "../../../billing/_components/auto-top-up-card";
 import { DirectCryptoCreditCard } from "../../../billing/_components/direct-crypto-credit-card";
 import { PayAsYouGoCard } from "../../../billing/_components/pay-as-you-go-card";
@@ -56,6 +57,7 @@ const AMOUNT_LIMITS = {
 type PaymentMethod = "card" | "crypto";
 
 export function BillingTab({ user }: BillingTabProps) {
+  const t = useT();
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<InvoiceDisplay[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
@@ -113,12 +115,22 @@ export function BillingTab({ user }: BillingTabProps) {
     const amount = parseFloat(purchaseAmount);
 
     if (Number.isNaN(amount) || amount < AMOUNT_LIMITS.MIN) {
-      toast.error(`Minimum amount is $${AMOUNT_LIMITS.MIN}`);
+      toast.error(
+        t("cloud.billingTab.minAmount", {
+          min: AMOUNT_LIMITS.MIN,
+          defaultValue: "Minimum amount is ${{min}}",
+        }),
+      );
       return;
     }
 
     if (amount > AMOUNT_LIMITS.MAX) {
-      toast.error(`Maximum amount is $${AMOUNT_LIMITS.MAX}`);
+      toast.error(
+        t("cloud.billingTab.maxAmount", {
+          max: AMOUNT_LIMITS.MAX,
+          defaultValue: "Maximum amount is ${{max}}",
+        }),
+      );
       return;
     }
 
@@ -142,7 +154,12 @@ export function BillingTab({ user }: BillingTabProps) {
 
         if (!response.ok) {
           const errorData = await response.json();
-          toast.error(errorData.error || "Failed to create payment");
+          toast.error(
+            errorData.error ||
+              t("cloud.billingTab.createPaymentFailed", {
+                defaultValue: "Failed to create payment",
+              }),
+          );
           setIsProcessingCheckout(false);
           return;
         }
@@ -150,15 +167,27 @@ export function BillingTab({ user }: BillingTabProps) {
         const data = await response.json();
 
         if (!data.payLink) {
-          toast.error("No payment link returned");
+          toast.error(
+            t("cloud.billingTab.noPaymentLink", {
+              defaultValue: "No payment link returned",
+            }),
+          );
           setIsProcessingCheckout(false);
           return;
         }
 
-        toast.success("Redirecting to payment page...");
+        toast.success(
+          t("cloud.billingTab.redirectingPayment", {
+            defaultValue: "Redirecting to payment page...",
+          }),
+        );
         window.location.href = data.payLink;
       } catch (_error) {
-        toast.error("Failed to create crypto payment");
+        toast.error(
+          t("cloud.billingTab.createCryptoFailed", {
+            defaultValue: "Failed to create crypto payment",
+          }),
+        );
         setIsProcessingCheckout(false);
       }
       return;
@@ -175,7 +204,12 @@ export function BillingTab({ user }: BillingTabProps) {
 
     if (!response.ok) {
       const errorData = await response.json();
-      toast.error(errorData.error || "Failed to create checkout session");
+      toast.error(
+        errorData.error ||
+          t("cloud.billingTab.createCheckoutFailed", {
+            defaultValue: "Failed to create checkout session",
+          }),
+      );
       setIsProcessingCheckout(false);
       return;
     }
@@ -184,7 +218,11 @@ export function BillingTab({ user }: BillingTabProps) {
     const { url } = data;
 
     if (!url) {
-      toast.error("No checkout URL returned");
+      toast.error(
+        t("cloud.billingTab.noCheckoutUrl", {
+          defaultValue: "No checkout URL returned",
+        }),
+      );
       setIsProcessingCheckout(false);
       return;
     }
@@ -216,7 +254,9 @@ export function BillingTab({ user }: BillingTabProps) {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
             <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
-              Credit Balance
+              {t("cloud.billingTab.creditBalance", {
+                defaultValue: "Credit Balance",
+              })}
             </h3>
           </div>
 
@@ -230,7 +270,9 @@ export function BillingTab({ user }: BillingTabProps) {
                     ${balance.toFixed(2)}
                   </p>
                   <p className="text-sm text-white/60 text-center">
-                    Remaining balance
+                    {t("cloud.billingTab.remainingBalance", {
+                      defaultValue: "Remaining balance",
+                    })}
                   </p>
                 </div>
               </div>
@@ -240,11 +282,17 @@ export function BillingTab({ user }: BillingTabProps) {
             <div className="flex-1 flex flex-col gap-6 lg:justify-center">
               <div className="flex flex-col gap-4">
                 <p className="text-base font-mono text-[#e1e1e1]">
-                  Add credits to your account
+                  {t("cloud.billingTab.addCredits", {
+                    defaultValue: "Add credits to your account",
+                  })}
                 </p>
                 <p className="text-sm text-white/60">
-                  Enter the amount you want to add. Min: ${AMOUNT_LIMITS.MIN},
-                  Max: ${AMOUNT_LIMITS.MAX}
+                  {t("cloud.billingTab.amountHint", {
+                    min: AMOUNT_LIMITS.MIN,
+                    max: AMOUNT_LIMITS.MAX,
+                    defaultValue:
+                      "Enter the amount you want to add. Min: ${{min}}, Max: ${{max}}",
+                  })}
                 </p>
 
                 {cryptoStatus?.enabled && (
@@ -261,7 +309,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       }`}
                     >
                       <CreditCard className="h-4 w-4" />
-                      Card
+                      {t("cloud.billingTab.card", { defaultValue: "Card" })}
                     </button>
                     <button
                       type="button"
@@ -275,7 +323,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       }`}
                     >
                       <Wallet className="h-4 w-4" />
-                      Crypto
+                      {t("cloud.billingTab.crypto", { defaultValue: "Crypto" })}
                     </button>
                   </div>
                 )}
@@ -320,14 +368,20 @@ export function BillingTab({ user }: BillingTabProps) {
                         <>
                           <Loader2 className="h-4 w-4 animate-spin text-black relative z-10" />
                           <span className="relative z-10 text-black font-mono font-medium text-base whitespace-nowrap">
-                            Redirecting...
+                            {t("cloud.billingTab.redirecting", {
+                              defaultValue: "Redirecting...",
+                            })}
                           </span>
                         </>
                       ) : (
                         <span className="relative z-10 text-black font-mono font-medium text-base whitespace-nowrap">
                           {paymentMethod === "crypto"
-                            ? "Pay with Crypto"
-                            : "Buy credits"}
+                            ? t("cloud.billingTab.payWithCrypto", {
+                                defaultValue: "Pay with Crypto",
+                              })
+                            : t("cloud.billingTab.buyCredits", {
+                                defaultValue: "Buy credits",
+                              })}
                         </span>
                       )}
                     </button>
@@ -340,8 +394,14 @@ export function BillingTab({ user }: BillingTabProps) {
                     <AlertCircle className="h-4 w-4" />
                     <span className="font-mono">
                       {amountValue === null || amountValue < AMOUNT_LIMITS.MIN
-                        ? `Minimum amount is $${AMOUNT_LIMITS.MIN}`
-                        : `Maximum amount is $${AMOUNT_LIMITS.MAX}`}
+                        ? t("cloud.billingTab.minAmount", {
+                            min: AMOUNT_LIMITS.MIN,
+                            defaultValue: "Minimum amount is ${{min}}",
+                          })
+                        : t("cloud.billingTab.maxAmount", {
+                            max: AMOUNT_LIMITS.MAX,
+                            defaultValue: "Maximum amount is ${{max}}",
+                          })}
                     </span>
                   </div>
                 )}
@@ -350,7 +410,11 @@ export function BillingTab({ user }: BillingTabProps) {
                   <div className="flex items-center gap-2 text-sm text-green-400">
                     <CheckCircle className="h-4 w-4" />
                     <span className="font-mono">
-                      ${amountValue.toFixed(2)} will be added to your balance
+                      {t("cloud.billingTab.willBeAdded", {
+                        amount: amountValue.toFixed(2),
+                        defaultValue:
+                          "${{amount}} will be added to your balance",
+                      })}
                     </span>
                   </div>
                 )}
@@ -389,11 +453,14 @@ export function BillingTab({ user }: BillingTabProps) {
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
               <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
-                Invoices
+                {t("cloud.billingTab.invoices", { defaultValue: "Invoices" })}
               </h3>
             </div>
             <p className="text-xs font-mono text-[#858585] tracking-tight">
-              View your payment history and download invoices.
+              {t("cloud.billingTab.invoicesDesc", {
+                defaultValue:
+                  "View your payment history and download invoices.",
+              })}
             </p>
           </div>
 
@@ -404,22 +471,28 @@ export function BillingTab({ user }: BillingTabProps) {
               <div className="flex w-full">
                 <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-[1.5] p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
-                    Date & Time
+                    {t("cloud.billingTab.colDateTime", {
+                      defaultValue: "Date & Time",
+                    })}
                   </p>
                 </div>
                 <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
-                    Total
+                    {t("cloud.billingTab.colTotal", { defaultValue: "Total" })}
                   </p>
                 </div>
                 <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
-                    Status
+                    {t("cloud.billingTab.colStatus", {
+                      defaultValue: "Status",
+                    })}
                   </p>
                 </div>
                 <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-3 md:p-4">
                   <p className="text-xs md:text-sm font-mono font-bold text-white uppercase">
-                    Actions
+                    {t("cloud.billingTab.colActions", {
+                      defaultValue: "Actions",
+                    })}
                   </p>
                 </div>
               </div>
@@ -432,7 +505,9 @@ export function BillingTab({ user }: BillingTabProps) {
               ) : invoices.length === 0 ? (
                 <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">
                   <p className="text-xs md:text-sm text-white/60 font-mono">
-                    No invoices yet
+                    {t("cloud.billingTab.noInvoices", {
+                      defaultValue: "No invoices yet",
+                    })}
                   </p>
                 </div>
               ) : (
@@ -459,7 +534,7 @@ export function BillingTab({ user }: BillingTabProps) {
                         onClick={() => handleViewInvoice(invoice)}
                         className="text-xs md:text-sm font-mono text-white underline uppercase hover:text-white/80 transition-colors"
                       >
-                        View
+                        {t("cloud.billingTab.view", { defaultValue: "View" })}
                       </button>
                     </div>
                   </div>

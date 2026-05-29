@@ -1,5 +1,6 @@
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -30,6 +31,7 @@ function StatsCard({
 }
 
 function EndpointStats({ label }: { label: string }) {
+  const { t } = useTranslation();
   const { data: stats, loading, error } = useInferenceStats(label);
 
   if (error) {
@@ -37,7 +39,13 @@ function EndpointStats({ label }: { label: string }) {
   }
 
   if (loading || !stats) {
-    return <div className="text-xs text-muted">Loading stats...</div>;
+    return (
+      <div className="text-xs text-muted">
+        {t("inferenceendpoint.loadingStats", {
+          defaultValue: "Loading stats...",
+        })}
+      </div>
+    );
   }
 
   return (
@@ -59,6 +67,7 @@ function EndpointStats({ label }: { label: string }) {
 }
 
 export function InferenceEndpointPanel() {
+  const { t } = useTranslation();
   const { data: endpoints, loading, error, refetch } = useInferenceEndpoints();
   const { create, loading: createLoading } = useCreateInferenceEndpoint();
   const { delete: deleteEndpoint, loading: deleteLoading } =
@@ -75,7 +84,11 @@ export function InferenceEndpointPanel() {
   const handleCreate = useCallback(async () => {
     setCreateErrorMsg(null);
     if (!label || !baseUrl || !model) {
-      setCreateErrorMsg("All fields required");
+      setCreateErrorMsg(
+        t("inferenceendpoint.allFieldsRequired", {
+          defaultValue: "All fields required",
+        }),
+      );
       return;
     }
     try {
@@ -87,10 +100,14 @@ export function InferenceEndpointPanel() {
       await refetch();
     } catch (err) {
       setCreateErrorMsg(
-        err instanceof Error ? err.message : "Failed to create endpoint",
+        err instanceof Error
+          ? err.message
+          : t("inferenceendpoint.createError", {
+              defaultValue: "Failed to create endpoint",
+            }),
       );
     }
-  }, [label, baseUrl, model, create, refetch]);
+  }, [label, baseUrl, model, create, refetch, t]);
 
   const handleDelete = useCallback(
     async (endpointId: string) => {
@@ -100,11 +117,15 @@ export function InferenceEndpointPanel() {
         await refetch();
       } catch (err) {
         setDeleteErrorMsg(
-          err instanceof Error ? err.message : "Failed to delete endpoint",
+          err instanceof Error
+            ? err.message
+            : t("inferenceendpoint.deleteError", {
+                defaultValue: "Failed to delete endpoint",
+              }),
         );
       }
     },
-    [deleteEndpoint, refetch],
+    [deleteEndpoint, refetch, t],
   );
 
   if (error) {
@@ -119,7 +140,11 @@ export function InferenceEndpointPanel() {
     return (
       <div className="p-4 flex items-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin" />
-        <span className="text-sm">Loading endpoints...</span>
+        <span className="text-sm">
+          {t("inferenceendpoint.loadingEndpoints", {
+            defaultValue: "Loading endpoints...",
+          })}
+        </span>
       </div>
     );
   }
@@ -128,7 +153,11 @@ export function InferenceEndpointPanel() {
     <div className="space-y-4">
       {showCreate ? (
         <div className="border border-border rounded-sm p-4 bg-card space-y-3">
-          <div className="text-sm font-semibold">Add Inference Endpoint</div>
+          <div className="text-sm font-semibold">
+            {t("inferenceendpoint.addTitle", {
+              defaultValue: "Add Inference Endpoint",
+            })}
+          </div>
           {createErrorMsg && (
             <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded-sm">
               {createErrorMsg}
@@ -136,21 +165,27 @@ export function InferenceEndpointPanel() {
           )}
           <Input
             type="text"
-            placeholder="Label"
+            placeholder={t("inferenceendpoint.labelPlaceholder", {
+              defaultValue: "Label",
+            })}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             className="text-sm"
           />
           <Input
             type="text"
-            placeholder="Base URL"
+            placeholder={t("inferenceendpoint.baseUrlPlaceholder", {
+              defaultValue: "Base URL",
+            })}
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
             className="text-sm"
           />
           <Input
             type="text"
-            placeholder="Model ID"
+            placeholder={t("inferenceendpoint.modelPlaceholder", {
+              defaultValue: "Model ID",
+            })}
             value={model}
             onChange={(e) => setModel(e.target.value)}
             className="text-sm"
@@ -166,7 +201,7 @@ export function InferenceEndpointPanel() {
               {createLoading && (
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
               )}
-              Create
+              {t("inferenceendpoint.create", { defaultValue: "Create" })}
             </Button>
             <Button
               variant="outline"
@@ -174,7 +209,7 @@ export function InferenceEndpointPanel() {
               onClick={() => setShowCreate(false)}
               className="flex-1"
             >
-              Cancel
+              {t("inferenceendpoint.cancel", { defaultValue: "Cancel" })}
             </Button>
           </div>
         </div>
@@ -186,7 +221,9 @@ export function InferenceEndpointPanel() {
           className="w-full"
         >
           <Plus className="w-4 h-4" />
-          Add Endpoint
+          {t("inferenceendpoint.addEndpoint", {
+            defaultValue: "Add Endpoint",
+          })}
         </Button>
       )}
 
@@ -212,7 +249,10 @@ export function InferenceEndpointPanel() {
                     {endpoint.base_url}
                   </div>
                   <div className="text-xs text-muted">
-                    Model: {endpoint.model}
+                    {t("inferenceendpoint.modelLabel", {
+                      model: endpoint.model,
+                      defaultValue: "Model: {{model}}",
+                    })}
                   </div>
                 </div>
                 <Button
@@ -237,7 +277,13 @@ export function InferenceEndpointPanel() {
                 }
                 className="text-xs text-accent hover:underline"
               >
-                {expandedId === endpoint.id ? "Hide stats" : "Show stats"}
+                {expandedId === endpoint.id
+                  ? t("inferenceendpoint.hideStats", {
+                      defaultValue: "Hide stats",
+                    })
+                  : t("inferenceendpoint.showStats", {
+                      defaultValue: "Show stats",
+                    })}
               </button>
 
               {expandedId === endpoint.id && (
@@ -247,7 +293,9 @@ export function InferenceEndpointPanel() {
           ))
         ) : (
           <div className="text-xs text-muted p-4 text-center border border-border rounded-sm">
-            No inference endpoints configured
+            {t("inferenceendpoint.noEndpoints", {
+              defaultValue: "No inference endpoints configured",
+            })}
           </div>
         )}
       </div>

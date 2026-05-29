@@ -3,6 +3,7 @@ import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
+import { useTranslation } from "../../state/TranslationContext";
 import type {
   ApprovedAddressesConfig,
   PolicyRule,
@@ -23,7 +24,6 @@ import {
   isValidAddress,
   TIMEZONES,
 } from "../policy-controls";
-import { useTranslation } from "../../state/TranslationContext";
 import { StewardLogo } from "../steward/injected";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";

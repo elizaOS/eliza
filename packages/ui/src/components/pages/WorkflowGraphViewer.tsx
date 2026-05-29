@@ -21,6 +21,7 @@ import type {
   WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
 import { useApp } from "../../state";
+import type { TranslationContextValue } from "../../state/TranslationContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
@@ -229,18 +230,38 @@ function graphChrome(uiTheme: "light" | "dark") {
  * completion. When the plugin grows a server-sent-events streaming endpoint,
  * drive real per-stage state from those events.
  */
-const WORKFLOW_GENERATION_PHASES: ReadonlyArray<string> = [
-  "Understanding your prompt",
-  "Finding the right nodes",
-  "Generating workflow",
-  "Validating + repairing",
-  "Deploying workflow",
+const WORKFLOW_GENERATION_PHASES: ReadonlyArray<{
+  key: string;
+  defaultValue: string;
+}> = [
+  {
+    key: "workflowGraph.phaseUnderstanding",
+    defaultValue: "Understanding your prompt",
+  },
+  {
+    key: "workflowGraph.phaseFindingNodes",
+    defaultValue: "Finding the right nodes",
+  },
+  {
+    key: "workflowGraph.phaseGenerating",
+    defaultValue: "Generating workflow",
+  },
+  {
+    key: "workflowGraph.phaseValidating",
+    defaultValue: "Validating + repairing",
+  },
+  {
+    key: "workflowGraph.phaseDeploying",
+    defaultValue: "Deploying workflow",
+  },
 ];
 
 function WorkflowGenerationProgress({
   chrome,
+  t,
 }: {
   chrome: ReturnType<typeof graphChrome>;
+  t: TranslationContextValue["t"];
 }) {
   return (
     <div
@@ -255,13 +276,21 @@ function WorkflowGenerationProgress({
         <Spinner className="mt-0.5 h-4 w-4 shrink-0" />
         <div className="min-w-0 flex-1 space-y-3">
           <div>
-            <div className="font-semibold">Building your workflow…</div>
+            <div className="font-semibold">
+              {t("workflowGraph.building", {
+                defaultValue: "Building your workflow…",
+              })}
+            </div>
             <div className="text-xs opacity-70">
-              Generations usually take 10–30 seconds.
+              {t("workflowGraph.buildingHint", {
+                defaultValue: "Generations usually take 10–30 seconds.",
+              })}
             </div>
           </div>
           <div className="text-xs opacity-70">
-            {WORKFLOW_GENERATION_PHASES.join(" → ")}
+            {WORKFLOW_GENERATION_PHASES.map((phase) =>
+              t(phase.key, { defaultValue: phase.defaultValue }),
+            ).join(" → ")}
           </div>
         </div>
       </div>
@@ -447,7 +476,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
             {node.notes?.trim() ? (
               <div className="space-y-2">
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-                  Step
+                  {t("workflowGraph.step", { defaultValue: "Step" })}
                 </div>
                 <div className="rounded-sm bg-bg/40 border border-border/20 px-2 py-2">
                   <p className="text-xs leading-relaxed text-txt/80">
@@ -553,12 +582,22 @@ export function WorkflowGraphViewer({
   workflow,
   loading = false,
   isGenerating = false,
-  emptyStateActionLabel = "Describe your workflow",
-  emptyStateHelpText = "Describe the trigger and steps in the sidebar.",
+  emptyStateActionLabel,
+  emptyStateHelpText,
   onNodeClick,
   onEmptyStateAction,
 }: WorkflowGraphViewerProps) {
-  const { uiTheme } = useApp();
+  const { uiTheme, t } = useApp();
+  const resolvedEmptyStateActionLabel =
+    emptyStateActionLabel ??
+    t("workflowGraph.describeWorkflow", {
+      defaultValue: "Describe your workflow",
+    });
+  const resolvedEmptyStateHelpText =
+    emptyStateHelpText ??
+    t("workflowGraph.describeHelp", {
+      defaultValue: "Describe the trigger and steps in the sidebar.",
+    });
   const [fullScreen, setFullScreen] = useState(false);
   const [selectedNode, setSelectedNode] =
     useState<WorkflowDefinitionNode | null>(null);
@@ -570,7 +609,12 @@ export function WorkflowGraphViewer({
     [workflow],
   );
 
-  const ariaLabel = `Workflow graph with ${nodes.length} nodes and ${edges.length} connections`;
+  const ariaLabel = t("workflowGraph.ariaLabel", {
+    nodes: nodes.length,
+    connections: edges.length,
+    defaultValue:
+      "Workflow graph with {{nodes}} nodes and {{connections}} connections",
+  });
   const workflowId = workflow?.id;
 
   // Clear selected node when workflow changes
@@ -649,10 +693,12 @@ export function WorkflowGraphViewer({
         {!loading && !hasNodes && !isGenerating && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <p className={`text-sm font-medium ${chrome.emptyTitleClass}`}>
-              Blank workflow
+              {t("workflowGraph.blankWorkflow", {
+                defaultValue: "Blank workflow",
+              })}
             </p>
             <p className={`max-w-sm text-xs ${chrome.emptyHelpClass}`}>
-              {emptyStateHelpText}
+              {resolvedEmptyStateHelpText}
             </p>
             {onEmptyStateAction && (
               <button
@@ -660,7 +706,7 @@ export function WorkflowGraphViewer({
                 className="mt-1 rounded-sm border border-border/40 bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
                 onClick={onEmptyStateAction}
               >
-                {emptyStateActionLabel}
+                {resolvedEmptyStateActionLabel}
               </button>
             )}
           </div>
@@ -672,7 +718,7 @@ export function WorkflowGraphViewer({
             className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
             style={{ background: chrome.overlayBg }}
           >
-            <WorkflowGenerationProgress chrome={chrome} />
+            <WorkflowGenerationProgress chrome={chrome} t={t} />
           </div>
         )}
 
@@ -721,7 +767,9 @@ export function WorkflowGraphViewer({
         {hasNodes && !isGenerating && (
           <button
             type="button"
-            aria-label="Full screen"
+            aria-label={t("workflowGraph.fullScreen", {
+              defaultValue: "Full screen",
+            })}
             className={[
               "absolute top-3 z-20 flex h-7 w-7 items-center justify-center",
               "rounded-sm border border-border/40 bg-bg/80 text-muted hover:text-txt transition-all duration-200",
@@ -752,11 +800,12 @@ export function WorkflowGraphViewer({
         >
           <DialogHeader className="flex flex-row items-center justify-between border-b border-border/30 px-4 py-3 shrink-0">
             <DialogTitle className="text-sm font-medium">
-              {workflow?.name ?? "Workflow Graph"}
+              {workflow?.name ??
+                t("workflowGraph.title", { defaultValue: "Workflow Graph" })}
             </DialogTitle>
             <button
               type="button"
-              aria-label="Close"
+              aria-label={t("workflowGraph.close", { defaultValue: "Close" })}
               className="flex h-7 w-7 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors"
               onClick={() => setFullScreen(false)}
             >

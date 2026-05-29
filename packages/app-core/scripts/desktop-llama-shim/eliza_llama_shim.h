@@ -147,6 +147,53 @@ void eliza_llama_mtp_stats(void* ctx, int32_t* out);
 // state is attached to ctx).
 void eliza_llama_mtp_stats_ex(void* ctx, struct eliza_mtp_stats* out);
 
+// ── native MTP engine (same-file NextN speculative decode) ───────────────────
+// A self-contained native driver that owns the full draft -> verify -> accept
+// speculative loop (wrapping llama.cpp/common's `common_speculative_*`
+// draft-mtp implementation). Unlike `eliza_llama_decode_unified` (which decodes
+// a single externally-sampled token), this engine drafts k tokens, verifies a
+// k+1 batch against the target model, and returns the accepted multi-token
+// prefix per step. Gated behind same-file MTP; the plain-decode path is
+// untouched.
+//
+// Implemented in eliza_mtp_driver.cpp (C++), linked into the shim dylib.
+//
+// `create` borrows the already-loaded model + target context (does NOT free
+// them) and constructs its own draft context (LLAMA_CONTEXT_TYPE_MTP) over the
+// same model. It returns NULL when the target context cannot do partial-suffix
+// KV removal (non-dense memory layouts), so the caller falls back to plain
+// decode instead of getting wrong output. `temperature <= 0` selects greedy
+// sampling (byte-identical to plain greedy decode).
+void * eliza_llama_mtp_engine_create(
+    void *   model,
+    void *   ctx_tgt,
+    int32_t  draft_min,
+    int32_t  draft_max,
+    float    temperature,
+    int32_t  top_k,
+    float    top_p,
+    float    min_p,
+    uint32_t seed);
+
+void eliza_llama_mtp_engine_free(void * engine);
+
+// Prefill the full prompt into the target context, seed the speculative state,
+// and sample the first token (written to *out_first_token). Returns 0 on
+// success, negative on error.
+int32_t eliza_llama_mtp_engine_prefill(
+    void *          engine,
+    const int32_t * tokens,
+    int32_t         n_tokens,
+    int32_t *       out_first_token);
+
+// Run one speculative step. Writes the accepted token ids (>=1) into `out`
+// (caller-allocated; cap should be >= 1 + draft_max) and returns the count, or
+// negative on error.
+int32_t eliza_llama_mtp_engine_step(void * engine, int32_t * out, int32_t cap);
+
+// Cumulative speculative-decode telemetry for the engine.
+void eliza_llama_mtp_engine_stats(void * engine, struct eliza_mtp_stats * out);
+
 // Memory pressure levels mirror the desktop runtime's policy:
 //   1 = WARN     — free drafter context but keep side-state for re-attach
 //   2 = CRITICAL — WARN + llama_memory_clear on main ctx (KV eviction)

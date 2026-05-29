@@ -36,8 +36,8 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { useT } from "@/providers/I18nProvider";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 
 interface MonetizationSettings {
   monetizationEnabled: boolean;
@@ -457,12 +457,14 @@ export function AppMonetizationSettings({
                 <ul className="list-disc list-inside space-y-1 text-sm">
                   <li>
                     {t("cloud.monetization.enableDialogPoint1", {
-                      defaultValue: "Pay app-specific credits (separate balance)",
+                      defaultValue:
+                        "Pay app-specific credits (separate balance)",
                     })}
                   </li>
                   <li>
                     {t("cloud.monetization.enableDialogPoint2", {
-                      defaultValue: "See inference costs with your markup applied",
+                      defaultValue:
+                        "See inference costs with your markup applied",
                     })}
                   </li>
                   <li>

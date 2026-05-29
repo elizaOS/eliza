@@ -543,6 +543,8 @@ const stubCatalogApps = [
   }),
 ];
 
+let smokeFavoriteApps = [];
+
 const stubMemoryStats = {
   total: 0,
   byType: {},
@@ -2750,6 +2752,55 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/apps") {
     sendJson(req, res, 200, []);
+    return;
+  }
+
+  if (url.pathname === "/api/apps/favorites") {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, { favoriteApps: smokeFavoriteApps });
+      return;
+    }
+
+    if (req.method === "PUT") {
+      const body = (await readJsonBody(req)) || {};
+      const appName =
+        typeof body.appName === "string" ? body.appName.trim() : "";
+      if (appName) {
+        const next = new Set(smokeFavoriteApps);
+        if (body.isFavorite === false) {
+          next.delete(appName);
+        } else {
+          next.add(appName);
+        }
+        smokeFavoriteApps = [...next];
+      }
+      sendJson(req, res, 200, { favoriteApps: smokeFavoriteApps });
+      return;
+    }
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/apps/favorites/replace"
+  ) {
+    const body = (await readJsonBody(req)) || {};
+    smokeFavoriteApps = Array.isArray(body.favoriteAppNames)
+      ? body.favoriteAppNames.filter((name) => typeof name === "string")
+      : [];
+    sendJson(req, res, 200, { favoriteApps: smokeFavoriteApps });
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/apps/overlay-presence"
+  ) {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, {
+      ok: true,
+      app: typeof body.app === "string" ? body.app : null,
+      present: body.present === true,
+    });
     return;
   }
 

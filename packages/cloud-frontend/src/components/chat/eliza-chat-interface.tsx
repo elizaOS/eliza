@@ -52,9 +52,9 @@ import type {
 import { sendStreamingMessage } from "@/lib/hooks/use-streaming-message";
 import { useThrottledStreamingUpdate } from "@/lib/hooks/use-throttled-streaming";
 import { useChatStore } from "@/lib/stores/chat-store";
-import { useT } from "@/providers/I18nProvider";
 import { cn } from "@/lib/utils";
 import { ensureAudioFormat } from "@/lib/utils/audio";
+import { useT } from "@/providers/I18nProvider";
 import { useModelTier } from "./hooks/use-model-tier";
 import "highlight.js/styles/github-dark.css";
 import type { Voice as CustomVoice } from "@elizaos/ui";
@@ -2217,7 +2217,8 @@ export function ElizaChatInterface({
                                       {!isAvailable
                                         ? unavailableReason ||
                                           t("cloud.chat.providerUnavailable", {
-                                            defaultValue: "Provider unavailable",
+                                            defaultValue:
+                                              "Provider unavailable",
                                           })
                                         : tier.description}
                                     </span>
@@ -2308,10 +2309,13 @@ export function ElizaChatInterface({
                                       <span className="text-[11px] text-white/40">
                                         {!isAvailable
                                           ? unavailableReason ||
-                                            t("cloud.chat.providerUnavailable", {
-                                              defaultValue:
-                                                "Provider unavailable",
-                                            })
+                                            t(
+                                              "cloud.chat.providerUnavailable",
+                                              {
+                                                defaultValue:
+                                                  "Provider unavailable",
+                                              },
+                                            )
                                           : model.description}
                                       </span>
                                     </div>

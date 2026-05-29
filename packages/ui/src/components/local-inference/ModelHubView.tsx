@@ -9,6 +9,7 @@ import type {
   ModelBucket,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTranslation } from "../../state/TranslationContext";
 import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
@@ -64,6 +65,7 @@ export function ModelHubView({
   busy,
 }: ModelHubViewProps) {
   useRenderGuard("ModelHubView");
+  const { t } = useTranslation();
   const grouped = useMemo(() => groupByBucket(catalog), [catalog]);
 
   return (
@@ -80,7 +82,7 @@ export function ModelHubView({
               </h3>
               {isRecommended && (
                 <span className="rounded-full border border-primary/45 bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-primary">
-                  Recommended
+                  {t("modelhub.recommended", { defaultValue: "Recommended" })}
                 </span>
               )}
             </header>
@@ -128,6 +130,7 @@ function ModelListRow({
   onRedownload,
   busy,
 }: ModelListRowProps) {
+  const { t } = useTranslation();
   const fit = computeFit(model, hardware);
   const installedEntry = findInstalled(model, installed);
   const download = findDownload(model.id, downloads);
@@ -153,9 +156,11 @@ function ModelListRow({
             {isActive ? (
               <span
                 className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-accent"
-                title="Active"
+                title={t("modelhub.active", { defaultValue: "Active" })}
                 role="img"
-                aria-label="Active model"
+                aria-label={t("modelhub.activeModel", {
+                  defaultValue: "Active model",
+                })}
               >
                 <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
               </span>
@@ -167,7 +172,10 @@ function ModelListRow({
               className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${FIT_STYLES[fit]}`}
               title={fitLabel(fit)}
               role="img"
-              aria-label={`Fit: ${fitLabel(fit)}`}
+              aria-label={t("modelhub.fitAria", {
+                fit: fitLabel(fit),
+                defaultValue: "Fit: {{fit}}",
+              })}
             >
               <span className="h-2 w-2 rounded-full bg-current" />
             </span>
@@ -176,10 +184,16 @@ function ModelListRow({
             <span>{modelMeta.join(" · ")}</span>
             {installedEntry ? (
               <span>
-                Installed · {formatBytes(installedEntry.sizeBytes)}
+                {t("modelhub.installed", {
+                  size: formatBytes(installedEntry.sizeBytes),
+                  defaultValue: "Installed · {{size}}",
+                })}
                 {installedEntry.source === "external-scan" &&
                 installedEntry.externalOrigin
-                  ? ` · via ${installedEntry.externalOrigin}`
+                  ? t("modelhub.viaOrigin", {
+                      origin: installedEntry.externalOrigin,
+                      defaultValue: " · via {{origin}}",
+                    })
                   : ""}
               </span>
             ) : null}
@@ -191,7 +205,10 @@ function ModelListRow({
           ) : null}
           {failed && download?.error ? (
             <div className="mt-1 text-danger text-xs">
-              Download failed: {download.error}
+              {t("modelhub.downloadFailed", {
+                error: download.error,
+                defaultValue: "Download failed: {{error}}",
+              })}
             </div>
           ) : null}
         </div>
@@ -204,7 +221,7 @@ function ModelListRow({
               onClick={() => onDownload(model.id)}
               disabled={busy || fit === "wontfit"}
             >
-              Download
+              {t("modelhub.download", { defaultValue: "Download" })}
             </Button>
           ) : null}
           {downloading ? (
@@ -215,7 +232,7 @@ function ModelListRow({
               onClick={() => onCancel(model.id)}
               disabled={busy}
             >
-              Cancel
+              {t("modelhub.cancel", { defaultValue: "Cancel" })}
             </Button>
           ) : null}
           {installedEntry && !isActive ? (
@@ -225,7 +242,9 @@ function ModelListRow({
               onClick={() => onActivate(model.id)}
               disabled={busy || activating}
             >
-              {activating ? "Activating..." : "Make active"}
+              {activating
+                ? t("modelhub.activating", { defaultValue: "Activating..." })
+                : t("modelhub.makeActive", { defaultValue: "Make active" })}
             </Button>
           ) : null}
           {installedEntry && onVerify ? (
@@ -236,7 +255,7 @@ function ModelListRow({
               onClick={() => onVerify(installedEntry.id)}
               disabled={busy}
             >
-              Verify
+              {t("modelhub.verify", { defaultValue: "Verify" })}
             </Button>
           ) : null}
           {installedEntry?.source === "eliza-download" && onRedownload ? (
@@ -247,7 +266,7 @@ function ModelListRow({
               onClick={() => onRedownload(model.id)}
               disabled={busy}
             >
-              Redownload
+              {t("modelhub.redownload", { defaultValue: "Redownload" })}
             </Button>
           ) : null}
           {installedEntry?.source === "eliza-download" ? (
@@ -258,7 +277,7 @@ function ModelListRow({
               onClick={() => onUninstall(model.id)}
               disabled={busy}
             >
-              Uninstall
+              {t("modelhub.uninstall", { defaultValue: "Uninstall" })}
             </Button>
           ) : null}
         </div>

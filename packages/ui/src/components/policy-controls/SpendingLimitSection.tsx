@@ -1,3 +1,4 @@
+import { useTranslation } from "../../state/TranslationContext";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import type { SpendingLimitConfig } from "./types";
@@ -41,20 +42,23 @@ export function SpendingLimitSection({
   config: SpendingLimitConfig;
   onChange: (config: SpendingLimitConfig) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid grid-cols-3 gap-3">
       <UsdInput
-        label="Per Transaction"
+        label={t("spendinglimit.perTransaction", {
+          defaultValue: "Per Transaction",
+        })}
         value={config.maxPerTx}
         onChange={(v) => onChange({ ...config, maxPerTx: v })}
       />
       <UsdInput
-        label="Daily Max"
+        label={t("spendinglimit.dailyMax", { defaultValue: "Daily Max" })}
         value={config.maxPerDay}
         onChange={(v) => onChange({ ...config, maxPerDay: v })}
       />
       <UsdInput
-        label="Weekly Max"
+        label={t("spendinglimit.weeklyMax", { defaultValue: "Weekly Max" })}
         value={config.maxPerWeek}
         onChange={(v) => onChange({ ...config, maxPerWeek: v })}
       />

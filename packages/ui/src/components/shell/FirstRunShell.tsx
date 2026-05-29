@@ -14,7 +14,13 @@ import {
   type FirstRunStep,
   normalizeFirstRunName,
 } from "../../first-run/first-run";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
 import { Checkbox } from "../ui/checkbox";
+
+type TranslateFn = TranslationContextValue["t"];
 
 const GLASS_INTERACTIVE =
   "border-[var(--first-run-card-border)] bg-[var(--first-run-card-bg)] text-[var(--first-run-text-primary)] hover:bg-[var(--first-run-card-bg-hover)]";
@@ -44,7 +50,7 @@ export interface FirstRunShellProps {
   goBack: () => void;
   finishRuntime: () => void;
   toggleVoice: () => Promise<void>;
-  onPromptReady: (promptText: string) => void;
+  onPromptReady: (promptText: string, lineId: string) => void;
 }
 
 function RuntimeCard(props: {
@@ -128,7 +134,9 @@ function RuntimeCard(props: {
 function LocalInferenceChoice(props: {
   value: FirstRunLocalInference;
   onChange: (value: FirstRunLocalInference) => void;
+  t: TranslateFn;
 }) {
+  const { t } = props;
   const options: ReadonlyArray<{
     value: FirstRunLocalInference;
     label: string;
@@ -136,20 +144,31 @@ function LocalInferenceChoice(props: {
   }> = [
     {
       value: "all-local",
-      label: "All local models",
-      detail: "Download and run everything on this machine.",
+      label: t("firstrunshell.allLocalLabel", {
+        defaultValue: "All local models",
+      }),
+      detail: t("firstrunshell.allLocalDetail", {
+        defaultValue: "Download and run everything on this machine.",
+      }),
     },
     {
       value: "cloud-inference",
-      label: "Connect Eliza Cloud",
-      detail: "Keep the agent local, route inference through the cloud.",
+      label: t("firstrunshell.cloudInferenceLabel", {
+        defaultValue: "Connect Eliza Cloud",
+      }),
+      detail: t("firstrunshell.cloudInferenceDetail", {
+        defaultValue:
+          "Keep the agent local, route inference through the cloud.",
+      }),
     },
   ];
   return (
     <div
       className="flex flex-col gap-2"
       role="radiogroup"
-      aria-label="Local inference"
+      aria-label={t("firstrunshell.localInferenceLabel", {
+        defaultValue: "Local inference",
+      })}
     >
       {options.map((option) => {
         const active = props.value === option.value;
@@ -246,10 +265,20 @@ function BareInput(props: {
   );
 }
 
-function promptForStep(step: FirstRunStep, agentNameValue: string): string {
+function promptForStep(
+  step: FirstRunStep,
+  agentNameValue: string,
+  t: TranslateFn,
+): string {
   const agentName = normalizeFirstRunName(agentNameValue) || "Eliza";
-  if (step === "remote") return "Where is the remote agent?";
-  return `Where should ${agentName} run?`;
+  if (step === "remote")
+    return t("firstrunshell.promptRemote", {
+      defaultValue: "Where is the remote agent?",
+    });
+  return t("firstrunshell.promptRuntime", {
+    agentName,
+    defaultValue: "Where should {{agentName}} run?",
+  });
 }
 
 function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
@@ -313,12 +342,16 @@ function FirstRunStatus(props: {
 function FirstRunVoiceControl(props: {
   voice: FirstRunShellProps["voice"];
   toggleVoice: () => Promise<void>;
+  t: TranslateFn;
 }) {
+  const { t } = props;
   const buttonLabel = props.voice.speaking
-    ? "Speaking"
+    ? t("firstrunshell.voiceSpeaking", { defaultValue: "Speaking" })
     : props.voice.listening
-      ? "Listening"
-      : "Not listening";
+      ? t("firstrunshell.voiceListening", { defaultValue: "Listening" })
+      : t("firstrunshell.voiceNotListening", {
+          defaultValue: "Not listening",
+        });
   const detail = props.voice.error ?? props.voice.transcript;
 
   return (
@@ -330,7 +363,13 @@ function FirstRunVoiceControl(props: {
         }}
         aria-pressed={props.voice.listening}
         aria-label={
-          props.voice.listening ? "Stop voice input" : "Start voice input"
+          props.voice.listening
+            ? t("firstrunshell.stopVoice", {
+                defaultValue: "Stop voice input",
+              })
+            : t("firstrunshell.startVoice", {
+                defaultValue: "Start voice input",
+              })
         }
         className="inline-flex min-h-11 min-w-[8.5rem] items-center justify-center bg-transparent px-2 py-2 text-sm font-semibold text-txt transition hover:text-accent focus-visible:outline-none focus-visible:underline"
       >
@@ -355,7 +394,9 @@ function FirstRunControls(props: {
   updateDraft: FirstRunDraftUpdate;
   setStep: (step: FirstRunStep) => void;
   finishRuntime: () => void;
+  t: TranslateFn;
 }) {
+  const { t } = props;
   if (props.step === "remote") {
     return (
       <div className="grid w-full gap-5">
@@ -371,7 +412,9 @@ function FirstRunControls(props: {
           value={props.draft.remoteToken}
           onChange={(value) => props.updateDraft("remoteToken", value)}
           onEnter={props.finishRuntime}
-          placeholder="Access token"
+          placeholder={t("firstrunshell.accessTokenPlaceholder", {
+            defaultValue: "Access token",
+          })}
           type="password"
         />
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -380,7 +423,7 @@ function FirstRunControls(props: {
             disabled={props.submitting}
             onClick={() => props.setStep("runtime")}
           >
-            Runtime
+            {t("firstrunshell.runtime", { defaultValue: "Runtime" })}
           </GlassButton>
           <GlassButton
             variant="primary"
@@ -388,7 +431,9 @@ function FirstRunControls(props: {
             icon={props.submitting ? Loader2 : Check}
             onClick={props.finishRuntime}
           >
-            {props.submitting ? "Working" : props.primaryLabel}
+            {props.submitting
+              ? t("firstrunshell.working", { defaultValue: "Working" })
+              : props.primaryLabel}
           </GlassButton>
         </div>
       </div>
@@ -401,14 +446,21 @@ function FirstRunControls(props: {
         <RuntimeCard
           active={props.draft.runtime === "cloud"}
           icon={Cloud}
-          label="Cloud"
-          badge="Recommended"
+          label={t("firstrunshell.cloudLabel", { defaultValue: "Cloud" })}
+          badge={t("firstrunshell.recommended", {
+            defaultValue: "Recommended",
+          })}
           emphasis="primary"
           testId="first-run-runtime-cloud"
           detail={
             props.elizaCloudConnected
-              ? "Runs 24/7 persistent agents that never sleep. Account connected."
-              : "Runs 24/7 persistent agents that never sleep."
+              ? t("firstrunshell.cloudDetailConnected", {
+                  defaultValue:
+                    "Runs 24/7 persistent agents that never sleep. Account connected.",
+                })
+              : t("firstrunshell.cloudDetail", {
+                  defaultValue: "Runs 24/7 persistent agents that never sleep.",
+                })
           }
           onClick={() => props.updateDraft("runtime", "cloud")}
         />
@@ -420,16 +472,20 @@ function FirstRunControls(props: {
               props.draft.localInference === "all-local"
             }
             icon={HardDrive}
-            label="Local"
-            badge="Advanced"
+            label={t("firstrunshell.localLabel", { defaultValue: "Local" })}
+            badge={t("firstrunshell.advanced", { defaultValue: "Advanced" })}
             testId="first-run-runtime-local"
-            detail="Runs on your machine. Use local inference or connect Eliza Cloud."
+            detail={t("firstrunshell.localDetail", {
+              defaultValue:
+                "Runs on your machine. Use local inference or connect Eliza Cloud.",
+            })}
             onClick={() => props.updateDraft("runtime", "local")}
           >
             {props.draft.runtime === "local" ? (
               <LocalInferenceChoice
                 value={props.draft.localInference}
                 onChange={(value) => props.updateDraft("localInference", value)}
+                t={t}
               />
             ) : null}
           </RuntimeCard>
@@ -440,23 +496,33 @@ function FirstRunControls(props: {
             className={`flex items-center gap-2 rounded-sm border px-4 py-2 text-sm ${GLASS_PANEL}`}
           >
             <Checkbox
-              aria-label="Keep embeddings local"
+              aria-label={t("firstrunshell.keepEmbeddingsLocal", {
+                defaultValue: "Keep embeddings local",
+              })}
               checked={props.draft.useLocalEmbeddings}
               onCheckedChange={(checked) =>
                 props.updateDraft("useLocalEmbeddings", checked === true)
               }
             />
-            <span>Keep embeddings local</span>
+            <span>
+              {t("firstrunshell.keepEmbeddingsLocal", {
+                defaultValue: "Keep embeddings local",
+              })}
+            </span>
           </div>
         ) : null}
 
         <RuntimeCard
           active={props.draft.runtime === "remote"}
           icon={Network}
-          label="Use as remote"
+          label={t("firstrunshell.useAsRemote", {
+            defaultValue: "Use as remote",
+          })}
           emphasis="muted"
           testId="first-run-runtime-remote"
-          detail="Connect to your local machine from another device."
+          detail={t("firstrunshell.useAsRemoteDetail", {
+            defaultValue: "Connect to your local machine from another device.",
+          })}
           onClick={() => {
             props.updateDraft("runtime", "remote");
             props.setStep("remote");
@@ -469,7 +535,9 @@ function FirstRunControls(props: {
         icon={props.submitting ? Loader2 : Check}
         onClick={props.finishRuntime}
       >
-        {props.submitting ? "Working" : props.primaryLabel}
+        {props.submitting
+          ? t("firstrunshell.working", { defaultValue: "Working" })
+          : props.primaryLabel}
       </GlassButton>
     </div>
   );
@@ -494,9 +562,10 @@ export function FirstRunShell({
   toggleVoice,
   onPromptReady,
 }: FirstRunShellProps) {
+  const { t } = useTranslation();
   const promptText = React.useMemo(
-    () => promptForStep(step, draft.agentName),
-    [draft.agentName, step],
+    () => promptForStep(step, draft.agentName, t),
+    [draft.agentName, step, t],
   );
   const { rendered: renderedPrompt, complete: promptComplete } =
     useTypedPrompt(promptText);
@@ -511,8 +580,9 @@ export function FirstRunShell({
   const onPromptReadyRef = React.useRef(onPromptReady);
   onPromptReadyRef.current = onPromptReady;
   React.useEffect(() => {
-    if (promptComplete) onPromptReadyRef.current(promptText);
-  }, [promptComplete, promptText]);
+    // `step` doubles as the onboarding voice-line id (see ONBOARDING_VOICE_LINES).
+    if (promptComplete) onPromptReadyRef.current(promptText, step);
+  }, [promptComplete, promptText, step]);
 
   return (
     <div
@@ -526,7 +596,7 @@ export function FirstRunShell({
               type="button"
               onClick={goBack}
               className={`inline-flex h-11 w-11 items-center justify-center rounded-sm border transition ${GLASS_INTERACTIVE}`}
-              aria-label="Back"
+              aria-label={t("firstrunshell.back", { defaultValue: "Back" })}
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -559,10 +629,15 @@ export function FirstRunShell({
                 updateDraft={updateDraft}
                 setStep={setStep}
                 finishRuntime={finishRuntime}
+                t={t}
               />
             ) : null}
             {promptComplete ? (
-              <FirstRunVoiceControl voice={voice} toggleVoice={toggleVoice} />
+              <FirstRunVoiceControl
+                voice={voice}
+                toggleVoice={toggleVoice}
+                t={t}
+              />
             ) : null}
             <FirstRunStatus
               busyText={busyText}

@@ -95,7 +95,7 @@ export interface FirstRunController {
   startVoice: () => Promise<void>;
   stopVoice: () => Promise<void>;
   toggleVoice: () => Promise<void>;
-  onPromptReady: (promptText: string) => void;
+  onPromptReady: (promptText: string, lineId: string) => void;
 }
 
 type SpeechRecognitionWindow = Window & {
@@ -764,7 +764,7 @@ export function useFirstRunController(): FirstRunController {
   }, [startVoice, stopVoice]);
 
   const onPromptReady = React.useCallback(
-    (promptText: string) => {
+    (promptText: string, lineId: string) => {
       const sequence = promptSequenceRef.current + 1;
       promptSequenceRef.current = sequence;
       voiceCaptureGenerationRef.current += 1;
@@ -818,14 +818,15 @@ export function useFirstRunController(): FirstRunController {
         window.speechSynthesis.speak(utterance);
       };
 
-      // Prefer edge-tts neural voice; fall back to browser speechSynthesis so
-      // onboarding never goes silent (no network, autoplay block, etc.).
+      // Prefer the pre-generated OmniVoice preset; fall back to browser
+      // speechSynthesis so onboarding never goes silent if the preset is not
+      // yet generated (404), audio autoplay is blocked, etc.
       void (async () => {
         try {
-          const audioData = await client.synthesizeFirstRunSpeech(promptText);
+          const audioData = await client.synthesizeFirstRunSpeech(lineId);
           if (promptSequenceRef.current !== sequence) return;
           const url = URL.createObjectURL(
-            new Blob([audioData], { type: "audio/mpeg" }),
+            new Blob([audioData], { type: "audio/wav" }),
           );
           const element = new Audio(url);
           firstRunAudioRef.current = element;

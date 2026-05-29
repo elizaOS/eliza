@@ -763,7 +763,9 @@ export function PhonePageView() {
                             setActivePanel("dialer");
                           }}
                         >
-                          {t("elizaosapps.phone.dial", { defaultValue: "Dial" })}
+                          {t("elizaosapps.phone.dial", {
+                            defaultValue: "Dial",
+                          })}
                         </SecondaryButton>
                         <SecondaryButton
                           disabled={!contactNumber}
@@ -861,8 +863,7 @@ export function PhonePageView() {
                     t("elizaosapps.phone.unknownNumber", {
                       defaultValue: "unknown number",
                     })}{" "}
-                  ·{" "}
-                  {callTypeLabel(selectedCall.type)} ·{" "}
+                  · {callTypeLabel(selectedCall.type)} ·{" "}
                   {formatTimestamp(selectedCall.date)}
                 </div>
               </div>
@@ -1120,9 +1121,7 @@ export function PhonePageView() {
             }`}
           >
             {item.icon}
-            <span>
-              {t(item.labelKey, { defaultValue: item.defaultLabel })}
-            </span>
+            <span>{t(item.labelKey, { defaultValue: item.defaultLabel })}</span>
           </button>
         ))}
       </div>

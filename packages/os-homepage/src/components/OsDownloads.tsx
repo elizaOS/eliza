@@ -161,7 +161,9 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
               })}
             >
               <Info className="icon" />
-              {t("homepage_os.downloads.checksum", { defaultValue: "Checksum" })}
+              {t("homepage_os.downloads.checksum", {
+                defaultValue: "Checksum",
+              })}
             </a>
           )}
           {artifact.releaseNotesUrl && (
@@ -189,7 +191,9 @@ function ArtifactCard({ artifact }: { artifact: OsArtifact }) {
           >
             <Download className="icon" />
             {isAvailable
-              ? t("homepage_os.downloads.download", { defaultValue: "Download" })
+              ? t("homepage_os.downloads.download", {
+                  defaultValue: "Download",
+                })
               : t("homepage_os.downloads.comingSoon", {
                   defaultValue: "Coming soon",
                 })}
@@ -234,7 +238,9 @@ export function OsDownloads({ artifacts }: OsDownloadsProps) {
     <section id="downloads" className="band band-black os-downloads">
       <div className="band-inner">
         <div className="section-head">
-          <h2>{t("homepage_os.downloads.title", { defaultValue: "Downloads." })}</h2>
+          <h2>
+            {t("homepage_os.downloads.title", { defaultValue: "Downloads." })}
+          </h2>
           <p className="section-lede">
             {t("homepage_os.downloads.lede", {
               defaultValue:

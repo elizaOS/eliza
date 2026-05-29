@@ -5,9 +5,9 @@
  *   libllama.<ext>             — shared-lib variant of llama.cpp (NOT static)
  *   libeliza-llama-shim.<ext>  — our pointer-style wrappers, NEEDED-links libllama
  *
- * Output layout (mirrors the existing mtp bin dirs):
+ * Output layout (matches resolveDesktopBinDir in desktop-llama-adapter.ts):
  *
- *   $ELIZA_STATE_DIR/local-inference/bin/mtp/<platform>-<arch>-<backend>/
+ *   $ELIZA_STATE_DIR/local-inference/bin/llama-cpp/<platform>-<arch>-<backend>/
  *     libllama.<ext>
  *     libeliza-llama-shim.<ext>
  *     include/llama.h           (for downstream debug + future header-driven binders)
@@ -43,10 +43,41 @@ const LLAMA_CPP_REPO =
   "https://github.com/elizaOS/llama.cpp";
 const LLAMA_CPP_REF = process.env.ELIZA_DESKTOP_LLAMA_CPP_REF || "main";
 
-const STATE_DIR =
-  process.env.ELIZA_STATE_DIR ||
-  process.env.ELIZA_STATE_DIR ||
-  path.join(os.homedir(), ".eliza");
+// The native same-GGUF MTP engine (eliza_mtp_driver.cpp) requires the
+// MTP-capable llama.cpp fork. That fork is vendored in-repo under
+// packages/native/ios-deps/llama.cpp/src and is the source of truth until the
+// MTP branch is published to elizaOS/llama.cpp. ensureSourceCheckout() prefers
+// it over a network clone of `main` (which is pre-MTP). Override explicitly
+// with ELIZA_DESKTOP_LLAMA_CPP_SRC=<abs path to a llama.cpp src tree>.
+const LLAMA_CPP_LOCAL_SRC =
+  process.env.ELIZA_DESKTOP_LLAMA_CPP_SRC ||
+  path.resolve(
+    here,
+    "..",
+    "..",
+    "native",
+    "ios-deps",
+    "llama.cpp",
+    "src",
+  );
+
+// Mirror @elizaos/core resolveStateDir() precedence EXACTLY so the build stages
+// dylibs where the runtime's resolveDesktopBinDir() will look for them:
+//   ELIZA_STATE_DIR > $XDG_STATE_HOME/<namespace> > ~/.local/state/<namespace>
+// (namespace = ELIZA_NAMESPACE ?? "eliza"). Drift here silently breaks the FFI
+// path — the runtime never finds the shim and falls through to the subprocess.
+const STATE_DIR = (() => {
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  if (explicit) return explicit;
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const xdg = process.env.XDG_STATE_HOME?.trim();
+  if (xdg) {
+    return path.isAbsolute(xdg)
+      ? path.join(xdg, namespace)
+      : path.join(os.homedir(), xdg, namespace);
+  }
+  return path.join(os.homedir(), ".local", "state", namespace);
+})();
 
 const CACHE_DIR = path.join(
   STATE_DIR,
@@ -201,6 +232,15 @@ function ensureSourceCheckout(srcDir) {
     log(`source checkout present: ${srcDir}`);
     return;
   }
+  // Prefer the in-repo MTP fork over a network clone of `main` (pre-MTP).
+  // We symlink the cache src dir at the fork so the separate out-of-source
+  // buildDir keeps generated artifacts out of the vendored tree.
+  if (fs.existsSync(path.join(LLAMA_CPP_LOCAL_SRC, "CMakeLists.txt"))) {
+    log(`linking MTP fork → ${srcDir} (${LLAMA_CPP_LOCAL_SRC})`);
+    fs.mkdirSync(path.dirname(srcDir), { recursive: true });
+    fs.symlinkSync(LLAMA_CPP_LOCAL_SRC, srcDir);
+    return;
+  }
   log(`cloning ${LLAMA_CPP_REPO}@${LLAMA_CPP_REF} → ${srcDir}`);
   fs.mkdirSync(srcDir, { recursive: true });
   run("git", ["init", "-q"], srcDir);
@@ -224,13 +264,19 @@ function buildTarget(targetKey) {
     log(`[${targetKey}] host-build prerequisites:\n  ${t.hostNote}`);
   }
 
+  // Output dir MUST match the runtime's `resolveDesktopBinDir()` in
+  // plugins/plugin-local-inference/src/services/desktop-llama-adapter.ts:
+  //   $ELIZA_STATE_DIR/local-inference/bin/llama-cpp/<platform>-<arch>-<backend>
+  // (no `-dlopen` suffix; the `bin/mtp/` tree is the separate native-runtime
+  // region store). If these drift, loadDesktopLlama() never finds the shim and
+  // silently falls through to the subprocess path.
   const [platform, arch] = targetKey.split("-");
-  const outDirName = `${platform}-${arch}-${t.backend}-dlopen`;
+  const outDirName = `${platform}-${arch}-${t.backend}`;
   const outDir = path.join(
     STATE_DIR,
     "local-inference",
     "bin",
-    "mtp",
+    "llama-cpp",
     outDirName,
   );
   fs.mkdirSync(outDir, { recursive: true });
@@ -282,6 +328,28 @@ function buildTarget(targetKey) {
     buildDir,
   );
 
+  // ── Step 1a: build libllama-common as a shared library ───────────────────
+  // The native MTP driver (eliza_mtp_driver.cpp) calls into the
+  // `common_speculative_*` / `common_sampler_*` helpers, which live in the
+  // `llama-common` CMake target (NOT `common`). With BUILD_SHARED_LIBS=ON
+  // this produces `libllama-common.<ext>` next to libllama. The shim links
+  // it via `-lllama-common`; it's staged + rpath-resolved like libllama.
+  log(`cmake build ${targetKey} (llama-common for MTP driver)`);
+  run(
+    "cmake",
+    [
+      "--build",
+      ".",
+      "--config",
+      "Release",
+      "--target",
+      "llama-common",
+      "--parallel",
+      String(os.cpus().length),
+    ],
+    buildDir,
+  );
+
   // ── Step 1b: build mtmd when vision is enabled ───────────────────────────
   // llama.cpp HEAD exposes multimodal under `tools/mtmd/`. The `mtmd`
   // cmake target builds `libmtmd.<ext>` as a shared library (because
@@ -305,13 +373,11 @@ function buildTarget(targetKey) {
     );
   }
 
-  // ── Step 2: locate the built libllama.<ext> and stage it ─────────────────
+  // ── Step 2: locate the build's shared-lib output dir ─────────────────────
   // Naming convention: linux/macOS produce `libllama.{so,dylib}` (CMake adds
   // the `lib` prefix on shared libs). Windows MSVC produces `llama.dll` —
   // the `lib` prefix is dropped because PE doesn't carry it. The runtime
-  // (`desktop-llama-adapter.ts`) always looks for `libllama.{so,dylib,dll}`,
-  // so on Windows we have to find `llama.dll` from the build tree and
-  // stage it AS `libllama.dll` in the output dir.
+  // (`desktop-llama-adapter.ts`) always opens `libllama.{so,dylib,dll}`.
   const libllamaName = `libllama.${t.libExt}`;
   const buildOutputNames =
     process.platform === "win32"
@@ -327,8 +393,8 @@ function buildTarget(targetKey) {
       path.join(buildDir, "src", "Release", name),
     );
   }
-  // Also walk shallow: cmake puts the shared lib in different places
-  // depending on generator (Ninja vs Make/VS). Fall through to a find scan.
+  // cmake puts the shared lib in different places depending on generator
+  // (Ninja vs Make/VS). Fall through to a find scan.
   let libllamaSrcPath = candidates.find((p) => fs.existsSync(p));
   if (!libllamaSrcPath) {
     for (const name of buildOutputNames) {
@@ -345,36 +411,81 @@ function buildTarget(targetKey) {
         `in ${buildDir}; check that -DBUILD_SHARED_LIBS=ON took effect`,
     );
   }
-  log(`staging ${libllamaSrcPath} → ${outDir}/${libllamaName}`);
-  fs.copyFileSync(libllamaSrcPath, path.join(outDir, libllamaName));
+  const srcBinDir = path.dirname(libllamaSrcPath);
 
-  // ── Step 2b: stage libmtmd.<ext> when vision is enabled ──────────────────
-  // mtmd is built as a shared lib (BUILD_SHARED_LIBS=ON propagates to all
-  // targets). The shim's `-lmtmd` link will need it resolvable next to
-  // libllama at load time via the same rpath.
-  if (ENABLE_VISION) {
-    const libmtmdName = `libmtmd.${t.libExt}`;
-    const mtmdCandidates = [
-      path.join(buildDir, libmtmdName),
-      path.join(buildDir, "bin", libmtmdName),
-      path.join(buildDir, "tools", "mtmd", libmtmdName),
-    ];
-    let libmtmdSrcPath = mtmdCandidates.find((p) => fs.existsSync(p));
-    if (!libmtmdSrcPath) {
-      const found = spawnSync("find", [buildDir, "-name", libmtmdName, "-print"], {
-        encoding: "utf8",
-      });
-      libmtmdSrcPath = found.stdout.split("\n").find((s) => s.trim());
-    }
-    if (!libmtmdSrcPath) {
-      die(
-        `ELIZA_ENABLE_VISION=1 but ${libmtmdName} not found in ${buildDir}; ` +
-          `check that -DLLAMA_BUILD_MTMD=ON + -DBUILD_SHARED_LIBS=ON took effect.`,
+  // ── Step 2a: stage the FULL shim dependency closure ──────────────────────
+  // The shim links libllama + libllama-common, and those in turn pull in the
+  // entire libggml* backend family (base/cpu/metal/cuda/…). Every cross-ref
+  // uses a VERSIONED install name (`@rpath/libNAME.0.dylib`), while the
+  // runtime opens the UNVERSIONED `libllama.<ext>`. So we must stage every
+  // matching lib AND preserve the build's symlink farm
+  // (libNAME.<ext> → libNAME.0.<ext> → libNAME.<major>.<minor>.<patch>.<ext>)
+  // so both naming forms resolve. CMake bakes an absolute build-tree LC_RPATH
+  // into each lib; we add `@loader_path` so the closure resolves from whatever
+  // dir it's staged into (the runtime's resolveDesktopBinDir target).
+  if (process.platform === "win32") {
+    // PE has no rpath/symlinks: DLLs resolve from the same dir. Copy them flat,
+    // normalizing the dropped `lib` prefix to the runtime's expected name.
+    for (const entry of fs.readdirSync(srcBinDir)) {
+      if (!/\.(dll)$/i.test(entry)) continue;
+      if (!/^(lib)?(ggml|llama|mtmd)/i.test(entry)) continue;
+      const staged = entry.startsWith("lib") ? entry : `lib${entry}`;
+      fs.copyFileSync(
+        path.join(srcBinDir, entry),
+        path.join(outDir, staged),
       );
     }
-    log(`staging ${libmtmdSrcPath} → ${outDir}`);
-    fs.copyFileSync(libmtmdSrcPath, path.join(outDir, libmtmdName));
+  } else {
+    const ext = t.libExt; // dylib | so
+    const libRe = new RegExp(`^lib(ggml|llama|mtmd)[^/]*\\.${ext}`);
+    const visionRe = /mtmd/;
+    for (const entry of fs.readdirSync(srcBinDir)) {
+      if (!libRe.test(entry)) continue;
+      if (!ENABLE_VISION && visionRe.test(entry)) continue;
+      const src = path.join(srcBinDir, entry);
+      const dst = path.join(outDir, entry);
+      const lst = fs.lstatSync(src);
+      if (lst.isSymbolicLink()) {
+        // Recreate the (relative) symlink so the name chain stays intact.
+        const target = fs.readlinkSync(src);
+        try {
+          fs.rmSync(dst, { force: true });
+        } catch {}
+        fs.symlinkSync(target, dst);
+        continue;
+      }
+      // Real versioned dylib: copy then add @loader_path so its own
+      // `@rpath/lib*.0.<ext>` deps resolve from the staged dir.
+      fs.copyFileSync(src, dst);
+      const tool = process.platform === "darwin" ? "install_name_tool" : null;
+      if (tool) {
+        const res = spawnSync(tool, ["-add_rpath", "@loader_path", dst], {
+          encoding: "utf8",
+        });
+        // Non-fatal: a duplicate @loader_path entry just means it's already set.
+        if (
+          res.status !== 0 &&
+          !/would duplicate path|already/i.test(res.stderr || "")
+        ) {
+          die(`install_name_tool -add_rpath failed for ${dst}: ${res.stderr}`);
+        }
+      } else {
+        // ELF: patchelf if available, else rely on the linker's $ORIGIN rpath.
+        const pe = spawnSync(
+          "patchelf",
+          ["--add-rpath", "$ORIGIN", dst],
+          { encoding: "utf8" },
+        );
+        if (pe.error) {
+          log(
+            `patchelf unavailable; ${entry} relies on its build-tree rpath ` +
+              `(set $ORIGIN via the linker when building the shim)`,
+          );
+        }
+      }
+    }
   }
+  log(`staged shim dependency closure (libllama/libllama-common/libggml*) → ${outDir}`);
 
   // ── Step 3: stage headers ────────────────────────────────────────────────
   const incDir = path.join(outDir, "include");
@@ -402,50 +513,94 @@ function buildTarget(targetKey) {
     }
   }
 
-  // ── Step 4: compile the shim and NEEDED-link libllama ────────────────────
+  // ── Step 4: compile the shim + MTP driver and NEEDED-link the libs ───────
+  // The shim is two translation units:
+  //   - eliza_llama_shim.c    (C11)   — pointer-style wrappers over libllama
+  //   - eliza_mtp_driver.cpp  (C++17) — native same-GGUF MTP engine that
+  //                                     drives common_speculative_* /
+  //                                     common_sampler_* from libllama-common
+  // We compile each to an object then link both into one dylib with clang++
+  // (so the C++ runtime is pulled in) against libllama + libllama-common.
   const shimOut = path.join(outDir, `libeliza-llama-shim.${t.libExt}`);
-  log(`compile shim → ${shimOut}`);
+  const cc = process.env.CC || (platform === "darwin" ? "clang" : "cc");
+  const cxx = process.env.CXX || (platform === "darwin" ? "clang++" : "c++");
 
-  const compilerArgs = [
-    "-O2",
-    "-fPIC",
-    "-shared",
-    "-std=c11",
-    `-I${incDir}`,
+  // Compile against the fork's source headers ONLY. The staged `incDir` copies
+  // (Step 3b) are debug-only and intentionally NOT on the include path: it holds
+  // llama.h + ggml.h but not ggml-cpu.h, so llama.h's `#include "ggml-cpu.h"`
+  // would fall through to srcDir and pull in a SECOND ggml.h → enum redefinition.
+  const commonInc = [
     `-I${path.join(srcDir, "include")}`,
     `-I${path.join(srcDir, "ggml", "include")}`,
+  ];
+  const visionDefs = ENABLE_VISION
+    ? ["-DELIZA_ENABLE_VISION=1", `-I${path.join(srcDir, "tools", "mtmd")}`]
+    : [];
+
+  const shimObj = path.join(buildDir, "eliza_llama_shim.o");
+  const driverObj = path.join(buildDir, "eliza_mtp_driver.o");
+
+  log(`compile shim TU → ${shimObj}`);
+  run(cc, [
+    "-O2",
+    "-fPIC",
+    "-std=c11",
+    "-c",
+    ...commonInc,
+    ...visionDefs,
     path.join(SHIM_DIR, "eliza_llama_shim.c"),
+    "-o",
+    shimObj,
+  ]);
+
+  log(`compile MTP driver TU → ${driverObj}`);
+  run(cxx, [
+    "-O2",
+    "-fPIC",
+    "-std=c++17",
+    "-c",
+    ...commonInc,
+    // The driver reaches into the common helper headers (speculative.h,
+    // sampling.h, common.h) which live under src/common.
+    `-I${path.join(srcDir, "common")}`,
+    ...visionDefs,
+    path.join(SHIM_DIR, "eliza_mtp_driver.cpp"),
+    "-o",
+    driverObj,
+  ]);
+
+  log(`link shim dylib → ${shimOut}`);
+  const linkArgs = [
+    "-shared",
+    "-fPIC",
+    shimObj,
+    driverObj,
     "-o",
     shimOut,
     `-L${outDir}`,
     "-lllama",
+    "-lllama-common",
   ];
 
-  // Vision opt-in: link against the shared `libmtmd.<ext>` built in
-  // Step 1b. We add the mtmd include dir to the compile invocation and
-  // define ELIZA_ENABLE_VISION so the shim's `#ifdef` block compiles.
+  // Vision opt-in: NEEDED-link against the staged libmtmd next to libllama.
   if (ENABLE_VISION) {
-    compilerArgs.push("-DELIZA_ENABLE_VISION=1");
-    // Header search path for mtmd.h.
-    compilerArgs.push(`-I${path.join(srcDir, "tools", "mtmd")}`);
-    // NEEDED-link against the staged libmtmd next to libllama. The shared
-    // lib pulls in its own C++ transitive deps, so no -lc++/-lstdc++ here.
-    compilerArgs.push("-lmtmd");
+    linkArgs.push("-lmtmd");
   }
 
-  // Set rpath so libeliza-llama-shim resolves libllama from its own dir at
-  // load time. Otherwise the user has to set DYLD_LIBRARY_PATH/LD_LIBRARY_PATH.
+  // Set rpath so libeliza-llama-shim resolves libllama + libllama-common from
+  // its own dir at load time. Otherwise the user has to set
+  // DYLD_LIBRARY_PATH/LD_LIBRARY_PATH.
   if (platform === "darwin") {
-    compilerArgs.push("-Wl,-install_name,@rpath/libeliza-llama-shim.dylib");
-    compilerArgs.push("-Wl,-rpath,@loader_path");
+    linkArgs.push("-Wl,-install_name,@rpath/libeliza-llama-shim.dylib");
+    linkArgs.push("-Wl,-rpath,@loader_path");
   } else if (platform === "linux") {
-    compilerArgs.push("-Wl,-rpath,$ORIGIN");
-    compilerArgs.push("-Wl,--enable-new-dtags");
+    linkArgs.push("-Wl,-rpath,$ORIGIN");
+    linkArgs.push("-Wl,--enable-new-dtags");
   }
   // Windows DLLs resolve from the same dir by default — no rpath flag needed.
 
-  const cc = process.env.CC || (platform === "darwin" ? "clang" : "cc");
-  run(cc, compilerArgs);
+  // Link with the C++ driver so use clang++/c++ to pull in libc++/libstdc++.
+  run(cxx, linkArgs);
 
   // ── Step 5: smoke-check that exports are present ─────────────────────────
   const exportTable = readExportTable(platform, shimOut);

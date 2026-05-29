@@ -155,7 +155,11 @@ function ReleaseDownloads() {
             <p className="section-kicker">
               {manifest.product} {manifest.channel}
             </p>
-            <h2>{t("homepage_os.release.title", { defaultValue: "Download beta." })}</h2>
+            <h2>
+              {t("homepage_os.release.title", {
+                defaultValue: "Download beta.",
+              })}
+            </h2>
           </div>
           <p className="section-lede">
             {t("homepage_os.release.available", {
@@ -175,12 +179,16 @@ function ReleaseDownloads() {
               <h3>{artifact.label}</h3>
               <div className="release-actions">
                 <a href={artifact.url} className="button button-dark">
-                  {t("homepage_os.release.download", { defaultValue: "Download" })}
+                  {t("homepage_os.release.download", {
+                    defaultValue: "Download",
+                  })}
                   <Download className="icon" />
                 </a>
                 {artifact.checksumUrl ? (
                   <a href={artifact.checksumUrl} className="checksum-link">
-                    {t("homepage_os.release.checksum", { defaultValue: "SHA256" })}
+                    {t("homepage_os.release.checksum", {
+                      defaultValue: "SHA256",
+                    })}
                   </a>
                 ) : null}
               </div>
@@ -225,7 +233,9 @@ function HardwareTiles() {
             <div className="hw-tile-meta">
               <span>
                 {product.price ??
-                  t("homepage_os.common.preOrder", { defaultValue: "Pre-order" })}
+                  t("homepage_os.common.preOrder", {
+                    defaultValue: "Pre-order",
+                  })}
               </span>
               {product.ships ? <span>{product.ships}</span> : null}
             </div>
@@ -246,7 +256,9 @@ function Header({ solid = false }: { solid?: boolean }) {
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[color:var(--brand-orange)]"
       >
-        {t("homepage_os.common.skipToContent", { defaultValue: "Skip to content" })}
+        {t("homepage_os.common.skipToContent", {
+          defaultValue: "Skip to content",
+        })}
       </a>
       <a
         href="/"
@@ -337,7 +349,9 @@ function HomePage() {
         <section id="hardware" className="band band-blue">
           <div className="band-inner">
             <div className="section-head">
-              <h2>{t("homepage_os.hardware.title", { defaultValue: "Hardware." })}</h2>
+              <h2>
+                {t("homepage_os.hardware.title", { defaultValue: "Hardware." })}
+              </h2>
               <a
                 href={`${checkoutPath}?collection=elizaos-hardware`}
                 className="button button-dark"

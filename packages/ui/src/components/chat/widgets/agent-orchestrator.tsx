@@ -53,14 +53,26 @@ import type {
   ChatSidebarWidgetProps,
 } from "./types";
 
-function relativeTime(ts: number): string {
+function relativeTime(ts: number, t: TranslateFn): string {
   const delta = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (delta < 5) return "just now";
-  if (delta < 60) return `${delta}s ago`;
+  if (delta < 5)
+    return t("agentorchestrator.justNow", { defaultValue: "just now" });
+  if (delta < 60)
+    return t("agentorchestrator.secondsAgo", {
+      count: delta,
+      defaultValue: "{{count}}s ago",
+    });
   const mins = Math.floor(delta / 60);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60)
+    return t("agentorchestrator.minutesAgo", {
+      count: mins,
+      defaultValue: "{{count}}m ago",
+    });
   const hrs = Math.floor(mins / 60);
-  return `${hrs}h ago`;
+  return t("agentorchestrator.hoursAgo", {
+    count: hrs,
+    defaultValue: "{{count}}h ago",
+  });
 }
 
 function relativeDuration(ts: number): string {
@@ -76,99 +88,127 @@ function relativeDuration(ts: number): string {
 type EventTypeMeta = {
   icon: LucideIcon;
   toneClass: string;
-  label: string;
+  labelKey: string;
+  defaultLabel: string;
 };
 
 const DEFAULT_EVENT_TYPE_META: EventTypeMeta = {
   icon: Activity,
   toneClass: "bg-muted/20 text-muted",
-  label: "activity",
+  labelKey: "agentorchestrator.eventActivity",
+  defaultLabel: "activity",
 };
 
 const EVENT_TYPE_META: Record<string, EventTypeMeta> = {
   task_registered: {
     icon: Play,
     toneClass: "bg-ok/20 text-ok",
-    label: "task started",
+    labelKey: "agentorchestrator.eventTaskStarted",
+    defaultLabel: "task started",
   },
   task_complete: {
     icon: Check,
     toneClass: "bg-ok/20 text-ok",
-    label: "task complete",
+    labelKey: "agentorchestrator.eventTaskComplete",
+    defaultLabel: "task complete",
   },
   stopped: {
     icon: Square,
     toneClass: "bg-muted/20 text-muted",
-    label: "stopped",
+    labelKey: "agentorchestrator.eventStopped",
+    defaultLabel: "stopped",
   },
   tool_running: {
     icon: Wrench,
     toneClass: "bg-accent/20 text-accent",
-    label: "tool running",
+    labelKey: "agentorchestrator.eventToolRunning",
+    defaultLabel: "tool running",
   },
   blocked: {
     icon: SquarePause,
     toneClass: "bg-warn/20 text-warn",
-    label: "blocked",
+    labelKey: "agentorchestrator.eventBlocked",
+    defaultLabel: "blocked",
   },
   blocked_auto_resolved: {
     icon: CheckCheck,
     toneClass: "bg-ok/20 text-ok",
-    label: "auto resolved",
+    labelKey: "agentorchestrator.eventAutoResolved",
+    defaultLabel: "auto resolved",
   },
   escalation: {
     icon: AlertTriangle,
     toneClass: "bg-warn/20 text-warn",
-    label: "escalation",
+    labelKey: "agentorchestrator.eventEscalation",
+    defaultLabel: "escalation",
   },
   error: {
     icon: OctagonAlert,
     toneClass: "bg-danger/20 text-danger",
-    label: "error",
+    labelKey: "agentorchestrator.eventError",
+    defaultLabel: "error",
   },
   "proactive-message": {
     icon: MessageSquare,
     toneClass: "bg-accent/20 text-accent",
-    label: "proactive message",
+    labelKey: "agentorchestrator.eventProactiveMessage",
+    defaultLabel: "proactive message",
   },
   reminder: {
     icon: BellRing,
     toneClass: "bg-warn/20 text-warn",
-    label: "reminder",
+    labelKey: "agentorchestrator.eventReminder",
+    defaultLabel: "reminder",
   },
   workflow: {
     icon: Workflow,
     toneClass: "bg-ok/20 text-ok",
-    label: "workflow",
+    labelKey: "agentorchestrator.eventWorkflow",
+    defaultLabel: "workflow",
   },
   "check-in": {
     icon: HeartPulse,
     toneClass: "bg-accent/20 text-accent",
-    label: "check in",
+    labelKey: "agentorchestrator.eventCheckIn",
+    defaultLabel: "check in",
   },
   nudge: {
     icon: Zap,
     toneClass: "bg-accent/20 text-accent",
-    label: "nudge",
+    labelKey: "agentorchestrator.eventNudge",
+    defaultLabel: "nudge",
   },
 };
 
 const fallbackTranslate: TranslateFn = (key, vars) =>
   typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
 
-function formatIsoTime(value?: string | null): string {
-  if (!value) return "unknown";
+function formatIsoTime(
+  value: string | null | undefined,
+  t: TranslateFn,
+): string {
+  if (!value)
+    return t("agentorchestrator.unknown", { defaultValue: "unknown" });
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "unknown";
-  return relativeTime(date.getTime());
+  if (Number.isNaN(date.getTime()))
+    return t("agentorchestrator.unknown", { defaultValue: "unknown" });
+  return relativeTime(date.getTime(), t);
 }
 
-function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
+function ActivityItemsContent({
+  events,
+  t,
+}: {
+  events: ActivityEvent[];
+  t: TranslateFn;
+}) {
   if (events.length === 0) {
     return (
       <EmptyWidgetState
         icon={<Activity className="h-8 w-8" />}
-        title="No recent activity"
+        title={t("agentorchestrator.noRecentActivity", {
+          defaultValue: "No recent activity",
+        })}
       />
     );
   }
@@ -179,6 +219,9 @@ function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
         const eventTypeMeta =
           EVENT_TYPE_META[event.eventType] ?? DEFAULT_EVENT_TYPE_META;
         const EventIcon = eventTypeMeta.icon;
+        const eventLabel = t(eventTypeMeta.labelKey, {
+          defaultValue: eventTypeMeta.defaultLabel,
+        });
 
         return (
           <div
@@ -191,10 +234,10 @@ function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
             <span
               className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm ${eventTypeMeta.toneClass}`}
               role="img"
-              title={eventTypeMeta.label}
+              title={eventLabel}
             >
               <EventIcon className="h-2.5 w-2.5" />
-              <span className="sr-only">{eventTypeMeta.label}</span>
+              <span className="sr-only">{eventLabel}</span>
             </span>
             <span className="min-w-0 flex-1 break-words pt-0.5 text-2xs leading-4 text-txt">
               {event.summary}
@@ -230,10 +273,12 @@ function AppRunCard({
   run,
   attentionReasons,
   app,
+  t,
 }: {
   run: AppRunSummary;
   attentionReasons: string[];
   app: AppIdentitySource;
+  t: TranslateFn;
 }) {
   const healthDot =
     run.health.state === "healthy"
@@ -261,16 +306,24 @@ function AppRunCard({
               title={run.health.state}
             />
             <ViewerIcon className="h-3 w-3" aria-label={run.viewerAttachment} />
-            <span>{formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt)}</span>
+            <span>
+              {formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt, t)}
+            </span>
           </div>
           <div className="mt-1 line-clamp-2 text-3xs text-muted">
-            {run.summary || run.health.message || "Run active."}
+            {run.summary ||
+              run.health.message ||
+              t("agentorchestrator.runActive", {
+                defaultValue: "Run active.",
+              })}
           </div>
           {attentionReasons.length > 0 ? (
             <div className="mt-1.5 flex items-center gap-1.5 text-3xs text-warn">
               <AlertTriangle
                 className="h-3 w-3 shrink-0"
-                aria-label="Needs attention"
+                aria-label={t("agentorchestrator.needsAttention", {
+                  defaultValue: "Needs attention",
+                })}
               />
               <span className="truncate">{attentionReasons[0]}</span>
             </div>
@@ -357,7 +410,12 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       } catch (refreshError) {
         if (cancelled) return;
         setError(
-          getClientErrorMessage(refreshError, "Failed to load app runs."),
+          getClientErrorMessage(
+            refreshError,
+            t("agentorchestrator.loadRunsError", {
+              defaultValue: "Failed to load app runs.",
+            }),
+          ),
         );
       } finally {
         if (!cancelled) {
@@ -375,7 +433,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [setState]);
+  }, [setState, t]);
 
   if (shouldHideWidget) {
     return null;
@@ -393,7 +451,9 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
               variant="ghost"
               size="sm"
               className="h-6 w-6 p-0"
-              aria-label="Resume viewer"
+              aria-label={t("agentorchestrator.resumeViewer", {
+                defaultValue: "Resume viewer",
+              })}
               onClick={() => {
                 setState("appRuns", runs);
                 setState("activeGameRunId", currentRun.runId);
@@ -409,7 +469,9 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
-            aria-label="Open apps"
+            aria-label={t("agentorchestrator.openApps", {
+              defaultValue: "Open apps",
+            })}
             onClick={() => {
               setState("appRuns", runs);
               setTab("apps");
@@ -429,11 +491,17 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       ) : null}
       {runs.length === 0 ? (
         loading ? (
-          <div className="text-xs-tight text-muted">Loading app runs...</div>
+          <div className="text-xs-tight text-muted">
+            {t("agentorchestrator.loadingRuns", {
+              defaultValue: "Loading app runs...",
+            })}
+          </div>
         ) : (
           <EmptyWidgetState
             icon={<Activity className="h-8 w-8" />}
-            title="No games are running"
+            title={t("agentorchestrator.noGamesRunning", {
+              defaultValue: "No games are running",
+            })}
           />
         )
       ) : (
@@ -441,12 +509,19 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
           <div className="flex flex-wrap items-center gap-3 text-3xs text-muted">
             <span
               className="inline-flex items-center gap-1"
-              title="Currently playing"
+              title={t("agentorchestrator.currentlyPlaying", {
+                defaultValue: "Currently playing",
+              })}
             >
               <Eye className="h-3 w-3" />
               {attachedCount}
             </span>
-            <span className="inline-flex items-center gap-1" title="Background">
+            <span
+              className="inline-flex items-center gap-1"
+              title={t("agentorchestrator.background", {
+                defaultValue: "Background",
+              })}
+            >
               <EyeOff className="h-3 w-3" />
               {backgroundCount}
             </span>
@@ -454,7 +529,9 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
               className={`inline-flex items-center gap-1 ${
                 needsAttentionCount > 0 ? "text-warn" : "text-ok"
               }`}
-              title="Needs attention"
+              title={t("agentorchestrator.needsAttention", {
+                defaultValue: "Needs attention",
+              })}
             >
               <AlertTriangle className="h-3 w-3" />
               {needsAttentionCount}
@@ -464,7 +541,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
             <div className="rounded-sm border border-warn/30 bg-warn/10 p-2">
               <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn">
                 <AlertTriangle className="h-3 w-3" />
-                Recovery
+                {t("agentorchestrator.recovery", { defaultValue: "Recovery" })}
               </div>
               <div className="flex flex-col gap-2">
                 {attentionRuns.slice(0, 3).map((run) => {
@@ -475,6 +552,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
                       run={run}
                       attentionReasons={reasons}
                       app={getAppRunIdentity(run, catalogAppsByName)}
+                      t={t}
                     />
                   );
                 })}
@@ -488,6 +566,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
                 run={run}
                 attentionReasons={attentionMap.get(run.runId) ?? []}
                 app={getAppRunIdentity(run, catalogAppsByName)}
+                t={t}
               />
             ))}
           </div>
@@ -517,7 +596,9 @@ function OrchestratorActivityWidget({
           variant="ghost"
           size="sm"
           onClick={clearEvents}
-          aria-label="Clear activity"
+          aria-label={t("agentorchestrator.clearActivity", {
+            defaultValue: "Clear activity",
+          })}
           className="h-6 w-6 p-0 text-muted"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -525,7 +606,7 @@ function OrchestratorActivityWidget({
       }
       testId="chat-widget-events"
     >
-      <ActivityItemsContent events={events} />
+      <ActivityItemsContent events={events} t={t} />
     </WidgetSection>
   );
 }

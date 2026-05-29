@@ -5,6 +5,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { useTranslation } from "../../state/TranslationContext";
 import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
@@ -59,6 +60,7 @@ export function ModelCard({
   downloadDisabledReason,
   busy,
 }: ModelCardProps) {
+  const { t } = useTranslation();
   const fit = computeFit(model, hardware);
   const installedEntry = findInstalled(model, installed);
   const download = findDownload(model.id, downloads);
@@ -93,17 +95,26 @@ export function ModelCard({
 
       {installedEntry && (
         <div className="text-xs text-muted-foreground">
-          Installed · {formatBytes(installedEntry.sizeBytes)}
+          {t("modelcard.installed", {
+            size: formatBytes(installedEntry.sizeBytes),
+            defaultValue: "Installed · {{size}}",
+          })}
           {installedEntry.source === "external-scan" &&
             installedEntry.externalOrigin &&
-            ` · via ${installedEntry.externalOrigin}`}
+            t("modelcard.viaOrigin", {
+              origin: installedEntry.externalOrigin,
+              defaultValue: " · via {{origin}}",
+            })}
         </div>
       )}
 
       {download && downloading && <DownloadProgress job={download} />}
       {failed && download?.error && (
         <div className="text-xs text-rose-500">
-          Download failed: {download.error}
+          {t("modelcard.downloadFailed", {
+            error: download.error,
+            defaultValue: "Download failed: {{error}}",
+          })}
         </div>
       )}
 
@@ -115,7 +126,11 @@ export function ModelCard({
             disabled={busy || fit === "wontfit" || !!downloadDisabledReason}
             title={downloadDisabledReason}
           >
-            {downloadDisabledReason ? "Download unavailable" : "Download"}
+            {downloadDisabledReason
+              ? t("modelcard.downloadUnavailable", {
+                  defaultValue: "Download unavailable",
+                })
+              : t("modelcard.download", { defaultValue: "Download" })}
           </Button>
         )}
         {downloading && (
@@ -125,7 +140,7 @@ export function ModelCard({
             onClick={() => onCancel(model.id)}
             disabled={busy}
           >
-            Cancel
+            {t("modelcard.cancel", { defaultValue: "Cancel" })}
           </Button>
         )}
         {installedEntry && !isActive && (
@@ -134,12 +149,14 @@ export function ModelCard({
             onClick={() => onActivate(model.id)}
             disabled={busy || activating}
           >
-            {activating ? "Activating…" : "Make active"}
+            {activating
+              ? t("modelcard.activating", { defaultValue: "Activating…" })
+              : t("modelcard.makeActive", { defaultValue: "Make active" })}
           </Button>
         )}
         {isActive && (
           <Button size="sm" variant="outline" disabled>
-            Active
+            {t("modelcard.active", { defaultValue: "Active" })}
           </Button>
         )}
         {installedEntry && onVerify && (
@@ -149,7 +166,7 @@ export function ModelCard({
             onClick={() => onVerify(installedEntry.id)}
             disabled={busy}
           >
-            Verify
+            {t("modelcard.verify", { defaultValue: "Verify" })}
           </Button>
         )}
         {installedEntry?.source === "eliza-download" && onRedownload && (
@@ -159,7 +176,7 @@ export function ModelCard({
             onClick={() => onRedownload(model.id)}
             disabled={busy}
           >
-            Redownload
+            {t("modelcard.redownload", { defaultValue: "Redownload" })}
           </Button>
         )}
         {installedEntry?.source === "eliza-download" && (
@@ -169,7 +186,7 @@ export function ModelCard({
             onClick={() => onUninstall(model.id)}
             disabled={busy}
           >
-            Uninstall
+            {t("modelcard.uninstall", { defaultValue: "Uninstall" })}
           </Button>
         )}
       </div>

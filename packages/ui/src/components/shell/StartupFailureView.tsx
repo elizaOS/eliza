@@ -72,7 +72,10 @@ function buildStartupBugReportDraft(
   };
 }
 
-export function StartupFailureView({ error, onRetry }: StartupFailureViewProps) {
+export function StartupFailureView({
+  error,
+  onRetry,
+}: StartupFailureViewProps) {
   const { t } = useApp();
   const branding = useBranding();
   const bugReport = useOptionalBugReport();

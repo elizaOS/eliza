@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import type { ConnectorAccountPrivacy } from "../../api/client-agent";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import {
@@ -46,6 +47,7 @@ export function ConnectorAccountPrivacySelector({
   id,
   accountLabel,
 }: ConnectorAccountPrivacySelectorProps) {
+  const { t } = useTranslation();
   const resolved = getConnectorPrivacyOption(value).value;
   const [pendingValue, setPendingValue] =
     useState<ConnectorAccountPrivacy | null>(null);
@@ -117,7 +119,7 @@ export function ConnectorAccountPrivacySelector({
     <>
       <div className="flex min-w-[210px] items-center gap-2">
         <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
-          Privacy
+          {t("connectorprivacy.label", { defaultValue: "Privacy" })}
         </span>
         <Select
           value={resolved}
@@ -157,22 +159,37 @@ export function ConnectorAccountPrivacySelector({
           <DialogHeader>
             <DialogTitle>
               {pendingRequirement === "public"
-                ? "Make connector account public?"
-                : "Share connector account access?"}
+                ? t("connectorprivacy.makePublicTitle", {
+                    defaultValue: "Make connector account public?",
+                  })
+                : t("connectorprivacy.shareTitle", {
+                    defaultValue: "Share connector account access?",
+                  })}
             </DialogTitle>
             <DialogDescription>
               {pendingRequirement === "public"
-                ? "Public visibility can expose this account identity outside the owner and team."
-                : "This changes the account from owner-only visibility to a shared visibility level."}
+                ? t("connectorprivacy.makePublicDescription", {
+                    defaultValue:
+                      "Public visibility can expose this account identity outside the owner and team.",
+                  })
+                : t("connectorprivacy.shareDescription", {
+                    defaultValue:
+                      "This changes the account from owner-only visibility to a shared visibility level.",
+                  })}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="rounded-sm border border-border/50 bg-bg-accent/40 px-3 py-2 text-xs text-muted">
               <span className="font-medium text-txt">
-                {accountLabel ?? "Connector account"}
+                {accountLabel ??
+                  t("connectorprivacy.defaultLabel", {
+                    defaultValue: "Connector account",
+                  })}
               </span>{" "}
-              will be set to{" "}
+              {t("connectorprivacy.willBeSetTo", {
+                defaultValue: "will be set to",
+              })}{" "}
               <span className="font-medium text-txt">
                 {pendingOption?.label ?? pendingValue}
               </span>
@@ -183,7 +200,10 @@ export function ConnectorAccountPrivacySelector({
                 htmlFor={confirmInputId}
                 className="text-xs font-medium text-txt"
               >
-                Type {expectedPhrase} to confirm
+                {t("connectorprivacy.typeToConfirm", {
+                  value: expectedPhrase,
+                  defaultValue: "Type {{value}} to confirm",
+                })}
               </label>
               <Input
                 id={confirmInputId}
@@ -201,11 +221,15 @@ export function ConnectorAccountPrivacySelector({
                   onCheckedChange={(checked) =>
                     setPublicAcknowledged(checked === true)
                   }
-                  aria-label="Confirm public connector account visibility"
+                  aria-label={t("connectorprivacy.acknowledgeAria", {
+                    defaultValue: "Confirm public connector account visibility",
+                  })}
                 />
                 <span>
-                  I understand this may reveal connector identity and account
-                  presence publicly.
+                  {t("connectorprivacy.acknowledge", {
+                    defaultValue:
+                      "I understand this may reveal connector identity and account presence publicly.",
+                  })}
                 </span>
               </div>
             ) : null}
@@ -218,7 +242,7 @@ export function ConnectorAccountPrivacySelector({
               disabled={confirmBusy}
               onClick={closeDialog}
             >
-              Cancel
+              {t("connectorprivacy.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               type="button"
@@ -228,7 +252,11 @@ export function ConnectorAccountPrivacySelector({
               disabled={!confirmEnabled || confirmBusy}
               onClick={() => void handleConfirm()}
             >
-              {confirmBusy ? <Spinner className="h-3 w-3" /> : "Confirm"}
+              {confirmBusy ? (
+                <Spinner className="h-3 w-3" />
+              ) : (
+                t("connectorprivacy.confirm", { defaultValue: "Confirm" })
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

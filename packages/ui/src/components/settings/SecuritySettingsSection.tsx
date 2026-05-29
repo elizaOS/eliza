@@ -544,7 +544,8 @@ function SessionsSection() {
                 defaultValue: "You must be signed in to view sessions.",
               })
             : t("security.sessions.error.loadFailed", {
-                defaultValue: "Could not load sessions. Try reloading the page.",
+                defaultValue:
+                  "Could not load sessions. Try reloading the page.",
               }),
       });
     }
@@ -674,7 +675,9 @@ function SessionRow({
         </div>
         <p className="truncate text-xs text-muted-foreground/80">
           {session.ip ??
-            t("security.sessions.unknownIp", { defaultValue: "Unknown IP" })}{" "}
+            t("security.sessions.unknownIp", {
+              defaultValue: "Unknown IP",
+            })}{" "}
           &middot;{" "}
           {session.userAgent
             ? session.userAgent.slice(0, 60)

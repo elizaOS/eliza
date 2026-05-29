@@ -20,8 +20,13 @@
  *     prewarm, parallel resize all stay on the native FFI runtime
  *     fallback. Each needs a separate native extension to the shim and is
  *     tracked in `FFI_BACKEND_WIREUP_PLAN.md`.
- *   - No speculative decoding in v1. `LlmStreamConfig.draftMin/draftMax/
- *     draftModelPath` are silently ignored; a one-time warning fires.
+ *   - Same-file MTP speculative decoding: when `LlmStreamConfig` sets
+ *     `draftMin/draftMax > 0` with no `draftModelPath`, the session routes
+ *     through a native MTP engine (`eliza_llama_mtp_engine_*`) that owns the
+ *     draft→verify→accept loop over the NextN head embedded in the text GGUF.
+ *     Falls back to plain per-token decode when the ctx can't do
+ *     partial-suffix KV removal. Separate-drafter MTP (`draftModelPath` set)
+ *     remains on the per-ctx attach path.
  *
  * Memory + lifecycle:
  *   - `*_params_default()` returns a malloc'd pointer that MUST be freed
@@ -228,6 +233,41 @@ interface ShimSymbols {
 	eliza_llama_decode_unified: (ctx: Pointer, batch: Pointer) => number;
 	/** Legacy 4-int32 telemetry: [drafted, accepted, rejected, last_status]. */
 	eliza_llama_mtp_stats: (ctx: Pointer, out: Pointer) => void;
+
+	// === Native same-file MTP engine (NextN speculative decode). Owns the
+	// === full draft → verify → accept loop internally via llama.cpp/common's
+	// === `common_speculative_*` draft-mtp implementation. `create` borrows the
+	// === loaded model + target ctx and builds its own MTP draft ctx over the
+	// === same model; returns 0/null when the ctx can't do partial-suffix KV
+	// === removal (caller then falls back to plain decode). The engine samples
+	// === internally — `temperature <= 0` is byte-identical to plain greedy.
+	eliza_llama_mtp_engine_create: (
+		model: Pointer,
+		ctx_tgt: Pointer,
+		draft_min: number,
+		draft_max: number,
+		temperature: number,
+		top_k: number,
+		top_p: number,
+		min_p: number,
+		seed: number,
+	) => Pointer;
+	eliza_llama_mtp_engine_free: (engine: Pointer) => void;
+	/** Prefill the prompt, seed spec state, sample token 0 into *out_first. */
+	eliza_llama_mtp_engine_prefill: (
+		engine: Pointer,
+		tokens: Pointer,
+		n_tokens: number,
+		out_first_token: Pointer,
+	) => number;
+	/** One speculative step: writes accepted ids into `out`, returns count. */
+	eliza_llama_mtp_engine_step: (
+		engine: Pointer,
+		out: Pointer,
+		cap: number,
+	) => number;
+	/** Cumulative telemetry: 5×u64 {decoded,drafted,accepted,rejected,verify}. */
+	eliza_llama_mtp_engine_stats: (engine: Pointer, out: Pointer) => void;
 }
 
 /**
@@ -503,6 +543,21 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 		},
 		eliza_llama_decode_unified: { args: [T.ptr, T.ptr], returns: T.i32 },
 		eliza_llama_mtp_stats: { args: [T.ptr, T.ptr], returns: T.void },
+
+		eliza_llama_mtp_engine_create: {
+			args: [T.ptr, T.ptr, T.i32, T.i32, T.f32, T.i32, T.f32, T.f32, T.u32],
+			returns: T.ptr,
+		},
+		eliza_llama_mtp_engine_free: { args: [T.ptr], returns: T.void },
+		eliza_llama_mtp_engine_prefill: {
+			args: [T.ptr, T.ptr, T.i32, T.ptr],
+			returns: T.i32,
+		},
+		eliza_llama_mtp_engine_step: {
+			args: [T.ptr, T.ptr, T.i32],
+			returns: T.i32,
+		},
+		eliza_llama_mtp_engine_stats: { args: [T.ptr, T.ptr], returns: T.void },
 	});
 	return handle.symbols;
 }
@@ -615,6 +670,20 @@ interface DesktopSession {
 	emittedFirstToken: boolean;
 	/** Snapshotted at openSession; nextStep never re-reads has_drafter. */
 	usingDrafter: boolean;
+	/**
+	 * Native same-file MTP engine for this session, or 0 when this session
+	 * uses the plain per-token decode path. When set, prefill/next route
+	 * through the engine (which owns sampling + the draft→verify→accept loop)
+	 * instead of the `sampler` + `eliza_llama_decode` path.
+	 */
+	mtpEngine: Pointer;
+	/**
+	 * First token sampled by the engine during prefill, pending emission on
+	 * the first `nextStep`. `-1` once consumed (or when no engine). Reusable
+	 * scratch buffer for the engine's multi-token step output.
+	 */
+	mtpFirstToken: number;
+	mtpStepBuf: Int32Array;
 }
 
 /**
@@ -1044,7 +1113,12 @@ export class DesktopLlamaAdapter {
 
 	unloadModel(): void {
 		for (const sess of this.sessions.values()) {
-			this.llama.llama_sampler_free(sess.sampler);
+			if (sess.mtpEngine !== 0) {
+				this.shim.eliza_llama_mtp_engine_free(sess.mtpEngine);
+			}
+			if (sess.sampler !== 0) {
+				this.llama.llama_sampler_free(sess.sampler);
+			}
 		}
 		this.sessions.clear();
 		// Free mtmd ctx (vision) before the main ctx — the mtmd context is
@@ -1264,55 +1338,83 @@ export class DesktopLlamaAdapter {
 			const mem = this.llama.llama_get_memory(ctx);
 			this.llama.llama_memory_clear(mem, true);
 		}
-		// Speculative decoding: drafter attach is per-ctx. Attach lazily
-		// when this session requests one. We track per-ctx attachment in
-		// `drafterAttached[ctxIdx]` so we don't re-attach unnecessarily.
-		if (config.draftModelPath) {
+		// Same-file MTP: the catalog signals it with draftMin/draftMax > 0 and
+		// no separate drafter GGUF (the NextN head lives in the loaded text
+		// model). Build a native MTP engine that owns the draft→verify→accept
+		// loop. `create` returns 0 when the ctx can't do partial-suffix KV
+		// removal — we then fall through to the plain decode path (correct,
+		// just no speedup) rather than emitting wrong output.
+		const wantsSameFileMtp =
+			!config.draftModelPath && config.draftMin > 0 && config.draftMax > 0;
+		let mtpEngine: Pointer = 0;
+		if (wantsSameFileMtp) {
+			if (this.drafterAttached[ctxIdx]) this.detachDrafterFromCtx(ctxIdx);
+			mtpEngine = this.shim.eliza_llama_mtp_engine_create(
+				this.modelPtr ?? 0,
+				ctx,
+				config.draftMin,
+				config.draftMax,
+				config.temperature,
+				config.topK,
+				config.topP,
+				0, // min_p — not part of LlmStreamConfig
+				0xdeadbeef,
+			);
+		}
+
+		// Speculative decoding (separate drafter): drafter attach is per-ctx.
+		// Only when no same-file MTP engine was created for this session.
+		if (mtpEngine === 0 && config.draftModelPath) {
 			this.attachDrafterToCtx(ctxIdx, {
 				drafterPath: config.draftModelPath,
 				draftMin: config.draftMin,
 				draftMax: config.draftMax,
 			});
-		} else if (this.drafterAttached[ctxIdx]) {
+		} else if (mtpEngine === 0 && this.drafterAttached[ctxIdx]) {
 			// No drafter requested but this ctx still has one — detach so
 			// plain decode runs.
 			this.detachDrafterFromCtx(ctxIdx);
 		}
-		const usingDrafter = this.drafterAttached[ctxIdx] === true;
-		// Sampler chain.
-		const sp = this.shim.eliza_llama_sampler_chain_params_default();
-		let sampler: Pointer;
-		try {
-			sampler = this.shim.eliza_llama_sampler_chain_init(sp);
-		} finally {
-			this.shim.eliza_llama_sampler_chain_params_free(sp);
-		}
-		if (config.topK > 0) {
-			this.llama.llama_sampler_chain_add(
-				sampler,
-				this.llama.llama_sampler_init_top_k(config.topK),
-			);
-		}
-		if (config.topP > 0 && config.topP < 1) {
-			this.llama.llama_sampler_chain_add(
-				sampler,
-				this.llama.llama_sampler_init_top_p(config.topP, 1),
-			);
-		}
-		if (config.temperature > 0) {
-			this.llama.llama_sampler_chain_add(
-				sampler,
-				this.llama.llama_sampler_init_temp(config.temperature),
-			);
-			this.llama.llama_sampler_chain_add(
-				sampler,
-				this.llama.llama_sampler_init_dist(0xdeadbeef),
-			);
-		} else {
-			this.llama.llama_sampler_chain_add(
-				sampler,
-				this.llama.llama_sampler_init_greedy(),
-			);
+		const usingDrafter =
+			mtpEngine === 0 && this.drafterAttached[ctxIdx] === true;
+
+		// Sampler chain. The engine path samples internally, so a session with
+		// a live MTP engine gets no host-side sampler (sampler stays 0).
+		let sampler: Pointer = 0;
+		if (mtpEngine === 0) {
+			const sp = this.shim.eliza_llama_sampler_chain_params_default();
+			try {
+				sampler = this.shim.eliza_llama_sampler_chain_init(sp);
+			} finally {
+				this.shim.eliza_llama_sampler_chain_params_free(sp);
+			}
+			if (config.topK > 0) {
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_top_k(config.topK),
+				);
+			}
+			if (config.topP > 0 && config.topP < 1) {
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_top_p(config.topP, 1),
+				);
+			}
+			if (config.temperature > 0) {
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_temp(config.temperature),
+				);
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_dist(0xdeadbeef),
+				);
+			} else {
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_greedy(),
+				);
+			}
 		}
 
 		const stream = this.nextStreamId;
@@ -1327,6 +1429,9 @@ export class DesktopLlamaAdapter {
 			pieceBuf: new Uint8Array(256),
 			emittedFirstToken: false,
 			usingDrafter,
+			mtpEngine,
+			mtpFirstToken: -1,
+			mtpStepBuf: new Int32Array(mtpEngine === 0 ? 0 : config.draftMax + 2),
 		});
 		return stream;
 	}
@@ -1421,6 +1526,29 @@ export class DesktopLlamaAdapter {
 		const sess = this.requireSession(stream);
 		const ctx = this.ctxPool[sess.ctxIdx];
 		if (!ctx) throw new Error("[desktop-llama] ctx gone mid-prefill");
+
+		// Same-file MTP engine path: the engine prefills the full prompt into
+		// both the target + draft contexts, seeds the speculative state, and
+		// samples token 0 (held for emission on the first nextStep).
+		if (sess.mtpEngine !== 0) {
+			if (tokens.length === 0) return;
+			const owned = new Int32Array(tokens.length);
+			owned.set(tokens);
+			const firstOut = new Int32Array(1);
+			const rc = this.shim.eliza_llama_mtp_engine_prefill(
+				sess.mtpEngine,
+				this.ffi.ptr(owned),
+				owned.length,
+				this.ffi.ptr(firstOut),
+			);
+			if (rc < 0) {
+				throw new Error(`[desktop-llama] mtp engine prefill rc=${rc}`);
+			}
+			sess.mtpFirstToken = firstOut[0] ?? -1;
+			this.hasDecodedFlags[sess.ctxIdx] = true;
+			return;
+		}
+
 		const nBatch = normalizeBatchSize(this.loadOpts?.nBatch);
 		for (let offset = 0; offset < tokens.length; offset += nBatch) {
 			const chunk = tokens.subarray(
@@ -1459,6 +1587,9 @@ export class DesktopLlamaAdapter {
 		const ctx = this.ctxPool[sess.ctxIdx];
 		if (!ctx || !this.vocabPtr) {
 			throw new Error("[desktop-llama] ctx gone mid-step");
+		}
+		if (sess.mtpEngine !== 0) {
+			return this.nextStepMtp(sess, maxTokensPerStep, maxTextBytes);
 		}
 		const out: number[] = [];
 		let text = "";
@@ -1535,6 +1666,117 @@ export class DesktopLlamaAdapter {
 	}
 
 	/**
+	 * Engine-driven step for a same-file MTP session. The engine owns
+	 * sampling + the draft→verify→accept loop; each `engine_step` returns the
+	 * multi-token prefix the verifier committed this round. We emit the
+	 * prefill's first token on the first call, then run steps until the
+	 * per-call token / byte budget is met or EOS is reached.
+	 */
+	private nextStepMtp(
+		sess: DesktopSession,
+		maxTokensPerStep: number,
+		maxTextBytes: number,
+	): LlmStreamStep {
+		if (!this.vocabPtr) throw new Error("[desktop-llama] mtp step before load");
+		const out: number[] = [];
+		let text = "";
+		let done = false;
+		const before = this.readEngineStats(sess.mtpEngine);
+
+		const emit = (token: number): boolean => {
+			// Returns true when generation should stop (EOS) — caller breaks.
+			if (this.llama.llama_vocab_is_eog(this.vocabPtr as Pointer, token)) {
+				return true;
+			}
+			const wrote = this.llama.llama_token_to_piece(
+				this.vocabPtr as Pointer,
+				token,
+				this.ffi.ptr(sess.pieceBuf),
+				sess.pieceBuf.length,
+				0,
+				false,
+			);
+			if (wrote > 0) {
+				text += decodeCStringBytes(sess.pieceBuf.subarray(0, wrote));
+			}
+			out.push(token);
+			return false;
+		};
+
+		// First token was sampled during prefill — emit it before stepping.
+		if (sess.mtpFirstToken >= 0) {
+			const first = sess.mtpFirstToken;
+			sess.mtpFirstToken = -1;
+			if (emit(first)) done = true;
+		}
+
+		while (
+			!done &&
+			out.length < maxTokensPerStep &&
+			text.length < maxTextBytes
+		) {
+			if (sess.abort.cancelled) {
+				done = true;
+				break;
+			}
+			const n = this.shim.eliza_llama_mtp_engine_step(
+				sess.mtpEngine,
+				this.ffi.ptr(sess.mtpStepBuf),
+				sess.mtpStepBuf.length,
+			);
+			if (n < 0) {
+				throw new Error(`[desktop-llama] mtp engine step rc=${n}`);
+			}
+			if (n === 0) {
+				// Engine committed nothing — treat as end of stream.
+				done = true;
+				break;
+			}
+			// Emit the full committed batch (already in the KV cache; can't be
+			// un-committed). Stop mid-batch only on EOS.
+			for (let i = 0; i < n; i++) {
+				const token = sess.mtpStepBuf[i] ?? 0;
+				if (emit(token)) {
+					done = true;
+					break;
+				}
+			}
+		}
+		if (done) sess.finished = true;
+
+		const after = this.readEngineStats(sess.mtpEngine);
+		return {
+			tokens: out,
+			text,
+			done,
+			drafterDrafted: Math.max(0, Number(after.drafted - before.drafted)),
+			drafterAccepted: Math.max(0, Number(after.accepted - before.accepted)),
+		};
+	}
+
+	/**
+	 * Read the engine's cumulative 5×u64 telemetry struct
+	 * {decoded, drafted, accepted, drafted_rejected, verify_steps}.
+	 */
+	private readEngineStats(engine: Pointer): {
+		decoded: bigint;
+		drafted: bigint;
+		accepted: bigint;
+		rejected: bigint;
+		verify: bigint;
+	} {
+		const buf = new BigUint64Array(5);
+		this.shim.eliza_llama_mtp_engine_stats(engine, this.ffi.ptr(buf));
+		return {
+			decoded: buf[0] ?? 0n,
+			drafted: buf[1] ?? 0n,
+			accepted: buf[2] ?? 0n,
+			rejected: buf[3] ?? 0n,
+			verify: buf[4] ?? 0n,
+		};
+	}
+
+	/**
 	 * Read the 4-int32 MTP telemetry block for a specific ctx.
 	 * Counters are per-ctx since each ctx in the pool has its own drafter
 	 * state. Returns zero counters when no drafter is attached.
@@ -1563,7 +1805,12 @@ export class DesktopLlamaAdapter {
 	private closeSession(stream: LlmStreamHandle): void {
 		const sess = this.sessions.get(stream);
 		if (!sess) return;
-		this.llama.llama_sampler_free(sess.sampler);
+		if (sess.mtpEngine !== 0) {
+			this.shim.eliza_llama_mtp_engine_free(sess.mtpEngine);
+		}
+		if (sess.sampler !== 0) {
+			this.llama.llama_sampler_free(sess.sampler);
+		}
 		this.sessions.delete(stream);
 	}
 

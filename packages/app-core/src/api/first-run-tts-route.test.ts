@@ -1,13 +1,12 @@
 /**
  * Tests for `POST /api/tts/first-run/speak`.
  *
- * The route reads `{ text, voice? }`, delegates synthesis to an injected
- * dependency (edge-tts in production), and streams `audio/mpeg`. Here we cover
- * the route-layer behaviour without touching the network or the plugin:
+ * The route reads `{ lineId }`, validates it against the canonical onboarding
+ * line ids, and streams the committed pre-generated OmniVoice preset (WAV):
  *
- *   - 200 + audio bytes on success (voice forwarded)
- *   - 400 on missing/blank text (synthesizer never called)
- *   - 502 when synthesis throws
+ *   - 200 + audio/wav bytes when the preset exists
+ *   - 400 on an unknown line id (reader never called)
+ *   - 404 when the preset has not been generated yet
  */
 import { describe, expect, it } from "vitest";
 
@@ -54,46 +53,40 @@ function makeReqRes(body: unknown): {
   return { req, res, captured };
 }
 
-function makeDeps(overrides: { audio?: Buffer; error?: Error } = {}): {
+function makeDeps(preset: Buffer | null): {
   deps: FirstRunTtsRouteDeps;
-  calls: Array<{ text: string; voice?: string }>;
+  calls: string[];
 } {
-  const calls: Array<{ text: string; voice?: string }> = [];
+  const calls: string[] = [];
   const deps: FirstRunTtsRouteDeps = {
-    synthesize: async (text, voice) => {
-      calls.push({ text, voice });
-      if (overrides.error) throw overrides.error;
-      return overrides.audio ?? Buffer.from([0xff, 0xfb, 0x00]);
+    readPreset: (lineId) => {
+      calls.push(lineId);
+      return preset;
     },
   };
   return { deps, calls };
 }
 
 describe("POST /api/tts/first-run/speak", () => {
-  it("streams audio/mpeg on success and forwards the voice", async () => {
-    const audio = Buffer.from([0xff, 0xfb, 0x10, 0x20]);
-    const { deps, calls } = makeDeps({ audio });
-    const { req, res, captured } = makeReqRes({
-      text: "  Where should Eliza run?  ",
-      voice: "en-US-AriaNeural",
-    });
+  it("streams the committed preset as audio/wav", async () => {
+    const audio = Buffer.from([0x52, 0x49, 0x46, 0x46]);
+    const { deps, calls } = makeDeps(audio);
+    const { req, res, captured } = makeReqRes({ lineId: "runtime" });
 
     const handled = await handleFirstRunTtsRoute(req, res, deps);
 
     expect(handled).toBe(true);
     expect(captured.status).toBe(200);
-    expect(captured.headers["content-type"]).toBe("audio/mpeg");
+    expect(captured.headers["content-type"]).toBe("audio/wav");
     expect(captured.headers["cache-control"]).toBe("no-store");
     expect(captured.headers["content-length"]).toBe(String(audio.byteLength));
     expect(captured.body).toEqual(audio);
-    expect(calls).toEqual([
-      { text: "Where should Eliza run?", voice: "en-US-AriaNeural" },
-    ]);
+    expect(calls).toEqual(["runtime"]);
   });
 
-  it("returns 400 on blank text without calling the synthesizer", async () => {
-    const { deps, calls } = makeDeps();
-    const { req, res, captured } = makeReqRes({ text: "   " });
+  it("returns 400 on an unknown line id without reading a preset", async () => {
+    const { deps, calls } = makeDeps(Buffer.from([0x00]));
+    const { req, res, captured } = makeReqRes({ lineId: "../../etc/passwd" });
 
     const handled = await handleFirstRunTtsRoute(req, res, deps);
 
@@ -102,16 +95,14 @@ describe("POST /api/tts/first-run/speak", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("returns 502 when synthesis fails", async () => {
-    const { deps } = makeDeps({ error: new Error("network down") });
-    const { req, res, captured } = makeReqRes({ text: "hello" });
+  it("returns 404 when the preset has not been generated yet", async () => {
+    const { deps, calls } = makeDeps(null);
+    const { req, res, captured } = makeReqRes({ lineId: "remote" });
 
     const handled = await handleFirstRunTtsRoute(req, res, deps);
 
     expect(handled).toBe(true);
-    expect(captured.status).toBe(502);
-    expect(JSON.parse(String(captured.body))).toMatchObject({
-      error: expect.stringContaining("network down"),
-    });
+    expect(captured.status).toBe(404);
+    expect(calls).toEqual(["remote"]);
   });
 });

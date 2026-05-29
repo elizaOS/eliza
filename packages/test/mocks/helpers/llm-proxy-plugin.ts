@@ -1254,6 +1254,9 @@ function inferInputValue(text: string): string {
   return explicit ? titleCase(explicit) : "Remote Ledger Updated";
 }
 
+// First-party built-in view ids match the agent's BUILTIN_VIEWS registry
+// (packages/agent/src/api/builtin-views.ts). Keep these aligned so the proxy
+// emits the exact `view` parameter the VIEWS show action resolves by id.
 const BUILTIN_VIEW_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [
     /\bsettings?\b|\bpreferences?\b|\boptions\b|\bconfig(uration)?\b/,
@@ -1262,9 +1265,13 @@ const BUILTIN_VIEW_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\bwallet\b|\bbalance\b|\bcrypto\b|\binventory\b/, "wallet"],
   [/\bcharacter\b|\bpersona\b|\bprofile\b|\bidentity\b/, "character"],
   [/\bchat\b|\bconversation\b|\bmessages?\b/, "chat"],
-  [/\bmemor(y|ies)\b/, "memory"],
+  [/\bautomations?\b|\bschedules?\b|\brecurring\b/, "automations"],
+  [/\btrajector(y|ies)\b/, "trajectories"],
+  [/\bdatabase\b|\bsql\b/, "database"],
+  [/\blogs?\b|\bdebug output\b/, "logs"],
+  [/\bmemor(y|ies)\b/, "memories"],
   [/\bskills?\b/, "skills"],
-  [/\bplugins?\b/, "plugins"],
+  [/\bplugins?\b/, "plugins-page"],
   [/\btraining\b|\btrain\b/, "training"],
   [/\bhome\b|\bdashboard\b|\bmain screen\b/, "home"],
   [/\bapps?\b/, "apps"],

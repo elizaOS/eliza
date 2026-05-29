@@ -12,6 +12,8 @@ export type ConnectorMode = {
   id: string;
   label: string;
   description: string;
+  labelKey?: string;
+  descriptionKey?: string;
   managementMode?: ConnectorManagementMode;
 };
 
@@ -50,8 +52,10 @@ export function getConnectorModes(
               {
                 id: "managed",
                 label: "OAuth Gateway",
+                labelKey: "connectormode.discord.managed.label",
                 description:
                   "Invite the shared Eliza Cloud Discord gateway, nickname it to your agent, and route messages down to this app.",
+                descriptionKey: "connectormode.discord.managed.description",
                 managementMode: "cloud-managed" as const,
               },
             ]
@@ -59,14 +63,18 @@ export function getConnectorModes(
         {
           id: "local",
           label: "Desktop App",
+          labelKey: "connectormode.discord.local.label",
           description: "Connect via local Discord desktop app (IPC)",
+          descriptionKey: "connectormode.discord.local.description",
           managementMode: "local-setup",
         },
         {
           id: "bot",
           label: "Bot Token",
+          labelKey: "connectormode.discord.bot.label",
           description:
             "Use your own Discord bot with a token from the Developer Portal",
+          descriptionKey: "connectormode.discord.bot.description",
           managementMode: "local-config",
         },
       ]);
@@ -78,8 +86,10 @@ export function getConnectorModes(
               {
                 id: "cloud-bot",
                 label: "Cloud Gateway",
+                labelKey: "connectormode.telegram.cloudBot.label",
                 description:
                   "Telegram bot communication still starts with a BotFather token; Eliza Cloud can host the webhook and route it to this app.",
+                descriptionKey: "connectormode.telegram.cloudBot.description",
                 managementMode: "cloud-managed" as const,
               },
             ]
@@ -87,14 +97,18 @@ export function getConnectorModes(
         {
           id: "bot",
           label: "Bot Token",
+          labelKey: "connectormode.telegram.bot.label",
           description: "Create a bot via @BotFather and paste the token",
+          descriptionKey: "connectormode.telegram.bot.description",
           managementMode: "local-config",
         },
         {
           id: "account",
           label: "Personal Account",
+          labelKey: "connectormode.telegram.account.label",
           description:
             "Use your own Telegram account (requires app credentials from my.telegram.org)",
+          descriptionKey: "connectormode.telegram.account.description",
           managementMode: "local-setup",
         },
       ]);
@@ -106,8 +120,10 @@ export function getConnectorModes(
               {
                 id: "oauth",
                 label: "OAuth",
+                labelKey: "connectormode.slack.oauth.label",
                 description:
                   "Connect Slack through Eliza Cloud OAuth for workspace-scoped bidirectional access.",
+                descriptionKey: "connectormode.slack.oauth.description",
                 managementMode: "cloud-managed" as const,
               },
             ]
@@ -115,8 +131,10 @@ export function getConnectorModes(
         {
           id: "socket",
           label: "Socket Mode Tokens",
+          labelKey: "connectormode.slack.socket.label",
           description:
             "Use your own Slack app token and bot token for the local connector runtime.",
+          descriptionKey: "connectormode.slack.socket.description",
           managementMode: "local-config",
         },
       ]);
@@ -129,8 +147,10 @@ export function getConnectorModes(
               {
                 id: "oauth",
                 label: "OAuth",
+                labelKey: "connectormode.x.oauth.label",
                 description:
                   "Connect X/Twitter through Eliza Cloud OAuth so the agent can post, read mentions, and handle DMs through cloud-held tokens.",
+                descriptionKey: "connectormode.x.oauth.description",
                 managementMode: "cloud-managed" as const,
               },
             ]
@@ -138,15 +158,19 @@ export function getConnectorModes(
         {
           id: "local-oauth",
           label: "Local OAuth2",
+          labelKey: "connectormode.x.localOauth.label",
           description:
             "Use @elizaos/plugin-x with TWITTER_AUTH_MODE=oauth, a client ID, and a loopback redirect URI.",
+          descriptionKey: "connectormode.x.localOauth.description",
           managementMode: "local-config",
         },
         {
           id: "developer",
           label: "Developer Tokens",
+          labelKey: "connectormode.x.developer.label",
           description:
             "Use OAuth 1.0a API keys and access tokens from the X Developer Portal.",
+          descriptionKey: "connectormode.x.developer.description",
           managementMode: "local-config",
         },
       ]);
@@ -156,7 +180,9 @@ export function getConnectorModes(
         {
           id: "qr",
           label: "QR Pair",
+          labelKey: "connectormode.signal.qr.label",
           description: "Link as a device to your Signal account via QR code",
+          descriptionKey: "connectormode.signal.qr.description",
           managementMode: "local-setup",
         },
       ]);
@@ -166,14 +192,18 @@ export function getConnectorModes(
         {
           id: "qr",
           label: "QR Pair",
+          labelKey: "connectormode.whatsapp.qr.label",
           description: "Scan a QR code from your WhatsApp mobile app",
+          descriptionKey: "connectormode.whatsapp.qr.description",
           managementMode: "local-setup",
         },
         {
           id: "business",
           label: "Business Cloud API",
+          labelKey: "connectormode.whatsapp.business.label",
           description:
             "Use WhatsApp Business API with access token and phone number ID",
+          descriptionKey: "connectormode.whatsapp.business.description",
           managementMode: "local-config",
         },
       ]);
@@ -183,15 +213,19 @@ export function getConnectorModes(
         {
           id: "direct",
           label: "Direct (chat.db)",
+          labelKey: "connectormode.imessage.direct.label",
           description:
             "Read iMessage database directly on this Mac. Requires Full Disk Access.",
+          descriptionKey: "connectormode.imessage.direct.description",
           managementMode: "local-setup",
         },
         {
           id: "bluebubbles",
           label: "BlueBubbles",
+          labelKey: "connectormode.imessage.bluebubbles.label",
           description:
             "Bridge via BlueBubbles server app. Works locally or over network.",
+          descriptionKey: "connectormode.imessage.bluebubbles.description",
           managementMode: "local-config",
         },
         ...(cloud
@@ -199,8 +233,10 @@ export function getConnectorModes(
               {
                 id: "blooio",
                 label: "Blooio (Cloud)",
+                labelKey: "connectormode.imessage.blooio.label",
                 description:
                   "Cloud-based iMessage/SMS gateway. No Mac needed on the server.",
+                descriptionKey: "connectormode.imessage.blooio.description",
                 managementMode: "cloud-managed" as const,
               },
             ]
@@ -310,9 +346,15 @@ export function ConnectorModeSelector({
                 ? "border-accent bg-accent/10 text-accent"
                 : "border-border/40 bg-card/40 text-muted hover:border-accent/40 hover:text-txt"
             }`}
-            title={mode.description}
+            title={
+              mode.descriptionKey
+                ? t(mode.descriptionKey, { defaultValue: mode.description })
+                : mode.description
+            }
           >
-            {mode.label}
+            {mode.labelKey
+              ? t(mode.labelKey, { defaultValue: mode.label })
+              : mode.label}
           </button>
         ))}
       </div>

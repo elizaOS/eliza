@@ -1,5 +1,6 @@
 import type { DeviceBridgeStatus } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTranslation } from "../../state/TranslationContext";
 
 export function DeviceBridgeStatusBar({
   status,
@@ -7,6 +8,7 @@ export function DeviceBridgeStatusBar({
   status: DeviceBridgeStatus | null;
 }) {
   useRenderGuard("DeviceBridgeStatusBar");
+  const { t } = useTranslation();
 
   if (!status) return null;
 
@@ -16,10 +18,20 @@ export function DeviceBridgeStatusBar({
       ? "bg-amber-500"
       : "bg-muted-foreground/40";
   const label = status.connected
-    ? `Paired device online${status.capabilities ? ` · ${status.capabilities.platform} · ${status.capabilities.deviceModel}` : ""}`
+    ? status.capabilities
+      ? t("devicebridge.onlineWithDevice", {
+          platform: status.capabilities.platform,
+          deviceModel: status.capabilities.deviceModel,
+          defaultValue: "Paired device online · {{platform}} · {{deviceModel}}",
+        })
+      : t("devicebridge.online", { defaultValue: "Paired device online" })
     : status.pendingRequests > 0
-      ? `Device offline · ${status.pendingRequests} request${status.pendingRequests === 1 ? "" : "s"} paused pending reconnect`
-      : "No paired device";
+      ? t("devicebridge.offlinePending", {
+          count: status.pendingRequests,
+          defaultValue:
+            "Device offline · {{count}} request(s) paused pending reconnect",
+        })
+      : t("devicebridge.noDevice", { defaultValue: "No paired device" });
 
   return (
     <div

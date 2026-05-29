@@ -13,6 +13,7 @@ import { getAcpService } from "../actions/common.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import { handleAgentRoutes } from "./agent-routes.js";
 import { handleIssueRoutes } from "./issue-routes.js";
+import { handleOrchestratorRoutes } from "./orchestrator-routes.js";
 import { handleParentContextRoutes } from "./parent-context-routes.js";
 import type { RouteContext } from "./route-utils.js";
 import { handleWorkspaceRoutes } from "./workspace-routes.js";
@@ -30,6 +31,12 @@ export async function handleCodingAgentRoutes(
   const normalizedPathname = pathname.startsWith("/api/task-agents")
     ? pathname.replace(/^\/api\/task-agents/, "/api/coding-agents")
     : pathname;
+
+  // Durable orchestrator task surface. Distinct `/api/orchestrator/*` prefix,
+  // so it matches first and never collides with the ACP session routes below.
+  if (await handleOrchestratorRoutes(req, res, normalizedPathname, ctx)) {
+    return true;
+  }
 
   // Delegate to parent-runtime bridge routes before generic :id agent routes.
   if (await handleParentContextRoutes(req, res, normalizedPathname, ctx)) {

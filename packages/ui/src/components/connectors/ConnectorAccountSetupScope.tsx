@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
+import { useTranslation } from "../../state/TranslationContext";
 import { Badge } from "../ui/badge";
 import {
   Select,
@@ -29,6 +30,7 @@ export function ConnectorAccountSetupScope({
   connectorId = provider,
   children,
 }: ConnectorAccountSetupScopeProps) {
+  const { t } = useTranslation();
   const accounts = useConnectorAccounts(provider, connectorId, { pollMs: 0 });
   const selectedAccount =
     accounts.accounts.find(
@@ -44,7 +46,9 @@ export function ConnectorAccountSetupScope({
       {accounts.accounts.length > 0 ? (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-sm border border-border/45 bg-bg-accent/35 px-3 py-2">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted">
-            Setup account
+            {t("connectorsetupscope.setupAccount", {
+              defaultValue: "Setup account",
+            })}
           </span>
           <Select
             value={selectedSetupAccountId ?? undefined}
@@ -57,7 +61,11 @@ export function ConnectorAccountSetupScope({
             }}
           >
             <SelectTrigger className="h-8 min-w-[180px] rounded-sm border border-border bg-card text-xs">
-              <SelectValue placeholder="Choose account" />
+              <SelectValue
+                placeholder={t("connectorsetupscope.choosePlaceholder", {
+                  defaultValue: "Choose account",
+                })}
+              />
             </SelectTrigger>
             <SelectContent>
               {accounts.accounts.map((account) => {
@@ -85,8 +93,12 @@ export function ConnectorAccountSetupScope({
                       ) : null}
                       <span className="text-[10px] capitalize text-muted">
                         {account.status}
-                        {usable ? "" : " unavailable"} ·{" "}
-                        {formatPrivacy(account.privacy)}
+                        {usable
+                          ? ""
+                          : t("connectorsetupscope.unavailableSuffix", {
+                              defaultValue: " unavailable",
+                            })}{" "}
+                        · {formatPrivacy(account.privacy)}
                       </span>
                     </div>
                   </SelectItem>
@@ -96,7 +108,9 @@ export function ConnectorAccountSetupScope({
           </Select>
           {!selectedSetupAccountId ? (
             <span className="text-xs text-warn">
-              Choose a connected account to continue.
+              {t("connectorsetupscope.chooseConnected", {
+                defaultValue: "Choose a connected account to continue.",
+              })}
             </span>
           ) : null}
         </div>

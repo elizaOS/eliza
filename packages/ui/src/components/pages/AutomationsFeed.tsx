@@ -38,6 +38,7 @@ import type {
 } from "../../api/client-types-config";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
+import { useTranslation } from "../../state/TranslationContext";
 import {
   type FeedFilter,
   passesFilter,
@@ -75,13 +76,20 @@ export interface AutomationsFeedProps {
   connectedCredTypes?: ReadonlySet<string>;
 }
 
-const FILTER_LABELS: Record<FeedFilter, string> = {
-  all: "All",
-  tasks: "Tasks",
-  workflows: "Workflows",
-  active: "Active",
-  inactive: "Inactive",
-};
+const FILTER_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
+  {
+    all: { key: "automationsfeed.filterAll", defaultLabel: "All" },
+    tasks: { key: "automationsfeed.filterTasks", defaultLabel: "Tasks" },
+    workflows: {
+      key: "automationsfeed.filterWorkflows",
+      defaultLabel: "Workflows",
+    },
+    active: { key: "automationsfeed.filterActive", defaultLabel: "Active" },
+    inactive: {
+      key: "automationsfeed.filterInactive",
+      defaultLabel: "Inactive",
+    },
+  };
 const NEW_AUTOMATION_LINK_ID = "__new__";
 
 interface FeedRow {
@@ -95,7 +103,10 @@ interface FeedRow {
   source: AutomationItem;
 }
 
-function automationToRow(item: AutomationItem): FeedRow {
+function automationToRow(
+  item: AutomationItem,
+  t: ReturnType<typeof useTranslation>["t"],
+): FeedRow {
   const isWorkflow = item.type === "workflow";
   const schedule = isWorkflow
     ? item.schedules
@@ -113,7 +124,10 @@ function automationToRow(item: AutomationItem): FeedRow {
           return formatSchedule(decoded.cronExpression);
         }
         if (decoded.kind === "event" && decoded.eventName) {
-          return `On ${decoded.eventName}`;
+          return t("automationsfeed.onEvent", {
+            event: decoded.eventName,
+            defaultValue: "On {{event}}",
+          });
         }
         return null;
       })();
@@ -121,7 +135,8 @@ function automationToRow(item: AutomationItem): FeedRow {
   return {
     key: item.id,
     kind: isWorkflow ? "workflow" : "task",
-    title: item.title || "Untitled",
+    title:
+      item.title || t("automationsfeed.untitled", { defaultValue: "Untitled" }),
     schedule,
     active: item.enabled,
     status: item.status,
@@ -133,6 +148,7 @@ function automationToRow(item: AutomationItem): FeedRow {
 export function AutomationsFeed({
   connectedCredTypes,
 }: AutomationsFeedProps = {}) {
+  const { t } = useTranslation();
   const [data, setData] = useState<AutomationListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,11 +194,17 @@ export function AutomationsFeed({
       const res = await client.listAutomations();
       setData(res);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load automations.");
+      setError(
+        e instanceof Error
+          ? e.message
+          : t("automationsfeed.loadError", {
+              defaultValue: "Failed to load automations.",
+            }),
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void refresh();
@@ -222,9 +244,9 @@ export function AutomationsFeed({
 
   const rows = useMemo(() => {
     return automations
-      .map(automationToRow)
+      .map((item) => automationToRow(item, t))
       .filter((r) => passesFilter(r, filter));
-  }, [automations, filter]);
+  }, [automations, filter, t]);
 
   const tasksCount = useMemo(
     () => automations.filter((a) => a.type !== "workflow").length,
@@ -282,11 +304,18 @@ export function AutomationsFeed({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1.5">
           <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-            Automations
+            {t("automationsfeed.title", { defaultValue: "Automations" })}
           </h1>
           <p className="text-sm text-muted-strong">
-            {tasksCount} task{tasksCount === 1 ? "" : "s"} · {workflowsCount}{" "}
-            workflow{workflowsCount === 1 ? "" : "s"}
+            {t("automationsfeed.taskCount", {
+              count: tasksCount,
+              defaultValue: "{{count}} task",
+            })}{" "}
+            ·{" "}
+            {t("automationsfeed.workflowCount", {
+              count: workflowsCount,
+              defaultValue: "{{count}} workflow",
+            })}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -295,7 +324,9 @@ export function AutomationsFeed({
             size="sm"
             onClick={() => void refresh()}
             disabled={loading}
-            aria-label="Refresh"
+            aria-label={t("automationsfeed.refresh", {
+              defaultValue: "Refresh",
+            })}
           >
             <RefreshCw
               className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
@@ -308,7 +339,7 @@ export function AutomationsFeed({
             onClick={() => setChooser("task")}
           >
             <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
-            New
+            {t("automationsfeed.new", { defaultValue: "New" })}
           </Button>
         </div>
       </div>
@@ -326,7 +357,9 @@ export function AutomationsFeed({
                 : "border-border/40 text-muted-strong hover:border-border"
             }`}
           >
-            {FILTER_LABELS[key]}
+            {t(FILTER_LABELS[key].key, {
+              defaultValue: FILTER_LABELS[key].defaultLabel,
+            })}
           </button>
         ))}
       </div>
@@ -346,14 +379,20 @@ export function AutomationsFeed({
         ) : rows.length === 0 ? (
           <div className="flex flex-col items-center gap-2 p-10 text-center text-sm text-muted-strong">
             <ListChecks className="h-6 w-6" aria-hidden />
-            <div>No automations yet.</div>
+            <div>
+              {t("automationsfeed.empty", {
+                defaultValue: "No automations yet.",
+              })}
+            </div>
             <Button
               variant="default"
               size="sm"
               onClick={() => setChooser("task")}
             >
               <Plus className="mr-1 h-3.5 w-3.5" aria-hidden />
-              Create your first automation
+              {t("automationsfeed.createFirst", {
+                defaultValue: "Create your first automation",
+              })}
             </Button>
           </div>
         ) : (
@@ -392,7 +431,9 @@ export function AutomationsFeed({
                     setError(
                       e instanceof Error
                         ? e.message
-                        : "Failed to run automation.",
+                        : t("automationsfeed.runError", {
+                            defaultValue: "Failed to run automation.",
+                          }),
                     );
                   }
                 }}
@@ -435,6 +476,7 @@ function FeedRowItem({
   connectedCredTypes?: ReadonlySet<string>;
   registerRef?: (el: HTMLLIElement | null) => void;
 }) {
+  const { t } = useTranslation();
   const Icon = row.kind === "workflow" ? Workflow : CheckCircle2;
   return (
     <li
@@ -457,12 +499,24 @@ function FeedRowItem({
             </span>
             <StatusBadge
               tone="muted"
-              label={row.kind === "workflow" ? "Workflow" : "Task"}
+              label={
+                row.kind === "workflow"
+                  ? t("automationsfeed.workflow", { defaultValue: "Workflow" })
+                  : t("automationsfeed.task", { defaultValue: "Task" })
+              }
             />
             {row.active ? (
-              <StatusBadge tone="success" label="Active" />
+              <StatusBadge
+                tone="success"
+                label={t("automationsfeed.active", { defaultValue: "Active" })}
+              />
             ) : (
-              <StatusBadge tone="muted" label="Inactive" />
+              <StatusBadge
+                tone="muted"
+                label={t("automationsfeed.inactive", {
+                  defaultValue: "Inactive",
+                })}
+              />
             )}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-strong">
@@ -474,12 +528,14 @@ function FeedRowItem({
             )}
             {row.lastUpdated && (
               <span>
-                Updated{" "}
-                {new Date(row.lastUpdated).toLocaleString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  hour: "numeric",
-                  minute: "2-digit",
+                {t("automationsfeed.updated", {
+                  date: new Date(row.lastUpdated).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  }),
+                  defaultValue: "Updated {{date}}",
                 })}
               </span>
             )}
@@ -489,7 +545,15 @@ function FeedRowItem({
       {row.kind === "workflow" && (
         <button
           type="button"
-          aria-label={row.active ? "Deactivate workflow" : "Activate workflow"}
+          aria-label={
+            row.active
+              ? t("automationsfeed.deactivateWorkflow", {
+                  defaultValue: "Deactivate workflow",
+                })
+              : t("automationsfeed.activateWorkflow", {
+                  defaultValue: "Activate workflow",
+                })
+          }
           onClick={onRunNow}
           className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
         >
@@ -513,11 +577,12 @@ function ChooserSheet({
   onChooseWorkflow: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 lg:items-center">
       <button
         type="button"
-        aria-label="Close"
+        aria-label={t("automationsfeed.close", { defaultValue: "Close" })}
         onClick={onClose}
         className="absolute inset-0 cursor-default"
       />
@@ -527,7 +592,9 @@ function ChooserSheet({
         aria-modal="true"
       >
         <h3 className="mb-3 text-base font-semibold text-txt">
-          What do you want to create?
+          {t("automationsfeed.chooserTitle", {
+            defaultValue: "What do you want to create?",
+          })}
         </h3>
         <div className="grid gap-2">
           <button
@@ -541,11 +608,15 @@ function ChooserSheet({
             />
             <div>
               <div className="text-sm font-medium text-txt">
-                Task (simple prompt)
+                {t("automationsfeed.taskOption", {
+                  defaultValue: "Task (simple prompt)",
+                })}
               </div>
               <div className="text-xs text-muted-strong">
-                One prompt, run once or on a schedule. Pick this if you're not
-                sure.
+                {t("automationsfeed.taskOptionDesc", {
+                  defaultValue:
+                    "One prompt, run once or on a schedule. Pick this if you're not sure.",
+                })}
               </div>
             </div>
           </button>
@@ -560,11 +631,15 @@ function ChooserSheet({
             />
             <div>
               <div className="text-sm font-medium text-txt">
-                Workflow (node graph)
+                {t("automationsfeed.workflowOption", {
+                  defaultValue: "Workflow (node graph)",
+                })}
               </div>
               <div className="text-xs text-muted-strong">
-                Multi-step. Trigger → actions → integrations. Edit JSON or
-                generate from a prompt.
+                {t("automationsfeed.workflowOptionDesc", {
+                  defaultValue:
+                    "Multi-step. Trigger → actions → integrations. Edit JSON or generate from a prompt.",
+                })}
               </div>
             </div>
           </button>
@@ -583,6 +658,7 @@ function WorkflowEditorLoader({
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   // A null workflowId means "create new" — resolve to a null definition
   // without hitting the API. Otherwise fetch the definition to edit.
   const fetchState = useFetchData<WorkflowDefinition | null>(
@@ -594,10 +670,13 @@ function WorkflowEditorLoader({
     return (
       <div className="p-6">
         <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-          {fetchState.error.message || "Failed to load workflow."}
+          {fetchState.error.message ||
+            t("automationsfeed.workflowLoadError", {
+              defaultValue: "Failed to load workflow.",
+            })}
         </div>
         <Button variant="ghost" size="sm" className="mt-3" onClick={onCancel}>
-          Back
+          {t("automationsfeed.back", { defaultValue: "Back" })}
         </Button>
       </div>
     );

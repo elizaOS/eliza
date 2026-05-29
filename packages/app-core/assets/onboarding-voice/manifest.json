@@ -1,0 +1,20 @@
+{
+  "generatedAt": "2026-05-29T10:37:18.989Z",
+  "instruct": "female, young adult, moderate pitch",
+  "lang": "English",
+  "seed": "0",
+  "lines": [
+    {
+      "id": "runtime",
+      "text": "Where should Eliza run?",
+      "file": "runtime.wav",
+      "bytes": 94124
+    },
+    {
+      "id": "remote",
+      "text": "Where is the remote agent?",
+      "file": "remote.wav",
+      "bytes": 97964
+    }
+  ]
+}

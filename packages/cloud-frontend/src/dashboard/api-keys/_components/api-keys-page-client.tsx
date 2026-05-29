@@ -568,7 +568,9 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                       value={preset.value}
                       className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
                     >
-                      {t(preset.labelKey, { defaultValue: preset.defaultLabel })}
+                      {t(preset.labelKey, {
+                        defaultValue: preset.defaultLabel,
+                      })}
                     </SelectItem>
                   ))}
                 </SelectContent>

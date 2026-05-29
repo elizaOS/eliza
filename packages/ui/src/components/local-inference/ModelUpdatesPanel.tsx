@@ -26,7 +26,13 @@ import {
   type VoiceModelVersion,
 } from "@elizaos/shared";
 import { useMemo, useState } from "react";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
 import { Button } from "../ui/button";
+
+type TranslateFn = TranslationContextValue["t"];
 
 export interface VoiceModelInstallationView {
   readonly id: VoiceModelId;
@@ -60,8 +66,9 @@ export interface ModelUpdatesPanelProps {
 }
 
 /** Format bytes as MB (1 decimal). Used for the per-asset size hint. */
-function formatMb(bytes: number): string {
-  if (bytes <= 0) return "(unpublished)";
+function formatMb(bytes: number, t: TranslateFn): string {
+  if (bytes <= 0)
+    return t("modelupdates.unpublished", { defaultValue: "(unpublished)" });
   return `${(bytes / 1_048_576).toFixed(1)} MB`;
 }
 
@@ -70,10 +77,14 @@ function totalBytes(latest: VoiceModelVersion | undefined): number {
   return latest.ggufAssets.reduce((s, a) => s + a.sizeBytes, 0);
 }
 
-function formatLastChecked(iso: string | null | undefined): string {
-  if (!iso) return "never";
+function formatLastChecked(
+  iso: string | null | undefined,
+  t: TranslateFn,
+): string {
+  if (!iso) return t("modelupdates.never", { defaultValue: "never" });
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "unknown";
+  if (Number.isNaN(date.getTime()))
+    return t("modelupdates.unknown", { defaultValue: "unknown" });
   return date.toLocaleString();
 }
 
@@ -88,6 +99,7 @@ export function ModelUpdatesPanel({
   onTogglePin,
   onSetPreferences,
 }: ModelUpdatesPanelProps) {
+  const { t } = useTranslation();
   // Build a per-id view of the catalog: installed + latest + pinned.
   const rows = useMemo(() => {
     const installedMap = new Map<VoiceModelId, VoiceModelInstallationView>();
@@ -117,10 +129,15 @@ export function ModelUpdatesPanel({
     <section className="rounded-sm border border-border p-4 text-sm">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
         <div>
-          <h3 className="text-base font-semibold">Model Updates</h3>
+          <h3 className="text-base font-semibold">
+            {t("modelupdates.title", { defaultValue: "Model Updates" })}
+          </h3>
           <p className="text-xs text-muted-foreground">
-            Voice sub-models check every 4h. Last checked:{" "}
-            {formatLastChecked(lastCheckedAt)}.
+            {t("modelupdates.checkInterval", {
+              lastChecked: formatLastChecked(lastCheckedAt, t),
+              defaultValue:
+                "Voice sub-models check every 4h. Last checked: {{lastChecked}}.",
+            })}
           </p>
         </div>
         <Button
@@ -129,7 +146,9 @@ export function ModelUpdatesPanel({
           onClick={onCheckNow}
           disabled={checking}
         >
-          {checking ? "Checking…" : "Check now"}
+          {checking
+            ? t("modelupdates.checking", { defaultValue: "Checking…" })
+            : t("modelupdates.checkNow", { defaultValue: "Check now" })}
         </Button>
       </header>
 
@@ -138,6 +157,7 @@ export function ModelUpdatesPanel({
           <ModelUpdateCard
             key={row.id}
             row={row}
+            t={t}
             onUpdateNow={onUpdateNow}
             onTogglePin={onTogglePin}
           />
@@ -146,26 +166,40 @@ export function ModelUpdatesPanel({
 
       <footer className="mt-4 flex flex-wrap items-center gap-4 border-t border-border pt-3 text-xs">
         <ToggleRow
-          label="Auto-update on Wi-Fi"
+          label={t("modelupdates.autoUpdateWifi", {
+            defaultValue: "Auto-update on Wi-Fi",
+          })}
           checked={preferences.autoUpdateOnWifi}
           onChange={(next) =>
             onSetPreferences({ ...preferences, autoUpdateOnWifi: next })
           }
         />
         <ToggleRow
-          label="Auto-update on cellular"
+          label={t("modelupdates.autoUpdateCellular", {
+            defaultValue: "Auto-update on cellular",
+          })}
           checked={preferences.autoUpdateOnCellular}
           disabled={!isOwner}
-          hint={!isOwner ? "Owner only" : undefined}
+          hint={
+            !isOwner
+              ? t("modelupdates.ownerOnly", { defaultValue: "Owner only" })
+              : undefined
+          }
           onChange={(next) =>
             onSetPreferences({ ...preferences, autoUpdateOnCellular: next })
           }
         />
         <ToggleRow
-          label="Auto-update on metered link"
+          label={t("modelupdates.autoUpdateMetered", {
+            defaultValue: "Auto-update on metered link",
+          })}
           checked={preferences.autoUpdateOnMetered}
           disabled={!isOwner}
-          hint={!isOwner ? "Owner only" : undefined}
+          hint={
+            !isOwner
+              ? t("modelupdates.ownerOnly", { defaultValue: "Owner only" })
+              : undefined
+          }
           onChange={(next) =>
             onSetPreferences({ ...preferences, autoUpdateOnMetered: next })
           }
@@ -187,20 +221,28 @@ interface ModelUpdateCardProps {
   };
   onUpdateNow: ModelUpdatesPanelProps["onUpdateNow"];
   onTogglePin: ModelUpdatesPanelProps["onTogglePin"];
+  t: TranslateFn;
 }
 
 function ModelUpdateCard({
   row,
   onUpdateNow,
   onTogglePin,
+  t,
 }: ModelUpdateCardProps) {
   const versionLabel = row.latest
     ? row.updateAvailable
       ? `${row.installedVersion ?? "—"} → ${row.latest.version}`
       : row.installedVersion
-        ? `up to date ${row.installedVersion}`
-        : `${row.latest.version} (not installed)`
-    : "no version data";
+        ? t("modelupdates.upToDate", {
+            version: row.installedVersion,
+            defaultValue: "up to date {{version}}",
+          })
+        : t("modelupdates.notInstalled", {
+            version: row.latest.version,
+            defaultValue: "{{version}} (not installed)",
+          })
+    : t("modelupdates.noVersionData", { defaultValue: "no version data" });
   return (
     <article className="rounded-sm border border-border p-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
@@ -214,7 +256,10 @@ function ModelUpdateCard({
       ) : null}
       {row.latest && row.downloadBytes > 0 ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          Size: {formatMb(row.downloadBytes)}
+          {t("modelupdates.size", {
+            size: formatMb(row.downloadBytes, t),
+            defaultValue: "Size: {{size}}",
+          })}
         </p>
       ) : null}
       {row.lastError ? (
@@ -229,14 +274,16 @@ function ModelUpdateCard({
           disabled={!row.updateAvailable || row.pinned}
           onClick={() => onUpdateNow(row.id)}
         >
-          Update now
+          {t("modelupdates.updateNow", { defaultValue: "Update now" })}
         </Button>
         <Button
           variant="outline"
           size="sm"
           onClick={() => onTogglePin(row.id, !row.pinned)}
         >
-          {row.pinned ? "Unpin" : "Pin"}
+          {row.pinned
+            ? t("modelupdates.unpin", { defaultValue: "Unpin" })
+            : t("modelupdates.pin", { defaultValue: "Pin" })}
         </Button>
       </div>
     </article>

@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import type { ConnectorAccountRole } from "../../api/client-agent";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -43,6 +44,7 @@ export function ConnectorAccountPurposeSelector({
   id,
   accountLabel,
 }: ConnectorAccountPurposeSelectorProps) {
+  const { t } = useTranslation();
   const resolved = getConnectorPurposeOption(value).value;
   const [pendingValue, setPendingValue] = useState<ConnectorAccountRole | null>(
     null,
@@ -97,7 +99,7 @@ export function ConnectorAccountPurposeSelector({
     <>
       <div className="flex min-w-[180px] items-center gap-2">
         <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
-          Acts as:
+          {t("connectorpurpose.actsAs", { defaultValue: "Acts as:" })}
         </span>
         <Select
           value={resolved}
@@ -135,19 +137,30 @@ export function ConnectorAccountPurposeSelector({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Assign OWNER role?</DialogTitle>
+            <DialogTitle>
+              {t("connectorpurpose.assignTitle", {
+                defaultValue: "Assign OWNER role?",
+              })}
+            </DialogTitle>
             <DialogDescription>
-              OWNER accounts can access owner-gated connector data and perform
-              owner-scoped connector actions.
+              {t("connectorpurpose.assignDescription", {
+                defaultValue:
+                  "OWNER accounts can access owner-gated connector data and perform owner-scoped connector actions.",
+              })}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="rounded-sm border border-border/50 bg-bg-accent/40 px-3 py-2 text-xs text-muted">
               <span className="font-medium text-txt">
-                {accountLabel ?? "Connector account"}
+                {accountLabel ??
+                  t("connectorpurpose.defaultLabel", {
+                    defaultValue: "Connector account",
+                  })}
               </span>{" "}
-              will be promoted to{" "}
+              {t("connectorpurpose.promotedTo", {
+                defaultValue: "will be promoted to",
+              })}{" "}
               <span className="font-medium text-txt">OWNER</span>.
             </div>
             <div className="space-y-1.5">
@@ -155,7 +168,10 @@ export function ConnectorAccountPurposeSelector({
                 htmlFor={confirmInputId}
                 className="text-xs font-medium text-txt"
               >
-                Type {CONNECTOR_OWNER_ROLE_CONFIRMATION} to confirm
+                {t("connectorpurpose.typeToConfirm", {
+                  value: CONNECTOR_OWNER_ROLE_CONFIRMATION,
+                  defaultValue: "Type {{value}} to confirm",
+                })}
               </label>
               <Input
                 id={confirmInputId}
@@ -174,7 +190,7 @@ export function ConnectorAccountPurposeSelector({
               disabled={confirmBusy}
               onClick={closeDialog}
             >
-              Cancel
+              {t("connectorpurpose.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               type="button"
@@ -185,7 +201,7 @@ export function ConnectorAccountPurposeSelector({
               {confirmBusy ? (
                 <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
               ) : (
-                "Confirm"
+                t("connectorpurpose.confirm", { defaultValue: "Confirm" })
               )}
             </Button>
           </DialogFooter>

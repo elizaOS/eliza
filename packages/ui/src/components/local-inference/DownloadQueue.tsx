@@ -2,6 +2,7 @@ import type {
   CatalogModel,
   DownloadJob,
 } from "../../api/client-local-inference";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import { displayModelName, findCatalogModel } from "./hub-utils";
@@ -23,11 +24,14 @@ export function DownloadQueue({
   catalog,
   onCancel,
 }: DownloadQueueProps) {
+  const { t } = useTranslation();
   if (downloads.length === 0) {
     return (
       <div className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-        No downloads in progress. Start one from Eliza-1 or use explicit custom
-        search.
+        {t("downloadqueue.empty", {
+          defaultValue:
+            "No downloads in progress. Start one from Eliza-1 or use explicit custom search.",
+        })}
       </div>
     );
   }
@@ -47,11 +51,18 @@ export function DownloadQueue({
               <div className="min-w-0">
                 <div className="font-medium truncate">{label}</div>
                 <div className="text-xs text-muted-foreground">
-                  {job.state === "queued" && "Queued"}
-                  {job.state === "downloading" && "Downloading"}
-                  {job.state === "failed" && "Failed"}
-                  {job.state === "completed" && "Completed"}
-                  {job.state === "cancelled" && "Cancelled"}
+                  {job.state === "queued" &&
+                    t("downloadqueue.queued", { defaultValue: "Queued" })}
+                  {job.state === "downloading" &&
+                    t("downloadqueue.downloading", {
+                      defaultValue: "Downloading",
+                    })}
+                  {job.state === "failed" &&
+                    t("downloadqueue.failed", { defaultValue: "Failed" })}
+                  {job.state === "completed" &&
+                    t("downloadqueue.completed", { defaultValue: "Completed" })}
+                  {job.state === "cancelled" &&
+                    t("downloadqueue.cancelled", { defaultValue: "Cancelled" })}
                 </div>
               </div>
               {isActive && (
@@ -60,7 +71,7 @@ export function DownloadQueue({
                   variant="outline"
                   onClick={() => onCancel(job.modelId)}
                 >
-                  Cancel
+                  {t("downloadqueue.cancel", { defaultValue: "Cancel" })}
                 </Button>
               )}
             </div>

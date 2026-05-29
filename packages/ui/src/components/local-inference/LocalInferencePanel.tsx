@@ -13,6 +13,7 @@ import type {
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { filterSettingsDefaultLocalModels } from "../../services/local-inference/catalog-policy";
 import { useApp } from "../../state";
+import type { TranslationContextValue } from "../../state/TranslationContext";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
@@ -38,7 +39,7 @@ type HubTab = "curated" | "search" | "downloads";
 
 export function LocalInferencePanel() {
   useRenderGuard("LocalInferencePanel");
-  const { setActionNotice } = useApp();
+  const { setActionNotice, t } = useApp();
   const [hub, setHub] = useState<ModelHubSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,9 +53,15 @@ export function LocalInferencePanel() {
       setHub(snapshot);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load models");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("localinference.loadError", {
+              defaultValue: "Failed to load models",
+            }),
+      );
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void refresh();
@@ -122,7 +129,11 @@ export function LocalInferencePanel() {
       // EventSource auto-reconnects; we only surface the error if it
       // outright closes.
       if (es.readyState === EventSource.CLOSED) {
-        setError("Live updates disconnected");
+        setError(
+          t("localinference.liveDisconnected", {
+            defaultValue: "Live updates disconnected",
+          }),
+        );
       }
     };
 
@@ -130,7 +141,7 @@ export function LocalInferencePanel() {
       es.close();
       eventSourceRef.current = null;
     };
-  }, [refresh]);
+  }, [refresh, t]);
 
   const withBusy = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
@@ -152,10 +163,16 @@ export function LocalInferencePanel() {
     (modelId: string) => {
       void withBusy(async () => {
         await client.startLocalInferenceDownload(modelId);
-        setActionNotice("Download started", "success", 2000);
+        setActionNotice(
+          t("localinference.downloadStarted", {
+            defaultValue: "Download started",
+          }),
+          "success",
+          2000,
+        );
       });
     },
-    [setActionNotice, withBusy],
+    [setActionNotice, withBusy, t],
   );
 
   const handleDownloadSpec = useCallback(
@@ -163,13 +180,16 @@ export function LocalInferencePanel() {
       void withBusy(async () => {
         await client.startLocalInferenceDownload(spec);
         setActionNotice(
-          `Downloading ${displayModelName(spec)}`,
+          t("localinference.downloadingModel", {
+            model: displayModelName(spec),
+            defaultValue: "Downloading {{model}}",
+          }),
           "success",
           2000,
         );
       });
     },
-    [setActionNotice, withBusy],
+    [setActionNotice, withBusy, t],
   );
 
   const handleCancel = useCallback(
@@ -187,13 +207,26 @@ export function LocalInferencePanel() {
         const active = await client.setLocalInferenceActive(modelId);
         setHub((prev) => (prev ? { ...prev, active } : prev));
         if (active.status === "error") {
-          setActionNotice(active.error ?? "Failed to activate", "error", 4000);
+          setActionNotice(
+            active.error ??
+              t("localinference.activateError", {
+                defaultValue: "Failed to activate",
+              }),
+            "error",
+            4000,
+          );
         } else if (active.status === "ready") {
-          setActionNotice("Model activated", "success", 2000);
+          setActionNotice(
+            t("localinference.modelActivated", {
+              defaultValue: "Model activated",
+            }),
+            "success",
+            2000,
+          );
         }
       });
     },
-    [setActionNotice, withBusy],
+    [setActionNotice, withBusy, t],
   );
 
   const handleUnload = useCallback(() => {
@@ -207,11 +240,17 @@ export function LocalInferencePanel() {
     (modelId: string) => {
       void withBusy(async () => {
         await client.uninstallLocalInferenceModel(modelId);
-        setActionNotice("Model uninstalled", "success", 2000);
+        setActionNotice(
+          t("localinference.modelUninstalled", {
+            defaultValue: "Model uninstalled",
+          }),
+          "success",
+          2000,
+        );
         await refresh();
       });
     },
-    [refresh, setActionNotice, withBusy],
+    [refresh, setActionNotice, withBusy, t],
   );
 
   const handleVerify = useCallback(
@@ -226,19 +265,29 @@ export function LocalInferencePanel() {
               : "error";
         const message =
           result.state === "ok"
-            ? "Model verified"
+            ? t("localinference.verifyOk", { defaultValue: "Model verified" })
             : result.state === "unknown"
-              ? "Baseline hash recorded — future verifies will compare against it"
+              ? t("localinference.verifyUnknown", {
+                  defaultValue:
+                    "Baseline hash recorded — future verifies will compare against it",
+                })
               : result.state === "missing"
-                ? "Model file is missing from disk"
+                ? t("localinference.verifyMissing", {
+                    defaultValue: "Model file is missing from disk",
+                  })
                 : result.state === "truncated"
-                  ? "Model file is corrupt (not a valid GGUF)"
-                  : "Model hash doesn't match the installed copy — re-download recommended";
+                  ? t("localinference.verifyTruncated", {
+                      defaultValue: "Model file is corrupt (not a valid GGUF)",
+                    })
+                  : t("localinference.verifyMismatch", {
+                      defaultValue:
+                        "Model hash doesn't match the installed copy — re-download recommended",
+                    });
         setActionNotice(message, tone, 4000);
         await refresh();
       });
     },
-    [refresh, setActionNotice, withBusy],
+    [refresh, setActionNotice, withBusy, t],
   );
 
   const handleRedownload = useCallback(
@@ -248,11 +297,17 @@ export function LocalInferencePanel() {
         // ids only; HF-search ad-hoc entries keep their install.
         await client.uninstallLocalInferenceModel(modelId);
         await client.startLocalInferenceDownload(modelId);
-        setActionNotice("Redownload started", "success", 2000);
+        setActionNotice(
+          t("localinference.redownloadStarted", {
+            defaultValue: "Redownload started",
+          }),
+          "success",
+          2000,
+        );
         await refresh();
       });
     },
-    [refresh, setActionNotice, withBusy],
+    [refresh, setActionNotice, withBusy, t],
   );
 
   const handleAssignmentsChange = useCallback(
@@ -274,14 +329,20 @@ export function LocalInferencePanel() {
           className="h-8 rounded-sm"
           onClick={refresh}
         >
-          Retry
+          {t("localinference.retry", { defaultValue: "Retry" })}
         </Button>
       </div>
     );
   }
 
   if (!hub) {
-    return <p className="text-sm text-muted">Loading local models…</p>;
+    return (
+      <p className="text-sm text-muted">
+        {t("localinference.loading", {
+          defaultValue: "Loading local models…",
+        })}
+      </p>
+    );
   }
 
   const catalog = filterSettingsDefaultLocalModels(hub.catalog);
@@ -308,8 +369,14 @@ export function LocalInferencePanel() {
         {(
           [
             ["curated", "Eliza-1"],
-            ["search", "Search"],
-            ["downloads", "Downloads"],
+            [
+              "search",
+              t("localinference.tabSearch", { defaultValue: "Search" }),
+            ],
+            [
+              "downloads",
+              t("localinference.tabDownloads", { defaultValue: "Downloads" }),
+            ],
           ] as const
         ).map(([id, label]) => {
           const active = tab === id;
@@ -376,7 +443,12 @@ export function LocalInferencePanel() {
 
       <VoiceModelUpdatesSection />
 
-      <AdvancedSettingsDisclosure title="Local model assignments" lazy>
+      <AdvancedSettingsDisclosure
+        title={t("localinference.assignmentsTitle", {
+          defaultValue: "Local model assignments",
+        })}
+        lazy
+      >
         <div className="flex flex-col gap-3">
           <SlotAssignments
             installed={hub.installed}
@@ -389,6 +461,7 @@ export function LocalInferencePanel() {
             onActivate={handleActivate}
             active={hub.active}
             busy={busy}
+            t={t}
           />
         </div>
       </AdvancedSettingsDisclosure>
@@ -401,11 +474,13 @@ function ExternalInstalledSummary({
   onActivate,
   active,
   busy,
+  t,
 }: {
   installed: InstalledModel[];
   onActivate: (id: string) => void;
   active: ActiveModelState;
   busy: boolean;
+  t: TranslationContextValue["t"];
 }) {
   const external = installed.filter((m) => m.source === "external-scan");
   if (external.length === 0) return null;
@@ -415,9 +490,13 @@ function ExternalInstalledSummary({
       <header>
         <h3
           className="text-[10px] font-medium uppercase tracking-wider text-muted"
-          title="Eliza can load these models without re-downloading."
+          title={t("localinference.discoveredTooltip", {
+            defaultValue: "Eliza can load these models without re-downloading.",
+          })}
         >
-          Discovered from other tools
+          {t("localinference.discoveredTitle", {
+            defaultValue: "Discovered from other tools",
+          })}
         </h3>
       </header>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -439,9 +518,11 @@ function ExternalInstalledSummary({
               {isActive ? (
                 <span
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-ok/35 bg-ok/10 text-ok"
-                  title="Active"
+                  title={t("localinference.active", { defaultValue: "Active" })}
                   role="img"
-                  aria-label="Active"
+                  aria-label={t("localinference.active", {
+                    defaultValue: "Active",
+                  })}
                 >
                   <CheckCircle2 className="h-4 w-4" aria-hidden />
                 </span>
@@ -453,7 +534,7 @@ function ExternalInstalledSummary({
                   disabled={busy}
                 >
                   <Play className="h-3.5 w-3.5" aria-hidden />
-                  Activate
+                  {t("localinference.activate", { defaultValue: "Activate" })}
                 </Button>
               )}
             </div>
@@ -490,7 +571,7 @@ function appendTokenParam(url: string): string {
  * cellular/metered toggles are OWNER-only.
  */
 function VoiceModelUpdatesSection() {
-  const { setActionNotice } = useApp();
+  const { setActionNotice, t } = useApp();
   const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>({
     autoUpdateOnWifi: true,
     autoUpdateOnCellular: false,
@@ -545,11 +626,18 @@ function VoiceModelUpdatesSection() {
       setInstallations(list.installations);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setActionNotice(`Update check failed: ${message}`, "error", 4000);
+      setActionNotice(
+        t("localinference.updateCheckFailed", {
+          message,
+          defaultValue: "Update check failed: {{message}}",
+        }),
+        "error",
+        4000,
+      );
     } finally {
       setChecking(false);
     }
-  }, [setActionNotice]);
+  }, [setActionNotice, t]);
 
   const onUpdateNow = useCallback(
     async (id: VoiceModelId) => {
@@ -559,10 +647,17 @@ function VoiceModelUpdatesSection() {
         setInstallations(list.installations);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        setActionNotice(`Update failed: ${message}`, "error", 4000);
+        setActionNotice(
+          t("localinference.updateFailed", {
+            message,
+            defaultValue: "Update failed: {{message}}",
+          }),
+          "error",
+          4000,
+        );
       }
     },
-    [setActionNotice],
+    [setActionNotice, t],
   );
 
   const onTogglePin = useCallback(
@@ -574,13 +669,21 @@ function VoiceModelUpdatesSection() {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setActionNotice(
-          `${pinned ? "Pin" : "Unpin"} failed: ${message}`,
+          pinned
+            ? t("localinference.pinFailed", {
+                message,
+                defaultValue: "Pin failed: {{message}}",
+              })
+            : t("localinference.unpinFailed", {
+                message,
+                defaultValue: "Unpin failed: {{message}}",
+              }),
           "error",
           4000,
         );
       }
     },
-    [setActionNotice],
+    [setActionNotice, t],
   );
 
   const onSetPreferences = useCallback(
@@ -606,10 +709,17 @@ function VoiceModelUpdatesSection() {
       } catch (err) {
         if (previous) setPreferences(previous);
         const message = err instanceof Error ? err.message : String(err);
-        setActionNotice(`Could not save preference: ${message}`, "error", 4000);
+        setActionNotice(
+          t("localinference.savePrefFailed", {
+            message,
+            defaultValue: "Could not save preference: {{message}}",
+          }),
+          "error",
+          4000,
+        );
       }
     },
-    [setActionNotice],
+    [setActionNotice, t],
   );
 
   return (

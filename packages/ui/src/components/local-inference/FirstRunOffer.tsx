@@ -5,6 +5,7 @@ import type {
   InstalledModel,
 } from "../../api/client-local-inference";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { displayModelName, findInstalled } from "./hub-utils";
 
@@ -25,6 +26,7 @@ export function FirstRunOffer({
   onDownload,
   busy,
 }: FirstRunOfferProps) {
+  const { t } = useTranslation();
   const elizaOwned = installed.filter((m) => m.source === "eliza-download");
   const activeDownloads = downloads.filter(
     (job) => job.state === "queued" || job.state === "downloading",
@@ -38,16 +40,32 @@ export function FirstRunOffer({
   const anyActiveDownload = activeDownloads[0] ?? null;
   const title =
     elizaOwned.length === 0
-      ? "Local model required"
-      : "Local model download in progress";
+      ? t("firstrunoffer.titleRequired", {
+          defaultValue: "Local model required",
+        })
+      : t("firstrunoffer.titleInProgress", {
+          defaultValue: "Local model download in progress",
+        });
   const detail =
     elizaOwned.length === 0
       ? recommended
-        ? `Download the default local model (${displayModelName(recommended)}) to run chat on this device.`
-        : "No local chat model is available on this device."
+        ? t("firstrunoffer.detailDownload", {
+            model: displayModelName(recommended),
+            defaultValue:
+              "Download the default local model ({{model}}) to run chat on this device.",
+          })
+        : t("firstrunoffer.detailNoModel", {
+            defaultValue: "No local chat model is available on this device.",
+          })
       : anyActiveDownload
-        ? `A local model download is still running (${anyActiveDownload.modelId}).`
-        : "A local model download is still running.";
+        ? t("firstrunoffer.detailRunningModel", {
+            model: anyActiveDownload.modelId,
+            defaultValue:
+              "A local model download is still running ({{model}}).",
+          })
+        : t("firstrunoffer.detailRunning", {
+            defaultValue: "A local model download is still running.",
+          });
 
   return (
     <div
@@ -67,8 +85,12 @@ export function FirstRunOffer({
           disabled={busy || Boolean(defaultDownload)}
         >
           {defaultDownload
-            ? "Downloading default model"
-            : "Download default model"}
+            ? t("firstrunoffer.downloadingDefault", {
+                defaultValue: "Downloading default model",
+              })
+            : t("firstrunoffer.downloadDefault", {
+                defaultValue: "Download default model",
+              })}
         </Button>
       ) : null}
     </div>

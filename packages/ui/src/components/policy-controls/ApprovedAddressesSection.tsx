@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -16,6 +17,7 @@ export function ApprovedAddressesSection({
   config: ApprovedAddressesConfig;
   onChange: (config: ApprovedAddressesConfig) => void;
 }) {
+  const { t } = useTranslation();
   const [newAddress, setNewAddress] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [addressError, setAddressError] = useState<string | null>(null);
@@ -41,13 +43,21 @@ export function ApprovedAddressesSection({
     const trimmed = newAddress.trim();
     if (!trimmed) return;
     if (!isValidAddress(trimmed)) {
-      setAddressError("Invalid address format (EVM 0x... or Solana base58)");
+      setAddressError(
+        t("approvedaddresses.invalidFormat", {
+          defaultValue: "Invalid address format (EVM 0x... or Solana base58)",
+        }),
+      );
       return;
     }
     if (
       config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)
     ) {
-      setAddressError("Already in list");
+      setAddressError(
+        t("approvedaddresses.alreadyInList", {
+          defaultValue: "Already in list",
+        }),
+      );
       return;
     }
     onChange({
@@ -61,7 +71,7 @@ export function ApprovedAddressesSection({
     setNewAddress("");
     setNewLabel("");
     setAddressError(null);
-  }, [newAddress, newLabel, config, onChange]);
+  }, [newAddress, newLabel, config, onChange, t]);
 
   const handleRemove = useCallback(
     (addr: string) => {
@@ -89,7 +99,9 @@ export function ApprovedAddressesSection({
               : "bg-danger/15 text-danger"
           }`}
         >
-          {config.mode === "whitelist" ? "Allowlist" : "Blocklist"}
+          {config.mode === "whitelist"
+            ? t("approvedaddresses.allowlist", { defaultValue: "Allowlist" })
+            : t("approvedaddresses.blocklist", { defaultValue: "Blocklist" })}
         </span>
         <Button
           variant="ghost"
@@ -102,7 +114,13 @@ export function ApprovedAddressesSection({
             })
           }
         >
-          Switch to {config.mode === "whitelist" ? "blocklist" : "allowlist"}
+          {config.mode === "whitelist"
+            ? t("approvedaddresses.switchToBlocklist", {
+                defaultValue: "Switch to blocklist",
+              })
+            : t("approvedaddresses.switchToAllowlist", {
+                defaultValue: "Switch to allowlist",
+              })}
         </Button>
       </div>
 
@@ -136,7 +154,10 @@ export function ApprovedAddressesSection({
                   size="sm"
                   className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-danger hover:text-danger"
                   onClick={() => handleRemove(entry.address)}
-                  aria-label={`Remove ${entry.label || entry.address}`}
+                  aria-label={t("approvedaddresses.removeAria", {
+                    target: entry.label || entry.address,
+                    defaultValue: "Remove {{target}}",
+                  })}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -147,8 +168,12 @@ export function ApprovedAddressesSection({
       ) : (
         <div className="text-xs-tight text-muted/60 py-1">
           {config.mode === "whitelist"
-            ? "No addresses — agent can't send anywhere yet."
-            : "No addresses blocked."}
+            ? t("approvedaddresses.emptyAllowlist", {
+                defaultValue: "No addresses — agent can't send anywhere yet.",
+              })
+            : t("approvedaddresses.emptyBlocklist", {
+                defaultValue: "No addresses blocked.",
+              })}
         </div>
       )}
 
@@ -156,7 +181,9 @@ export function ApprovedAddressesSection({
       <div className="flex gap-2">
         <Input
           type="text"
-          placeholder="EVM or Solana address"
+          placeholder={t("approvedaddresses.addressPlaceholder", {
+            defaultValue: "EVM or Solana address",
+          })}
           value={newAddress}
           onChange={(e) => {
             setNewAddress(e.target.value);
@@ -166,7 +193,9 @@ export function ApprovedAddressesSection({
         />
         <Input
           type="text"
-          placeholder="Label"
+          placeholder={t("approvedaddresses.labelPlaceholder", {
+            defaultValue: "Label",
+          })}
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           className="w-24 h-8 text-xs"

@@ -1,5 +1,6 @@
 import type React from "react";
 import { useState } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import { Switch } from "../ui/switch";
 
 /**
@@ -20,6 +21,7 @@ export function PolicyToggle({
   onToggle: (enabled: boolean) => void;
   children?: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -54,7 +56,9 @@ export function PolicyToggle({
               </div>
             )}
             {!enabled && (
-              <div className="text-xs-tight text-muted/60 mt-0.5">Off</div>
+              <div className="text-xs-tight text-muted/60 mt-0.5">
+                {t("policytoggle.off", { defaultValue: "Off" })}
+              </div>
             )}
           </div>
         </button>

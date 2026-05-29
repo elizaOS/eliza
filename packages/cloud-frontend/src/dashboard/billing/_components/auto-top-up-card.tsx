@@ -15,6 +15,7 @@ import { BrandCard, Button, CornerBrackets, Label, Switch } from "@elizaos/ui";
 import { CreditCard, Info, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 import { NumericField } from "./numeric-field";
 
 interface AutoTopUpSettings {
@@ -34,6 +35,7 @@ interface Limits {
 const ENDPOINT = "/api/v1/billing/settings";
 
 export function AutoTopUpCard() {
+  const t = useT();
   const [settings, setSettings] = useState<AutoTopUpSettings | null>(null);
   const [limits, setLimits] = useState<Limits | null>(null);
   const [loading, setLoading] = useState(true);
@@ -67,18 +69,30 @@ export function AutoTopUpCard() {
   const validationError = useMemo(() => {
     if (!limits || !enabled) return null;
     if (!Number.isFinite(parsedAmount) || parsedAmount < limits.minAmount)
-      return `Amount must be at least $${limits.minAmount}`;
+      return t("cloud.autoTopUp.amountMin", {
+        min: limits.minAmount,
+        defaultValue: "Amount must be at least ${{min}}",
+      });
     if (parsedAmount > limits.maxAmount)
-      return `Amount can't exceed $${limits.maxAmount}`;
+      return t("cloud.autoTopUp.amountMax", {
+        max: limits.maxAmount,
+        defaultValue: "Amount can't exceed ${{max}}",
+      });
     if (
       !Number.isFinite(parsedThreshold) ||
       parsedThreshold < limits.minThreshold
     )
-      return `Threshold must be ≥ $${limits.minThreshold}`;
+      return t("cloud.autoTopUp.thresholdMin", {
+        min: limits.minThreshold,
+        defaultValue: "Threshold must be ≥ ${{min}}",
+      });
     if (parsedThreshold > limits.maxThreshold)
-      return `Threshold can't exceed $${limits.maxThreshold}`;
+      return t("cloud.autoTopUp.thresholdMax", {
+        max: limits.maxThreshold,
+        defaultValue: "Threshold can't exceed ${{max}}",
+      });
     return null;
-  }, [enabled, limits, parsedAmount, parsedThreshold]);
+  }, [enabled, limits, parsedAmount, parsedThreshold, t]);
 
   const handleSave = async () => {
     if (validationError) {
@@ -102,12 +116,21 @@ export function AutoTopUpCard() {
     setSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      toast.error(body?.error || "Failed to save settings");
+      toast.error(
+        body?.error ||
+          t("cloud.autoTopUp.saveFailed", {
+            defaultValue: "Failed to save settings",
+          }),
+      );
       return;
     }
     const body = await res.json();
     setSettings(body.settings.autoTopUp);
-    toast.success("Auto top-up settings saved");
+    toast.success(
+      t("cloud.autoTopUp.saved", {
+        defaultValue: "Auto top-up settings saved",
+      }),
+    );
   };
 
   if (loading) {
@@ -132,25 +155,36 @@ export function AutoTopUpCard() {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
             <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
-              Auto Top-Up (Card)
+              {t("cloud.autoTopUp.title", {
+                defaultValue: "Auto Top-Up (Card)",
+              })}
             </h3>
           </div>
           <p className="text-xs font-mono text-[#858585] tracking-tight">
-            Automatically charge your saved card when credits dip below the
-            threshold. Earnings auto-fund runs first, so this only fires if
-            earnings can't cover the gap.
+            {t("cloud.autoTopUp.description", {
+              defaultValue:
+                "Automatically charge your saved card when credits dip below the threshold. Earnings auto-fund runs first, so this only fires if earnings can't cover the gap.",
+            })}
           </p>
         </div>
 
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <Label className="text-white font-mono text-sm">
-              Enable card auto top-up
+              {t("cloud.autoTopUp.enableLabel", {
+                defaultValue: "Enable card auto top-up",
+              })}
             </Label>
             <p className="text-xs font-mono text-[#858585]">
               {settings?.enabled
-                ? "Active. Your saved card will be charged automatically."
-                : "Currently off — card won't be charged automatically."}
+                ? t("cloud.autoTopUp.activeState", {
+                    defaultValue:
+                      "Active. Your saved card will be charged automatically.",
+                  })
+                : t("cloud.autoTopUp.offState", {
+                    defaultValue:
+                      "Currently off — card won't be charged automatically.",
+                  })}
             </p>
           </div>
           <Switch
@@ -165,16 +199,22 @@ export function AutoTopUpCard() {
           <div className="flex items-start gap-2 border border-yellow-500/30 bg-yellow-500/5 p-3">
             <Info className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
             <p className="text-xs font-mono text-yellow-300">
-              No saved payment method. Add a card on the billing page first to
-              enable auto top-up.
+              {t("cloud.autoTopUp.noPaymentMethod", {
+                defaultValue:
+                  "No saved payment method. Add a card on the billing page first to enable auto top-up.",
+              })}
             </p>
           </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <NumericField
-            label="Top-up amount"
-            description="Charged to card each cycle."
+            label={t("cloud.autoTopUp.amountLabel", {
+              defaultValue: "Top-up amount",
+            })}
+            description={t("cloud.autoTopUp.amountDescription", {
+              defaultValue: "Charged to card each cycle.",
+            })}
             value={amount}
             onChange={setAmount}
             disabled={saving || !enabled || !!noPaymentMethod}
@@ -182,8 +222,12 @@ export function AutoTopUpCard() {
             max={limits?.maxAmount}
           />
           <NumericField
-            label="Trigger threshold"
-            description="Top-up kicks in below this credit balance."
+            label={t("cloud.autoTopUp.thresholdLabel", {
+              defaultValue: "Trigger threshold",
+            })}
+            description={t("cloud.autoTopUp.thresholdDescription", {
+              defaultValue: "Top-up kicks in below this credit balance.",
+            })}
             value={threshold}
             onChange={setThreshold}
             disabled={saving || !enabled || !!noPaymentMethod}

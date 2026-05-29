@@ -50,6 +50,7 @@ import {
   TASK_AUDIT_EVENT,
   type TaskAuditPayload,
 } from "./services/audit.js";
+import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { requireTaskAgentAccess } from "./services/task-policy.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
@@ -102,6 +103,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
   const orchestratorServices: ServiceClass[] = codeExecutionAllowed
     ? [
         serviceClass(AcpService),
+        serviceClass(OrchestratorTaskService),
         serviceClass(SubAgentRouter),
         serviceClass(CodingWorkspaceService),
       ]
@@ -339,6 +341,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
       // all plugins are fully wired.
       const types = [
         AcpService.serviceType,
+        OrchestratorTaskService.serviceType,
         SubAgentRouter.serviceType,
         CodingWorkspaceService.serviceType,
       ];
@@ -403,6 +406,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
       }
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
+      const taskService = runtime.getService<OrchestratorTaskService>(
+        OrchestratorTaskService.serviceType,
+      );
+      await taskService?.stop();
       const router = runtime.getService<SubAgentRouter>(
         SubAgentRouter.serviceType,
       );

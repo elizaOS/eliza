@@ -2,6 +2,7 @@ import { Send } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext";
 import type { ShellMessage } from "./shell-state";
 
 export interface ChatSurfaceProps {
@@ -21,6 +22,7 @@ export function ChatSurface({
   recording = false,
   onToggleRecording,
 }: ChatSurfaceProps): React.JSX.Element {
+  const { t } = useTranslation();
   const [draft, setDraft] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const messageCount = messages.length;
@@ -45,13 +47,18 @@ export function ChatSurface({
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <p className="text-sm text-muted">
-            {greeting ?? "Ask Eliza anything."}
+            {greeting ??
+              t("chatsurface.greeting", {
+                defaultValue: "Ask Eliza anything.",
+              })}
           </p>
         ) : (
           <ul
             aria-live="polite"
             aria-atomic="false"
-            aria-label="Conversation"
+            aria-label={t("chatsurface.conversation", {
+              defaultValue: "Conversation",
+            })}
             className="flex flex-col gap-2"
           >
             {messages.map((message) => {
@@ -70,7 +77,9 @@ export function ChatSurface({
                   {isEmptyAssistant ? (
                     <span
                       role="status"
-                      aria-label="Eliza is typing"
+                      aria-label={t("chatsurface.typing", {
+                        defaultValue: "Eliza is typing",
+                      })}
                       className="inline-flex gap-0.5"
                     >
                       <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-muted" />
@@ -90,7 +99,15 @@ export function ChatSurface({
         <div className="mb-1 flex justify-center">
           <button
             type="button"
-            aria-label={recording ? "Stop voice input" : "Start voice input"}
+            aria-label={
+              recording
+                ? t("chatsurface.stopVoice", {
+                    defaultValue: "Stop voice input",
+                  })
+                : t("chatsurface.startVoice", {
+                    defaultValue: "Start voice input",
+                  })
+            }
             aria-pressed={recording}
             disabled={!onToggleRecording}
             onClick={onToggleRecording}
@@ -101,7 +118,11 @@ export function ChatSurface({
               "focus-visible:outline-none focus-visible:underline",
             )}
           >
-            {recording ? "Listening" : "Not listening"}
+            {recording
+              ? t("chatsurface.listening", { defaultValue: "Listening" })
+              : t("chatsurface.notListening", {
+                  defaultValue: "Not listening",
+                })}
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -115,14 +136,18 @@ export function ChatSurface({
                 handleSend();
               }
             }}
-            placeholder="Ask Eliza…"
+            placeholder={t("chatsurface.inputPlaceholder", {
+              defaultValue: "Ask Eliza…",
+            })}
             disabled={!canSend}
-            aria-label="Message Eliza"
+            aria-label={t("chatsurface.messageLabel", {
+              defaultValue: "Message Eliza",
+            })}
             className="flex-1 rounded-full border border-border/40 bg-bg/60 px-3 py-2 text-sm text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
           />
           <button
             type="button"
-            aria-label="Send message"
+            aria-label={t("chatsurface.send", { defaultValue: "Send message" })}
             disabled={!canSendNow}
             onClick={handleSend}
             className="grid h-10 w-10 place-items-center rounded-full bg-accent text-bg disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
