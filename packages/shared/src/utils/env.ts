@@ -112,6 +112,17 @@ function buildEnvPairs(
     [prefixed("ALLOWED_HOSTS"), "ELIZA_ALLOWED_HOSTS"],
     [prefixed("ALLOW_NULL_ORIGIN"), "ELIZA_ALLOW_NULL_ORIGIN"],
     [prefixed("DISABLE_AUTO_API_TOKEN"), "ELIZA_DISABLE_AUTO_API_TOKEN"],
+    [prefixed("HOME_PORT"), "ELIZA_HOME_PORT"],
+    [prefixed("GATEWAY_PORT"), "ELIZA_GATEWAY_PORT"],
+    [prefixed("API_BASE"), "ELIZA_API_BASE"],
+    [prefixed("API_BASE_URL"), "ELIZA_API_BASE_URL"],
+    [prefixed("DESKTOP_API_BASE"), "ELIZA_DESKTOP_API_BASE"],
+    [prefixed("DESKTOP_TEST_API_BASE"), "ELIZA_DESKTOP_TEST_API_BASE"],
+    [
+      prefixed("DESKTOP_SKIP_EMBEDDED_AGENT"),
+      "ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT",
+    ],
+    [prefixed("RENDERER_URL"), "ELIZA_RENDERER_URL"],
     [
       prefixed("TASK_AGENT_AUTH_TRUSTED_HOSTS"),
       "ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS",
