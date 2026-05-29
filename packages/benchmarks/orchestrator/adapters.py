@@ -115,6 +115,7 @@ SMITHERS_BENCHMARKS: frozenset[str] = frozenset(
         "abliteration-robustness",
         "scambench",
         "clawbench",
+        "agentbench",
     }
 )
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (

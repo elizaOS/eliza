@@ -363,7 +363,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--no-docker")
         # Agent runtime selection
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"hermes", "openclaw"}:
+        if agent in {"hermes", "openclaw", "smithers"}:
             args.extend(["--runtime", agent])
         elif agent == "eliza" or extra.get("elizaos") is True:
             args.extend(["--runtime", "bridge"])
