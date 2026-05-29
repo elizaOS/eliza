@@ -83,21 +83,23 @@ TORSO = dict(
 # Gaussian falloff, gated to the front face so the lateral +-Y drums are untouched.
 # This gives two DISTINCT breasts instead of a single centre ridge.
 BREAST = dict(
-    amp=0.030,        # peak +X projection (m)
-    y0=0.050,         # lateral offset of each mound centre (m)
-    z0=0.190,         # height of the mounds (m)
-    sigma_y=0.034, sigma_z=0.045,
-    front_halfdeg=70.0,
+    amp=0.042,        # peak +X projection (m)
+    y0=0.052,         # lateral offset of each mound centre (m)
+    z0=0.196,         # height of the mounds (m)
+    sigma_y=0.036, sigma_z=0.050,
+    front_halfdeg=72.0,
 )
 
-# Surface features to erase by masked Laplacian smoothing (fills shallow
-# engravings without touching the rest of the shell). Boxes in link-local m.
-FEATURE_BOXES = dict(
-    chest_M=dict(x=(0.02, 0.12), y=(-0.045, 0.045), z=(0.150, 0.205), iters=40),
-    back_text=dict(x=(-0.12, -0.02), y=(-0.075, 0.075), z=(0.060, 0.170), iters=30),
+# Features removed by delete-faces-in-box + cap (robust for engraved/separate
+# components). Boxes in link-local metres.
+#   chest_M    : recessed 'm' logo on the front chest panel
+#   back_text  : lettering on the back access panel
+#   handle     : grab-bar + tunnel on the upper back
+REMOVE_BOXES = dict(
+    chest_M=dict(x=(0.045, 0.12), y=(-0.040, 0.040), z=(0.150, 0.205)),
+    back_text=dict(x=(-0.115, -0.055), y=(-0.045, 0.045), z=(0.120, 0.165)),
+    handle=dict(x=(-0.115, -0.060), y=(-0.075, 0.075), z=(0.185, 0.285)),
 )
-# Handle: a grab-bar with a tunnel on the upper back; delete + cap to remove it.
-HANDLE_BOX = dict(x=(-0.115, -0.060), y=(-0.075, 0.075), z=(0.185, 0.285))
 
 
 def _slice_centroids(v, axis_z, lo, hi, step=0.005):
@@ -112,51 +114,15 @@ def _slice_centroids(v, axis_z, lo, hi, step=0.005):
     return levels, cx, cy
 
 
-def _vertex_neighbors(faces, n):
-    nbr = [set() for _ in range(n)]
-    for a, b, c in faces:
-        nbr[a].update((b, c)); nbr[b].update((a, c)); nbr[c].update((a, b))
-    return [np.fromiter(s, dtype=np.int64) for s in nbr]
-
-
-def _smooth_region(mesh, mask, iters):
-    """Laplacian (umbrella) smoothing of only the masked vertices; boundary of the
-    region is held fixed, so a shallow engraving is filled while the surrounding
-    panel keeps its shape."""
-    nbr = _vertex_neighbors(mesh.faces, len(mesh.vertices))
-    v = mesh.vertices.copy()
-    idx = np.flatnonzero(mask)
-    for _ in range(iters):
-        nv = v.copy()
-        for i in idx:
-            ns = nbr[i]
-            if len(ns):
-                nv[i] = 0.6 * v[i] + 0.4 * v[ns].mean(0)
-        v = nv
-    mesh.vertices = v
-    return mesh
-
-
-def _erase_feature(mesh, box, iters):
-    v = mesh.vertices
-    m = ((v[:, 0] >= box["x"][0]) & (v[:, 0] <= box["x"][1])
-         & (v[:, 1] >= box["y"][0]) & (v[:, 1] <= box["y"][1])
-         & (v[:, 2] >= box["z"][0]) & (v[:, 2] <= box["z"][1]))
-    if m.any():
-        _smooth_region(mesh, m, iters)
-    return mesh
-
-
-def _remove_handle(mesh, box):
-    """Delete faces inside the handle box (the grab-bar + its tunnel) and cap the
-    resulting boundary loops so the back stays watertight."""
+def _delete_and_cap(mesh, box):
+    """Delete every face touching the box, then cap the boundary loops left behind
+    so the shell closes back up. Removes engraved logos/text and the grab-bar."""
     v = mesh.vertices
     inb = ((v[:, 0] >= box["x"][0]) & (v[:, 0] <= box["x"][1])
            & (v[:, 1] >= box["y"][0]) & (v[:, 1] <= box["y"][1])
            & (v[:, 2] >= box["z"][0]) & (v[:, 2] <= box["z"][1]))
     fmask = inb[mesh.faces].any(axis=1)
-    keep = mesh.faces[~fmask]
-    out = trimesh.Trimesh(mesh.vertices.copy(), keep, process=True)
+    out = trimesh.Trimesh(mesh.vertices.copy(), mesh.faces[~fmask], process=True)
     out.remove_unreferenced_vertices()
     out.fill_holes()
     return out
@@ -200,10 +166,9 @@ def _torso_warp(mesh):
     v[back, 0] = cxz[back] + dx[back] * pullb[back]
 
     m.vertices = v
-    # 4) erase surface features, then remove the back handle (delete + cap)
-    for box in FEATURE_BOXES.values():
-        _erase_feature(m, box, box["iters"])
-    m = _remove_handle(m, HANDLE_BOX)
+    # 4) remove chest M, back text, and back handle (delete faces + cap)
+    for box in REMOVE_BOXES.values():
+        m = _delete_and_cap(m, box)
     return m
 
 
