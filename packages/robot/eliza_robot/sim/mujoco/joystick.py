@@ -188,7 +188,11 @@ class Joystick(ainex_base.AiNexEnv):
         rewards = {
             k: v * self._config.reward_config.scales[k] for k, v in rewards.items()
         }
-        reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+        # Lower bound MUST be negative: clipping to 0 zeros out every penalty
+        # term (lin_vel_z, feet_slip, orientation, energy, action_rate, ...),
+        # removing the signal that discourages foot-skating / bobbing. Matches
+        # target/compositional/carry/grasp/place which all clip to [-10, 10000].
+        reward = jp.clip(sum(rewards.values()) * self.dt, -10.0, 10000.0)
 
         # Bookkeeping
         state.info["motor_targets"] = motor_targets

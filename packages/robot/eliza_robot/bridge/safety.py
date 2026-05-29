@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -80,13 +81,32 @@ def check_policy_motion_bounds(action: dict[str, Any]) -> PolicyGuardResult:
     """
     clamped: dict[str, Any] = {}
     reasons: list[str] = []
+    invalid: list[str] = []
 
-    # Walk parameters
-    walk_x = float(action.get("walk_x", 0.0))
-    walk_y = float(action.get("walk_y", 0.0))
-    walk_yaw = float(action.get("walk_yaw", 0.0))
-    walk_height = float(action.get("walk_height", 0.036))
-    walk_speed = int(action.get("walk_speed", 2))
+    def _num(name: str, default: float) -> float:
+        """Parse a float field; flag non-finite/garbage and substitute a safe 0."""
+        try:
+            v = float(action.get(name, default))
+        except (TypeError, ValueError):
+            invalid.append(f"{name}=non-numeric")
+            return 0.0
+        if not math.isfinite(v):
+            invalid.append(f"{name}={v}")
+            return 0.0
+        return v
+
+    # Walk parameters. A diverged policy commonly emits NaN/inf — these MUST be
+    # rejected (allowed=False), not silently clamped, since abs(nan) > MAX is
+    # False and a raw NaN would otherwise pass straight through to the robot.
+    walk_x = _num("walk_x", 0.0)
+    walk_y = _num("walk_y", 0.0)
+    walk_yaw = _num("walk_yaw", 0.0)
+    walk_height = _num("walk_height", 0.036)  # 0.0 if invalid -> clamped to MIN below
+    try:
+        walk_speed = int(action.get("walk_speed", 2))
+    except (TypeError, ValueError, OverflowError):
+        invalid.append("walk_speed=non-integer")
+        walk_speed = POLICY_WALK_SPEED_MIN
 
     if abs(walk_x) > POLICY_WALK_X_MAX:
         reasons.append(f"walk_x clamped {walk_x:.4f}->{_clamp(walk_x, -POLICY_WALK_X_MAX, POLICY_WALK_X_MAX):.4f}")
@@ -112,17 +132,28 @@ def check_policy_motion_bounds(action: dict[str, Any]) -> PolicyGuardResult:
 
     # Head parameters (optional)
     if "head_pan" in action:
-        head_pan = float(action["head_pan"])
+        head_pan = _num("head_pan", 0.0)
         if abs(head_pan) > POLICY_HEAD_PAN_MAX:
             reasons.append(f"head_pan clamped {head_pan:.3f}")
             head_pan = _clamp(head_pan, -POLICY_HEAD_PAN_MAX, POLICY_HEAD_PAN_MAX)
         clamped["head_pan"] = head_pan
     if "head_tilt" in action:
-        head_tilt = float(action["head_tilt"])
+        head_tilt = _num("head_tilt", 0.0)
         if abs(head_tilt) > POLICY_HEAD_TILT_MAX:
             reasons.append(f"head_tilt clamped {head_tilt:.3f}")
             head_tilt = _clamp(head_tilt, -POLICY_HEAD_TILT_MAX, POLICY_HEAD_TILT_MAX)
         clamped["head_tilt"] = head_tilt
+
+    # A fundamentally invalid action (NaN/inf/garbage) is rejected: allowed=False
+    # and the clamped payload is forced to the safe neutral pose so a caller that
+    # ignores `allowed` still sends nothing dangerous.
+    if invalid:
+        return PolicyGuardResult(
+            allowed=False,
+            reason="invalid action rejected: " + ", ".join(invalid)
+            + ("; " + "; ".join(reasons) if reasons else ""),
+            clamped=clamped,
+        )
 
     return PolicyGuardResult(
         allowed=True,

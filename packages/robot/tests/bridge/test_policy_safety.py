@@ -27,6 +27,32 @@ class PolicyMotionBoundsTests(unittest.TestCase):
         self.assertEqual(result.reason, "")
         self.assertAlmostEqual(result.clamped["walk_x"], 0.02)
 
+    def test_nan_action_rejected(self) -> None:
+        # A diverged policy emitting NaN must be rejected, not silently passed
+        # through (abs(nan) > MAX is False, so NaN would otherwise slip past).
+        result = check_policy_motion_bounds({"walk_x": float("nan"), "walk_y": 0.0, "walk_yaw": 0.0})
+        self.assertFalse(result.allowed)
+        self.assertIn("walk_x", result.reason)
+        # the clamped payload is still finite/neutral
+        self.assertEqual(result.clamped["walk_x"], 0.0)
+
+    def test_inf_action_rejected(self) -> None:
+        result = check_policy_motion_bounds({"walk_x": 0.0, "walk_y": float("inf"), "walk_yaw": 0.0})
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.clamped["walk_y"], 0.0)
+
+    def test_non_numeric_action_rejected(self) -> None:
+        result = check_policy_motion_bounds({"walk_x": "fast", "walk_y": 0.0, "walk_yaw": 0.0})
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.clamped["walk_x"], 0.0)
+
+    def test_nan_head_rejected(self) -> None:
+        result = check_policy_motion_bounds(
+            {"walk_x": 0.0, "walk_y": 0.0, "walk_yaw": 0.0, "head_tilt": float("nan")}
+        )
+        self.assertFalse(result.allowed)
+        self.assertEqual(result.clamped["head_tilt"], 0.0)
+
     def test_walk_x_clamped(self) -> None:
         action = {"walk_x": 0.1, "walk_y": 0.0, "walk_yaw": 0.0}
         result = check_policy_motion_bounds(action)

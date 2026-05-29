@@ -388,17 +388,39 @@ def test_profile_proprio_uses_profile_leg_joint_order() -> None:
         "joint_velocities": {name: float((i + 1) * 10) for i, name in enumerate(leg_joints)},
     }
 
-    proprio = _proprio_from_telemetry(telemetry, profile, proprio_dim=39)
+    proprio = _proprio_from_telemetry(telemetry, profile, proprio_dim=50)
 
     assert proprio[:6].tolist() == pytest.approx([0.1, -0.2, 0.3, 0.0, 0.0, 1.0])
-    assert proprio[6:9].tolist() == pytest.approx([0.0, 0.0, 0.0])
-    assert proprio[9 : 9 + len(leg_joints)].tolist() == pytest.approx(
+    assert proprio[6:20].tolist() == pytest.approx([0.0] * 14)
+    qpos_start = 20
+    assert proprio[qpos_start : qpos_start + len(leg_joints)].tolist() == pytest.approx(
         [float(i + 1) for i in range(len(leg_joints))]
     )
-    qvel_start = 9 + len(leg_joints)
+    qvel_start = qpos_start + len(leg_joints)
     assert proprio[qvel_start : qvel_start + len(leg_joints)].tolist() == pytest.approx(
         [float((i + 1) * 10) for i in range(len(leg_joints))]
     )
+    # last_action block defaults to zero when not supplied
+    last_start = qvel_start + len(leg_joints)
+    assert proprio[last_start : last_start + len(leg_joints)].tolist() == pytest.approx(
+        [0.0] * len(leg_joints)
+    )
+
+
+def test_profile_proprio_fills_last_action_when_supplied() -> None:
+    profile = load_profile("unitree-h1")
+    leg_joints = [j.name for j in profile.kinematics.joints if j.group == "LEG"]
+    n = len(leg_joints)
+    telemetry = {
+        "joint_positions": {name: 0.0 for name in leg_joints},
+        "joint_velocities": {name: 0.0 for name in leg_joints},
+    }
+    last_action = [0.25 * (i + 1) for i in range(n)]
+    proprio = _proprio_from_telemetry(
+        telemetry, profile, proprio_dim=20 + 3 * n, last_action=last_action
+    )
+    last_start = 20 + 2 * n
+    assert proprio[last_start : last_start + n].tolist() == pytest.approx(last_action)
 
 
 @pytest.mark.asyncio

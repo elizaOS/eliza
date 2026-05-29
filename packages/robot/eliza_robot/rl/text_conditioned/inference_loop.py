@@ -58,6 +58,7 @@ def _proprio_from_telemetry(
     profile: RobotProfile,
     *,
     proprio_dim: int,
+    last_action: np.ndarray | None = None,
 ) -> np.ndarray:
     """Convert telemetry.basic into the profile-env proprio layout.
 
@@ -104,6 +105,7 @@ def _proprio_from_telemetry(
     # +foot_telemetry = 3+3+3+3+8 = 20 (see TextConditionedProfileEnv).
     qpos_start = 20
     qvel_start = qpos_start + len(action_joints)
+    last_action_start = qvel_start + len(action_joints)
     for i, name in enumerate(action_joints):
         qpos_idx = qpos_start + i
         qvel_idx = qvel_start + i
@@ -111,6 +113,16 @@ def _proprio_from_telemetry(
             proprio[qpos_idx] = float(joint_positions.get(name, 0.0))
         if qvel_idx < proprio_dim:
             proprio[qvel_idx] = float(joint_velocities.get(name, 0.0))
+    # last_action(n): the policy was trained with its own previous normalized
+    # action as the final proprio block. Feeding zeros here is an out-of-
+    # distribution input every step, so we thread the prior step's leg action
+    # back in (zeros only on the first tick).
+    if last_action is not None:
+        la = np.asarray(last_action, dtype=np.float32).reshape(-1)
+        for i in range(len(action_joints)):
+            idx = last_action_start + i
+            if idx < proprio_dim and i < la.shape[0]:
+                proprio[idx] = float(la[i])
     return proprio
 
 
@@ -119,6 +131,7 @@ async def _read_proprio(
     profile: RobotProfile,
     *,
     proprio_dim: int,
+    last_action: np.ndarray | None = None,
 ) -> np.ndarray:
     """Pull the latest telemetry.basic and convert to a proprio vector
     that's roughly compatible with the profile-driven text-conditioned env.
@@ -129,7 +142,9 @@ async def _read_proprio(
     for e in events:
         if e.event == "telemetry.basic":
             latest = e.data
-    return _proprio_from_telemetry(latest, profile, proprio_dim=proprio_dim)
+    return _proprio_from_telemetry(
+        latest, profile, proprio_dim=proprio_dim, last_action=last_action
+    )
 
 
 async def run_inference(
@@ -168,6 +183,12 @@ async def run_inference(
         text, matched_task, similarity, config.max_steps, config.hz,
     )
 
+    # Indices of the LEG action joints within the full joint list, so we can
+    # feed the policy's own previous (normalized) leg action back in as the
+    # last_action proprio block — matching how the env builds observations.
+    leg_idx = [i for i, j in enumerate(profile.kinematics.joints) if j.group == "LEG"]
+    prev_action_legs = np.zeros(len(leg_idx), dtype=np.float32)
+
     period = 1.0 / config.hz
     steps = 0
     try:
@@ -177,6 +198,7 @@ async def run_inference(
                 backend,
                 profile,
                 proprio_dim=int(policy.manifest.proprio_dim or 45),
+                last_action=prev_action_legs,
             )
             action, _ = policy.act(
                 text,
@@ -184,6 +206,9 @@ async def run_inference(
                 deterministic=True,
                 output_dim=len(joint_names),
             )
+            action_clipped = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
+            if leg_idx:
+                prev_action_legs = action_clipped[leg_idx]
             # Joint-target = home + scaled action, clipped to safety window.
             targets = home_rad + np.clip(action, -1.0, 1.0) * config.action_scale
             targets = np.clip(
