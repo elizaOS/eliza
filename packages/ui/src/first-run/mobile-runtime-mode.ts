@@ -1,3 +1,4 @@
+import { DEFAULT_DESKTOP_API_PORT } from "@elizaos/shared";
 import { dispatchAppEvent, MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../events";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 
@@ -12,12 +13,12 @@ export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
  * Android service implementation detail used by the current native bridge
  * and simulator harness until the route kernel moves behind Binder/stdio IPC.
  */
-export const MOBILE_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+export const MOBILE_LOCAL_AGENT_API_BASE = `http://127.0.0.1:${DEFAULT_DESKTOP_API_PORT}`;
 export const MOBILE_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
 export const IOS_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;
 export const MOBILE_LOCAL_AGENT_SERVER_ID = "local:mobile";
 export const MOBILE_LOCAL_AGENT_LABEL = "On-device agent";
-export const MOBILE_LOCAL_AGENT_PORT = "31337";
+export const MOBILE_LOCAL_AGENT_PORT = String(DEFAULT_DESKTOP_API_PORT);
 
 export const ANDROID_LOCAL_AGENT_API_BASE = MOBILE_LOCAL_AGENT_API_BASE;
 export const ANDROID_LOCAL_AGENT_IPC_BASE = MOBILE_LOCAL_AGENT_IPC_BASE;

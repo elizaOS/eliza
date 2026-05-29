@@ -9,6 +9,7 @@ import { isStoreBuild } from "@elizaos/ui/build-variant";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
+  MOBILE_LOCAL_AGENT_PORT,
   mobileLocalAgentPathFromUrl,
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
 
@@ -239,7 +240,7 @@ function isLoopbackLocalAgentUrl(value: string): boolean {
     const hostname = parsed.hostname || "";
     return (
       parsed.protocol === "http:" &&
-      parsed.port === "31337" &&
+      parsed.port === MOBILE_LOCAL_AGENT_PORT &&
       (hostname === "127.0.0.1" ||
         hostname.startsWith("127.") ||
         hostname === "localhost" ||
