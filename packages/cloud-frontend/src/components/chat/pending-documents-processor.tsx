@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 
 interface PendingFile {
   blobUrl: string;
@@ -62,6 +63,7 @@ export function PendingDocumentsProcessor({
   characterId,
   onProcessingComplete,
 }: PendingDocumentsProcessorProps) {
+  const t = useT();
   // Track which characterId is being processed (null = none)
   // This allows processing different characters if user switches
   const processingCharacterIdRef = useRef<string | null>(null);
@@ -175,13 +177,31 @@ export function PendingDocumentsProcessor({
           // Only update UI if user hasn't switched to a different character
           if (shouldNotify()) {
             if (failedCount > 0) {
-              toast.warning("Some files failed to process", {
-                description: `${successCount} succeeded, ${failedCount} failed. You may need to re-upload failed files.`,
-              });
+              toast.warning(
+                t("cloud.pendingDocs.someFailed", {
+                  defaultValue: "Some files failed to process",
+                }),
+                {
+                  description: t("cloud.pendingDocs.someFailedDesc", {
+                    successCount,
+                    failedCount,
+                    defaultValue:
+                      "{{successCount}} succeeded, {{failedCount}} failed. You may need to re-upload failed files.",
+                  }),
+                },
+              );
             } else {
-              toast.success("Knowledge ready!", {
-                description: `${successCount} file(s) processed successfully`,
-              });
+              toast.success(
+                t("cloud.pendingDocs.knowledgeReady", {
+                  defaultValue: "Knowledge ready!",
+                }),
+                {
+                  description: t("cloud.pendingDocs.knowledgeReadyDesc", {
+                    successCount,
+                    defaultValue: "{{successCount}} file(s) processed successfully",
+                  }),
+                },
+              );
             }
 
             onProcessingComplete?.();
@@ -190,9 +210,16 @@ export function PendingDocumentsProcessor({
           // Keep sessionStorage on error so user can retry
           // Only update UI if user hasn't switched to a different character
           if (shouldNotify()) {
-            toast.error("File processing failed", {
-              description: "You can try again from the Files tab",
-            });
+            toast.error(
+              t("cloud.pendingDocs.processingFailed", {
+                defaultValue: "File processing failed",
+              }),
+              {
+                description: t("cloud.pendingDocs.retryFromFiles", {
+                  defaultValue: "You can try again from the Files tab",
+                }),
+              },
+            );
           }
         }
       } catch (error) {
@@ -204,15 +231,23 @@ export function PendingDocumentsProcessor({
         // Keep sessionStorage on network error so user can retry
         // Only update UI if user hasn't switched to a different character
         if (shouldNotify()) {
-          toast.error("File processing failed", {
-            description: "Network error - you can try again from the Files tab",
-          });
+          toast.error(
+            t("cloud.pendingDocs.processingFailed", {
+              defaultValue: "File processing failed",
+            }),
+            {
+              description: t("cloud.pendingDocs.networkRetry", {
+                defaultValue:
+                  "Network error - you can try again from the Files tab",
+              }),
+            },
+          );
         }
       } finally {
         processingCharacterIdRef.current = null;
       }
     },
-    [onProcessingComplete],
+    [onProcessingComplete, t],
   );
 
   useEffect(() => {

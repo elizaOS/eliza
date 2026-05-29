@@ -15,6 +15,7 @@ import { useRenderGuard, useSetPageHeader } from "@elizaos/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Character, useChatStore } from "@/lib/stores/chat-store";
+import { useT } from "@/providers/I18nProvider";
 
 interface AnonymousSessionResult {
   isNew: boolean;
@@ -87,6 +88,7 @@ export function ElizaPageClient({
   sharedCharacter,
   accessError,
 }: ElizaPageClientProps) {
+  const t = useT();
   useRenderGuard("ElizaPageClient");
   const [anonymousSession, setAnonymousSession] = useState<{
     messageCount: number;
@@ -106,23 +108,47 @@ export function ElizaPageClient({
       errorShownRef.current = true;
 
       if (accessError.type === "private_character") {
-        const characterName = accessError.characterName || "This agent";
-        toast.error(`Sorry, "${characterName}" is not your agent`, {
-          description:
-            "This agent is private. Only the owner can chat with it. Ask the owner to make it public if you'd like to chat.",
-          duration: 6000,
-        });
+        const characterName =
+          accessError.characterName ||
+          t("cloud.elizaPage.thisAgent", { defaultValue: "This agent" });
+        toast.error(
+          t("cloud.elizaPage.privateNotYours", {
+            characterName,
+            defaultValue: 'Sorry, "{{characterName}}" is not your agent',
+          }),
+          {
+            description: t("cloud.elizaPage.privateDesc", {
+              defaultValue:
+                "This agent is private. Only the owner can chat with it. Ask the owner to make it public if you'd like to chat.",
+            }),
+            duration: 6000,
+          },
+        );
       } else if (accessError.type === "character_unavailable") {
-        toast.error("Character unavailable", {
-          description:
-            "The selected agent could not be loaded. Retry once the backing service is healthy.",
-          duration: 6000,
-        });
+        toast.error(
+          t("cloud.elizaPage.characterUnavailable", {
+            defaultValue: "Character unavailable",
+          }),
+          {
+            description: t("cloud.elizaPage.characterUnavailableDesc", {
+              defaultValue:
+                "The selected agent could not be loaded. Retry once the backing service is healthy.",
+            }),
+            duration: 6000,
+          },
+        );
       } else {
-        toast.error("Access denied", {
-          description: "You don't have permission to access this agent.",
-          duration: 5000,
-        });
+        toast.error(
+          t("cloud.elizaPage.accessDenied", {
+            defaultValue: "Access denied",
+          }),
+          {
+            description: t("cloud.elizaPage.accessDeniedDesc", {
+              defaultValue: "You don't have permission to access this agent.",
+            }),
+            duration: 5000,
+          },
+        );
       }
 
       // Clear error AND characterId from URL without navigation
@@ -135,14 +161,16 @@ export function ElizaPageClient({
         window.history.replaceState({}, "", url.toString());
       }
     }
-  }, [accessError]);
+  }, [accessError, t]);
 
   // Note: Page header is now handled by ChatHeader component
   // Remove this if you want to completely disable the old header system for chat
   useSetPageHeader({
-    title: "Chat",
-    description:
-      "Chat with AI agents or test raw model behavior with a direct playground and custom system prompts.",
+    title: t("cloud.elizaPage.chatTitle", { defaultValue: "Chat" }),
+    description: t("cloud.elizaPage.chatDescription", {
+      defaultValue:
+        "Chat with AI agents or test raw model behavior with a direct playground and custom system prompts.",
+    }),
   });
 
   // Memoize transformed characters to prevent unnecessary re-renders
@@ -246,7 +274,9 @@ export function ElizaPageClient({
       <div className="flex h-full items-center justify-center animate-in fade-in duration-300">
         <div className="flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-white/40 animate-pulse" />
-          <div className="text-white/60">Loading...</div>
+          <div className="text-white/60">
+            {t("cloud.elizaPage.loading", { defaultValue: "Loading..." })}
+          </div>
         </div>
       </div>
     );

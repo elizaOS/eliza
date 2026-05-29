@@ -52,6 +52,7 @@ import type {
 import { sendStreamingMessage } from "@/lib/hooks/use-streaming-message";
 import { useThrottledStreamingUpdate } from "@/lib/hooks/use-throttled-streaming";
 import { useChatStore } from "@/lib/stores/chat-store";
+import { useT } from "@/providers/I18nProvider";
 import { cn } from "@/lib/utils";
 import { ensureAudioFormat } from "@/lib/utils/audio";
 import { useModelTier } from "./hooks/use-model-tier";
@@ -161,6 +162,7 @@ export function ElizaChatInterface({
   character,
   expectedCharacterId,
 }: ElizaChatInterfaceProps) {
+  const t = useT();
   useRenderGuard("ElizaChatInterface");
   // Use chat store for room and character management
   const {
@@ -472,7 +474,11 @@ export function ElizaChatInterface({
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
-        toast.error("Failed to load messages");
+        toast.error(
+          t("cloud.chat.loadMessagesFailed", {
+            defaultValue: "Failed to load messages",
+          }),
+        );
       } finally {
         if (
           loadMessagesRequestIdRef.current === requestId &&
@@ -483,8 +489,8 @@ export function ElizaChatInterface({
         }
       }
     },
-    [],
-  ); // Stable - no dependencies needed
+    [t],
+  );
 
   // Load messages when roomId from context changes
   useEffect(() => {
@@ -762,7 +768,11 @@ export function ElizaChatInterface({
           if (isCreatingRoomRef.current && roomCreationPromiseRef.current) {
             const existingRoomId = await roomCreationPromiseRef.current;
             if (!existingRoomId) {
-              setError("Room creation failed");
+              setError(
+                t("cloud.chat.roomCreationFailed", {
+                  defaultValue: "Room creation failed",
+                }),
+              );
               setLoadingState((prev) => ({ ...prev, isSending: false }));
               isSendingRef.current = false;
               return;
@@ -790,7 +800,11 @@ export function ElizaChatInterface({
 
             const newRoomId = await roomCreationPromiseRef.current;
             if (!newRoomId) {
-              setError("Room creation returned empty ID");
+              setError(
+                t("cloud.chat.roomCreationEmptyId", {
+                  defaultValue: "Room creation returned empty ID",
+                }),
+              );
               setLoadingState((prev) => ({ ...prev, isSending: false }));
               isSendingRef.current = false;
               return;
@@ -893,7 +907,11 @@ export function ElizaChatInterface({
         });
       } catch (err) {
         const errorMessage =
-          err instanceof Error ? err.message : "Failed to send message";
+          err instanceof Error
+            ? err.message
+            : t("cloud.chat.sendMessageFailed", {
+                defaultValue: "Failed to send message",
+              });
 
         // Check for anonymous message limit error
         if (isMessageLimitError(errorMessage) && !authenticated) {
@@ -940,6 +958,7 @@ export function ElizaChatInterface({
       onMessageSent,
       clearAllStreaming,
       authenticated,
+      t,
     ],
   );
 
@@ -1065,11 +1084,15 @@ export function ElizaChatInterface({
 
         return audioUrl;
       } catch (error) {
-        toast.error("Failed to generate speech");
+        toast.error(
+          t("cloud.chat.generateSpeechFailed", {
+            defaultValue: "Failed to generate speech",
+          }),
+        );
         throw error;
       }
     },
-    [player], // Only player is needed, audioState values accessed via refs
+    [player, t], // Only player is needed, audioState values accessed via refs
   );
 
   // Load custom voices on mount (only for authenticated users)
@@ -1137,24 +1160,44 @@ export function ElizaChatInterface({
         });
 
         if (response.ok) {
-          toast.success(`${files.length} file(s) uploaded`, {
-            description: "Files are now searchable",
-          });
+          toast.success(
+            t("cloud.chat.filesUploaded", {
+              count: files.length,
+              defaultValue: "{{count}} file(s) uploaded",
+            }),
+            {
+              description: t("cloud.chat.filesSearchable", {
+                defaultValue: "Files are now searchable",
+              }),
+            },
+          );
         } else {
           const data = await response.json();
-          toast.error("Upload failed", {
-            description: data.error || "Failed to upload files",
-          });
+          toast.error(
+            t("cloud.chat.uploadFailed", { defaultValue: "Upload failed" }),
+            {
+              description:
+                data.error ||
+                t("cloud.chat.uploadFilesFailed", {
+                  defaultValue: "Failed to upload files",
+                }),
+            },
+          );
         }
       } catch (_error) {
-        toast.error("Upload failed", {
-          description: "Network error - please try again",
-        });
+        toast.error(
+          t("cloud.chat.uploadFailed", { defaultValue: "Upload failed" }),
+          {
+            description: t("cloud.chat.uploadNetworkError", {
+              defaultValue: "Network error - please try again",
+            }),
+          },
+        );
       } finally {
         setIsUploadingFiles(false);
       }
     },
-    [selectedCharacterId],
+    [selectedCharacterId, t],
   );
 
   // Process audio blob when it becomes available after recording stops
@@ -1184,7 +1227,12 @@ export function ElizaChatInterface({
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          toast.error(errorData.error || "Failed to transcribe audio");
+          toast.error(
+            errorData.error ||
+              t("cloud.chat.transcribeFailed", {
+                defaultValue: "Failed to transcribe audio",
+              }),
+          );
           console.error("[ElizaChat STT] API error:", errorData);
           return;
         }
@@ -1192,7 +1240,11 @@ export function ElizaChatInterface({
         const { transcript } = await response.json();
 
         if (!transcript || transcript.trim().length === 0) {
-          toast.error("No speech detected. Please try again.");
+          toast.error(
+            t("cloud.chat.noSpeechDetected", {
+              defaultValue: "No speech detected. Please try again.",
+            }),
+          );
           console.warn("[ElizaChat STT] Empty transcript received");
           return;
         }
@@ -1201,7 +1253,11 @@ export function ElizaChatInterface({
         // Use ref to avoid TDZ - sendMessage is defined later in the component
         await sendMessageRef.current?.(transcript);
       } catch (_error) {
-        toast.error("Failed to process audio. Please try again.");
+        toast.error(
+          t("cloud.chat.processAudioFailed", {
+            defaultValue: "Failed to process audio. Please try again.",
+          }),
+        );
       } finally {
         // Cleanup: Clear recording and reset processing state
         clearRecording();
@@ -1210,7 +1266,7 @@ export function ElizaChatInterface({
     };
 
     processAudioBlob();
-  }, [audioBlob, clearRecording, loadingState.isProcessingSTT]);
+  }, [audioBlob, clearRecording, loadingState.isProcessingSTT, t]);
 
   // Auto-generate TTS for new agent messages (only if autoPlayTTS is enabled)
   useEffect(() => {
@@ -1343,9 +1399,18 @@ export function ElizaChatInterface({
     const diffMs = Date.now() - timestamp;
     const diffMins = Math.floor(diffMs / 60000);
 
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    if (diffMins < 1)
+      return t("cloud.chat.justNow", { defaultValue: "Just now" });
+    if (diffMins < 60)
+      return t("cloud.chat.minutesAgo", {
+        minutes: diffMins,
+        defaultValue: "{{minutes}}m ago",
+      });
+    if (diffMins < 1440)
+      return t("cloud.chat.hoursAgo", {
+        hours: Math.floor(diffMins / 60),
+        defaultValue: "{{hours}}h ago",
+      });
     return new Date(timestamp).toLocaleDateString();
   };
 
@@ -1375,7 +1440,11 @@ export function ElizaChatInterface({
 
       await navigator.clipboard.write([clipboardItem]);
       setCopiedMessageId(messageId);
-      toast.success("Image copied to clipboard");
+      toast.success(
+        t("cloud.chat.imageCopied", {
+          defaultValue: "Image copied to clipboard",
+        }),
+      );
       setTimeout(() => setCopiedMessageId(null), 2000);
       return;
     }
@@ -1383,7 +1452,11 @@ export function ElizaChatInterface({
     // Fall back to copying text if no image
     await navigator.clipboard.writeText(text);
     setCopiedMessageId(messageId);
-    toast.success("Message copied to clipboard");
+    toast.success(
+      t("cloud.chat.messageCopied", {
+        defaultValue: "Message copied to clipboard",
+      }),
+    );
     // Reset after 2 seconds
     setTimeout(() => setCopiedMessageId(null), 2000);
   };
@@ -1424,7 +1497,11 @@ export function ElizaChatInterface({
               animate={true}
             />
             <div className="space-y-2">
-              <p className="text-base font-semibold">Loading conversation...</p>
+              <p className="text-base font-semibold">
+                {t("cloud.chat.loadingConversation", {
+                  defaultValue: "Loading conversation...",
+                })}
+              </p>
             </div>
             {/* Message Skeletons */}
             <div className="w-full max-w-2xl space-y-4 mt-8">
@@ -1544,8 +1621,14 @@ export function ElizaChatInterface({
               )}
             >
               {isFirstConversation
-                ? `Meet ${characterName}.`
-                : `Say hi to ${characterName}.`}
+                ? t("cloud.chat.greetingMeet", {
+                    characterName,
+                    defaultValue: "Meet {{characterName}}.",
+                  })
+                : t("cloud.chat.greetingSayHi", {
+                    characterName,
+                    defaultValue: "Say hi to {{characterName}}.",
+                  })}
             </h1>
           </div>
         )}
@@ -1602,10 +1685,16 @@ export function ElizaChatInterface({
                 }}
                 placeholder={
                   isMessageLimitReached
-                    ? "Sign up to continue chatting..."
+                    ? t("cloud.chat.signUpToContinue", {
+                        defaultValue: "Sign up to continue chatting...",
+                      })
                     : isRecording
-                      ? "Recording... Click stop when done"
-                      : "Type your message..."
+                      ? t("cloud.chat.recordingHint", {
+                          defaultValue: "Recording... Click stop when done",
+                        })
+                      : t("cloud.chat.typeMessage", {
+                          defaultValue: "Type your message...",
+                        })
                 }
                 disabled={isRecording || isMessageLimitReached}
                 className="w-full bg-transparent px-4 pt-3 pb-3 text-[15px] text-white placeholder:text-white/40 focus:outline-none disabled:opacity-50 resize-none leading-relaxed"
@@ -1664,7 +1753,11 @@ export function ElizaChatInterface({
                         ) : (
                           <FileText className="h-4 w-4 text-white/50" />
                         )}
-                        <span className="text-sm">Upload files</span>
+                        <span className="text-sm">
+                          {t("cloud.chat.uploadFiles", {
+                            defaultValue: "Upload files",
+                          })}
+                        </span>
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
@@ -1678,7 +1771,11 @@ export function ElizaChatInterface({
                           <ImageIcon
                             className={`h-4 w-4 ${createImageEnabled ? "text-[var(--brand-orange)]" : "text-white/50"}`}
                           />
-                          <span className="text-sm">Create image</span>
+                          <span className="text-sm">
+                            {t("cloud.chat.createImage", {
+                              defaultValue: "Create image",
+                            })}
+                          </span>
                         </div>
                         {createImageEnabled && (
                           <Check className="h-4 w-4 text-[var(--brand-orange)]" />
@@ -1696,7 +1793,11 @@ export function ElizaChatInterface({
                           <Globe
                             className={`h-4 w-4 ${webSearchEnabled ? "text-[var(--brand-orange)]" : "text-white/50"}`}
                           />
-                          <span className="text-sm">Web search</span>
+                          <span className="text-sm">
+                            {t("cloud.chat.webSearch", {
+                              defaultValue: "Web search",
+                            })}
+                          </span>
                         </div>
                         {webSearchEnabled && (
                           <Check className="h-4 w-4 text-[var(--brand-orange)]" />
@@ -1717,7 +1818,11 @@ export function ElizaChatInterface({
                           <Volume2
                             className={`h-4 w-4 ${audioState.autoPlayTTS ? "text-[var(--brand-orange)]" : "text-white/50"}`}
                           />
-                          <span className="text-sm">Auto-play voice</span>
+                          <span className="text-sm">
+                            {t("cloud.chat.autoPlayVoice", {
+                              defaultValue: "Auto-play voice",
+                            })}
+                          </span>
                         </div>
                         {audioState.autoPlayTTS && (
                           <Check className="h-4 w-4 text-[var(--brand-orange)]" />
@@ -1750,17 +1855,33 @@ export function ElizaChatInterface({
                               const voiceName = newVoiceId
                                 ? audioState.customVoices.find(
                                     (v) => v.elevenlabsVoiceId === newVoiceId,
-                                  )?.name || "Custom"
-                                : "Default";
-                              toast.success(`Voice: ${voiceName}`);
+                                  )?.name ||
+                                  t("cloud.chat.voiceCustom", {
+                                    defaultValue: "Custom",
+                                  })
+                                : t("cloud.chat.voiceDefault", {
+                                    defaultValue: "Default",
+                                  });
+                              toast.success(
+                                t("cloud.chat.voiceSet", {
+                                  voiceName,
+                                  defaultValue: "Voice: {{voiceName}}",
+                                }),
+                              );
                             }}
                           >
                             <SelectTrigger className="w-full h-8 rounded-sm border-white/10 bg-white/5 text-sm">
-                              <SelectValue placeholder="Select voice" />
+                              <SelectValue
+                                placeholder={t("cloud.chat.selectVoice", {
+                                  defaultValue: "Select voice",
+                                })}
+                              />
                             </SelectTrigger>
                             <SelectContent className="rounded-sm border-white/10 bg-neutral-800/60">
                               <SelectItem value="default">
-                                Default Voice
+                                {t("cloud.chat.defaultVoice", {
+                                  defaultValue: "Default Voice",
+                                })}
                               </SelectItem>
                               {audioState.customVoices.map((voice) => (
                                 <SelectItem
@@ -1871,7 +1992,7 @@ export function ElizaChatInterface({
                           )}
                         >
                           <MessageSquare className="h-3.5 w-3.5" />
-                          Text
+                          {t("cloud.chat.textTab", { defaultValue: "Text" })}
                         </button>
                         <button
                           type="button"
@@ -1884,7 +2005,7 @@ export function ElizaChatInterface({
                           )}
                         >
                           <ImageIcon className="h-3.5 w-3.5" />
-                          Image
+                          {t("cloud.chat.imageTab", { defaultValue: "Image" })}
                         </button>
                       </div>
 
@@ -1911,7 +2032,9 @@ export function ElizaChatInterface({
                                     </span>
                                     {tier.recommended && (
                                       <span className="rounded-full border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
-                                        Recommended
+                                        {t("cloud.chat.recommended", {
+                                          defaultValue: "Recommended",
+                                        })}
                                       </span>
                                     )}
                                     <span className="text-[11px] text-white/30 font-mono">
@@ -1932,7 +2055,9 @@ export function ElizaChatInterface({
                           {/* More models submenu */}
                           <DropdownMenuSub>
                             <DropdownMenuSubTrigger className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer text-[14px] text-white/70 data-[highlighted]:bg-white/5 focus:bg-white/5">
-                              More models
+                              {t("cloud.chat.moreModels", {
+                                defaultValue: "More models",
+                              })}
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent
                               className="w-64 rounded-sm border-white/10 bg-neutral-800/60 p-0"
@@ -1945,7 +2070,10 @@ export function ElizaChatInterface({
                                 <div className="p-1.5">
                                   {isLoadingTextModels && (
                                     <div className="px-3 py-2 text-[12px] text-white/40">
-                                      Loading current model catalog...
+                                      {t("cloud.chat.loadingCatalog", {
+                                        defaultValue:
+                                          "Loading current model catalog...",
+                                      })}
                                     </div>
                                   )}
                                   {!isLoadingTextModels &&
@@ -1978,12 +2106,16 @@ export function ElizaChatInterface({
                                           </span>
                                           {model.recommended && (
                                             <span className="rounded-full border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
-                                              Recommended
+                                              {t("cloud.chat.recommended", {
+                                                defaultValue: "Recommended",
+                                              })}
                                             </span>
                                           )}
                                           {model.free && (
                                             <span className="rounded-full border border-green-400/30 bg-green-400/10 px-1.5 py-0.5 text-[9px] uppercase text-green-200">
-                                              Free
+                                              {t("cloud.chat.free", {
+                                                defaultValue: "Free",
+                                              })}
                                             </span>
                                           )}
                                           <span className="text-[10px] text-white/30 font-mono">
@@ -2025,7 +2157,16 @@ export function ElizaChatInterface({
                                 onSelect={() => {
                                   if (!isAvailable) {
                                     toast.error(
-                                      `${tier.name} is currently unavailable. ${unavailableReason || "Try another model."}`,
+                                      t("cloud.chat.modelUnavailable", {
+                                        name: tier.name,
+                                        reason:
+                                          unavailableReason ||
+                                          t("cloud.chat.tryAnotherModel", {
+                                            defaultValue: "Try another model.",
+                                          }),
+                                        defaultValue:
+                                          "{{name}} is currently unavailable. {{reason}}",
+                                      }),
                                     );
                                     return;
                                   }
@@ -2066,14 +2207,18 @@ export function ElizaChatInterface({
                                       </span>
                                       {!isAvailable && (
                                         <span className="text-[10px] text-red-400 font-medium px-1.5 py-0.5 bg-red-500/10 rounded">
-                                          Offline
+                                          {t("cloud.chat.offline", {
+                                            defaultValue: "Offline",
+                                          })}
                                         </span>
                                       )}
                                     </div>
                                     <span className="text-[12px] text-white/40">
                                       {!isAvailable
                                         ? unavailableReason ||
-                                          "Provider unavailable"
+                                          t("cloud.chat.providerUnavailable", {
+                                            defaultValue: "Provider unavailable",
+                                          })
                                         : tier.description}
                                     </span>
                                   </div>
@@ -2089,7 +2234,9 @@ export function ElizaChatInterface({
                           {/* More image models submenu */}
                           <DropdownMenuSub>
                             <DropdownMenuSubTrigger className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer text-[14px] text-white/70 data-[highlighted]:bg-white/5 focus:bg-white/5">
-                              More models
+                              {t("cloud.chat.moreModels", {
+                                defaultValue: "More models",
+                              })}
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent
                               className="w-64 rounded-sm border-white/10 bg-neutral-800/60 p-1.5"
@@ -2111,7 +2258,17 @@ export function ElizaChatInterface({
                                     onSelect={() => {
                                       if (!isAvailable) {
                                         toast.error(
-                                          `${model.name} is currently unavailable. ${unavailableReason || "Try another model."}`,
+                                          t("cloud.chat.modelUnavailable", {
+                                            name: model.name,
+                                            reason:
+                                              unavailableReason ||
+                                              t("cloud.chat.tryAnotherModel", {
+                                                defaultValue:
+                                                  "Try another model.",
+                                              }),
+                                            defaultValue:
+                                              "{{name}} is currently unavailable. {{reason}}",
+                                          }),
                                         );
                                         return;
                                       }
@@ -2142,14 +2299,19 @@ export function ElizaChatInterface({
                                         </span>
                                         {!isAvailable && (
                                           <span className="text-[10px] text-red-400 font-medium px-1.5 py-0.5 bg-red-500/10 rounded">
-                                            Offline
+                                            {t("cloud.chat.offline", {
+                                              defaultValue: "Offline",
+                                            })}
                                           </span>
                                         )}
                                       </div>
                                       <span className="text-[11px] text-white/40">
                                         {!isAvailable
                                           ? unavailableReason ||
-                                            "Provider unavailable"
+                                            t("cloud.chat.providerUnavailable", {
+                                              defaultValue:
+                                                "Provider unavailable",
+                                            })
                                           : model.description}
                                       </span>
                                     </div>
