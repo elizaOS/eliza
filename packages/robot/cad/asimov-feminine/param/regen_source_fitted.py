@@ -305,6 +305,76 @@ for _k in list(NECK_SHAFTS):
         NECK_SHAFTS.add(_k.replace("LEFT_", "RIGHT_"))
 
 
+def _centerline_xy(V, ai, pd, nb=50):
+    t = V[:, ai]
+    e = np.linspace(t.min(), t.max(), nb + 1)
+    mids = 0.5 * (e[:-1] + e[1:])
+    cx = np.array([np.median(V[(t >= e[i]) & (t < e[i + 1]), pd[0]]) if ((t >= e[i]) & (t < e[i + 1])).any() else np.nan for i in range(nb)])
+    cy = np.array([np.median(V[(t >= e[i]) & (t < e[i + 1]), pd[1]]) if ((t >= e[i]) & (t < e[i + 1])).any() else np.nan for i in range(nb)])
+    for a in (cx, cy):
+        g = ~np.isnan(a)
+        a[~g] = np.interp(mids[~g], mids[g], a[g])
+    return mids, cx, cy
+
+
+def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, n_ang=64, dz=0.004):
+    """Clean smooth outer-envelope tube for a shaft interval, slimmed. Low Fourier
+    order (no dimples) + axial low-pass (long lines)."""
+    from scipy.ndimage import gaussian_filter1d
+    normal = np.zeros(3); normal[ai] = 1.0
+    bins = np.linspace(0, 2 * np.pi, n_ang, endpoint=False)
+    R, C0, C1, L = [], [], [], []
+    for t in np.arange(z_lo, z_hi + dz, dz):
+        o = np.zeros(3); o[ai] = t
+        s = mesh.section(plane_origin=o, plane_normal=normal)
+        if s is None:
+            continue
+        pts = np.vstack([np.asarray(e)[:, pd] for e in s.discrete])
+        c = pts.mean(0)
+        b, r = _outer_ring(pts, c, n_ang)
+        R.append(r); C0.append(c[0]); C1.append(c[1]); L.append(t)
+    if len(L) < 2:
+        return None
+    R = np.array(R); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
+    F = np.fft.rfft(R, axis=1); F[:, 6:] = 0.0; R = np.fft.irfft(F, n_ang, axis=1)
+    R = gaussian_filter1d(R, 3, axis=0, mode="nearest") * slim
+    C0 = gaussian_filter1d(C0, 3, mode="nearest"); C1 = gaussian_filter1d(C1, 3, mode="nearest")
+    cosb, sinb = np.cos(bins), np.sin(bins)
+    verts = []
+    for i in range(len(L)):
+        p = np.zeros((n_ang, 3))
+        p[:, pd[0]] = C0[i] + R[i] * cosb
+        p[:, pd[1]] = C1[i] + R[i] * sinb
+        p[:, ai] = L[i]
+        verts.append(p)
+    return _loft_rings(np.array(verts))
+
+
+def _hybrid_part(mesh, link, slim, joint_margin=0.030):
+    """Smooth slim mid-shaft + the ORIGINAL (slimmed) joint caps at each reserved
+    level. The caps keep the real clevis/condyle so the limb articulates exactly
+    like the source; the shaft is a clean feminine tube. Short connectors (reserved
+    levels closer than 2*joint_margin) have no shaft and stay fully mechanical."""
+    spine = C.LINKS[link]["spine"]
+    ai = AXIS_IDX[spine]
+    pd = [i for i in range(3) if i != ai]
+    base = W.warp_affine(mesh, spine=spine, factor=slim, center=(0.0, 0.0))
+    res = sorted(C.reserved_levels(link))
+    z_lo, z_hi = res[0] + joint_margin, res[-1] - joint_margin
+    if z_hi - z_lo < 0.02:
+        return base  # too short for a shaft -> keep the real slimmed mechanism
+    tube = _smooth_tube(base, ai, pd, z_lo - 0.006, z_hi + 0.006, slim)
+    if tube is None:
+        return base
+    V = base.vertices
+    t = V[:, ai]
+    top = trimesh.Trimesh(V.copy(), base.faces[(t[base.faces] >= z_hi).all(1)], process=True)
+    top.remove_unreferenced_vertices()
+    bot = trimesh.Trimesh(V.copy(), base.faces[(t[base.faces] <= z_lo).all(1)], process=True)
+    bot.remove_unreferenced_vertices()
+    return trimesh.util.concatenate([top, tube, bot])
+
+
 def _loft_rings(rings):
     n, p, _ = rings.shape
     verts = rings.reshape(-1, 3).tolist()
@@ -480,23 +550,34 @@ def _watertight_cleanup(mesh, pitch=0.0025, close=1, erode=1, sinc=18):
     return out
 
 
+# Cosmetic ends that don't carry an articulating shaft -> smooth skin (head,
+# neck collar, hands).
+COSMETIC_SKIN = {"NECK_PITCH", "NECK_YAW", "LEFT_WRIST_YAW", "RIGHT_WRIST_YAW"}
+FEET = {"LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"}
+
+
+def _flat_sole(mesh):
+    z0 = mesh.vertices[:, 2].min()
+    cut = trimesh.intersections.slice_mesh_plane(
+        mesh, plane_normal=[0, 0, 1], plane_origin=[0, 0, z0 + 0.006], cap=True
+    )
+    return cut if (cut is not None and len(cut.faces) > 0) else mesh
+
+
 def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     m = trimesh.load(os.path.join(SRC, f"{link}.STL"))
+    slim = SLIM.get(link, 1.0)
     if link == "WAIST_YAW":
-        return _torso_skin(m)  # already a clean watertight skin
+        return _torso_skin(m)  # smooth cosmetic torso (breasts, features removed)
+    if link in COSMETIC_SKIN:
+        return _skin_part(_limb_warp(m, link, slim), C.LINKS[link]["spine"])
     if link == "IMU_ORIGIN":
-        return _skin_part(_pelvis_warp(m), "z")  # single body: no joint necking
-    shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
-    spine = C.LINKS[link]["spine"]
-    # Neck (for bend clearance) ONLY the long limb shafts that actually swing.
-    # Short yokes/connectors and the neck/head/feet stay smooth -- necking them
-    # turned them into ornamental "finials" / stacked rings.
-    reserved = C.reserved_levels(link) if link in NECK_SHAFTS else None
-    if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
-        return _skin_part(shaped, spine, flat_bottom=True)
-    if link in SKIN_LIMBS:
-        return _skin_part(shaped, spine, reserved=reserved)
-    return _watertight_cleanup(shaped) if cleanup else shaped
+        return _pelvis_warp(m)  # keep real hip sockets (slimmed inward)
+    if link in FEET:
+        return _flat_sole(_limb_warp(m, link, slim))  # real foot, slimmed, flat sole
+    # Mechanical limbs/connectors: smooth slim shaft + ORIGINAL slimmed joint caps.
+    # Long shafts get a clean tube; short connectors stay fully mechanical.
+    return _hybrid_part(m, link, slim)
 
 
 def run() -> None:
