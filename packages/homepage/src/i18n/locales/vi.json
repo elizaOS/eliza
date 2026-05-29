@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "Gửi lại",
   "homepage_eliza.leaderboard.loginTitleVerify": "Nhập mã xác minh",
   "homepage_eliza.leaderboard.loginTitlePhone": "Số điện thoại của bạn là gì?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "Đã gửi SMS tới {{phone}}"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "Đã gửi SMS tới {{phone}}",
+  "homepage_eliza.marketing.osStatusAvailable": "Có sẵn",
+  "homepage_eliza.marketing.osStatusBeta": "Beta",
+  "homepage_eliza.marketing.osStatusNightly": "Nightly",
+  "homepage_eliza.marketing.osStatusComingSoon": "Sắp ra mắt",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Đăng nhập Solana thất bại",
+  "homepage_eliza.getStarted.solanaAria": "Đăng nhập bằng Solana",
+  "homepage_eliza.leaderboard.placeholderEliza": "Nhắn tin cho Eliza...",
+  "homepage_eliza.model.botResponse0": "được rồi! để tôi lo ngay",
+  "homepage_eliza.model.botResponse1": "đang làm — chờ tôi một chút",
+  "homepage_eliza.model.botResponse2": "ý hay đó, để tôi thiết lập và gửi xác nhận khi xong",
+  "homepage_eliza.model.botResponse3": "xong rồi! cần gì thêm không?",
+  "homepage_eliza.model.botResponse4": "hoàn toàn rồi, tôi đã lo xong. đã điều chỉnh thêm một chút",
+  "homepage_eliza.model.botResponse5": "vừa xem qua — đã xong xuôi hết!",
+  "homepage_eliza.model.botResponse6": "không sao, tôi sẽ lo cho bạn. muốn tôi xem thêm gì không?",
+  "homepage_eliza.model.botResponse7": "hay đó! tôi đang làm rồi",
+  "homepage_eliza.model.botResponse8": "xong hết rồi! đã sắp xếp lại cho dễ tìm lần sau",
+  "homepage_eliza.model.botResponse9": "coi như đã xử lý xong"
 }

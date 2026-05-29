@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "Resend",
   "homepage_eliza.leaderboard.loginTitleVerify": "Ilagay ang verification code mo",
   "homepage_eliza.leaderboard.loginTitlePhone": "Ano ang phone number mo?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "Nag-send ng SMS sa {{phone}}"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "Nag-send ng SMS sa {{phone}}",
+  "homepage_eliza.marketing.osStatusAvailable": "Available",
+  "homepage_eliza.marketing.osStatusBeta": "Beta",
+  "homepage_eliza.marketing.osStatusNightly": "Nightly",
+  "homepage_eliza.marketing.osStatusComingSoon": "Paparating Na",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Nabigo ang pag-sign in sa Solana",
+  "homepage_eliza.getStarted.solanaAria": "Mag-sign in gamit ang Solana",
+  "homepage_eliza.leaderboard.placeholderEliza": "Mag-mensahe kay Eliza...",
+  "homepage_eliza.model.botResponse0": "sige! aayusin ko iyon kaagad",
+  "homepage_eliza.model.botResponse1": "oo naman — sandali lang",
+  "homepage_eliza.model.botResponse2": "magandang ideya, i-set up ko iyon para sa iyo at magpapadala ng kumpirmasyon kapag tapos na",
+  "homepage_eliza.model.botResponse3": "tapos na! may iba pa ba?",
+  "homepage_eliza.model.botResponse4": "syempre, inasikaso ko na. gumawa rin ako ng ilang pagbabago sa daan",
+  "homepage_eliza.model.botResponse5": "tiningnan ko na — naayos na lahat!",
+  "homepage_eliza.model.botResponse6": "huwag mag-alala, hahawakan ko iyon para sa iyo. gusto mo bang tingnan ko pa ang ibang bagay?",
+  "homepage_eliza.model.botResponse7": "magandang ideya! nandito na ako",
+  "homepage_eliza.model.botResponse8": "tapos na lahat! inorganisa ko ang lahat para mas madaling mahanap sa susunod",
+  "homepage_eliza.model.botResponse9": "ituring mo itong naayos na"
 }

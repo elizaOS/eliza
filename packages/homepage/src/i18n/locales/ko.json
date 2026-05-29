@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "다시 보내기",
   "homepage_eliza.leaderboard.loginTitleVerify": "인증 코드를 입력해 주세요",
   "homepage_eliza.leaderboard.loginTitlePhone": "전화번호가 어떻게 되세요?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "{{phone}}로 SMS를 보냈어요"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "{{phone}}로 SMS를 보냈어요",
+  "homepage_eliza.marketing.osStatusAvailable": "사용 가능",
+  "homepage_eliza.marketing.osStatusBeta": "베타",
+  "homepage_eliza.marketing.osStatusNightly": "나이틀리",
+  "homepage_eliza.marketing.osStatusComingSoon": "곧 출시",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Solana 로그인에 실패했습니다",
+  "homepage_eliza.getStarted.solanaAria": "Solana로 로그인",
+  "homepage_eliza.leaderboard.placeholderEliza": "Eliza에게 메시지...",
+  "homepage_eliza.model.botResponse0": "물론이죠! 바로 처리해 드릴게요",
+  "homepage_eliza.model.botResponse1": "진행 중이에요 — 잠깐만요",
+  "homepage_eliza.model.botResponse2": "좋은 생각이에요, 설정해 드릴게요. 완료되면 확인 메시지를 보내드릴게요",
+  "homepage_eliza.model.botResponse3": "완료했어요! 더 필요한 것 있나요?",
+  "homepage_eliza.model.botResponse4": "물론이죠, 도와드릴게요. 진행하면서 몇 가지 조정했어요",
+  "homepage_eliza.model.botResponse5": "방금 확인했어요 — 다 해결됐어요!",
+  "homepage_eliza.model.botResponse6": "걱정 마세요, 제가 처리할게요. 다른 것도 알아볼까요?",
+  "homepage_eliza.model.botResponse7": "좋은 생각이에요! 이미 진행 중이에요",
+  "homepage_eliza.model.botResponse8": "다 됐어요! 다음에 쉽게 찾을 수 있도록 정리해 놨어요",
+  "homepage_eliza.model.botResponse9": "해결됐습니다"
 }

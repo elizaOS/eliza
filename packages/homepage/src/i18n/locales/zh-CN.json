@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "重发",
   "homepage_eliza.leaderboard.loginTitleVerify": "请输入验证码",
   "homepage_eliza.leaderboard.loginTitlePhone": "你的手机号是多少?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "已发送短信到 {{phone}}"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "已发送短信到 {{phone}}",
+  "homepage_eliza.marketing.osStatusAvailable": "可用",
+  "homepage_eliza.marketing.osStatusBeta": "Beta",
+  "homepage_eliza.marketing.osStatusNightly": "每夜构建",
+  "homepage_eliza.marketing.osStatusComingSoon": "即将推出",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Solana 登录失败",
+  "homepage_eliza.getStarted.solanaAria": "使用 Solana 登录",
+  "homepage_eliza.leaderboard.placeholderEliza": "向 Eliza 发送消息…",
+  "homepage_eliza.model.botResponse0": "没问题！我马上处理",
+  "homepage_eliza.model.botResponse1": "收到——稍等一下",
+  "homepage_eliza.model.botResponse2": "好主意，我来帮您设置，完成后发送确认",
+  "homepage_eliza.model.botResponse3": "搞定了！还有其他需要吗？",
+  "homepage_eliza.model.botResponse4": "完全没问题，我帮您搞定了，途中还做了一些调整",
+  "homepage_eliza.model.botResponse5": "刚查了一下——都处理好了！",
+  "homepage_eliza.model.botResponse6": "没关系，我来处理。还需要查询其他内容吗？",
+  "homepage_eliza.model.botResponse7": "好想法！已经在处理了",
+  "homepage_eliza.model.botResponse8": "全部完成！已整理好，下次更容易找到",
+  "homepage_eliza.model.botResponse9": "交给我吧"
 }

@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "Reenviar",
   "homepage_eliza.leaderboard.loginTitleVerify": "Digite seu código de verificação",
   "homepage_eliza.leaderboard.loginTitlePhone": "Qual é o seu número de telefone?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "SMS enviado pra {{phone}}"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "SMS enviado pra {{phone}}",
+  "homepage_eliza.marketing.osStatusAvailable": "Disponível",
+  "homepage_eliza.marketing.osStatusBeta": "Beta",
+  "homepage_eliza.marketing.osStatusNightly": "Nightly",
+  "homepage_eliza.marketing.osStatusComingSoon": "Em breve",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Falha no login com Solana",
+  "homepage_eliza.getStarted.solanaAria": "Entrar com Solana",
+  "homepage_eliza.leaderboard.placeholderEliza": "Mensagem para o Eliza...",
+  "homepage_eliza.model.botResponse0": "claro! vou cuidar disso agora mesmo",
+  "homepage_eliza.model.botResponse1": "já estou nisso — só um segundo",
+  "homepage_eliza.model.botResponse2": "ótima ideia, deixa eu configurar isso pra você e mando uma confirmação quando estiver pronto",
+  "homepage_eliza.model.botResponse3": "pronto! mais alguma coisa?",
+  "homepage_eliza.model.botResponse4": "com certeza, pode deixar comigo. fiz alguns ajustes ao longo do caminho",
+  "homepage_eliza.model.botResponse5": "acabei de verificar — tudo resolvido!",
+  "homepage_eliza.model.botResponse6": "sem problema, cuido disso pra você. quer que eu verifique mais alguma coisa?",
+  "homepage_eliza.model.botResponse7": "boa ideia! já estou nisso",
+  "homepage_eliza.model.botResponse8": "feito! organizei tudo para ficar mais fácil de encontrar da próxima vez",
+  "homepage_eliza.model.botResponse9": "pode deixar que eu resolvo"
 }

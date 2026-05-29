@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "Reenviar",
   "homepage_eliza.leaderboard.loginTitleVerify": "Ingresa tu código de verificación",
   "homepage_eliza.leaderboard.loginTitlePhone": "¿Cuál es tu número de teléfono?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "SMS enviado a {{phone}}"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "SMS enviado a {{phone}}",
+  "homepage_eliza.marketing.osStatusAvailable": "Disponible",
+  "homepage_eliza.marketing.osStatusBeta": "Beta",
+  "homepage_eliza.marketing.osStatusNightly": "Nightly",
+  "homepage_eliza.marketing.osStatusComingSoon": "Próximamente",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Error al iniciar sesión con Solana",
+  "homepage_eliza.getStarted.solanaAria": "Iniciar sesión con Solana",
+  "homepage_eliza.leaderboard.placeholderEliza": "Escríbele a Eliza...",
+  "homepage_eliza.model.botResponse0": "¡claro! me encargo de eso ahora mismo",
+  "homepage_eliza.model.botResponse1": "en ello, dame un segundo",
+  "homepage_eliza.model.botResponse2": "buena idea, déjame configurarlo y te mando una confirmación cuando esté listo",
+  "homepage_eliza.model.botResponse3": "¡listo! ¿algo más?",
+  "homepage_eliza.model.botResponse4": "por supuesto, ya lo tengo. hice algunos ajustes por el camino",
+  "homepage_eliza.model.botResponse5": "acabo de revisarlo — ¡todo solucionado!",
+  "homepage_eliza.model.botResponse6": "sin problema, yo me encargo. ¿quieres que investigue algo más?",
+  "homepage_eliza.model.botResponse7": "¡buena idea! ya estoy en ello",
+  "homepage_eliza.model.botResponse8": "¡todo listo! organicé todo para que sea más fácil de encontrar la próxima vez",
+  "homepage_eliza.model.botResponse9": "considera que ya está resuelto"
 }

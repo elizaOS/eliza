@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "再送",
   "homepage_eliza.leaderboard.loginTitleVerify": "認証コードを入力してください",
   "homepage_eliza.leaderboard.loginTitlePhone": "電話番号は何ですか?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "{{phone}} に SMS を送信しました"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "{{phone}} に SMS を送信しました",
+  "homepage_eliza.marketing.osStatusAvailable": "利用可能",
+  "homepage_eliza.marketing.osStatusBeta": "ベータ",
+  "homepage_eliza.marketing.osStatusNightly": "ナイトリー",
+  "homepage_eliza.marketing.osStatusComingSoon": "近日公開",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Solana サインインに失敗しました",
+  "homepage_eliza.getStarted.solanaAria": "Solana でサインイン",
+  "homepage_eliza.leaderboard.placeholderEliza": "Eliza にメッセージ...",
+  "homepage_eliza.model.botResponse0": "もちろんです！すぐに対応します",
+  "homepage_eliza.model.botResponse1": "了解です — 少々お待ちください",
+  "homepage_eliza.model.botResponse2": "いいアイデアですね。設定しておきます。完了したら確認メッセージをお送りします",
+  "homepage_eliza.model.botResponse3": "完了です！他に何かありますか？",
+  "homepage_eliza.model.botResponse4": "もちろんです。いくつか調整しながら対応しました",
+  "homepage_eliza.model.botResponse5": "確認しました — すべて解決しました！",
+  "homepage_eliza.model.botResponse6": "大丈夫ですよ、対応します。他に何か確認しましょうか？",
+  "homepage_eliza.model.botResponse7": "いいですね！すでに取り掛かっています",
+  "homepage_eliza.model.botResponse8": "完了です！次回も見つけやすいよう整理しました",
+  "homepage_eliza.model.botResponse9": "お任せください"
 }
