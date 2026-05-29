@@ -24,6 +24,13 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
 - `deterministic-coding-tools-actions` covers the real coding-tools `FILE`,
   `SHELL`, and `WORKTREE` handlers against an isolated throwaway git repo under
   `/tmp`, including file side effects and worktree cleanup.
+- `deterministic-agent-skills-actions` covers the real agent-skills parent and
+  promoted virtual actions: search, details, install, toggle, sync, uninstall,
+  and `USE_SKILL`, with a mocked ClawHub registry/download endpoint and real
+  skill storage side effects.
+- `deterministic-media-emote-actions` covers `GENERATE_MEDIA` image/audio
+  dispatch through deterministic runtime model handlers and `PLAY_EMOTE`
+  through the real companion emote action with a mocked `/api/emote` endpoint.
 
 The direct action scenarios assert handler parameters, `ActionResult` fields,
 and exact loopback request/response ledgers. The natural-language scenario
@@ -53,3 +60,6 @@ requires a real provider key for live natural-language planner runs.
 - The scenario runtime currently removes `UPDATE_ENTITY` from
   `runtime.actions`, so entity-update realism is intentionally lower than a
   production runtime until action-selection ambiguity is resolved.
+- `GENERATE_MEDIA` and `PLAY_EMOTE` are covered at the action-contract layer
+  with deterministic model/API stubs; they still do not render real model
+  output or animate an actual companion scene in the zero-key PR catalog.

@@ -98,18 +98,7 @@ function stableCoreActions(): string[] {
  * This baseline may only shrink: cover one and delete it here; add a new
  * stable-core action and either cover it or add it here.
  */
-const KNOWN_UNCOVERED: readonly string[] = [
-  "GENERATE_MEDIA",
-  "PLAY_EMOTE",
-  "SKILL",
-  "SKILL_DETAILS",
-  "SKILL_INSTALL",
-  "SKILL_SEARCH",
-  "SKILL_SYNC",
-  "SKILL_TOGGLE",
-  "SKILL_UNINSTALL",
-  "USE_SKILL",
-];
+const KNOWN_UNCOVERED: readonly string[] = [];
 
 /**
  * Actions with deterministic keyless scenario coverage today. This is the
@@ -128,8 +117,18 @@ const COVERED_ACTIONS: readonly string[] = [
   "BROWSER_TYPE",
   "BROWSER_WAIT",
   "FILE",
+  "GENERATE_MEDIA",
+  "PLAY_EMOTE",
+  "SKILL",
+  "SKILL_DETAILS",
+  "SKILL_INSTALL",
+  "SKILL_SEARCH",
+  "SKILL_SYNC",
+  "SKILL_TOGGLE",
+  "SKILL_UNINSTALL",
   "SHELL",
   "SCHEDULED_TASKS",
+  "USE_SKILL",
   "VIEWS",
   "WORKTREE",
 ];

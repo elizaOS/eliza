@@ -19,6 +19,31 @@ const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
 );
+
+// A minimal valid 16-bit PCM mono WAV of silence. The onboarding voice path
+// POSTs /api/tts/first-run/speak and plays the returned bytes as audio/wav, so
+// the stub must return decodable audio (not a 501) to avoid a console.error.
+function buildSilentWav() {
+  const sampleRate = 8000;
+  const dataBytes = 1600; // ~0.1s of silence
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + dataBytes, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16); // PCM fmt chunk size
+  header.writeUInt16LE(1, 20); // audioFormat = PCM
+  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28); // byteRate (mono, 16-bit)
+  header.writeUInt16LE(2, 32); // blockAlign
+  header.writeUInt16LE(16, 34); // bitsPerSample
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(dataBytes, 40);
+  return Buffer.concat([header, Buffer.alloc(dataBytes)]);
+}
+
+const SILENT_WAV = buildSilentWav();
 function readSmokeVrm() {
   const candidates = [
     new URL(
@@ -2956,6 +2981,14 @@ const server = http.createServer(async (req, res) => {
     // (packages/app-core/src/api/i18n-locale-routes.ts). The SPA polls this on
     // first paint; without it the stub's catch-all 501 spams console.error.
     sendJson(req, res, 200, { language: "en" });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/tts/first-run/speak") {
+    // Onboarding synthesizes its scripted voice lines here and plays the bytes
+    // as audio/wav. Return decodable silence so the live stack never logs a
+    // 501; the real route (first-run-tts-route.ts) returns neural TTS audio.
+    sendBinary(req, res, 200, "audio/wav", SILENT_WAV);
     return;
   }
 

@@ -293,11 +293,19 @@ export async function createScenarioRuntime(
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
   const prevSkillsSyncCatalogOnStart =
     process.env.SKILLS_SYNC_CATALOG_ON_START;
+  const prevSkillsDir = process.env.SKILLS_DIR;
+  const scenarioSkillsRoot =
+    prevSkillsDir?.trim()
+      ? null
+      : fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"));
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
   process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
   process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
   process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+  if (scenarioSkillsRoot) {
+    process.env.SKILLS_DIR = scenarioSkillsRoot;
+  }
   process.env.SKILLS_SYNC_CATALOG_ON_START =
     prevSkillsSyncCatalogOnStart ?? "false";
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
@@ -546,6 +554,11 @@ export async function createScenarioRuntime(
     } else {
       delete process.env.SKILLS_SYNC_CATALOG_ON_START;
     }
+    if (prevSkillsDir !== undefined) {
+      process.env.SKILLS_DIR = prevSkillsDir;
+    } else {
+      delete process.env.SKILLS_DIR;
+    }
     await runCleanupStep("mocked environment", async () => {
       try {
         await mockedEnvironment.cleanup();
@@ -571,6 +584,13 @@ export async function createScenarioRuntime(
         fs.rmSync(scenarioHostsRoot, { recursive: true, force: true });
       } catch (err) {
         logger.debug(`[scenario-runner] hosts cleanup error: ${err}`);
+      }
+    }
+    if (scenarioSkillsRoot) {
+      try {
+        fs.rmSync(scenarioSkillsRoot, { recursive: true, force: true });
+      } catch (err) {
+        logger.debug(`[scenario-runner] skills cleanup error: ${err}`);
       }
     }
   };

@@ -96,6 +96,14 @@ const deterministicCodingToolsActionsScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-coding-tools-actions.scenario.ts",
 );
+const deterministicAgentSkillsActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-agent-skills-actions.scenario.ts",
+);
+const deterministicMediaEmoteActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-media-emote-actions.scenario.ts",
+);
 const deterministicScenarioReadmePath = resolve(
   import.meta.dirname,
   "../test/scenarios/README.md",
@@ -134,6 +142,14 @@ describe("scenario PR workflow contract", () => {
     );
     const deterministicCodingToolsActionsScenario = readFileSync(
       deterministicCodingToolsActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicAgentSkillsActionsScenario = readFileSync(
+      deterministicAgentSkillsActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicMediaEmoteActionsScenario = readFileSync(
+      deterministicMediaEmoteActionsScenarioPath,
       "utf8",
     );
     const deterministicScenarioReadme = readFileSync(
@@ -195,7 +211,7 @@ describe("scenario PR workflow contract", () => {
     expect(
       scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
     ).toContain(
-      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions",
+      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",
@@ -319,6 +335,24 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicCodingToolsActionsScenario).toContain(
       "scenario-coding-tools-branch",
     );
+    expect(deterministicAgentSkillsActionsScenario).toContain(
+      "Deterministic agent-skills action catalog",
+    );
+    expect(deterministicAgentSkillsActionsScenario).toContain(
+      "mock ClawHub registry",
+    );
+    expect(deterministicAgentSkillsActionsScenario).toContain(
+      "SKILL_UNINSTALL",
+    );
+    expect(deterministicMediaEmoteActionsScenario).toContain(
+      "Deterministic media generation and companion emote actions",
+    );
+    expect(deterministicMediaEmoteActionsScenario).toContain(
+      "GENERATE_MEDIA_AUDIO",
+    );
+    expect(deterministicMediaEmoteActionsScenario).toContain(
+      "PLAY_EMOTE",
+    );
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );
@@ -330,6 +364,12 @@ describe("scenario PR workflow contract", () => {
     );
     expect(deterministicScenarioReadme).toContain(
       "isolated throwaway git repo",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "mocked ClawHub registry/download endpoint",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "deterministic runtime model handlers",
     );
     expect(deterministicScenarioReadme).toContain(
       "runtime currently removes `UPDATE_ENTITY`",
