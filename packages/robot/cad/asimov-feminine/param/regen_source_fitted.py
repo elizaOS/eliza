@@ -401,8 +401,13 @@ def _limb_warp(mesh, link, factor):
     t = v[:, spine_i]
     cen0 = np.interp(t, levels, c0)
     cen1 = np.interp(t, levels, c1)
-    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * factor
-    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * factor
+    # Keep a short collar near each joint at (near) full width so neighbouring
+    # parts still overlap and mate cleanly; slim the shaft fully in between.
+    reserved = C.reserved_levels(link)
+    w = W.connection_weight(t, reserved, ramp=0.020)
+    f = 1.0 + (factor - 1.0) * w
+    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * f
+    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * f
     m.vertices = v
     return m
 
