@@ -1184,6 +1184,59 @@ export interface CodingAgentTaskThreadDetail extends CodingAgentTaskThread {
   pendingDecisions?: CodingAgentPendingDecisionRecord[];
 }
 
+/** A cursor-paginated slice of a task's message or event history. Mirrors the
+ * orchestrator route's `PageResult<T>`. */
+export interface CodingAgentTaskPage<T> {
+  items: T[];
+  nextCursor: string | null;
+}
+
+/** Aggregate orchestrator state for the workbench header. Computed server-side
+ * (route `GET /api/orchestrator/status`) so the client never re-derives counts
+ * or token spend. Mirrors the route's `OrchestratorStatus`. */
+export interface CodingAgentOrchestratorStatus {
+  taskCount: number;
+  activeTaskCount: number;
+  pausedTaskCount: number;
+  blockedTaskCount: number;
+  validatingTaskCount: number;
+  sessionCount: number;
+  activeSessionCount: number;
+  usage: CodingAgentTaskUsageSummary;
+  byStatus: Record<CodingAgentTaskThread["status"], number>;
+}
+
+/** Structured payload for creating a task via `POST /api/orchestrator/tasks`. */
+export interface CodingAgentCreateTaskInput {
+  title: string;
+  goal: string;
+  originalRequest?: string;
+  kind?: string;
+  priority?: CodingAgentTaskThread["priority"];
+  acceptanceCriteria?: string[];
+  providerPolicy?: CodingAgentTaskProviderPolicy;
+}
+
+/** Structured payload for forking a task via `POST /api/orchestrator/tasks/:id/fork`. */
+export interface CodingAgentForkTaskInput {
+  title?: string;
+  goal?: string;
+  priority?: CodingAgentTaskThread["priority"];
+  acceptanceCriteria?: string[];
+}
+
+/** Structured payload for adding a sub-agent via
+ * `POST /api/orchestrator/tasks/:id/agents`. */
+export interface CodingAgentAddAgentInput {
+  framework?: string;
+  providerSource?: string;
+  model?: string;
+  workdir?: string;
+  repo?: string;
+  label?: string;
+  task?: string;
+}
+
 export interface CodingAgentFrameworkAvailability {
   id: string;
   label: string;

@@ -64,13 +64,18 @@ test("first-run onboarding renders without a render loop and lets the runtime be
   await expect(shell).toBeVisible({ timeout: 20_000 });
 
   // The typed prompt reveals the runtime cards. Cloud is the recommended
-  // resting choice and is always offered; the Local card only renders on
-  // platforms that own their hardware (desktop / dev / ElizaOS), so the web
-  // ui-smoke build legitimately omits it. Remote is always present.
+  // resting choice and is always offered. The Local and Remote cards only
+  // render on hosts that own their hardware (desktop / dev / an injected API
+  // base); the production web bundle the ui-smoke stub serves is cloud-only
+  // (see shouldUseCloudOnlyBranding in app/src/main.tsx), so it legitimately
+  // shows Cloud alone. Assert the optional cards only when present.
   const cloud = page.getByTestId("first-run-runtime-cloud");
   await expect(cloud).toBeVisible({ timeout: 15_000 });
+
   const remote = page.getByTestId("first-run-runtime-remote");
-  await expect(remote).toBeVisible();
+  if (await remote.count()) {
+    await expect(remote).toBeVisible();
+  }
 
   // If Local is offered, selecting it exposes the inference sub-choice — drive
   // that branch too. Otherwise churn the Cloud selection to exercise the same

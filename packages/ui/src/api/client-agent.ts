@@ -47,10 +47,18 @@ import type {
   BuildTrainingReadinessReportOptions,
   CharacterData,
   CharacterHistoryResponse,
+  CodingAgentAddAgentInput,
+  CodingAgentCreateTaskInput,
+  CodingAgentForkTaskInput,
+  CodingAgentOrchestratorStatus,
   CodingAgentScratchWorkspace,
   CodingAgentStatus,
+  CodingAgentTaskEventRecord,
+  CodingAgentTaskMessageRecord,
+  CodingAgentTaskPage,
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
+  CodingAgentTaskUsageSummary,
   ConfigSchemaResponse,
   CorePluginsResponse,
   CreateTriggerRequest,
@@ -950,6 +958,43 @@ declare module "./client-base" {
     ): Promise<CodingAgentTaskThreadDetail | null>;
     archiveCodingAgentTaskThread(threadId: string): Promise<boolean>;
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
+    getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
+    createOrchestratorTask(
+      input: CodingAgentCreateTaskInput,
+    ): Promise<CodingAgentTaskThreadDetail>;
+    pauseOrchestratorTask(
+      taskId: string,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    resumeOrchestratorTask(
+      taskId: string,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    deleteOrchestratorTask(taskId: string): Promise<boolean>;
+    forkOrchestratorTask(
+      taskId: string,
+      input?: CodingAgentForkTaskInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    addOrchestratorAgent(
+      taskId: string,
+      input: CodingAgentAddAgentInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    stopOrchestratorAgent(taskId: string, sessionId: string): Promise<boolean>;
+    listOrchestratorTaskMessages(
+      taskId: string,
+      options?: { cursor?: string; limit?: number },
+    ): Promise<CodingAgentTaskPage<CodingAgentTaskMessageRecord>>;
+    postOrchestratorTaskMessage(
+      taskId: string,
+      content: string,
+    ): Promise<boolean>;
+    listOrchestratorTaskEvents(
+      taskId: string,
+      options?: { cursor?: string; limit?: number },
+    ): Promise<CodingAgentTaskPage<CodingAgentTaskEventRecord>>;
+    getOrchestratorTaskUsage(
+      taskId: string,
+    ): Promise<CodingAgentTaskUsageSummary | null>;
+    pauseAllOrchestratorTasks(): Promise<number>;
+    resumeAllOrchestratorTasks(): Promise<number>;
     stopCodingAgent(sessionId: string): Promise<boolean>;
     listCodingAgentScratchWorkspaces(): Promise<CodingAgentScratchWorkspace[]>;
     keepCodingAgentScratchWorkspace(sessionId: string): Promise<boolean>;
@@ -3448,6 +3493,212 @@ ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
     { method: "POST" },
   );
   return true;
+};
+
+// --- Orchestrator-native task operations (/api/orchestrator/*) -------------
+// The four methods above are the compatibility surface the legacy coding-agent
+// panel binds to. The methods below are the full orchestrator workbench
+// vocabulary. Aggregate status degrades to null on failure (it is a background
+// poll); every explicit user mutation throws so the workbench surfaces an
+// actionable error instead of a silent no-op. A task that vanished (404)
+// resolves to null on the detail-returning reads so the rail can refresh.
+
+ElizaClient.prototype.getOrchestratorStatus = async function (
+  this: ElizaClient,
+) {
+  try {
+    return await this.fetch<CodingAgentOrchestratorStatus>(
+      "/api/orchestrator/status",
+    );
+  } catch {
+    return null;
+  }
+};
+
+ElizaClient.prototype.createOrchestratorTask = function (
+  this: ElizaClient,
+  input,
+) {
+  return this.fetch<CodingAgentTaskThreadDetail>("/api/orchestrator/tasks", {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+ElizaClient.prototype.pauseOrchestratorTask = async function (
+  this: ElizaClient,
+  taskId,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/pause`,
+      { method: "POST" },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.resumeOrchestratorTask = async function (
+  this: ElizaClient,
+  taskId,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/resume`,
+      { method: "POST" },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.deleteOrchestratorTask = async function (
+  this: ElizaClient,
+  taskId,
+) {
+  await this.fetch<{ deleted: boolean }>(
+    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}`,
+    { method: "DELETE" },
+  );
+  return true;
+};
+
+ElizaClient.prototype.forkOrchestratorTask = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/fork`,
+      {
+        method: "POST",
+        body: JSON.stringify(input ?? {}),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.addOrchestratorAgent = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/agents`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.stopOrchestratorAgent = async function (
+  this: ElizaClient,
+  taskId,
+  sessionId,
+) {
+  await this.fetch<{ stopped: boolean }>(
+    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/agents/${encodeURIComponent(sessionId)}/stop`,
+    { method: "POST" },
+  );
+  return true;
+};
+
+ElizaClient.prototype.listOrchestratorTaskMessages = function (
+  this: ElizaClient,
+  taskId,
+  options,
+) {
+  const params = new URLSearchParams();
+  if (options?.cursor) params.set("cursor", options.cursor);
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  const qs = params.toString();
+  return this.fetch<CodingAgentTaskPage<CodingAgentTaskMessageRecord>>(
+    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/messages${qs ? `?${qs}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.postOrchestratorTaskMessage = async function (
+  this: ElizaClient,
+  taskId,
+  content,
+) {
+  await this.fetch<{ recorded: boolean; forwardedTo: string[] }>(
+    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ content }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  return true;
+};
+
+ElizaClient.prototype.listOrchestratorTaskEvents = function (
+  this: ElizaClient,
+  taskId,
+  options,
+) {
+  const params = new URLSearchParams();
+  if (options?.cursor) params.set("cursor", options.cursor);
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  const qs = params.toString();
+  return this.fetch<CodingAgentTaskPage<CodingAgentTaskEventRecord>>(
+    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/events${qs ? `?${qs}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getOrchestratorTaskUsage = async function (
+  this: ElizaClient,
+  taskId,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskUsageSummary>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/usage`,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.pauseAllOrchestratorTasks = async function (
+  this: ElizaClient,
+) {
+  const res = await this.fetch<{ paused: number }>(
+    "/api/orchestrator/pause-all",
+    { method: "POST" },
+  );
+  return res.paused;
+};
+
+ElizaClient.prototype.resumeAllOrchestratorTasks = async function (
+  this: ElizaClient,
+) {
+  const res = await this.fetch<{ resumed: number }>(
+    "/api/orchestrator/resume-all",
+    { method: "POST" },
+  );
+  return res.resumed;
 };
 
 ElizaClient.prototype.stopCodingAgent = async function (

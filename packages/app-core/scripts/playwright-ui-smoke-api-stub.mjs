@@ -2951,6 +2951,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/i18n/locale") {
+    // Mirror the real public language-suggestion route
+    // (packages/app-core/src/api/i18n-locale-routes.ts). The SPA polls this on
+    // first paint; without it the stub's catch-all 501 spams console.error.
+    sendJson(req, res, 200, { language: "en" });
+    return;
+  }
+
   if (url.pathname.startsWith("/api/")) {
     const request = recordUnhandledApiRequest(req, url);
     if (req.method === "HEAD") {
