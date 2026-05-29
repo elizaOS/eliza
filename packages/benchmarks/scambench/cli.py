@@ -199,7 +199,7 @@ OPENAI_COMPAT_DEFAULT_BASE_URLS = {
     "vllm": "http://127.0.0.1:8001/v1",
     "cerebras": "https://api.cerebras.ai/v1",
 }
-HARNESS_NAMES = {"eliza", "hermes", "openclaw"}
+HARNESS_NAMES = {"eliza", "hermes", "openclaw", "smithers"}
 
 
 def _build_argparser() -> argparse.ArgumentParser:
@@ -216,6 +216,7 @@ def _build_argparser() -> argparse.ArgumentParser:
             "eliza",
             "hermes",
             "openclaw",
+            "smithers",
             "mock",
         ),
     )
@@ -335,6 +336,25 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
         client = OpenClawClient(provider=provider, model=model, base_url=args.base_url)
+        client.wait_until_ready(timeout=120)
+        return client
+    if harness == "smithers":
+        _ensure_adapter_path("smithers-adapter")
+        from smithers_adapter.client import SmithersClient  # noqa: WPS433
+
+        client = SmithersClient(
+            provider=provider,
+            model=model,
+            base_url=args.base_url
+            or os.environ.get("BENCHMARK_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+            or os.environ.get("CEREBRAS_BASE_URL")
+            or None,
+            timeout_s=float(os.environ.get("SMITHERS_TIMEOUT_S", "120")),
+            reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+            or os.environ.get("CEREBRAS_REASONING_EFFORT")
+            or None,
+        )
         client.wait_until_ready(timeout=120)
         return client
     raise SystemExit(f"unknown harness {harness!r}")
