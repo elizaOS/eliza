@@ -254,7 +254,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
         # caller asks for the eliza agent or any LLM-backed provider.
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--provider", agent])
         elif provider_name in {
             "eliza",
@@ -283,7 +283,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--provider", agent])
             if model.model:
                 args.extend(["--model", model.model])

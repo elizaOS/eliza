@@ -156,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json", action="store_true")
     parser.add_argument(
         "--provider",
-        choices=["eliza", "hermes", "openclaw", "mock", "local"],
+        choices=["eliza", "hermes", "openclaw", "smithers", "mock", "local"],
         default="eliza",
     )
     parser.add_argument("--mock", action="store_true")
@@ -309,7 +309,15 @@ async def run_benchmark(
         os.environ["BENCHMARK_HARNESS"] = harness
         os.environ["ELIZA_BENCH_HARNESS"] = harness
 
-        if harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
+        if harness == "smithers":
+            from smithers_adapter.client import SmithersClient
+
+            client = SmithersClient(
+                provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+            )
+            client.wait_until_ready(timeout=120)
+        elif harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
             eliza_server = ElizaServerManager()
             eliza_server.start()
             client = eliza_server.client
