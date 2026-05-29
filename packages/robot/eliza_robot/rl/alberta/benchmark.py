@@ -154,6 +154,13 @@ def _alberta_cbp_controller_config(
 ) -> CBPControllerConfig:
     from alberta_framework.core.continual_backprop import ContinualBackpropConfig
 
+    # A frozen trunk performs no representation learning, so Continual Backprop
+    # (generate-and-test) is counterproductive there: each replaced unit zeros a
+    # head column across *all* task slots, silently damaging past tasks' frozen
+    # readouts. Disable CBP for the frozen recipe; keep it for the plastic trunk
+    # (where it preserves plasticity over a long stream).
+    cbp_enabled = cfg.cbp_retention_mode != "frozen"
+
     return CBPControllerConfig(
         obs_dim=int(env.observation_space.shape[0]),
         action_dim=int(env.action_space.shape[0]),
@@ -174,6 +181,7 @@ def _alberta_cbp_controller_config(
         cbp=ContinualBackpropConfig(
             replacement_rate=cfg.cbp_replacement_rate,
             maturity_threshold=cfg.cbp_maturity_threshold,
+            enabled=cbp_enabled,
         ),
         retention=_retention_config(cfg),
         seed=seed,

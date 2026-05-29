@@ -398,9 +398,12 @@ class _CBPStreamAC:
         age: tuple[jnp.ndarray, ...],
         accum: jnp.ndarray,
         key: jnp.ndarray,
+        active: jnp.ndarray,
     ) -> tuple:
         """One generate-and-test step. Returns updated (weights, biases, head,
-        util, age, accum, key, replaced_any)."""
+        util, age, accum, key, replaced_any). ``active`` gates replacement off
+        once the trunk is consolidated (a frozen trunk must not be churned, since
+        replacing a shared unit zeros a head column across all task slots)."""
         cfg = self._cfg
         cbp = cfg.cbp
         decay = cbp.decay_rate
@@ -420,7 +423,7 @@ class _CBPStreamAC:
 
             # schedule: accumulate fractional replacement budget
             acc = accum[li] + cbp.replacement_rate * u.shape[0]
-            do_replace = jnp.logical_and(jnp.asarray(cbp.enabled), acc >= 1.0)
+            do_replace = jnp.logical_and(jnp.logical_and(jnp.asarray(cbp.enabled), active), acc >= 1.0)
             new_accum = new_accum.at[li].set(jnp.where(do_replace, acc - 1.0, acc))
 
             # lowest-utility mature unit
@@ -540,15 +543,21 @@ class _CBPStreamAC:
         a_trace = jax.tree.map(lambda t: jnp.where(carry, t, jnp.zeros_like(t)), a_trace)
         c_trace = jax.tree.map(lambda t: jnp.where(carry, t, jnp.zeros_like(t)), c_trace)
 
-        # Continual Backprop generate-and-test on the (post-update) trunks.
+        # Continual Backprop generate-and-test on the (post-update) trunks. Once
+        # the trunk is consolidated (warmup-freeze elapsed), CBP must also stop:
+        # churning a frozen shared trunk zeros head columns across all task slots.
+        if self._freeze_after > 0:
+            cbp_active = state.step_count < self._freeze_after
+        else:
+            cbp_active = jnp.asarray(True)
         _, a_acts = _trunk_forward(a_w, a_b, prev_obs, cfg.leaky_relu_slope, cfg.use_layer_norm)
         _, c_acts = _trunk_forward(c_w, c_b, prev_obs, cfg.leaky_relu_slope, cfg.use_layer_norm)
         key = state.rng_key
         (a_w, a_b, mean_w, a_util, a_age, a_accum, key, a_repl) = self._cbp_step(
-            a_w, a_b, mean_w, a_acts, state.a_util, state.a_age, state.a_accum, key
+            a_w, a_b, mean_w, a_acts, state.a_util, state.a_age, state.a_accum, key, cbp_active
         )
         (c_w, c_b, critic_w, c_util, c_age, c_accum, key, c_repl) = self._cbp_step(
-            c_w, c_b, critic_w, c_acts, state.c_util, state.c_age, state.c_accum, key
+            c_w, c_b, critic_w, c_acts, state.c_util, state.c_age, state.c_accum, key, cbp_active
         )
         # On the rare step that a unit is replaced, drop that network's in-flight
         # eligibility (stale credit for a now-reinitialized unit is meaningless).
