@@ -63,8 +63,59 @@ def load_env(env_name: str, *, impl: str = "jax", reward_overrides: dict | None 
         merged = {k: float(v) for k, v in dict(default.reward_config.scales).items()}
         for k, v in reward_overrides.items():
             merged[k] = float(v)
-        overrides["reward_config"] = {"scales": merged}
+        # Preserve sibling reward_config keys (e.g. tracking_sigma) — replacing
+        # the whole reward_config subdict with only {scales} drops them and the
+        # env raises KeyError('tracking_sigma').
+        rc: dict = {}
+        for k, v in dict(default.reward_config).items():
+            rc[k] = merged if k == "scales" else (float(v) if isinstance(v, (int, float)) else v)
+        overrides["reward_config"] = rc
     return registry.load(env_name, config_overrides=overrides)
+
+
+def make_h1_clearance_env(
+    env_name: str,
+    *,
+    reward_overrides: dict | None = None,
+    clearance_scale: float = 3.0,
+    impl: str = "jax",
+):
+    """H1 gait env + a continuous swing-foot-clearance reward.
+
+    The stock H1JoystickGaitTracking converges to a STABLE FOOT-SKATING glide:
+    upright, tracks the velocity command, never falls — but the feet never
+    leave the ground (feet_air_time stays [0,0]). The feet_phase reward
+    (exp(-err/0.01)) is ~0 and gradient-free from that skating state, so there
+    is no signal pulling the policy to lift its feet. This subclass adds a
+    reward that is monotonic in swing-foot height (min(foot_z, phase_target_z)):
+    zero while skating, strictly increasing as the swing foot lifts toward its
+    phase target — a clean gradient OUT of the skating basin.
+    """
+    from mujoco_playground import registry
+    from mujoco_playground._src import gait as _gait
+    import mujoco_playground._src.locomotion.h1.joystick_gait_tracking as _jgt
+    import jax.numpy as _jp
+
+    class _H1Clearance(_jgt.JoystickGaitTracking):
+        def _get_reward(self, data, action, info, metrics, done, first_contact, contact):
+            pos, neg = super()._get_reward(
+                data, action, info, metrics, done, first_contact, contact
+            )
+            foot_z = data.site_xpos[self._feet_site_id][..., -1]
+            rz = _gait.get_rz(info["phase"], swing_height=info["foot_height"])
+            pos = dict(pos)
+            # reward lifting the swing foot toward rz; capped at rz so it does
+            # not reward hopping above the target. Zero when foot_z<=0 (skating).
+            pos["swing_clearance"] = _jp.sum(_jp.minimum(_jp.clip(foot_z, 0.0, None), rz))
+            return pos, neg
+
+    cfg = registry.get_default_config(env_name)
+    with cfg.unlocked():
+        cfg.impl = impl
+        for k, v in (reward_overrides or {}).items():
+            cfg.reward_config.scales[k] = float(v)
+        cfg.reward_config.scales.swing_clearance = float(clearance_scale)
+    return _H1Clearance(config=cfg)
 
 
 def _ppo_config(env_name: str, num_timesteps: int, num_envs: int, num_evals: int) -> dict:
@@ -106,6 +157,7 @@ def train(
     seed: int,
     out_dir: Path,
     reward_overrides: dict | None = None,
+    clearance_scale: float = 0.0,
 ) -> Path:
     import jax
     from brax.training.agents.ppo import train as ppo_train_module
@@ -118,7 +170,13 @@ def train(
     except Exception:  # pragma: no cover - import path varies by version
         from mujoco_playground._src.wrapper import wrap_for_brax_training as wrap_fn
 
-    env = load_env(env_name, reward_overrides=reward_overrides)
+    if clearance_scale > 0:
+        env = make_h1_clearance_env(
+            env_name, reward_overrides=reward_overrides, clearance_scale=clearance_scale
+        )
+        print(f"anti-skate swing_clearance scale: {clearance_scale}", flush=True)
+    else:
+        env = load_env(env_name, reward_overrides=reward_overrides)
     if reward_overrides:
         print(f"reward overrides: {reward_overrides}", flush=True)
     cfg = _ppo_config(env_name, num_timesteps, num_envs, num_evals)
@@ -344,6 +402,13 @@ def main(argv: list[str] | None = None) -> int:
         metavar="TERM=VALUE",
         help="Override reward_config.scales terms, e.g. foot_slip=-0.5 feet_air_time=2.0",
     )
+    p.add_argument(
+        "--clearance-scale",
+        type=float,
+        default=0.0,
+        help="If >0, add a continuous swing-foot-clearance reward (H1) to break "
+        "the foot-skating optimum. Reasonable: 2-5.",
+    )
     args = p.parse_args(argv)
 
     reward_overrides = {}
@@ -360,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
             seed=args.seed,
             out_dir=args.out,
             reward_overrides=reward_overrides or None,
+            clearance_scale=args.clearance_scale,
         )
     evaluate_and_render(
         args.env,
