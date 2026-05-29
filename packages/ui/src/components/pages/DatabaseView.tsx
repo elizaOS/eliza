@@ -7,7 +7,7 @@ import {
   TerminalSquare,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ColumnInfo,
   client,
@@ -52,6 +52,13 @@ export function DatabaseView({
 }) {
   const { t } = useApp();
   const showExternalSidebar = Boolean(leftNav);
+
+  // `t` from useApp is not guaranteed to be referentially stable across
+  // renders. Reading it through a ref keeps the data loaders below stable so
+  // their effect runs once on mount instead of re-firing every render (which
+  // would wipe a freshly-set errorMessage before it ever paints).
+  const tRef = useRef(t);
+  tRef.current = t;
   const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(null);
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState("");
@@ -77,6 +84,12 @@ export function DatabaseView({
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
 
   const ROW_LIMIT = 50;
+
+  // Keep `tables` reachable from the stable loadTableData callback without
+  // adding it to the dep array (which would re-create the callback and the
+  // effects that depend on it).
+  const tablesRef = useRef(tables);
+  tablesRef.current = tables;
 
   const loadStatus = useCallback(async (): Promise<DatabaseStatus | null> => {
     try {
@@ -109,7 +122,7 @@ export function DatabaseView({
       // Don't show error if database is simply not connected (cloud mode, agent not running)
       if (!msg.includes("Database not available")) {
         setErrorMessage(
-          t("databaseview.FailedToLoadTables", {
+          tRef.current("databaseview.FailedToLoadTables", {
             message: msg,
             defaultValue: "Failed to load tables: {{message}}",
           }),
@@ -117,7 +130,7 @@ export function DatabaseView({
       }
     }
     setLoading(false);
-  }, [t]);
+  }, []);
 
   const loadTableData = useCallback(
     async (
@@ -137,15 +150,20 @@ export function DatabaseView({
         setSelectedTable(tableName);
 
         // Get column metadata for the table
-        const info = tables.find((t) => t.name === tableName);
+        const info = tablesRef.current.find((tbl) => tbl.name === tableName);
         if (info?.columns) {
           const meta = new Map<string, ColumnInfo>();
           for (const col of info.columns) meta.set(col.name, col);
           setColumnMeta(meta);
         }
       } catch (err) {
+        // Surface the failure so the user sees why the table did not load,
+        // and mark the table as selected so the error renders in context
+        // rather than being masked by the "select a table" placeholder.
+        setSelectedTable(tableName);
+        setTableData(null);
         setErrorMessage(
-          t("databaseview.FailedToLoadTable", {
+          tRef.current("databaseview.FailedToLoadTable", {
             message: err instanceof Error ? err.message : "error",
             defaultValue: "Failed to load table: {{message}}",
           }),
@@ -153,7 +171,7 @@ export function DatabaseView({
       }
       setLoading(false);
     },
-    [t, tables],
+    [],
   );
 
   const handleSort = useCallback(

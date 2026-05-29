@@ -166,17 +166,14 @@ describe("DatabaseView", () => {
     });
   });
 
-  // DOCUMENTS DESIRED-NOT-YET BEHAVIOR (uses `it.fails`).
-  //
-  // When getDatabaseRows rejects, loadTableData's catch calls
-  // `setErrorMessage(t("databaseview.FailedToLoadTable", …))`, yet the rejected
-  // row fetch is currently swallowed: no error banner renders and the view
-  // falls back to the "Select a table" placeholder. This `it.fails` test will
-  // PASS today (the assertion below throws because the error never surfaces)
-  // and will start FAILING — alerting us — the moment the Q2 refactor wires the
-  // error through to the user. At that point, delete the `.fails` modifier.
-  it.fails(
-    "should surface a row-load error to the user when getDatabaseRows rejects (currently swallowed)",
+  // A row-fetch rejection must surface to the user. Previously the error was
+  // swallowed: loadTableData's catch set errorMessage, but the init effect
+  // (depending on the unstable `t` from useApp) re-ran on every render and
+  // called loadTables → setErrorMessage(""), wiping it before paint. The Q2
+  // fix reads `t`/`tables` through refs so the loaders are stable and the
+  // banner persists.
+  it(
+    "surfaces a row-load error to the user when getDatabaseRows rejects",
     async () => {
       clientMock.getDatabaseStatus.mockResolvedValue(connectedStatus);
       clientMock.getDatabaseTables.mockResolvedValue({
