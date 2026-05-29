@@ -3,7 +3,18 @@ export function shouldUseCloudOnlyBranding(options: {
   injectedApiBase?: string | null;
   isNativePlatform?: boolean;
   nativeRuntimeMode?: string | null;
+  desktopRuntimeMode?: string | null;
 }): boolean {
+  // An explicit desktop "cloud" runtime mode forces cloud-only regardless of
+  // dev mode or an injected loopback backend. The desktop shell deliberately
+  // runs cloud-only and keeps the loopback agent solely as the cloud-login
+  // proxy, so this opt-in must win over the isDev / injectedApiBase fall-throughs
+  // below (both of which are true on a desktop dev build).
+  const desktopRuntimeMode = options.desktopRuntimeMode?.trim().toLowerCase();
+  if (desktopRuntimeMode === "cloud" || desktopRuntimeMode === "elizacloud") {
+    return true;
+  }
+
   if (options.isDev) return false;
 
   // Desktop shells and hybrid/native builds inject or select a backend before

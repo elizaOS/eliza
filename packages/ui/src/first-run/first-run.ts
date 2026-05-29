@@ -68,6 +68,21 @@ export interface FirstRunSubmitValidation {
   message: string | null;
 }
 
+export function normalizeCloudOnlyFirstRunState(
+  state: PersistedFirstRunState,
+): PersistedFirstRunState {
+  return {
+    step: "runtime",
+    draft: {
+      ...state.draft,
+      runtime: "cloud",
+      remoteApiBase: "",
+      remoteToken: "",
+      useLocalEmbeddings: false,
+    },
+  };
+}
+
 function trimmedOrDefault(value: string, fallback: string): string {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : fallback;

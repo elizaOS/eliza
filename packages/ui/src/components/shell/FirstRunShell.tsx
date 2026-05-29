@@ -31,6 +31,7 @@ export interface FirstRunShellProps {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
   localRuntimeAvailable: boolean;
+  cloudOnly: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   busyText: string | null;
@@ -388,6 +389,7 @@ function FirstRunControls(props: {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
   localRuntimeAvailable: boolean;
+  cloudOnly: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   primaryLabel: string;
@@ -397,7 +399,7 @@ function FirstRunControls(props: {
   t: TranslateFn;
 }) {
   const { t } = props;
-  if (props.step === "remote") {
+  if (props.step === "remote" && !props.cloudOnly) {
     return (
       <div className="grid w-full gap-5">
         <BareInput
@@ -491,7 +493,7 @@ function FirstRunControls(props: {
           </RuntimeCard>
         ) : null}
 
-        {props.draft.runtime === "cloud" ? (
+        {props.draft.runtime === "cloud" && !props.cloudOnly ? (
           <div
             className={`flex items-center gap-2 rounded-sm border px-4 py-2 text-sm ${GLASS_PANEL}`}
           >
@@ -512,22 +514,24 @@ function FirstRunControls(props: {
           </div>
         ) : null}
 
-        <RuntimeCard
-          active={props.draft.runtime === "remote"}
-          icon={Network}
-          label={t("firstrunshell.useAsRemote", {
-            defaultValue: "Use as remote",
-          })}
-          emphasis="muted"
-          testId="first-run-runtime-remote"
-          detail={t("firstrunshell.useAsRemoteDetail", {
-            defaultValue: "Connect to your local machine from another device.",
-          })}
-          onClick={() => {
-            props.updateDraft("runtime", "remote");
-            props.setStep("remote");
-          }}
-        />
+        {props.cloudOnly ? null : (
+          <RuntimeCard
+            active={props.draft.runtime === "remote"}
+            icon={Network}
+            label={t("firstrunshell.useAsRemote", {
+              defaultValue: "Use as remote",
+            })}
+            emphasis="muted"
+            testId="first-run-runtime-remote"
+            detail={t("firstrunshell.useAsRemoteDetail", {
+              defaultValue: "Connect to your local machine from another device.",
+            })}
+            onClick={() => {
+              props.updateDraft("runtime", "remote");
+              props.setStep("remote");
+            }}
+          />
+        )}
       </div>
       <GlassButton
         variant="primary"
@@ -547,6 +551,7 @@ export function FirstRunShell({
   step,
   draft,
   localRuntimeAvailable,
+  cloudOnly,
   elizaCloudConnected,
   submitting,
   busyText,
@@ -623,6 +628,7 @@ export function FirstRunShell({
                 step={step}
                 draft={draft}
                 localRuntimeAvailable={localRuntimeAvailable}
+                cloudOnly={cloudOnly}
                 elizaCloudConnected={elizaCloudConnected}
                 submitting={submitting}
                 primaryLabel={primaryLabel}

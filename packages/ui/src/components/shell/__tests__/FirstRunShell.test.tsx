@@ -25,6 +25,7 @@ function props(
       useLocalEmbeddings: true,
     },
     localRuntimeAvailable: true,
+    cloudOnly: false,
     elizaCloudConnected: false,
     submitting: false,
     busyText: null,
@@ -112,6 +113,31 @@ describe("FirstRunShell", () => {
     expect(screen.getByTestId("first-run-runtime-cloud")).toBeTruthy();
     expect(screen.getByTestId("first-run-runtime-remote")).toBeTruthy();
     expect(screen.queryByTestId("first-run-runtime-local")).toBeNull();
+  });
+
+  it("shows only the Cloud card in cloud-only mode (hides Local and Remote)", async () => {
+    vi.useFakeTimers();
+    render(
+      <FirstRunShell
+        {...props({ cloudOnly: true, localRuntimeAvailable: false })}
+      />,
+    );
+    await revealPrompt();
+
+    expect(screen.getByTestId("first-run-runtime-cloud")).toBeTruthy();
+    expect(screen.queryByTestId("first-run-runtime-local")).toBeNull();
+    expect(screen.queryByTestId("first-run-runtime-remote")).toBeNull();
+    expect(screen.queryByLabelText("Keep embeddings local")).toBeNull();
+  });
+
+  it("does not render the remote form from a stale remote step in cloud-only mode", async () => {
+    vi.useFakeTimers();
+    render(<FirstRunShell {...props({ cloudOnly: true, step: "remote" })} />);
+    await revealPrompt();
+
+    expect(screen.getByTestId("first-run-runtime-cloud")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("https://agent.example.com")).toBeNull();
+    expect(screen.queryByTestId("first-run-runtime-remote")).toBeNull();
   });
 
   it("exposes the local inference sub-choice only when Local is selected", async () => {

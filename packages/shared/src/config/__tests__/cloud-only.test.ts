@@ -49,4 +49,42 @@ describe("shouldUseCloudOnlyBranding", () => {
       }),
     ).toBe(true);
   });
+
+  it("forces cloud-only on a desktop 'cloud' runtime mode even in dev with an injected loopback backend", () => {
+    expect(
+      shouldUseCloudOnlyBranding({
+        isDev: true,
+        injectedApiBase: "http://127.0.0.1:31337",
+        isNativePlatform: false,
+        desktopRuntimeMode: "cloud",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts the elizacloud alias for the desktop cloud runtime mode", () => {
+    expect(
+      shouldUseCloudOnlyBranding({
+        isDev: false,
+        injectedApiBase: "http://127.0.0.1:31337",
+        desktopRuntimeMode: "elizacloud",
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves desktop behavior unchanged when the runtime mode is absent or non-cloud", () => {
+    expect(
+      shouldUseCloudOnlyBranding({
+        isDev: true,
+        injectedApiBase: "http://127.0.0.1:31337",
+        desktopRuntimeMode: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      shouldUseCloudOnlyBranding({
+        isDev: false,
+        injectedApiBase: "http://127.0.0.1:31337",
+        desktopRuntimeMode: "external",
+      }),
+    ).toBe(false);
+  });
 });

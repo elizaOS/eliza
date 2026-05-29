@@ -36,6 +36,7 @@ import {
   firstRunRuntimeTarget,
   isFirstRunPromptEcho,
   loadPersistedFirstRunState,
+  normalizeCloudOnlyFirstRunState,
   normalizeFirstRunName,
   previousFirstRunStep,
   savePersistedFirstRunState,
@@ -80,6 +81,7 @@ export interface FirstRunController {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
   localRuntimeAvailable: boolean;
+  cloudOnly: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   busyText: string | null;
@@ -253,30 +255,47 @@ export function useFirstRunController(): FirstRunController {
     uiLanguage,
   } = useApp();
   const initialRuntimeTarget = React.useMemo(readFirstRunRuntimeTarget, []);
+  // Desktop cloud-only opt-in: branding.cloudOnly is set from the injected
+  // __ELIZA_DESKTOP_RUNTIME_MODE__ signal (api-base-owner → main.tsx branding).
+  // When on, the runtime is forced to cloud and the Local/Remote options are
+  // hidden. Off (the default) everywhere else, so web/mobile/default-desktop are
+  // unchanged.
+  const cloudOnly = Boolean(getBootConfig().branding?.cloudOnly);
   const initialDraft = React.useMemo<FirstRunProfileDraft>(
     () => ({
       agentName: normalizeFirstRunName(firstRunName) || "Eliza",
-      runtime: initialRuntimeTarget ?? "cloud",
+      runtime: cloudOnly ? "cloud" : (initialRuntimeTarget ?? "cloud"),
       localInference: "all-local",
       remoteApiBase: "",
       remoteToken: "",
       useLocalEmbeddings: false,
     }),
-    [initialRuntimeTarget, firstRunName],
+    [cloudOnly, initialRuntimeTarget, firstRunName],
   );
   const persistedFirstRunState = React.useMemo(
-    () =>
-      initialRuntimeTarget ? null : loadPersistedFirstRunState(initialDraft),
-    [initialDraft, initialRuntimeTarget],
+    () => {
+      const state = initialRuntimeTarget
+        ? null
+        : loadPersistedFirstRunState(initialDraft);
+      return cloudOnly && state ? normalizeCloudOnlyFirstRunState(state) : state;
+    },
+    [cloudOnly, initialDraft, initialRuntimeTarget],
   );
   const [step, setStepState] = React.useState<FirstRunStep>(() => {
+    if (cloudOnly) return "runtime";
     if (persistedFirstRunState) return persistedFirstRunState.step;
-    if (initialRuntimeTarget === "remote") return "remote";
+    if (!cloudOnly && initialRuntimeTarget === "remote") return "remote";
     return "runtime";
   });
-  const localRuntimeAvailable = React.useMemo(canSelectLocalRuntime, []);
+  const localRuntimeAvailable =
+    React.useMemo(canSelectLocalRuntime, []) && !cloudOnly;
   const [draft, setDraft] = React.useState<FirstRunProfileDraft>(() => {
     const resolved = persistedFirstRunState?.draft ?? initialDraft;
+    if (cloudOnly)
+      return normalizeCloudOnlyFirstRunState({
+        step: "runtime",
+        draft: resolved,
+      }).draft;
     if (!localRuntimeAvailable && resolved.runtime === "local") {
       return { ...resolved, runtime: "cloud" };
     }
@@ -365,13 +384,23 @@ export function useFirstRunController(): FirstRunController {
     [clearListenAfterSpeechTimer, stopFirstRunAudio],
   );
 
-  const setStep = React.useCallback((next: FirstRunStep) => {
-    setStepState(next);
-  }, []);
+  const setStep = React.useCallback(
+    (next: FirstRunStep) => {
+      setStepState(cloudOnly && next === "remote" ? "runtime" : next);
+    },
+    [cloudOnly],
+  );
 
   const updateDraft = React.useCallback<FirstRunDraftUpdate>(
-    (key, value) => setDraft((current) => ({ ...current, [key]: value })),
-    [],
+    (key, value) =>
+      setDraft((current) => {
+        const next = { ...current, [key]: value };
+        return cloudOnly
+          ? normalizeCloudOnlyFirstRunState({ step: "runtime", draft: next })
+              .draft
+          : next;
+      }),
+    [cloudOnly],
   );
 
   const syncIdentity = React.useCallback(
@@ -587,22 +616,28 @@ export function useFirstRunController(): FirstRunController {
 
   const finishRuntimeForDraft = React.useCallback(
     async (sourceDraft: FirstRunProfileDraft) => {
-      const validation = validateFirstRunSubmitDraft(sourceDraft);
+      const normalizedDraft = cloudOnly
+        ? normalizeCloudOnlyFirstRunState({
+            step: "runtime",
+            draft: sourceDraft,
+          }).draft
+        : sourceDraft;
+      const validation = validateFirstRunSubmitDraft(normalizedDraft);
       if (!validation.valid) {
         setStep(validation.step);
         setError(validation.message);
         return;
       }
       try {
-        if (sourceDraft.runtime === "remote") {
-          await finishRemote(sourceDraft);
+        if (normalizedDraft.runtime === "remote") {
+          await finishRemote(normalizedDraft);
           return;
         }
-        if (sourceDraft.runtime === "cloud") {
-          await finishCloud(sourceDraft);
+        if (normalizedDraft.runtime === "cloud") {
+          await finishCloud(normalizedDraft);
           return;
         }
-        await finishLocal(sourceDraft);
+        await finishLocal(normalizedDraft);
       } catch (err) {
         setBusyText(null);
         setError(
@@ -610,7 +645,7 @@ export function useFirstRunController(): FirstRunController {
         );
       }
     },
-    [finishCloud, finishLocal, finishRemote, setStep],
+    [cloudOnly, finishCloud, finishLocal, finishRemote, setStep],
   );
 
   const finishRuntime = React.useCallback(
@@ -649,16 +684,25 @@ export function useFirstRunController(): FirstRunController {
         draft: draftRef.current,
         transcript,
       });
-      draftRef.current = update.draft;
-      stepRef.current = update.step;
-      setDraft(update.draft);
-      setStep(update.step);
+      const normalizedUpdate = cloudOnly
+        ? {
+            ...update,
+            ...normalizeCloudOnlyFirstRunState({
+              step: update.step,
+              draft: update.draft,
+            }),
+          }
+        : update;
+      draftRef.current = normalizedUpdate.draft;
+      stepRef.current = normalizedUpdate.step;
+      setDraft(normalizedUpdate.draft);
+      setStep(normalizedUpdate.step);
       setError(null);
-      if (update.action === "finish") {
-        void finishRuntimeForDraft(update.draft);
+      if (normalizedUpdate.action === "finish") {
+        void finishRuntimeForDraft(normalizedUpdate.draft);
       }
     },
-    [finishRuntimeForDraft, setStep],
+    [cloudOnly, finishRuntimeForDraft, setStep],
   );
 
   const startVoice = React.useCallback(async () => {
@@ -880,6 +924,7 @@ export function useFirstRunController(): FirstRunController {
     step,
     draft,
     localRuntimeAvailable,
+    cloudOnly,
     elizaCloudConnected,
     submitting,
     busyText,

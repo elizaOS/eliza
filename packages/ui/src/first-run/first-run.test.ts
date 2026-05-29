@@ -12,6 +12,7 @@ import {
   firstRunRuntimeTarget,
   isFirstRunPromptEcho,
   loadPersistedFirstRunState,
+  normalizeCloudOnlyFirstRunState,
   nextFirstRunStep,
   normalizeFirstRunName,
   previousFirstRunStep,
@@ -111,6 +112,32 @@ describe("first-run flow", () => {
 
     clearPersistedFirstRunState();
     expect(loadPersistedFirstRunState(fallbackDraft)).toBeNull();
+  });
+
+  it("normalizes persisted cloud-only first-run state back to cloud runtime", () => {
+    const state = normalizeCloudOnlyFirstRunState({
+      step: "remote",
+      draft: {
+        agentName: "Eliza",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: "https://agent.example.com",
+        remoteToken: "secret",
+        useLocalEmbeddings: true,
+      },
+    });
+
+    expect(state).toEqual({
+      step: "runtime",
+      draft: {
+        agentName: "Eliza",
+        runtime: "cloud",
+        localInference: "all-local",
+        remoteApiBase: "",
+        remoteToken: "",
+        useLocalEmbeddings: false,
+      },
+    });
   });
 
   it("builds a server-backed local first-run payload without an owner name", () => {
