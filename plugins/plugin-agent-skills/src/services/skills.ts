@@ -257,9 +257,16 @@ export class AgentSkillsService extends Service {
 			(typeof registrySetting === "string" ? registrySetting : null) ||
 			CLAWHUB_API;
 
+		// getSetting() coerces the strings "true"/"false" to booleans, so a
+		// configured "false" arrives here as the boolean false — compare against
+		// both forms or the disable switch silently never fires.
+		const syncCatalogOnStartSetting = runtime.getSetting(
+			"SKILLS_SYNC_CATALOG_ON_START",
+		);
 		this.syncCatalogOnStart =
 			config?.syncCatalogOnStart ??
-			runtime.getSetting("SKILLS_SYNC_CATALOG_ON_START") !== "false";
+			(syncCatalogOnStartSetting !== "false" &&
+				syncCatalogOnStartSetting !== false);
 
 		this.autoLoad =
 			config?.autoLoad ??

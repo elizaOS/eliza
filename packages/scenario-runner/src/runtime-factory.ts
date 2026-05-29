@@ -339,6 +339,19 @@ export async function createScenarioRuntime(
     plugins: [],
     logLevel: "warn",
     enableAutonomy: false,
+    // The agent-skills service reads SKILLS_DIR / SKILLS_SYNC_CATALOG_ON_START
+    // via runtime.getSetting(), which does NOT consult process.env. Mirror the
+    // scenario env into runtime settings so skills storage lands in the
+    // throwaway temp dir and the boot-time catalog sync stays off — otherwise
+    // every scenario hits the real registry at boot (network dependency) and
+    // pollutes ./skills in the repo.
+    settings: {
+      SKILLS_SYNC_CATALOG_ON_START:
+        process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
+      ...(process.env.SKILLS_DIR
+        ? { SKILLS_DIR: process.env.SKILLS_DIR }
+        : {}),
+    },
   });
 
   const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
