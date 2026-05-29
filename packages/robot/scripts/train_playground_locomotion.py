@@ -328,6 +328,7 @@ def evaluate_and_render(
     base_pts = [list(base_xy_z(state))]
     left_contacts, right_contacts = [], []
     rewards = []
+    max_air = np.zeros(2, dtype=np.float64)
     fell = False
     for _ in range(eval_steps):
         act_rng, rng = jax.random.split(rng)
@@ -340,6 +341,8 @@ def evaluate_and_render(
         if lcc is not None:
             left_contacts.append(lcc)
             right_contacts.append(rcc)
+        if "feet_air_time" in state.info:
+            max_air = np.maximum(max_air, np.asarray(state.info["feet_air_time"]).ravel()[:2])
         rewards.append(float(np.asarray(state.reward)))
         if bool(np.asarray(state.done)):
             fell = True
@@ -362,6 +365,11 @@ def evaluate_and_render(
     )
     report = {"env": env_name, "command": list(command), "mean_reward": float(np.mean(rewards)) if rewards else 0.0}
     report.update(metrics.to_dict())
+    # Direct foot-skating detector: if max swing air-time stays ~0 the feet
+    # never left the ground (gliding/skating, not stepping), regardless of how
+    # far it travelled or how high the reward was.
+    report["max_feet_air_time_s"] = [float(v) for v in max_air]
+    report["feet_leave_ground"] = bool(float(np.max(max_air)) > 0.05)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "walk_eval.json").write_text(json.dumps(report, indent=2))
