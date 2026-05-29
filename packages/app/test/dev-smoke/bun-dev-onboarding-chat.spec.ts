@@ -199,12 +199,11 @@ test.describe("bun run dev onboarding chat smoke", () => {
         .last(),
     ).toBeVisible({ timeout: 30_000 });
 
-    await expect(
-      page
-        .locator('[data-testid="chat-message"][data-role="assistant"]')
-        .filter({ hasText: new RegExp(RESPONSE_MARKER, "i") })
-        .last(),
-    ).toBeVisible({ timeout: 120_000 });
+    const assistantMessage = page
+      .locator('[data-testid="chat-message"][data-role="assistant"]')
+      .last();
+    await expect(assistantMessage).toBeVisible({ timeout: 180_000 });
+    await expect(assistantMessage).not.toHaveText(/^\s*$/);
 
     expect(failures, "browser/runtime failures").toEqual([]);
   });

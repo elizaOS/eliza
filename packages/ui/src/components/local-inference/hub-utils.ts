@@ -35,14 +35,6 @@ export function displayModelName(model: {
   return ELIZA_1_DISPLAY_NAMES[model.id] ?? model.displayName ?? model.id;
 }
 
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "—";
-  const gb = bytes / 1024 ** 3;
-  if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / 1024 ** 2;
-  return `${mb.toFixed(0)} MB`;
-}
-
 export function formatEta(ms: number | null): string {
   if (ms == null || !Number.isFinite(ms) || ms <= 0) return "";
   const totalSec = Math.ceil(ms / 1000);

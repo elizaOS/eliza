@@ -11,669 +11,712 @@ import path from "node:path";
 import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { createViewsClient } from "./views-client.js";
-import { hasPendingViewsCreateIntent, isChoiceReply, runViewsCreate, } from "./views-create.js";
-import { hasPendingDeleteConfirm, isDeleteCancellation, isDeleteConfirmation, runViewsDelete, } from "./views-delete.js";
+import {
+	hasPendingViewsCreateIntent,
+	isChoiceReply,
+	runViewsCreate,
+} from "./views-create.js";
+import {
+	hasPendingDeleteConfirm,
+	isDeleteCancellation,
+	isDeleteConfirmation,
+	runViewsDelete,
+} from "./views-delete.js";
 import { runViewsEdit } from "./views-edit.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch } from "./views-search.js";
 import { runViewsShow } from "./views-show.js";
+
 const MODES = [
-    "list",
-    "current",
-    "show",
-    "open",
-    "search",
-    "manager",
-    "broadcast",
-    "interact",
-    "create",
-    "edit",
-    "delete",
-    "remove",
-    "pin",
-    "window",
+	"list",
+	"current",
+	"show",
+	"open",
+	"search",
+	"manager",
+	"broadcast",
+	"interact",
+	"create",
+	"edit",
+	"delete",
+	"remove",
+	"pin",
+	"window",
 ];
 // Intent regexes — order matters: more specific first.
-const LIST_VERBS = /\b(list|show all|what views|all views|available views|which views)\b/i;
-const CURRENT_VIEW_VERBS = /\b(current|active|selected|open)\b.{0,30}\bview\b|\bwhat(?:'s| is)?\b.{0,20}\bview\b/i;
+const LIST_VERBS =
+	/\b(list|show all|what views|all views|available views|which views)\b/i;
+const CURRENT_VIEW_VERBS =
+	/\b(current|active|selected|open)\b.{0,30}\bview\b|\bwhat(?:'s| is)?\b.{0,20}\bview\b/i;
 const WHAT_VIEWS_VERB = /what.{0,20}views?\b/i;
 const SEARCH_VERBS = /\b(search|find|look for|filter)\b.*\bview/i;
-const MANAGER_VERBS = /\b(view manager|views manager|manage views|open manager|show manager)\b/i;
-const SHOW_ALL_VIEWS_MANAGER = /\b(show|open|bring up|pull up)\b\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?views\b/i;
-const SHOW_APPS_VERBS = /\b(show|open|go to|navigate to)\b\s+(?:the\s+)?(?:apps?|app page|apps page)\b/i;
-const CLOSE_VERBS = /\b(close|dismiss|hide|exit|quit)\b.{0,40}\b(view|app|panel|window)\b/i;
-const SHOW_VERBS = /\b(show|open|navigate to|go to|switch to|launch|display|bring up|pull up)\b/i;
+const MANAGER_VERBS =
+	/\b(view manager|views manager|manage views|open manager|show manager)\b/i;
+const SHOW_ALL_VIEWS_MANAGER =
+	/\b(show|open|bring up|pull up)\b\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?views\b/i;
+const SHOW_APPS_VERBS =
+	/\b(show|open|go to|navigate to)\b\s+(?:the\s+)?(?:apps?|app page|apps page)\b/i;
+const CLOSE_VERBS =
+	/\b(close|dismiss|hide|exit|quit)\b.{0,40}\b(view|app|panel|window)\b/i;
+const SHOW_VERBS =
+	/\b(show|open|navigate to|go to|switch to|launch|display|bring up|pull up)\b/i;
 const VIEW_NOUN = /\bview[s]?\b/i;
-const BROADCAST_VERBS = /\b(tell|notify|signal|broadcast|send.*event|emit|trigger|ping)\b.{0,60}\bview\b/i;
-const INTERACT_VERBS = /\b(click|tap|press|focus|fill|interact|invoke|call|use capability)\b.{0,60}\b(view|button|input|field)\b/i;
-const CREATE_VERBS = /\b(create|build|make|new|scaffold|generate|spin up)\b.{0,30}\b(view|plugin)\b/i;
-const EDIT_VERBS_RE = /\b(edit|update|modify|change|fix|improve|rewrite)\b.{0,30}\b(view|plugin)\b/i;
-const DELETE_VERBS_RE = /\b(delete|remove|uninstall|destroy|drop)\b.{0,30}\b(view|plugin)\b/i;
-const PIN_VERBS = /\b(pin|pin as tab|add.*tab|pin.*desktop|keep.*tab|dock)\b.{0,40}\bview\b/i;
-const WINDOW_VERBS = /\b(open in.*window|new window|separate window|pop.?out|detach)\b.{0,40}\bview\b|\bview\b.{0,40}\b(new window|separate window|pop.?out|detach)\b/i;
+const BROADCAST_VERBS =
+	/\b(tell|notify|signal|broadcast|send.*event|emit|trigger|ping)\b.{0,60}\bview\b/i;
+const INTERACT_VERBS =
+	/\b(click|tap|press|focus|fill|interact|invoke|call|use capability)\b.{0,60}\b(view|button|input|field)\b/i;
+const CREATE_VERBS =
+	/\b(create|build|make|new|scaffold|generate|spin up)\b.{0,30}\b(view|plugin)\b/i;
+const EDIT_VERBS_RE =
+	/\b(edit|update|modify|change|fix|improve|rewrite)\b.{0,30}\b(view|plugin)\b/i;
+const DELETE_VERBS_RE =
+	/\b(delete|remove|uninstall|destroy|drop)\b.{0,30}\b(view|plugin)\b/i;
+const PIN_VERBS =
+	/\b(pin|pin as tab|add.*tab|pin.*desktop|keep.*tab|dock)\b.{0,40}\bview\b/i;
+const WINDOW_VERBS =
+	/\b(open in.*window|new window|separate window|pop.?out|detach)\b.{0,40}\bview\b|\bview\b.{0,40}\b(new window|separate window|pop.?out|detach)\b/i;
 function readViewTypeOption(text, options) {
-    const explicit = readStringOption(options, "viewType") ??
-        readStringOption(options, "type") ??
-        readStringOption(options, "surface");
-    const normalized = explicit?.trim().toLowerCase();
-    if (normalized === "gui" || normalized === "graphical")
-        return "gui";
-    if (normalized === "tui" || normalized === "terminal")
-        return "tui";
-    if (/\b(tui|terminal)\b/i.test(text))
-        return "tui";
-    if (/\b(gui|graphical)\b/i.test(text))
-        return "gui";
-    return undefined;
+	const explicit =
+		readStringOption(options, "viewType") ??
+		readStringOption(options, "type") ??
+		readStringOption(options, "surface");
+	const normalized = explicit?.trim().toLowerCase();
+	if (normalized === "gui" || normalized === "graphical") return "gui";
+	if (normalized === "tui" || normalized === "terminal") return "tui";
+	if (/\b(tui|terminal)\b/i.test(text)) return "tui";
+	if (/\b(gui|graphical)\b/i.test(text)) return "gui";
+	return undefined;
 }
 function readBooleanOption(options, key) {
-    if (!options)
-        return false;
-    const value = options[key];
-    if (typeof value === "boolean")
-        return value;
-    if (typeof value !== "string")
-        return false;
-    return /^(1|true|yes|on)$/i.test(value.trim());
+	if (!options) return false;
+	const value = options[key];
+	if (typeof value === "boolean") return value;
+	if (typeof value !== "string") return false;
+	return /^(1|true|yes|on)$/i.test(value.trim());
 }
 function defaultRepoRoot() {
-    const fromEnv = process.env.ELIZA_REPO_ROOT?.trim() ||
-        process.env.ELIZA_WORKSPACE_DIR?.trim();
-    if (fromEnv && path.isAbsolute(fromEnv))
-        return fromEnv;
-    return process.cwd();
+	const fromEnv =
+		process.env.ELIZA_REPO_ROOT?.trim() ||
+		process.env.ELIZA_WORKSPACE_DIR?.trim();
+	if (fromEnv && path.isAbsolute(fromEnv)) return fromEnv;
+	return process.cwd();
 }
 function inferMode(text, options) {
-    const explicit = readStringOption(options, "action") ?? readStringOption(options, "mode");
-    if (explicit && MODES.includes(explicit)) {
-        return explicit;
-    }
-    const trimmed = text.trim();
-    if (!trimmed)
-        return null;
-    if (DELETE_VERBS_RE.test(trimmed))
-        return "delete";
-    if (CREATE_VERBS.test(trimmed))
-        return "create";
-    if (EDIT_VERBS_RE.test(trimmed))
-        return "edit";
-    if (PIN_VERBS.test(trimmed))
-        return "pin";
-    if (WINDOW_VERBS.test(trimmed))
-        return "window";
-    if (INTERACT_VERBS.test(trimmed))
-        return "interact";
-    if (BROADCAST_VERBS.test(trimmed))
-        return "broadcast";
-    if (MANAGER_VERBS.test(trimmed))
-        return "manager";
-    if (SHOW_ALL_VIEWS_MANAGER.test(trimmed))
-        return "manager";
-    if (SHOW_APPS_VERBS.test(trimmed))
-        return "manager";
-    if (CLOSE_VERBS.test(trimmed))
-        return "manager";
-    if (SEARCH_VERBS.test(trimmed))
-        return "search";
-    if (CURRENT_VIEW_VERBS.test(trimmed))
-        return "current";
-    if (WHAT_VIEWS_VERB.test(trimmed))
-        return "list";
-    if (LIST_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed))
-        return "list";
-    if (SHOW_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed))
-        return "show";
-    return null;
+	const explicit =
+		readStringOption(options, "action") ?? readStringOption(options, "mode");
+	if (explicit && MODES.includes(explicit)) {
+		return explicit;
+	}
+	const trimmed = text.trim();
+	if (!trimmed) return null;
+	if (DELETE_VERBS_RE.test(trimmed)) return "delete";
+	if (CREATE_VERBS.test(trimmed)) return "create";
+	if (EDIT_VERBS_RE.test(trimmed)) return "edit";
+	if (PIN_VERBS.test(trimmed)) return "pin";
+	if (WINDOW_VERBS.test(trimmed)) return "window";
+	if (INTERACT_VERBS.test(trimmed)) return "interact";
+	if (BROADCAST_VERBS.test(trimmed)) return "broadcast";
+	if (MANAGER_VERBS.test(trimmed)) return "manager";
+	if (SHOW_ALL_VIEWS_MANAGER.test(trimmed)) return "manager";
+	if (SHOW_APPS_VERBS.test(trimmed)) return "manager";
+	if (CLOSE_VERBS.test(trimmed)) return "manager";
+	if (SEARCH_VERBS.test(trimmed)) return "search";
+	if (CURRENT_VIEW_VERBS.test(trimmed)) return "current";
+	if (WHAT_VIEWS_VERB.test(trimmed)) return "list";
+	if (LIST_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "list";
+	if (SHOW_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "show";
+	return null;
 }
 function extractSearchQuery(text, options) {
-    const explicit = readStringOption(options, "query") ?? readStringOption(options, "search");
-    if (explicit)
-        return explicit;
-    // Strip "search views <query>" / "find view <query>"
-    const match = text.match(/\b(?:search|find|look for|filter)\b.*?\bview[s]?\b\s+(.+)/i);
-    return match?.[1]?.trim() ?? text.trim();
+	const explicit =
+		readStringOption(options, "query") ?? readStringOption(options, "search");
+	if (explicit) return explicit;
+	// Strip "search views <query>" / "find view <query>"
+	const match = text.match(
+		/\b(?:search|find|look for|filter)\b.*?\bview[s]?\b\s+(.+)/i,
+	);
+	return match?.[1]?.trim() ?? text.trim();
 }
 export function createViewsAction(deps = {}) {
-    const clientFactory = () => deps.client ?? createViewsClient();
-    const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
-    const repoRoot = deps.repoRoot ?? defaultRepoRoot();
-    return {
-        name: "VIEWS",
-        contexts: ["general", "automation", "settings", "code"],
-        contextGate: { anyOf: ["general", "automation", "settings", "code"] },
-        roleGate: { minRole: "USER" },
-        similes: [
-            "VIEW",
-            "SHOW_VIEW",
-            "OPEN_VIEW",
-            "LIST_VIEWS",
-            "VIEW_MANAGER",
-            "VIEWS_LIST",
-            "SWITCH_VIEW",
-            "CLOSE_VIEW",
-            "SHOW_APPS",
-            "OPEN_APPS",
-            "GO_TO_VIEW",
-            "NAVIGATE_TO_VIEW",
-            "WHAT_VIEWS",
-            "BROADCAST_VIEW_EVENT",
-            "NOTIFY_VIEW",
-            "SIGNAL_VIEW",
-            "INTERACT_WITH_VIEW",
-            "CLICK_IN_VIEW",
-            "INVOKE_VIEW_CAPABILITY",
-            "PIN_VIEW",
-            "OPEN_VIEW_WINDOW",
-            "CREATE_VIEW",
-            "CREATE_PLUGIN",
-            "BUILD_VIEW",
-            "MAKE_VIEW",
-            "EDIT_VIEW",
-            "UPDATE_VIEW",
-            "DELETE_VIEW",
-            "REMOVE_VIEW",
-            "REMOVE_PLUGIN",
-            "UNINSTALL_VIEW",
-        ],
-        description: "Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, interact with a mounted view, pin a view as a desktop tab, open a view in a separate window, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), or delete/uninstall a view plugin.",
-        descriptionCompressed: "views list|show|open|search|manager|broadcast|interact|create|edit|delete; navigate UI views; push events; click/read/focus elements; scaffold new plugins; edit or remove view plugins",
-        suppressPostActionContinuation: true,
-        parameters: [
-            {
-                name: "action",
-                description: "Operation: list | current | show | open | search | manager | broadcast | interact | create | edit | delete | remove.",
-                required: true,
-                schema: {
-                    type: "string",
-                    enum: [...MODES],
-                },
-            },
-            {
-                name: "mode",
-                description: "Legacy alias for action.",
-                required: false,
-                schema: {
-                    type: "string",
-                    enum: [...MODES],
-                },
-            },
-            {
-                name: "view",
-                description: "View name, label, or id (show / open / edit / delete).",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "id",
-                description: "Alias for `view`.",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "name",
-                description: "Alias for `view`.",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "query",
-                description: "Search keyword (search mode).",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "viewType",
-                description: 'Presentation type to use for view discovery and switching. Defaults to "gui"; use "tui" for terminal views.',
-                required: false,
-                schema: { type: "string", enum: ["gui", "tui"] },
-            },
-            {
-                name: "search",
-                description: "Alias for `query`.",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "eventType",
-                description: "Event type to broadcast to all mounted views (broadcast mode), e.g. 'wallet:refresh'.",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "payload",
-                description: "JSON payload to include with the broadcast event.",
-                required: false,
-                schema: { type: "object" },
-            },
-            {
-                name: "capability",
-                description: "Capability to invoke on the view (interact mode), e.g. 'click-button', 'get-state', 'get-text', 'refresh', 'focus-element'.",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "params",
-                description: "Parameters for the capability (interact mode), e.g. { buttonId: 'submit' } or { selector: '#my-input' }.",
-                required: false,
-                schema: { type: "object" },
-            },
-            {
-                name: "timeoutMs",
-                description: "Timeout in ms for interact responses. Default 5000.",
-                required: false,
-                schema: { type: "number" },
-            },
-            {
-                name: "alwaysOnTop",
-                description: "When action=window, request that the detached desktop window stays above normal windows.",
-                required: false,
-                schema: { type: "boolean" },
-            },
-            {
-                name: "intent",
-                description: "Free-form description of the view to build (create mode). Defaults to the user message text.",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "editTarget",
-                description: "Skip the picker and edit this installed view directly (create mode).",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "choice",
-                description: "Override choice reply (`new` | `edit-N` | `cancel`) for create-mode follow-up turns.",
-                required: false,
-                schema: { type: "string" },
-            },
-            {
-                name: "confirm",
-                description: 'Set to "true" or "yes" to skip the delete confirmation prompt (delete mode).',
-                required: false,
-                schema: { type: "string" },
-            },
-        ],
-        validate: async (runtime, message) => {
-            const text = message.content.text ?? "";
-            const roomId = typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-            // Multi-turn create follow-up: choice reply matches a pending intent task.
-            if (isChoiceReply(text)) {
-                if (await hasPendingViewsCreateIntent(runtime, roomId))
-                    return true;
-            }
-            // Multi-turn delete follow-up: yes/no matches a pending confirm task.
-            if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
-                if (await hasPendingDeleteConfirm(runtime, roomId))
-                    return true;
-            }
-            // Create/edit/delete require owner access.
-            const mode = inferMode(text, undefined);
-            if (mode === "create" ||
-                mode === "edit" ||
-                mode === "delete" ||
-                mode === "remove") {
-                return ownerCheck(runtime, message);
-            }
-            // Read modes are visible to all users.
-            return true;
-        },
-        handler: async (runtime, message, _state, options, callback) => {
-            const client = clientFactory();
-            const text = message.content.text ?? "";
-            const roomId = typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-            // Multi-turn follow-up: choice reply for an in-progress create flow.
-            if (isChoiceReply(text)) {
-                if (await hasPendingViewsCreateIntent(runtime, roomId)) {
-                    const views = await client.listViews();
-                    return runViewsCreate({
-                        runtime,
-                        message,
-                        options,
-                        views,
-                        callback,
-                        repoRoot,
-                    });
-                }
-            }
-            // Multi-turn follow-up: yes/no for a pending delete confirmation.
-            if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
-                if (await hasPendingDeleteConfirm(runtime, roomId)) {
-                    const views = await client.listViews();
-                    return runViewsDelete({
-                        runtime,
-                        message,
-                        options,
-                        views,
-                        callback,
-                        repoRoot,
-                    });
-                }
-            }
-            const mode = inferMode(text, options);
-            const viewType = readViewTypeOption(text, options);
-            if (!mode) {
-                const reply = 'Tell me what to do with views. Try: "list views", "open wallet view", "create a new view", or "delete the LifeOps plugin".';
-                await callback?.({ text: reply });
-                return { success: false, text: reply };
-            }
-            logger.info(`[plugin-app-control] VIEWS mode=${mode}`);
-            switch (mode) {
-                case "list":
-                    return runViewsList({ client, viewType, callback });
-                case "current": {
-                    const currentView = await client.getCurrentView();
-                    const resultText = currentView
-                        ? `Current view: ${currentView.viewLabel} (${currentView.viewType}) — ${currentView.viewId}${currentView.viewPath ? ` at ${currentView.viewPath}` : ""}.`
-                        : "No current view has been reported yet.";
-                    await callback?.({ text: resultText });
-                    return {
-                        success: true,
-                        text: resultText,
-                        values: {
-                            mode: "current",
-                            viewId: currentView?.viewId,
-                            viewType: currentView?.viewType,
-                        },
-                        data: { currentView },
-                    };
-                }
-                case "show":
-                case "open":
-                    return runViewsShow({ client, message, options, viewType, callback });
-                case "search": {
-                    const query = extractSearchQuery(text, options);
-                    return runViewsSearch({ client, query, viewType, callback });
-                }
-                case "manager": {
-                    const managerView = {
-                        id: "__view-manager__",
-                        label: "View Manager",
-                        path: "/views",
-                        pluginName: "core",
-                        available: true,
-                    };
-                    const resultText = await navigateToPath(managerView.path, managerView.label);
-                    await callback?.({ text: resultText });
-                    return {
-                        success: true,
-                        text: resultText,
-                        values: { mode: "manager" },
-                        data: { view: managerView },
-                    };
-                }
-                case "broadcast": {
-                    const eventType = readStringOption(options, "eventType") ??
-                        readStringOption(options, "event") ??
-                        readStringOption(options, "type");
-                    if (!eventType) {
-                        const reply = "Specify an event type to broadcast, e.g. action=broadcast eventType=wallet:refresh.";
-                        await callback?.({ text: reply });
-                        return { success: false, text: reply };
-                    }
-                    const payload = options?.payload !== null &&
-                        typeof options?.payload === "object" &&
-                        !Array.isArray(options?.payload)
-                        ? options.payload
-                        : {};
-                    const resultText = await broadcastViewEvent(eventType, payload);
-                    await callback?.({ text: resultText });
-                    return {
-                        success: true,
-                        text: resultText,
-                        values: { mode: "broadcast", eventType },
-                        data: { eventType, payload },
-                    };
-                }
-                case "interact": {
-                    let viewId = readStringOption(options, "view") ??
-                        readStringOption(options, "id") ??
-                        readStringOption(options, "name");
-                    const capability = readStringOption(options, "capability");
-                    let resolvedViewType = viewType;
-                    if (!viewId && /\bcurrent\b/i.test(text)) {
-                        const currentView = await client.getCurrentView();
-                        viewId = currentView?.viewId ?? null;
-                        resolvedViewType = viewType ?? currentView?.viewType;
-                    }
-                    if (!viewId || !capability) {
-                        const reply = "Specify view and capability, e.g. action=interact view=wallet capability=get-state, or ask for the current view after navigating.";
-                        await callback?.({ text: reply });
-                        return { success: false, text: reply };
-                    }
-                    const params = options?.params !== null &&
-                        typeof options?.params === "object" &&
-                        !Array.isArray(options?.params)
-                        ? options.params
-                        : undefined;
-                    const timeoutMs = typeof options?.timeoutMs === "number" && options.timeoutMs > 0
-                        ? options.timeoutMs
-                        : 5_000;
-                    const resultText = await interactWithView(viewId, capability, params, timeoutMs, resolvedViewType);
-                    await callback?.({ text: resultText });
-                    return {
-                        success: true,
-                        text: resultText,
-                        values: {
-                            mode: "interact",
-                            viewId,
-                            viewType: resolvedViewType ?? "gui",
-                            capability,
-                        },
-                        data: {
-                            viewId,
-                            viewType: resolvedViewType ?? "gui",
-                            capability,
-                            params,
-                        },
-                    };
-                }
-                case "create": {
-                    const views = await client.listViews();
-                    return runViewsCreate({
-                        runtime,
-                        message,
-                        options,
-                        views,
-                        callback,
-                        repoRoot,
-                    });
-                }
-                case "edit": {
-                    const views = await client.listViews();
-                    return runViewsEdit({
-                        runtime,
-                        message,
-                        options,
-                        views,
-                        callback,
-                        repoRoot,
-                    });
-                }
-                case "delete":
-                case "remove": {
-                    const views = await client.listViews();
-                    return runViewsDelete({
-                        runtime,
-                        message,
-                        options,
-                        views,
-                        callback,
-                        repoRoot,
-                    });
-                }
-                case "pin": {
-                    const pinViewId = readStringOption(options, "view") ??
-                        readStringOption(options, "id") ??
-                        readStringOption(options, "name");
-                    if (!pinViewId) {
-                        const reply = "Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.";
-                        await callback?.({ text: reply });
-                        return { success: false, text: reply };
-                    }
-                    const pinResultText = await pinViewAsTab(pinViewId, viewType);
-                    await callback?.({ text: pinResultText });
-                    return {
-                        success: true,
-                        text: pinResultText,
-                        values: {
-                            mode: "pin",
-                            viewId: pinViewId,
-                            viewType: viewType ?? "gui",
-                        },
-                        data: { viewId: pinViewId, viewType: viewType ?? "gui" },
-                    };
-                }
-                case "window": {
-                    const windowViewId = readStringOption(options, "view") ??
-                        readStringOption(options, "id") ??
-                        readStringOption(options, "name");
-                    const alwaysOnTop = readBooleanOption(options, "alwaysOnTop");
-                    if (!windowViewId) {
-                        const reply = "Specify which view to open in a new window, e.g. action=window view=wallet.";
-                        await callback?.({ text: reply });
-                        return { success: false, text: reply };
-                    }
-                    const windowResultText = await openViewInWindow(windowViewId, viewType, alwaysOnTop);
-                    await callback?.({ text: windowResultText });
-                    return {
-                        success: true,
-                        text: windowResultText,
-                        values: {
-                            mode: "window",
-                            viewId: windowViewId,
-                            viewType: viewType ?? "gui",
-                            alwaysOnTop,
-                        },
-                        data: {
-                            viewId: windowViewId,
-                            viewType: viewType ?? "gui",
-                            alwaysOnTop,
-                        },
-                    };
-                }
-            }
-        },
-        examples: [
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "list views" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: "available_views:\n  count: 3\nviews[3]{id,label,path,available}:\n  wallet.inventory,Wallet,/wallet,yes\n  chat,Chat,/,yes\n  settings,Settings,/settings,yes",
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "open wallet view" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: "Navigated to Wallet.",
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "search views finance" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: 'Views matching "finance" (1):\n  [60] Wallet (wallet.inventory) — /wallet — Track your crypto balances.',
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "open view manager" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: "Navigated to View Manager.",
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "tell the wallet view to refresh" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: 'Broadcast view event "wallet:refresh" to all connected views.',
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "get the state of the settings view" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: 'Interacted with view "settings" — capability "get-state": {"theme":"dark","language":"en"}.',
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "create a new view for tracking habits" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: "[CHOICE:views-create id=views-create-…]\nnew = Create a new view plugin\ncancel = Cancel\n[/CHOICE]",
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "edit the wallet view" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: "Started view edit task for Wallet at /…/plugins/plugin-wallet. Task session abc123 is running.",
-                        action: "VIEWS",
-                    },
-                },
-            ],
-            [
-                {
-                    name: "{{user1}}",
-                    content: { text: "delete the LifeOps plugin" },
-                },
-                {
-                    name: "{{agentName}}",
-                    content: {
-                        text: 'Are you sure you want to delete the LifeOps view (@elizaos/plugin-lifeops)? Reply "yes" to confirm or "cancel" to abort.',
-                        action: "VIEWS",
-                    },
-                },
-            ],
-        ],
-    };
+	const clientFactory = () => deps.client ?? createViewsClient();
+	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
+	const repoRoot = deps.repoRoot ?? defaultRepoRoot();
+	return {
+		name: "VIEWS",
+		contexts: ["general", "automation", "settings", "code"],
+		contextGate: { anyOf: ["general", "automation", "settings", "code"] },
+		roleGate: { minRole: "USER" },
+		similes: [
+			"VIEW",
+			"SHOW_VIEW",
+			"OPEN_VIEW",
+			"LIST_VIEWS",
+			"VIEW_MANAGER",
+			"VIEWS_LIST",
+			"SWITCH_VIEW",
+			"CLOSE_VIEW",
+			"SHOW_APPS",
+			"OPEN_APPS",
+			"GO_TO_VIEW",
+			"NAVIGATE_TO_VIEW",
+			"WHAT_VIEWS",
+			"BROADCAST_VIEW_EVENT",
+			"NOTIFY_VIEW",
+			"SIGNAL_VIEW",
+			"INTERACT_WITH_VIEW",
+			"CLICK_IN_VIEW",
+			"INVOKE_VIEW_CAPABILITY",
+			"PIN_VIEW",
+			"OPEN_VIEW_WINDOW",
+			"CREATE_VIEW",
+			"CREATE_PLUGIN",
+			"BUILD_VIEW",
+			"MAKE_VIEW",
+			"EDIT_VIEW",
+			"UPDATE_VIEW",
+			"DELETE_VIEW",
+			"REMOVE_VIEW",
+			"REMOVE_PLUGIN",
+			"UNINSTALL_VIEW",
+		],
+		description:
+			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, interact with a mounted view, pin a view as a desktop tab, open a view in a separate window, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), or delete/uninstall a view plugin.",
+		descriptionCompressed:
+			"views list|show|open|search|manager|broadcast|interact|create|edit|delete; navigate UI views; push events; click/read/focus elements; scaffold new plugins; edit or remove view plugins",
+		suppressPostActionContinuation: true,
+		parameters: [
+			{
+				name: "action",
+				description:
+					"Operation: list | current | show | open | search | manager | broadcast | interact | create | edit | delete | remove.",
+				required: true,
+				schema: {
+					type: "string",
+					enum: [...MODES],
+				},
+			},
+			{
+				name: "mode",
+				description: "Legacy alias for action.",
+				required: false,
+				schema: {
+					type: "string",
+					enum: [...MODES],
+				},
+			},
+			{
+				name: "view",
+				description: "View name, label, or id (show / open / edit / delete).",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "id",
+				description: "Alias for `view`.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "name",
+				description: "Alias for `view`.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "query",
+				description: "Search keyword (search mode).",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "viewType",
+				description:
+					'Presentation type to use for view discovery and switching. Defaults to "gui"; use "tui" for terminal views.',
+				required: false,
+				schema: { type: "string", enum: ["gui", "tui"] },
+			},
+			{
+				name: "search",
+				description: "Alias for `query`.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "eventType",
+				description:
+					"Event type to broadcast to all mounted views (broadcast mode), e.g. 'wallet:refresh'.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "payload",
+				description: "JSON payload to include with the broadcast event.",
+				required: false,
+				schema: { type: "object" },
+			},
+			{
+				name: "capability",
+				description:
+					"Capability to invoke on the view (interact mode), e.g. 'click-button', 'get-state', 'get-text', 'refresh', 'focus-element'.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "params",
+				description:
+					"Parameters for the capability (interact mode), e.g. { buttonId: 'submit' } or { selector: '#my-input' }.",
+				required: false,
+				schema: { type: "object" },
+			},
+			{
+				name: "timeoutMs",
+				description: "Timeout in ms for interact responses. Default 5000.",
+				required: false,
+				schema: { type: "number" },
+			},
+			{
+				name: "alwaysOnTop",
+				description:
+					"When action=window, request that the detached desktop window stays above normal windows.",
+				required: false,
+				schema: { type: "boolean" },
+			},
+			{
+				name: "intent",
+				description:
+					"Free-form description of the view to build (create mode). Defaults to the user message text.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "editTarget",
+				description:
+					"Skip the picker and edit this installed view directly (create mode).",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "choice",
+				description:
+					"Override choice reply (`new` | `edit-N` | `cancel`) for create-mode follow-up turns.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "confirm",
+				description:
+					'Set to "true" or "yes" to skip the delete confirmation prompt (delete mode).',
+				required: false,
+				schema: { type: "string" },
+			},
+		],
+		validate: async (runtime, message) => {
+			const text = message.content.text ?? "";
+			const roomId =
+				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+			// Multi-turn create follow-up: choice reply matches a pending intent task.
+			if (isChoiceReply(text)) {
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) return true;
+			}
+			// Multi-turn delete follow-up: yes/no matches a pending confirm task.
+			if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
+				if (await hasPendingDeleteConfirm(runtime, roomId)) return true;
+			}
+			// Create/edit/delete require owner access.
+			const mode = inferMode(text, undefined);
+			if (
+				mode === "create" ||
+				mode === "edit" ||
+				mode === "delete" ||
+				mode === "remove"
+			) {
+				return ownerCheck(runtime, message);
+			}
+			// Read modes are visible to all users.
+			return true;
+		},
+		handler: async (runtime, message, _state, options, callback) => {
+			const client = clientFactory();
+			const text = message.content.text ?? "";
+			const roomId =
+				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+			// Multi-turn follow-up: choice reply for an in-progress create flow.
+			if (isChoiceReply(text)) {
+				if (await hasPendingViewsCreateIntent(runtime, roomId)) {
+					const views = await client.listViews();
+					return runViewsCreate({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+			}
+			// Multi-turn follow-up: yes/no for a pending delete confirmation.
+			if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
+				if (await hasPendingDeleteConfirm(runtime, roomId)) {
+					const views = await client.listViews();
+					return runViewsDelete({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+			}
+			const mode = inferMode(text, options);
+			const viewType = readViewTypeOption(text, options);
+			if (!mode) {
+				const reply =
+					'Tell me what to do with views. Try: "list views", "open wallet view", "create a new view", or "delete the LifeOps plugin".';
+				await callback?.({ text: reply });
+				return { success: false, text: reply };
+			}
+			logger.info(`[plugin-app-control] VIEWS mode=${mode}`);
+			switch (mode) {
+				case "list":
+					return runViewsList({ client, viewType, callback });
+				case "current": {
+					const currentView = await client.getCurrentView();
+					const resultText = currentView
+						? `Current view: ${currentView.viewLabel} (${currentView.viewType}) — ${currentView.viewId}${currentView.viewPath ? ` at ${currentView.viewPath}` : ""}.`
+						: "No current view has been reported yet.";
+					await callback?.({ text: resultText });
+					return {
+						success: true,
+						text: resultText,
+						values: {
+							mode: "current",
+							viewId: currentView?.viewId,
+							viewType: currentView?.viewType,
+						},
+						data: { currentView },
+					};
+				}
+				case "show":
+				case "open":
+					return runViewsShow({ client, message, options, viewType, callback });
+				case "search": {
+					const query = extractSearchQuery(text, options);
+					return runViewsSearch({ client, query, viewType, callback });
+				}
+				case "manager": {
+					const managerView = {
+						id: "__view-manager__",
+						label: "View Manager",
+						path: "/views",
+						pluginName: "core",
+						available: true,
+					};
+					const resultText = await navigateToPath(
+						managerView.path,
+						managerView.label,
+					);
+					await callback?.({ text: resultText });
+					return {
+						success: true,
+						text: resultText,
+						values: { mode: "manager" },
+						data: { view: managerView },
+					};
+				}
+				case "broadcast": {
+					const eventType =
+						readStringOption(options, "eventType") ??
+						readStringOption(options, "event") ??
+						readStringOption(options, "type");
+					if (!eventType) {
+						const reply =
+							"Specify an event type to broadcast, e.g. action=broadcast eventType=wallet:refresh.";
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const payload =
+						options?.payload !== null &&
+						typeof options?.payload === "object" &&
+						!Array.isArray(options?.payload)
+							? options.payload
+							: {};
+					const resultText = await broadcastViewEvent(eventType, payload);
+					await callback?.({ text: resultText });
+					return {
+						success: true,
+						text: resultText,
+						values: { mode: "broadcast", eventType },
+						data: { eventType, payload },
+					};
+				}
+				case "interact": {
+					let viewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					const capability = readStringOption(options, "capability");
+					let resolvedViewType = viewType;
+					if (!viewId && /\bcurrent\b/i.test(text)) {
+						const currentView = await client.getCurrentView();
+						viewId = currentView?.viewId ?? null;
+						resolvedViewType = viewType ?? currentView?.viewType;
+					}
+					if (!viewId || !capability) {
+						const reply =
+							"Specify view and capability, e.g. action=interact view=wallet capability=get-state, or ask for the current view after navigating.";
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const params =
+						options?.params !== null &&
+						typeof options?.params === "object" &&
+						!Array.isArray(options?.params)
+							? options.params
+							: undefined;
+					const timeoutMs =
+						typeof options?.timeoutMs === "number" && options.timeoutMs > 0
+							? options.timeoutMs
+							: 5_000;
+					const resultText = await interactWithView(
+						viewId,
+						capability,
+						params,
+						timeoutMs,
+						resolvedViewType,
+					);
+					await callback?.({ text: resultText });
+					return {
+						success: true,
+						text: resultText,
+						values: {
+							mode: "interact",
+							viewId,
+							viewType: resolvedViewType ?? "gui",
+							capability,
+						},
+						data: {
+							viewId,
+							viewType: resolvedViewType ?? "gui",
+							capability,
+							params,
+						},
+					};
+				}
+				case "create": {
+					const views = await client.listViews();
+					return runViewsCreate({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+				case "edit": {
+					const views = await client.listViews();
+					return runViewsEdit({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+				case "delete":
+				case "remove": {
+					const views = await client.listViews();
+					return runViewsDelete({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
+				}
+				case "pin": {
+					const pinViewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					if (!pinViewId) {
+						const reply =
+							"Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.";
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const pinResultText = await pinViewAsTab(pinViewId, viewType);
+					await callback?.({ text: pinResultText });
+					return {
+						success: true,
+						text: pinResultText,
+						values: {
+							mode: "pin",
+							viewId: pinViewId,
+							viewType: viewType ?? "gui",
+						},
+						data: { viewId: pinViewId, viewType: viewType ?? "gui" },
+					};
+				}
+				case "window": {
+					const windowViewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					const alwaysOnTop = readBooleanOption(options, "alwaysOnTop");
+					if (!windowViewId) {
+						const reply =
+							"Specify which view to open in a new window, e.g. action=window view=wallet.";
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const windowResultText = await openViewInWindow(
+						windowViewId,
+						viewType,
+						alwaysOnTop,
+					);
+					await callback?.({ text: windowResultText });
+					return {
+						success: true,
+						text: windowResultText,
+						values: {
+							mode: "window",
+							viewId: windowViewId,
+							viewType: viewType ?? "gui",
+							alwaysOnTop,
+						},
+						data: {
+							viewId: windowViewId,
+							viewType: viewType ?? "gui",
+							alwaysOnTop,
+						},
+					};
+				}
+			}
+		},
+		examples: [
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "list views" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "available_views:\n  count: 3\nviews[3]{id,label,path,available}:\n  wallet.inventory,Wallet,/wallet,yes\n  chat,Chat,/,yes\n  settings,Settings,/settings,yes",
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "open wallet view" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Navigated to Wallet.",
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "search views finance" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Views matching "finance" (1):\n  [60] Wallet (wallet.inventory) — /wallet — Track your crypto balances.',
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "open view manager" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Navigated to View Manager.",
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "tell the wallet view to refresh" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Broadcast view event "wallet:refresh" to all connected views.',
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "get the state of the settings view" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Interacted with view "settings" — capability "get-state": {"theme":"dark","language":"en"}.',
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "create a new view for tracking habits" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "[CHOICE:views-create id=views-create-…]\nnew = Create a new view plugin\ncancel = Cancel\n[/CHOICE]",
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "edit the wallet view" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Started view edit task for Wallet at /…/plugins/plugin-wallet. Task session abc123 is running.",
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "delete the LifeOps plugin" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Are you sure you want to delete the LifeOps view (@elizaos/plugin-lifeops)? Reply "yes" to confirm or "cancel" to abort.',
+						action: "VIEWS",
+					},
+				},
+			],
+		],
+	};
 }
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -683,136 +726,170 @@ export function createViewsAction(deps = {}) {
  * code loading (iOS App Store and Google Play builds).
  */
 export function isRestrictedPlatform() {
-    const variant = (process.env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
-    if (variant === "store")
-        return true;
-    const platform = (process.env.ELIZA_PLATFORM ?? "").trim().toLowerCase();
-    return platform === "ios" || platform === "android";
+	const variant = (process.env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
+	if (variant === "store") return true;
+	const platform = (process.env.ELIZA_PLATFORM ?? "").trim().toLowerCase();
+	return platform === "ios" || platform === "android";
 }
 async function navigateToPath(pathStr, label) {
-    const { resolveServerOnlyPort } = await import("@elizaos/core");
-    const port = resolveServerOnlyPort(process.env);
-    const base = `http://127.0.0.1:${port}`;
-    try {
-        const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ path: pathStr }),
-            signal: AbortSignal.timeout(5_000),
-        });
-        if (resp.ok || resp.status === 501 || resp.status === 404) {
-            return `Navigated to ${label}.`;
-        }
-        logger.warn(`[plugin-app-control] VIEWS/manager navigate returned ${resp.status}`);
-    }
-    catch {
-        // Network or timeout — not fatal.
-    }
-    return `Opened ${label} at ${pathStr}.`;
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+	try {
+		const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path: pathStr }),
+			signal: AbortSignal.timeout(5_000),
+		});
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return `Navigated to ${label}.`;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/manager navigate returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+	return `Opened ${label} at ${pathStr}.`;
 }
-async function navigateViewWithShellAction(viewId, action, successText, fallbackText, viewType, alwaysOnTop = false) {
-    const { resolveServerOnlyPort } = await import("@elizaos/core");
-    const port = resolveServerOnlyPort(process.env);
-    const base = `http://127.0.0.1:${port}`;
-    try {
-        const resp = await fetch(`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action, viewType, alwaysOnTop }),
-            signal: AbortSignal.timeout(5_000),
-        });
-        if (resp.ok || resp.status === 501 || resp.status === 404) {
-            return successText;
-        }
-        logger.warn(`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`);
-    }
-    catch {
-        // Network or timeout — not fatal.
-    }
-    return fallbackText;
+async function navigateViewWithShellAction(
+	viewId,
+	action,
+	successText,
+	fallbackText,
+	viewType,
+	alwaysOnTop = false,
+) {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action, viewType, alwaysOnTop }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return successText;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+	return fallbackText;
 }
 function pinViewAsTab(viewId, viewType) {
-    return navigateViewWithShellAction(viewId, "pin-tab", `Pinned ${viewType ?? "gui"} view "${viewId}" as a desktop tab.`, `Requested desktop tab pin for ${viewType ?? "gui"} view "${viewId}".`, viewType);
+	return navigateViewWithShellAction(
+		viewId,
+		"pin-tab",
+		`Pinned ${viewType ?? "gui"} view "${viewId}" as a desktop tab.`,
+		`Requested desktop tab pin for ${viewType ?? "gui"} view "${viewId}".`,
+		viewType,
+	);
 }
 function openViewInWindow(viewId, viewType, alwaysOnTop = false) {
-    return navigateViewWithShellAction(viewId, "open-window", `Opened ${viewType ?? "gui"} view "${viewId}" in a separate window.`, `Requested separate window for ${viewType ?? "gui"} view "${viewId}".`, viewType, alwaysOnTop);
+	return navigateViewWithShellAction(
+		viewId,
+		"open-window",
+		`Opened ${viewType ?? "gui"} view "${viewId}" in a separate window.`,
+		`Requested separate window for ${viewType ?? "gui"} view "${viewId}".`,
+		viewType,
+		alwaysOnTop,
+	);
 }
 /**
  * POST /api/views/:id/interact — invoke a capability on a mounted view and
  * return the result. Waits up to timeoutMs for the frontend to respond.
  */
-async function interactWithView(viewId, capability, params, timeoutMs, viewType) {
-    const { resolveServerOnlyPort } = await import("@elizaos/core");
-    const port = resolveServerOnlyPort(process.env);
-    const base = `http://127.0.0.1:${port}`;
-    let resp;
-    try {
-        resp = await fetch(`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ capability, params, timeoutMs, viewType }),
-            signal: AbortSignal.timeout(timeoutMs + 1_000),
-        });
-    }
-    catch (err) {
-        logger.warn(`[plugin-app-control] VIEWS/interact network error: ${err instanceof Error ? err.message : String(err)}`);
-        return `Failed to interact with view "${viewId}": network error.`;
-    }
-    if (resp.status === 504) {
-        return `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms.`;
-    }
-    if (resp.status === 404) {
-        return `View "${viewId}" not found or not mounted.`;
-    }
-    if (resp.status === 400) {
-        let detail = "";
-        try {
-            const body = (await resp.json());
-            detail = typeof body.error === "string" ? ` — ${body.error}` : "";
-        }
-        catch {
-            /* ignore */
-        }
-        return `Cannot invoke capability "${capability}" on view "${viewId}"${detail}.`;
-    }
-    if (!resp.ok) {
-        logger.warn(`[plugin-app-control] VIEWS/interact returned ${resp.status} for view "${viewId}"`);
-        return `Interact with view "${viewId}" failed (HTTP ${resp.status}).`;
-    }
-    let result;
-    try {
-        result = await resp.json();
-    }
-    catch {
-        return `Interacted with view "${viewId}" (capability "${capability}") — no parseable result.`;
-    }
-    const resultStr = result !== null && result !== undefined ? JSON.stringify(result) : "null";
-    return `Interacted with view "${viewId}" — capability "${capability}": ${resultStr}.`;
+async function interactWithView(
+	viewId,
+	capability,
+	params,
+	timeoutMs,
+	viewType,
+) {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+	let resp;
+	try {
+		resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
+				signal: AbortSignal.timeout(timeoutMs + 1_000),
+			},
+		);
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/interact network error: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return `Failed to interact with view "${viewId}": network error.`;
+	}
+	if (resp.status === 504) {
+		return `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms.`;
+	}
+	if (resp.status === 404) {
+		return `View "${viewId}" not found or not mounted.`;
+	}
+	if (resp.status === 400) {
+		let detail = "";
+		try {
+			const body = await resp.json();
+			detail = typeof body.error === "string" ? ` — ${body.error}` : "";
+		} catch {
+			/* ignore */
+		}
+		return `Cannot invoke capability "${capability}" on view "${viewId}"${detail}.`;
+	}
+	if (!resp.ok) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/interact returned ${resp.status} for view "${viewId}"`,
+		);
+		return `Interact with view "${viewId}" failed (HTTP ${resp.status}).`;
+	}
+	let result;
+	try {
+		result = await resp.json();
+	} catch {
+		return `Interacted with view "${viewId}" (capability "${capability}") — no parseable result.`;
+	}
+	const resultStr =
+		result !== null && result !== undefined ? JSON.stringify(result) : "null";
+	return `Interacted with view "${viewId}" — capability "${capability}": ${resultStr}.`;
 }
 /**
  * POST /api/views/events/broadcast — push a view event to all connected
  * frontend tabs via the server's WebSocket broadcast.
  */
 async function broadcastViewEvent(eventType, payload) {
-    const { resolveServerOnlyPort } = await import("@elizaos/core");
-    const port = resolveServerOnlyPort(process.env);
-    const base = `http://127.0.0.1:${port}`;
-    try {
-        const resp = await fetch(`${base}/api/views/events/broadcast`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: eventType, payload }),
-            signal: AbortSignal.timeout(5_000),
-        });
-        if (resp.ok) {
-            return `Broadcast view event "${eventType}" to all connected views.`;
-        }
-        logger.warn(`[plugin-app-control] VIEWS/broadcast returned ${resp.status}`);
-    }
-    catch {
-        // Network or timeout — not fatal.
-    }
-    return `Attempted to broadcast view event "${eventType}".`;
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+	try {
+		const resp = await fetch(`${base}/api/views/events/broadcast`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ type: eventType, payload }),
+			signal: AbortSignal.timeout(5_000),
+		});
+		if (resp.ok) {
+			return `Broadcast view event "${eventType}" to all connected views.`;
+		}
+		logger.warn(`[plugin-app-control] VIEWS/broadcast returned ${resp.status}`);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+	return `Attempted to broadcast view event "${eventType}".`;
 }
 export const viewsAction = createViewsAction();
 //# sourceMappingURL=views.js.map

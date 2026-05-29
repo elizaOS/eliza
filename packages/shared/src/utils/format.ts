@@ -36,6 +36,11 @@ type ByteSizeFormatterOptions = {
    */
   unknownLabel?: string;
   /**
+   * Uniform precision applied to all of KB / MB / GB / TB. Individual
+   * per-unit overrides below take precedence when supplied.
+   */
+  precision?: number;
+  /**
    * Precision for KB / MB / GB / TB values.
    */
   kbPrecision?: number;
@@ -71,18 +76,21 @@ type DurationFormatOptions = {
  * Format a byte count in human-readable units.
  */
 export function formatByteSize(
-  bytes: number,
+  bytes: number | null | undefined,
   options: ByteSizeFormatterOptions = {},
 ): string {
   const {
     unknownLabel = "unknown",
-    kbPrecision = 1,
-    mbPrecision = 1,
-    gbPrecision = 1,
-    tbPrecision = 1,
+    precision,
+    kbPrecision = precision ?? 1,
+    mbPrecision = precision ?? 1,
+    gbPrecision = precision ?? 1,
+    tbPrecision = precision ?? 1,
   } = options;
 
-  if (!Number.isFinite(bytes) || bytes < 0) return unknownLabel;
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) {
+    return unknownLabel;
+  }
   if (bytes >= 1024 ** 4) {
     return `${(bytes / 1024 ** 4).toFixed(tbPrecision)} TB`;
   }
@@ -96,6 +104,33 @@ export function formatByteSize(
     return `${(bytes / 1024).toFixed(kbPrecision)} KB`;
   }
   return `${bytes} B`;
+}
+
+type UsdFormatOptions = {
+  /**
+   * Fallback string for null / undefined / non-numeric input.
+   */
+  fallback?: string;
+};
+
+/**
+ * Format a numeric amount as a USD currency string (`$1,234.56`).
+ *
+ * Accepts numbers or numeric strings; non-numeric input yields `fallback`.
+ * Uses the en-US `Intl.NumberFormat` currency style (grouped, 2 fraction
+ * digits) — the canonical money display for dashboard views.
+ */
+export function formatUsd(
+  value: number | string | null | undefined,
+  options: UsdFormatOptions = {},
+): string {
+  const { fallback = "—" } = options;
+  const amount = typeof value === "string" ? Number.parseFloat(value) : value;
+  if (amount == null || !Number.isFinite(amount)) return fallback;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
 }
 
 /**

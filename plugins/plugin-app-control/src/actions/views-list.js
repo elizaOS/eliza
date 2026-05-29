@@ -5,38 +5,40 @@
  * and calling client.
  */
 function formatViewTable(views, viewType) {
-    if (views.length === 0) {
-        return [
-            "available_views:",
-            `  type: ${viewType ?? "gui"}`,
-            "  count: 0",
-        ].join("\n");
-    }
-    const lines = [];
-    lines.push("available_views:");
-    lines.push(`  type: ${viewType ?? "gui"}`);
-    lines.push(`  count: ${views.length}`);
-    lines.push(`views[${views.length}]{id,label,type,path,available}:`);
-    for (const view of views) {
-        const pathStr = view.path ?? "(no path)";
-        const avail = view.available ? "yes" : "no";
-        lines.push(`  ${view.id},${view.label},${view.viewType ?? "gui"},${pathStr},${avail}`);
-    }
-    return lines.join("\n");
+	if (views.length === 0) {
+		return [
+			"available_views:",
+			`  type: ${viewType ?? "gui"}`,
+			"  count: 0",
+		].join("\n");
+	}
+	const lines = [];
+	lines.push("available_views:");
+	lines.push(`  type: ${viewType ?? "gui"}`);
+	lines.push(`  count: ${views.length}`);
+	lines.push(`views[${views.length}]{id,label,type,path,available}:`);
+	for (const view of views) {
+		const pathStr = view.path ?? "(no path)";
+		const avail = view.available ? "yes" : "no";
+		lines.push(
+			`  ${view.id},${view.label},${view.viewType ?? "gui"},${pathStr},${avail}`,
+		);
+	}
+	return lines.join("\n");
 }
-export async function runViewsList({ client, viewType, callback, }) {
-    const views = await client.listViews({ viewType });
-    const text = formatViewTable(views, viewType);
-    await callback?.({ text });
-    return {
-        success: true,
-        text,
-        values: {
-            mode: "list",
-            viewType: viewType ?? "gui",
-            viewCount: views.length,
-        },
-        data: { views },
-    };
+export async function runViewsList({ client, viewType, callback }) {
+	const views = await client.listViews({ viewType });
+	const text = formatViewTable(views, viewType);
+	await callback?.({ text });
+	return {
+		success: true,
+		text,
+		values: {
+			mode: "list",
+			viewType: viewType ?? "gui",
+			viewCount: views.length,
+		},
+		data: { views },
+	};
 }
 //# sourceMappingURL=views-list.js.map

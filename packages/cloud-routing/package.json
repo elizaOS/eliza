@@ -6,7 +6,7 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ../scripts/prepare-package-dist.mjs packages/cloud-routing",
+    "build": "tsc --noCheck -p tsconfig.json && node ../scripts/prepare-package-dist.mjs packages/cloud-routing",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "biome check src"
   },

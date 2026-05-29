@@ -5,6 +5,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
@@ -14,8 +15,10 @@ import {
   findDownload,
   findInstalled,
   fitLabel,
-  formatBytes,
 } from "./hub-utils";
+
+const formatBytes = (bytes: number): string =>
+  formatByteSize(bytes, { unknownLabel: "—" });
 
 interface ModelCardProps {
   model: CatalogModel;

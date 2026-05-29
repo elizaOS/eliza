@@ -83,11 +83,12 @@ TORSO = dict(
 # Gaussian falloff, gated to the front face so the lateral +-Y drums are untouched.
 # This gives two DISTINCT breasts instead of a single centre ridge.
 BREAST = dict(
-    amp=0.052,        # peak +X projection (m)
-    y0=0.062,         # lateral offset of each mound centre (m)
+    amp=0.038,        # peak +X projection (m) -- lower => rounder, less pointy
+    y0=0.064,         # lateral offset of each mound centre (m)
     z0=0.188,         # height of the mounds (m)
-    sigma_y=0.030, sigma_z=0.046,   # tight enough that the centre dips between them
-    front_halfdeg=80.0,
+    sigma_y=0.044, sigma_z=0.060,   # broad enough to read as smooth round breasts
+    front_halfdeg=82.0,
+    smooth_iter=18,   # Taubin passes that round off the apex
 )
 
 # Features removed by delete-faces-in-box + cap (robust for engraved/separate
@@ -201,7 +202,19 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
         x = np.where(back, cx + (x - cx) * (1.0 + gk * w[i]), x)
         verts.append(np.column_stack([x, y, np.full(n_ang, z)]))
     rings = np.array(verts)
-    return _loft_rings(rings)
+    skin = _loft_rings(rings)
+    # Taubin smoothing rounds the breast apex and any residual ribbing without the
+    # net shrinkage of plain Laplacian (lambda/mu pair preserves volume).
+    it = BREAST.get("smooth_iter", 0)
+    if it:
+        try:
+            import pyvista as pv
+            f = np.hstack([np.full((len(skin.faces), 1), 3), skin.faces]).ravel()
+            sm = pv.PolyData(skin.vertices, f).smooth_taubin(n_iter=it, pass_band=0.1).triangulate()
+            skin = trimesh.Trimesh(sm.points, sm.faces.reshape(-1, 4)[:, 1:], process=True)
+        except Exception:
+            trimesh.smoothing.filter_taubin(skin, iterations=it)
+    return skin
 
 
 def _loft_rings(rings):

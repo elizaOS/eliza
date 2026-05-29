@@ -11,6 +11,7 @@ import type {
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
+import { formatByteSize } from "../../utils/format";
 import {
   bucketLabel,
   computeFit,
@@ -19,9 +20,11 @@ import {
   findDownload,
   findInstalled,
   fitLabel,
-  formatBytes,
   groupByBucket,
 } from "./hub-utils";
+
+const formatBytes = (bytes: number): string =>
+  formatByteSize(bytes, { unknownLabel: "—" });
 
 interface ModelHubViewProps {
   catalog: CatalogModel[];
