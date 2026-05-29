@@ -343,6 +343,14 @@ export function getSharedSourceAliases(
 
   return [
     ...getWorkspacePackageExportAliases("shared", packageRoot),
+    {
+      // Subpath imports (e.g. @elizaos/shared/contracts/first-run-options) must
+      // map to source files; without this the bare-string alias below
+      // prefix-replaces them into "<src>/index.ts/<subpath>" -> ENOTDIR.
+      // Mirrors the agent/app-core/ui subpath aliases above.
+      find: /^@elizaos\/shared\/(.+)$/,
+      replacement: path.join(sourceRoot, "$1"),
+    },
     ...getPackageSourceAliases("shared", sourceRoot, {
       includeElizaAlias: options.includeElizaAlias,
       rootReplacement: path.join(sourceRoot, "index.ts"),
