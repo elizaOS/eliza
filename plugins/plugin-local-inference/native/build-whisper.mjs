@@ -158,7 +158,16 @@ function platformFlags(backend) {
     case "metal":
       return ["-DGGML_METAL=ON", "-DGGML_BLAS=OFF", "-DWHISPER_METAL=ON"];
     case "cuda":
-      return ["-DGGML_CUDA=ON", "-DGGML_NATIVE=ON"];
+      // Pin a buildable CUDA arch unless the caller overrides it. Without this,
+      // ggml auto-detects the host GPU's compute capability — on a Blackwell
+      // card (sm_120) with an older CUDA toolkit (nvcc < 12.8) that yields
+      // `nvcc fatal: Unsupported gpu architecture 'compute_120'` and breaks the
+      // whole build. sm_89 SASS + PTX JITs forward onto newer GPUs at runtime.
+      return [
+        "-DGGML_CUDA=ON",
+        "-DGGML_NATIVE=ON",
+        `-DCMAKE_CUDA_ARCHITECTURES=${process.env.CMAKE_CUDA_ARCHITECTURES || process.env.CUDAARCHS || "89"}`,
+      ];
     case "vulkan":
       return ["-DGGML_VULKAN=ON"];
     case "cpu":

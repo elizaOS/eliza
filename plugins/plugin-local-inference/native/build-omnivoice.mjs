@@ -128,7 +128,13 @@ function platformFlags(backend) {
     case "metal":
       return ["-DGGML_METAL=ON", "-DGGML_BLAS=OFF"];
     case "cuda":
-      return ["-DGGML_CUDA=ON", "-DGGML_NATIVE=ON"];
+      // Pin a buildable CUDA arch (see build-whisper.mjs): ggml's auto-detect
+      // emits compute_120 on Blackwell, which nvcc < 12.8 rejects fatally.
+      return [
+        "-DGGML_CUDA=ON",
+        "-DGGML_NATIVE=ON",
+        `-DCMAKE_CUDA_ARCHITECTURES=${process.env.CMAKE_CUDA_ARCHITECTURES || process.env.CUDAARCHS || "89"}`,
+      ];
     case "vulkan":
       return ["-DGGML_VULKAN=ON"];
     case "cpu":
