@@ -117,7 +117,9 @@ SMITHERS_BENCHMARKS: frozenset[str] = frozenset(
         "clawbench",
         "agentbench",
         "woobench",
-        "tau_bench",
+        # tau_bench wiring is complete (SmithersTauAgent) but it bursts
+        # agent+user+judge calls and saturates the Cerebras per-minute token
+        # quota (429s) on this key; re-enable with quota headroom / throttling.
     }
 )
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (

@@ -14,10 +14,10 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | abliteration_robustness | $0.0024 | $0.0002 | $0.0002 | $0.0002† |
 | action_calling | $0.0017 | $0.0015 | $0.0015 | $0.0015† |
 | adhdbench | $0.0095 | $0.0005 | $0.0005 | $0.0005* |
-| agentbench | $0.0048 | $0.0002 | $0.0311 | $0.0002* |
+| agentbench | $0.0048 | $0.0002 | $0.0311 | $0.0001† |
 | app_eval | $0.0017 | $0.0012 | $0.0014 | $0.0012* |
 | bfcl | $0.0005 | $0.0004 | $0.0004 | $0.0004† |
-| clawbench | $0.0054 | $0.0021 | $0.0021 | $0.0021* |
+| clawbench | $0.0054 | $0.0021 | $0.0021 | $0.0020† |
 | compactbench | $0.0157 | $0.0245 | $0.0238 | $0.0245* |
 | configbench | $0.0014 | $0.0002 | $0.0002 | $0.0002* |
 | context_bench | $0.0114 | $0.0005 | $0.0005 | $0.0005† |
@@ -54,9 +54,9 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | vision_language | — | $0.2130 | $0.2130 | $0.2130* |
 | visualwebbench | $0.0008 | $0.0006 | $0.0007 | $0.0006* |
 | webshop | $0.0021 | $0.0026 | $0.0026 | $0.0026* |
-| woobench | $0.0272 | $0.0264 | $0.0395 | $0.0264* |
-| **TOTAL** | **$0.58** | **$0.51** | **$0.68** | **$0.54** |
-| **AVG/bench** | $0.0136 | $0.0118 | $0.0155 | $0.0122 |
+| woobench | $0.0272 | $0.0264 | $0.0395 | $0.0237† |
+| **TOTAL** | **$0.58** | **$0.51** | **$0.68** | **$0.53** |
+| **AVG/bench** | $0.0136 | $0.0118 | $0.0155 | $0.0121 |
 | benchmarks counted | 43 | 43 | 44 | 44 |
 
 ## Cost per benchmark — opus-4.8 (Anthropic)
@@ -66,10 +66,10 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | abliteration_robustness | $0.1360 | $0.0216 | $0.0216 | $0.0216† |
 | action_calling | $0.0982 | $0.0764 | $0.0766 | $0.0754† |
 | adhdbench | $0.5159 | $0.0251 | $0.0283 | $0.0251* |
-| agentbench | $0.2463 | $0.0101 | $1.3308 | $0.0101* |
+| agentbench | $0.2463 | $0.0101 | $1.3308 | $0.0057† |
 | app_eval | $0.1168 | $0.1197 | $0.1335 | $0.1197* |
 | bfcl | $0.0350 | $0.0217 | $0.0216 | $0.0201† |
-| clawbench | $0.3147 | $0.1388 | $0.1390 | $0.1388* |
+| clawbench | $0.3147 | $0.1388 | $0.1390 | $0.1320† |
 | compactbench | $1.0775 | $1.6126 | $1.5605 | $1.6126* |
 | configbench | $0.0773 | $0.0140 | $0.0142 | $0.0140* |
 | context_bench | $0.5551 | $0.0211 | $0.0213 | $0.0211† |
@@ -106,7 +106,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | vision_language | — | $9.1299 | $9.1299 | $9.1299* |
 | visualwebbench | $0.0477 | $0.0345 | $0.0365 | $0.0345* |
 | webshop | $0.1236 | $0.1219 | $0.1224 | $0.1219* |
-| woobench | $1.8356 | $1.5618 | $2.3336 | $1.5618* |
-| **TOTAL** | **$30.93** | **$23.88** | **$32.02** | **$25.41** |
-| **AVG/bench** | $0.7192 | $0.5552 | $0.7277 | $0.5775 |
+| woobench | $1.8356 | $1.5618 | $2.3336 | $1.6197† |
+| **TOTAL** | **$30.93** | **$23.88** | **$32.02** | **$25.46** |
+| **AVG/bench** | $0.7192 | $0.5552 | $0.7277 | $0.5786 |
 | benchmarks counted | 43 | 43 | 44 | 44 |

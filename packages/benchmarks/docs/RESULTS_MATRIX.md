@@ -1,18 +1,16 @@
 # Full benchmark × harness results matrix
 
-Status of every discovered benchmark across all four harnesses. Cells: a score = posted to `benchmark_results/latest/`; `gated` = harness not compatible (needs infra/credentials not present — applies to all harnesses); `—` = compatible but not yet posted this pass.
-
-**8/53 benchmarks have a smithers post; 8/53 have a full 4-way post.** The remaining cells are blocked by infrastructure (Docker, real audio, multimodal runtime, chain keys, eliza TS bridge) or pending per-benchmark smithers wiring — see `CERTIFICATION.md` and `BENCHMARK_PARITY_ASSESSMENT.md`.
+**11/53 benchmarks have a smithers post; 11/53 full 4-way.** Cells: score = posted; `gated` = harness incompatible here (infra/credentials absent, applies to all harnesses); `—` = compatible but not posted this pass. Smithers wiring spans 5 reusable patterns (agent-class, bare-client, standard framework, delegation, subclass). Remaining gaps: bridge-gated (mint/lifeops via eliza TS bridge), infra-gated (Docker/audio/multimodal/chain keys), rate-limit-blocked (tau_bench — wiring done, Cerebras 429s under burst), or pending bespoke wiring. See CERTIFICATION.md.
 
 | benchmark | eliza | hermes | openclaw | smithers |
 |---|---|---|---|---|
 | abliteration-robustness | 1.00 | 1.00 | 1.00 | 1.00 |
 | action-calling | 1.00 | 1.00 | 1.00 | 1.00 |
 | adhdbench | 1.00 | 1.00 | 1.00 | gated |
-| agentbench | 1.00 | 1.00 | 1.00 | gated |
+| agentbench | 1.00 | 1.00 | 1.00 | 1.00 |
 | app-eval | 1.00 | 1.00 | 1.00 | gated |
 | bfcl | 0.50 | 0.50 | 0.50 | 0.50 |
-| clawbench | 1.00 | 1.00 | 1.00 | gated |
+| clawbench | 1.00 | 1.00 | 1.00 | 1.00 |
 | compactbench | 1.00 | 1.00 | 1.00 | gated |
 | configbench | 1.00 | 1.00 | 1.00 | gated |
 | context_bench | 1.00 | 1.00 | 1.00 | 1.00 |
@@ -58,4 +56,4 @@ Status of every discovered benchmark across all four harnesses. Cells: a score =
 | voicebench | gated | gated | gated | gated |
 | voicebench_quality | gated | gated | gated | gated |
 | webshop | 1.00 | 1.00 | 1.00 | gated |
-| woobench | 0.93 | 0.89 | 0.93 | gated |
+| woobench | 0.93 | 0.89 | 0.93 | 0.91 |

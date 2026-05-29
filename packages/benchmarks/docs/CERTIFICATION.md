@@ -29,8 +29,25 @@ Published through the real orchestrator path, same
 | context_bench | 1.00 | 1.00 | 1.00 | **1.00** |
 | abliteration-robustness | 1.00 | 1.00 | 1.00 | **1.00** |
 | scambench | 1.00 | 1.00 | 1.00 | **1.00** |
+| clawbench | 1.00 | 1.00 | 1.00 | **1.00** |
+| agentbench | 1.00 | 1.00 | 1.00 | **1.00** |
+| woobench | 0.89 | 0.89 | 0.93 | **0.91** |
 
-- All posted benchmarks: exact 4-way parity. The smithers harness emits native
+11 benchmarks posted 4-way (10 exact-parity; woobench in range on a heuristic
+evaluator). `tau_bench` wiring is complete (`SmithersTauAgent`) and runs
+end-to-end, but bursts agent+user+judge calls and hits the Cerebras per-minute
+token quota (429s) on this key — re-enable with quota headroom / throttling.
+
+Smithers wiring spans five reusable integration patterns: per-benchmark
+agent-class (bfcl), bare-client `_make_harness_client` (action-calling,
+abliteration-robustness, scambench), the shared `standard` framework
+(humaneval, gsm8k, mmlu), context_bench's query factory, agent_fn delegation
+(woobench → hermes builder + SmithersClient), and subclassing
+(tau_bench → SmithersTauAgent). Adding the remaining bridge-free benchmarks is
+now mechanical (factory/branch + gate). See `docs/RESULTS_MATRIX.md` for the
+full 53-benchmark status.
+
+- All posted benchmarks: exact 4-way parity (woobench in range). The smithers harness emits native
   ai-SDK `ToolCallPart` / `ToolResultPart` messages, so multi-turn
   function-calling history is preserved with full fidelity (action-calling went
   0.66 → 1.00 after this fix).
