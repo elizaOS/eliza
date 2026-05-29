@@ -109,8 +109,34 @@ def _trajectory_trace() -> dict:
     }
 
 
+def _failed_trajectory_trace() -> dict:
+    trace = _trajectory_trace()
+    trace["steps"][-1].update(
+        {
+            "x": -0.2,
+            "y": 0.2,
+            "forward_progress_m": 1.0,
+            "passed_obstacle": False,
+            "goal_reached": False,
+            "obstacle_clearance_m": 0.1,
+        }
+    )
+    trace["summary"] = {
+        "success_rate": 0.0,
+        "collision_rate": 0.0,
+        "passed_obstacle_rate": 0.0,
+        "mean_forward_progress_m": 1.0,
+        "min_obstacle_clearance_m": 0.1,
+    }
+    return trace
+
+
 def _trajectory_matrix(n_tasks: int = 2) -> list[list[dict]]:
     return [[_trajectory_trace() for _ in range(n_tasks)] for _ in range(n_tasks)]
+
+
+def _failed_trajectory_matrix(n_tasks: int = 2) -> list[list[dict]]:
+    return [[_failed_trajectory_trace() for _ in range(n_tasks)] for _ in range(n_tasks)]
 
 
 def _motion_summary() -> dict[str, dict[str, float | int]]:
@@ -438,7 +464,7 @@ def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
                         "baseline": baseline,
                         "motion_baseline": _motion_baseline(),
                         "motion_matrix": _motion_matrix(),
-                        "trajectory_matrix": _trajectory_matrix(),
+                        "trajectory_matrix": _failed_trajectory_matrix(),
                     },
                 ],
             }
@@ -512,6 +538,8 @@ def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
     assert present["checks"]["demo_json"] is True
     assert present["checks"]["demo_video"] is True
     assert present["checks"]["obstacle_trace_rollouts"] is True
+    assert present["obstacle_trace_rollouts"]["alberta_successful_final_clear"] is True
+    assert present["obstacle_trace_rollouts"]["alberta_final_clear_advantage"] is True
     assert (
         present["obstacle_trace_rollouts"]["by_learner"]["alberta"][
             "has_successful_final_clear"
@@ -596,6 +624,8 @@ def test_obstacle_validator_rejects_trace_metrics_not_backed_by_steps(tmp_path):
     assert validation["ok"] is False
     assert validation["checks"]["obstacle_trace_rollouts"] is False
     assert validation["obstacle_trace_rollouts"]["all_trace_summaries_consistent"] is False
+    assert validation["obstacle_trace_rollouts"]["alberta_successful_final_clear"] is False
+    assert validation["obstacle_trace_rollouts"]["alberta_final_clear_advantage"] is False
     assert (
         validation["obstacle_trace_rollouts"]["any_required_learner_successful_final_clear"]
         is False

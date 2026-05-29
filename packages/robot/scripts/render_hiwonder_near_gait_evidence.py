@@ -21,7 +21,14 @@ from eliza_robot.rl.text_conditioned.profile_env import (  # noqa: E402
     ProfileEnvConfig,
     TextConditionedProfileEnv,
 )
+from scripts.search_hiwonder_random_sine_gaits import (  # noqa: E402
+    _apply_feedback as _apply_search_feedback,
+)
+from scripts.search_hiwonder_random_sine_gaits import (  # noqa: E402
+    _hybrid_recovery_action,
+)
 from scripts.validate_task_feasibility import (  # noqa: E402
+    _make_sinusoidal_action,
     _primitive_specs,
     _sample,
 )
@@ -42,6 +49,26 @@ def _contact_sheet(frames: list[np.ndarray], *, n_cols: int = 4) -> np.ndarray:
     return np.concatenate(rows, axis=0)
 
 
+def _candidate_from_search_report(
+    path: Path,
+    *,
+    section: str,
+    selector: str,
+) -> tuple[str, dict[str, Any]]:
+    report = json.loads(path.read_text(encoding="utf-8"))
+    section_report = report.get(section)
+    if not isinstance(section_report, dict):
+        raise ValueError(f"search report has no section {section!r}")
+    candidate = section_report.get(selector)
+    if not isinstance(candidate, dict):
+        raise ValueError(f"search report section {section!r} has no candidate {selector!r}")
+    params = candidate.get("controller_params")
+    if not isinstance(params, dict):
+        raise ValueError(f"candidate {candidate.get('controller')!r} has no controller_params")
+    controller = str(candidate.get("controller") or f"{section}_{selector}")
+    return controller, params
+
+
 def render_candidate(
     *,
     controller: str,
@@ -54,6 +81,7 @@ def render_candidate(
     feedback_pitch: float = 0.0,
     feedback_roll: float = 0.0,
     feedback_yaw: float = 0.0,
+    candidate_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     try:
         import imageio.v2 as imageio
@@ -63,12 +91,16 @@ def render_candidate(
 
     specs = {spec.name: spec for spec in _primitive_specs("hiwonder-ainex", "walk_forward")}
     use_env_prior = controller == "env_hiwonder_sine_prior"
-    if not use_env_prior and controller not in specs:
+    use_search_candidate = candidate_params is not None
+    if not use_env_prior and not use_search_candidate and controller not in specs:
         raise ValueError(
             f"unknown controller {controller!r}; available={sorted(specs) + ['env_hiwonder_sine_prior']}"
         )
     primitive = specs.get(controller)
     selected_action_scale = (
+        1.0
+        if use_search_candidate
+        else
         float(action_scale)
         if action_scale is not None
         else 0.6991004812004398
@@ -109,11 +141,20 @@ def render_candidate(
             },
         )
     )
-    action_for_step = (
-        (lambda _step: np.zeros(env.action_space.shape, dtype=np.float32))
-        if use_env_prior
-        else primitive.factory(env, "walk_forward")
-    )
+    if use_search_candidate:
+        if action_scale is not None:
+            candidate_params = dict(candidate_params)
+            candidate_params["scale"] = float(action_scale)
+        action_for_step = _make_sinusoidal_action(
+            env,
+            "walk_forward",
+            params=candidate_params,
+        )
+    elif use_env_prior:
+        def action_for_step(_step: int) -> np.ndarray:
+            return np.zeros(env.action_space.shape, dtype=np.float32)
+    else:
+        action_for_step = primitive.factory(env, "walk_forward")
     renderer = mujoco.Renderer(env._model, height=height, width=width)  # noqa: SLF001
     frames: list[np.ndarray] = []
     telemetry: list[dict[str, Any]] = []
@@ -127,6 +168,7 @@ def render_candidate(
     foot_switches = 0
     terminated = False
     truncated = False
+    hybrid_start_pose: np.ndarray | None = None
     out_dir.mkdir(parents=True, exist_ok=True)
     video_path = out_dir / f"{controller}.mp4"
     contact_sheet_path = out_dir / f"{controller}_contact.jpg"
@@ -141,7 +183,47 @@ def render_candidate(
     )
     try:
         for step in range(max_steps):
-            action = action_for_step(step)
+            hybrid_recovery = (
+                candidate_params.get("hybrid_recovery")
+                if isinstance(candidate_params, dict)
+                else None
+            )
+            if (
+                isinstance(hybrid_recovery, dict)
+                and step >= int(hybrid_recovery["switch_step"])
+            ):
+                if hybrid_start_pose is None:
+                    hybrid_start_pose = np.array(
+                        [
+                            env._data.qpos[qpos_idx]  # noqa: SLF001
+                            for qpos_idx in env._joint_qpos_idx  # noqa: SLF001
+                        ],
+                        dtype=np.float32,
+                    )
+                action = _hybrid_recovery_action(
+                    env,
+                    step=step,
+                    start_pose=hybrid_start_pose,
+                    recovery=hybrid_recovery,
+                )
+            else:
+                action = action_for_step(step)
+                if use_search_candidate:
+                    action = np.clip(
+                        action * float(candidate_params.get("scale", 1.0)),
+                        -1.0,
+                        1.0,
+                    )
+                    if isinstance(hybrid_recovery, dict):
+                        action *= float(hybrid_recovery.get("pre_scale", 1.0))
+                    feedback = candidate_params.get("feedback")
+                    if isinstance(feedback, dict):
+                        action = _apply_search_feedback(
+                            env,
+                            action,
+                            feedback,
+                            step=step,
+                        )
             if action is None:
                 action = np.zeros(env.action_space.shape, dtype=np.float32)
             _, _, terminated, truncated, info = env.step(action)
@@ -212,6 +294,7 @@ def render_candidate(
         "task_id": "walk_forward",
         "controller": controller,
         "action_scale": selected_action_scale,
+        "candidate_params": candidate_params,
         "locomotion_action_prior": env.config.locomotion_action_prior,
         "locomotion_prior_feedback": {
             "pitch": feedback_pitch,
@@ -273,6 +356,22 @@ def render_candidate(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--controller", default="sinusoidal_seeded_3")
+    parser.add_argument(
+        "--search-report",
+        type=Path,
+        default=None,
+        help="Replay a candidate from a random-sine search JSON report.",
+    )
+    parser.add_argument(
+        "--search-section",
+        default="hybrid_recovery_refinement",
+        help="Section to read from --search-report.",
+    )
+    parser.add_argument(
+        "--search-selector",
+        default="best_by_success_window",
+        help="Candidate key to read from --search-section.",
+    )
     parser.add_argument("--max-steps", type=int, default=320)
     parser.add_argument("--width", type=int, default=320)
     parser.add_argument("--height", type=int, default=240)
@@ -287,8 +386,16 @@ def main(argv: list[str] | None = None) -> int:
         default=ROOT / "evidence" / "hiwonder_near_gait_visual",
     )
     args = parser.parse_args(argv)
+    candidate_params = None
+    controller = args.controller
+    if args.search_report is not None:
+        controller, candidate_params = _candidate_from_search_report(
+            args.search_report,
+            section=args.search_section,
+            selector=args.search_selector,
+        )
     report = render_candidate(
-        controller=args.controller,
+        controller=controller,
         max_steps=args.max_steps,
         out_dir=args.out_dir,
         width=args.width,
@@ -298,6 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         feedback_pitch=args.feedback_pitch,
         feedback_roll=args.feedback_roll,
         feedback_yaw=args.feedback_yaw,
+        candidate_params=candidate_params,
     )
     print(json.dumps({k: v for k, v in report.items() if k != "telemetry"}, indent=2))
     return 0 if report["walking_success"] else 2

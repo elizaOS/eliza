@@ -1,16 +1,135 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts.audit_robot_motion_learning import (
     DEFAULT_TASK_FEASIBILITY_PATH,
     _fresh_obstacle_smoke_summary,
+    _learned_policy_curriculum_eval_summary,
     _local_learning_probe_from_dir,
     _local_learning_probe_summary,
     _multi_profile_walk_summary,
     _near_gait_visual_summary,
     _task_feasibility_summary,
 )
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _curriculum_physical_checks(task_id: str) -> dict[str, bool]:
+    if task_id == "stand_up":
+        return {
+            "episodes": True,
+            "success_rate_full": True,
+            "failure_rate_zero": True,
+            "hold_s": True,
+            "torso_height_gain": True,
+            "tracked_height_gain": True,
+            "torso_height_finite_positive": True,
+            "tracked_height_finite_positive": True,
+        }
+    if task_id == "walk_forward":
+        return {
+            "episodes": True,
+            "success_rate_full": True,
+            "failure_rate_zero": True,
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "min_swing_foot_clearance_m": True,
+            "max_foot_slip_m_s": True,
+            "max_self_collision_count": True,
+            "tracked_height_present": True,
+            "tracked_delta_x_forward": True,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+        }
+    raise AssertionError(f"unsupported test task: {task_id}")
+
+
+def _motion_fields(task_id: str, *, tracked_body_name: str = "pelvis_link") -> dict[str, float | str]:
+    fields: dict[str, float | str] = {
+        "tracked_body_name": tracked_body_name,
+        "mean_final_delta_x_m": 0.0,
+        "mean_final_delta_y_m": 0.0,
+        "mean_final_delta_yaw_rad": 0.0,
+        "mean_final_tracked_delta_x_m": 0.0,
+        "mean_final_tracked_delta_y_m": 0.0,
+        "mean_final_tracked_delta_z_m": 0.0,
+        "mean_final_tracked_z_m": 0.4,
+        "mean_final_torso_z_m": 0.4,
+        "mean_final_torso_z_delta_m": 0.0,
+    }
+    if task_id == "stand_up":
+        fields["mean_final_tracked_delta_z_m"] = 0.08
+        fields["mean_final_torso_z_delta_m"] = 0.08
+    elif task_id == "walk_forward":
+        fields["mean_final_delta_x_m"] = 0.35
+        fields["mean_final_tracked_delta_x_m"] = 0.35
+    return fields
+
+
+def _write_learned_policy_eval(
+    run_root: Path,
+    *,
+    curriculum_task_overrides: dict[str, dict] | None = None,
+    native_task_overrides: dict[str, dict] | None = None,
+) -> None:
+    checkpoint = run_root / "checkpoint"
+    checkpoint.mkdir(parents=True)
+    tasks = ("stand_up", "walk_forward")
+    curriculum_rows = []
+    native_tasks = {}
+    for task_id in tasks:
+        row = {
+            "task_id": task_id,
+            "success_programmatic": True,
+            "physical_success": True,
+            "physical_checks": _curriculum_physical_checks(task_id),
+            "success_rate": 1.0,
+            "failure_rate": 0.0,
+            "episodes": 2,
+            "error": None,
+            **_motion_fields(task_id),
+        }
+        row.update((curriculum_task_overrides or {}).get(task_id, {}))
+        curriculum_rows.append(row)
+        native = {
+            "success_rate": 1.0,
+            "failure_rate": 0.0,
+            "episodes": 2,
+            **_motion_fields(task_id),
+        }
+        native.update((native_task_overrides or {}).get(task_id, {}))
+        native_tasks[task_id] = native
+    _write_json(
+        run_root / "evidence" / "curriculum_eval" / "report.json",
+        {
+            "schema": "robot-policy-curriculum-eval-v1",
+            "source": "eval_text_policy",
+            "profile_id": "asimov-1",
+            "policy": "checkpoint:checkpoint",
+            "checkpoint": str(checkpoint),
+            "n_tasks": len(tasks),
+            "n_programmatic_pass": len(tasks),
+            "programmatic_pass_rate": 1.0,
+            "mean_success_rate_overall": 1.0,
+            "tasks": curriculum_rows,
+        },
+    )
+    _write_json(
+        run_root / "evidence" / "curriculum_eval" / "eval_text_policy.json",
+        {
+            "schema": "robot-text-policy-eval-v1",
+            "profile_id": "asimov-1",
+            "checkpoint": str(checkpoint),
+            "tasks": native_tasks,
+        },
+    )
 
 
 def test_robot_motion_audit_defaults_to_current_all_task_feasibility() -> None:
@@ -209,6 +328,57 @@ def test_local_learning_probe_summary_flags_falling_lunge_not_walking() -> None:
     assert summary["trained_failure_rate"] == 1.0
     assert summary["zero_failure_rate"] == 0.0
     assert summary["promotion_blocker"] == "phase_success_rate_below_threshold"
+
+
+def test_learned_policy_curriculum_eval_rejects_wrong_signed_motion(
+    tmp_path: Path,
+) -> None:
+    _write_learned_policy_eval(
+        tmp_path,
+        curriculum_task_overrides={
+            "walk_forward": {
+                "mean_final_delta_x_m": -0.35,
+                "mean_final_tracked_delta_x_m": -0.35,
+            }
+        },
+        native_task_overrides={
+            "walk_forward": {
+                "mean_final_delta_x_m": -0.35,
+                "mean_final_tracked_delta_x_m": -0.35,
+            }
+        },
+    )
+
+    summary = _learned_policy_curriculum_eval_summary(tmp_path)
+
+    assert summary["ok"] is False
+    assert "curriculum.all_requested_tasks_numeric_motion" in summary["failed_checks"]
+    assert "native.per_task_numeric_motion" in summary["failed_checks"]
+    failed = summary["failed_tasks"][0]
+    assert failed["task_id"] == "walk_forward"
+    assert "mean_final_tracked_delta_x_m" in failed["numeric_motion_fail_reasons"]
+    assert "mean_final_tracked_delta_x_m" in failed["native_numeric_motion_fail_reasons"]
+
+
+def test_learned_policy_curriculum_eval_rejects_missing_locomotion_checks(
+    tmp_path: Path,
+) -> None:
+    checks = _curriculum_physical_checks("walk_forward")
+    checks.pop("min_swing_foot_clearance_m")
+    checks.pop("max_foot_slip_m_s")
+    checks.pop("max_self_collision_count")
+    _write_learned_policy_eval(
+        tmp_path,
+        curriculum_task_overrides={"walk_forward": {"physical_checks": checks}},
+    )
+
+    summary = _learned_policy_curriculum_eval_summary(tmp_path)
+
+    assert summary["ok"] is False
+    assert "curriculum.all_requested_tasks_physical_success" in summary["failed_checks"]
+    assert summary["task_checks"]["walk_forward"] is False
+    assert summary["native_task_checks"]["walk_forward"] is True
+    assert summary["failed_tasks"][0]["failed_physical_checks"] == []
 
 
 def test_local_learning_probe_summary_loads_training_manifest(tmp_path: Path) -> None:
@@ -594,6 +764,8 @@ def test_fresh_obstacle_smoke_summary_surfaces_demo_and_trace_facts(
             "ok": True,
             "all_trace_summaries_consistent": True,
             "any_required_learner_successful_final_clear": True,
+            "alberta_successful_final_clear": True,
+            "alberta_final_clear_advantage": True,
         },
         "demo": {
             "schema": "robot-alberta-obstacle-demo-v1",
@@ -663,6 +835,8 @@ def test_fresh_obstacle_smoke_summary_surfaces_demo_and_trace_facts(
     assert summary["proves_robot_walking"] is False
     assert "not MuJoCo or real robot walking" in summary["robot_walking_evidence_note"]
     assert summary["failed_checks"] == []
+    assert summary["checks"]["alberta_successful_final_clear"] is True
+    assert summary["checks"]["alberta_final_clear_advantage"] is True
     assert summary["demo"]["video_bytes_json"] == 12_000
     assert summary["demo"]["video_bytes_file"] == 12_000
     trace = summary["trajectory_samples"]["alberta"]
@@ -690,6 +864,8 @@ def test_fresh_obstacle_smoke_summary_prefers_successful_clear_sample(
             "ok": True,
             "all_trace_summaries_consistent": True,
             "any_required_learner_successful_final_clear": True,
+            "alberta_successful_final_clear": True,
+            "alberta_final_clear_advantage": True,
         },
         "demo": {
             "schema": "robot-alberta-obstacle-demo-v1",
@@ -797,6 +973,8 @@ def test_fresh_obstacle_smoke_summary_rejects_missing_demo_video(
                 "ok": True,
                 "all_trace_summaries_consistent": True,
                 "any_required_learner_successful_final_clear": True,
+                "alberta_successful_final_clear": True,
+                "alberta_final_clear_advantage": True,
             },
             "demo": {
                 "schema": "robot-alberta-obstacle-demo-v1",

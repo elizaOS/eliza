@@ -190,7 +190,9 @@ def run_cocotb(verilator: str) -> dict:
         return {
             "id": SMOKE["id"],
             "status": "blocked",
-            "detail": f"no {results.relative_to(ROOT)}; cocotb/verilator unavailable. {last}",
+            "detail": repo_safe(
+                f"no {results.relative_to(ROOT)}; cocotb/verilator unavailable. {last}"
+            ),
         }
     tree = ET.parse(results)
     seen, failed = set(), []
@@ -265,6 +267,11 @@ def main() -> int:
         "as_of": _now(),
         "generated_utc": _now(),
         "subsystem": "soc-integration",
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "linux_boot_claim_allowed": False,
+        "production_cpu_claim_allowed": False,
+        "real_cpu_execution_claim_allowed": False,
         "claim_boundary": (
             "Behind +define+E1_SOC_REAL_IRQ / +define+E1_SOC_REAL_DRAM, "
             "e1_soc_top composes the production RISC-V CLINT (@0x0200_0000, "

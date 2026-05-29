@@ -13,11 +13,11 @@ summary:
   matrix_row_count: 67
   template_row_count: 6
   required_non_template_row_count: 61
-  present_required_non_template_row_count: 38
-  missing_required_non_template_row_count: 23
+  present_required_non_template_row_count: 61
+  missing_required_non_template_row_count: 0
   other_blocked_row_count: 0
-  recommended_next_evidence_packet_count: 1
-  highest_leverage_next_packet: executed_first_article_bench_logs
+  recommended_next_evidence_packet_count: 0
+  highest_leverage_next_packet: null
   source_matrix_row_count: 67
   source_release_state: blocked_fail_closed
 fail_closed_policy:
@@ -26,268 +26,8 @@ fail_closed_policy:
   presence_only_inventory_unlocks_release: false
   executed_logs_and_signed_traveler_required: true
   release_allowed: false
-missing_required_non_template_evidence:
-- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/drc.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/erc.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  evidence_kind: release_evidence
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Produce and sign the required production release artifact from routed board, supplier,
-    factory, or first-article evidence.
-- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/rf
-  evidence_kind: release_evidence
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Produce and sign the required production release artifact from routed board, supplier,
-    factory, or first-article evidence.
-- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  evidence_kind: rf_or_calibration_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run conducted RF, VNA, coexistence, wireless identity, or calibration capture on
-    routed hardware and archive the measured log.
-- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  evidence_kind: rf_or_calibration_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run conducted RF, VNA, coexistence, wireless identity, or calibration capture on
-    routed hardware and archive the measured log.
-- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  evidence_kind: rf_or_calibration_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run conducted RF, VNA, coexistence, wireless identity, or calibration capture on
-    routed hardware and archive the measured log.
-- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  evidence_kind: rf_or_calibration_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run conducted RF, VNA, coexistence, wireless identity, or calibration capture on
-    routed hardware and archive the measured log.
-- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  evidence_kind: clearance_or_enclosure_evidence
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Archive routed-board clearance, board STEP, supplier-model, and enclosure physical-fit
-    evidence before any enclosure or first-article release.
-- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  evidence_kind: release_evidence
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Produce and sign the required production release artifact from routed board, supplier,
-    factory, or first-article evidence.
-- path: board/kicad/e1-phone/production/reports/si-pi
-  evidence_kind: release_evidence
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Produce and sign the required production release artifact from routed board, supplier,
-    factory, or first-article evidence.
-- path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  evidence_kind: release_evidence
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Produce and sign the required production release artifact from routed board, supplier,
-    factory, or first-article evidence.
-- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-- path: board/kicad/e1-phone/production/reports/zone-fill.json
-  evidence_kind: executed_log
-  acceptance_state: blocked_fail_closed_missing_required_evidence
-  current_presence:
-    present: false
-    artifact_kind: missing
-  release_evidence: false
-  template_only: false
-  next_unblock_action: Run the routed first-article bench step, capture the executed JSON log, and bind
-    board serial, fixture ID, test software revision, operator, limits, and pass/fail disposition.
-recommended_next_evidence_packets:
-- id: executed_first_article_bench_logs
-  release_credit: false
-  priority: 10
-  missing_path_count: 23
-  missing_paths:
-  - board/kicad/e1-phone/production/reports/camera-capture-log.json
-  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  - board/kicad/e1-phone/production/reports/drc.json
-  - board/kicad/e1-phone/production/reports/erc.json
-  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  - board/kicad/e1-phone/production/reports/rf
-  - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  - board/kicad/e1-phone/production/reports/si-pi
-  - board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
-  - board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
-  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  - board/kicad/e1-phone/production/reports/zone-fill.json
-  next_unblock_action: Capture executed bench logs on routed first article hardware and bind board serial,
-    fixture ID, limits, operator, measured results, and pass/fail disposition.
+missing_required_non_template_evidence: []
+recommended_next_evidence_packets: []
 template_only_evidence:
 - path: board/kicad/e1-phone/production/test/charger-cc-cv-cycle.template.json
   evidence_kind: template
@@ -510,7 +250,67 @@ present_unvalidated_evidence:
   template_only: false
   next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
     before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
 - path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+  evidence_kind: release_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/drc.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/erc.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
   evidence_kind: release_evidence
   acceptance_state: present_unvalidated_still_fail_closed
   current_presence:
@@ -550,6 +350,16 @@ present_unvalidated_evidence:
   template_only: false
   next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
     before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
 - path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
   evidence_kind: release_evidence
   acceptance_state: present_unvalidated_still_fail_closed
@@ -560,8 +370,58 @@ present_unvalidated_evidence:
   template_only: false
   next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
     before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/rf
+  evidence_kind: release_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: directory
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
 - path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
   evidence_kind: release_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  evidence_kind: rf_or_calibration_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  evidence_kind: rf_or_calibration_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  evidence_kind: rf_or_calibration_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+  evidence_kind: rf_or_calibration_log
   acceptance_state: present_unvalidated_still_fail_closed
   current_presence:
     present: true
@@ -580,8 +440,118 @@ present_unvalidated_evidence:
   template_only: false
   next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
     before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  evidence_kind: clearance_or_enclosure_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  evidence_kind: release_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
 - path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
   evidence_kind: release_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/si-pi
+  evidence_kind: release_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: directory
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+  evidence_kind: release_evidence
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+  evidence_kind: executed_log
+  acceptance_state: present_unvalidated_still_fail_closed
+  current_presence:
+    present: true
+    artifact_kind: file
+  release_evidence: false
+  template_only: false
+  next_unblock_action: Validate content, signatures, traceability, limits, freshness, and owner disposition
+    before treating this artifact as acceptance evidence.
+- path: board/kicad/e1-phone/production/reports/zone-fill.json
+  evidence_kind: executed_log
   acceptance_state: present_unvalidated_still_fail_closed
   current_presence:
     present: true

@@ -177,21 +177,24 @@ def _feedback_refinement_params(base: dict[str, float]) -> list[dict[str, Any]]:
 
 
 def _hybrid_recovery_refinement_params(base: dict[str, Any]) -> list[dict[str, Any]]:
-    clean_base = {key: value for key, value in base.items() if key != "feedback"}
+    base_variants = [dict(base)]
+    if "feedback" in base:
+        base_variants.append({key: value for key, value in base.items() if key != "feedback"})
     params: list[dict[str, Any]] = []
-    for switch_step in HYBRID_SWITCH_STEPS:
-        for ramp_steps in HYBRID_RAMP_STEPS:
-            for pitch_gain in HYBRID_PITCH_GAINS:
-                for pre_scale in HYBRID_PRE_SCALES:
-                    row = dict(clean_base)
-                    row["hybrid_recovery"] = {
-                        "switch_step": switch_step,
-                        "ramp_steps": ramp_steps,
-                        "pitch_gain": pitch_gain,
-                        "pre_scale": pre_scale,
-                        "post_bias": 0.0,
-                    }
-                    params.append(row)
+    for base_row in base_variants:
+        for switch_step in HYBRID_SWITCH_STEPS:
+            for ramp_steps in HYBRID_RAMP_STEPS:
+                for pitch_gain in HYBRID_PITCH_GAINS:
+                    for pre_scale in HYBRID_PRE_SCALES:
+                        row = dict(base_row)
+                        row["hybrid_recovery"] = {
+                            "switch_step": switch_step,
+                            "ramp_steps": ramp_steps,
+                            "pitch_gain": pitch_gain,
+                            "pre_scale": pre_scale,
+                            "post_bias": 0.0,
+                        }
+                        params.append(row)
     return params
 
 

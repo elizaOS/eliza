@@ -205,6 +205,11 @@ class BootSecurityChainContractTests(unittest.TestCase):
                         "schema": "eliza.gate_status.v1",
                         "gate": "boot.bootrom_positive_handoff",
                         "status": "PASS",
+                        "phone_claim_allowed": False,
+                        "release_claim_allowed": False,
+                        "linux_boot_claim_allowed": False,
+                        "android_boot_claim_allowed": False,
+                        "silicon_secure_boot_claim_allowed": False,
                         "evidence_paths": [
                             gate.BOOTROM_POSITIVE_HANDOFF_TRANSCRIPT.relative_to(
                                 gate.ROOT
@@ -320,6 +325,7 @@ class BootSecurityChainContractTests(unittest.TestCase):
 
         codes = {finding["code"] for finding in report["findings"]}
         self.assertEqual(report["status"], "blocked")
+        self.assertIn("bootrom_positive_handoff_report_allows_release_claims", codes)
         self.assertIn("bootrom_positive_handoff_transcript_not_cited", codes)
         self.assertIn("bootrom_positive_handoff_missing_required_markers", codes)
 

@@ -165,6 +165,21 @@ python3 scripts/check_e1x_formal.py
   route/drop behavior, and route-table programming/readback. The aggregate
   fabric gate includes this credit-router cocotb gate so fabric evidence covers
   both repair routing semantics and congestion-safe flow control.
+- Production PE tile and mesh fabric top: `rtl/e1x/e1x_pe_tile.sv` integrates the
+  real RV64IM_Zicsr_Zifencei `e1x_pe_core` (not the tiny-core contract) with the
+  mesh router; its `e1x-tile-cocotb` tests boot a program that runs an
+  M-extension MUL and round-trip a fabric wavelet through the router Local port.
+  `rtl/e1x/e1x_mesh_fabric.sv` is the parameterized RxC (default 4x4) full-mesh
+  top: it instantiates the production `e1x_credit_router` across a tile array of
+  real `e1x_pe_core` nodes, wires inter-tile credit-returned links (N<->S,
+  E<->W) with boundary tie-offs that fail closed, exposes per-node boot,
+  injection, and ejection, and programs per-router route tables for XY
+  dimension-order routing. The `e1x-mesh-fabric-cocotb` gate proves multi-hop
+  lossless delivery (six router hops corner-to-corner), X-then-Y turns,
+  independent multi-color flows, and a real PE core launching a wavelet routed
+  across the mesh. This closes the integration gap between the production credit
+  router, the real PE core, and the wafer mesh; full-resolution sizing and a
+  formal network-level liveness proof remain open (see Completion Gates).
 - Repair ROM RTL: `rtl/e1x/e1x_repair_rom_loader.sv` consumes the 64-bit image
   format and emits decoded remap and route records. `rtl/e1x/e1x_repair_state.sv`
   stores those records in bounded remap/route memories and exposes lookup ports
@@ -288,12 +303,22 @@ or a production compiler for arbitrary LLM graphs.
 - RV F/D units and formal/full architectural compliance for the E1X processing
   element. The current gated PE core covers RV64IM_Zicsr_Zifencei integer
   execution for the quantized inference path, not floating-point ISA support or
-  full RISC-V compliance.
-- Full-wafer production mesh integration around the credit router, including
-  complete route-table SRAM/fuse sizing, boot-time programming across every
-  tile, and network-level deadlock/liveness proof. The current credit-router
-  RTL, cocotb gate, and reduced-parameter formal safety proof are present, but
-  full-wafer fabric integration remains open.
+  full RISC-V compliance. The real `e1x_pe_core` is now integrated into a
+  production tile (`rtl/e1x/e1x_pe_tile.sv`) and into the mesh fabric nodes; the
+  `e1x-tile-cocotb` gate boots a program on the integrated core (including an
+  M-extension MUL the tiny-core cannot decode) and round-trips a fabric wavelet
+  through the router Local port.
+- Network-level deadlock/liveness *formal* proof and full-resolution (512x342)
+  route-table SRAM/fuse sizing for the production mesh. A parameterized RxC
+  (default 4x4) mesh fabric top (`rtl/e1x/e1x_mesh_fabric.sv`) now instantiates
+  the production `e1x_credit_router` across a tile array with real `e1x_pe_core`
+  compute nodes, inter-tile credit-returned links, and boot-time route-table
+  programming; the `e1x-mesh-fabric-cocotb` gate proves multi-hop lossless XY
+  delivery (up to six router hops corner-to-corner), X-then-Y turns, independent
+  multi-color flows, and a real PE core launching a wavelet routed across the
+  mesh. XY dimension-order routing is acyclic in the channel-dependency graph
+  (deadlock-free by construction); a full-mesh formal liveness proof and the
+  full-wafer route-table SRAM/fuse sizing remain open.
 - Foundry scan-chain insertion, ATPG coverage, at-speed test, foundry SRAM macro
   MBIST collars, and measured silicon DFT evidence. The local SRAM ECC/MBIST
   RTL units and DFT strategy gate are present, but foundry-flow DFT remains

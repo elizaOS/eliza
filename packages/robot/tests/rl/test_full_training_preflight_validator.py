@@ -17,20 +17,37 @@ CURRICULUM_EVAL_TASKS = (
 )
 
 
-def _bundle(tmp_path: Path) -> Path:
+def _bundle(tmp_path: Path, *, production: bool = True) -> Path:
+    budgets = (
+        {
+            "alberta_steps": 150_000_000,
+            "alberta_episode_steps": 200,
+            "alberta_eval_episodes": 3,
+            "backend_compare_steps": 30_000,
+            "brax_steps": 150_000_000,
+            "brax_num_envs": 8192,
+            "brax_num_evals": 10,
+            "benchmark_steps_per_task": 16_000,
+            "benchmark_seeds": 3,
+        }
+        if production
+        else {
+            "alberta_steps": 100,
+            "alberta_episode_steps": 11,
+            "alberta_eval_episodes": 2,
+            "backend_compare_steps": 20,
+            "brax_steps": 100,
+            "brax_num_envs": 16,
+            "brax_num_evals": 1,
+            "benchmark_steps_per_task": 8,
+            "benchmark_seeds": 1,
+        }
+    )
     prepare.prepare(
         out_dir=tmp_path,
         profile_id="asimov-1",
         tasks=CURRICULUM_EVAL_TASKS,
-        alberta_steps=100,
-        alberta_episode_steps=11,
-        alberta_eval_episodes=2,
-        backend_compare_steps=20,
-        brax_steps=100,
-        brax_num_envs=16,
-        brax_num_evals=1,
-        benchmark_steps_per_task=8,
-        benchmark_seeds=1,
+        **budgets,
         run_multi_readiness=False,
     )
     return tmp_path
@@ -40,6 +57,8 @@ def test_validate_full_training_preflight_bundle(tmp_path: Path) -> None:
     report = validate_bundle(_bundle(tmp_path))
 
     assert report["ok"] is True
+    assert report["checks"]["production_budgets"] is True
+    assert report["checks"]["brax_job_production_budget"] is True
     assert report["checks"]["scripts_executable"] is True
     assert report["checks"]["default_profiles"] is True
     assert report["checks"]["local_preflight_script"] is True
@@ -50,6 +69,22 @@ def test_validate_full_training_preflight_bundle(tmp_path: Path) -> None:
     assert report["checks"]["launch_template_hygiene"] is True
     assert report["launch_hygiene"]["checks"]["uses_training_s3_uri"] is True
     assert report["checks"]["brax_job_valid"] is True
+
+
+def test_validate_full_training_preflight_rejects_smoke_budgets_by_default(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path, production=False)
+
+    report = validate_bundle(bundle)
+
+    assert report["ok"] is False
+    assert report["checks"]["production_budgets"] is False
+    assert report["checks"]["brax_job_production_budget"] is False
+
+    smoke_report = validate_bundle(bundle, allow_smoke=True)
+    assert smoke_report["ok"] is True
+    assert smoke_report["production_budget_contract"]["allow_smoke"] is True
 
 
 def test_post_training_script_clears_stale_curriculum_eval_and_writes_provenance(

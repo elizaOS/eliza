@@ -176,6 +176,56 @@ def audit_alberta_objective_completion(
         and _check(training_report, "completion_requirements", "video_min_visual_progress_met")
         is True
     )
+    production_curriculum_eval_failed_checks = [
+        name
+        for name, ok in {
+            "training_report_curriculum_eval_ok": _check(
+                training_report,
+                "completion_requirements",
+                "curriculum_eval_ok",
+            )
+            is True,
+            "training_report_curriculum_eval_present": _check(
+                training_report,
+                "completion_requirements",
+                "curriculum_eval_present",
+            )
+            is True,
+            "training_report_curriculum_eval_checkpoint_bound": _check(
+                training_report,
+                "completion_requirements",
+                "curriculum_eval_checkpoint_bound",
+            )
+            is True,
+            "training_report_curriculum_eval_all_tasks_success": _check(
+                training_report,
+                "completion_requirements",
+                "curriculum_eval_all_tasks_success",
+            )
+            is True,
+            "training_report_curriculum_eval_pass_rate": _check(
+                training_report,
+                "completion_requirements",
+                "curriculum_eval_pass_rate",
+            )
+            is True,
+            "validation_curriculum_eval_ok": _check(
+                validation,
+                "reports",
+                "curriculum_eval",
+                "ok",
+            )
+            is True,
+            "validation_curriculum_eval_native_ok": _check(
+                validation,
+                "reports",
+                "curriculum_eval_native",
+                "ok",
+            )
+            is True,
+        }.items()
+        if ok is not True
+    ]
     production_curriculum_eval_ok = (
         _check(training_report, "completion_requirements", "curriculum_eval_ok")
         is True
@@ -196,6 +246,7 @@ def audit_alberta_objective_completion(
         and _check(training_report, "completion_requirements", "curriculum_eval_pass_rate")
         is True
         and _check(validation, "reports", "curriculum_eval", "ok") is True
+        and _check(validation, "reports", "curriculum_eval_native", "ok") is True
     )
     obstacle_smoke = _load_json(
         package_root / "evidence" / "alberta_obstacle_course_smoke" / "validation_report.json"
@@ -593,10 +644,16 @@ def audit_alberta_objective_completion(
                     "curriculum_eval",
                     "task_checks",
                 ),
+                "failed_check": production_curriculum_eval_failed_checks[0]
+                if production_curriculum_eval_failed_checks
+                else None,
+                "failed_checks": production_curriculum_eval_failed_checks,
             },
             blockers=[]
             if production_curriculum_eval_ok
-            else ["production curriculum eval did not pass every requested task"],
+            else [
+                "native curriculum eval and checkpoint-bound curriculum report must both pass"
+            ],
         ),
         _requirement(
             "nebius_production_training_complete",

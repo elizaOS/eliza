@@ -54,13 +54,13 @@ Programmatic pass rate: `0.0`
 
 | task | failed physical checks | success rate |
 |---|---|---:|
-| `stand_up` | `success_rate_full, hold_s, torso_height_gain, tracked_height_finite_positive, tracked_height_gain` | 0.00 |
-| `walk_forward` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_x_forward, tracked_lateral_drift_bound` | 0.00 |
-| `walk_backward` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_x_backward, tracked_lateral_drift_bound` | 0.00 |
-| `sidestep_left` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_y_left, tracked_forward_drift_bound` | 0.00 |
-| `sidestep_right` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_y_right, tracked_forward_drift_bound` | 0.00 |
-| `turn_left` | `success_rate_full, hold_s, tracked_height_present, delta_yaw_left, tracked_translation_drift_bound` | 0.00 |
-| `turn_right` | `success_rate_full, hold_s, tracked_height_present, delta_yaw_right, tracked_translation_drift_bound` | 0.00 |
+| `stand_up` | `none` | 0.00 |
+| `walk_forward` | `none` | 0.00 |
+| `walk_backward` | `none` | 0.00 |
+| `sidestep_left` | `none` | 0.00 |
+| `sidestep_right` | `none` | 0.00 |
+| `turn_left` | `none` | 0.00 |
+| `turn_right` | `none` | 0.00 |
 
 ## Local Learning Probe
 
@@ -118,49 +118,49 @@ Failure frontier:
 Search ok: `False`
 Candidates: `240`
 Successes: `0`
-- primary gap: `straightness`
-- forward-displacement candidates: `4`
+- primary gap: `forward_displacement`
+- forward-displacement candidates: `0`
 - forward + no-fall + straight candidates: `0`
 Local refinement:
 - base controller: `random_sine_013`
 - candidates: `220`
 - successes: `0`
-- primary gap: `stability`
-- forward-displacement candidates: `10`
+- primary gap: `forward_displacement`
+- forward-displacement candidates: `0`
 - forward + no-fall + straight candidates: `0`
 Transition refinement:
 - base controller: `local_random_sine_013_045`
 - candidates: `144`
 - successes: `0`
-- primary gap: `stability`
-- forward-displacement candidates: `144`
+- primary gap: `forward_displacement`
+- forward-displacement candidates: `0`
 - forward + no-fall + straight candidates: `0`
 - best success-window controller: `transition_local_random_sine_013_045_000`
 - best success window s: `0.0`
-- best success-window dx m: `0.30805073523872256`
-- best success-window failure: `no_fall, min_alternating_foot_contacts, hold_s`
+- best success-window dx m: `0.21941821561754388`
+- best success-window failure: `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s`
 Feedback refinement:
 - base controller: `local_random_sine_013_045`
 - candidates: `501`
 - successes: `0`
-- primary gap: `stability`
-- forward-displacement candidates: `189`
+- primary gap: `forward_displacement`
+- forward-displacement candidates: `0`
 - forward + no-fall + straight candidates: `0`
 - best success-window controller: `feedback_local_random_sine_013_045_093`
 - best success window s: `0.0`
-- best success-window dx m: `0.3630430773073147`
-- best success-window failure: `no_fall, hold_s`
+- best success-window dx m: `0.28196318150394`
+- best success-window failure: `delta_x_m_min, no_fall, hold_s`
 Hybrid recovery refinement:
 - base controller: `feedback_local_random_sine_013_045_093`
-- candidates: `80`
+- candidates: `160`
 - successes: `0`
-- primary gap: `stability`
-- forward-displacement candidates: `28`
+- primary gap: `forward_displacement`
+- forward-displacement candidates: `0`
 - forward + no-fall + straight candidates: `0`
-- best success-window controller: `hybrid_feedback_local_random_sine_013_045_093_048`
+- best success-window controller: `hybrid_feedback_local_random_sine_013_045_093_004`
 - best success window s: `0.0`
-- best success-window dx m: `0.30805073523872256`
-- best success-window failure: `no_fall, min_alternating_foot_contacts, hold_s`
+- best success-window dx m: `0.2878859722586517`
+- best success-window failure: `delta_x_m_min, no_fall, hold_s`
 
 ## HiWonder Near-gait Visual Evidence
 

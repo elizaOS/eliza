@@ -3891,7 +3891,11 @@
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "node-llama-cpp": "*",
       },
+      "optionalPeers": [
+        "node-llama-cpp",
+      ],
     },
     "plugins/plugin-local-storage": {
       "name": "@elizaos/plugin-local-storage",

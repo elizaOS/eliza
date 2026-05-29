@@ -47,6 +47,7 @@ def _complete_run(root: Path) -> None:
         "backend_eval_config_ok": True,
         "backend_alberta_vs_ppo_delta_ok": True,
         "backend_winner_consistent": True,
+        "obstacle_course_observed_alberta_acc_gte_ppo": True,
         "obstacle_course_alberta_acc_gte_ppo": True,
         "obstacle_course_alberta_forgetting_lte_ppo": True,
         "production_policy_videos_ok": True,
@@ -313,6 +314,40 @@ def test_objective_audit_rejects_failed_curriculum_eval(
     )
     assert curriculum["evidence"]["programmatic_pass_rate"] == 0.0
     assert curriculum["evidence"]["validation_curriculum_eval_native_ok"] is True
+
+
+def test_objective_audit_requires_native_curriculum_eval(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "pkg"
+    run = tmp_path / "run"
+    _minimal_package(package)
+    _complete_run(run)
+    validation = json.loads((run / "validation_report.json").read_text())
+    validation["reports"].pop("curriculum_eval_native")
+    _write_json(run / "validation_report.json", validation)
+    monkeypatch.setattr(
+        audit,
+        "validate_alberta_vendoring",
+        lambda: {"ok": True, "vendored_commit": "abc"},
+    )
+
+    report = audit.audit_alberta_objective_completion(
+        package_root=package,
+        nebius_run_root=run,
+    )
+
+    assert report["ok"] is False
+    curriculum = next(
+        item
+        for item in report["requirements"]
+        if item["name"] == "production_curriculum_eval_passed"
+    )
+    assert curriculum["ok"] is False
+    assert curriculum["evidence"]["failed_check"] == "validation_curriculum_eval_native_ok"
+    assert "validation_curriculum_eval_native_ok" in curriculum["evidence"]["failed_checks"]
+    assert "production_curriculum_eval_passed" in report["failed"]
 
 
 def test_objective_audit_records_local_checkpoint_video_and_brax_contract_proof(

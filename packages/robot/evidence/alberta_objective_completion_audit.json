@@ -1,7 +1,7 @@
 {
   "schema": "robot-alberta-objective-completion-audit-v1",
   "ok": false,
-  "generated_at": "2026-05-29T02:52:40.753028Z",
+  "generated_at": "2026-05-29T03:03:30.259488Z",
   "package_root": "/home/shaw/milady/eliza/packages/robot",
   "nebius_run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "passed": [
@@ -257,10 +257,17 @@
           "sidestep_right": false,
           "turn_left": false,
           "turn_right": false
-        }
+        },
+        "failed_check": "training_report_curriculum_eval_ok",
+        "failed_checks": [
+          "training_report_curriculum_eval_ok",
+          "training_report_curriculum_eval_all_tasks_success",
+          "training_report_curriculum_eval_pass_rate",
+          "validation_curriculum_eval_ok"
+        ]
       },
       "blockers": [
-        "production curriculum eval did not pass every requested task"
+        "native curriculum eval and checkpoint-bound curriculum report must both pass"
       ]
     },
     {

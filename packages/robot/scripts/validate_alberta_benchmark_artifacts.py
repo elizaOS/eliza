@@ -364,11 +364,26 @@ def _obstacle_trace_rollout_evidence(results: list[Any]) -> dict[str, Any]:
         by_learner.get(learner, {}).get("has_successful_final_clear") is True
         for learner in REQUIRED_LEARNERS
     )
+    alberta_final_clears = int(
+        by_learner.get("alberta", {}).get("final_successful_clear_count") or 0
+    )
+    ppo_final_clears = int(
+        by_learner.get("ppo", {}).get("final_successful_clear_count") or 0
+    )
+    alberta_successful_final_clear = alberta_final_clears > 0
+    alberta_final_clear_advantage = alberta_final_clears > ppo_final_clears
     return {
         "by_learner": by_learner,
         "all_trace_summaries_consistent": all_trace_summaries_consistent,
         "any_required_learner_successful_final_clear": any_required_learner_clears,
-        "ok": all_trace_summaries_consistent and any_required_learner_clears,
+        "alberta_successful_final_clear": alberta_successful_final_clear,
+        "alberta_final_clear_advantage": alberta_final_clear_advantage,
+        "ok": (
+            all_trace_summaries_consistent
+            and any_required_learner_clears
+            and alberta_successful_final_clear
+            and alberta_final_clear_advantage
+        ),
     }
 
 

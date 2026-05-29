@@ -26,6 +26,11 @@ REQUIRED_REPORTS = {
 NORMAL_ROM_SHA = "7911d1a3f892202baa2f39f6277d7efda42ac1d7a35e37c9bc3b597f8473cd97"
 HIGH_ROM_SHA = "9f2710a5266260fe9885f22954d14f3e6787840d5c6b0bf36781a051e42e29da"
 FRESHNESS_SKEW = timedelta(seconds=2)
+GENERATED_EVIDENCE_PREFIXES = (
+    "benchmarks/results/",
+    "build/reports/",
+    "verify/cocotb/results/",
+)
 
 
 def load_report(path: Path) -> dict:
@@ -62,6 +67,10 @@ def resolve_evidence_path(value: str) -> Path:
         if archive_path.is_file():
             return archive_path
     return path
+
+
+def is_generated_evidence_path(value: str) -> bool:
+    return value.startswith(GENERATED_EVIDENCE_PREFIXES)
 
 
 def check_reports_present(reports: dict[str, dict]) -> list[dict[str, str]]:
@@ -147,9 +156,13 @@ def check_report_freshness(name: str, report: dict) -> dict[str, str]:
             "detail": f"{name} report has no evidence paths for freshness checking",
         }
     newest: tuple[datetime, str] | None = None
+    source_candidate_count = 0
     for value in evidence_paths:
         if not isinstance(value, str) or not value or Path(value).is_absolute():
             continue
+        if is_generated_evidence_path(value):
+            continue
+        source_candidate_count += 1
         path = resolve_evidence_path(value)
         if not path.is_file():
             continue
@@ -157,15 +170,16 @@ def check_report_freshness(name: str, report: dict) -> dict[str, str]:
         if newest is None or mtime > newest[0]:
             newest = (mtime, value)
     if newest is None:
-        return {
-            "id": f"e1x_bundle_{name}_freshness",
-            "status": "fail",
-            "detail": f"{name} report has no existing evidence paths for freshness checking",
-        }
+        status, detail = pass_fail(
+            source_candidate_count == 0,
+            f"{name} report timestamp is parseable; generated evidence paths are validated separately",
+            f"{name} report has no existing source evidence paths for freshness checking",
+        )
+        return {"id": f"e1x_bundle_{name}_freshness", "status": status, "detail": detail}
     fresh = report_time + FRESHNESS_SKEW >= newest[0]
     status, detail = pass_fail(
         fresh,
-        f"{name} report timestamp covers newest evidence path {newest[1]}",
+        f"{name} report timestamp covers newest source evidence path {newest[1]}",
         f"{name} report timestamp {report_time.isoformat()} is older than {newest[1]} mtime {newest[0].isoformat()}",
     )
     return {"id": f"e1x_bundle_{name}_freshness", "status": status, "detail": detail}

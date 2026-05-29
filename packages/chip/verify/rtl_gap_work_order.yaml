@@ -40,11 +40,14 @@ areas:
           - verify/cocotb/test_tiny_cpu_execution.py
           - scripts/check_cpu_ap_scope.py
           - scripts/check_cpu_ap_completion_gate.py
+          - scripts/check_soc_real_integration.py
+          - scripts/test_soc_real_integration_report.py
           - build/reports/cpu_ap_scope.json
           - build/reports/cpu_ap_completion_gate.json
+          - build/reports/soc_integration.json
         partial_closure_evidence:
           - docs/rtl/cpu-config-selection.md (Chipyard Rocket RV64GC + SV39 + L1 I/D selection, wrapper layout under rtl/wrappers/, pin TODO)
-        current_evidence: Tiny single-issue RV contract model now lives under the production-neutral module/file name rtl/cpu/e1_tiny_cpu_contract.sv. It supports only a small unprivileged instruction subset and halts on unsupported opcodes, fetch errors, and unaligned word accesses. The legacy rtl/cpu/e1_cpu_subsystem_stub.sv name is a thin compatibility alias only. Selected v0 CPU config is documented in docs/rtl/cpu-config-selection.md. `make cpu-ap-scope-check` now produces build/reports/cpu_ap_scope.json and passes only for generated Chipyard Rocket RV64GC bring-up scope; that report keeps phone_2028_ap_claim_allowed=false and release_claim_allowed=false. `make cpu-ap-completion-gate` still writes build/reports/cpu_ap_completion_gate.json with status=blocked because the selected manifest and platform contract keep the real Linux-capable CPU/AP completion claim disabled.
+        current_evidence: Tiny single-issue RV contract model now lives under the production-neutral module/file name rtl/cpu/e1_tiny_cpu_contract.sv. It supports only a small unprivileged instruction subset and halts on unsupported opcodes, fetch errors, and unaligned word accesses. The legacy rtl/cpu/e1_cpu_subsystem_stub.sv name is a thin compatibility alias only. Selected v0 CPU config is documented in docs/rtl/cpu-config-selection.md. `make cpu-ap-scope-check` now produces build/reports/cpu_ap_scope.json and passes only for generated Chipyard Rocket RV64GC bring-up scope; that report keeps phone_2028_ap_claim_allowed=false and release_claim_allowed=false. `make cpu-ap-completion-gate` still writes build/reports/cpu_ap_completion_gate.json with status=blocked because the selected manifest and platform contract keep the real Linux-capable CPU/AP completion claim disabled. `make soc-real-integration-test` regression-tests that the real-IRQ/real-DRAM SoC composition report keeps phone, release, Linux-boot, production-CPU, and real-CPU-execution claims false even when the CLINT/PLIC/DRAM integration smoke is green.
         blocking_gate: Linux-capable SoC, bootable firmware, and product claims must remain blocked while this stub is present.
         closure_evidence: Production RV64 integration with privileged mode, reset/interrupt/timer path, boot ROM handoff, memory map, generated DTS, and executable boot smoke evidence.
         work_order: Replace the tiny contract model with a production RV64 core integration and privileged boot path.

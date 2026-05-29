@@ -36,6 +36,12 @@ def main() -> int:
         "phone_claim_allowed",
         "release_claim_allowed",
         "production_fabric_claim_allowed",
+        "coherency_claim_allowed",
+        "iommu_claim_allowed",
+        "qos_claim_allowed",
+        "android_claim_allowed",
+        "production_npu_memory_fabric_claim_allowed",
+        "production_display_framebuffer_claim_allowed",
     ):
         if data.get(key) is not False:
             errors.append(f"{key} must be false")
@@ -49,11 +55,39 @@ def main() -> int:
         "AXI-Lite scaffold",
         "4 KiB SRAM-backed",
         "256 MiB Linux scaffold",
+        "Linux-contract NPU/display MMIO",
+        "fail-closed NPU descriptor",
+        "fail-closed display framebuffer",
         "IOMMU/SMMU",
         "QoS",
+        "NPU memory-fabric",
+        "display framebuffer",
     ):
         if token not in boundary:
             errors.append(f"claim boundary missing token: {token}")
+
+    checked_contracts = set(data.get("checked_contracts") or [])
+    for contract in (
+        "linux_npu_display_mmio_decode",
+        "npu_display_memory_fabric_fail_closed",
+    ):
+        if contract not in checked_contracts:
+            errors.append(f"checked_contracts missing {contract}")
+
+    linux_mmio = data.get("linux_mmio_targets")
+    if not isinstance(linux_mmio, dict):
+        errors.append("linux_mmio_targets must be present")
+    else:
+        expected_linux_mmio = {
+            "npu_base": "0x10020000",
+            "display_base": "0x10030000",
+            "target_bytes": 0x1000,
+            "npu_descriptor_master": "fail_closed_slverr",
+            "display_framebuffer_path": "not_routed",
+        }
+        for key, value in expected_linux_mmio.items():
+            if linux_mmio.get(key) != value:
+                errors.append(f"linux_mmio_targets.{key} drifted")
 
     expected_paths = {
         "sw/platform/e1_platform_contract.json",

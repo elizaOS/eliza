@@ -1,7 +1,7 @@
 # Alberta Objective Completion Audit
 
 Result: `incomplete`
-Generated: `2026-05-29T02:52:40.753028Z`
+Generated: `2026-05-29T03:03:30.259488Z`
 
 | requirement | ok | blockers |
 |---|---:|---|
@@ -12,7 +12,7 @@ Generated: `2026-05-29T02:52:40.753028Z`
 | `continual_learning_obstacle_demo_no_forgetting` | `False` | none |
 | `checkpoint_bound_local_policy_videos_reviewed` | `True` | none |
 | `production_robot_policy_videos_reviewed` | `False` | production trained-policy videos do not pass semantic telemetry and video review |
-| `production_curriculum_eval_passed` | `False` | production curriculum eval did not pass every requested task |
+| `production_curriculum_eval_passed` | `False` | native curriculum eval and checkpoint-bound curriculum report must both pass |
 | `nebius_production_training_complete` | `False` | stage_status, production_contract, obstacle_course_benchmark, video_review, production_policy_videos, curriculum_eval, status_consistency, training_comparison_report |
 | `clean_relaunch_path_ready` | `True` | none |
 

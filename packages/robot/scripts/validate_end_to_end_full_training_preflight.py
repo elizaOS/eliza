@@ -55,6 +55,17 @@ CURRICULUM_EVAL_TASKS = (
     "turn_left",
     "turn_right",
 )
+MIN_PRODUCTION_BUDGETS = {
+    "alberta_steps": 150_000_000,
+    "alberta_episode_steps": 200,
+    "alberta_eval_episodes": 3,
+    "backend_compare_steps": 30_000,
+    "brax_steps": 150_000_000,
+    "brax_num_envs": 8192,
+    "brax_num_evals": 10,
+    "benchmark_steps_per_task": 16_000,
+    "benchmark_seeds": 3,
+}
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -108,7 +119,34 @@ def _local_preflight_profiles_ok(path: Path) -> bool:
     return expected in text
 
 
-def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
+def _int_at_least(payload: dict[str, Any], key: str, minimum: int) -> bool:
+    try:
+        return int(payload.get(key, 0) or 0) >= minimum
+    except (TypeError, ValueError):
+        return False
+
+
+def _production_budgets_ok(report: dict[str, Any]) -> bool:
+    budgets = report.get("budgets")
+    if not isinstance(budgets, dict):
+        return False
+    return all(
+        _int_at_least(budgets, key, minimum)
+        for key, minimum in MIN_PRODUCTION_BUDGETS.items()
+    )
+
+
+def _brax_job_production_budget_ok(job_dir: Path) -> bool:
+    job = _load(job_dir / "training_job.json")
+    ppo = job.get("ppo") if isinstance(job.get("ppo"), dict) else {}
+    return (
+        _int_at_least(ppo, "num_timesteps", MIN_PRODUCTION_BUDGETS["brax_steps"])
+        and _int_at_least(ppo, "num_envs", MIN_PRODUCTION_BUDGETS["brax_num_envs"])
+        and _int_at_least(ppo, "num_evals", MIN_PRODUCTION_BUDGETS["brax_num_evals"])
+    )
+
+
+def validate_bundle(bundle_dir: Path, *, allow_smoke: bool = False) -> dict[str, Any]:
     bundle_dir = bundle_dir.resolve()
     report_path = bundle_dir / "preflight_report.json"
     report = _load(report_path)
@@ -137,6 +175,7 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         "report_exists": report_path.is_file(),
         "schema": report.get("schema") == "robot-end-to-end-full-training-preflight-v1",
         "report_ok": report.get("ok") is True,
+        "production_budgets": allow_smoke or _production_budgets_ok(report),
         "default_profiles": tuple(report.get("default_profiles", [])) == DEFAULT_PROFILES,
         "launch_order": tuple(report.get("launch_order", [])) == REQUIRED_LAUNCH_ORDER,
         "required_scripts_declared": set(REQUIRED_SCRIPTS).issubset(scripts),
@@ -220,6 +259,8 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         "launch_template_hygiene": bool(launch_hygiene.get("ok")),
         "brax_job_dir_exists": brax_job_dir.is_dir(),
         "brax_job_valid": bool(brax_validation.get("ok")),
+        "brax_job_production_budget": allow_smoke
+        or _brax_job_production_budget_ok(brax_job_dir),
     }
     return {
         "ok": all(checks.values()),
@@ -238,14 +279,24 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
                 if not ok
             ],
         },
+        "production_budget_contract": {
+            "allow_smoke": bool(allow_smoke),
+            "minimums": dict(MIN_PRODUCTION_BUDGETS),
+            "budgets": report.get("budgets") if isinstance(report.get("budgets"), dict) else {},
+        },
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("bundle_dir", type=Path)
+    parser.add_argument(
+        "--allow-smoke",
+        action="store_true",
+        help="Allow tiny unit-test/smoke budgets. Do not use for production launch validation.",
+    )
     args = parser.parse_args(argv)
-    report = validate_bundle(args.bundle_dir)
+    report = validate_bundle(args.bundle_dir, allow_smoke=args.allow_smoke)
     print(json.dumps(report, indent=2))
     return 0 if report["ok"] else 2
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 import sys
 import tarfile
@@ -75,6 +76,18 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
             self.write_archive(archive)
             result = self.run_checker(archive)
         self.assertEqual(result.returncode, 0, result.stdout)
+        report = json.loads(self.check.REPORT.read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "pass")
+        self.assertIs(report["summary"]["archive_validation_passed"], True)
+        self.assertIs(report["summary"]["release_ready"], False)
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "hardware_boot_claim_allowed",
+            "silicon_evidence_claim_allowed",
+            "simulator_pass_is_release_evidence",
+        ):
+            self.assertIs(report.get(key), False)
 
     def test_missing_qemu_manifest_blocks_release_archive(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -82,6 +95,9 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
             self.write_archive(archive, omit={"reports/qemu_smoke.manifest"})
             result = self.run_checker(archive)
         self.assertEqual(result.returncode, 1, result.stdout)
+        report = json.loads(self.check.REPORT.read_text(encoding="utf-8"))
+        self.assertIs(report["summary"]["release_ready"], False)
+        self.assertIs(report["release_claim_allowed"], False)
         self.assertIn(
             "missing archive member ending with reports/qemu_smoke.manifest",
             result.stdout,

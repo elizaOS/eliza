@@ -79,6 +79,11 @@ def report_payload(status: str, checks: list[dict], blocker_reason: str | None) 
         "as_of": now_iso(),
         "generated_utc": now_iso(),
         "subsystem": "security",
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "linux_boot_claim_allowed": False,
+        "android_boot_claim_allowed": False,
+        "silicon_secure_boot_claim_allowed": False,
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {
             "check_count": len(checks),

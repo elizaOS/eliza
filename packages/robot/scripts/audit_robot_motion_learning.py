@@ -9,10 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from eliza_robot.profiles import load_profile
-from scripts.eval_text_policy import curriculum_report_from_eval
 from scripts.review_robot_video_evidence import review_videos
 from scripts.validate_alberta_benchmark_artifacts import (
     validate_alberta_benchmark_artifacts,
+)
+from scripts.validate_nebius_full_training_run import (
+    _validate_curriculum_eval_report,
+    _validate_text_policy_eval_report,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -500,6 +503,174 @@ def _local_learning_probe_from_dir(probe_dir: Path) -> dict[str, Any]:
     }
 
 
+def _path_from_report_value(value: Any, *, report_path: Path, run_root: Path) -> Path | None:
+    if not isinstance(value, str) or not value:
+        return None
+    raw = value.removeprefix("checkpoint:")
+    path = Path(raw).expanduser()
+    if path.is_absolute():
+        return path
+    if len(path.parts) > 1:
+        try:
+            return report_path.resolve().parents[2] / path
+        except IndexError:
+            return run_root / path
+    return run_root / path
+
+
+def _learned_policy_curriculum_eval_summary(run_root: Path) -> dict[str, Any]:
+    curriculum_path = run_root / "evidence" / "curriculum_eval" / "report.json"
+    native_path = run_root / "evidence" / "curriculum_eval" / "eval_text_policy.json"
+    curriculum_report = _load(curriculum_path)
+    native_report = _load(native_path)
+    task_rows = (
+        curriculum_report.get("tasks")
+        if isinstance(curriculum_report.get("tasks"), list)
+        else []
+    )
+    tasks = tuple(
+        row.get("task_id")
+        for row in task_rows
+        if isinstance(row, dict) and isinstance(row.get("task_id"), str)
+    )
+    profile_id = curriculum_report.get("profile_id") or native_report.get("profile_id")
+    checkpoint = _path_from_report_value(
+        curriculum_report.get("checkpoint") or native_report.get("checkpoint"),
+        report_path=curriculum_path,
+        run_root=run_root,
+    )
+
+    failed_tasks: list[dict[str, Any]] = []
+    failed_checks = []
+    curriculum_validation: dict[str, Any] = {
+        "ok": False,
+        "checks": {"present": curriculum_path.is_file()},
+        "task_checks": {},
+        "numeric_task_fail_reasons": {},
+    }
+    native_validation: dict[str, Any] = {
+        "ok": False,
+        "checks": {"present": native_path.is_file()},
+        "task_checks": {},
+        "numeric_task_fail_reasons": {},
+    }
+    if not isinstance(profile_id, str) or not profile_id:
+        failed_checks.append("profile_id")
+    if checkpoint is None:
+        failed_checks.append("checkpoint")
+    if not tasks:
+        failed_checks.append("tasks")
+
+    if isinstance(profile_id, str) and profile_id and checkpoint is not None and tasks:
+        curriculum_validation = _validate_curriculum_eval_report(
+            curriculum_path,
+            checkpoint=checkpoint,
+            profile_id=profile_id,
+            tasks=tasks,
+        )
+        native_validation = _validate_text_policy_eval_report(
+            native_path,
+            checkpoint=checkpoint,
+            profile_id=profile_id,
+            tasks=tasks,
+        )
+        failed_checks.extend(
+            f"curriculum.{name}"
+            for name, ok in curriculum_validation.get("checks", {}).items()
+            if ok is not True
+        )
+        failed_checks.extend(
+            f"native.{name}"
+            for name, ok in native_validation.get("checks", {}).items()
+            if ok is not True
+        )
+
+    curriculum_task_checks = (
+        curriculum_validation.get("task_checks")
+        if isinstance(curriculum_validation.get("task_checks"), dict)
+        else {}
+    )
+    native_task_checks = (
+        native_validation.get("task_checks")
+        if isinstance(native_validation.get("task_checks"), dict)
+        else {}
+    )
+    numeric_failures = (
+        curriculum_validation.get("numeric_task_fail_reasons")
+        if isinstance(curriculum_validation.get("numeric_task_fail_reasons"), dict)
+        else {}
+    )
+    native_numeric_failures = (
+        native_validation.get("numeric_task_fail_reasons")
+        if isinstance(native_validation.get("numeric_task_fail_reasons"), dict)
+        else {}
+    )
+    for row in task_rows:
+        if not isinstance(row, dict):
+            continue
+        task_id = row.get("task_id")
+        physical_checks = (
+            row.get("physical_checks") if isinstance(row.get("physical_checks"), dict) else {}
+        )
+        task_ok = (
+            isinstance(task_id, str)
+            and curriculum_task_checks.get(task_id) is True
+            and native_task_checks.get(task_id) is True
+        )
+        if task_ok:
+            continue
+        failed_tasks.append(
+            {
+                "task_id": task_id,
+                "success_rate": row.get("success_rate"),
+                "physical_success": row.get("physical_success"),
+                "failed_physical_checks": [
+                    name for name, ok in physical_checks.items() if ok is not True
+                ],
+                "numeric_motion_fail_reasons": numeric_failures.get(task_id) or [],
+                "native_numeric_motion_fail_reasons": native_numeric_failures.get(task_id)
+                or [],
+                "mean_final_delta_x_m": row.get("mean_final_delta_x_m"),
+                "mean_final_delta_y_m": row.get("mean_final_delta_y_m"),
+                "mean_final_delta_yaw_rad": row.get("mean_final_delta_yaw_rad"),
+                "mean_final_tracked_delta_x_m": row.get(
+                    "mean_final_tracked_delta_x_m"
+                ),
+                "mean_final_tracked_delta_y_m": row.get(
+                    "mean_final_tracked_delta_y_m"
+                ),
+                "mean_final_tracked_z_m": row.get("mean_final_tracked_z_m"),
+            }
+        )
+    ok = (
+        curriculum_validation.get("ok") is True
+        and native_validation.get("ok") is True
+        and not failed_tasks
+    )
+    return {
+        "ok": ok,
+        "native_eval": str(native_path),
+        "curriculum_report": str(curriculum_path),
+        "profile_id": profile_id,
+        "checkpoint": str(checkpoint) if checkpoint is not None else None,
+        "programmatic_pass_rate": curriculum_report.get("programmatic_pass_rate"),
+        "n_programmatic_pass": curriculum_report.get("n_programmatic_pass"),
+        "n_tasks": curriculum_report.get("n_tasks"),
+        "failed_check": failed_checks[0] if failed_checks else None,
+        "failed_checks": failed_checks,
+        "validation_checks": curriculum_validation.get("checks"),
+        "native_validation_checks": native_validation.get("checks"),
+        "task_checks": curriculum_task_checks,
+        "native_task_checks": native_task_checks,
+        "numeric_task_fail_reasons": numeric_failures,
+        "native_numeric_task_fail_reasons": native_numeric_failures,
+        "expected_tracked_body_name": curriculum_validation.get(
+            "expected_tracked_body_name"
+        ),
+        "failed_tasks": failed_tasks,
+    }
+
+
 def _near_gait_visual_summary(
     report: dict[str, Any],
     *,
@@ -750,6 +921,14 @@ def _fresh_obstacle_smoke_summary(
         )
         is True,
         "trace_rollouts_ok": obstacle_trace_rollouts.get("ok") is True,
+        "alberta_successful_final_clear": obstacle_trace_rollouts.get(
+            "alberta_successful_final_clear"
+        )
+        is True,
+        "alberta_final_clear_advantage": obstacle_trace_rollouts.get(
+            "alberta_final_clear_advantage"
+        )
+        is True,
     }
     return {
         "ok": all(checks.values()),
@@ -1257,33 +1436,11 @@ def audit(
         fresh_obstacle_dir=fresh_obstacle_dir,
     )
     multi_profile_walk = _multi_profile_walk_summary(_load(multi_profile_walk_path))
-    native_eval = _load(run_root / "evidence" / "curriculum_eval" / "eval_text_policy.json")
-    learned_report = curriculum_report_from_eval(native_eval) if native_eval else {}
-    failed_learned_tasks = []
-    for row in learned_report.get("tasks", []):
-        if not isinstance(row, dict) or row.get("success_programmatic") is True:
-            continue
-        physical_checks = (
-            row.get("physical_checks") if isinstance(row.get("physical_checks"), dict) else {}
-        )
-        failed_learned_tasks.append(
-            {
-                "task_id": row.get("task_id"),
-                "success_rate": row.get("success_rate"),
-                "physical_success": row.get("physical_success"),
-                "failed_physical_checks": [
-                    name for name, ok in physical_checks.items() if ok is not True
-                ],
-                "mean_final_delta_x_m": row.get("mean_final_delta_x_m"),
-                "mean_final_delta_y_m": row.get("mean_final_delta_y_m"),
-                "mean_final_delta_yaw_rad": row.get("mean_final_delta_yaw_rad"),
-            }
-        )
+    learned_policy = _learned_policy_curriculum_eval_summary(run_root)
     report = {
         "schema": "robot-motion-learning-audit-v1",
         "ok": bool(video_review.get("ok"))
-        and bool(learned_report)
-        and not failed_learned_tasks
+        and bool(learned_policy.get("ok"))
         and bool(local_probe.get("walking_success"))
         and bool(task_feasibility.get("ok"))
         and (
@@ -1303,16 +1460,7 @@ def audit(
             "failed_videos": _failed_video_rows(video_review),
             "report": str(run_root / "evidence" / "video_review_physical_audit" / "video_review.json"),
         },
-        "learned_policy_curriculum_eval": {
-            "ok": bool(learned_report) and not failed_learned_tasks,
-            "native_eval": str(
-                run_root / "evidence" / "curriculum_eval" / "eval_text_policy.json"
-            ),
-            "programmatic_pass_rate": learned_report.get("programmatic_pass_rate"),
-            "n_programmatic_pass": learned_report.get("n_programmatic_pass"),
-            "n_tasks": learned_report.get("n_tasks"),
-            "failed_tasks": failed_learned_tasks,
-        },
+        "learned_policy_curriculum_eval": learned_policy,
         "local_learning_probe": {
             "ok": bool(local_probe.get("walking_success")),
             "probe": local_probe.get("source") or str(local_probe_dir),

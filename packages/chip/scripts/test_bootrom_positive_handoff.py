@@ -46,6 +46,14 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(report["status"], "BLOCKED")
         self.assertEqual(report["blocker_id"], gate.BLOCKER_ID)
         self.assertEqual(report["evidence_paths"], [])
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "linux_boot_claim_allowed",
+            "android_boot_claim_allowed",
+            "silicon_secure_boot_claim_allowed",
+        ):
+            self.assertIs(report.get(key), False)
         self.assertEqual(
             {check["status"] for check in report["checks"]},
             {"blocked"},
@@ -89,6 +97,14 @@ class BootromPositiveHandoffTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(report["status"], "PASS")
         self.assertIsNone(report["blocker_id"])
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "linux_boot_claim_allowed",
+            "android_boot_claim_allowed",
+            "silicon_secure_boot_claim_allowed",
+        ):
+            self.assertIs(report.get(key), False)
         self.assertEqual(
             {check["status"] for check in report["checks"]},
             {"pass"},

@@ -83,8 +83,9 @@ def test_hiwonder_random_sine_hybrid_recovery_refinement_is_bounded() -> None:
     base = _candidate_params(seed=123, n_candidates=1)[0]
     params = _hybrid_recovery_refinement_params({**base, "feedback": {"pitch": 1.0}})
 
-    assert len(params) == 80
-    assert "feedback" not in params[0]
+    assert len(params) == 160
+    assert "feedback" in params[0]
+    assert any("feedback" not in row for row in params)
     assert params[0]["hybrid_recovery"] == {
         "switch_step": 24,
         "ramp_steps": 1,

@@ -1,12 +1,13 @@
 {
-  "schema": "eliza.memory.dram_sim_raw_stats_archive.v1",
+  "bytes_per_dramsim3_access": 32,
   "captured_utc": "2026-05-23T07:43:00Z",
+  "claim_boundary": "Archived DRAMSim3 stats are simulator-only and not physical phone or release evidence.",
+  "cycle_budget": 500000,
+  "generated_utc": "2026-05-29T02:54:06Z",
+  "schema": "eliza.memory.dram_sim_raw_stats_archive.v1",
+  "simulated_p95_latency_ns": 374.8,
+  "simulated_total_bandwidth_gbps": 15.0,
   "sku": "lpddr5x_10667",
   "standard": "LPDDR5X-10667",
-  "workload": "stream_scale",
-  "cycle_budget": 500000,
-  "bytes_per_dramsim3_access": 32,
-  "simulated_total_bandwidth_gbps": 15.0,
-  "simulated_p95_latency_ns": 374.8,
-  "claim_boundary": "Archived DRAMSim3 stats are simulator-only and not physical phone or release evidence."
+  "workload": "stream_scale"
 }

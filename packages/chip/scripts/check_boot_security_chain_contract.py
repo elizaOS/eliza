@@ -400,6 +400,23 @@ def check_positive_handoff(findings: list[Finding]) -> None:
         "Fix or regenerate the signed-image transcript, then rerun scripts/check_bootrom_positive_handoff.py before claiming authenticated firmware handoff evidence.",
     )
 
+    claim_flags = (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "linux_boot_claim_allowed",
+        "android_boot_claim_allowed",
+        "silicon_secure_boot_claim_allowed",
+    )
+    leaking_flags = [flag for flag in claim_flags if report.get(flag) is not False]
+    add_if(
+        findings,
+        bool(leaking_flags),
+        "bootrom_positive_handoff_report_allows_release_claims",
+        "positive handoff report does not explicitly deny release, phone, Linux/Android boot, or silicon secure-boot claims",
+        f"leaking_flags={leaking_flags} path={rel(BOOTROM_POSITIVE_HANDOFF_REPORT)}",
+        "Regenerate the report with scripts/check_bootrom_positive_handoff.py so simulator handoff evidence cannot be promoted to release or silicon claims.",
+    )
+
     evidence_paths = report.get("evidence_paths")
     evidence_paths = evidence_paths if isinstance(evidence_paths, list) else []
     add_if(

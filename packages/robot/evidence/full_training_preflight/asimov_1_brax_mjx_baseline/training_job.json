@@ -3,7 +3,7 @@
   "profile_id": "asimov-1",
   "output_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
   "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
-  "mjcf_xml_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+  "mjcf_xml_sha256": "1699a8f5313cd6c9f43eeca4012c8b5390a1db3a924c89ca7a46cefdb47cfce9",
   "asset_manifest": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
   "asset_manifest_sha256": "9ebde2c4a976c3b2d13e8746628e0918a51c4067eb95d1356ffbdadca8edf415",
   "control_hz": 50.0,
