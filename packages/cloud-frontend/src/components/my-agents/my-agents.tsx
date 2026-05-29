@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { logger } from "@/lib/utils/logger";
+import { useT } from "@/providers/I18nProvider";
 import { CharacterFilters } from "./character-filters";
 import type { AgentWithOwnership } from "./character-library-grid";
 import { CharacterLibraryGrid } from "./character-library-grid";
@@ -37,32 +38,44 @@ interface SavedAgent {
 
 const ADMIN_SECTIONS = [
   {
-    title: "Runtime",
-    description: "Monitor the hosted process, logs, health, and deployments.",
+    titleKey: "cloud.myAgents.sectionRuntime",
+    defaultTitle: "Runtime",
+    descriptionKey: "cloud.myAgents.sectionRuntimeDesc",
+    defaultDescription:
+      "Monitor the hosted process, logs, health, and deployments.",
     to: "/dashboard/agents",
     icon: Server,
   },
   {
-    title: "API keys",
-    description: "Create and rotate keys for programmatic access.",
+    titleKey: "cloud.myAgents.sectionApiKeys",
+    defaultTitle: "API keys",
+    descriptionKey: "cloud.myAgents.sectionApiKeysDesc",
+    defaultDescription: "Create and rotate keys for programmatic access.",
     to: "/dashboard/api-keys",
     icon: KeyRound,
   },
   {
-    title: "Billing",
-    description: "Review credits, payment methods, and usage controls.",
+    titleKey: "cloud.myAgents.sectionBilling",
+    defaultTitle: "Billing",
+    descriptionKey: "cloud.myAgents.sectionBillingDesc",
+    defaultDescription: "Review credits, payment methods, and usage controls.",
     to: "/dashboard/billing",
     icon: CreditCard,
   },
   {
-    title: "App devices",
-    description: "Manage connected apps and device-facing integrations.",
+    titleKey: "cloud.myAgents.sectionAppDevices",
+    defaultTitle: "App devices",
+    descriptionKey: "cloud.myAgents.sectionAppDevicesDesc",
+    defaultDescription:
+      "Manage connected apps and device-facing integrations.",
     to: "/dashboard/apps",
     icon: MonitorSmartphone,
   },
   {
-    title: "Docs",
-    description: "Read setup guides, APIs, MCP, apps, and runtime docs.",
+    titleKey: "cloud.myAgents.sectionDocs",
+    defaultTitle: "Docs",
+    descriptionKey: "cloud.myAgents.sectionDocsDesc",
+    defaultDescription: "Read setup guides, APIs, MCP, apps, and runtime docs.",
     to: "https://docs.elizaos.ai/cloud",
     icon: BookOpen,
     external: true,
@@ -81,6 +94,7 @@ function AgentConsoleOverview({
   agents: AgentWithOwnership[];
   onCreateNew: () => void;
 }) {
+  const t = useT();
   const ownedAgents = agents.filter((agent) => agent.isOwned !== false);
   const primaryAgent = ownedAgents[0] ?? agents[0] ?? null;
   const runningCount = ownedAgents.filter(
@@ -94,16 +108,21 @@ function AgentConsoleOverview({
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="max-w-2xl space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#FF5800]">
-              Agent console
+              {t("cloud.myAgents.agentConsole", {
+                defaultValue: "Agent console",
+              })}
             </p>
             <div className="space-y-2">
               <h1 className="text-2xl font-semibold text-white md:text-3xl">
-                Administer and enter your running agent
+                {t("cloud.myAgents.heading", {
+                  defaultValue: "Administer and enter your running agent",
+                })}
               </h1>
               <p className="text-sm leading-6 text-white/60">
-                Use this page as the control room for your hosted Eliza agent:
-                open the live chat, inspect runtime state, manage API access,
-                connect app devices, and keep billing in view.
+                {t("cloud.myAgents.subheading", {
+                  defaultValue:
+                    "Use this page as the control room for your hosted Eliza agent: open the live chat, inspect runtime state, manage API access, connect app devices, and keep billing in view.",
+                })}
               </p>
             </div>
           </div>
@@ -114,7 +133,13 @@ function AgentConsoleOverview({
               className="inline-flex h-10 items-center justify-center gap-2 bg-[#FF5800] px-4 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white"
             >
               <MessageCircle className="h-4 w-4" />
-              {primaryAgent ? "Open agent chat" : "Go to my agent"}
+              {primaryAgent
+                ? t("cloud.myAgents.openAgentChat", {
+                    defaultValue: "Open agent chat",
+                  })
+                : t("cloud.myAgents.goToMyAgent", {
+                    defaultValue: "Go to my agent",
+                  })}
             </Link>
             <button
               type="button"
@@ -122,7 +147,9 @@ function AgentConsoleOverview({
               className="inline-flex h-10 items-center justify-center gap-2 bg-black px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white hover:text-black"
             >
               <Server className="h-4 w-4" />
-              Runtime admin
+              {t("cloud.myAgents.runtimeAdmin", {
+                defaultValue: "Runtime admin",
+              })}
             </button>
           </div>
         </div>
@@ -130,7 +157,9 @@ function AgentConsoleOverview({
         <div className="mt-5 grid gap-px border border-white/10 bg-white/5 sm:grid-cols-3">
           <div className="bg-black p-4">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Owned agents
+              {t("cloud.myAgents.ownedAgents", {
+                defaultValue: "Owned agents",
+              })}
             </p>
             <p className="mt-1 text-2xl font-semibold text-white tabular-nums">
               {ownedAgents.length}
@@ -138,7 +167,7 @@ function AgentConsoleOverview({
           </div>
           <div className="bg-black p-4">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Running
+              {t("cloud.myAgents.running", { defaultValue: "Running" })}
             </p>
             <p className="mt-1 text-2xl font-semibold text-white tabular-nums">
               {runningCount}
@@ -146,10 +175,15 @@ function AgentConsoleOverview({
           </div>
           <div className="bg-black p-4">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Chat target
+              {t("cloud.myAgents.chatTarget", {
+                defaultValue: "Chat target",
+              })}
             </p>
             <p className="mt-1 truncate text-sm font-medium text-white">
-              {primaryAgent?.name ?? "Create or deploy an agent"}
+              {primaryAgent?.name ??
+                t("cloud.myAgents.createOrDeploy", {
+                  defaultValue: "Create or deploy an agent",
+                })}
             </p>
           </div>
         </div>
@@ -168,12 +202,14 @@ function AgentConsoleOverview({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-3">
                   <span className="text-sm font-medium text-white">
-                    {section.title}
+                    {t(section.titleKey, { defaultValue: section.defaultTitle })}
                   </span>
                   <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-white" />
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-white/55">
-                  {section.description}
+                  {t(section.descriptionKey, {
+                    defaultValue: section.defaultDescription,
+                  })}
                 </span>
               </span>
             </>
@@ -181,7 +217,7 @@ function AgentConsoleOverview({
           if ("external" in section && section.external) {
             return (
               <a
-                key={section.title}
+                key={section.titleKey}
                 href={section.to}
                 target="_blank"
                 rel="noreferrer"
@@ -193,7 +229,7 @@ function AgentConsoleOverview({
           }
           return (
             <Link
-              key={section.title}
+              key={section.titleKey}
               to={section.to}
               className={sectionClassName}
             >
@@ -211,6 +247,7 @@ function AgentConsoleOverview({
  * Fetches both owned and saved agents client-side to enable real-time updates.
  */
 export function MyAgentsClient() {
+  const t = useT();
   const navigate = useNavigate();
   const claimAttempted = useRef(false);
   const [characters, setCharacters] = useState<AgentWithOwnership[]>([]);
@@ -270,7 +307,11 @@ export function MyAgentsClient() {
 
       // Show error toast if owned agents failed to load
       if (ownedFetchFailed) {
-        toast.error("Failed to load your agents");
+        toast.error(
+          t("cloud.myAgents.loadFailed", {
+            defaultValue: "Failed to load your agents",
+          }),
+        );
       }
 
       // Merge both lists
@@ -281,7 +322,7 @@ export function MyAgentsClient() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Initial fetch and listen for updates
   useEffect(() => {
@@ -314,7 +355,10 @@ export function MyAgentsClient() {
       .then((data) => {
         if (data.success && data.claimed?.length > 0) {
           toast.success(
-            `${data.claimed.length} agent(s) added to your library!`,
+            t("cloud.myAgents.agentsAdded", {
+              count: data.claimed.length,
+              defaultValue: "{{count}} agent(s) added to your library!",
+            }),
             {
               description: data.claimed
                 .map((c: { name: string }) => c.name)
@@ -335,7 +379,7 @@ export function MyAgentsClient() {
       .catch((error) => {
         logger.error("[MyAgents] Failed to claim affiliate characters:", error);
       });
-  }, [fetchCharacters]);
+  }, [fetchCharacters, t]);
 
   // Filter characters based on search
   const filteredCharacters = characters.filter((char) => {
@@ -395,10 +439,12 @@ export function MyAgentsClient() {
 
   useSetPageHeader(
     {
-      title: "My Agent",
-      description: "Administer your running cloud agent",
+      title: t("cloud.myAgents.pageTitle", { defaultValue: "My Agent" }),
+      description: t("cloud.myAgents.pageDescription", {
+        defaultValue: "Administer your running cloud agent",
+      }),
     },
-    [],
+    [t],
   );
 
   if (isLoading) {

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TooltipPlacement } from "@/lib/onboarding/types";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 import { useOnboarding } from "./onboarding-provider";
 
 interface TargetRect {
@@ -64,6 +65,7 @@ function getTooltipPosition(
 }
 
 export function OnboardingOverlay() {
+  const t = useT();
   const {
     activeTour,
     currentStepIndex,
@@ -176,7 +178,9 @@ export function OnboardingOverlay() {
       {/* Backdrop with spotlight cutout */}
       <button
         type="button"
-        aria-label="Skip tour"
+        aria-label={t("cloud.onboarding.skipTour", {
+          defaultValue: "Skip tour",
+        })}
         className="absolute inset-0 bg-black/70 pointer-events-auto transition-all duration-300 cursor-default"
         style={{ clipPath }}
         onClick={skipTour}
@@ -222,7 +226,9 @@ export function OnboardingOverlay() {
               type="button"
               onClick={skipTour}
               className="text-muted transition-colors hover:text-txt"
-              aria-label="Skip tour"
+              aria-label={t("cloud.onboarding.skipTour", {
+                defaultValue: "Skip tour",
+              })}
             >
               <X className="h-4 w-4" />
             </button>
@@ -253,7 +259,11 @@ export function OnboardingOverlay() {
                 ),
               )}
               <span className="ml-2 text-xs text-muted">
-                {currentStepIndex + 1} of {totalSteps}
+                {t("cloud.onboarding.stepProgress", {
+                  current: currentStepIndex + 1,
+                  total: totalSteps,
+                  defaultValue: "{{current}} of {{total}}",
+                })}
               </span>
             </div>
 
@@ -267,7 +277,7 @@ export function OnboardingOverlay() {
                   className="text-muted hover:bg-surface hover:text-txt"
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" />
-                  Back
+                  {t("cloud.onboarding.back", { defaultValue: "Back" })}
                 </Button>
               )}
               <Button
@@ -275,7 +285,9 @@ export function OnboardingOverlay() {
                 onClick={nextStep}
                 className="bg-accent text-accent-fg hover:bg-accent/90"
               >
-                {isLastStep ? "Done" : "Next"}
+                {isLastStep
+                  ? t("cloud.onboarding.done", { defaultValue: "Done" })
+                  : t("cloud.onboarding.next", { defaultValue: "Next" })}
                 {!isLastStep && <ChevronRight className="h-4 w-4 ml-1" />}
               </Button>
             </div>

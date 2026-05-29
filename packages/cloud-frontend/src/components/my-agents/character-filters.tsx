@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@elizaos/ui";
 import { LayoutGrid, List, Search } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 import type { SortOption, ViewMode } from "./types";
 
 interface CharacterFiltersProps {
@@ -47,6 +48,7 @@ export function CharacterFilters({
   totalCount,
   filteredCount,
 }: CharacterFiltersProps) {
+  const t = useT();
   return (
     <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
       {/* Left side - Search and count */}
@@ -55,7 +57,9 @@ export function CharacterFilters({
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#06131f]/42" />
           <Input
             type="text"
-            placeholder="Search agent..."
+            placeholder={t("cloud.characterFilters.searchPlaceholder", {
+              defaultValue: "Search agent...",
+            })}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="h-9 rounded-full border-white/42 bg-white/58 pl-9 text-sm text-[#06131f] placeholder:text-[#06131f]/42 focus:border-accent/50 focus:ring-1 focus:ring-accent/50 md:h-10"
@@ -79,10 +83,26 @@ export function CharacterFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="rounded-sm">
-            <SelectItem value="modified">Last Updated</SelectItem>
-            <SelectItem value="created">Created Date</SelectItem>
-            <SelectItem value="name">Name (A-Z)</SelectItem>
-            <SelectItem value="recent">Recent Activity</SelectItem>
+            <SelectItem value="modified">
+              {t("cloud.characterFilters.sortLastUpdated", {
+                defaultValue: "Last Updated",
+              })}
+            </SelectItem>
+            <SelectItem value="created">
+              {t("cloud.characterFilters.sortCreatedDate", {
+                defaultValue: "Created Date",
+              })}
+            </SelectItem>
+            <SelectItem value="name">
+              {t("cloud.characterFilters.sortName", {
+                defaultValue: "Name (A-Z)",
+              })}
+            </SelectItem>
+            <SelectItem value="recent">
+              {t("cloud.characterFilters.sortRecentActivity", {
+                defaultValue: "Recent Activity",
+              })}
+            </SelectItem>
           </SelectContent>
         </Select>
 
