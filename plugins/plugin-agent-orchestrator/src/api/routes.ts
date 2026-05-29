@@ -12,6 +12,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import { handleAgentRoutes } from "./agent-routes.js";
+import { handleBridgeRoutes } from "./bridge-routes.js";
 import { handleIssueRoutes } from "./issue-routes.js";
 import { handleOrchestratorRoutes } from "./orchestrator-routes.js";
 import { handleParentContextRoutes } from "./parent-context-routes.js";
@@ -40,6 +41,15 @@ export async function handleCodingAgentRoutes(
 
   // Delegate to parent-runtime bridge routes before generic :id agent routes.
   if (await handleParentContextRoutes(req, res, normalizedPathname, ctx)) {
+    return true;
+  }
+
+  // Sub-agent credential bridge (loopback-only, additive). Mounted after the
+  // parent-context dispatcher and before the generic `:id` agent routes so the
+  // `/credentials/*` sub-paths are not shadowed. Responds 503 when no
+  // credential-tunnel adapter is registered on the runtime, so mounting it is
+  // safe even where credential tunneling is unsupported.
+  if (await handleBridgeRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
