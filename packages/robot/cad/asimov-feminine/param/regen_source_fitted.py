@@ -225,7 +225,7 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
 
 
 def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False,
-               reserved=None, neck_depth=0.34, neck_sigma=0.011):
+               reserved=None, neck_depth=0.16, neck_sigma=0.015):
     """Smooth watertight outer skin for a limb/head: loft per-slice outer
     envelopes along the spine axis about the slice centroid. Produces a clean
     single-solid futuristic shell with no bolt-boss lumps or voxel terracing.
@@ -272,13 +272,14 @@ def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False,
         f = np.hstack([np.full((len(skin.faces), 1), 3), skin.faces]).ravel()
         sm = pv.PolyData(skin.vertices, f).smooth_taubin(n_iter=taubin, pass_band=0.1).triangulate()
         skin = trimesh.Trimesh(sm.points, sm.faces.reshape(-1, 4)[:, 1:], process=True)
-    if flat_bottom:  # feet: snap the sole to a single plane so the foot sits flat
-        v = skin.vertices.copy()
-        z0 = v[:, 2].min()
-        sole = v[:, 2] < z0 + 0.010
-        v[sole, 2] = z0
-        skin.vertices = v
-        trimesh.repair.fix_normals(skin)
+    if flat_bottom:  # feet: cleanly cut a flat sole (slice + cap), no ragged snap
+        z0 = skin.vertices[:, 2].min()
+        cut = trimesh.intersections.slice_mesh_plane(
+            skin, plane_normal=[0, 0, 1], plane_origin=[0, 0, z0 + 0.006], cap=True
+        )
+        if cut is not None and len(cut.faces) > 0:
+            cut.merge_vertices()
+            skin = cut
     return skin
 
 
@@ -293,6 +294,15 @@ SKIN_LIMBS = {
 for _k in list(SKIN_LIMBS):
     if _k.startswith("LEFT_"):
         SKIN_LIMBS.add(_k.replace("LEFT_", "RIGHT_"))
+
+# Only these long swinging shafts get a gentle joint waist for bend clearance.
+NECK_SHAFTS = {
+    "LEFT_SHOULDER_ROLL", "LEFT_SHOULDER_YAW", "LEFT_ELBOW",
+    "LEFT_HIP_YAW", "LEFT_KNEE", "LEFT_ANKLE_A",
+}
+for _k in list(NECK_SHAFTS):
+    if _k.startswith("LEFT_"):
+        NECK_SHAFTS.add(_k.replace("LEFT_", "RIGHT_"))
 
 
 def _loft_rings(rings):
@@ -475,14 +485,15 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link == "WAIST_YAW":
         return _torso_skin(m)  # already a clean watertight skin
     if link == "IMU_ORIGIN":
-        return _skin_part(_pelvis_warp(m), "z", reserved=C.reserved_levels(link))
+        return _skin_part(_pelvis_warp(m), "z")  # single body: no joint necking
     shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
     spine = C.LINKS[link]["spine"]
-    # neck only at TRUE joint levels (self joint at 0 + child joints); a free
-    # distal end (hand tip, toe tip) has no child joint so it stays full/rounded.
-    reserved = C.reserved_levels(link)
+    # Neck (for bend clearance) ONLY the long limb shafts that actually swing.
+    # Short yokes/connectors and the neck/head/feet stay smooth -- necking them
+    # turned them into ornamental "finials" / stacked rings.
+    reserved = C.reserved_levels(link) if link in NECK_SHAFTS else None
     if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
-        return _skin_part(shaped, spine, flat_bottom=True, reserved=reserved, neck_depth=0.22)
+        return _skin_part(shaped, spine, flat_bottom=True)
     if link in SKIN_LIMBS:
         return _skin_part(shaped, spine, reserved=reserved)
     return _watertight_cleanup(shaped) if cleanup else shaped
