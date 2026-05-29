@@ -129,16 +129,39 @@ function renderText(component: ElizaGenUiComponent): React.ReactNode {
   }
 }
 
-function renderChoicePicker(component: ElizaGenUiComponent): React.ReactNode {
+function renderChoicePicker(
+  component: ElizaGenUiComponent,
+  context: ElizaGenUiRenderContext,
+): React.ReactNode {
   const rawOptions = component.options;
   const options = Array.isArray(rawOptions) ? rawOptions : [];
+  const baseAction = toAction(component.action);
+  const reportChoice = (selectedValue: string) => {
+    if (!baseAction) {
+      return;
+    }
+    const basePayload = baseAction.event.payload;
+    const mergedPayload =
+      basePayload &&
+      typeof basePayload === "object" &&
+      !Array.isArray(basePayload)
+        ? { ...basePayload, value: selectedValue }
+        : { value: selectedValue };
+    handleAction(
+      {
+        event: { name: baseAction.event.name, payload: mergedPayload },
+      },
+      component,
+      context,
+    );
+  };
   return (
     <select
       aria-label={stringProp(component, "label") ?? component.id}
       className="rounded-sm border border-border bg-bg px-3 py-2"
       disabled={booleanProp(component, "disabled")}
-      value={stringProp(component, "value")}
-      onChange={() => {}}
+      defaultValue={stringProp(component, "value")}
+      onChange={(eventArg) => reportChoice(eventArg.target.value)}
     >
       {options.map((option) => {
         const record =
@@ -316,7 +339,7 @@ function renderPrimitiveComponent(
         />
       );
     case "ChoicePicker":
-      return renderChoicePicker(component);
+      return renderChoicePicker(component, context);
     case "Card":
       return (
         <Card className="rounded-sm">
