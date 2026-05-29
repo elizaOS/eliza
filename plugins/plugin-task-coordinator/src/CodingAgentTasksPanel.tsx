@@ -18,6 +18,14 @@ import {
   useMemo,
   useState,
 } from "react";
+import {
+  ORCHESTRATOR_CAPABILITY_IDS,
+  runOrchestratorCapability,
+} from "./OrchestratorWorkbench";
+
+// Re-exported so the view bundle exposes the workbench as a named export the
+// `/orchestrator` view resolves via its `componentExport`.
+export { OrchestratorWorkbench } from "./OrchestratorWorkbench";
 
 const ANSI_ESCAPE_PATTERN = new RegExp(
   [
@@ -977,6 +985,10 @@ export async function interact(
   capability: string,
   params?: Record<string, unknown>,
 ): Promise<unknown> {
+  if (ORCHESTRATOR_CAPABILITY_IDS.has(capability)) {
+    return runOrchestratorCapability(capability, params);
+  }
+
   if (capability === "list-sessions" || capability === "refresh") {
     return client.getCodingAgentStatus();
   }
