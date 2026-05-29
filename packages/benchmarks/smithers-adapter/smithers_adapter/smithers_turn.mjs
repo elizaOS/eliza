@@ -236,15 +236,47 @@ async function main() {
 
   const agent = new OpenAIAgent(agentOpts);
 
+  // Rate-limit resilience: Cerebras enforces a per-minute token quota and
+  // returns 429 ("Too Many Requests") under burst (multi-call benchmarks like
+  // tau-bench fire agent+user+judge rapidly). The ai SDK's default 3 retries
+  // are not enough, so we add an outer retry loop honoring Retry-After with a
+  // 60s cap — mirroring the hermes/openclaw adapters' backoff.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function is429(e) {
+    const sc = e?.statusCode ?? e?.status ?? e?.cause?.statusCode;
+    const msg = String(e?.message || e || "").toLowerCase();
+    return sc === 429 || msg.includes("too many requests") || msg.includes("rate limit") || msg.includes("quota");
+  }
+  function retryAfterMs(e) {
+    const h = e?.responseHeaders || e?.cause?.responseHeaders || {};
+    const ra = h["retry-after"] || h["Retry-After"];
+    const n = ra ? Number(ra) : NaN;
+    if (Number.isFinite(n) && n > 0) return Math.min(n * 1000, 60000);
+    return null;
+  }
+  const MAX_ATTEMPTS = 7;
+  const BACKOFF = [2000, 5000, 10000, 20000, 40000, 60000];
   let res;
-  try {
-    res = await agent.generate({ messages });
-  } catch (e) {
+  let lastErr;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      res = await agent.generate({ messages });
+      lastErr = undefined;
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (!is429(e) || attempt === MAX_ATTEMPTS - 1) break;
+      const delay = retryAfterMs(e) ?? BACKOFF[Math.min(attempt, BACKOFF.length - 1)];
+      process.stderr.write(`smithers-turn 429; retry ${attempt + 1}/${MAX_ATTEMPTS} after ${delay}ms\n`);
+      await sleep(delay);
+    }
+  }
+  if (lastErr !== undefined || res === undefined) {
     emit({
       text: "",
       thought: null,
       actions: [],
-      params: { error: `${e?.name || "Error"}: ${e?.message || e}` },
+      params: { error: `${lastErr?.name || "Error"}: ${lastErr?.message || lastErr}` },
     });
     return;
   }
