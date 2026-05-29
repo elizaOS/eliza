@@ -43,6 +43,28 @@
       const ipcPathPrefix = `//${ipcHost}`;
       const localAgentPort = '31337';
 
+      // The loopback (127.0.0.1:31337) → native-IPC rewrite below is only
+      // correct on a NATIVE Capacitor platform (iOS/Android), where the
+      // in-process local agent has no directly-reachable TCP port and
+      // `Agent.request` resolves to a NATIVE plugin. On any non-native host
+      // (Electrobun desktop, plain web) there is no native Agent plugin, so
+      // `Agent.request` falls back to the web implementation, which fetches
+      // `${apiBase}${path}` — the same loopback URL — and re-enters this bridge,
+      // recursing forever (renderer OOM). Gate the rewrite on a positive
+      // native-platform check so loopback fetches hit the real server directly
+      // everywhere else. Capacitor sets window.Capacitor on every platform and
+      // this runs at fetch time (after modules load), so the check is reliable.
+      function isNativeCapacitorAgentHost() {
+        try {
+          const cap = window.Capacitor;
+          if (!cap || typeof cap.getPlatform !== 'function') return false;
+          const p = cap.getPlatform();
+          return p === 'ios' || p === 'android';
+        } catch (_) {
+          return false;
+        }
+      }
+
       function rawUrl(input) {
         try {
           return input && typeof input === 'object' && 'url' in input ? input.url : String(input);
@@ -64,6 +86,7 @@
         try {
           const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://eliza.app');
           if (
+            isNativeCapacitorAgentHost() &&
             url.protocol === 'http:' &&
             url.port === localAgentPort &&
             (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]' || url.hostname === '::1')
