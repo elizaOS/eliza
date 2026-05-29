@@ -100,9 +100,15 @@ def rollout_and_grade(
     out_dir: str | Path | None = None,
     min_forward_distance_m: float = 0.5,
     max_lateral_drift_m: float = 0.5,
-    min_base_height_m: float = 0.55,
+    min_base_height_m: float | None = None,
 ) -> tuple[WalkMetrics, list, dict]:
     """Roll out a fixed command, grade with the honest gate, optionally render.
+
+    ``min_base_height_m`` defaults to ``None`` -> derived per-robot as
+    ``0.82 * initial_base_height`` (e.g. H1 stands ~0.97m -> ~0.80m floor),
+    which allows a realistic gait dip but rejects a crouch/collapse. A fixed
+    0.55 (the old value) let a near-collapsed H1 pass, so deriving from the
+    robot's own standing height keeps the gate honest across robots.
 
     Returns ``(metrics, states, report)``. ``report`` is a JSON-able dict.
     """
@@ -126,6 +132,10 @@ def rollout_and_grade(
 
     states = [state]
     base_pts = [base_xyz(state)]
+    if min_base_height_m is None:
+        # Derive a robot-appropriate floor from the standing base height so a
+        # crouch/collapse cannot pass while a real gait dip can.
+        min_base_height_m = max(0.4, 0.82 * float(base_pts[0][2]))
     left_contact, right_contact = [], []
     rewards = []
     fell = False

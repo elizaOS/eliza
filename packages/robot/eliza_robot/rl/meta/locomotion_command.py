@@ -19,10 +19,10 @@ from eliza_robot.rl.meta.command_parser import CommandParser, ParseResult
 from eliza_robot.rl.skills.base import SkillParams
 
 # Default command magnitudes. Chosen to sit inside the playground joystick
-# training ranges (H1/G1 lin_vel_x ~[-1,1] m/s, yaw ~[-1,1] rad/s) so the
-# policy is queried in-distribution.
+# training ranges so the policy is queried in-distribution. Actual env ranges:
+# H1 lin_vel_x [-1.5,1.5], G1 lin_vel_x [-1.0,1.0], both ang_vel_yaw [-1.0,1.0].
+# 1.0 is a conservative forward default in-range for every supported robot.
 MAX_FORWARD_SPEED_M_S = 1.0
-MAX_LATERAL_SPEED_M_S = 0.5
 MAX_YAW_RATE_RAD_S = 1.0
 # direction (radians) within this of pi is treated as "backward".
 _BACKWARD_CONE_RAD = 1.0
