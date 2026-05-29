@@ -83,12 +83,12 @@ TORSO = dict(
 # Gaussian falloff, gated to the front face so the lateral +-Y drums are untouched.
 # This gives two DISTINCT breasts instead of a single centre ridge.
 BREAST = dict(
-    amp=0.030,        # peak +X projection (m) -- lower => rounder, less pointy
-    y0=0.060,         # lateral offset of each mound centre (m)
-    z0=0.184,         # height of the mounds (m)
-    sigma_y=0.052, sigma_z=0.072,   # broad domes -> smooth round breasts, not cones
-    front_halfdeg=85.0,
-    smooth_iter=34,   # Taubin passes that round off the apex
+    amp=0.027,        # peak +X projection (m) -- lower => rounder, less pointy
+    y0=0.058,         # lateral offset of each mound centre (m)
+    z0=0.214,         # height of the mounds (m) -- higher up the chest
+    sigma_y=0.050, sigma_z=0.080,   # broad domes -> smooth round breasts, not cones
+    front_halfdeg=88.0,
+    smooth_iter=44,   # Taubin passes that round off the apex
 )
 
 # Features removed by delete-faces-in-box + cap (robust for engraved/separate
