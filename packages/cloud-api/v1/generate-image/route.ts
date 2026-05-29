@@ -1,4 +1,3 @@
-import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
@@ -7,12 +6,9 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { mergeGoogleImageModalitiesWithAnthropicCot } from "@/lib/providers/anthropic-thinking";
-import {
-  getAiProviderConfigurationError,
-  getLanguageModel,
-  hasLanguageModelProviderConfigured,
-} from "@/lib/providers/language-model";
+import { getAiProviderConfigurationError } from "@/lib/providers/language-model";
+import { generateOpenRouterImage } from "@/lib/providers/openrouter-image-generation";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { calculateImageGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   getSupportedImageModelDefinition,
@@ -63,16 +59,6 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
-
 function extensionForMimeType(mimeType: string): string {
   if (mimeType === "image/jpeg") return "jpg";
   if (mimeType === "image/webp") return "webp";
@@ -106,51 +92,19 @@ function buildImagePrompt(request: ImageRequest): string {
   return parts.join("\n");
 }
 
-function buildImageMessage(request: ImageRequest) {
-  if (!request.sourceImage) {
-    return undefined;
-  }
-  return [
-    {
-      role: "user" as const,
-      content: [
-        { type: "text" as const, text: buildImagePrompt(request) },
-        { type: "image" as const, image: request.sourceImage },
-      ],
-    },
-  ];
-}
-
 async function generateOneImage(request: ImageRequest): Promise<{
   dataUrl: string;
   bytes: Uint8Array;
   mimeType: string;
   text: string;
 }> {
-  let text = "";
-
-  const messages = buildImageMessage(request);
-  const result = streamText({
-    model: getLanguageModel(request.model),
-    ...mergeGoogleImageModalitiesWithAnthropicCot(request.model, process.env),
-    ...(messages ? { messages } : { prompt: buildImagePrompt(request) }),
+  return await generateOpenRouterImage({
+    apiKey: getCloudAwareEnv().OPENROUTER_API_KEY,
+    model: request.model,
+    prompt: buildImagePrompt(request),
+    sourceImage: request.sourceImage,
+    aspectRatio: request.aspectRatio,
   });
-
-  for await (const delta of result.fullStream) {
-    if (delta.type === "text-delta") {
-      text += delta.text;
-    }
-    if (delta.type === "error") {
-      throw new Error(String(delta.error));
-    }
-    if (delta.type === "file" && delta.file.mediaType.startsWith("image/")) {
-      const bytes = delta.file.uint8Array;
-      const dataUrl = `data:${delta.file.mediaType};base64,${bytesToBase64(bytes)}`;
-      return { dataUrl, bytes, mimeType: delta.file.mediaType, text };
-    }
-  }
-
-  throw new Error("Image provider returned no image");
 }
 
 app.post("/", async (c) => {
@@ -181,7 +135,7 @@ app.post("/", async (c) => {
         },
       );
     }
-    if (!hasLanguageModelProviderConfigured(request.model)) {
+    if (!getCloudAwareEnv().OPENROUTER_API_KEY) {
       return jsonError(
         c,
         503,
