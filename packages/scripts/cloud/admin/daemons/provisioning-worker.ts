@@ -34,6 +34,12 @@ type WorkerContainersEnv =
   typeof import("@elizaos/cloud-shared/lib/config/containers-env").containersEnv;
 type WorkerWarmPoolCreator =
   typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator").getHetznerPoolContainerCreator;
+type WorkerResolveImageDigest =
+  typeof import("@elizaos/cloud-shared/lib/services/containers/registry-probe").resolveImageDigest;
+type WorkerAgentSandboxesRepository =
+  typeof import("@elizaos/cloud-shared/db/repositories/agent-sandboxes").agentSandboxesRepository;
+type WorkerJobsRepository =
+  typeof import("@elizaos/cloud-shared/db/repositories/jobs").jobsRepository;
 
 interface WorkerDeps {
   logger: WorkerLogger;
@@ -43,6 +49,9 @@ interface WorkerDeps {
   WarmPoolManager: WorkerWarmPoolManager;
   getHetznerPoolContainerCreator: WorkerWarmPoolCreator;
   containersEnv: WorkerContainersEnv;
+  resolveImageDigest: WorkerResolveImageDigest;
+  agentSandboxesRepository: WorkerAgentSandboxesRepository;
+  jobsRepository: WorkerJobsRepository;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -103,6 +112,9 @@ async function loadDeps(): Promise<WorkerDeps> {
         "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator"
       ),
       import("@elizaos/cloud-shared/lib/config/containers-env"),
+      import("@elizaos/cloud-shared/lib/services/containers/registry-probe"),
+      import("@elizaos/cloud-shared/db/repositories/agent-sandboxes"),
+      import("@elizaos/cloud-shared/db/repositories/jobs"),
     ]).then(
       ([
         jobsModule,
@@ -112,6 +124,9 @@ async function loadDeps(): Promise<WorkerDeps> {
         warmPoolModule,
         warmPoolCreatorModule,
         containersEnvModule,
+        registryProbeModule,
+        agentSandboxesModule,
+        jobsRepoModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
@@ -121,6 +136,9 @@ async function loadDeps(): Promise<WorkerDeps> {
         getHetznerPoolContainerCreator:
           warmPoolCreatorModule.getHetznerPoolContainerCreator,
         containersEnv: containersEnvModule.containersEnv,
+        resolveImageDigest: registryProbeModule.resolveImageDigest,
+        agentSandboxesRepository: agentSandboxesModule.agentSandboxesRepository,
+        jobsRepository: jobsRepoModule.jobsRepository,
       }),
     );
   }
@@ -301,6 +319,105 @@ async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
   }
 }
 
+interface FleetUpgradeSummary {
+  action: "noop" | "skip_no_digest" | "skip_capacity" | "enqueued";
+  configuredImage?: string;
+  targetDigest?: string | null;
+  candidates?: number;
+  enqueued?: number;
+  inFlight?: number;
+  detail?: string;
+}
+
+const MAX_INFLIGHT_UPGRADES = 3;
+
+/**
+ * Detect when the registry-side digest of the configured agent tag has moved
+ * (e.g. a new `:develop` image was pushed) and enqueue blue/green
+ * `agent_upgrade` jobs for every running agent still on the old digest.
+ *
+ * Rate-limited to at most `MAX_INFLIGHT_UPGRADES` upgrade jobs in flight at
+ * any time so the fleet is never fully disrupted at once. The actual swap is
+ * zero-downtime (a new container is provisioned on a different node, traffic
+ * is atomically swapped, then the old container gets a 30s SIGTERM drain
+ * before removal), so the rate limit is about resource pressure on
+ * docker_nodes (each in-flight swap holds capacity on two nodes briefly),
+ * not user-facing impact.
+ *
+ * Returns "skip_no_digest" when the registry probe can't resolve a digest —
+ * e.g. the operator pinned a non-ghcr image like `eliza-agent:prod-good`, or
+ * the registry is unreachable. The reconciler simply waits for the next tick.
+ */
+async function processFleetUpgradeCycle(): Promise<FleetUpgradeSummary> {
+  const {
+    containersEnv,
+    resolveImageDigest,
+    agentSandboxesRepository,
+    jobsRepository,
+    provisioningJobService,
+  } = await loadDeps();
+
+  const configuredImage = containersEnv.defaultAgentImage();
+  const targetDigest = await resolveImageDigest(configuredImage);
+  if (!targetDigest) {
+    return {
+      action: "skip_no_digest",
+      configuredImage,
+      targetDigest,
+      detail: "registry probe returned null",
+    };
+  }
+
+  const inFlight = await jobsRepository.countInFlightByType("agent_upgrade");
+  const slack = MAX_INFLIGHT_UPGRADES - inFlight;
+  if (slack <= 0) {
+    return {
+      action: "skip_capacity",
+      configuredImage,
+      targetDigest,
+      inFlight,
+    };
+  }
+
+  const candidates =
+    await agentSandboxesRepository.listRunningWithDigestOtherThan(
+      targetDigest,
+      slack,
+    );
+  if (candidates.length === 0) {
+    return { action: "noop", configuredImage, targetDigest, inFlight };
+  }
+
+  const { logger } = await loadDeps();
+  let enqueued = 0;
+  for (const c of candidates) {
+    try {
+      const result = await provisioningJobService.enqueueAgentUpgradeOnce({
+        agentId: c.id,
+        organizationId: c.organization_id,
+        userId: c.user_id,
+        fromDigest: c.image_digest,
+        toDigest: targetDigest,
+      });
+      if (result.created) enqueued += 1;
+    } catch (err) {
+      logger.warn("[provisioning-worker] fleet-upgrade enqueue failed", {
+        agentId: c.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return {
+    action: "enqueued",
+    configuredImage,
+    targetDigest,
+    candidates: candidates.length,
+    enqueued,
+    inFlight,
+  };
+}
+
 /**
  * Drain warm-pool sandboxes that have been idle past their TTL. Replaces the
  * `pool-drain-idle` cron path.
@@ -363,6 +480,25 @@ async function pollCycle(
     }
   } catch (error) {
     logger.error("[provisioning-worker] heartbeat cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const decision = await processFleetUpgradeCycle();
+    if (decision.action !== "noop") {
+      logger.info("[provisioning-worker] fleet upgrade cycle complete", {
+        action: decision.action,
+        configuredImage: decision.configuredImage,
+        targetDigest: decision.targetDigest,
+        candidates: decision.candidates,
+        enqueued: decision.enqueued,
+        inFlight: decision.inFlight,
+        detail: decision.detail,
+      });
+    }
+  } catch (error) {
+    logger.error("[provisioning-worker] fleet upgrade cycle failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   }

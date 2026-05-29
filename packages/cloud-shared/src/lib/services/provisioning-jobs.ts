@@ -66,6 +66,25 @@ export interface AgentRestartJobData {
   userId: string;
 }
 
+export interface AgentUpgradeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  /** sha256 the agent is currently on (null if it predates digest tracking). */
+  fromDigest: string | null;
+  /** sha256 the reconciler resolved from the configured tag at enqueue time. */
+  toDigest: string;
+}
+
+export interface AgentUpgradeJobResult {
+  oldNodeId: string;
+  oldContainerName: string;
+  newNodeId: string;
+  newContainerName: string;
+  newDigest: string;
+  durationMs: number;
+}
+
 export interface AgentLogsJobData {
   agentId: string;
   organizationId: string;
@@ -179,6 +198,14 @@ function agentRestartJobResultToRecord(result: AgentRestartJobResult): Record<st
   return { ...result };
 }
 
+function agentUpgradeJobDataToRecord(data: AgentUpgradeJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentUpgradeJobResultToRecord(result: AgentUpgradeJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
 function agentLogsJobDataToRecord(data: AgentLogsJobData): Record<string, unknown> {
   return { ...data };
 }
@@ -277,6 +304,25 @@ function isAgentRestartJobData(value: unknown): value is AgentRestartJobData {
 function readAgentRestartJobData(job: Job): AgentRestartJobData {
   if (!isAgentRestartJobData(job.data)) {
     throw new Error(`Invalid agent restart job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+function isAgentUpgradeJobData(value: unknown): value is AgentUpgradeJobData {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.agentId === "string" &&
+    typeof v.organizationId === "string" &&
+    typeof v.userId === "string" &&
+    (v.fromDigest === null || typeof v.fromDigest === "string") &&
+    typeof v.toDigest === "string"
+  );
+}
+
+export function readAgentUpgradeJobData(job: Job): AgentUpgradeJobData {
+  if (!isAgentUpgradeJobData(job.data)) {
+    throw new Error(`Invalid agent upgrade job data for job ${job.id}`);
   }
   return job.data;
 }
@@ -718,6 +764,50 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Fleet-upgrade: enqueue a blue/green swap of `agentId` onto `toDigest`.
+   * Called by the reconciler when a registry probe sees the configured tag
+   * has moved. The handler provisions a new container on the least-loaded
+   * node (or autoscales) with the new image, waits for it to be healthy,
+   * atomically swaps the agent's bridge_url / node_id / container_name /
+   * image_digest, then gracefully stops the old container (30s SIGTERM
+   * drain).
+   *
+   * Idempotency: the reconciler's per-agent `agent_upgrade` lookup dedups
+   * before calling this (one pending or in-flight upgrade per agent at a
+   * time). `enqueueLifecycleJob` adds a second layer via the
+   * `active_provision_agent_idx` style guard.
+   */
+  async enqueueAgentUpgradeOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    fromDigest: string | null;
+    toDigest: string;
+    webhookUrl?: string;
+  }): Promise<{ created: boolean; job: Job }> {
+    return this.enqueueLifecycleJob<AgentUpgradeJobData>({
+      jobType: JOB_TYPES.AGENT_UPGRADE,
+      jobData: {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        userId: params.userId,
+        fromDigest: params.fromDigest,
+        toDigest: params.toDigest,
+      },
+      toRecord: agentUpgradeJobDataToRecord,
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      webhookUrl: params.webhookUrl,
+      maxAttempts: 3,
+      // Full provision on a possibly fresh node (~60-90s) + health probe
+      // (~30s) + atomic DB swap + 30s graceful stop = ~3 min budget.
+      estimatedDurationMs: 180_000,
+      logName: "agent_upgrade",
+    });
+  }
+
+  /**
    * Enqueue an Agent logs read job.
    *
    * Daemon-side execution: SSH `docker logs --tail <N>` on the assigned
@@ -1035,6 +1125,9 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_RESTART:
         await this.executeAgentRestart(job);
         break;
+      case JOB_TYPES.AGENT_UPGRADE:
+        await this.executeAgentUpgrade(job);
+        break;
       case JOB_TYPES.AGENT_LOGS:
         await this.executeAgentLogs(job);
         break;
@@ -1195,6 +1288,63 @@ export class ProvisioningJobService {
       agentId: data.agentId,
       containerStopped: result.containerStopped,
       containerStarted: result.containerStarted,
+    });
+  }
+
+  private async executeAgentUpgrade(job: Job): Promise<void> {
+    const data = readAgentUpgradeJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_upgrade", {
+      jobId: job.id,
+      agentId: data.agentId,
+      fromDigest: data.fromDigest,
+      toDigest: data.toDigest,
+    });
+
+    const startedAt = Date.now();
+    const result = await elizaSandboxService.executeUpgrade(
+      data.agentId,
+      data.organizationId,
+      data.toDigest,
+    );
+
+    if (!result.success) {
+      // Failures are visible by the row staying on the OLD image_digest; the
+      // reconciler will try again on the next cycle. The worker's standard
+      // error handling marks the job failed and stores this error message.
+      throw new Error(result.error ?? "Unknown agent_upgrade failure");
+    }
+
+    const jobResult: AgentUpgradeJobResult = {
+      oldNodeId: result.oldNodeId ?? "",
+      oldContainerName: result.oldContainerName ?? "",
+      newNodeId: result.newNodeId ?? "",
+      newContainerName: result.newContainerName ?? "",
+      newDigest: result.newDigest ?? data.toDigest,
+      durationMs: Date.now() - startedAt,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentUpgradeJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_upgrade completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      oldNodeId: jobResult.oldNodeId,
+      newNodeId: jobResult.newNodeId,
+      durationMs: jobResult.durationMs,
     });
   }
 
@@ -1482,7 +1632,8 @@ export class ProvisioningJobService {
       | AgentResumeJobResult
       | AgentRestartJobResult
       | AgentLogsJobResult
-      | AgentSnapshotJobResult,
+      | AgentSnapshotJobResult
+      | AgentUpgradeJobResult,
   ): Promise<void> {
     if (!job.webhook_url) return;
 

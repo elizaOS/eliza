@@ -23,4 +23,10 @@ export interface SandboxCreateConfig {
   resources?: { vcpus?: number; memoryMb?: number };
   timeout?: number;
   dockerImage?: string;
+  /**
+   * Skip this node when selecting where to place the new container.
+   * Used by the fleet-upgrade handler to force a blue/green swap onto a
+   * *different* node than the one the agent is currently on.
+   */
+  excludeNodeId?: string;
 }

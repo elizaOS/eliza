@@ -179,6 +179,40 @@ export class AgentSandboxesRepository {
       .where(eq(agentSandboxes.status, "running"));
   }
 
+  /**
+   * Find running, non-deleted agents whose stored `image_digest` differs
+   * from `targetDigest` (treating NULL as different). Used by the
+   * fleet-upgrade reconciler to enqueue blue/green swaps onto the
+   * currently-deployed image. Capped by `limit` so a single cycle doesn't
+   * try to enqueue the whole fleet at once.
+   */
+  async listRunningWithDigestOtherThan(
+    targetDigest: string,
+    limit: number,
+  ): Promise<
+    Array<{ id: string; organization_id: string; user_id: string; image_digest: string | null }>
+  > {
+    return dbRead
+      .select({
+        id: agentSandboxes.id,
+        organization_id: agentSandboxes.organization_id,
+        user_id: agentSandboxes.user_id,
+        image_digest: agentSandboxes.image_digest,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.status, "running"),
+          sql`${agentSandboxes.deleted_at} IS NULL`,
+          sql`${agentSandboxes.image_digest} IS DISTINCT FROM ${targetDigest}`,
+          // Skip pool-owned rows (warm pool entries) — they get the new
+          // image naturally on next claim, no need to disrupt them.
+          sql`${agentSandboxes.pool_status} IS NULL`,
+        ),
+      )
+      .limit(limit);
+  }
+
   async findRunningSandbox(id: string, orgId: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     // Use dbWrite (primary) for fresh read-after-write data from the VPS worker.

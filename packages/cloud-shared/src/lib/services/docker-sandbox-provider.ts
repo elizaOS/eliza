@@ -18,6 +18,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
+import { resolveImageDigest } from "./containers/registry-probe";
 import { isAlreadyGoneMessage } from "./docker-error-classifier";
 import { dockerNodeManager } from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
@@ -61,6 +62,13 @@ export interface DockerSandboxMetadata {
   agentId: string;
   volumePath: string;
   dockerImage: string;
+  /**
+   * Registry-resolved sha256 digest of `dockerImage` at provision time.
+   * Null when the image is not on a supported registry (e.g. a local-only
+   * name) or the registry was unreachable. The fleet-upgrade reconciler
+   * uses this to detect when the tag's digest has moved.
+   */
+  imageDigest: string | null;
   headscaleIp?: string;
 }
 
@@ -464,6 +472,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // retry logic provide safety against concurrent capacity changes.
     let dbNode = await dockerNodeManager.getAvailableNode({
       requiredPlatform: imagePlatform,
+      excludeNodeId: config.excludeNodeId,
     });
     if (!dbNode) {
       dbNode = await this.provisionAutoscaledNodeForAgent({
@@ -495,7 +504,15 @@ export class DockerSandboxProvider implements SandboxProvider {
       logger.warn(
         "[docker-sandbox] No nodes in DB, falling back to CONTAINERS_DOCKER_NODES env var (seed-only, no load balancing)",
       );
-      const envNodes = parseDockerNodes();
+      const allEnvNodes = parseDockerNodes();
+      const envNodes = config.excludeNodeId
+        ? allEnvNodes.filter((n) => n.nodeId !== config.excludeNodeId)
+        : allEnvNodes;
+      if (envNodes.length === 0) {
+        throw new Error(
+          `[docker-sandbox] No nodes available (excludeNodeId=${config.excludeNodeId ?? "none"} filtered out all seed nodes)`,
+        );
+      }
       const envNode = envNodes[Math.floor(Math.random() * envNodes.length)]!;
       nodeId = envNode.nodeId;
       hostname = envNode.hostname;
@@ -860,6 +877,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     // 10. Return handle with strongly-typed metadata
     const targetHost = headscaleIp || hostname;
 
+    // Probe ghcr.io for the image's current digest so the fleet-upgrade
+    // reconciler can detect when the tag has been republished. Returns null
+    // on bare image names or registry errors — both are treated as
+    // "unknown, leave alone" by the reconciler.
+    const imageDigest = await resolveImageDigest(resolvedImage);
+
     const metadata: DockerSandboxMetadata = {
       provider: "docker",
       nodeId,
@@ -870,6 +893,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       agentId,
       volumePath,
       dockerImage: resolvedImage,
+      imageDigest,
       headscaleIp: headscaleIp || undefined,
     };
 
@@ -950,6 +974,61 @@ export class DockerSandboxProvider implements SandboxProvider {
   // ------------------------------------------------------------------
   // stop
   // ------------------------------------------------------------------
+
+  /**
+   * Stop and remove a container on a specific node using explicit node info.
+   * Used by the fleet-upgrade handler to tear down the old container AFTER
+   * the blue/green swap has already updated the agent_sandboxes row to point
+   * at the blue — at which point `this.containers` and the DB both resolve
+   * to the blue, so the regular `stop(sandboxId)` would target the wrong
+   * container.
+   *
+   * Best-effort: a swap that already redirected traffic doesn't break if we
+   * leave a zombie on the old node; the next reconciliation pass plus the
+   * autoscaler's idle-node drain handle eventual cleanup. We still try
+   * stop+rm with graceful drain so users on websockets get a SIGTERM rather
+   * than an abrupt kill.
+   */
+  async stopOnSpecificNode(
+    node: DockerNode,
+    containerName: string,
+    gracefulSeconds = 30,
+  ): Promise<void> {
+    const ssh = DockerSSHClient.getClient(
+      node.hostname,
+      node.ssh_port ?? DEFAULT_SSH_PORT,
+      node.host_key_fingerprint ?? undefined,
+      node.ssh_user ?? DEFAULT_SSH_USERNAME,
+    );
+    try {
+      await ssh.exec(
+        `docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!isAlreadyGoneMessage(msg)) {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: docker stop failed for ${containerName} on ${node.node_id}: ${msg}`,
+        );
+      }
+    }
+    try {
+      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!isAlreadyGoneMessage(msg)) {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: docker rm -f failed for ${containerName} on ${node.node_id}: ${msg}`,
+        );
+      }
+    }
+    await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
+      logger.warn(
+        `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
 
   async stop(sandboxId: string): Promise<void> {
     const meta = await this.resolveContainer(sandboxId);
