@@ -167,6 +167,136 @@ describe("useSkillAction", () => {
 		}
 	});
 
+	it("unwraps array-form command envelopes split across two JSON objects (issue #7970)", async () => {
+		const tempDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "use-skill-array-envelope-"),
+		);
+		const scriptPath = path.join(tempDir, "weather.sh");
+		await fs.writeFile(
+			scriptPath,
+			'#!/usr/bin/env bash\nprintf \'%s\\n\' \'{"cmd":["bash","-lc","curl -s wttr.in/Paris"]}{"output":"Paris: sunny +15C"}Paris: sunny +15C\'\n',
+			"utf8",
+		);
+		await fs.chmod(scriptPath, 0o755);
+
+		const skill = {
+			slug: "weather",
+			name: "Weather",
+			description: "Weather script",
+			version: "1.0.0",
+			content: "",
+			frontmatter: {},
+			path: tempDir,
+			scripts: ["weather.sh"],
+			references: [],
+			assets: [],
+			loadedAt: 0,
+			source: "bundled",
+		};
+		const service = {
+			getLoadedSkill: vi.fn((slug: string) =>
+				slug === "weather" ? skill : undefined,
+			),
+			getLoadedSkills: vi.fn(() => [skill]),
+			isSkillEnabled: vi.fn(() => true),
+			checkSkillEligibility: vi.fn(async () => ({
+				slug: "weather",
+				eligible: true,
+				reasons: [],
+				checkedAt: 0,
+			})),
+			getScriptPath: vi.fn(() => scriptPath),
+			getSkillExecutionEnv: vi.fn(() => process.env as Record<string, string>),
+		};
+		const runtimeShape = {
+			logger,
+			getService: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
+			),
+		};
+
+		try {
+			const result = await useSkillAction.handler(
+				Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
+				{ content: { text: "use weather skill" } } as Memory,
+				undefined,
+				{ parameters: { slug: "weather", mode: "script" } },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.userFacingText).toBe("Paris: sunny +15C");
+			expect(result?.verifiedUserFacing).toBe(true);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
+	it("does not mark non-envelope JSON stdout as verified user-facing text (issue #7970 regression)", async () => {
+		const tempDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "use-skill-non-envelope-"),
+		);
+		const scriptPath = path.join(tempDir, "status.sh");
+		await fs.writeFile(
+			scriptPath,
+			'#!/usr/bin/env bash\nprintf \'%s\\n\' \'{"status":"ok","metrics":{"latency":42}}\'\n',
+			"utf8",
+		);
+		await fs.chmod(scriptPath, 0o755);
+
+		const skill = {
+			slug: "status",
+			name: "Status",
+			description: "Status script",
+			version: "1.0.0",
+			content: "",
+			frontmatter: {},
+			path: tempDir,
+			scripts: ["status.sh"],
+			references: [],
+			assets: [],
+			loadedAt: 0,
+			source: "bundled",
+		};
+		const service = {
+			getLoadedSkill: vi.fn((slug: string) =>
+				slug === "status" ? skill : undefined,
+			),
+			getLoadedSkills: vi.fn(() => [skill]),
+			isSkillEnabled: vi.fn(() => true),
+			checkSkillEligibility: vi.fn(async () => ({
+				slug: "status",
+				eligible: true,
+				reasons: [],
+				checkedAt: 0,
+			})),
+			getScriptPath: vi.fn(() => scriptPath),
+			getSkillExecutionEnv: vi.fn(() => process.env as Record<string, string>),
+		};
+		const runtimeShape = {
+			logger,
+			getService: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
+			),
+		};
+
+		try {
+			const result = await useSkillAction.handler(
+				Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
+				{ content: { text: "use status skill" } } as Memory,
+				undefined,
+				{ parameters: { slug: "status", mode: "script" } },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.userFacingText).toBeUndefined();
+			expect(result?.verifiedUserFacing).toBeUndefined();
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true });
+		}
+	});
+
 	it("appends a per-skill invocation record with input/output when a trajectory step is active (W1-T5)", async () => {
 		mockedGetTrajectoryContext.mockReturnValue({
 			trajectoryStepId: "step-skill-1",

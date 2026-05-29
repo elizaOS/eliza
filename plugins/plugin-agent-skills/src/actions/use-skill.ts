@@ -141,33 +141,46 @@ function findLeadingJsonObjectEnd(text: string): number {
 	return -1;
 }
 
-function unwrapSkillStdoutEnvelope(stdout: string): string {
+function isCommandEnvelope(record: Record<string, unknown>): boolean {
+	for (const key of ["cmd", "command"] as const) {
+		const value = record[key];
+		if (typeof value === "string" && value.length > 0) return true;
+		if (
+			Array.isArray(value) &&
+			value.length > 0 &&
+			value.every((entry) => typeof entry === "string")
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function unwrapSkillStdoutEnvelope(stdout: string): string | undefined {
 	const trimmed = stdout.trim();
-	if (!trimmed) return "";
+	if (!trimmed) return undefined;
 	if (!trimmed.startsWith("{")) return trimmed;
 
 	const firstJsonEnd = findLeadingJsonObjectEnd(trimmed);
-	if (firstJsonEnd < 0) return trimmed;
+	if (firstJsonEnd < 0) return undefined;
 	const firstJson = trimmed.slice(0, firstJsonEnd);
 	const remainder = trimmed.slice(firstJsonEnd).trim();
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(firstJson);
 	} catch {
-		return trimmed;
+		return undefined;
 	}
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return trimmed;
+		return undefined;
 	}
 
 	const record = parsed as Record<string, unknown>;
-	const hasCommandEnvelope =
-		typeof record.cmd === "string" || typeof record.command === "string";
-	if (!hasCommandEnvelope) return trimmed;
+	if (!isCommandEnvelope(record)) return undefined;
 
 	for (const key of ["output", "stdout", "result"] as const) {
 		if (key in record) {
-			return stringifyUserFacingValue(record[key]) ?? "";
+			return stringifyUserFacingValue(record[key]);
 		}
 	}
 	if (remainder.startsWith("{")) {
@@ -179,7 +192,7 @@ function unwrapSkillStdoutEnvelope(stdout: string): string {
 					const secondRecord = second as Record<string, unknown>;
 					for (const key of ["output", "stdout", "result"] as const) {
 						if (key in secondRecord) {
-							return stringifyUserFacingValue(secondRecord[key]) ?? "";
+							return stringifyUserFacingValue(secondRecord[key]);
 						}
 					}
 				}
@@ -191,7 +204,7 @@ function unwrapSkillStdoutEnvelope(stdout: string): string {
 		}
 	}
 	if (remainder) return remainder;
-	return trimmed;
+	return undefined;
 }
 
 function isSkillTruncationMarker(

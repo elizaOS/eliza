@@ -34,6 +34,7 @@ const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const STREAM_CAP_CHARS = 30_000;
 const USER_FACING_STDOUT_CAP_CHARS = 8_000;
+const USER_FACING_STDOUT_CAP_LINES = 200;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
@@ -798,7 +799,7 @@ function localStatusUserFacingText(args: {
 function isSafeSmallStdoutProjectionCommand(command: string): boolean {
   const normalized = command.replace(/\s+/g, " ").trim();
   if (!normalized) return false;
-  return /^(?:(?:command\s+-v|pwd|ls|find|grep|rg)\b|git\s+(?:grep|status|branch|rev-parse|log|diff|show|ls-files)\b)/u.test(
+  return /^(?:(?:command\s+-v|pwd|ls|find|grep|rg)\b|git\s+(?:grep|status|branch|rev-parse|ls-files)\b)/u.test(
     normalized,
   );
 }
@@ -811,6 +812,7 @@ function safeSmallStdoutUserFacingText(args: {
   const stdout = args.stdout.trim();
   if (!stdout || args.stderr.trim()) return undefined;
   if (stdout.length > USER_FACING_STDOUT_CAP_CHARS) return undefined;
+  if (stdout.split("\n").length > USER_FACING_STDOUT_CAP_LINES) return undefined;
   if (!isSafeSmallStdoutProjectionCommand(args.command)) return undefined;
   return stdout;
 }
