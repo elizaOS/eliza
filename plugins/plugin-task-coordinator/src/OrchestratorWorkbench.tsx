@@ -198,19 +198,27 @@ function mergeById<T extends { id: string; timestamp: number }>(
 
 interface NormalizedPlan {
   summary: string | null;
-  steps: { label: string; status: string | null }[];
+  /** `key` is the step's ordinal identity within this plan snapshot (plans are
+   * ordered and steps carry no server id), used for stable React keys. */
+  steps: { key: string; label: string; status: string | null }[];
 }
 
 /** Adapt the free-form `currentPlan` record into a renderable shape, or null
  * when it carries no recognizable summary/steps (so we never dump raw JSON). */
-function normalizePlan(plan: Record<string, unknown> | null): NormalizedPlan | null {
+function normalizePlan(
+  plan: Record<string, unknown> | null,
+): NormalizedPlan | null {
   if (!plan) return null;
   const summary = typeof plan.summary === "string" ? plan.summary : null;
   const rawSteps = Array.isArray(plan.steps) ? plan.steps : [];
   const steps: NormalizedPlan["steps"] = [];
   for (const raw of rawSteps) {
     if (typeof raw === "string" && raw.trim()) {
-      steps.push({ label: raw.trim(), status: null });
+      steps.push({
+        key: `step-${steps.length}`,
+        label: raw.trim(),
+        status: null,
+      });
       continue;
     }
     if (raw && typeof raw === "object") {
@@ -222,6 +230,7 @@ function normalizePlan(plan: Record<string, unknown> | null): NormalizedPlan | n
         null;
       if (!label) continue;
       steps.push({
+        key: `step-${steps.length}`,
         label,
         status: typeof obj.status === "string" ? obj.status : null,
       });
@@ -268,7 +277,8 @@ function paramPriority(value: unknown): TaskPriority | undefined {
 function paramStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value.filter(
-    (entry): entry is string => typeof entry === "string" && entry.trim() !== "",
+    (entry): entry is string =>
+      typeof entry === "string" && entry.trim() !== "",
   );
   return items.length > 0 ? items.map((entry) => entry.trim()) : undefined;
 }
@@ -324,7 +334,9 @@ export async function runOrchestratorCapability(
     case "orchestrator-resume-all":
       return { resumed: await client.resumeAllOrchestratorTasks() };
     case "orchestrator-delete-task":
-      return { deleted: await client.deleteOrchestratorTask(requireTaskId(params)) };
+      return {
+        deleted: await client.deleteOrchestratorTask(requireTaskId(params)),
+      };
     case "orchestrator-fork-task":
       return client.forkOrchestratorTask(requireTaskId(params), {
         title: paramString(params?.title),
@@ -344,7 +356,8 @@ export async function runOrchestratorCapability(
       });
     case "orchestrator-stop-agent": {
       const sessionId = paramString(params?.sessionId);
-      if (!sessionId) throw new Error("sessionId is required to stop an agent.");
+      if (!sessionId)
+        throw new Error("sessionId is required to stop an agent.");
       return {
         stopped: await client.stopOrchestratorAgent(
           requireTaskId(params),
@@ -780,11 +793,9 @@ function MessageEntry({
 
 function EventEntry({
   event,
-  t,
   locale,
 }: {
   event: CodingAgentTaskEventRecord;
-  t: Translate;
   locale?: string;
 }) {
   return (
@@ -884,9 +895,7 @@ function labelStatus2(status: string, t: Translate): string {
 
 function PlanSection({ plan, t }: { plan: NormalizedPlan; t: Translate }) {
   return (
-    <InspectorSection
-      title={t("orchestrator.plan", { defaultValue: "Plan" })}
-    >
+    <InspectorSection title={t("orchestrator.plan", { defaultValue: "Plan" })}>
       {plan.summary ? (
         <p className="mb-2 text-xs-tight text-txt">{plan.summary}</p>
       ) : null}
@@ -894,7 +903,7 @@ function PlanSection({ plan, t }: { plan: NormalizedPlan; t: Translate }) {
         <ol className="space-y-1">
           {plan.steps.map((step, index) => (
             <li
-              key={`${step.label}-${index}`}
+              key={step.key}
               className="flex items-start gap-1.5 text-xs-tight text-txt"
             >
               <span className="mt-px shrink-0 tabular-nums text-muted">
@@ -1354,9 +1363,7 @@ function TaskInspector({
   const sessions = [...detail.sessions].sort(
     (a, b) => b.lastActivityAt - a.lastActivityAt,
   );
-  const artifacts = [...detail.artifacts]
-    .reverse()
-    .slice(0, 12);
+  const artifacts = [...detail.artifacts].reverse().slice(0, 12);
   const archived = detail.status === "archived";
 
   return (
@@ -1541,8 +1548,12 @@ export function OrchestratorWorkbench() {
     null,
   );
   const [tasks, setTasks] = useState<CodingAgentTaskThread[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(readInitialTaskId);
-  const [detail, setDetail] = useState<CodingAgentTaskThreadDetail | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    readInitialTaskId,
+  );
+  const [detail, setDetail] = useState<CodingAgentTaskThreadDetail | null>(
+    null,
+  );
   const [messages, setMessages] = useState<CodingAgentTaskMessageRecord[]>([]);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [events, setEvents] = useState<CodingAgentTaskEventRecord[]>([]);
@@ -1743,9 +1754,7 @@ export function OrchestratorWorkbench() {
         status={status}
         busy={mutating}
         onNewTask={() => setCreateOpen(true)}
-        onPauseAll={() =>
-          runMutation(() => client.pauseAllOrchestratorTasks())
-        }
+        onPauseAll={() => runMutation(() => client.pauseAllOrchestratorTasks())}
         onResumeAll={() =>
           runMutation(() => client.resumeAllOrchestratorTasks())
         }
@@ -1922,7 +1931,6 @@ export function OrchestratorWorkbench() {
                       <EventEntry
                         key={item.event.id}
                         event={item.event}
-                        t={t}
                         locale={locale}
                       />
                     ),

@@ -481,6 +481,9 @@ skills/.cache/
 **/skills/.cache/
 .cache/
 
+# Scenario-runner skills scratch (runtime-created by agent-skills scenarios; never source)
+/packages/scenario-runner/skills/
+
 # Local vendored experiments (do not commit)
 /plugins/plugin-local-ai/rust/vendor/llama_cpp_rs/
 /vendor/llama_cpp_rs/
