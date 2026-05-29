@@ -27,6 +27,8 @@ export interface ElizaBuildOptions {
 	format?: "esm" | "cjs";
 	/** Copy assets configuration */
 	assets?: Array<{ from: string; to: string }>;
+	/** Whether to leave existing files in place before building */
+	skipClean?: boolean;
 	/** Whether to generate TypeScript declarations (using tsc separately) */
 	generateDts?: boolean;
 	/**
@@ -511,11 +513,15 @@ export async function runBuild(
 		console.log(`🚀 Building ${packageName}...\n`);
 	}
 
-	// Clean previous build
-	await cleanBuild(buildOptions.outdir);
+	const resolvedOutdir = buildOptions.outdir ?? "dist";
+	if (buildOptions.skipClean) {
+		mkdirSync(resolvedOutdir, { recursive: true });
+	} else {
+		// Clean previous build
+		await cleanBuild(resolvedOutdir);
+	}
 
 	// Bun.build does not always recreate an emptied outdir; ensure it exists after clean.
-	const resolvedOutdir = buildOptions.outdir ?? "dist";
 	mkdirSync(resolvedOutdir, { recursive: true });
 
 	// Create build configuration
@@ -710,6 +716,7 @@ async function buildNode() {
 			sourcemap: true,
 			minify: false,
 			generateDts: false, // We'll generate declarations separately for all entry points
+			skipClean: true,
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});
@@ -740,6 +747,7 @@ async function buildBrowser() {
 			sourcemap: true,
 			minify: true, // Minify for browser to reduce bundle size
 			generateDts: false, // Use the same .d.ts files from Node build
+			skipClean: true,
 			plugins: [],
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
@@ -769,6 +777,7 @@ async function buildEdge() {
 			sourcemap: true,
 			minify: false,
 			generateDts: false,
+			skipClean: true,
 			selfPackageName: "@elizaos/core",
 		},
 	});
@@ -800,6 +809,7 @@ async function buildTesting() {
 			sourcemap: true,
 			minify: false,
 			generateDts: false,
+			skipClean: true,
 			selfPackageName: "@elizaos/core", // Exclude self from externals to avoid self-referential imports
 		},
 	});

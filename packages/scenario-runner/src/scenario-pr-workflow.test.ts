@@ -92,6 +92,10 @@ const deterministicLifeOpsScheduledTasksScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-lifeops-scheduled-tasks.scenario.ts",
 );
+const deterministicCodingToolsActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-coding-tools-actions.scenario.ts",
+);
 const deterministicScenarioReadmePath = resolve(
   import.meta.dirname,
   "../test/scenarios/README.md",
@@ -126,6 +130,10 @@ describe("scenario PR workflow contract", () => {
     );
     const deterministicLifeOpsScheduledTasksScenario = readFileSync(
       deterministicLifeOpsScheduledTasksScenarioPath,
+      "utf8",
+    );
+    const deterministicCodingToolsActionsScenario = readFileSync(
+      deterministicCodingToolsActionsScenarioPath,
       "utf8",
     );
     const deterministicScenarioReadme = readFileSync(
@@ -187,7 +195,7 @@ describe("scenario PR workflow contract", () => {
     expect(
       scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
     ).toContain(
-      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks",
+      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",
@@ -302,6 +310,15 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicLifeOpsScheduledTasksScenario).toContain(
       "snoozed until ",
     );
+    expect(deterministicCodingToolsActionsScenario).toContain(
+      "Deterministic coding-tools action execution",
+    );
+    expect(deterministicCodingToolsActionsScenario).toContain(
+      "coding-tools action ledger and filesystem side effects are exact",
+    );
+    expect(deterministicCodingToolsActionsScenario).toContain(
+      "scenario-coding-tools-branch",
+    );
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );
@@ -310,6 +327,9 @@ describe("scenario PR workflow contract", () => {
     );
     expect(deterministicScenarioReadme).toContain(
       "`SCHEDULED_TASKS` handler and repository-backed",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "isolated throwaway git repo",
     );
     expect(deterministicScenarioReadme).toContain(
       "runtime currently removes `UPDATE_ENTITY`",

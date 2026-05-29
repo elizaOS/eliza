@@ -1021,8 +1021,6 @@ export interface CodingAgentTaskThread {
   id: string;
   title: string;
   kind: string;
-  scenarioId?: string | null;
-  batchId?: string | null;
   status:
     | "open"
     | "active"
@@ -1039,17 +1037,17 @@ export interface CodingAgentTaskThread {
   summary?: string;
   sessionCount: number;
   activeSessionCount: number;
-  latestSessionId?: string | null;
-  latestSessionLabel?: string | null;
-  latestWorkdir?: string | null;
-  latestRepo?: string | null;
-  latestActivityAt?: number | null;
+  latestSessionId: string | null;
+  latestSessionLabel: string | null;
+  latestWorkdir: string | null;
+  latestRepo: string | null;
+  latestActivityAt: number | null;
   decisionCount: number;
   usage: CodingAgentTaskUsageSummary;
   createdAt: string;
   updatedAt: string;
-  closedAt?: string | null;
-  archivedAt?: string | null;
+  closedAt: string | null;
+  archivedAt: string | null;
 }
 
 export interface CodingAgentTaskSessionRecord {
@@ -1057,22 +1055,30 @@ export interface CodingAgentTaskSessionRecord {
   threadId: string;
   sessionId: string;
   framework: string;
-  providerSource?: string | null;
+  providerSource: string | null;
+  model: string | null;
   label: string;
   originalTask: string;
   workdir: string;
-  repo?: string | null;
+  repo: string | null;
   status: string;
+  activeTool: string | null;
   decisionCount: number;
   autoResolvedCount: number;
   registeredAt: number;
   lastActivityAt: number;
   idleCheckCount: number;
   taskDelivered: boolean;
-  completionSummary?: string | null;
+  completionSummary: string | null;
   lastSeenDecisionIndex: number;
-  lastInputSentAt?: number | null;
-  stoppedAt?: number | null;
+  lastInputSentAt: number | null;
+  stoppedAt: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheTokens: number;
+  costUsd: number;
+  usageState: "measured" | "estimated" | "unavailable";
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -1085,7 +1091,7 @@ export interface CodingAgentTaskDecisionRecord {
   event: string;
   promptText: string;
   decision: string;
-  response?: string | null;
+  response: string | null;
   reasoning: string;
   timestamp: number;
   createdAt: string;
@@ -1094,7 +1100,7 @@ export interface CodingAgentTaskDecisionRecord {
 export interface CodingAgentTaskEventRecord {
   id: string;
   threadId: string;
-  sessionId?: string | null;
+  sessionId: string | null;
   eventType: string;
   timestamp: number;
   summary: string;
@@ -1105,12 +1111,28 @@ export interface CodingAgentTaskEventRecord {
 export interface CodingAgentTaskArtifactRecord {
   id: string;
   threadId: string;
-  sessionId?: string | null;
+  sessionId: string | null;
   artifactType: string;
   title: string;
-  path?: string | null;
-  uri?: string | null;
-  mimeType?: string | null;
+  path: string | null;
+  uri: string | null;
+  mimeType: string | null;
+  verificationStatus: "pending" | "passed" | "failed" | "unknown";
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+/** A room-message timeline entry: user prompts, orchestrator turns, and
+ * sub-agent output, ordered for the `/orchestrator` conversation view. Mirrors
+ * the route's `TaskMessageDto`. */
+export interface CodingAgentTaskMessageRecord {
+  id: string;
+  threadId: string;
+  sessionId: string | null;
+  senderKind: "user" | "orchestrator" | "sub_agent" | "system";
+  direction: "stdout" | "stderr" | "stdin" | "keys" | "system";
+  content: string;
+  timestamp: number;
   metadata: Record<string, unknown>;
   createdAt: string;
 }
@@ -1138,23 +1160,28 @@ export interface CodingAgentPendingDecisionRecord {
 }
 
 export interface CodingAgentTaskThreadDetail extends CodingAgentTaskThread {
-  roomId?: string | null;
-  worldId?: string | null;
-  ownerUserId?: string | null;
-  scenarioId?: string | null;
-  batchId?: string | null;
-  summary?: string;
-  acceptanceCriteria?: string[];
-  currentPlan?: Record<string, unknown>;
-  lastUserTurnAt?: string | null;
-  lastCoordinatorTurnAt?: string | null;
-  metadata?: Record<string, unknown>;
+  goal: string;
+  roomId: string | null;
+  taskRoomId: string | null;
+  worldId: string | null;
+  ownerUserId: string | null;
+  parentTaskId: string | null;
+  acceptanceCriteria: string[];
+  currentPlan: Record<string, unknown> | null;
+  providerPolicy: CodingAgentTaskProviderPolicy | null;
+  lastUserTurnAt: string | null;
+  lastCoordinatorTurnAt: string | null;
+  metadata: Record<string, unknown>;
   sessions: CodingAgentTaskSessionRecord[];
   decisions: CodingAgentTaskDecisionRecord[];
   events: CodingAgentTaskEventRecord[];
   artifacts: CodingAgentTaskArtifactRecord[];
+  messages: CodingAgentTaskMessageRecord[];
   transcripts: CodingAgentTaskTranscriptRecord[];
-  pendingDecisions: CodingAgentPendingDecisionRecord[];
+  /** Client-only: legacy coordinator pending-decision queue. The
+   * `/api/orchestrator` detail DTO does not carry this, so it is absent there;
+   * the older coding-agent panel still reads it when present. */
+  pendingDecisions?: CodingAgentPendingDecisionRecord[];
 }
 
 export interface CodingAgentFrameworkAvailability {

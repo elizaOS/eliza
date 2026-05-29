@@ -99,10 +99,8 @@ function stableCoreActions(): string[] {
  * stable-core action and either cover it or add it here.
  */
 const KNOWN_UNCOVERED: readonly string[] = [
-  "FILE",
   "GENERATE_MEDIA",
   "PLAY_EMOTE",
-  "SHELL",
   "SKILL",
   "SKILL_DETAILS",
   "SKILL_INSTALL",
@@ -111,7 +109,6 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "SKILL_TOGGLE",
   "SKILL_UNINSTALL",
   "USE_SKILL",
-  "WORKTREE",
 ];
 
 /**
@@ -130,8 +127,11 @@ const COVERED_ACTIONS: readonly string[] = [
   "BROWSER_SCREENSHOT",
   "BROWSER_TYPE",
   "BROWSER_WAIT",
+  "FILE",
+  "SHELL",
   "SCHEDULED_TASKS",
   "VIEWS",
+  "WORKTREE",
 ];
 
 /** Deterministic coverage only grows: distinct covered actions must stay >= this. */

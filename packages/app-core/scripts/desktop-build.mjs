@@ -728,10 +728,35 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
     fail(`Expected ${packageName} package not found: ${packageDir}`);
   }
 
+  if (
+    process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES !== "1" &&
+    workspaceRuntimePackageLooksBuilt(packageName, packageDir)
+  ) {
+    console.log(
+      `[desktop-build] Reusing existing ${packageName} runtime package`,
+    );
+    return;
+  }
+
   runBun(["run", "build"], {
     cwd: packageDir,
     label: `Building ${packageName} runtime package`,
   });
+}
+
+function workspaceRuntimePackageLooksBuilt(packageName, packageDir) {
+  const distDir = path.join(packageDir, "dist");
+  if (!fs.existsSync(distDir)) return false;
+
+  if (packageName === "@elizaos/core") {
+    return (
+      fs.existsSync(path.join(distDir, "node", "index.node.js")) &&
+      fs.existsSync(path.join(distDir, "index.node.d.ts")) &&
+      fs.existsSync(path.join(distDir, "testing", "live-provider.d.ts"))
+    );
+  }
+
+  return true;
 }
 
 function ensureWorkspaceRuntimePackagesBuilt() {

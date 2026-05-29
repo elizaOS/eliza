@@ -21,6 +21,9 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
 - `deterministic-lifeops-scheduled-tasks` covers the real LifeOps
   `SCHEDULED_TASKS` handler and repository-backed `ScheduledTask` state
   transitions for create, list, get, snooze, complete, and history.
+- `deterministic-coding-tools-actions` covers the real coding-tools `FILE`,
+  `SHELL`, and `WORKTREE` handlers against an isolated throwaway git repo under
+  `/tmp`, including file side effects and worktree cleanup.
 
 The direct action scenarios assert handler parameters, `ActionResult` fields,
 and exact loopback request/response ledgers. The natural-language scenario
