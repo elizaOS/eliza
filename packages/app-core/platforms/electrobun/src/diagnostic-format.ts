@@ -47,6 +47,30 @@ export function redactDetailsSecrets(details: unknown): unknown {
   return details;
 }
 
+/**
+ * Map an HTTP response status the renderer fetch/XHR mirror has already
+ * classified as a failure to its diagnostic level, or `null` to skip logging.
+ *
+ * `404` is deliberately suppressed: a missing optional route — e.g. probing
+ * `/api/vincent/status` during the boot window before the plugin registers its
+ * routes, or any optional-resource check — is a normal, application-handled
+ * outcome, not a fault, and logging every one as a warning is false-positive
+ * noise. Genuine failures still surface: `5xx` as `"error"`, every other status
+ * (incl. `401`/`403`/`410`/`429`) as `"warn"`.
+ *
+ * Callers keep their own "is this a failure at all" guard (the fetch wrapper
+ * uses `!response.ok`, the XHR wrapper uses `status >= 400`) and ask this only
+ * for the level, so the suppression policy lives in one tested place.
+ */
+export function httpErrorDiagnosticLevel(
+  status: number,
+): "warn" | "error" | null {
+  if (status === 404) {
+    return null;
+  }
+  return status >= 500 ? "error" : "warn";
+}
+
 export function formatRendererDiagnosticLine(
   params?: {
     source?: string;
