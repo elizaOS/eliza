@@ -294,9 +294,6 @@ export function useStartupCoordinator(
   // health/status routes are ready. Once the backend later reports a running
   // agent, recover automatically instead of leaving the user stuck on the
   // startup failure card until they manually press Retry.
-  const errorReason: StartupErrorReason | null =
-    state.phase === "error" ? state.reason : null;
-
   useEffect(() => {
     if (state.phase !== "error" || !depsReady) return;
     if (!isRecoverableStartupErrorReason(state.reason)) return;
@@ -343,7 +340,7 @@ export function useStartupCoordinator(
     };
     // `reason` exists only on the error variant; for other phases this is
     // undefined, which is fine — the effect body early-returns on non-error.
-  }, [state.phase, errorReason, depsReady]);
+  }, [state.phase, state.reason, depsReady]);
 
   // ── Public interface ─────────────────────────────────────────────
 
