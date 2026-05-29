@@ -1443,8 +1443,18 @@ function AppProviderInner({
 
   // ── Generic state setter ───────────────────────────────────────────
 
-  const setState = useCallback(
-    <K extends keyof AppState>(key: K, value: AppState[K]) => {
+  // Ref-stable generic setter: the exposed `setState` callback never changes
+  // identity (deps `[]`), so it does not bust the AppContext value memo. The
+  // latest setter map is read through a ref on each call, so behavior is
+  // identical to a callback that closed over every setter directly.
+  const setStateImplRef = useRef<
+    <K extends keyof AppState>(key: K, value: AppState[K]) => void
+  >(() => {});
+  setStateImplRef.current = <K extends keyof AppState>(
+    key: K,
+    value: AppState[K],
+  ) => {
+    {
       const setterMap: Partial<{
         [S in keyof AppState]: (v: AppState[S]) => void;
       }> = {
@@ -1601,157 +1611,12 @@ function AppProviderInner({
       };
       const setter = setterMap[key];
       if (setter) setter(value);
-    },
-    [
-      setSetupStep,
-      setSelectedVrmIndex,
-      setUiLanguage,
-      setUiShellMode,
-      setAutonomousRunHealthByRunId,
-      setChatAgentVoiceMuted,
-      setChatAvatarSpeaking,
-      setChatAvatarVisible,
-      setChatInput,
-      setChatLastUsage,
-      setCompanionMessageCutoffTs,
-      setFirstRunApiKey,
-      setSetupAvatar,
-      setFirstRunBlooioApiKey,
-      setFirstRunBlooioPhoneNumber,
-      setFirstRunRuntimeTarget,
-      setFirstRunDetectedProviders,
-      setFirstRunDiscordToken,
-      setFirstRunElizaCloudTab,
-      setFirstRunExistingInstallDetected,
-      setFirstRunGithubToken,
-      setFirstRunLargeModel,
-      setFirstRunName,
-      setFirstRunOpenRouterModel,
-      setFirstRunOwnerName,
-      setFirstRunPrimaryModel,
-      setFirstRunProvider,
-      setFirstRunRemoteApiBase,
-      setFirstRunRemoteConnected,
-      setFirstRunRemoteConnecting,
-      setFirstRunRemoteError,
-      setFirstRunRemoteToken,
-      setFirstRunRpcKeys,
-      setFirstRunRpcSelections,
-      setFirstRunSelectedChains,
-      setFirstRunSmallModel,
-      setFirstRunStyle,
-      setFirstRunSubscriptionTab,
-      setFirstRunTelegramToken,
-      setFirstRunTwilioAccountSid,
-      setFirstRunTwilioAuthToken,
-      setFirstRunTwilioPhoneNumber,
-      setFirstRunWhatsAppSessionPath,
-      setFirstRunComplete,
-      setStartupError,
-      setFavoriteApps,
-      setTab,
-      setStoreUninstalling,
-      setStoreSubTab,
-      setCatalogSort,
-      setCatalogTotal,
-      setActiveOverlayApp,
-      setCatalogUninstalling,
-      setCloudDashboardView,
-      setCommandActiveIndex,
-      setCommandQuery,
-      setComputerUseEnabled,
-      setCustomBackgroundUrl,
-      setCustomCatchphrase,
-      setCustomVoicePresetId,
-      setCustomVrmPreviewUrl,
-      setCustomVrmUrl,
-      setCustomWorldUrl,
-      setDroppedFiles,
-      setElizaCloudEnabled,
-      setElizaCloudVoiceProxyAvailable,
-      setEmotePickerOpen,
-      setExportError,
-      setExportIncludeLogs,
-      setExportPassword,
-      setExportSuccess,
-      setGameOverlayEnabled,
-      setImportError,
-      setImportFile,
-      setImportPassword,
-      setImportSuccess,
-      setInventoryChainFilters,
-      setInventorySort,
-      setInventorySortDirection,
-      setInventoryView,
-      setLogLevelFilter,
-      setLogSourceFilter,
-      setLogTagFilter,
-      setMcpAction,
-      setMcpAddingResult,
-      setMcpAddingServer,
-      setMcpConfiguredServers,
-      setMcpEnvInputs,
-      setMcpHeaderInputs,
-      setMcpMarketplaceLoading,
-      setMcpMarketplaceQuery,
-      setMcpMarketplaceResults,
-      setMcpServerStatuses,
-      setFirstRunCloudApiKey,
-      setFirstRunFeatureBrowser,
-      setFirstRunFeatureComputerUse,
-      setFirstRunFeatureCrypto,
-      setFirstRunFeatureDiscord,
-      setFirstRunFeatureOAuthPending,
-      setFirstRunFeaturePhone,
-      setFirstRunFeatureTelegram,
-      setFirstRunVoiceApiKey,
-      setFirstRunVoiceProvider,
-      setPairingCodeInput,
-      setPluginAdvancedOpen,
-      setPluginFilter,
-      setPluginSearch,
-      setPluginSettingsOpen,
-      setPluginStatusFilter,
-      setShareIngestNotice,
-      setSkillCreateDescription,
-      setSkillCreateFormOpen,
-      setSkillCreateName,
-      setSkillReviewId,
-      setSkillReviewReport,
-      setSkillsMarketplaceManualGithubUrl,
-      setSkillsMarketplaceQuery,
-      setSkillsSubTab,
-      setStoreDetailPlugin,
-      setStoreError,
-      setStoreFilter,
-      setStoreInstalling,
-      setStoreLoading,
-      setStorePlugins,
-      setStoreSearch,
-      setCatalogTotalPages,
-      setWalletEnabled,
-      setCatalogSkills,
-      setCatalogSearch,
-      setCatalogPage,
-      setCatalogLoading,
-      setCatalogInstalling,
-      setBrowserEnabled,
-      setCatalogError,
-      setAppsSubTab,
-      setActiveInboxChat,
-      setCatalogDetailSkill,
-      setAppRuns,
-      setActivePackId,
-      setActiveGameRunId,
-      setActiveTerminalSessionId,
-      setAnalysisMode,
-      setRecentApps,
-      setConfigRaw,
-      setPluginsSubTab,
-      setDatabaseSubTab,
-      setConfigText,
-      setAgentSubTab,
-    ],
+    }
+  };
+  const setState = useCallback(
+    <K extends keyof AppState>(key: K, value: AppState[K]) =>
+      setStateImplRef.current(key, value),
+    [],
   );
 
   const requestGreetingWhenRunningRef = useRef(requestGreetingWhenRunning);
@@ -1836,6 +1701,11 @@ function AppProviderInner({
     firstRunMode,
   });
 
+  // useReducer dispatch is referentially stable across renders; bind it so
+  // callbacks (e.g. switchAgentProfile) depend on the stable dispatch rather
+  // than the whole coordinator handle (which is a fresh object each render).
+  const startupCoordinatorDispatch = startupCoordinator.dispatch;
+
   // Wire coordinator refs so callbacks defined before the coordinator can reach it
   coordinatorRetryRef.current = startupCoordinator.retry;
   coordinatorResetRef.current = startupCoordinator.reset;
@@ -1887,12 +1757,12 @@ function AppProviderInner({
           : profile.kind === "remote"
             ? "remote-backend"
             : "embedded-local";
-      startupCoordinator.dispatch({
+      startupCoordinatorDispatch({
         type: "SWITCH_AGENT",
         target: target as RuntimeTarget,
       });
     },
-    [startupCoordinator],
+    [startupCoordinatorDispatch],
   );
 
   useAgentGreetingEffects({

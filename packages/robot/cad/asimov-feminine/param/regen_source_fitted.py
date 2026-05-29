@@ -224,12 +224,15 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     return skin
 
 
-def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False):
+def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False,
+               reserved=None, neck_depth=0.34, neck_sigma=0.011):
     """Smooth watertight outer skin for a limb/head: loft per-slice outer
     envelopes along the spine axis about the slice centroid. Produces a clean
     single-solid futuristic shell with no bolt-boss lumps or voxel terracing.
-    The input mesh should already carry the slimming warp (its joint collars keep
-    the ends full so neighbours still overlap)."""
+
+    `reserved` are the spine-axis joint levels; the radius is necked in toward
+    each one (a smooth waist) so adjacent segments have the rotation clearance to
+    bend without colliding — the smooth shaft alone would butt solid-to-solid."""
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
     lo, hi = mesh.bounds[0][ai], mesh.bounds[1][ai]
@@ -252,6 +255,9 @@ def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False):
     # (over-smoothing short parts was what opened the joint gaps).
     sig = float(np.clip(len(L) / 12.0, 1.0, 5.0))
     Rs, C0, C1 = _smooth_field(Rs, C0, C1, harmonics=5, axial_sigma=sig)
+    # neck the radius in toward each joint level -> rotation clearance
+    for lvl in (reserved or []):
+        Rs = Rs * (1.0 - neck_depth * np.exp(-(((L - lvl) / neck_sigma) ** 2)))[:, None]
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
     for i, t in enumerate(L):
@@ -408,13 +414,10 @@ def _limb_warp(mesh, link, factor):
     t = v[:, spine_i]
     cen0 = np.interp(t, levels, c0)
     cen1 = np.interp(t, levels, c1)
-    # Keep a short collar near each joint at (near) full width so neighbouring
-    # parts still overlap and mate cleanly; slim the shaft fully in between.
-    reserved = C.reserved_levels(link)
-    w = W.connection_weight(t, reserved, ramp=0.020)
-    f = 1.0 + (factor - 1.0) * w
-    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * f
-    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * f
+    # Constant cross-section scale (no joint collar): a full-width collar at the
+    # joint makes neighbouring segments butt solid-to-solid and JAM on rotation.
+    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * factor
+    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * factor
     m.vertices = v
     return m
 
@@ -472,13 +475,16 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link == "WAIST_YAW":
         return _torso_skin(m)  # already a clean watertight skin
     if link == "IMU_ORIGIN":
-        return _skin_part(_pelvis_warp(m), "z")
+        return _skin_part(_pelvis_warp(m), "z", reserved=C.reserved_levels(link))
     shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
     spine = C.LINKS[link]["spine"]
+    # neck only at TRUE joint levels (self joint at 0 + child joints); a free
+    # distal end (hand tip, toe tip) has no child joint so it stays full/rounded.
+    reserved = C.reserved_levels(link)
     if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
-        return _skin_part(shaped, spine, flat_bottom=True)
+        return _skin_part(shaped, spine, flat_bottom=True, reserved=reserved, neck_depth=0.22)
     if link in SKIN_LIMBS:
-        return _skin_part(shaped, spine)
+        return _skin_part(shaped, spine, reserved=reserved)
     return _watertight_cleanup(shaped) if cleanup else shaped
 
 

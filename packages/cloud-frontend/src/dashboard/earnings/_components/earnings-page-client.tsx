@@ -1,6 +1,6 @@
 "use client";
 
-import { formatUsd as formatCurrency } from "@elizaos/shared";
+import { formatUsd as formatCurrency } from "@elizaos/shared/utils/format";
 import {
   Badge,
   BrandCard,

@@ -747,7 +747,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setCustomVrmUrl,
       setCustomBackgroundUrl,
       defaultFirstRunStyle,
-      coordinatorResetRef.current,
+      coordinatorResetRef,
     ],
   );
 
@@ -774,8 +774,8 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       finishLifecycleAction,
       setActionNotice,
       completeResetLocalStateAfterServerWipe,
-      lifecycleActionRef.current,
-      lifecycleBusyRef.current,
+      lifecycleActionRef,
+      lifecycleBusyRef,
     ],
   );
 
