@@ -83,11 +83,11 @@ TORSO = dict(
 # Gaussian falloff, gated to the front face so the lateral +-Y drums are untouched.
 # This gives two DISTINCT breasts instead of a single centre ridge.
 BREAST = dict(
-    amp=0.042,        # peak +X projection (m)
-    y0=0.052,         # lateral offset of each mound centre (m)
-    z0=0.196,         # height of the mounds (m)
-    sigma_y=0.036, sigma_z=0.050,
-    front_halfdeg=72.0,
+    amp=0.052,        # peak +X projection (m)
+    y0=0.062,         # lateral offset of each mound centre (m)
+    z0=0.188,         # height of the mounds (m)
+    sigma_y=0.030, sigma_z=0.046,   # tight enough that the centre dips between them
+    front_halfdeg=80.0,
 )
 
 # Features removed by delete-faces-in-box + cap (robust for engraved/separate
@@ -114,18 +114,114 @@ def _slice_centroids(v, axis_z, lo, hi, step=0.005):
     return levels, cx, cy
 
 
-def _delete_and_cap(mesh, box):
-    """Delete every face touching the box, then cap the boundary loops left behind
-    so the shell closes back up. Removes engraved logos/text and the grab-bar."""
-    v = mesh.vertices
-    inb = ((v[:, 0] >= box["x"][0]) & (v[:, 0] <= box["x"][1])
-           & (v[:, 1] >= box["y"][0]) & (v[:, 1] <= box["y"][1])
-           & (v[:, 2] >= box["z"][0]) & (v[:, 2] <= box["z"][1]))
-    fmask = inb[mesh.faces].any(axis=1)
-    out = trimesh.Trimesh(mesh.vertices.copy(), mesh.faces[~fmask], process=True)
-    out.remove_unreferenced_vertices()
-    out.fill_holes()
-    return out
+def _outer_ring(points2d, centre, n_ang):
+    """Outer radial envelope of a slice's points: max radius per angular bin about
+    the centre, gaps filled circularly. Drops all interior detail (engravings,
+    connectors, internal structure)."""
+    d = points2d - centre
+    ang = (np.arctan2(d[:, 1], d[:, 0]) + 2 * np.pi) % (2 * np.pi)
+    rad = np.hypot(d[:, 0], d[:, 1])
+    bins = np.linspace(0, 2 * np.pi, n_ang, endpoint=False)
+    r = np.full(n_ang, np.nan)
+    bi = np.clip((ang / (2 * np.pi) * n_ang).astype(int), 0, n_ang - 1)
+    for k in range(n_ang):
+        sel = bi == k
+        if sel.any():
+            r[k] = rad[sel].max()
+    good = ~np.isnan(r)
+    if not good.all():  # fill empty bins by circular interpolation
+        ext = np.concatenate([bins[good] - 2 * np.pi, bins[good], bins[good] + 2 * np.pi])
+        rg = np.concatenate([r[good]] * 3)
+        r = np.interp(bins, ext, rg)
+    return bins, _circ_smooth(r, passes=2, half=3)
+
+
+def _circ_smooth(r, passes=3, half=3):
+    k = np.ones(2 * half + 1); k /= k.sum()
+    for _ in range(passes):
+        r = np.convolve(np.concatenate([r[-half:], r, r[:half]]), k, "same")[half:-half]
+    return r
+
+
+def _torso_skin(mesh, n_ang=96, dz=0.005):
+    """Smooth watertight outer skin of the torso lofted from per-slice outer
+    envelopes, with the waist cinch, two breast effectors and back relief sculpted
+    into the rings. Removes the M, back text, handle and connector clutter by
+    construction (only the outer boundary survives)."""
+    zlo, zhi = mesh.bounds[0][2], mesh.bounds[1][2]
+    levels = np.arange(zlo + dz * 0.5, zhi, dz)
+    normal = np.array([0.0, 0.0, 1.0])
+    rings_b, rings_r, cxs, cys, zs = [], [], [], [], []
+    for z in levels:
+        s = mesh.section(plane_origin=[0, 0, z], plane_normal=normal)
+        if s is None:
+            continue
+        pts = np.vstack([np.asarray(e)[:, :2] for e in s.discrete])
+        c = pts.mean(0)
+        b, r = _outer_ring(pts, c, n_ang)
+        rings_b.append(b); rings_r.append(r); cxs.append(c[0]); cys.append(c[1]); zs.append(z)
+    zs = np.array(zs); cxs = np.array(cxs); cys = np.array(cys)
+    R_arr = np.array(rings_r)            # (N, n_ang)
+    bins = rings_b[0]
+    # de-band vertically with a light kernel (keep shoulder mounts + waist)
+    kz = np.ones(5); kz /= kz.sum()
+    for _ in range(2):
+        for k in range(n_ang):
+            R_arr[:, k] = np.convolve(np.pad(R_arr[:, k], 2, mode="edge"), kz, "same")[2:-2]
+    for _ in range(2):
+        cxs = np.convolve(np.pad(cxs, 2, mode="edge"), kz, "same")[2:-2]
+        cys = np.convolve(np.pad(cys, 2, mode="edge"), kz, "same")[2:-2]
+
+    P, B = TORSO, BREAST
+    reserved = C.reserved_levels("WAIST_YAW")
+    w = W.connection_weight(zs, reserved, ramp=0.03)
+    band = np.clip((zs - P["z_lo"]) / 0.04, 0, 1) * np.clip((P["z_hi"] - zs) / 0.04, 0, 1)
+    w = w * band
+    cosb, sinb = np.cos(bins), np.sin(bins)
+
+    verts = []
+    for i, z in enumerate(zs):
+        r = R_arr[i].copy()
+        cx, cy = cxs[i], cys[i]
+        x = cx + r * cosb
+        y = cy + r * sinb
+        # waist cinch in Y
+        gy = 1.0 + (P["cinch_y_min"] - 1.0) * math.exp(-((z - P["cinch_z"]) ** 2) / (2 * P["cinch_sigma"] ** 2))
+        y = cy + (y - cy) * (1.0 + (gy - 1.0) * w[i])
+        # two breast effectors: outward +X mounds on the front face
+        front = cosb > math.cos(math.radians(B["front_halfdeg"]))
+        gz = math.exp(-((z - B["z0"]) ** 2) / (2 * B["sigma_z"] ** 2))
+        bump = np.zeros(n_ang)
+        for sgn in (-1.0, 1.0):
+            bump = np.maximum(bump, B["amp"] * gz * np.exp(-((y - sgn * B["y0"]) ** 2) / (2 * B["sigma_y"] ** 2)))
+        x = x + np.where(front, bump * w[i], 0.0)
+        # back relief: pull the back (-X) in slightly
+        back = cosb < -math.cos(math.radians(P["back_halfdeg"]))
+        gk = (P["back_in"] - 1.0) * math.exp(-((z - P["back_z"]) ** 2) / (2 * P["back_sigma"] ** 2))
+        x = np.where(back, cx + (x - cx) * (1.0 + gk * w[i]), x)
+        verts.append(np.column_stack([x, y, np.full(n_ang, z)]))
+    rings = np.array(verts)
+    return _loft_rings(rings)
+
+
+def _loft_rings(rings):
+    n, p, _ = rings.shape
+    verts = rings.reshape(-1, 3).tolist()
+    faces = []
+    for i in range(n - 1):
+        a, b = i * p, (i + 1) * p
+        for j in range(p):
+            j2 = (j + 1) % p
+            faces.append([a + j, a + j2, b + j2])
+            faces.append([a + j, b + j2, b + j])
+    c0 = len(verts); verts.append(rings[0].mean(0).tolist())
+    for j in range(p):
+        faces.append([c0, (j + 1) % p, j])
+    base = (n - 1) * p
+    c1 = len(verts); verts.append(rings[-1].mean(0).tolist())
+    for j in range(p):
+        faces.append([c1, base + j, base + (j + 1) % p])
+    return trimesh.Trimesh(np.array(verts), np.array(faces), process=True)
 
 
 def _torso_warp(mesh):
@@ -233,13 +329,63 @@ def _limb_warp(mesh, link, factor):
     return m
 
 
-def build_part(link: str) -> trimesh.Trimesh:
+def _watertight_cleanup(mesh, pitch=0.0025, close=1, erode=1, sinc=18):
+    """Rebuild a part as a single watertight, manifold solid: union the closed
+    sub-components into an occupancy volume, fill interior holes, contour, and
+    smooth out the voxel terracing. Used for the mechanical parts whose source
+    meshes are messy multi-body unions (bolts/housings sharing edges)."""
+    import vtk
+    import pyvista as pv
+    from scipy import ndimage
+
+    b = mesh.bounds
+    pad = pitch * (close + 4)
+    origin = b[0] - pad
+    dims = np.ceil((b[1] + pad - origin) / pitch).astype(int) + 1
+    occ = np.zeros(tuple(dims), bool)
+    for c in mesh.split(only_watertight=False):
+        if len(c.faces) < 4:
+            continue
+        try:
+            vg = c.voxelized(pitch).fill()
+        except Exception:
+            continue
+        idx = np.round((vg.points - origin) / pitch).astype(int)
+        ok = np.all((idx >= 0) & (idx < dims), axis=1)
+        idx = idx[ok]
+        occ[idx[:, 0], idx[:, 1], idx[:, 2]] = True
+    occ = ndimage.binary_closing(occ, iterations=close)
+    occ = ndimage.binary_fill_holes(occ)
+    if erode:
+        occ = ndimage.binary_erosion(occ, iterations=erode)
+    img = pv.ImageData(dimensions=tuple(dims), spacing=(pitch,) * 3, origin=tuple(origin))
+    img.point_data["v"] = occ.astype(np.float32).ravel(order="F")
+    surf = img.contour([0.5], scalars="v").triangulate()
+    sm = vtk.vtkWindowedSincPolyDataFilter()
+    sm.SetInputData(surf)
+    sm.SetNumberOfIterations(sinc)
+    sm.SetPassBand(0.1)
+    sm.NonManifoldSmoothingOn()
+    sm.NormalizeCoordinatesOn()
+    sm.Update()
+    surf = pv.wrap(sm.GetOutput()).triangulate()
+    f = surf.faces.reshape(-1, 4)[:, 1:]
+    out = trimesh.Trimesh(surf.points, f, process=True)
+    cc = out.split(only_watertight=False)
+    if len(cc) > 1:
+        out = max(cc, key=lambda x: len(x.faces))
+    return out
+
+
+def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     m = trimesh.load(os.path.join(SRC, f"{link}.STL"))
     if link == "WAIST_YAW":
-        return _torso_warp(m)
+        return _torso_skin(m)  # already a clean watertight skin
     if link == "IMU_ORIGIN":
-        return _pelvis_warp(m)
-    return _limb_warp(m, link, SLIM.get(link, 1.0))
+        shaped = _pelvis_warp(m)
+    else:
+        shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
+    return _watertight_cleanup(shaped) if cleanup else shaped
 
 
 def run() -> None:
