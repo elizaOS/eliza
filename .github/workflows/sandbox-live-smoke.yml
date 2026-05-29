@@ -50,7 +50,7 @@ concurrency:
 
 env:
   CI: "true"
-  BUN_VERSION: "1.3.13"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
   ELIZA_SANDBOX_AGENT_RUNNERS: ${{ vars.ELIZA_SANDBOX_AGENT_RUNNERS || 'codex,claude-code,opencode' }}
   SANDBOX_AGENT_RUNNERS: ${{ vars.SANDBOX_AGENT_RUNNERS || vars.ELIZA_SANDBOX_AGENT_RUNNERS || 'codex,claude-code,opencode' }}

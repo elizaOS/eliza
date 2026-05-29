@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Single source of truth for the Bun riscv64-linux-musl cross-build. Read by build.sh + Dockerfile build args + any downstream artifact-hosting publish step. Bump these together with the matching webkit-patches/ and bun-patches/ series.",
   "bun": {
-    "tag": "bun-v1.3.13",
+    "tag": "bun-v1.3.14",
     "channel": "canary",
-    "rationale": "Pinned to match stage-android-agent.mjs:BUN_VERSION + DEFAULT_BUN_CHANNEL so the resulting binary stays compatible with the rest of the Android agent matrix. Canary tracks the same 1.3.13+ fix train as the arm64/x64 artifacts that staging downloads."
+    "rationale": "Pinned to match stage-android-agent.mjs:BUN_VERSION + DEFAULT_BUN_CHANNEL so the resulting binary stays compatible with the rest of the Android agent matrix. Canary tracks the same 1.3.14+ fix train as the arm64/x64 artifacts that staging downloads."
   },
   "webkit": {
     "fork": "oven-sh/WebKit",
-    "fork_commit": "4d5e75ebd84a14edbc7ae264245dcd77fe597c10",
-    "fork_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@bun-v1.3.13 (verified 2026-05-19)",
+    "fork_commit": "5488984d20e0dbfe4be2c3ba8fb18eb81a5e0e8b",
+    "fork_commit_source": "scripts/build/deps/webkit.ts:WEBKIT_VERSION on oven-sh/bun@bun-v1.3.14 (verified 2026-05-28)",
     "rationale": "Bun's WebKit fork has zero riscv64 patches. We checkout this commit, apply the checked WebKit-side patch files, and build the production artifact with the portable C_LOOP interpreter until the LLInt/Baseline cherry-pick recipes are realized as actual patch files.",
     "jit_tier": "c_loop",
     "jit_rationale": "The production riscv64-linux-musl artifact is C_LOOP-only: build.sh defaults to ENABLE_C_LOOP=ON, ENABLE_JIT=OFF, ENABLE_DFG_JIT=OFF, and ENABLE_FTL_JIT=OFF. Upstream WebKit has LLInt + Baseline support for riscv64, but the local cherry-pick chain is still represented by recipe files rather than checked patch files. Operators may set BUN_RISCV64_FORCE_CLOOP=0 to test the experimental Baseline path after realizing those recipes; that is not the publishable artifact contract.",
@@ -38,7 +38,7 @@
     },
     "rust": {
       "channel": "nightly-2025-12-10",
-      "channel_source": "rust-toolchain.toml on oven-sh/bun@bun-v1.3.13 (verified 2026-05-19)",
+      "channel_source": "rust-toolchain.toml on oven-sh/bun@bun-v1.3.14 (verified 2026-05-28)",
       "target": "riscv64gc-unknown-linux-musl",
       "tier": 2,
       "rationale": "Bun pins this exact nightly via rust-toolchain.toml. riscv64gc-unknown-linux-musl is a Tier-2 target with prebuilt std, so we get it via `rustup target add` rather than -Zbuild-std."
@@ -95,147 +95,77 @@
   "patch_series": {
     "_rationale": "SHA256 of every patch + recipe under bun-patches/ and webkit-patches/. validate.sh checks these match before invoking the build. Bump alongside the patch content.",
     "bun_patches": {
-      "0001-config-add-riscv64-arch.patch": "e7a5ab0829fc7fabac3db8ef40d1812dc8f3804317527cce590d7e2468d422bc",
-      "0002-flags-add-riscv64-march-mabi.patch": "2cfe032f665220458c90281a534108829d6f9c298c7fe0ff07e5d0a2a5ed57df",
-      "0003-zig-add-riscv64-target-triple-and-cpu.patch": "74ef6f93814099afe0b8c0a05a7419069970bd904b5f7952476be53df11635dc",
-      "0004-webkit-force-local-mode-on-riscv64.patch": "8f2ec7c1ccd33f09d6564d0f2db0ecc438c84e319fe2be276c2c52c4eda85386",
-      "0005-tinycc-disable-on-riscv64.patch": "e77e76dd6d33899f84d29b4e4364fb977274018f027cda32d01bd83630e36c4f",
-      "0006-build-add-riscv64-cli-validation.patch": "2b3dcabb4f0161638414bb1b99be47427c8b1e9ff3aa664cbfaf51894685a60d",
-      "0007-deps-per-dep-riscv64-checks.patch": "3597aded70bb8b0aed15ccb2f53cca93158499d88c7739b05d9610dc65bb276f",
-      "0008-source-stabilize-riscv64-musl-build.patch": "4ca326f0146cc456c1f92f3f0ae41a65fab230ca795b85405d72475b28c206ae",
-      "0009-disable-wasm-streaming-hooks-for-c-loop.patch": "d4240fb8d9bc6acc5ee1fedb9f0f64da80517efad9a281ee854fc10586ffb963",
-      "0010-disable-inspector-profiler-for-riscv64-c-loop.patch": "81b6271e24cbdcdda2bb745971c1eec58e4c716da5f87a79662094c3e15f5817",
-      "0011-process-arch-add-riscv64.patch": "619dbff3b088bfb26fec6896d08c666905f5b0e28e81184dbf9f6ca6422d729d",
-      "0012-cpu-features-add-riscv64-fallback.patch": "ebd77bdd314ee9f64079c0a9cdb4913893daffdce73af2539a6ef422aba695b4",
-      "0013-disable-console-inspector-hooks-for-riscv64-c-loop.patch": "1f3e22b4226a8971718cf3c1c111122cf3a026eb9fe870b86d7fabd108ba8447",
-      "0014-disable-custom-inspector-dispatchers-on-riscv64.patch": "440debfdb05d1a36fdfd881f16397c0466c61cecfc8ebf6353dbe4b59e304aef",
-      "0015-disable-jsc-profiler-builtins-on-riscv64.patch": "af50e5b4bfbcda44dee22f8c34254de6cb16738a1c72a8415bd9c639be6d4e31",
-      "0016-node-vm-disable-jit-cached-data-on-riscv64-c-loop.patch": "e463905db4c337f62cc6c4fcbb0d901de66fe828c8c9e5fd4b98e43ff44e6c4c",
-      "0017-disable-performance-domjit-signature-on-riscv64-c-loop.patch": "87ffde8f8c33bdbc2ebadd87d537d9a07ea1275e7a754d9a3b8d70b5d68a512f",
-      "0018-fix-serialized-script-identifier-big-endian-path.patch": "447c2e8364918ecf1450c824a82e2ced9794e97ecdd64b9932ceb86cf553eb97",
-      "0019-add-wtf-timer-fire-bridge-for-c-loop.patch": "2eed5aa6b9c20fee03d5f0e3212094ff483383ec1646ac36549c5c85fc0f1ce7",
-      "0020-run-riscv64-smoke-test-under-qemu.patch": "e7fc5af948b45b23bafb93c8922b356ff2c4c262392ffc0b9607a6f2c602e7d3",
-      "0021-fix-riscv64-linux-open-flags.patch": "9cb59f784f9ad9147c0adee8bb9cfef4e0ce4c61706e636fcf9ad810c87ccea5"
+      "0001-config-add-riscv64-arch.patch": "7ffff10be9048bc1c0ffed987a407cda5d5470550e21de39d36913c6e9a1918d",
+      "0002-flags-add-riscv64-march-mabi.patch": "4140dd014c650cecdebcd495f3c7193ffcd6be4afe9d28b51394b658e14c0896",
+      "0003-zig-add-riscv64-target-triple-and-cpu.patch": "d323f8ce19178748c37167fadba257f0bd1bb619cb1adb804994824c72812646",
+      "0004-webkit-force-local-mode-on-riscv64.patch": "fa9a4b41021947fd4a37b52e851e47fc05a3ab6a0ebfbe3f323f3b4fcaa97e69",
+      "0005-tinycc-disable-on-riscv64.patch": "ee3e9b0c64a5ccdb78397309ce2115381c353a3dfce313aba88dd951264dc7d3",
+      "0006-build-add-riscv64-cli-validation.patch": "d621bff9ae125af7674bb4ee44dad62848c1ab6e333e61d4b1f6311eb139764c",
+      "0007-deps-per-dep-riscv64-checks.patch": "0d1516c4655601174f5ee91a877ad1a0fcb287ed8df42f7e96297b47b03ea5e4",
+      "0008-source-stabilize-riscv64-musl-build.patch": "21a8ca86c77dd49140e29c0fd0a3d47a490b4d19d7617342db83567fa473b108",
+      "0009-disable-wasm-streaming-hooks-for-c-loop.patch": "c8658536cc46505cec35ab65f9d51daeba8cc5abac741f55496c65712c556731",
+      "0010-disable-inspector-profiler-for-riscv64-c-loop.patch": "4433d1077b59c325b19194fecefa4e33b5a586099fec0f4f999c82d053826128",
+      "0011-process-arch-add-riscv64.patch": "1a3e4ab498e83603a34016aab7f02d78fc21a0c7f61daa18cd282e8287d1ef1e",
+      "0012-cpu-features-add-riscv64-fallback.patch": "1ac5866560fed8cb37b107a7c684d501e77449c320eb0badc593fca97b12fab9",
+      "0013-disable-console-inspector-hooks-for-riscv64-c-loop.patch": "189822f2d07eeeec69b420b4c7657afdb12a37f01a90fc4e3150c85beca0d098",
+      "0014-disable-custom-inspector-dispatchers-on-riscv64.patch": "0c3c3d551a503d951baff9111057f16903e7c91831ab6e178b5e6ab37c3fab0d",
+      "0015-disable-jsc-profiler-builtins-on-riscv64.patch": "71741d5f58521247d14304667126f66befc1c912c9a677f370fe236adb981eaa",
+      "0016-node-vm-disable-jit-cached-data-on-riscv64-c-loop.patch": "5d63e5478d518c69f56e971b4b14b791ebe18bbc0195fd536cb3a33f00798488",
+      "0017-disable-performance-domjit-signature-on-riscv64-c-loop.patch": "1e2d0f77acfd11574db7b4ee212dc846d47b2d3c7adbe21301f3809fe0e96e2c",
+      "0018-fix-serialized-script-identifier-big-endian-path.patch": "2bcf9fbcf86d0bd37be3ac5145b85c7bac8fddfd87caffe68a5e1ec3fdbf6c52",
+      "0019-add-wtf-timer-fire-bridge-for-c-loop.patch": "e812c00feac0561de35fb4ca7aa37ce38280f47c84f0d8b246b4a62e6802f10b",
+      "0020-run-riscv64-smoke-test-under-qemu.patch": "26997fbd4d7fd6025565733df8ee61d982244b61be3bce7666ed9df35a0e86ce",
+      "0021-fix-riscv64-linux-open-flags.patch": "71613fdce702893ce2375d728b112fa32cb526f44277e516ae88a6c73fdb15e7"
     },
-    "bun_patches_apply_status": "All 21 patches are expected to apply in sequence to oven-sh/bun @ bun-v1.3.13 via git apply --3way. Patch 0008 adds the riscv64 toolchain overrides, external WebKit consumption, nested CMake cross settings, and Zig source enum guards required by the Android riscv64 artifact build. Patches 0009-0020 disable JSC APIs unavailable in the C_LOOP/local-WebKit riscv64 artifact, fill riscv64 process/CPU feature fallbacks, fix riscv64-exposed source compatibility gaps, provide the WTFTimer fire bridge required by the local WebKit link, and run the riscv64 smoke test through qemu-riscv64-static. Patch 0021 fixes riscv64 Linux open flag constants so JS file entrypoints are not misclassified as missing directories.",
+    "bun_patches_apply_status": "All 21 patches apply cleanly in sequence to oven-sh/bun @ bun-v1.3.14 via git apply (validate.sh confirms strict --check). Regenerated 2026-05-28 for the 1.3.14 source reorg: src/bun.js/{bindings,modules} -> src/jsc/{bindings,modules}, src/sys.zig -> src/sys/sys.zig, src/compile_target.zig -> src/options_types/CompileTarget.zig, src/crash_handler.zig -> src/crash_handler/crash_handler.zig, src/env.zig -> src/bun_core/env.zig, src/bun.js/bindings/CPUFeatures.zig -> src/crash_handler/CPUFeatures.zig. Patch 0008 adds the riscv64 toolchain overrides, external WebKit consumption, nested CMake cross settings, and Zig source enum guards; its 1.3.13 boringssl.ts hunk was dropped because 1.3.14's BoringSSL DirectBuild model self-guards per-arch asm (the wrong-target .S files assemble to empty objects via asm_base.h), so no OPENSSL_NO_ASM cmake arg is needed. Patches 0009-0020 disable JSC APIs unavailable in the C_LOOP/local-WebKit riscv64 artifact, fill riscv64 process/CPU feature fallbacks, fix riscv64-exposed source compatibility gaps, provide the WTFTimer fire bridge required by the local WebKit link, and run the riscv64 smoke test through qemu-riscv64-static; patch 0010's 1.3.13 BunInspector.cpp hunk was dropped because that file was removed upstream in 1.3.14. Patch 0021 fixes riscv64 Linux open flag constants so JS file entrypoints are not misclassified as missing directories.",
     "bun_patches_target": {
-      "scripts/build/config.ts": [
-        "0001",
-        "0004",
-        "0008"
-      ],
-      "scripts/build/flags.ts": [
-        "0002"
-      ],
-      "scripts/build/zig.ts": [
-        "0003"
-      ],
-      "scripts/build/source.ts": [
-        "0008"
-      ],
-      "scripts/build/deps/boringssl.ts": [
-        "0008"
-      ],
-      "scripts/build/deps/webkit.ts": [
-        "0004",
-        "0008"
-      ],
-      "scripts/build/deps/tinycc.ts": [
-        "0005"
-      ],
-      "scripts/build.ts": [
-        "0006"
-      ],
-      "scripts/build/deps/lolhtml.ts": [
-        "0007"
-      ],
-      "src/bun.js/bindings/CPUFeatures.zig": [
-        "0008"
-      ],
-      "src/bun.js/bindings/BunCPUProfiler.cpp": [
-        "0010"
-      ],
-      "src/bun.js/bindings/BunDebugger.cpp": [
-        "0010"
-      ],
-      "src/bun.js/bindings/BunInspector.cpp": [
-        "0010"
-      ],
-      "src/bun.js/bindings/BunProcess.cpp": [
-        "0011"
-      ],
-      "src/bun.js/bindings/CPUFeatures.cpp": [
-        "0012"
-      ],
-      "src/bun.js/bindings/ConsoleObject.cpp": [
-        "0013"
-      ],
-      "src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp": [
-        "0014"
-      ],
-      "src/bun.js/bindings/InspectorBunFrontendDevServerAgent.h": [
-        "0014"
-      ],
-      "src/bun.js/bindings/InspectorHTTPServerAgent.cpp": [
-        "0014"
-      ],
-      "src/bun.js/bindings/InspectorHTTPServerAgent.h": [
-        "0014"
-      ],
-      "src/bun.js/bindings/InspectorLifecycleAgent.cpp": [
-        "0014"
-      ],
-      "src/bun.js/bindings/InspectorLifecycleAgent.h": [
-        "0014"
-      ],
-      "src/bun.js/bindings/InspectorTestReporterAgent.cpp": [
-        "0014"
-      ],
-      "src/bun.js/bindings/InspectorTestReporterAgent.h": [
-        "0014"
-      ],
-      "src/bun.js/modules/BunJSCModule.h": [
-        "0015"
-      ],
-      "src/bun.js/bindings/NodeVMScript.cpp": [
-        "0016"
-      ],
-      "src/bun.js/bindings/NodeVMSourceTextModule.cpp": [
-        "0016"
-      ],
-      "src/bun.js/bindings/webcore/JSPerformance.cpp": [
-        "0017"
-      ],
-      "src/bun.js/bindings/webcore/SerializedScriptValue.cpp": [
-        "0018"
-      ],
-      "src/bun.js/bindings/wtf-bindings.cpp": [
-        "0019"
-      ],
-      "scripts/build/bun.ts": [
-        "0020"
-      ],
-      "src/sys.zig": [
-        "0021"
-      ],
-      "src/compile_target.zig": [
-        "0008"
-      ],
-      "src/crash_handler.zig": [
-        "0008"
-      ],
-      "src/env.zig": [
-        "0008"
-      ],
-      "src/install/npm.zig": [
-        "0008"
-      ]
+      "scripts/build/config.ts": ["0001", "0004", "0008"],
+      "scripts/build/flags.ts": ["0002"],
+      "scripts/build/zig.ts": ["0003"],
+      "scripts/build/source.ts": ["0008"],
+      "scripts/build/deps/webkit.ts": ["0004", "0008"],
+      "scripts/build/deps/tinycc.ts": ["0005"],
+      "scripts/build.ts": ["0006"],
+      "scripts/build/deps/lolhtml.ts": ["0007"],
+      "scripts/glob-sources.ts": ["0009"],
+      "scripts/build/bun.ts": ["0020"],
+      "src/bun_core/env.zig": ["0008"],
+      "src/crash_handler/CPUFeatures.zig": ["0008"],
+      "src/crash_handler/crash_handler.zig": ["0008"],
+      "src/options_types/CompileTarget.zig": ["0008"],
+      "src/install/npm.zig": ["0008"],
+      "src/bake/BakeGlobalObject.cpp": ["0009"],
+      "src/jsc/bindings/ZigGlobalObject.cpp": ["0009"],
+      "src/jsc/bindings/ZigGlobalObject.h": ["0009"],
+      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp": ["0009"],
+      "src/jsc/bindings/webcore/JSWasmStreamingCompiler.h": ["0009"],
+      "src/jsc/bindings/BunCPUProfiler.cpp": ["0010"],
+      "src/jsc/bindings/BunDebugger.cpp": ["0010"],
+      "src/jsc/bindings/BunProcess.cpp": ["0011"],
+      "src/jsc/bindings/CPUFeatures.cpp": ["0012"],
+      "src/jsc/bindings/ConsoleObject.cpp": ["0013"],
+      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorBunFrontendDevServerAgent.h": ["0014"],
+      "src/jsc/bindings/InspectorHTTPServerAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorHTTPServerAgent.h": ["0014"],
+      "src/jsc/bindings/InspectorLifecycleAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorLifecycleAgent.h": ["0014"],
+      "src/jsc/bindings/InspectorTestReporterAgent.cpp": ["0014"],
+      "src/jsc/bindings/InspectorTestReporterAgent.h": ["0014"],
+      "src/jsc/modules/BunJSCModule.h": ["0015"],
+      "src/jsc/bindings/NodeVMScript.cpp": ["0016"],
+      "src/jsc/bindings/NodeVMSourceTextModule.cpp": ["0016"],
+      "src/jsc/bindings/webcore/JSPerformance.cpp": ["0017"],
+      "src/jsc/bindings/webcore/SerializedScriptValue.cpp": ["0018"],
+      "src/jsc/bindings/wtf-bindings.cpp": ["0019"],
+      "src/sys/sys.zig": ["0021"]
     },
     "webkit_patches": {
       "0003-disable-dfg-ftl-on-riscv64.patch": "c00fe21a74ea35c8586cc380af6d03de89fef9d9bc8c4f0186dc7c629f0b9814",
       "0004-riscv64-do-not-force-wasm-in-c-loop.patch": "031c9d4df85ecd313730d13a36a68bd4b222cc7e461d11b8e50ad0ff9bdec2cf",
       "0005-domjit-effect-allow-no-dfg-c-loop.patch": "70da4f1f4a1b61ef8626cb07ad8899971efb9eea2f29bc7576881e54d42083e3",
-      "0006-disable-usewasm-when-webassembly-compiled-out.patch": "dbc3c60d291dd3d700959af3a266e5cd370fcf45f8870f11602ad47ac365cc16"
+      "0006-disable-usewasm-when-webassembly-compiled-out.patch": "2e7a763abd922ce698cfc56ca916b6db262907115d0e250ad1b1aec4f845f918",
+      "0007-restore-dropped-includes-and-llint-fwd-decl.patch": "aebd3bcb6a7938dec40cdb9c4b4fd1abfe4170850abdf9e2e9edf268142714b1"
     },
     "webkit_recipes": {
       "0001-cherry-pick-llint-riscv64.recipe": "8017bed5bf3f6fc22585b802c0016734ab48f0f70ddc675613c9b6930b8ea6b6",

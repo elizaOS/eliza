@@ -79,7 +79,7 @@ need a small series of patches to:
      - boringssl — Bun uses C fallbacks on non-x86 already.
      - lol-html (Rust) — uses target features from cargo, no patches.
 
-## Realized patch series (against `bun-v1.3.13`)
+## Realized patch series (against `bun-v1.3.14`)
 
 | File                                                | Touches                                       |
 |-----------------------------------------------------|-----------------------------------------------|
@@ -124,4 +124,4 @@ cd ../  # to bun-riscv64/
 ```
 
 Runs `git apply --check` against a shallow clone of `oven-sh/bun @
-bun-v1.3.13`. See `../README.md` for output details.
+bun-v1.3.14`. See `../README.md` for output details.

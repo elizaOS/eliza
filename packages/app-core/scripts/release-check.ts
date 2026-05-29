@@ -87,7 +87,7 @@ function resolveOrchestratorPluginPackageJsonPath() {
   return resolveExistingPath(orchestratorPluginPackageJsonPathCandidates);
 }
 const requiredWorkflowSnippets = [
-  'BUN_VERSION: "1.3.13"',
+  'BUN_VERSION: "1.3.14"',
   "workflow_call:",
   "name: Validate Release Inputs",
   "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json.",
@@ -272,7 +272,7 @@ const requiredElectrobunPrWorkflowSnippets = [
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
-  'BUN_VERSION: "1.3.13"',
+  'BUN_VERSION: "1.3.14"',
   "name: Release Workflow Contract",
   "bun install --ignore-scripts",
   'run-postinstall: "true"',

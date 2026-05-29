@@ -33,7 +33,7 @@
  * bytes are left in place.
  *
  * Pinned versions:
- *   - bun 1.3.13                     validated by Android agent bring-up
+ *   - bun 1.3.14                     validated by Android agent bring-up
  *   - Alpine v3.21                   ships gcc 14.2 → libstdc++.so.6.0.33
  *
  * The ABI-independent `launch.sh` is the packaged production launcher;
@@ -50,12 +50,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(__dirname, "..", "..");
 const ELIZA_REPO_ROOT = path.resolve(APP_CORE_ROOT, "..", "..");
 
-const BUN_VERSION = "1.3.13";
-// Bun 1.3.13 has a segfault we hit during inference on Cuttlefish at
-// peak ~2.3 GB RSS ("panic(main thread): Segmentation fault at address
-// 0x5420"). The canary channel ships the upstream fix while we wait for
-// 1.3.14+. Stock APK builds should stay on the validated stable pin unless
-// explicitly overridden; AOSP/CVD builds pass canary from run-mobile-build.
+const BUN_VERSION = "1.3.14";
+// Bun 1.3.13 had a segfault during inference on Cuttlefish at peak
+// ~2.3 GB RSS ("panic(main thread): Segmentation fault at address 0x5420").
+// 1.3.14 (released 2026-05-13) is the stable release that supersedes the
+// canary stopgap we used while waiting for it. The canary channel remains
+// the default below for AOSP/CVD builds via run-mobile-build; stock APK
+// builds use this stable pin unless explicitly overridden.
 const DEFAULT_BUN_CHANNEL = "canary";
 const ALPINE_BRANCH = "v3.21";
 const RISCV64_BUN_ARTIFACT_FILENAME = "bun-linux-riscv64-musl.zip";

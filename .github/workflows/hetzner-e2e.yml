@@ -85,7 +85,7 @@ jobs:
         if: steps.secret_config.outputs.configured == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.3.14
 
       - name: Debug workspace
         if: steps.secret_config.outputs.configured == 'true'
@@ -184,7 +184,7 @@ jobs:
         if: steps.secret_config.outputs.configured == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.13
+          bun-version: 1.3.14
 
       - name: Install dependencies
         if: steps.secret_config.outputs.configured == 'true'

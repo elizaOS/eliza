@@ -1,5 +1,25 @@
+diff --git a/scripts/glob-sources.ts b/scripts/glob-sources.ts
+index ff819eb..41c0fc4 100644
+--- a/scripts/glob-sources.ts
++++ b/scripts/glob-sources.ts
+@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
+ import { assert } from "./build/error.ts";
+ 
+ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++const forceRiscv64CLoop = process.env.BUN_RISCV64_FORCE_CLOOP === "1";
+ 
+ interface SourcePattern {
+   paths: string[];
+@@ -95,6 +96,7 @@ const patterns = {
+       "src/jsc/bindings/vm/*.cpp",
+       "packages/bun-usockets/src/crypto/*.cpp",
+     ],
++    exclude: forceRiscv64CLoop ? ["src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp"] : [],
+   },
+   /** all `*.c` compiled into bun (usockets, llhttp, uv polyfills) */
+   c: {
 diff --git a/src/bake/BakeGlobalObject.cpp b/src/bake/BakeGlobalObject.cpp
-index 9822aa0..fa8c092 100644
+index 6bb3b32..b63e21b 100644
 --- a/src/bake/BakeGlobalObject.cpp
 +++ b/src/bake/BakeGlobalObject.cpp
 @@ -220,8 +220,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
@@ -16,11 +36,11 @@ index 9822aa0..fa8c092 100644
          INHERIT_HOOK_METHOD(deriveShadowRealmGlobalObject),
          INHERIT_HOOK_METHOD(codeForEval),
          INHERIT_HOOK_METHOD(canCompileStrings),
-diff --git a/src/bun.js/bindings/ZigGlobalObject.cpp b/src/bun.js/bindings/ZigGlobalObject.cpp
-index aa7fcf7..c8eba38 100644
---- a/src/bun.js/bindings/ZigGlobalObject.cpp
-+++ b/src/bun.js/bindings/ZigGlobalObject.cpp
-@@ -134,7 +134,9 @@
+diff --git a/src/jsc/bindings/ZigGlobalObject.cpp b/src/jsc/bindings/ZigGlobalObject.cpp
+index 18ad46c..d8354ec 100644
+--- a/src/jsc/bindings/ZigGlobalObject.cpp
++++ b/src/jsc/bindings/ZigGlobalObject.cpp
+@@ -139,7 +139,9 @@
  #include "JSTransformStreamDefaultController.h"
  #include "JSURLPattern.h"
  #include "JSURLSearchParams.h"
@@ -30,7 +50,7 @@ index aa7fcf7..c8eba38 100644
  #include <JavaScriptCore/WebAssemblyCompileOptions.h>
  #include "JSWebSocket.h"
  #include "JSWorker.h"
-@@ -785,8 +787,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
+@@ -918,8 +920,13 @@ const JSC::GlobalObjectMethodTable& GlobalObject::globalObjectMethodTable()
          &scriptExecutionStatus,
          &unsafeEvalNoop, // reportViolationForUnsafeEval
          nullptr, // defaultLanguage
@@ -44,7 +64,7 @@ index aa7fcf7..c8eba38 100644
          &Zig::deriveShadowRealmGlobalObject,
          &codeForEval, // codeForEval
          &canCompileStrings, // canCompileStrings
-@@ -813,8 +820,13 @@ const JSC::GlobalObjectMethodTable& EvalGlobalObject::globalObjectMethodTable()
+@@ -946,8 +953,13 @@ const JSC::GlobalObjectMethodTable& EvalGlobalObject::globalObjectMethodTable()
          &scriptExecutionStatus,
          &unsafeEvalNoop, // reportViolationForUnsafeEval
          nullptr, // defaultLanguage
@@ -58,7 +78,7 @@ index aa7fcf7..c8eba38 100644
          &Zig::deriveShadowRealmGlobalObject,
          &codeForEval, // codeForEval
          &canCompileStrings, // canCompileStrings
-@@ -1990,10 +2002,12 @@ void GlobalObject::finishCreation(VM& vm)
+@@ -2129,10 +2141,12 @@ void GlobalObject::finishCreation(VM& vm)
              init.set(JSC::JSFunction::create(init.vm, init.owner, utilInspectStylizeWithNoColorCodeGenerator(init.vm), init.owner));
          });
  
@@ -71,7 +91,7 @@ index aa7fcf7..c8eba38 100644
  
      m_nativeMicrotaskTrampoline.initLater(
          [](const Initializer<JSFunction>& init) {
-@@ -3454,6 +3468,7 @@ JSC::JSValue EvalGlobalObject::moduleLoaderEvaluate(JSGlobalObject* lexicalGloba
+@@ -3622,6 +3636,7 @@ JSC::JSValue EvalGlobalObject::moduleLoaderEvaluate(JSGlobalObject* lexicalGloba
      return result;
  }
  
@@ -79,7 +99,7 @@ index aa7fcf7..c8eba38 100644
  extern "C" JSC::EncodedJSValue Zig__GlobalObject__getBodyStreamOrBytesForWasmStreaming(JSGlobalObject*, EncodedJSValue response, JSC::Wasm::StreamingCompiler* compiler);
  
  extern "C" void JSC__Wasm__StreamingCompiler__addBytes(JSC::Wasm::StreamingCompiler* compiler, const uint8_t* spanPtr, size_t spanSize)
-@@ -3509,6 +3524,7 @@ JSC::JSPromise* GlobalObject::instantiateStreaming(JSGlobalObject* globalObject,
+@@ -3677,6 +3692,7 @@ JSC::JSPromise* GlobalObject::instantiateStreaming(JSGlobalObject* globalObject,
  {
      return handleResponseOnStreamingAction(globalObject, source, JSC::Wasm::CompilerMode::FullCompile, importObject, WTF::move(compileOptions));
  }
@@ -87,14 +107,14 @@ index aa7fcf7..c8eba38 100644
  
  GlobalObject::PromiseFunctions GlobalObject::promiseHandlerID(Zig::FFIFunction handler)
  {
-diff --git a/src/bun.js/bindings/ZigGlobalObject.h b/src/bun.js/bindings/ZigGlobalObject.h
-index f887f63..bfe75cb 100644
---- a/src/bun.js/bindings/ZigGlobalObject.h
-+++ b/src/bun.js/bindings/ZigGlobalObject.h
-@@ -198,8 +198,10 @@ public:
-     static JSC::JSInternalPromise* moduleLoaderFetch(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, JSC::JSValue parameters, JSC::JSValue script);
-     static JSC::JSObject* moduleLoaderCreateImportMetaProperties(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, JSC::JSModuleRecord*, JSC::JSValue val);
-     static JSC::JSValue moduleLoaderEvaluate(JSGlobalObject*, JSC::JSModuleLoader*, JSValue key, JSValue moduleRecordValue, JSValue scriptFetcher, JSValue sentValue, JSValue resumeMode);
+diff --git a/src/jsc/bindings/ZigGlobalObject.h b/src/jsc/bindings/ZigGlobalObject.h
+index ec74c45..ce8a96c 100644
+--- a/src/jsc/bindings/ZigGlobalObject.h
++++ b/src/jsc/bindings/ZigGlobalObject.h
+@@ -201,8 +201,10 @@ public:
+     static JSC::JSPromise* moduleLoaderFetch(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, RefPtr<JSC::ScriptFetchParameters>, RefPtr<JSC::ScriptFetcher>);
+     static JSC::JSObject* moduleLoaderCreateImportMetaProperties(JSGlobalObject*, JSC::JSModuleLoader*, JSC::JSValue key, JSC::JSModuleRecord*, RefPtr<JSC::ScriptFetcher>);
+     static JSC::JSValue moduleLoaderEvaluate(JSGlobalObject*, JSC::JSModuleLoader*, JSValue key, JSValue moduleRecordValue, RefPtr<JSC::ScriptFetcher>, JSValue sentValue, JSValue resumeMode);
 +#if ENABLE(WEBASSEMBLY)
      static JSC::JSPromise* compileStreaming(JSGlobalObject*, JSC::JSValue source, std::optional<JSC::WebAssemblyCompileOptions>&&);
      static JSC::JSPromise* instantiateStreaming(JSGlobalObject*, JSC::JSValue source, JSC::JSObject* importObject, std::optional<JSC::WebAssemblyCompileOptions>&&);
@@ -102,10 +122,10 @@ index f887f63..bfe75cb 100644
  
      static ScriptExecutionStatus scriptExecutionStatus(JSGlobalObject*, JSObject*);
      static void promiseRejectionTracker(JSGlobalObject*, JSC::JSPromise*, JSC::JSPromiseRejectionOperation);
-diff --git a/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.cpp b/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.cpp
-index af3baa8..91b5636 100644
---- a/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.cpp
-+++ b/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.cpp
+diff --git a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp
+index befcdaa..f7fca9d 100644
+--- a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp
++++ b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp
 @@ -9,6 +9,8 @@
  
  #include "ErrorCode.h"
@@ -121,10 +141,10 @@ index af3baa8..91b5636 100644
  }
 +
 +#endif // ENABLE(WEBASSEMBLY)
-diff --git a/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.h b/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.h
+diff --git a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h
 index d40eb99..3f607af 100644
---- a/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.h
-+++ b/src/bun.js/bindings/webcore/JSWasmStreamingCompiler.h
+--- a/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h
++++ b/src/jsc/bindings/webcore/JSWasmStreamingCompiler.h
 @@ -4,6 +4,8 @@
  #include "JavaScriptCore/WasmStreamingCompiler.h"
  #include <wtf/NeverDestroyed.h>
@@ -140,23 +160,3 @@ index d40eb99..3f607af 100644
  } // namespace WebCore
 +
 +#endif // ENABLE(WEBASSEMBLY)
-diff --git a/scripts/glob-sources.ts b/scripts/glob-sources.ts
-index 44fff19..cd29f41 100644
---- a/scripts/glob-sources.ts
-+++ b/scripts/glob-sources.ts
-@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
- import { assert } from "./build/error.ts";
- 
- const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-+const forceRiscv64CLoop = process.env.BUN_RISCV64_FORCE_CLOOP === "1";
- 
- interface SourcePattern {
-   paths: string[];
-@@ -94,6 +95,7 @@ const patterns = {
-       "src/vm/*.cpp",
-       "packages/bun-usockets/src/crypto/*.cpp",
-     ],
-+    exclude: forceRiscv64CLoop ? ["src/bun.js/bindings/webcore/JSWasmStreamingCompiler.cpp"] : [],
-   },
-   /** all `*.c` compiled into bun (usockets, llhttp, uv polyfills) */
-   c: {

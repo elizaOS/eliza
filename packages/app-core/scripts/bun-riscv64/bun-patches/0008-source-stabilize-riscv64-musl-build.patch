@@ -1,9 +1,9 @@
 diff --git a/scripts/build/config.ts b/scripts/build/config.ts
-index 68f5313..1bce80c 100644
+index 64f50f9..38b24ea 100644
 --- a/scripts/build/config.ts
 +++ b/scripts/build/config.ts
-@@ -483,6 +483,13 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
-   const zigCommit = partial.zigCommit ?? defaultZigCommit(ci, host.os);
+@@ -749,6 +749,13 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   const zigCommit = partial.zigCommit ?? versionDefaults.zigCommit;
    const webkitVersion = partial.webkitVersion ?? versionDefaults.webkitVersion;
  
 +  const riscv64Tool = (envName: string, fallback: string): string => {
@@ -16,7 +16,7 @@ index 68f5313..1bce80c 100644
    // ─── macOS SDK ───
    // Must be passed to nested cmake builds or they'll pick the wrong SDK.
    // Requires BOTH host and target to be darwin — xcode only exists on
-@@ -541,12 +548,12 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+@@ -812,13 +819,13 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
      codegenDir,
      cacheDir,
      vendorDir,
@@ -35,39 +35,12 @@ index 68f5313..1bce80c 100644
 +    strip: riscv64Tool("BUN_STRIP", toolchain.strip),
      dsymutil: toolchain.dsymutil,
      zig: toolchain.zig,
-diff --git a/scripts/build/deps/boringssl.ts b/scripts/build/deps/boringssl.ts
-index e1e12d4..e6db89b 100644
---- a/scripts/build/deps/boringssl.ts
-+++ b/scripts/build/deps/boringssl.ts
-@@ -17,12 +17,17 @@ export const boringssl: Dependency = {
-     commit: BORINGSSL_COMMIT,
-   }),
- 
--  build: () => ({
--    kind: "nested-cmake",
--    // No explicit targets — defaults to lib names (crypto, ssl, decrepit).
--    // BoringSSL's cmake targets match its output library names.
--    args: {},
--  }),
-+  build: cfg => {
-+    const riscv64 = cfg.riscv64;
-+    return {
-+      kind: "nested-cmake",
-+      // No explicit targets — defaults to lib names (crypto, ssl, decrepit).
-+      // BoringSSL's cmake targets match its output library names.
-+      args: riscv64 ? { BUILD_TESTING: "OFF", OPENSSL_NO_ASM: "ON" } : {},
-+      extraCFlags: riscv64 ? ["-Wno-error=unused-command-line-argument"] : undefined,
-+      extraCxxFlags: riscv64 ? ["-Wno-error=unused-command-line-argument"] : undefined,
-+    };
-+  },
- 
-   provides: () => ({
-     libs: ["crypto", "ssl", "decrepit"],
+     bun: toolchain.bun,
 diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
-index 6425048..809a627 100644
+index 6490635..09d7876 100644
 --- a/scripts/build/deps/webkit.ts
 +++ b/scripts/build/deps/webkit.ts
-@@ -210,6 +210,12 @@ export const webkit: Dependency = {
+@@ -216,6 +216,12 @@ export const webkit: Dependency = {
        return { kind: "none" };
      }
  
@@ -81,10 +54,10 @@ index 6425048..809a627 100644
      //
      // CMAKE_C_FLAGS/CMAKE_CXX_FLAGS: overrides the global dep flags source.ts
 diff --git a/scripts/build/source.ts b/scripts/build/source.ts
-index bee0683..895b753 100644
+index 869c18c..4f1586f 100644
 --- a/scripts/build/source.ts
 +++ b/scripts/build/source.ts
-@@ -741,9 +741,13 @@ export function resolveDep(
+@@ -839,9 +839,13 @@ export function resolveDep(
    } else {
      // No build step. Source stamp is the only output. For deps with
      // provides.sources (picohttpparser), emitBun adds a phony pointing at
@@ -101,7 +74,7 @@ index bee0683..895b753 100644
    }
  
    // ─── Resolve include paths ───
-@@ -1026,6 +1030,13 @@ function emitNestedCmake(
+@@ -1129,6 +1133,13 @@ function emitNestedCmake(
      args.push(`-DCMAKE_EXE_LINKER_FLAGS=--ld-path=${cfg.ld}`);
      args.push(`-DCMAKE_SHARED_LINKER_FLAGS=--ld-path=${cfg.ld}`);
    }
@@ -115,10 +88,55 @@ index bee0683..895b753 100644
    if (cfg.windows) {
      // Windows-specific toolchain forwarding. When CMAKE_C_COMPILER is
      // an explicit path, cmake's find_program for the supporting tools
-diff --git a/src/bun.js/bindings/CPUFeatures.zig b/src/bun.js/bindings/CPUFeatures.zig
+diff --git a/src/bun_core/env.zig b/src/bun_core/env.zig
+index 59f64e6..57e6057 100644
+--- a/src/bun_core/env.zig
++++ b/src/bun_core/env.zig
+@@ -23,6 +23,7 @@ pub const isKqueue = isMac or isFreeBSD;
+ pub const isAarch64 = builtin.target.cpu.arch.isAARCH64();
+ pub const isX86 = builtin.target.cpu.arch.isX86();
+ pub const isX64 = builtin.target.cpu.arch == .x86_64;
++pub const isRiscv64 = builtin.target.cpu.arch == .riscv64;
+ pub const isMusl = builtin.target.abi.isMusl();
+ pub const isAndroid = builtin.target.abi.isAndroid();
+ pub const isGlibc = isLinux and builtin.target.abi.isGnu();
+@@ -158,6 +159,7 @@ else
+ pub const Architecture = enum {
+     x64,
+     arm64,
++    riscv64,
+     wasm,
+ 
+     /// npm package name, `@oven-sh/bun-{os}-{arch}`
+@@ -165,6 +167,7 @@ pub const Architecture = enum {
+         return switch (this) {
+             .x64 => "x64",
+             .arm64 => "aarch64",
++            .riscv64 => "riscv64",
+             .wasm => "wasm",
+         };
+     }
+@@ -175,6 +178,7 @@ pub const Architecture = enum {
+         .{ "amd64", .x64 },
+         .{ "aarch64", .arm64 },
+         .{ "arm64", .arm64 },
++        .{ "riscv64", .riscv64 },
+         .{ "wasm", .wasm },
+     });
+ };
+@@ -185,6 +189,8 @@ else if (isX64)
+     .x64
+ else if (isAarch64)
+     .arm64
++else if (isRiscv64)
++    .riscv64
+ else
+     @compileError("Please add your architecture to the Architecture enum");
+ 
+diff --git a/src/crash_handler/CPUFeatures.zig b/src/crash_handler/CPUFeatures.zig
 index 29e4a6e..eae96a8 100644
---- a/src/bun.js/bindings/CPUFeatures.zig
-+++ b/src/bun.js/bindings/CPUFeatures.zig
+--- a/src/crash_handler/CPUFeatures.zig
++++ b/src/crash_handler/CPUFeatures.zig
 @@ -28,6 +28,10 @@ pub const Flags = switch (@import("builtin").cpu.arch) {
  
          padding: u1 = 0,
@@ -138,31 +156,11 @@ index 29e4a6e..eae96a8 100644
      return features.flags.avx or features.flags.avx2 or features.flags.avx512;
  }
  
-diff --git a/src/compile_target.zig b/src/compile_target.zig
-index a1400d0..a164034 100644
---- a/src/compile_target.zig
-+++ b/src/compile_target.zig
-@@ -462,13 +462,14 @@ pub fn defineValues(this: *const CompileTarget) []const []const u8 {
-     // Use inline else to avoid extra allocations.
-     switch (this.os) {
-         inline else => |os| switch (this.arch) {
--            inline .arm64, .x64 => |arch| return struct {
-+            inline .arm64, .riscv64, .x64 => |arch| return struct {
-                 pub const values = &.{
-                     "\"" ++ os.nameString() ++ "\"",
- 
-                     switch (arch) {
-                         .x64 => "\"x64\"",
-                         .arm64 => "\"arm64\"",
-+                        .riscv64 => "\"riscv64\"",
-                         .wasm => @compileError("TODO"),
-                     },
- 
-diff --git a/src/crash_handler.zig b/src/crash_handler.zig
-index 58a6a19..7b7b0cb 100644
---- a/src/crash_handler.zig
-+++ b/src/crash_handler.zig
-@@ -1096,6 +1096,7 @@ const Platform = enum(u8) {
+diff --git a/src/crash_handler/crash_handler.zig b/src/crash_handler/crash_handler.zig
+index f641d38..5ecba2a 100644
+--- a/src/crash_handler/crash_handler.zig
++++ b/src/crash_handler/crash_handler.zig
+@@ -1137,6 +1137,7 @@ const Platform = enum(u8) {
      linux_x86_64 = 'l',
      linux_x86_64_baseline = 'B',
      linux_aarch64 = 'L',
@@ -170,56 +168,11 @@ index 58a6a19..7b7b0cb 100644
  
      mac_x86_64_baseline = 'b',
      mac_x86_64 = 'm',
-diff --git a/src/env.zig b/src/env.zig
-index 4d4fa2b..d7ed480 100644
---- a/src/env.zig
-+++ b/src/env.zig
-@@ -20,6 +20,7 @@ pub const isLinux = builtin.target.os.tag == .linux;
- pub const isAarch64 = builtin.target.cpu.arch.isAARCH64();
- pub const isX86 = builtin.target.cpu.arch.isX86();
- pub const isX64 = builtin.target.cpu.arch == .x86_64;
-+pub const isRiscv64 = builtin.target.cpu.arch == .riscv64;
- pub const isMusl = builtin.target.abi.isMusl();
- pub const allow_assert = isDebug or isTest or std.builtin.OptimizeMode.ReleaseSafe == builtin.mode;
- pub const ci_assert = isDebug or isTest or enable_asan or (std.builtin.OptimizeMode.ReleaseSafe == builtin.mode and is_canary);
-@@ -144,6 +145,7 @@ else
- pub const Architecture = enum {
-     x64,
-     arm64,
-+    riscv64,
-     wasm,
- 
-     /// npm package name, `@oven-sh/bun-{os}-{arch}`
-@@ -151,6 +153,7 @@ pub const Architecture = enum {
-         return switch (this) {
-             .x64 => "x64",
-             .arm64 => "aarch64",
-+            .riscv64 => "riscv64",
-             .wasm => "wasm",
-         };
-     }
-@@ -161,6 +164,7 @@ pub const Architecture = enum {
-         .{ "amd64", .x64 },
-         .{ "aarch64", .arm64 },
-         .{ "arm64", .arm64 },
-+        .{ "riscv64", .riscv64 },
-         .{ "wasm", .wasm },
-     });
- };
-@@ -171,6 +175,8 @@ else if (isX64)
-     .x64
- else if (isAarch64)
-     .arm64
-+else if (isRiscv64)
-+    .riscv64
- else
-     @compileError("Please add your architecture to the Architecture enum");
- 
 diff --git a/src/install/npm.zig b/src/install/npm.zig
-index 255a4f7..bee1527 100644
+index c65a70d..ffaf0c2 100644
 --- a/src/install/npm.zig
 +++ b/src/install/npm.zig
-@@ -759,17 +759,20 @@ pub const Architecture = enum(u16) {
+@@ -735,17 +735,20 @@ pub const Architecture = enum(u16) {
      pub const s390x: u16 = 1 << 9;
      pub const x32: u16 = 1 << 10;
      pub const x64: u16 = 1 << 11;
@@ -241,7 +194,7 @@ index 255a4f7..bee1527 100644
          .x64 => "x64",
          .wasm => @compileError("Unsupported architecture: " ++ @tagName(current)),
      };
-@@ -782,6 +785,7 @@ pub const Architecture = enum(u16) {
+@@ -758,6 +761,7 @@ pub const Architecture = enum(u16) {
          .{ "mipsel", mipsel },
          .{ "ppc", ppc },
          .{ "ppc64", ppc64 },
@@ -249,3 +202,24 @@ index 255a4f7..bee1527 100644
          .{ "s390", s390 },
          .{ "s390x", s390x },
          .{ "x32", x32 },
+diff --git a/src/options_types/CompileTarget.zig b/src/options_types/CompileTarget.zig
+index 1a942e3..ca51f40 100644
+--- a/src/options_types/CompileTarget.zig
++++ b/src/options_types/CompileTarget.zig
+@@ -471,7 +471,7 @@ pub fn defineValues(this: *const CompileTarget) []const []const u8 {
+     // Use inline else to avoid extra allocations.
+     switch (this.os) {
+         inline else => |os| switch (this.arch) {
+-            inline .arm64, .x64 => |arch| switch (this.libc) {
++            inline .arm64, .riscv64, .x64 => |arch| switch (this.libc) {
+                 inline else => |libc| return struct {
+                     pub const values = &.{
+                         // process.platform: Node reports "android" on Android, not "linux".
+@@ -480,6 +480,7 @@ pub fn defineValues(this: *const CompileTarget) []const []const u8 {
+                         switch (arch) {
+                             .x64 => "\"x64\"",
+                             .arm64 => "\"arm64\"",
++                            .riscv64 => "\"riscv64\"",
+                             .wasm => @compileError("TODO"),
+                         },
+ 

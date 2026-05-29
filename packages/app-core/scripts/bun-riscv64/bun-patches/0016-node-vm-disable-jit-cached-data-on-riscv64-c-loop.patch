@@ -1,7 +1,7 @@
-diff --git a/src/bun.js/bindings/NodeVMScript.cpp b/src/bun.js/bindings/NodeVMScript.cpp
-index b6ae742..af84cbe 100644
---- a/src/bun.js/bindings/NodeVMScript.cpp
-+++ b/src/bun.js/bindings/NodeVMScript.cpp
+diff --git a/src/jsc/bindings/NodeVMScript.cpp b/src/jsc/bindings/NodeVMScript.cpp
+index d7cfa61..e18a30a 100644
+--- a/src/jsc/bindings/NodeVMScript.cpp
++++ b/src/jsc/bindings/NodeVMScript.cpp
 @@ -8,6 +8,7 @@
  #include "JavaScriptCore/JSWeakMapInlines.h"
  #include "JavaScriptCore/ProgramCodeBlock.h"
@@ -73,10 +73,10 @@ index b6ae742..af84cbe 100644
      }
  
      if (checkForTermination(vm, globalObject, scope, script, newLimit)) {
-diff --git a/src/bun.js/bindings/NodeVMSourceTextModule.cpp b/src/bun.js/bindings/NodeVMSourceTextModule.cpp
-index 5c3ad69..410584c 100644
---- a/src/bun.js/bindings/NodeVMSourceTextModule.cpp
-+++ b/src/bun.js/bindings/NodeVMSourceTextModule.cpp
+diff --git a/src/jsc/bindings/NodeVMSourceTextModule.cpp b/src/jsc/bindings/NodeVMSourceTextModule.cpp
+index 2b83e97..2290f1e 100644
+--- a/src/jsc/bindings/NodeVMSourceTextModule.cpp
++++ b/src/jsc/bindings/NodeVMSourceTextModule.cpp
 @@ -140,12 +140,16 @@ NodeVMSourceTextModule* NodeVMSourceTextModule::create(VM& vm, JSGlobalObject* g
              RETURN_IF_EXCEPTION(scope, nullptr);
          }

@@ -15,10 +15,10 @@ shipped on this runtime uses Postgres rather than the WebAssembly PGlite
 build, so no wasm execution is required.
 
 diff --git a/Source/JavaScriptCore/runtime/Options.cpp b/Source/JavaScriptCore/runtime/Options.cpp
-index e6c6e3251b..8fd2435ba3 100644
+index d9ebf57..de661a4 100644
 --- a/Source/JavaScriptCore/runtime/Options.cpp
 +++ b/Source/JavaScriptCore/runtime/Options.cpp
-@@ -1399,10 +1399,12 @@ void Options::assertOptionsAreCoherent()
+@@ -1392,10 +1392,12 @@ void Options::assertOptionsAreCoherent()
          coherent = false;
          dataLog("INCOHERENT OPTIONS: at least one of useLLInt or useJIT must be true\n");
      }
@@ -28,6 +28,6 @@ index e6c6e3251b..8fd2435ba3 100644
          dataLog("INCOHERENT OPTIONS: at least one of useWasmIPInt, or useBBQJIT must be true\n");
      }
 +#endif
-     if (useWasmIPIntSIMD() && useWasmRelaxedSIMD()) {
+     if (useProfiler() && useConcurrentJIT()) {
          coherent = false;
-         dataLog("INCOHERENT OPTIONS: useWasmIPIntSIMD and useWasmRelaxedSIMD cannot both be enabled (relaxed SIMD opcodes 0x100-0x10c are not yet supported in IPInt)\n");
+         dataLogLn("Bytecode profiler is not concurrent JIT safe.");

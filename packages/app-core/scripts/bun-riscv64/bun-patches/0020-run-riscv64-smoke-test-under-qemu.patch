@@ -1,8 +1,8 @@
 diff --git a/scripts/build/bun.ts b/scripts/build/bun.ts
-index f641f6c..573e034 100644
+index a85fd4e..94ce55d 100644
 --- a/scripts/build/bun.ts
 +++ b/scripts/build/bun.ts
-@@ -571,6 +571,8 @@ function emitSmokeTest(n: Ninja, cfg: Config, exe: string, exeName: string): voi
+@@ -654,6 +654,8 @@ function emitSmokeTest(n: Ninja, cfg: Config, exe: string, exeName: string): voi
    if (cfg.linux && cfg.asan) {
      const arch = cfg.x64 ? "x86_64" : "aarch64";
      testCmd = `${envWrap} setarch ${arch} -R ${exe} --revision || ${envWrap} ${exe} --revision`;
