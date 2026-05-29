@@ -12,10 +12,10 @@
  * env vars so CI matrices can drive sharding deterministically:
  *
  *   TEST_LANE=pr (default)
- *     Mockoon-backed lane. Sets VITEST_EXCLUDE_REAL_E2E=1 and
- *     VITEST_EXCLUDE_REAL=1 so package vitest configs can drop
- *     *.real.e2e.test.ts and *.real.test.ts files. Warns when
- *     CEREBRAS_API_KEY is missing.
+ *     Secret-free deterministic lane. Sets VITEST_EXCLUDE_REAL_E2E=1,
+ *     VITEST_EXCLUDE_REAL=1, and ELIZA_LIVE_TEST=0 by default so package
+ *     vitest configs can drop *.real.e2e.test.ts and *.real.test.ts files
+ *     and live-gated suites stay disabled. Provider API keys are not required.
  *
  *   TEST_LANE=post-merge
  *     Real APIs everywhere. No exclusions. Warns when
@@ -41,6 +41,16 @@
  *     that consume those env vars can flip include/exclude patterns.
  *     For packages whose `test` script is a single `vitest run` we
  *     also append a path filter via VITEST_TEST_PATH_PATTERN.
+ *
+ *   --all
+ *     Explicitly run unit + integration + E2E package scripts. This is the
+ *     default when --only is not set; the flag exists so package.json scripts
+ *     can state the lane intent without leaving an ignored argument behind.
+ *
+ *   --exclude=<path>
+ *     Mark a repo-relative test path as excluded from this lane. Exclusions
+ *     are forwarded to single-vitest package scripts and exported via
+ *     VITEST_TEST_EXCLUDE_PATHS for package configs/wrappers.
  *
  * Companion env knobs (legacy, still honoured):
  *   TEST_PACKAGE_FILTER  — same surface as --filter
@@ -79,6 +89,9 @@ function parseFlagValue(prefix) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === prefix && i + 1 < argv.length) {
+      if (argv[i + 1].startsWith("--")) {
+        throw new Error(`${prefix} requires a value`);
+      }
       const value = argv[i + 1];
       argv.splice(i, 2);
       return value;
@@ -92,11 +105,53 @@ function parseFlagValue(prefix) {
   return null;
 }
 
+function parseRepeatedFlagValue(prefix) {
+  const values = [];
+  for (let i = 0; i < argv.length; ) {
+    const arg = argv[i];
+    if (arg === prefix) {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith("--")) {
+        throw new Error(`${prefix} requires a value`);
+      }
+      values.push(argv[i + 1]);
+      argv.splice(i, 2);
+      continue;
+    }
+    if (arg.startsWith(`${prefix}=`)) {
+      const value = arg.slice(prefix.length + 1);
+      if (!value) {
+        throw new Error(`${prefix} requires a value`);
+      }
+      values.push(value);
+      argv.splice(i, 1);
+      continue;
+    }
+    i++;
+  }
+  return values;
+}
+
+function failUsage(message) {
+  console.error(`[eliza-test] ERROR ${message}`);
+  console.error("Run with --help for usage.");
+  process.exit(2);
+}
+
 const noCloud = parseFlag("--no-cloud");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
-const filterFlag = parseFlagValue("--filter");
-const patternFlag = parseFlagValue("--pattern");
-const onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
+let filterFlag;
+let patternFlag;
+let onlyFlag;
+let excludeFlags;
+try {
+  filterFlag = parseFlagValue("--filter");
+  patternFlag = parseFlagValue("--pattern");
+  onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
+  excludeFlags = parseRepeatedFlagValue("--exclude");
+} catch (error) {
+  failUsage(error.message);
+}
+const allFlag = parseFlag("--all");
 
 if (helpFlag) {
   process.stdout.write(
@@ -108,6 +163,8 @@ if (helpFlag) {
       "  --filter=<regex>     Filter package tasks by `<name> (<dir>)#<script>`.",
       "  --pattern=<regex>    Same surface as --filter; combined via intersection.",
       "  --only=e2e | test    Forward VITEST_E2E_ONLY / VITEST_UNIT_ONLY env to children.",
+      "  --all                Explicitly run every discovered test lane (default without --only).",
+      "  --exclude=<path>     Exclude a repo-relative test path from this lane.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -116,11 +173,21 @@ if (helpFlag) {
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
       "  TEST_START_AT=<substring>       Skip until first matching label.",
       "",
-      "See `.env.test.example` for live test env setup.",
+      "See `.env.test.example` for deterministic PR and live lane env setup.",
       "",
     ].join("\n"),
   );
   process.exit(0);
+}
+
+if (allFlag && onlyFlag) {
+  failUsage("--all cannot be combined with --only");
+}
+if (onlyFlag && !["e2e", "test"].includes(onlyFlag)) {
+  failUsage(`--only must be "e2e" or "test", got "${onlyFlag}"`);
+}
+if (argv.length > 0) {
+  failUsage(`unknown argument(s): ${argv.join(" ")}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -172,11 +239,8 @@ function loadPostMergeSecrets() {
 }
 
 if (TEST_LANE === "pr") {
-  if (!process.env.CEREBRAS_API_KEY) {
-    console.warn(
-      `${YELLOW}[eliza-test] WARN TEST_LANE=pr but CEREBRAS_API_KEY is not set. LLM-backed tests may be skipped.${RESET}`,
-    );
-  }
+  // PR/default runs are expected to be secret-free. Live-provider coverage
+  // belongs to TEST_LANE=post-merge or the dedicated live workflows.
 } else if (TEST_LANE === "post-merge") {
   const secrets = loadPostMergeSecrets();
   const missing = secrets.filter((k) => !process.env[k]);
@@ -450,6 +514,10 @@ function escapeForRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function normalizeRepoPath(value) {
+  return value.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
 function scriptReferencesScript(command, scriptName) {
   if (!command) {
     return false;
@@ -659,7 +727,33 @@ function buildLaneEnv() {
     extra.VITEST_TEST_PATH_PATTERN = patternFlag;
   }
 
+  if (excludeFlags.length > 0) {
+    const normalizedExcludes = excludeFlags.map(normalizeRepoPath);
+    extra.VITEST_TEST_EXCLUDE_PATHS = JSON.stringify(normalizedExcludes);
+    extra.VITEST_TEST_EXCLUDE_PATTERN = normalizedExcludes
+      .map(escapeForRegex)
+      .join("|");
+  }
+
   return extra;
+}
+
+function buildForwardedScriptArgs(scriptName, scripts) {
+  if (excludeFlags.length === 0) {
+    return [];
+  }
+
+  const command =
+    resolveScriptCommand(scriptName, scripts) ||
+    normalizeWhitespace(scripts?.[scriptName] ?? "");
+  if (!isSingleVitestRunCommand(command)) {
+    return [];
+  }
+
+  return excludeFlags.flatMap((value) => [
+    "--exclude",
+    normalizeRepoPath(value),
+  ]);
 }
 
 /**
@@ -680,19 +774,29 @@ function taskBelongsToShard(taskKey, shardCfg) {
 // Script runner
 // ---------------------------------------------------------------------------
 
-function runScript(cwd, scriptName, label, extraEnv = {}) {
+function runScript(cwd, scriptName, label, scripts, extraEnv = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(bunCmd, ["run", scriptName], {
-      cwd,
-      env: {
-        ...process.env,
-        NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
-        ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || "1",
-        PWD: cwd,
-        ...extraEnv,
+    const forwardedArgs = buildForwardedScriptArgs(scriptName, scripts);
+    const liveTestDefault = TEST_LANE === "post-merge" ? "1" : "0";
+    const child = spawn(
+      bunCmd,
+      [
+        "run",
+        scriptName,
+        ...(forwardedArgs.length > 0 ? ["--", ...forwardedArgs] : []),
+      ],
+      {
+        cwd,
+        env: {
+          ...process.env,
+          NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
+          ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || liveTestDefault,
+          PWD: cwd,
+          ...extraEnv,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
       },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    );
     let capturedOutput = "";
 
     child.stdout?.on("data", (chunk) => {
@@ -847,7 +951,7 @@ for (const packageJsonPath of packageJsonPaths) {
 
     console.log(`[eliza-test] START ${label}`);
     const startedAt = Date.now();
-    const result = await runScript(cwd, scriptName, label, extraEnv);
+    const result = await runScript(cwd, scriptName, label, scripts, extraEnv);
     const durationMs = Date.now() - startedAt;
     if (result.skipped) {
       console.log(

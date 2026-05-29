@@ -66,12 +66,6 @@ function StartupLoading(props: { phase: string; status: string }) {
           </span>
         </div>
 
-        <div className="flex w-full max-w-[18rem] flex-col gap-2" aria-hidden>
-          <div className="h-2.5 w-full rounded-sm bg-white/40 animate-pulse motion-reduce:animate-none" />
-          <div className="h-2.5 w-3/4 self-center rounded-sm bg-white/30 animate-pulse motion-reduce:animate-none" />
-          <div className="h-2.5 w-1/2 self-center rounded-sm bg-white/20 animate-pulse motion-reduce:animate-none" />
-        </div>
-
         <p
           style={{ fontFamily: FONT }}
           className="min-h-5 text-sm uppercase tracking-wide text-white/85 animate-pulse motion-reduce:animate-none"

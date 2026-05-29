@@ -8,12 +8,14 @@ import type { ReactNode } from "react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { syncStewardSessionCookie } from "../../../../lib/steward-session";
 import { LocalStewardAuthContext } from "../../../../providers/StewardProvider";
 
 type CallbackStatus = "verifying" | "success" | "error";
 
 export default function StewardEmailCallbackPage() {
+  const t = useT();
   const [searchParams] = useSearchParams();
   const auth = useContext(LocalStewardAuthContext);
   const attemptedRef = useRef(false);
@@ -28,14 +30,22 @@ export default function StewardEmailCallbackPage() {
 
     if (!auth) {
       setStatus("error");
-      setError("Sign-in is unavailable. Start sign-in again from the app.");
+      setError(
+        t("cloud.emailCallback.unavailable", {
+          defaultValue:
+            "Sign-in is unavailable. Start sign-in again from the app.",
+        }),
+      );
       return;
     }
 
     if (!returnTo) {
       setStatus("error");
       setError(
-        "Could not find the app authorization request. Start sign-in again from the app.",
+        t("cloud.emailCallback.noRequest", {
+          defaultValue:
+            "Could not find the app authorization request. Start sign-in again from the app.",
+        }),
       );
       return;
     }
@@ -60,7 +70,11 @@ export default function StewardEmailCallbackPage() {
     const email = searchParams.get("email");
     if (!token || !email) {
       setStatus("error");
-      setError("This sign-in link is missing its token or email.");
+      setError(
+        t("cloud.emailCallback.missingToken", {
+          defaultValue: "This sign-in link is missing its token or email.",
+        }),
+      );
       return;
     }
 
@@ -74,7 +88,9 @@ export default function StewardEmailCallbackPage() {
         setError(
           err instanceof Error
             ? err.message
-            : "Could not verify this sign-in link.",
+            : t("cloud.emailCallback.verifyFailed", {
+                defaultValue: "Could not verify this sign-in link.",
+              }),
         );
       }
     })();
@@ -82,11 +98,15 @@ export default function StewardEmailCallbackPage() {
     return () => {
       if (redirectTimer) clearTimeout(redirectTimer);
     };
-  }, [auth, returnTo, searchParams]);
+  }, [auth, returnTo, searchParams, t]);
 
   const helmet = (
     <Helmet>
-      <title>Email Sign-In | Eliza Cloud</title>
+      <title>
+        {t("cloud.emailCallback.metaTitle", {
+          defaultValue: "Email Sign-In | Eliza Cloud",
+        })}
+      </title>
     </Helmet>
   );
 
@@ -98,7 +118,11 @@ export default function StewardEmailCallbackPage() {
           <div className="bg-[#FF5800] p-4 text-black">
             <AlertTriangle className="h-8 w-8" />
           </div>
-          <h1 className="text-lg font-semibold text-white">Sign-in failed</h1>
+          <h1 className="text-lg font-semibold text-white">
+            {t("cloud.emailCallback.signInFailed", {
+              defaultValue: "Sign-in failed",
+            })}
+          </h1>
           <p className="max-w-xs text-center text-sm text-white/74">{error}</p>
         </Frame>
       </>
@@ -111,15 +135,21 @@ export default function StewardEmailCallbackPage() {
         {helmet}
         <Frame>
           <CheckCircle2 className="h-12 w-12 text-white" />
-          <h1 className="text-lg font-semibold text-white">Signed in</h1>
+          <h1 className="text-lg font-semibold text-white">
+            {t("cloud.emailCallback.signedIn", { defaultValue: "Signed in" })}
+          </h1>
           <p className="text-sm text-white/74">
-            Returning to the app authorization screen...
+            {t("cloud.emailCallback.returning", {
+              defaultValue: "Returning to the app authorization screen...",
+            })}
           </p>
           <BrandButton
             className="mt-2"
             onClick={() => returnTo && window.location.assign(returnTo)}
           >
-            Continue to app authorization
+            {t("cloud.emailCallback.continue", {
+              defaultValue: "Continue to app authorization",
+            })}
           </BrandButton>
         </Frame>
       </>
@@ -132,7 +162,9 @@ export default function StewardEmailCallbackPage() {
       <Frame>
         <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
         <h1 className="text-lg font-semibold text-white">
-          Verifying sign-in link...
+          {t("cloud.emailCallback.verifying", {
+            defaultValue: "Verifying sign-in link...",
+          })}
         </h1>
       </Frame>
     </>

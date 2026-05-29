@@ -200,19 +200,25 @@ function ModelsTable({
         <thead>
           <tr className="border-b border-border">
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Model
+              {t("trainingdashboard.models.col.model", {
+                defaultValue: "Model",
+              })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Tier
+              {t("trainingdashboard.models.col.tier", { defaultValue: "Tier" })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Context
+              {t("trainingdashboard.models.col.context", {
+                defaultValue: "Context",
+              })}
             </th>
             <th className="px-3 py-2 text-left text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              GPU
+              {t("trainingdashboard.models.col.gpu", { defaultValue: "GPU" })}
             </th>
             <th className="px-3 py-2 text-center text-xs font-semibold text-muted-strong uppercase tracking-wide">
-              Action
+              {t("trainingdashboard.models.col.action", {
+                defaultValue: "Action",
+              })}
             </th>
           </tr>
         </thead>
@@ -248,7 +254,7 @@ function ModelsTable({
                   onClick={() => onTrainClick(model)}
                 >
                   <Plus className="w-4 h-4" />
-                  Train
+                  {t("trainingdashboard.train", { defaultValue: "Train" })}
                 </Button>
               </td>
             </tr>
@@ -260,6 +266,7 @@ function ModelsTable({
 }
 
 export function TrainingDashboard() {
+  const { t } = useTranslation();
   const {
     data: jobs,
     loading: jobsLoading,
@@ -297,7 +304,11 @@ export function TrainingDashboard() {
 
     const epochs = parseInt(createModal.epochs, 10);
     if (Number.isNaN(epochs) || epochs < 1) {
-      setCreateError("Epochs must be a positive number");
+      setCreateError(
+        t("trainingdashboard.error.epochsPositive", {
+          defaultValue: "Epochs must be a positive number",
+        }),
+      );
       return;
     }
 
@@ -310,10 +321,14 @@ export function TrainingDashboard() {
       setCreateModal({ open: false, model: null, epochs: "3", runName: "" });
     } catch (err) {
       setCreateError(
-        err instanceof Error ? err.message : "Failed to create job",
+        err instanceof Error
+          ? err.message
+          : t("trainingdashboard.error.createFailed", {
+              defaultValue: "Failed to create job",
+            }),
       );
     }
-  }, [createModal, create]);
+  }, [createModal, create, t]);
 
   return (
     <div className="space-y-6 p-4">
@@ -322,9 +337,15 @@ export function TrainingDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-txt-strong">
-              Active Training Jobs
+              {t("trainingdashboard.activeJobs.title", {
+                defaultValue: "Active Training Jobs",
+              })}
             </h2>
-            <p className="text-xs text-muted">Updates every 10 seconds</p>
+            <p className="text-xs text-muted">
+              {t("trainingdashboard.activeJobs.subtitle", {
+                defaultValue: "Updates every 10 seconds",
+              })}
+            </p>
           </div>
         </div>
         <JobsTable
@@ -346,9 +367,15 @@ export function TrainingDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-txt-strong">
-              Available Models
+              {t("trainingdashboard.availableModels.title", {
+                defaultValue: "Available Models",
+              })}
             </h2>
-            <p className="text-xs text-muted">Click Train to create a job</p>
+            <p className="text-xs text-muted">
+              {t("trainingdashboard.availableModels.subtitle", {
+                defaultValue: "Click Train to create a job",
+              })}
+            </p>
           </div>
         </div>
         <ModelsTable
@@ -361,7 +388,10 @@ export function TrainingDashboard() {
         {createModal.open && createModal.model && (
           <div className="border border-border rounded-sm p-4 bg-card space-y-3">
             <div className="text-sm font-semibold">
-              Train {createModal.model.short_name}
+              {t("trainingdashboard.modal.trainModel", {
+                model: createModal.model.short_name,
+                defaultValue: "Train {{model}}",
+              })}
             </div>
             {createError && (
               <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded-sm">
@@ -373,7 +403,9 @@ export function TrainingDashboard() {
                 className="text-xs text-muted block mb-1"
                 htmlFor="training-epochs"
               >
-                Epochs
+                {t("trainingdashboard.modal.epochs", {
+                  defaultValue: "Epochs",
+                })}
               </label>
               <Input
                 id="training-epochs"
@@ -394,7 +426,9 @@ export function TrainingDashboard() {
                 className="text-xs text-muted block mb-1"
                 htmlFor="training-run-name"
               >
-                Run Name (optional)
+                {t("trainingdashboard.modal.runName", {
+                  defaultValue: "Run Name (optional)",
+                })}
               </label>
               <Input
                 id="training-run-name"
@@ -406,7 +440,9 @@ export function TrainingDashboard() {
                     runName: e.target.value,
                   })
                 }
-                placeholder="e.g., experiment-v2"
+                placeholder={t("trainingdashboard.modal.runNamePlaceholder", {
+                  defaultValue: "e.g., experiment-v2",
+                })}
                 className="text-sm"
               />
             </div>
@@ -421,7 +457,9 @@ export function TrainingDashboard() {
                 {createLoading && (
                   <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                 )}
-                Start Training
+                {t("trainingdashboard.modal.start", {
+                  defaultValue: "Start Training",
+                })}
               </Button>
               <Button
                 variant="outline"
@@ -436,7 +474,9 @@ export function TrainingDashboard() {
                 }
                 className="flex-1"
               >
-                Cancel
+                {t("trainingdashboard.modal.cancel", {
+                  defaultValue: "Cancel",
+                })}
               </Button>
             </div>
           </div>
@@ -448,9 +488,15 @@ export function TrainingDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-txt-strong">
-              Inference Endpoints
+              {t("trainingdashboard.endpoints.title", {
+                defaultValue: "Inference Endpoints",
+              })}
             </h2>
-            <p className="text-xs text-muted">Manage and monitor endpoints</p>
+            <p className="text-xs text-muted">
+              {t("trainingdashboard.endpoints.subtitle", {
+                defaultValue: "Manage and monitor endpoints",
+              })}
+            </p>
           </div>
         </div>
         <InferenceEndpointPanel />

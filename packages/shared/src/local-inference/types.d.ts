@@ -221,8 +221,12 @@ export interface LocalRuntimeAcceleration {
     mtp?: {
         /** Native llama.cpp MTP speculative mode. */
         specType: "draft-mtp";
-        /** Bundle-relative path to the MTP drafter GGUF. */
-        drafterFile: string;
+        /**
+         * Bundle-relative path to a separate MTP drafter GGUF. Omitted for
+         * same-file MTP, where the NextN head is embedded in the main text
+         * GGUF and no separate drafter download exists.
+         */
+        drafterFile?: string;
         /** Default draft range passed to the native MTP runner. */
         draftMin: number;
         draftMax: number;

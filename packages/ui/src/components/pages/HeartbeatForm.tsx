@@ -31,23 +31,28 @@ import {
 const EVENT_KIND_OPTIONS = [
   {
     value: "message.received",
-    label: "Message received",
+    labelKey: "heartbeatform.event.messageReceived",
+    defaultLabel: "Message received",
   },
   {
     value: "discord.message.received",
-    label: "Discord message",
+    labelKey: "heartbeatform.event.discordMessage",
+    defaultLabel: "Discord message",
   },
   {
     value: "telegram.message.received",
-    label: "Telegram message",
+    labelKey: "heartbeatform.event.telegramMessage",
+    defaultLabel: "Telegram message",
   },
   {
     value: "gmail.message.received",
-    label: "Gmail message",
+    labelKey: "heartbeatform.event.gmailMessage",
+    defaultLabel: "Gmail message",
   },
   {
     value: "calendar.event.ended",
-    label: "Calendar event ended",
+    labelKey: "heartbeatform.event.calendarEventEnded",
+    defaultLabel: "Calendar event ended",
   },
 ] as const;
 
@@ -215,7 +220,11 @@ export function HeartbeatForm({
         >
           <div>
             <FieldLabel variant="form">
-              {form.kind === "workflow" ? "Schedule name" : "Task name"}
+              {form.kind === "workflow"
+                ? t("heartbeatform.scheduleName", {
+                    defaultValue: "Schedule name",
+                  })
+                : t("heartbeatform.taskName", { defaultValue: "Task name" })}
             </FieldLabel>
             <Input
               variant="form"
@@ -227,7 +236,7 @@ export function HeartbeatForm({
 
           <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-              What it does
+              {t("heartbeatform.whatItDoes", { defaultValue: "What it does" })}
             </div>
             <TriggerKindSection
               form={form}
@@ -245,12 +254,18 @@ export function HeartbeatForm({
 
           <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-              When it starts
+              {t("heartbeatform.whenItStarts", {
+                defaultValue: "When it starts",
+              })}
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <div>
-                <FieldLabel variant="form">Trigger type</FieldLabel>
+                <FieldLabel variant="form">
+                  {t("heartbeatform.triggerType", {
+                    defaultValue: "Trigger type",
+                  })}
+                </FieldLabel>
                 <FormSelect
                   value={form.triggerType}
                   onValueChange={(value: string) =>
@@ -259,31 +274,53 @@ export function HeartbeatForm({
                       value as TriggerFormState["triggerType"],
                     )
                   }
-                  placeholder="Repeating interval"
+                  placeholder={t("heartbeatform.repeatingInterval", {
+                    defaultValue: "Repeating interval",
+                  })}
                 >
                   <FormSelectItem value="interval">
-                    Repeating interval
+                    {t("heartbeatform.repeatingInterval", {
+                      defaultValue: "Repeating interval",
+                    })}
                   </FormSelectItem>
-                  <FormSelectItem value="once">One time</FormSelectItem>
-                  <FormSelectItem value="cron">Cron schedule</FormSelectItem>
-                  <FormSelectItem value="event">Event</FormSelectItem>
+                  <FormSelectItem value="once">
+                    {t("heartbeatform.oneTime", { defaultValue: "One time" })}
+                  </FormSelectItem>
+                  <FormSelectItem value="cron">
+                    {t("heartbeatform.cronSchedule", {
+                      defaultValue: "Cron schedule",
+                    })}
+                  </FormSelectItem>
+                  <FormSelectItem value="event">
+                    {t("heartbeatform.event.label", { defaultValue: "Event" })}
+                  </FormSelectItem>
                 </FormSelect>
               </div>
 
               <div>
-                <FieldLabel variant="form">When it fires</FieldLabel>
+                <FieldLabel variant="form">
+                  {t("heartbeatform.whenItFires", {
+                    defaultValue: "When it fires",
+                  })}
+                </FieldLabel>
                 <FormSelect
                   value={form.wakeMode}
                   onValueChange={(value: string) =>
                     setField("wakeMode", value as TriggerFormState["wakeMode"])
                   }
-                  placeholder="Interrupt and run now"
+                  placeholder={t("heartbeatform.interruptAndRunNow", {
+                    defaultValue: "Interrupt and run now",
+                  })}
                 >
                   <FormSelectItem value="inject_now">
-                    Interrupt and run now
+                    {t("heartbeatform.interruptAndRunNow", {
+                      defaultValue: "Interrupt and run now",
+                    })}
                   </FormSelectItem>
                   <FormSelectItem value="next_autonomy_cycle">
-                    Queue for next cycle
+                    {t("heartbeatform.queueForNextCycle", {
+                      defaultValue: "Queue for next cycle",
+                    })}
                   </FormSelectItem>
                 </FormSelect>
               </div>
@@ -291,7 +328,11 @@ export function HeartbeatForm({
 
             {form.triggerType === "interval" && (
               <div>
-                <FieldLabel variant="form">Repeat every</FieldLabel>
+                <FieldLabel variant="form">
+                  {t("heartbeatform.repeatEvery", {
+                    defaultValue: "Repeat every",
+                  })}
+                </FieldLabel>
                 <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-3">
                   <Input
                     type="number"
@@ -326,7 +367,9 @@ export function HeartbeatForm({
 
             {form.triggerType === "once" && (
               <div>
-                <FieldLabel variant="form">Run at</FieldLabel>
+                <FieldLabel variant="form">
+                  {t("heartbeatform.runAt", { defaultValue: "Run at" })}
+                </FieldLabel>
                 <Input
                   type="datetime-local"
                   variant="form"
@@ -343,7 +386,7 @@ export function HeartbeatForm({
             )}
 
             {form.triggerType === "event" && (
-              <EventInputSection form={form} setField={setField} />
+              <EventInputSection form={form} setField={setField} t={t} />
             )}
 
             <SchedulePreview form={form} t={t} />
@@ -351,26 +394,38 @@ export function HeartbeatForm({
 
           <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
-              Run behavior
+              {t("heartbeatform.runBehavior", {
+                defaultValue: "Run behavior",
+              })}
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <div>
-                <FieldLabel variant="form">Stop after</FieldLabel>
+                <FieldLabel variant="form">
+                  {t("heartbeatform.stopAfter", {
+                    defaultValue: "Stop after",
+                  })}
+                </FieldLabel>
                 <Input
                   variant="form"
                   value={form.maxRuns}
                   onChange={(event) => setField("maxRuns", event.target.value)}
-                  placeholder="Unlimited"
+                  placeholder={t("heartbeatform.unlimited", {
+                    defaultValue: "Unlimited",
+                  })}
                 />
               </div>
 
               <div className="flex items-end">
                 <FieldSwitch
                   checked={form.enabled}
-                  aria-label="Enabled"
+                  aria-label={t("heartbeatform.enabled", {
+                    defaultValue: "Enabled",
+                  })}
                   className="flex-1"
-                  label="Enabled"
+                  label={t("heartbeatform.enabled", {
+                    defaultValue: "Enabled",
+                  })}
                   onCheckedChange={(checked) => setField("enabled", checked)}
                 />
               </div>
@@ -498,7 +553,7 @@ function TriggerKindSection({
   return (
     <div>
       <FieldLabel variant="form" id={toggleLabelId}>
-        Runs
+        {t("heartbeatform.runs", { defaultValue: "Runs" })}
       </FieldLabel>
       <div className="mt-1.5 flex gap-2">
         <button
@@ -511,7 +566,7 @@ function TriggerKindSection({
               : "border-border/40 text-muted hover:border-border hover:text-txt"
           }`}
         >
-          Prompt
+          {t("heartbeatform.prompt", { defaultValue: "Prompt" })}
         </button>
         <button
           type="button"
@@ -523,13 +578,15 @@ function TriggerKindSection({
               : "border-border/40 text-muted hover:border-border hover:text-txt"
           }`}
         >
-          Workflow
+          {t("heartbeatform.workflow", { defaultValue: "Workflow" })}
         </button>
       </div>
 
       {form.kind === "text" && (
         <div className="mt-4">
-          <FieldLabel variant="form">Prompt</FieldLabel>
+          <FieldLabel variant="form">
+            {t("heartbeatform.prompt", { defaultValue: "Prompt" })}
+          </FieldLabel>
           <Textarea
             variant="form"
             value={form.instructions}
@@ -560,7 +617,7 @@ function TriggerKindSection({
           ) : (
             <>
               <FieldLabel variant="form" htmlFor="trigger-workflow-select">
-                Workflow
+                {t("heartbeatform.workflow", { defaultValue: "Workflow" })}
               </FieldLabel>
               <FormSelect
                 value={form.workflowId}
@@ -615,7 +672,9 @@ function CronInputSection({
 
   return (
     <div>
-      <FieldLabel variant="form">Cron schedule</FieldLabel>
+      <FieldLabel variant="form">
+        {t("heartbeatform.cronSchedule", { defaultValue: "Cron schedule" })}
+      </FieldLabel>
       <Input
         variant="form"
         className="font-mono"
@@ -635,7 +694,9 @@ function CronInputSection({
         </p>
       ) : (
         <div className="mt-2 text-xs-tight text-muted">
-          minute hour day month weekday
+          {t("heartbeatform.cronFieldOrder", {
+            defaultValue: "minute hour day month weekday",
+          })}
         </div>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -661,12 +722,14 @@ function CronInputSection({
 function EventInputSection({
   form,
   setField,
+  t,
 }: {
   form: TriggerFormState;
   setField: <K extends keyof TriggerFormState>(
     key: K,
     value: TriggerFormState[K],
   ) => void;
+  t: TranslateFn;
 }) {
   const isCustomEvent = !EVENT_KIND_OPTIONS.some(
     (option) => option.value === form.eventKind,
@@ -674,7 +737,9 @@ function EventInputSection({
   return (
     <div className="grid gap-3">
       <div>
-        <FieldLabel variant="form">Event</FieldLabel>
+        <FieldLabel variant="form">
+          {t("heartbeatform.event.label", { defaultValue: "Event" })}
+        </FieldLabel>
         <FormSelect
           value={isCustomEvent ? "__custom" : form.eventKind}
           onValueChange={(value: string) => {
@@ -684,20 +749,26 @@ function EventInputSection({
             }
             setField("eventKind", value);
           }}
-          placeholder="Message received"
+          placeholder={t("heartbeatform.event.messageReceived", {
+            defaultValue: "Message received",
+          })}
         >
           {EVENT_KIND_OPTIONS.map((option) => (
             <FormSelectItem key={option.value} value={option.value}>
-              {option.label}
+              {t(option.labelKey, { defaultValue: option.defaultLabel })}
             </FormSelectItem>
           ))}
-          <FormSelectItem value="__custom">Custom event</FormSelectItem>
+          <FormSelectItem value="__custom">
+            {t("heartbeatform.event.custom", { defaultValue: "Custom event" })}
+          </FormSelectItem>
         </FormSelect>
       </div>
 
       {isCustomEvent && (
         <div>
-          <FieldLabel variant="form">Event name</FieldLabel>
+          <FieldLabel variant="form">
+            {t("heartbeatform.event.name", { defaultValue: "Event name" })}
+          </FieldLabel>
           <Input
             variant="form"
             className="font-mono"
@@ -710,11 +781,10 @@ function EventInputSection({
 
       {form.eventKind.trim() && (
         <div className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3 text-xs text-muted">
-          Runs when{" "}
-          <span className="font-medium text-txt">
-            {humanizeEventKind(form.eventKind)}
-          </span>{" "}
-          arrives.
+          {t("heartbeatform.event.runsWhen", {
+            eventName: humanizeEventKind(form.eventKind),
+            defaultValue: "Runs when {{eventName}} arrives.",
+          })}
         </div>
       )}
     </div>
@@ -835,13 +905,17 @@ function SchedulePreview({
         </div>
       ) : preview.kind === "event" ? (
         <p className="text-xs text-muted">
-          Waiting for{" "}
-          <span className="font-medium text-txt">{preview.label}</span>.
+          {t("heartbeatform.preview.waitingFor", {
+            eventName: preview.label,
+            defaultValue: "Waiting for {{eventName}}.",
+          })}
         </p>
       ) : (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-            Next runs
+            {t("heartbeatform.preview.nextRuns", {
+              defaultValue: "Next runs",
+            })}
           </p>
           <ul className="space-y-0.5">
             {preview.dates.map((date) => (

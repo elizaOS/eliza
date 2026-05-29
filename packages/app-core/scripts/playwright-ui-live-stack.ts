@@ -477,6 +477,10 @@ async function ensureUiDistReady(): Promise<void> {
       ...process.env,
       FORCE_COLOR: "0",
       VITE_ELIZA_RENDER_TELEMETRY: "1",
+      // ui-smoke serves the dist locally and never ships it, so skip the
+      // memory-heavy esbuild minify pass that otherwise OOMs (EPIPE) on a
+      // ~6.5MB bundle in CI/sandbox builds.
+      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

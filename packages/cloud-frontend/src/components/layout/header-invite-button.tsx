@@ -22,8 +22,10 @@ import type { ReferralMeResponse } from "@/lib/types/referral-me";
 import { copyTextToClipboard } from "@/lib/utils/copy-to-clipboard";
 import { buildReferralInviteLoginUrl } from "@/lib/utils/referral-invite-url";
 import { fetchReferralMe } from "@/lib/utils/referral-me-fetch";
+import { useT } from "@/providers/I18nProvider";
 
 export function HeaderInviteButton() {
+  const t = useT();
   const [loading, setLoading] = useState(false);
   const inFlightRef = useRef<Promise<ReferralMeResponse> | null>(null);
 
@@ -44,7 +46,11 @@ export function HeaderInviteButton() {
     if (typeof window === "undefined") return;
     const origin = window.location.origin;
     if (!origin) {
-      toast.error("Could not build invite link");
+      toast.error(
+        t("cloud.invite.buildFailed", {
+          defaultValue: "Could not build invite link",
+        }),
+      );
       return;
     }
 
@@ -52,7 +58,11 @@ export function HeaderInviteButton() {
     try {
       const me = await resolveMe().catch((e: unknown) => {
         const msg =
-          e instanceof Error ? e.message : "Could not load invite link";
+          e instanceof Error
+            ? e.message
+            : t("cloud.invite.loadFailed", {
+                defaultValue: "Could not load invite link",
+              });
         toast.error(msg);
         return null;
       });
@@ -60,21 +70,31 @@ export function HeaderInviteButton() {
       if (!me) return;
 
       if (!me.is_active) {
-        toast.error("Your invite link is inactive and cannot be shared.");
+        toast.error(
+          t("cloud.invite.inactive", {
+            defaultValue: "Your invite link is inactive and cannot be shared.",
+          }),
+        );
         return;
       }
 
       const url = buildReferralInviteLoginUrl(origin, me.code);
       const ok = await copyTextToClipboard(url);
       if (ok) {
-        toast.success("Invite link copied!");
+        toast.success(
+          t("cloud.invite.copied", { defaultValue: "Invite link copied!" }),
+        );
       } else {
-        toast.error("Could not copy to clipboard");
+        toast.error(
+          t("cloud.invite.copyFailed", {
+            defaultValue: "Could not copy to clipboard",
+          }),
+        );
       }
     } finally {
       setLoading(false);
     }
-  }, [resolveMe]);
+  }, [resolveMe, t]);
 
   return (
     <BrandButton
@@ -84,15 +104,21 @@ export function HeaderInviteButton() {
       className="h-8 shrink-0 border-white/10 bg-white/5 px-2 md:h-10 md:w-auto md:gap-2 md:px-3"
       onClick={() => void onClick()}
       disabled={loading}
-      aria-label="Copy invite link"
-      title="Copy invite link"
+      aria-label={t("cloud.invite.copyAriaLabel", {
+        defaultValue: "Copy invite link",
+      })}
+      title={t("cloud.invite.copyAriaLabel", {
+        defaultValue: "Copy invite link",
+      })}
     >
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin text-white" />
       ) : (
         <UserPlus className="h-4 w-4 text-white" />
       )}
-      <span className="hidden md:inline text-sm text-white">Invite</span>
+      <span className="hidden md:inline text-sm text-white">
+        {t("cloud.invite.label", { defaultValue: "Invite" })}
+      </span>
     </BrandButton>
   );
 }

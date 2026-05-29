@@ -125,6 +125,67 @@ constructs the LifeOps runtime. Existing unit tests that use
 `vi.stubGlobal('fetch', ...)` continue to work and do not require fixture
 servers.
 
+## Deterministic LLM proxy fixtures
+
+`helpers/llm-proxy-plugin.ts` exports `createDeterministicLlmProxyPlugin` for
+secret-free LLM calls. By default it preserves the legacy deterministic
+heuristics for `RESPONSE_HANDLER`, `ACTION_PLANNER`, schema fixtures, and text
+responses. For CI E2E that must be non-larp, opt into strict fixture mode:
+
+```ts
+const llm = createDeterministicLlmProxyPlugin({
+  strict: true,
+  fixtures: [
+    {
+      name: "opens-ledger-view",
+      match: {
+        modelType: ModelType.ACTION_PLANNER,
+        input: "Open the ledger view",
+        toolName: "VIEWS",
+      },
+      response: {
+        text: "",
+        finishReason: "tool-calls",
+        toolCalls: [
+          {
+            id: "call-views-ledger",
+            name: "VIEWS",
+            type: "function",
+            arguments: { action: "show", view: "remote-ledger" },
+          },
+        ],
+      },
+      times: 1,
+    },
+  ],
+});
+
+await runtime.registerPlugin(llm);
+// run the scenario/test turn
+llm.assertFixturesConsumed();
+```
+
+Fixtures are named and can match on `modelType`, normalized user `input`, raw
+`prompt`, available `toolName`/`toolNames`, `responseSchema`, and tool schema
+fingerprints. Tests can also call `llm.llmFixtures.register(...)` after plugin
+creation and provide a `resolve(call)` fixture for dynamic exact outputs.
+
+Strict mode fails closed when no fixture matches or multiple fixtures match.
+Structured fixture output is validated where possible: JSON must parse for
+planner/response-handler/schema calls, `responseSchema` is checked against the
+returned JSON, and tool calls are checked against the available tool names and
+tool parameter schema. `llm.getFixtureDiagnostics()` exposes call history,
+registered fixture consumption, and unexpected calls for failure messages.
+
+Run the mock helper tests from the repo root with:
+
+```bash
+bunx vitest run --config packages/test/mocks/vitest.config.ts
+```
+
+The config roots itself at `packages/`, so the same config also works from that
+directory with `bunx vitest run --config test/mocks/vitest.config.ts`.
+
 ## Full LifeOps simulator
 
 For end-to-end LifeOps coverage, opt into the richer simulator dataset:

@@ -130,17 +130,18 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("enables native MTP metadata and bundled drafters for MTP tiers", () => {
+  it("enables same-file native MTP metadata (no separate drafter) for MTP tiers", () => {
     for (const id of ELIZA_1_MTP_TIER_IDS) {
-      const slug = id.slice("eliza-1-".length);
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
-      expect(entry?.runtime?.mtp?.drafterFile).toBe(
-        `mtp/eliza-1-${slug}-drafter.gguf`,
-      );
-      expect(entry?.sourceModel?.components.mtp?.file).toBe(
-        `bundles/${slug}/mtp/eliza-1-${slug}-drafter.gguf`,
-      );
+      // Same-file MTP: the NextN head is embedded in the text GGUF, so the
+      // catalog carries no separate drafter file or component.
+      expect(entry?.runtime?.mtp?.drafterFile).toBeUndefined();
+      expect(entry?.sourceModel?.components.mtp).toBeUndefined();
+      // Single NextN head ⇒ draft window pinned at the measured throughput
+      // peak (n-max 2), not scaled with context length.
+      expect(entry?.runtime?.mtp?.draftMin).toBe(1);
+      expect(entry?.runtime?.mtp?.draftMax).toBe(2);
     }
   });
 

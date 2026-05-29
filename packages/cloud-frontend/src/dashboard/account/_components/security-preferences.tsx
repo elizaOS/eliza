@@ -7,8 +7,10 @@
 import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Bell, ExternalLink, Key, Lock, Shield } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 export function SecurityPreferences() {
+  const t = useT();
   return (
     <BrandCard className="relative">
       <CornerBrackets size="sm" className="opacity-50" />
@@ -18,11 +20,16 @@ export function SecurityPreferences() {
           <div className="flex items-center gap-2 mb-2">
             <Shield className="h-5 w-5 text-[#FF5800]" />
             <h3 className="text-lg font-bold text-white">
-              Security & Preferences
+              {t("cloud.securityPreferences.title", {
+                defaultValue: "Security & Preferences",
+              })}
             </h3>
           </div>
           <p className="text-sm text-white/60">
-            Manage your security settings and notification preferences
+            {t("cloud.securityPreferences.subtitle", {
+              defaultValue:
+                "Manage your security settings and notification preferences",
+            })}
           </p>
         </div>
 
@@ -34,9 +41,16 @@ export function SecurityPreferences() {
                 <Key className="h-4 w-4 text-[#FF5800]" />
               </div>
               <div className="space-y-1">
-                <p className="font-medium text-sm text-white">API Keys</p>
+                <p className="font-medium text-sm text-white">
+                  {t("cloud.securityPreferences.apiKeys", {
+                    defaultValue: "API Keys",
+                  })}
+                </p>
                 <p className="text-xs text-white/60">
-                  Manage your API keys for programmatic access
+                  {t("cloud.securityPreferences.apiKeysDesc", {
+                    defaultValue:
+                      "Manage your API keys for programmatic access",
+                  })}
                 </p>
               </div>
             </div>
@@ -56,19 +70,28 @@ export function SecurityPreferences() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm text-white">
-                    Two-Factor Authentication
+                    {t("cloud.securityPreferences.twoFactor", {
+                      defaultValue: "Two-Factor Authentication",
+                    })}
                   </p>
                   <span className="rounded-sm border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
-                    Coming Soon
+                    {t("cloud.securityPreferences.comingSoon", {
+                      defaultValue: "Coming Soon",
+                    })}
                   </span>
                 </div>
                 <p className="text-xs text-white/60">
-                  Add an extra layer of security to your account
+                  {t("cloud.securityPreferences.twoFactorDesc", {
+                    defaultValue:
+                      "Add an extra layer of security to your account",
+                  })}
                 </p>
               </div>
             </div>
             <BrandButton variant="ghost" size="sm" disabled>
-              Enable
+              {t("cloud.securityPreferences.enable", {
+                defaultValue: "Enable",
+              })}
             </BrandButton>
           </div>
 
@@ -81,19 +104,27 @@ export function SecurityPreferences() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm text-white">
-                    Notification Preferences
+                    {t("cloud.securityPreferences.notifications", {
+                      defaultValue: "Notification Preferences",
+                    })}
                   </p>
                   <span className="rounded-sm border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
-                    Coming Soon
+                    {t("cloud.securityPreferences.comingSoon", {
+                      defaultValue: "Coming Soon",
+                    })}
                   </span>
                 </div>
                 <p className="text-xs text-white/60">
-                  Control how you receive updates and alerts
+                  {t("cloud.securityPreferences.notificationsDesc", {
+                    defaultValue: "Control how you receive updates and alerts",
+                  })}
                 </p>
               </div>
             </div>
             <BrandButton variant="ghost" size="sm" disabled>
-              Configure
+              {t("cloud.securityPreferences.configure", {
+                defaultValue: "Configure",
+              })}
             </BrandButton>
           </div>
 
@@ -107,15 +138,25 @@ export function SecurityPreferences() {
           {/* Danger Zone */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-medium text-red-400">Danger Zone</p>
+              <p className="text-sm font-medium text-red-400">
+                {t("cloud.securityPreferences.dangerZone", {
+                  defaultValue: "Danger Zone",
+                })}
+              </p>
             </div>
 
             <div className="p-4 rounded-sm border border-red-500/40 bg-red-500/10">
               <div className="space-y-2">
-                <p className="font-medium text-sm text-white">Delete Account</p>
+                <p className="font-medium text-sm text-white">
+                  {t("cloud.securityPreferences.deleteAccount", {
+                    defaultValue: "Delete Account",
+                  })}
+                </p>
                 <p className="text-xs text-white/60">
-                  Permanently delete your account and all associated data. This
-                  action cannot be undone.
+                  {t("cloud.securityPreferences.deleteAccountDesc", {
+                    defaultValue:
+                      "Permanently delete your account and all associated data. This action cannot be undone.",
+                  })}
                 </p>
                 <BrandButton
                   variant="outline"
@@ -123,7 +164,9 @@ export function SecurityPreferences() {
                   disabled
                   className="mt-2 border-red-500/40 text-red-400 hover:bg-red-500/10"
                 >
-                  Delete Account
+                  {t("cloud.securityPreferences.deleteAccount", {
+                    defaultValue: "Delete Account",
+                  })}
                 </BrandButton>
               </div>
             </div>

@@ -22,6 +22,84 @@ export type LlmProxyResponse =
   | GenerateTextResult
   | Record<string, JsonValue>;
 
+export type LlmProxyTextMatcher =
+  | string
+  | RegExp
+  | ((value: string, call: LlmProxyCall) => boolean);
+
+export type LlmProxySchemaMatcher =
+  | JsonValue
+  | Record<string, unknown>
+  | ((schema: unknown, call: LlmProxyCall) => boolean);
+
+export interface LlmProxyFixtureMatch {
+  modelType?: ModelTypeName | ModelTypeName[];
+  /**
+   * Matches the normalized latest user text when present, otherwise the raw
+   * prompt. Use this for "which test/input is being run" fixtures.
+   */
+  input?: LlmProxyTextMatcher;
+  prompt?: LlmProxyTextMatcher;
+  toolName?: LlmProxyTextMatcher;
+  toolNames?: string[];
+  responseSchema?: LlmProxySchemaMatcher;
+  toolSchema?: LlmProxySchemaMatcher;
+}
+
+export interface LlmProxyFixture {
+  name: string;
+  match?: LlmProxyFixtureMatch | ((call: LlmProxyCall) => boolean);
+  response?: LlmProxyResponse | ((call: LlmProxyCall) => LlmProxyResponse);
+  resolve?: (call: LlmProxyCall) => LlmProxyResponse | null | undefined;
+  required?: boolean;
+  /**
+   * Defaults to "at least once". Set a number for exact consumption or "any"
+   * for optional reusable fixtures.
+   */
+  times?: number | "any" | { min?: number; max?: number };
+  validateResponse?: boolean;
+}
+
+export interface LlmProxyFixtureDiagnostics {
+  calls: LlmProxyCallDiagnostic[];
+  fixtures: LlmProxyFixtureDiagnostic[];
+  unexpectedCalls: LlmProxyCallDiagnostic[];
+}
+
+export interface LlmProxyCallDiagnostic {
+  modelType: ModelTypeName;
+  latestUserText: string;
+  prompt: string;
+  toolNames: string[];
+  responseSchemaFingerprint?: string;
+  tools: Array<{
+    name: string;
+    description: string;
+    schemaFingerprint?: string;
+  }>;
+}
+
+export interface LlmProxyFixtureDiagnostic {
+  name: string;
+  consumed: number;
+  min: number;
+  max: number | "unbounded";
+  required: boolean;
+}
+
+export interface DeterministicLlmFixtureRegistry {
+  register(...fixtures: LlmProxyFixture[]): void;
+  assertConsumed(): void;
+  diagnostics(): LlmProxyFixtureDiagnostics;
+  resetConsumption(): void;
+}
+
+export interface DeterministicLlmProxyPlugin extends Plugin {
+  llmFixtures: DeterministicLlmFixtureRegistry;
+  assertFixturesConsumed(): void;
+  getFixtureDiagnostics(): LlmProxyFixtureDiagnostics;
+}
+
 export interface DeterministicLlmProxyOptions {
   embeddingDimensions?: number;
   /**
@@ -30,6 +108,14 @@ export interface DeterministicLlmProxyOptions {
    * the first available tool.
    */
   failOnUnhandledAction?: boolean;
+  /**
+   * Strict fixture mode fails every unregistered LLM call before the generic
+   * heuristic fallback can run. This is intended for CI E2E where model output
+   * must be exact and secret-free.
+   */
+  strict?: boolean;
+  fixtures?: LlmProxyFixture[];
+  fixtureRegistry?: DeterministicLlmFixtureRegistry;
   priority?: number;
   resolve?: (call: LlmProxyCall) => LlmProxyResponse | null | undefined;
 }
@@ -51,9 +137,14 @@ const TEXT_MODEL_TYPES = [
 
 export function createDeterministicLlmProxyPlugin(
   options: DeterministicLlmProxyOptions = {},
-): Plugin {
+): DeterministicLlmProxyPlugin {
   const embeddingDimensions =
     options.embeddingDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS;
+  const fixtureRegistry =
+    options.fixtureRegistry ?? createDeterministicLlmFixtureRegistry();
+  if (options.fixtures?.length) {
+    fixtureRegistry.register(...options.fixtures);
+  }
 
   async function handleText(
     _runtime: IAgentRuntime,
@@ -61,9 +152,20 @@ export function createDeterministicLlmProxyPlugin(
     modelType: ModelTypeName,
   ): Promise<string> {
     const call = buildCall(modelType, params);
+    const fixtureResolved = resolveFixtureCall(fixtureRegistry, call);
+    if (fixtureResolved !== undefined) {
+      return fixtureResolved;
+    }
+
     const resolved = options.resolve?.(call);
     if (resolved !== null && resolved !== undefined) {
-      return normalizeResolvedResponse(resolved);
+      return options.strict
+        ? normalizeAndValidateFixtureResponse(resolved, call, "resolve")
+        : normalizeResolvedResponse(resolved);
+    }
+
+    if (options.strict) {
+      throw createUnhandledFixtureCallError(fixtureRegistry, call);
     }
 
     if (modelType === ModelType.RESPONSE_HANDLER) {
@@ -101,6 +203,9 @@ export function createDeterministicLlmProxyPlugin(
       "High-priority deterministic LLM proxy for zero-cost end-to-end tests.",
     priority: options.priority ?? 1_000,
     models,
+    llmFixtures: fixtureRegistry,
+    assertFixturesConsumed: () => fixtureRegistry.assertConsumed(),
+    getFixtureDiagnostics: () => fixtureRegistry.diagnostics(),
   };
 }
 
@@ -114,6 +219,599 @@ function buildCall(
     latestUserText: latestUserText(params),
     toolNames: (params.tools ?? []).map((tool) => tool.name),
   };
+}
+
+export function createDeterministicLlmFixtureRegistry(
+  fixtures: LlmProxyFixture[] = [],
+): DeterministicLlmFixtureRegistry {
+  const entries: RegisteredLlmProxyFixture[] = fixtures.map(registerFixture);
+  const calls: LlmProxyCallDiagnostic[] = [];
+  const unexpectedCalls: LlmProxyCallDiagnostic[] = [];
+
+  const registry: DeterministicLlmFixtureRegistry = {
+    register(...nextFixtures: LlmProxyFixture[]): void {
+      entries.push(...nextFixtures.map(registerFixture));
+    },
+    assertConsumed(): void {
+      const unused = entries.filter((entry) => entry.consumed < entry.min);
+      if (unused.length === 0) return;
+      throw new Error(
+        [
+          "deterministic LLM proxy fixture registry has unused fixtures",
+          "Expected: all required deterministic LLM fixtures are consumed by the test.",
+          `Actual: ${JSON.stringify({
+            unused: unused.map(fixtureDiagnostic),
+            calls,
+          })}`,
+        ].join("\n"),
+      );
+    },
+    diagnostics(): LlmProxyFixtureDiagnostics {
+      return {
+        calls: [...calls],
+        fixtures: entries.map(fixtureDiagnostic),
+        unexpectedCalls: [...unexpectedCalls],
+      };
+    },
+    resetConsumption(): void {
+      calls.length = 0;
+      unexpectedCalls.length = 0;
+      for (const entry of entries) {
+        entry.consumed = 0;
+      }
+    },
+  };
+  registryResolve.set(registry, resolve);
+  registryRecordUnexpected.set(registry, (call) => {
+    unexpectedCalls.push(callDiagnostic(call));
+  });
+  return registry;
+
+  function registerFixture(
+    fixture: LlmProxyFixture,
+  ): RegisteredLlmProxyFixture {
+    if (!fixture.name.trim()) {
+      throw new Error("deterministic LLM fixture name is required");
+    }
+    if (fixture.response === undefined && fixture.resolve === undefined) {
+      throw new Error(
+        `deterministic LLM fixture "${fixture.name}" must define response or resolve`,
+      );
+    }
+    const { min, max } = fixtureConsumptionBounds(fixture);
+    return { ...fixture, min, max, consumed: 0 };
+  }
+
+  function resolve(call: LlmProxyCall): string | undefined {
+    calls.push(callDiagnostic(call));
+
+    const matched: Array<{
+      entry: RegisteredLlmProxyFixture;
+      response: LlmProxyResponse;
+    }> = [];
+    const exhausted: RegisteredLlmProxyFixture[] = [];
+
+    for (const entry of entries) {
+      if (!matchesFixture(entry, call)) continue;
+      const response = resolveFixtureResponse(entry, call);
+      if (response === undefined || response === null) continue;
+      if (entry.consumed >= entry.max) {
+        exhausted.push(entry);
+        continue;
+      }
+      matched.push({ entry, response });
+    }
+
+    if (matched.length > 1) {
+      unexpectedCalls.push(callDiagnostic(call));
+      throw new Error(
+        [
+          "deterministic LLM proxy fixture registry matched multiple fixtures",
+          "Expected: each strict deterministic LLM call must match exactly one fixture.",
+          `Actual: ${JSON.stringify({
+            call: callDiagnostic(call),
+            matchingFixtures: matched.map(({ entry }) => entry.name),
+            fixtures: entries.map(fixtureDiagnostic),
+          })}`,
+        ].join("\n"),
+      );
+    }
+
+    if (matched.length === 0 && exhausted.length > 0) {
+      unexpectedCalls.push(callDiagnostic(call));
+      throw new Error(
+        [
+          "deterministic LLM proxy fixture registry exhausted a matching fixture",
+          "Expected: fixture consumption bounds must cover every matching LLM call.",
+          `Actual: ${JSON.stringify({
+            call: callDiagnostic(call),
+            exhaustedFixtures: exhausted.map(fixtureDiagnostic),
+          })}`,
+        ].join("\n"),
+      );
+    }
+
+    const selected = matched[0];
+    if (!selected) return undefined;
+
+    selected.entry.consumed += 1;
+    return selected.entry.validateResponse === false
+      ? normalizeResolvedResponse(selected.response)
+      : normalizeAndValidateFixtureResponse(
+          selected.response,
+          call,
+          selected.entry.name,
+        );
+  }
+}
+
+type RegistryResolve = (call: LlmProxyCall) => string | undefined;
+
+const registryResolve = new WeakMap<
+  DeterministicLlmFixtureRegistry,
+  RegistryResolve
+>();
+const registryRecordUnexpected = new WeakMap<
+  DeterministicLlmFixtureRegistry,
+  (call: LlmProxyCall) => void
+>();
+
+interface RegisteredLlmProxyFixture extends LlmProxyFixture {
+  consumed: number;
+  min: number;
+  max: number;
+}
+
+function resolveFixtureCall(
+  registry: DeterministicLlmFixtureRegistry,
+  call: LlmProxyCall,
+): string | undefined {
+  return registryResolve.get(registry)?.(call);
+}
+
+function createUnhandledFixtureCallError(
+  registry: DeterministicLlmFixtureRegistry,
+  call: LlmProxyCall,
+): Error {
+  registryRecordUnexpected.get(registry)?.(call);
+  const diagnostics = registry.diagnostics();
+  return new Error(
+    [
+      "deterministic LLM proxy fixture registry has no fixture for this call",
+      "Expected: strict E2E tests must register a fixture or resolver for every LLM call, keyed by modelType/input/tool/schema.",
+      `Actual: ${JSON.stringify({
+        call: callDiagnostic(call),
+        fixtures: diagnostics.fixtures,
+      })}`,
+    ].join("\n"),
+  );
+}
+
+function fixtureConsumptionBounds(fixture: LlmProxyFixture): {
+  min: number;
+  max: number;
+} {
+  if (fixture.times === "any") return { min: 0, max: Number.POSITIVE_INFINITY };
+  if (typeof fixture.times === "number") {
+    return { min: fixture.times, max: fixture.times };
+  }
+  if (fixture.times && typeof fixture.times === "object") {
+    const min = fixture.times.min ?? (fixture.required === false ? 0 : 1);
+    const max = fixture.times.max ?? Number.POSITIVE_INFINITY;
+    return { min, max };
+  }
+  return {
+    min: fixture.required === false ? 0 : 1,
+    max: Number.POSITIVE_INFINITY,
+  };
+}
+
+function fixtureDiagnostic(
+  fixture: RegisteredLlmProxyFixture,
+): LlmProxyFixtureDiagnostic {
+  return {
+    name: fixture.name,
+    consumed: fixture.consumed,
+    min: fixture.min,
+    max: Number.isFinite(fixture.max) ? fixture.max : "unbounded",
+    required: fixture.min > 0,
+  };
+}
+
+function matchesFixture(
+  fixture: RegisteredLlmProxyFixture,
+  call: LlmProxyCall,
+): boolean {
+  if (!fixture.match) return true;
+  if (typeof fixture.match === "function") return fixture.match(call);
+
+  const match = fixture.match;
+  if (match.modelType) {
+    const expected = Array.isArray(match.modelType)
+      ? match.modelType
+      : [match.modelType];
+    if (!expected.includes(call.modelType)) return false;
+  }
+  if (
+    match.input &&
+    !matchesText(
+      match.input,
+      call.latestUserText || call.params.prompt || "",
+      call,
+    )
+  ) {
+    return false;
+  }
+  if (
+    match.prompt &&
+    !matchesText(match.prompt, call.params.prompt ?? "", call)
+  ) {
+    return false;
+  }
+  const toolNameMatcher = match.toolName;
+  if (
+    toolNameMatcher &&
+    !call.toolNames.some((toolName) =>
+      matchesText(toolNameMatcher, toolName, call),
+    )
+  ) {
+    return false;
+  }
+  if (
+    match.toolNames &&
+    !match.toolNames.every((toolName) => call.toolNames.includes(toolName))
+  ) {
+    return false;
+  }
+  if (
+    match.responseSchema !== undefined &&
+    !matchesSchema(match.responseSchema, call.params.responseSchema, call)
+  ) {
+    return false;
+  }
+  if (match.toolSchema !== undefined) {
+    const tools = (call.params.tools ?? []).filter((tool) =>
+      match.toolName ? matchesText(match.toolName, tool.name, call) : true,
+    );
+    if (
+      !tools.some((tool) =>
+        matchesSchema(match.toolSchema, tool.parameters, call),
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function matchesText(
+  matcher: LlmProxyTextMatcher,
+  value: string,
+  call: LlmProxyCall,
+): boolean {
+  if (typeof matcher === "string") return matcher === value;
+  if (matcher instanceof RegExp) return matcher.test(value);
+  return matcher(value, call);
+}
+
+function matchesSchema(
+  matcher: LlmProxySchemaMatcher,
+  schema: unknown,
+  call: LlmProxyCall,
+): boolean {
+  if (typeof matcher === "function") return matcher(schema, call);
+  if (typeof matcher === "string") {
+    return matcher === schemaFingerprint(schema);
+  }
+  return schemaFingerprint(matcher) === schemaFingerprint(schema);
+}
+
+function resolveFixtureResponse(
+  fixture: RegisteredLlmProxyFixture,
+  call: LlmProxyCall,
+): LlmProxyResponse | null | undefined {
+  if (fixture.resolve) return fixture.resolve(call);
+  return typeof fixture.response === "function"
+    ? fixture.response(call)
+    : fixture.response;
+}
+
+function normalizeAndValidateFixtureResponse(
+  response: LlmProxyResponse,
+  call: LlmProxyCall,
+  fixtureName: string,
+): string {
+  const normalized = normalizeResolvedResponse(response);
+  validateFixtureResponse(normalized, call, fixtureName);
+  return normalized;
+}
+
+function validateFixtureResponse(
+  normalized: string,
+  call: LlmProxyCall,
+  fixtureName: string,
+): void {
+  const expectsStructuredJson =
+    call.modelType === ModelType.ACTION_PLANNER ||
+    call.modelType === ModelType.RESPONSE_HANDLER ||
+    call.params.responseSchema !== undefined ||
+    responseFormatExpectsJson(call.params.responseFormat);
+  if (!expectsStructuredJson) return;
+
+  const parsed = parseJsonWithFixtureName(normalized, fixtureName);
+  const result = isGenerateTextResultLike(parsed) ? parsed : null;
+
+  if (result) {
+    if ("text" in result && typeof result.text !== "string") {
+      throw invalidFixtureResponseError(fixtureName, [
+        "GenerateTextResult.text must be a string when present",
+      ]);
+    }
+    if ("toolCalls" in result) {
+      validateToolCalls(result.toolCalls, call, fixtureName);
+    }
+    if (
+      call.params.responseSchema &&
+      typeof result.text === "string" &&
+      result.text.trim()
+    ) {
+      const textJson = parseJsonWithFixtureName(result.text, fixtureName);
+      validateSchemaOrThrow(textJson, call.params.responseSchema, fixtureName);
+    }
+    return;
+  }
+
+  if (call.params.responseSchema) {
+    validateSchemaOrThrow(parsed, call.params.responseSchema, fixtureName);
+  }
+}
+
+function validateToolCalls(
+  toolCalls: unknown,
+  call: LlmProxyCall,
+  fixtureName: string,
+): void {
+  if (!Array.isArray(toolCalls)) {
+    throw invalidFixtureResponseError(fixtureName, [
+      "GenerateTextResult.toolCalls must be an array",
+    ]);
+  }
+  const toolsByName = new Map(
+    (call.params.tools ?? []).map((tool) => [tool.name, tool]),
+  );
+  const errors: string[] = [];
+  for (const [index, toolCallValue] of toolCalls.entries()) {
+    if (!isObject(toolCallValue)) {
+      errors.push(`toolCalls[${index}] must be an object`);
+      continue;
+    }
+    const name = toolCallValue.name;
+    if (typeof name !== "string") {
+      errors.push(`toolCalls[${index}].name must be a string`);
+      continue;
+    }
+    const tool = toolsByName.get(name);
+    if (!tool) {
+      errors.push(
+        `toolCalls[${index}].name "${name}" is not in available tools: ${call.toolNames.join(", ")}`,
+      );
+      continue;
+    }
+    const args = parseToolCallArguments(toolCallValue.arguments, fixtureName);
+    if (tool.parameters) {
+      errors.push(
+        ...validateJsonAgainstSchema(
+          args,
+          tool.parameters,
+          `toolCalls[${index}].arguments`,
+        ),
+      );
+    }
+  }
+  if (errors.length > 0) {
+    throw invalidFixtureResponseError(fixtureName, errors);
+  }
+}
+
+function validateSchemaOrThrow(
+  value: unknown,
+  schema: unknown,
+  fixtureName: string,
+): void {
+  const errors = validateJsonAgainstSchema(value, schema, "$");
+  if (errors.length > 0) {
+    throw invalidFixtureResponseError(fixtureName, errors);
+  }
+}
+
+function validateJsonAgainstSchema(
+  value: unknown,
+  schema: unknown,
+  path: string,
+): string[] {
+  if (!isObject(schema)) return [];
+  const errors: string[] = [];
+  if ("const" in schema && !deepEqualJson(value, schema.const)) {
+    errors.push(`${path} must equal ${JSON.stringify(schema.const)}`);
+  }
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    if (!schema.enum.some((item) => deepEqualJson(value, item))) {
+      errors.push(`${path} must be one of ${JSON.stringify(schema.enum)}`);
+    }
+  }
+
+  const typeEntries = Array.isArray(schema.type) ? schema.type : [schema.type];
+  const types = typeEntries.filter(
+    (type): type is string => typeof type === "string",
+  );
+  if (
+    types.length > 0 &&
+    !types.some((type) => valueMatchesJsonType(value, type))
+  ) {
+    errors.push(`${path} must be ${types.join(" or ")}`);
+    return errors;
+  }
+
+  const shouldValidateObject =
+    schema.type === "object" ||
+    isObject(schema.properties) ||
+    Array.isArray(schema.required);
+  if (shouldValidateObject && !isObject(value)) {
+    errors.push(`${path} must be object`);
+    return errors;
+  }
+  if (shouldValidateObject && isObject(value)) {
+    const required = Array.isArray(schema.required)
+      ? schema.required.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [];
+    for (const key of required) {
+      if (!(key in value)) errors.push(`${path}.${key} is required`);
+    }
+    if (isObject(schema.properties)) {
+      for (const [key, propertySchema] of Object.entries(schema.properties)) {
+        if (key in value) {
+          errors.push(
+            ...validateJsonAgainstSchema(
+              value[key],
+              propertySchema,
+              `${path}.${key}`,
+            ),
+          );
+        }
+      }
+    }
+    if (schema.additionalProperties === false && isObject(schema.properties)) {
+      const allowed = new Set(Object.keys(schema.properties));
+      for (const key of Object.keys(value)) {
+        if (!allowed.has(key)) errors.push(`${path}.${key} is not allowed`);
+      }
+    }
+  }
+
+  const shouldValidateArray = schema.type === "array" || "items" in schema;
+  if (shouldValidateArray && !Array.isArray(value)) {
+    errors.push(`${path} must be array`);
+    return errors;
+  }
+  if (shouldValidateArray && Array.isArray(value) && "items" in schema) {
+    for (const [index, item] of value.entries()) {
+      errors.push(
+        ...validateJsonAgainstSchema(item, schema.items, `${path}[${index}]`),
+      );
+    }
+  }
+
+  return errors;
+}
+
+function valueMatchesJsonType(value: unknown, type: string): boolean {
+  switch (type) {
+    case "array":
+      return Array.isArray(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "integer":
+      return Number.isInteger(value);
+    case "null":
+      return value === null;
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "object":
+      return isObject(value);
+    case "string":
+      return typeof value === "string";
+    default:
+      return true;
+  }
+}
+
+function parseToolCallArguments(args: unknown, fixtureName: string): unknown {
+  if (typeof args === "string")
+    return parseJsonWithFixtureName(args, fixtureName);
+  return args;
+}
+
+function parseJsonWithFixtureName(value: string, fixtureName: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw invalidFixtureResponseError(fixtureName, [
+      `response must be parseable JSON: ${error instanceof Error ? error.message : String(error)}`,
+    ]);
+  }
+}
+
+function invalidFixtureResponseError(
+  fixtureName: string,
+  errors: string[],
+): Error {
+  return new Error(
+    [
+      `deterministic LLM fixture "${fixtureName}" returned invalid output`,
+      "Expected: fixture output must be parseable JSON and match the requested response/tool schema when one is available.",
+      `Actual: ${JSON.stringify({ errors })}`,
+    ].join("\n"),
+  );
+}
+
+function responseFormatExpectsJson(
+  responseFormat: GenerateTextParams["responseFormat"],
+): boolean {
+  if (typeof responseFormat === "string")
+    return responseFormat.includes("json");
+  return responseFormat?.type === "json_object";
+}
+
+function isGenerateTextResultLike(
+  value: unknown,
+): value is Record<string, unknown> {
+  return isObject(value) && ("toolCalls" in value || "finishReason" in value);
+}
+
+function callDiagnostic(call: LlmProxyCall): LlmProxyCallDiagnostic {
+  return {
+    modelType: call.modelType,
+    latestUserText: call.latestUserText,
+    prompt: truncateDiagnostic(call.params.prompt ?? ""),
+    toolNames: call.toolNames,
+    responseSchemaFingerprint: call.params.responseSchema
+      ? schemaFingerprint(call.params.responseSchema)
+      : undefined,
+    tools: (call.params.tools ?? []).map((tool) => ({
+      name: tool.name,
+      description: typeof tool.description === "string" ? tool.description : "",
+      schemaFingerprint: tool.parameters
+        ? schemaFingerprint(tool.parameters)
+        : undefined,
+    })),
+  };
+}
+
+function truncateDiagnostic(text: string): string {
+  return text.length > 500 ? `${text.slice(0, 497)}...` : text;
+}
+
+function schemaFingerprint(schema: unknown): string {
+  return stableStringify(schema);
+}
+
+function deepEqualJson(left: unknown, right: unknown): boolean {
+  return stableStringify(left) === stableStringify(right);
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (isObject(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? String(value);
 }
 
 function normalizeResolvedResponse(response: LlmProxyResponse): string {
@@ -206,7 +904,9 @@ function selectPlannerTool(
   const best = scored[0];
   if (!best?.score) {
     if (failOnUnhandledAction) {
-      throw new Error(unhandledPlannerMessage(call, scored, "no matching tool"));
+      throw new Error(
+        unhandledPlannerMessage(call, scored, "no matching tool"),
+      );
     }
     return tools[0] ?? null;
   }
@@ -554,10 +1254,29 @@ function inferInputValue(text: string): string {
   return explicit ? titleCase(explicit) : "Remote Ledger Updated";
 }
 
+const BUILTIN_VIEW_PATTERNS: ReadonlyArray<[RegExp, string]> = [
+  [
+    /\bsettings?\b|\bpreferences?\b|\boptions\b|\bconfig(uration)?\b/,
+    "settings",
+  ],
+  [/\bwallet\b|\bbalance\b|\bcrypto\b|\binventory\b/, "wallet"],
+  [/\bcharacter\b|\bpersona\b|\bprofile\b|\bidentity\b/, "character"],
+  [/\bchat\b|\bconversation\b|\bmessages?\b/, "chat"],
+  [/\bmemor(y|ies)\b/, "memory"],
+  [/\bskills?\b/, "skills"],
+  [/\bplugins?\b/, "plugins"],
+  [/\btraining\b|\btrain\b/, "training"],
+  [/\bhome\b|\bdashboard\b|\bmain screen\b/, "home"],
+  [/\bapps?\b/, "apps"],
+];
+
 function inferViewId(loweredText: string): string {
   if (/\bledger|finance|remote\b/.test(loweredText)) return "remote-ledger";
   if (/\btrace|diagnostic|run\b/.test(loweredText)) return "agent-run-trace";
   if (/\bnote|notes|local\b/.test(loweredText)) return "local-notes";
+  for (const [pattern, viewId] of BUILTIN_VIEW_PATTERNS) {
+    if (pattern.test(loweredText)) return viewId;
+  }
   if (/\bmanager|views?\b/.test(loweredText)) return "view-manager";
   const quoted = loweredText.match(/["'`](?<name>[a-z0-9][a-z0-9\s-]+)["'`]/)
     ?.groups?.name;
@@ -615,9 +1334,8 @@ function extractPromptUserMessage(text: string): string {
   )?.groups?.line;
   if (receivedMessage) {
     const colonIndex = receivedMessage.indexOf(":");
-    return (colonIndex >= 0
-      ? receivedMessage.slice(colonIndex + 1)
-      : receivedMessage
+    return (
+      colonIndex >= 0 ? receivedMessage.slice(colonIndex + 1) : receivedMessage
     ).trim();
   }
   return text;
@@ -704,6 +1422,13 @@ function actionHints(text: string): string[] {
   if (/\b(local|builtin|built-in)\b/.test(text)) {
     hints.add("local");
     hints.add("builtin");
+  }
+  if (BUILTIN_VIEW_PATTERNS.some(([pattern]) => pattern.test(text))) {
+    hints.add("show");
+    hints.add("open");
+    hints.add("navigate");
+    hints.add("view");
+    hints.add("views");
   }
   return [...hints];
 }

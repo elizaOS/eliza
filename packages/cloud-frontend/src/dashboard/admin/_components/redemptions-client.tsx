@@ -47,6 +47,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
+
+type TFn = ReturnType<typeof useT>;
 
 interface RedemptionData {
   id: string;
@@ -97,17 +100,46 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
-const STATUS_OPTIONS = [
-  { value: "all", label: "All Status" },
-  { value: "pending", label: "Pending Review" },
-  { value: "approved", label: "Approved" },
-  { value: "processing", label: "Processing" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "rejected", label: "Rejected" },
+const buildStatusOptions = (t: TFn) => [
+  {
+    value: "all",
+    label: t("cloud.redemptions.statusAll", { defaultValue: "All Status" }),
+  },
+  {
+    value: "pending",
+    label: t("cloud.redemptions.statusPendingReview", {
+      defaultValue: "Pending Review",
+    }),
+  },
+  {
+    value: "approved",
+    label: t("cloud.redemptions.statusApproved", { defaultValue: "Approved" }),
+  },
+  {
+    value: "processing",
+    label: t("cloud.redemptions.statusProcessing", {
+      defaultValue: "Processing",
+    }),
+  },
+  {
+    value: "completed",
+    label: t("cloud.redemptions.statusCompleted", {
+      defaultValue: "Completed",
+    }),
+  },
+  {
+    value: "failed",
+    label: t("cloud.redemptions.statusFailed", { defaultValue: "Failed" }),
+  },
+  {
+    value: "rejected",
+    label: t("cloud.redemptions.statusRejected", { defaultValue: "Rejected" }),
+  },
 ];
 
 export function AdminRedemptionsClient() {
+  const t = useT();
+  const STATUS_OPTIONS = buildStatusOptions(t);
   const [redemptions, setRedemptions] = useState<RedemptionData[]>([]);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -180,15 +212,27 @@ export function AdminRedemptionsClient() {
     });
 
     if (res.ok) {
-      toast.success("Redemption approved", {
-        description: "The redemption will be processed in the next batch.",
-      });
+      toast.success(
+        t("cloud.redemptions.approvedTitle", {
+          defaultValue: "Redemption approved",
+        }),
+        {
+          description: t("cloud.redemptions.approvedDescription", {
+            defaultValue: "The redemption will be processed in the next batch.",
+          }),
+        },
+      );
       setShowApproveDialog(false);
       setSelectedRedemption(null);
       fetchRedemptions();
     } else {
       const error = await res.json();
-      toast.error("Failed to approve", { description: error.error });
+      toast.error(
+        t("cloud.redemptions.approveFailed", {
+          defaultValue: "Failed to approve",
+        }),
+        { description: error.error },
+      );
     }
     setActionLoading(false);
   };
@@ -209,16 +253,28 @@ export function AdminRedemptionsClient() {
     });
 
     if (res.ok) {
-      toast.success("Redemption rejected", {
-        description: "The user's balance has been refunded.",
-      });
+      toast.success(
+        t("cloud.redemptions.rejectedTitle", {
+          defaultValue: "Redemption rejected",
+        }),
+        {
+          description: t("cloud.redemptions.rejectedDescription", {
+            defaultValue: "The user's balance has been refunded.",
+          }),
+        },
+      );
       setShowRejectDialog(false);
       setSelectedRedemption(null);
       setRejectionReason("");
       fetchRedemptions();
     } else {
       const error = await res.json();
-      toast.error("Failed to reject", { description: error.error });
+      toast.error(
+        t("cloud.redemptions.rejectFailed", {
+          defaultValue: "Failed to reject",
+        }),
+        { description: error.error },
+      );
     }
     setActionLoading(false);
   };
@@ -234,7 +290,11 @@ export function AdminRedemptionsClient() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success(
+      t("cloud.redemptions.copiedToClipboard", {
+        defaultValue: "Copied to clipboard",
+      }),
+    );
   };
 
   const getExplorerUrl = (network: string, txHash: string) => {
@@ -258,7 +318,11 @@ export function AdminRedemptionsClient() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <BrandCard corners={false}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">System Status</h3>
+            <h3 className="text-lg font-semibold text-white">
+              {t("cloud.redemptions.systemStatus", {
+                defaultValue: "System Status",
+              })}
+            </h3>
             <Badge
               className={
                 systemStatus?.operational
@@ -266,24 +330,40 @@ export function AdminRedemptionsClient() {
                   : "bg-red-500/20 text-red-400"
               }
             >
-              {systemStatus?.operational ? "Operational" : "Limited"}
+              {systemStatus?.operational
+                ? t("cloud.redemptions.operational", {
+                    defaultValue: "Operational",
+                  })
+                : t("cloud.redemptions.limited", { defaultValue: "Limited" })}
             </Badge>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-white/60">EVM Wallet</span>
+              <span className="text-white/60">
+                {t("cloud.redemptions.evmWallet", {
+                  defaultValue: "EVM Wallet",
+                })}
+              </span>
               <span className="text-white font-mono text-xs">
                 {systemStatus?.wallets?.evm?.configured
                   ? truncateAddress(systemStatus.wallets.evm.address || "")
-                  : "Not configured"}
+                  : t("cloud.redemptions.notConfigured", {
+                      defaultValue: "Not configured",
+                    })}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-white/60">Solana Wallet</span>
+              <span className="text-white/60">
+                {t("cloud.redemptions.solanaWallet", {
+                  defaultValue: "Solana Wallet",
+                })}
+              </span>
               <span className="text-white font-mono text-xs">
                 {systemStatus?.wallets?.solana?.configured
                   ? truncateAddress(systemStatus.wallets.solana.address || "")
-                  : "Not configured"}
+                  : t("cloud.redemptions.notConfigured", {
+                      defaultValue: "Not configured",
+                    })}
               </span>
             </div>
           </div>
@@ -291,25 +371,37 @@ export function AdminRedemptionsClient() {
 
         {/* Stats */}
         <BrandCard corners={false}>
-          <h3 className="text-lg font-semibold text-white mb-4">Queue Stats</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">
+            {t("cloud.redemptions.queueStats", { defaultValue: "Queue Stats" })}
+          </h3>
           <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
               <p className="text-2xl font-bold text-yellow-400">
                 {stats?.pending || 0}
               </p>
-              <p className="text-xs text-white/60">Pending</p>
+              <p className="text-xs text-white/60">
+                {t("cloud.redemptions.pending", { defaultValue: "Pending" })}
+              </p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-purple-400">
                 {stats?.processing || 0}
               </p>
-              <p className="text-xs text-white/60">Processing</p>
+              <p className="text-xs text-white/60">
+                {t("cloud.redemptions.processing", {
+                  defaultValue: "Processing",
+                })}
+              </p>
             </div>
             <div className="text-center">
               <p className="text-2xl font-bold text-[var(--brand-orange)]">
                 {formatCurrency(stats?.totalPendingUsd || 0)}
               </p>
-              <p className="text-xs text-white/60">Pending Value</p>
+              <p className="text-xs text-white/60">
+                {t("cloud.redemptions.pendingValue", {
+                  defaultValue: "Pending Value",
+                })}
+              </p>
             </div>
           </div>
         </BrandCard>
@@ -320,7 +412,9 @@ export function AdminRedemptionsClient() {
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex-1 min-w-[200px]">
             <Input
-              placeholder="Search by user ID or address..."
+              placeholder={t("cloud.redemptions.searchPlaceholder", {
+                defaultValue: "Search by user ID or address...",
+              })}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-white/5 border-white/10 text-white"
@@ -328,7 +422,11 @@ export function AdminRedemptionsClient() {
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[180px] bg-white/5 border-white/10 text-white">
-              <SelectValue placeholder="Filter by status" />
+              <SelectValue
+                placeholder={t("cloud.redemptions.filterByStatus", {
+                  defaultValue: "Filter by status",
+                })}
+              />
             </SelectTrigger>
             <SelectContent className="bg-zinc-900 border-white/10">
               {STATUS_OPTIONS.map((opt) => (
@@ -344,23 +442,33 @@ export function AdminRedemptionsClient() {
           </Select>
           <Select value={networkFilter} onValueChange={setNetworkFilter}>
             <SelectTrigger className="w-[150px] bg-white/5 border-white/10 text-white">
-              <SelectValue placeholder="Network" />
+              <SelectValue
+                placeholder={t("cloud.redemptions.network", {
+                  defaultValue: "Network",
+                })}
+              />
             </SelectTrigger>
             <SelectContent className="bg-zinc-900 border-white/10">
               <SelectItem value="all" className="text-white">
-                All Networks
+                {t("cloud.redemptions.allNetworks", {
+                  defaultValue: "All Networks",
+                })}
               </SelectItem>
               <SelectItem value="base" className="text-white">
-                Base
+                {t("cloud.redemptions.networkBase", { defaultValue: "Base" })}
               </SelectItem>
               <SelectItem value="solana" className="text-white">
-                Solana
+                {t("cloud.redemptions.networkSolana", {
+                  defaultValue: "Solana",
+                })}
               </SelectItem>
               <SelectItem value="ethereum" className="text-white">
-                Ethereum
+                {t("cloud.redemptions.networkEthereum", {
+                  defaultValue: "Ethereum",
+                })}
               </SelectItem>
               <SelectItem value="bnb" className="text-white">
-                BNB
+                {t("cloud.redemptions.networkBnb", { defaultValue: "BNB" })}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -388,20 +496,48 @@ export function AdminRedemptionsClient() {
         ) : redemptions.length === 0 ? (
           <div className="text-center py-12 text-white/40">
             <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No redemptions found</p>
-            <p className="text-sm">Try adjusting your filters</p>
+            <p>
+              {t("cloud.redemptions.noRedemptions", {
+                defaultValue: "No redemptions found",
+              })}
+            </p>
+            <p className="text-sm">
+              {t("cloud.redemptions.adjustFilters", {
+                defaultValue: "Try adjusting your filters",
+              })}
+            </p>
           </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow className="border-white/10">
-                <TableHead className="text-white/60">Date</TableHead>
-                <TableHead className="text-white/60">User</TableHead>
-                <TableHead className="text-white/60">Amount</TableHead>
-                <TableHead className="text-white/60">Network</TableHead>
-                <TableHead className="text-white/60">Address</TableHead>
-                <TableHead className="text-white/60">Status</TableHead>
-                <TableHead className="text-white/60">Actions</TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.redemptions.colDate", { defaultValue: "Date" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.redemptions.colUser", { defaultValue: "User" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.redemptions.colAmount", { defaultValue: "Amount" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.redemptions.colNetwork", {
+                    defaultValue: "Network",
+                  })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.redemptions.colAddress", {
+                    defaultValue: "Address",
+                  })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.redemptions.colStatus", { defaultValue: "Status" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.redemptions.colActions", {
+                    defaultValue: "Actions",
+                  })}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -514,69 +650,111 @@ export function AdminRedemptionsClient() {
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="sm:max-w-lg bg-zinc-900 border-white/10">
           <DialogHeader>
-            <DialogTitle className="text-white">Redemption Details</DialogTitle>
+            <DialogTitle className="text-white">
+              {t("cloud.redemptions.detailsTitle", {
+                defaultValue: "Redemption Details",
+              })}
+            </DialogTitle>
           </DialogHeader>
           {selectedRedemption && (
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-white/40 mb-1">ID</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelId", { defaultValue: "ID" })}
+                  </p>
                   <p className="text-sm text-white font-mono break-all">
                     {selectedRedemption.id}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-white/40 mb-1">Status</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelStatus", {
+                      defaultValue: "Status",
+                    })}
+                  </p>
                   <Badge className={STATUS_COLORS[selectedRedemption.status]}>
                     {selectedRedemption.status}
                   </Badge>
                 </div>
                 <div>
-                  <p className="text-xs text-white/40 mb-1">User ID</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelUserId", {
+                      defaultValue: "User ID",
+                    })}
+                  </p>
                   <p className="text-sm text-white font-mono break-all">
                     {selectedRedemption.user_id}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-white/40 mb-1">Network</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelNetwork", {
+                      defaultValue: "Network",
+                    })}
+                  </p>
                   <p className="text-sm text-white capitalize">
                     {selectedRedemption.network}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-white/40 mb-1">USD Value</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelUsdValue", {
+                      defaultValue: "USD Value",
+                    })}
+                  </p>
                   <p className="text-sm text-white font-semibold">
                     {formatCurrency(selectedRedemption.usd_value)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-white/40 mb-1">elizaOS Amount</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelElizaAmount", {
+                      defaultValue: "elizaOS Amount",
+                    })}
+                  </p>
                   <p className="text-sm text-[var(--brand-orange)] font-semibold">
                     {parseFloat(selectedRedemption.eliza_amount).toFixed(4)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-white/40 mb-1">Price</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelPrice", {
+                      defaultValue: "Price",
+                    })}
+                  </p>
                   <p className="text-sm text-white">
                     ${parseFloat(selectedRedemption.eliza_price_usd).toFixed(6)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-white/40 mb-1">Created</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelCreated", {
+                      defaultValue: "Created",
+                    })}
+                  </p>
                   <p className="text-sm text-white">
                     {formatDate(selectedRedemption.created_at)}
                   </p>
                 </div>
               </div>
               <div>
-                <p className="text-xs text-white/40 mb-1">Payout Address</p>
+                <p className="text-xs text-white/40 mb-1">
+                  {t("cloud.redemptions.labelPayoutAddress", {
+                    defaultValue: "Payout Address",
+                  })}
+                </p>
                 <p className="text-sm text-white break-all">
                   {selectedRedemption.payout_address}
                 </p>
               </div>
               {selectedRedemption.tx_hash && (
                 <div>
-                  <p className="text-xs text-white/40 mb-1">Transaction Hash</p>
+                  <p className="text-xs text-white/40 mb-1">
+                    {t("cloud.redemptions.labelTxHash", {
+                      defaultValue: "Transaction Hash",
+                    })}
+                  </p>
                   <a
                     href={getExplorerUrl(
                       selectedRedemption.network,
@@ -593,7 +771,11 @@ export function AdminRedemptionsClient() {
               )}
               {selectedRedemption.failure_reason && (
                 <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
-                  <p className="text-xs text-red-400 mb-1">Failure Reason</p>
+                  <p className="text-xs text-red-400 mb-1">
+                    {t("cloud.redemptions.labelFailureReason", {
+                      defaultValue: "Failure Reason",
+                    })}
+                  </p>
                   <p className="text-sm text-red-400">
                     {selectedRedemption.failure_reason}
                   </p>
@@ -601,7 +783,11 @@ export function AdminRedemptionsClient() {
               )}
               {selectedRedemption.rejection_reason && (
                 <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
-                  <p className="text-xs text-red-400 mb-1">Rejection Reason</p>
+                  <p className="text-xs text-red-400 mb-1">
+                    {t("cloud.redemptions.labelRejectionReason", {
+                      defaultValue: "Rejection Reason",
+                    })}
+                  </p>
                   <p className="text-sm text-red-400">
                     {selectedRedemption.rejection_reason}
                   </p>
@@ -611,7 +797,7 @@ export function AdminRedemptionsClient() {
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowDetailsDialog(false)}>
-              Close
+              {t("cloud.redemptions.close", { defaultValue: "Close" })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -622,10 +808,14 @@ export function AdminRedemptionsClient() {
         <AlertDialogContent className="bg-zinc-900 border-white/10">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">
-              Approve Redemption?
+              {t("cloud.redemptions.approveQuestion", {
+                defaultValue: "Approve Redemption?",
+              })}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-white/60">
-              This will approve the redemption of{" "}
+              {t("cloud.redemptions.approveIntro", {
+                defaultValue: "This will approve the redemption of",
+              })}{" "}
               <span className="text-[var(--brand-orange)] font-semibold">
                 {selectedRedemption &&
                   formatCurrency(selectedRedemption.usd_value)}
@@ -633,20 +823,27 @@ export function AdminRedemptionsClient() {
               (
               {selectedRedemption &&
                 parseFloat(selectedRedemption.eliza_amount).toFixed(2)}{" "}
-              elizaOS) to{" "}
+              {t("cloud.redemptions.elizaToken", { defaultValue: "elizaOS" })}){" "}
+              {t("cloud.redemptions.approveTo", { defaultValue: "to" })}{" "}
               <span className="font-mono text-white">
                 {selectedRedemption &&
                   truncateAddress(selectedRedemption.payout_address)}
               </span>{" "}
-              on {selectedRedemption?.network}.
+              {t("cloud.redemptions.approveOn", {
+                network: selectedRedemption?.network ?? "",
+                defaultValue: "on {{network}}.",
+              })}
               <br />
               <br />
-              The tokens will be sent in the next processing batch.
+              {t("cloud.redemptions.approveBatchNote", {
+                defaultValue:
+                  "The tokens will be sent in the next processing batch.",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="text-white/60">
-              Cancel
+              {t("cloud.redemptions.cancel", { defaultValue: "Cancel" })}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleApprove}
@@ -658,7 +855,7 @@ export function AdminRedemptionsClient() {
               ) : (
                 <>
                   <CheckCircle className="mr-2 h-4 w-4" />
-                  Approve
+                  {t("cloud.redemptions.approve", { defaultValue: "Approve" })}
                 </>
               )}
             </AlertDialogAction>
@@ -670,14 +867,23 @@ export function AdminRedemptionsClient() {
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent className="sm:max-w-md bg-zinc-900 border-white/10">
           <DialogHeader>
-            <DialogTitle className="text-white">Reject Redemption</DialogTitle>
+            <DialogTitle className="text-white">
+              {t("cloud.redemptions.rejectTitle", {
+                defaultValue: "Reject Redemption",
+              })}
+            </DialogTitle>
             <DialogDescription className="text-white/60">
-              The user&apos;s balance will be refunded. Please provide a reason.
+              {t("cloud.redemptions.rejectDescription", {
+                defaultValue:
+                  "The user's balance will be refunded. Please provide a reason.",
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Textarea
-              placeholder="Reason for rejection (required)"
+              placeholder={t("cloud.redemptions.rejectReasonPlaceholder", {
+                defaultValue: "Reason for rejection (required)",
+              })}
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               className="bg-white/5 border-white/10 text-white min-h-[100px]"
@@ -685,7 +891,7 @@ export function AdminRedemptionsClient() {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setShowRejectDialog(false)}>
-              Cancel
+              {t("cloud.redemptions.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               onClick={handleReject}
@@ -697,7 +903,9 @@ export function AdminRedemptionsClient() {
               ) : (
                 <>
                   <XCircle className="mr-2 h-4 w-4" />
-                  Reject & Refund
+                  {t("cloud.redemptions.rejectAndRefund", {
+                    defaultValue: "Reject & Refund",
+                  })}
                 </>
               )}
             </Button>

@@ -14,6 +14,7 @@ let conversationCounter = 0;
 let messageCounter = 0;
 const stubConversations = [];
 const stubConversationMessages = new Map();
+const unhandledApiRequests = [];
 const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
@@ -1166,6 +1167,70 @@ function createStubMessage(role, text) {
   };
 }
 
+function stableTextHash(text) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function normalizeAssistantInput(value) {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+function classifyAssistantAction(text) {
+  const normalized = text.toLowerCase();
+  if (/\b(wallet|inventory|address|balance)\b/.test(normalized)) {
+    return { type: "navigate", target: "/wallet" };
+  }
+  if (/\b(view|views|app|apps)\b/.test(normalized)) {
+    return { type: "navigate", target: "/views" };
+  }
+  if (/\b(setting|settings|provider|model|voice)\b/.test(normalized)) {
+    return { type: "navigate", target: "/settings" };
+  }
+  if (/\b(chat|conversation|message)\b/.test(normalized)) {
+    return { type: "navigate", target: "/chat" };
+  }
+  return { type: "noop", target: null };
+}
+
+function createDeterministicAssistantText({ body, conversationId, transport }) {
+  const inputText = normalizeAssistantInput(body?.text ?? body?.message);
+  const payload = {
+    fixture: "ui-smoke-assistant-v1",
+    registrySeam: "strict-fixture-registry",
+    conversationId,
+    transport,
+    input: {
+      text: inputText,
+      length: inputText.length,
+      hash: stableTextHash(inputText),
+    },
+    action: classifyAssistantAction(inputText),
+  };
+  return JSON.stringify(payload);
+}
+
+function recordUnhandledApiRequest(req, url) {
+  const entry = {
+    method: req.method ?? "GET",
+    path: url.pathname,
+    search: url.search,
+    at: nowIso(),
+  };
+  unhandledApiRequests.push(entry);
+  if (unhandledApiRequests.length > 50) {
+    unhandledApiRequests.shift();
+  }
+  console.error(
+    `[playwright-ui-smoke-api-stub] unhandled API route: ${entry.method} ${entry.path}${entry.search}`,
+  );
+  return entry;
+}
+
 function appendStubMessage(conversationId, message) {
   const messages = stubConversationMessages.get(conversationId) ?? [];
   messages.push(message);
@@ -1988,8 +2053,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && action === "stream") {
       const body = (await readJsonBody(req)) || {};
       appendStubMessage(conversationId, createStubMessage("user", body.text));
-      const text =
-        "This is a stubbed QA response. The app surface is loaded and interactive.";
+      const text = createDeterministicAssistantText({
+        body,
+        conversationId,
+        transport: "sse",
+      });
       appendStubMessage(conversationId, createStubMessage("assistant", text));
       sendSseHeaders(req, res);
       writeSseEvent(res, { type: "token", text, fullText: text });
@@ -2001,8 +2069,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && action === null) {
       const body = (await readJsonBody(req)) || {};
       appendStubMessage(conversationId, createStubMessage("user", body.text));
-      const text =
-        "This is a stubbed QA response. The app surface is loaded and interactive.";
+      const text = createDeterministicAssistantText({
+        body,
+        conversationId,
+        transport: "json",
+      });
       appendStubMessage(conversationId, createStubMessage("assistant", text));
       sendJson(req, res, 200, { text, agentName: "Eliza" });
       return;
@@ -2779,6 +2850,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/__ui-smoke/unhandled-requests"
+  ) {
+    sendJson(req, res, 200, { requests: unhandledApiRequests });
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/__ui-smoke/unhandled-requests/reset"
+  ) {
+    unhandledApiRequests.length = 0;
+    sendJson(req, res, 200, { ok: true });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname.startsWith("/api/apps/info/")) {
     sendJson(req, res, 404, { error: "App not found" });
     return;
@@ -2813,15 +2901,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname.startsWith("/api/")) {
+    const request = recordUnhandledApiRequest(req, url);
     if (req.method === "HEAD") {
-      sendEmpty(req, res, 200);
+      sendEmpty(req, res, 501);
       return;
     }
-    if (req.method === "GET") {
-      sendJson(req, res, 200, {});
-      return;
-    }
-    sendJson(req, res, 200, { ok: true });
+    sendJson(req, res, 501, {
+      error: `Unhandled UI smoke API route: ${request.method} ${request.path}`,
+      fixture: "ui-smoke-api-stub",
+      request,
+    });
     return;
   }
 

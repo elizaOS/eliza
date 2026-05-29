@@ -10,6 +10,7 @@
 
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Calendar, CheckCircle2, Info, Wallet, XCircle } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface AccountDetailsProps {
@@ -17,8 +18,10 @@ interface AccountDetailsProps {
 }
 
 export function AccountDetails({ user }: AccountDetailsProps) {
+  const t = useT();
   const formatDate = (date: Date | string | null) => {
-    if (!date) return "N/A";
+    if (!date)
+      return t("cloud.accountDetails.notAvailable", { defaultValue: "N/A" });
     return new Date(date).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
@@ -36,10 +39,16 @@ export function AccountDetails({ user }: AccountDetailsProps) {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Info className="h-5 w-5 text-[#FF5800]" />
-            <h3 className="text-lg font-bold text-white">Account Details</h3>
+            <h3 className="text-lg font-bold text-white">
+              {t("cloud.accountDetails.title", {
+                defaultValue: "Account Details",
+              })}
+            </h3>
           </div>
           <p className="text-sm text-white/60">
-            View your account status and important dates
+            {t("cloud.accountDetails.subtitle", {
+              defaultValue: "View your account status and important dates",
+            })}
           </p>
         </div>
 
@@ -47,7 +56,9 @@ export function AccountDetails({ user }: AccountDetailsProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide">
-                Account ID
+                {t("cloud.accountDetails.accountId", {
+                  defaultValue: "Account ID",
+                })}
               </p>
               <p className="font-mono text-xs text-white/70">{user.id}</p>
             </div>
@@ -55,21 +66,27 @@ export function AccountDetails({ user }: AccountDetailsProps) {
             {user.email && (
               <div className="space-y-1">
                 <p className="text-xs text-white/50 uppercase tracking-wide">
-                  Email Verification
+                  {t("cloud.accountDetails.emailVerification", {
+                    defaultValue: "Email Verification",
+                  })}
                 </p>
                 <div className="flex items-center gap-2">
                   {user.email_verified ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 text-green-400" />
                       <span className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
-                        Verified
+                        {t("cloud.accountDetails.verified", {
+                          defaultValue: "Verified",
+                        })}
                       </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 text-orange-400" />
                       <span className="rounded-sm border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
-                        Not Verified
+                        {t("cloud.accountDetails.notVerified", {
+                          defaultValue: "Not Verified",
+                        })}
                       </span>
                     </>
                   )}
@@ -81,21 +98,27 @@ export function AccountDetails({ user }: AccountDetailsProps) {
               <div className="space-y-1">
                 <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
                   <Wallet className="h-4 w-4" />
-                  Wallet Status
+                  {t("cloud.accountDetails.walletStatus", {
+                    defaultValue: "Wallet Status",
+                  })}
                 </p>
                 <div className="flex items-center gap-2">
                   {user.wallet_verified ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 text-green-400" />
                       <span className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
-                        Verified
+                        {t("cloud.accountDetails.verified", {
+                          defaultValue: "Verified",
+                        })}
                       </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 text-orange-400" />
                       <span className="rounded-sm border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
-                        Not Verified
+                        {t("cloud.accountDetails.notVerified", {
+                          defaultValue: "Not Verified",
+                        })}
                       </span>
                     </>
                   )}
@@ -105,18 +128,24 @@ export function AccountDetails({ user }: AccountDetailsProps) {
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide">
-                Account Status
+                {t("cloud.accountDetails.accountStatus", {
+                  defaultValue: "Account Status",
+                })}
               </p>
               <span
                 className={`rounded-sm px-2 py-1 text-xs font-bold uppercase tracking-wide border ${user.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-red-500/20 text-red-400 border-red-500/40"}`}
               >
-                {user.is_active ? "Active" : "Inactive"}
+                {user.is_active
+                  ? t("cloud.accountDetails.active", { defaultValue: "Active" })
+                  : t("cloud.accountDetails.inactive", {
+                      defaultValue: "Inactive",
+                    })}
               </span>
             </div>
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide">
-                Role
+                {t("cloud.accountDetails.role", { defaultValue: "Role" })}
               </p>
               <span className="rounded-sm bg-white/10 px-2 py-1 text-xs text-white capitalize">
                 {user.role}
@@ -126,7 +155,9 @@ export function AccountDetails({ user }: AccountDetailsProps) {
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[#FF5800]" />
-                Account Created
+                {t("cloud.accountDetails.accountCreated", {
+                  defaultValue: "Account Created",
+                })}
               </p>
               <p className="text-sm text-white">
                 {formatDate(user.created_at)}
@@ -136,7 +167,9 @@ export function AccountDetails({ user }: AccountDetailsProps) {
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[#FF5800]" />
-                Last Updated
+                {t("cloud.accountDetails.lastUpdated", {
+                  defaultValue: "Last Updated",
+                })}
               </p>
               <p className="text-sm text-white">
                 {formatDate(user.updated_at)}
@@ -149,7 +182,9 @@ export function AccountDetails({ user }: AccountDetailsProps) {
               <div className="space-y-1">
                 <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
                   <Wallet className="h-4 w-4 text-[#FF5800]" />
-                  Wallet Address
+                  {t("cloud.accountDetails.walletAddress", {
+                    defaultValue: "Wallet Address",
+                  })}
                 </p>
                 <p className="font-mono text-xs break-all text-white">
                   {user.wallet_address}

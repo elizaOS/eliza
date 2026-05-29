@@ -7,6 +7,8 @@ import {
   clearPersistedFirstRunState,
   DEFAULT_AGENT_NAME,
   type FirstRunProfileDraft,
+  firstRunDownloadsLocalModel,
+  firstRunNeedsCloudConnect,
   firstRunRuntimeTarget,
   isFirstRunPromptEcho,
   loadPersistedFirstRunState,
@@ -58,6 +60,37 @@ describe("first-run flow", () => {
     );
     expect(firstRunRuntimeTarget("cloud")).toBe("elizacloud");
     expect(firstRunRuntimeTarget("remote")).toBe("remote");
+  });
+
+  it("requires a cloud connection for cloud and local+cloud-inference only", () => {
+    const connect = (
+      draft: Pick<FirstRunProfileDraft, "runtime" | "localInference">,
+      connected: boolean,
+    ) => firstRunNeedsCloudConnect(draft, connected);
+
+    expect(
+      connect({ runtime: "cloud", localInference: "all-local" }, false),
+    ).toBe(true);
+    expect(
+      connect({ runtime: "cloud", localInference: "all-local" }, true),
+    ).toBe(false);
+    expect(
+      connect({ runtime: "local", localInference: "cloud-inference" }, false),
+    ).toBe(true);
+    expect(
+      connect({ runtime: "local", localInference: "cloud-inference" }, true),
+    ).toBe(false);
+    expect(
+      connect({ runtime: "local", localInference: "all-local" }, false),
+    ).toBe(false);
+    expect(
+      connect({ runtime: "remote", localInference: "all-local" }, false),
+    ).toBe(false);
+  });
+
+  it("only downloads an on-device model for all-local inference", () => {
+    expect(firstRunDownloadsLocalModel("all-local")).toBe(true);
+    expect(firstRunDownloadsLocalModel("cloud-inference")).toBe(false);
   });
 
   it("round-trips first-run progress until setup completes", () => {

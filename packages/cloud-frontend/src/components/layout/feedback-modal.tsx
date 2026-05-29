@@ -19,6 +19,7 @@ import {
 import { Loader2, MessageSquare, Send } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 
 function feedbackErrorMessage(value: unknown): string | null {
   if (typeof value !== "object" || value === null || Array.isArray(value))
@@ -40,6 +41,7 @@ export function FeedbackModal({
   defaultEmail = "",
   defaultName = "",
 }: FeedbackModalProps) {
+  const t = useT();
   const [name, setName] = useState(defaultName);
   const [email, setEmail] = useState(defaultEmail);
   const [comment, setComment] = useState("");
@@ -49,7 +51,11 @@ export function FeedbackModal({
     e.preventDefault();
 
     if (!comment.trim()) {
-      toast.error("Please enter your feedback");
+      toast.error(
+        t("cloud.feedback.enterFeedback", {
+          defaultValue: "Please enter your feedback",
+        }),
+      );
       return;
     }
 
@@ -65,11 +71,20 @@ export function FeedbackModal({
 
     if (!response.ok) {
       const errorMessage = feedbackErrorMessage(await response.json());
-      toast.error(errorMessage ?? "Failed to send feedback");
+      toast.error(
+        errorMessage ??
+          t("cloud.feedback.sendFailed", {
+            defaultValue: "Failed to send feedback",
+          }),
+      );
       return;
     }
 
-    toast.success("Thank you for your feedback!");
+    toast.success(
+      t("cloud.feedback.thankYou", {
+        defaultValue: "Thank you for your feedback!",
+      }),
+    );
     setName(defaultName);
     setEmail(defaultEmail);
     setComment("");
@@ -85,21 +100,26 @@ export function FeedbackModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
             <MessageSquare className="h-5 w-5 text-[#FF5800]" />
-            Send Feedback
+            {t("cloud.feedback.title", { defaultValue: "Send Feedback" })}
           </DialogTitle>
           <DialogDescription className="text-white/60">
-            We&apos;d love to hear your thoughts on how we can improve.
+            {t("cloud.feedback.description", {
+              defaultValue:
+                "We'd love to hear your thoughts on how we can improve.",
+            })}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="feedback-name" className="text-white/80">
-              Name
+              {t("cloud.feedback.nameLabel", { defaultValue: "Name" })}
             </Label>
             <Input
               id="feedback-name"
-              placeholder="Your name"
+              placeholder={t("cloud.feedback.namePlaceholder", {
+                defaultValue: "Your name",
+              })}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[#FF5800] focus-visible:ring-[#FF5800]/20"
@@ -108,7 +128,7 @@ export function FeedbackModal({
 
           <div className="space-y-2">
             <Label htmlFor="feedback-email" className="text-white/80">
-              Email
+              {t("cloud.feedback.emailLabel", { defaultValue: "Email" })}
             </Label>
             <Input
               id="feedback-email"
@@ -122,11 +142,15 @@ export function FeedbackModal({
 
           <div className="space-y-2">
             <Label htmlFor="feedback-comment" className="text-white/80">
-              Feedback<span className="text-red-500 -ml-0.5">*</span>
+              {t("cloud.feedback.commentLabel", { defaultValue: "Feedback" })}
+              <span className="text-red-500 -ml-0.5">*</span>
             </Label>
             <Textarea
               id="feedback-comment"
-              placeholder="Share your thoughts, suggestions, or report an issue..."
+              placeholder={t("cloud.feedback.commentPlaceholder", {
+                defaultValue:
+                  "Share your thoughts, suggestions, or report an issue...",
+              })}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               className="min-h-[120px] bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[#FF5800] focus-visible:ring-[#FF5800]/20 resize-none"
@@ -141,7 +165,7 @@ export function FeedbackModal({
               onClick={() => onOpenChange(false)}
               className="text-white/60 hover:text-white hover:bg-white/10"
             >
-              Cancel
+              {t("cloud.feedback.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               type="submit"
@@ -151,12 +175,12 @@ export function FeedbackModal({
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
+                  {t("cloud.feedback.sending", { defaultValue: "Sending..." })}
                 </>
               ) : (
                 <>
                   <Send className="mr-2 h-4 w-4" />
-                  Send Feedback
+                  {t("cloud.feedback.title", { defaultValue: "Send Feedback" })}
                 </>
               )}
             </Button>

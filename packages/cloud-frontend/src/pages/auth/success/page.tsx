@@ -2,6 +2,7 @@ import { CheckCircle, Loader2, MessageCircle } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 // Platform display names
 const platformNames: Record<string, string> = {
@@ -19,6 +20,7 @@ function capitalize(str: string): string {
 }
 
 function AuthSuccessContent() {
+  const t = useT();
   const [canClose, setCanClose] = useState(false);
   const [searchParams] = useSearchParams();
 
@@ -62,13 +64,25 @@ function AuthSuccessContent() {
           <div className="space-y-2">
             <h2 className="text-xl font-semibold text-white">
               {platformDisplay
-                ? `${platformDisplay} Connected`
-                : "Connection Successful"}
+                ? t("cloud.authSuccess.platformConnected", {
+                    platform: platformDisplay,
+                    defaultValue: "{{platform}} Connected",
+                  })
+                : t("cloud.authSuccess.connectionSuccessful", {
+                    defaultValue: "Connection Successful",
+                  })}
             </h2>
             <p className="text-sm text-neutral-400">
               {platformDisplay
-                ? `Your ${platformDisplay} account has been connected successfully.`
-                : "Your account has been connected successfully."}
+                ? t("cloud.authSuccess.platformAccountConnected", {
+                    platform: platformDisplay,
+                    defaultValue:
+                      "Your {{platform}} account has been connected successfully.",
+                  })
+                : t("cloud.authSuccess.accountConnected", {
+                    defaultValue:
+                      "Your account has been connected successfully.",
+                  })}
             </p>
           </div>
 
@@ -76,16 +90,24 @@ function AuthSuccessContent() {
             <div className="flex items-center gap-3 text-left">
               <MessageCircle className="h-5 w-5 text-neutral-400 flex-shrink-0" />
               <p className="text-sm text-neutral-300">
-                Return to your chat and say{" "}
-                <span className="text-white font-medium">&quot;done&quot;</span>{" "}
-                to verify the connection.
+                {t("cloud.authSuccess.returnPrefix", {
+                  defaultValue: "Return to your chat and say",
+                })}{" "}
+                <span className="text-white font-medium">
+                  {t("cloud.authSuccess.doneWord", { defaultValue: '"done"' })}
+                </span>{" "}
+                {t("cloud.authSuccess.returnSuffix", {
+                  defaultValue: "to verify the connection.",
+                })}
               </p>
             </div>
           </div>
 
           {canClose && (
             <p className="text-xs text-neutral-600">
-              You can close this window.
+              {t("cloud.authSuccess.canClose", {
+                defaultValue: "You can close this window.",
+              })}
             </p>
           )}
         </div>
@@ -95,13 +117,16 @@ function AuthSuccessContent() {
 }
 
 function LoadingFallback() {
+  const t = useT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-black p-4">
       <div className="absolute inset-0 bg-black" />
       <div className="relative w-full max-w-md bg-black border border-white/14 p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <Loader2 className="h-8 w-8 text-neutral-400 animate-spin" />
-          <p className="text-sm text-neutral-400">Loading...</p>
+          <p className="text-sm text-neutral-400">
+            {t("cloud.authSuccess.loading", { defaultValue: "Loading..." })}
+          </p>
         </div>
       </div>
     </div>
@@ -109,10 +134,15 @@ function LoadingFallback() {
 }
 
 export default function AuthSuccessPage() {
+  const t = useT();
   return (
     <>
       <Helmet>
-        <title>Connection Successful | Eliza Cloud</title>
+        <title>
+          {t("cloud.authSuccess.metaTitle", {
+            defaultValue: "Connection Successful | Eliza Cloud",
+          })}
+        </title>
       </Helmet>
       <Suspense fallback={<LoadingFallback />}>
         <AuthSuccessContent />

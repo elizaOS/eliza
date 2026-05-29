@@ -140,17 +140,24 @@ describe("WS2 mmproj routing", () => {
 		expect(resolved.modelPath).toBe(bundle.textPath);
 	});
 
-	it("throws when an MTP-enabled tier is missing its bundled drafter", async () => {
+	it("resolves same-file MTP with no separate drafter and does not throw", async () => {
 		const tier = "2b";
+		// hasMtp: false ⇒ no bundled drafter GGUF on disk. Same-file MTP
+		// embeds the NextN head in the text GGUF, so the resolver must NOT
+		// throw and must leave draftModelPath unset while still plumbing the
+		// catalog draft window.
 		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: false, tier });
 		const installed = installedModel({
 			id: `eliza-1-${tier}`,
 			bundleRoot: bundle.bundleRoot,
 			path: bundle.textPath,
 		});
-		await expect(resolveLocalInferenceLoadArgs(installed)).rejects.toThrow(
-			/mandatory MTP/,
-		);
+		const resolved = await resolveLocalInferenceLoadArgs(installed);
+		expect(resolved.modelPath).toBe(bundle.textPath);
+		expect(resolved.draftModelPath).toBeUndefined();
+		expect(resolved.draftMin).toBe(1);
+		expect(resolved.draftMax).toBe(2);
+		expect(resolved.useGpu).toBe(true);
 	});
 
 	it("leaves mmprojPath undefined when bundleRoot is absent", async () => {

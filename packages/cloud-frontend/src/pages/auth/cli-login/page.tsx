@@ -11,9 +11,12 @@ import { useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 import { clearStaleStewardSession } from "@/providers/StewardProvider";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { getErrorMessage } from "../../../lib/error-message";
+
+type TFn = ReturnType<typeof useT>;
 
 const COMPLETE_TIMEOUT_MS = 30_000;
 
@@ -56,16 +59,20 @@ function getPageState({
   completion,
   ready,
   sessionId,
+  t,
 }: {
   authenticated: boolean;
   completion: CompletionState;
   ready: boolean;
   sessionId: string | null;
+  t: TFn;
 }): PageState {
   if (!sessionId) {
     return {
       status: "error",
-      errorMessage: "Invalid authentication link. Missing session ID.",
+      errorMessage: t("cloud.cliLogin.invalidLink", {
+        defaultValue: "Invalid authentication link. Missing session ID.",
+      }),
     };
   }
 
@@ -137,6 +144,7 @@ function CliLoginPanel({
 }
 
 function CliLoginContent() {
+  const t = useT();
   const { authenticated, ready, user } = useSessionAuth();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get("session");
@@ -203,10 +211,18 @@ function CliLoginContent() {
         setCompletion({
           status: "error",
           errorMessage: aborted
-            ? "The cloud took too long to respond. Please try again."
+            ? t("cloud.cliLogin.timeout", {
+                defaultValue:
+                  "The cloud took too long to respond. Please try again.",
+              })
             : error instanceof ApiError
               ? error.message
-              : getErrorMessage(error, "Network error. Please try again."),
+              : getErrorMessage(
+                  error,
+                  t("cloud.cliLogin.networkError", {
+                    defaultValue: "Network error. Please try again.",
+                  }),
+                ),
         });
       }
     }
@@ -219,13 +235,14 @@ function CliLoginContent() {
         abort.abort();
       }
     };
-  }, [authenticated, ready, sessionId]);
+  }, [authenticated, ready, sessionId, t]);
 
   const pageState = getPageState({
     authenticated,
     completion,
     ready,
     sessionId,
+    t,
   });
   const returnToQuery = searchParams.toString();
   const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
@@ -237,12 +254,16 @@ function CliLoginContent() {
       <CliLoginPanel
         description={
           pageState.status === "initializing"
-            ? "Initializing authentication"
-            : "Preparing authentication"
+            ? t("cloud.cliLogin.initializing", {
+                defaultValue: "Initializing authentication",
+              })
+            : t("cloud.cliLogin.preparing", {
+                defaultValue: "Preparing authentication",
+              })
         }
         icon={Loader2}
         iconClassName="animate-spin"
-        title="Loading..."
+        title={t("cloud.cliLogin.loading", { defaultValue: "Loading..." })}
         tone="accent"
       />
     );
@@ -256,7 +277,9 @@ function CliLoginContent() {
             {sessionId ? (
               <a href={signInHref} className="w-full">
                 <Button className="w-full h-11  bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white">
-                  Sign In Again
+                  {t("cloud.cliLogin.signInAgain", {
+                    defaultValue: "Sign In Again",
+                  })}
                 </Button>
               </a>
             ) : null}
@@ -265,13 +288,17 @@ function CliLoginContent() {
               variant="outline"
               className="w-full mt-2  border-white/14 hover:bg-white/10"
             >
-              Close Window
+              {t("cloud.cliLogin.closeWindow", {
+                defaultValue: "Close Window",
+              })}
             </Button>
           </>
         }
         description={pageState.errorMessage}
         icon={AlertCircle}
-        title="Authentication Error"
+        title={t("cloud.cliLogin.authError", {
+          defaultValue: "Authentication Error",
+        })}
         tone="danger"
       />
     );
@@ -289,17 +316,24 @@ function CliLoginContent() {
               {!ready ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Loading...
+                  {t("cloud.cliLogin.loading", {
+                    defaultValue: "Loading...",
+                  })}
                 </>
               ) : (
-                "Sign In"
+                t("cloud.cliLogin.signIn", { defaultValue: "Sign In" })
               )}
             </Button>
           </a>
         }
-        description="Sign in to connect your Eliza app or CLI to Eliza Cloud"
+        description={t("cloud.cliLogin.waitingAuthDescription", {
+          defaultValue:
+            "Sign in to connect your Eliza app or CLI to Eliza Cloud",
+        })}
         icon={Terminal}
-        title="CLI Authentication"
+        title={t("cloud.cliLogin.cliAuthentication", {
+          defaultValue: "CLI Authentication",
+        })}
         tone="accent"
       />
     );
@@ -308,10 +342,14 @@ function CliLoginContent() {
   if (pageState.status === "completing") {
     return (
       <CliLoginPanel
-        description="Creating your credentials for CLI access..."
+        description={t("cloud.cliLogin.completingDescription", {
+          defaultValue: "Creating your credentials for CLI access...",
+        })}
         icon={Key}
         iconClassName="animate-pulse"
-        title="Generating API Key"
+        title={t("cloud.cliLogin.generatingApiKey", {
+          defaultValue: "Generating API Key",
+        })}
         tone="accent"
       >
         <div className="flex gap-1.5 mt-2">
@@ -332,28 +370,47 @@ function CliLoginContent() {
             variant="outline"
             className="w-full  border-white/14 hover:bg-white/10"
           >
-            Close Window
+            {t("cloud.cliLogin.closeWindow", {
+              defaultValue: "Close Window",
+            })}
           </Button>
         }
-        description="Your API key has been generated and sent to the CLI"
+        description={t("cloud.cliLogin.successDescription", {
+          defaultValue: "Your API key has been generated and sent to the CLI",
+        })}
         icon={CheckCircle2}
-        title="Authentication Complete!"
+        title={t("cloud.cliLogin.authComplete", {
+          defaultValue: "Authentication Complete!",
+        })}
         tone="success"
       >
         <div className="w-full  bg-black/40 border border-white/14 p-4 space-y-3">
           <p className="text-xs font-medium text-neutral-400">
-            API Key Details
+            {t("cloud.cliLogin.apiKeyDetails", {
+              defaultValue: "API Key Details",
+            })}
           </p>
           <div className="text-sm space-y-2">
             <div className="flex justify-between">
-              <span className="text-neutral-500">Prefix</span>
+              <span className="text-neutral-500">
+                {t("cloud.cliLogin.prefix", { defaultValue: "Prefix" })}
+              </span>
               <span className="font-mono text-white">
                 {pageState.apiKeyPrefix}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-neutral-500">Created for</span>
-              <span className="text-white">{userEmail || "Your account"}</span>
+              <span className="text-neutral-500">
+                {t("cloud.cliLogin.createdFor", {
+                  defaultValue: "Created for",
+                })}
+              </span>
+              <span className="text-white">
+                {userEmail ||
+                  t("cloud.cliLogin.yourAccount", {
+                    defaultValue: "Your account",
+                  })}
+              </span>
             </div>
           </div>
         </div>
@@ -361,7 +418,10 @@ function CliLoginContent() {
         <div className="w-full  border border-green-500/20 bg-green-500/5 p-4">
           <p className="text-sm text-green-400 flex items-center justify-center gap-2">
             <CheckCircle2 className="h-4 w-4" />
-            You can now close this window and return to your terminal
+            {t("cloud.cliLogin.returnToTerminal", {
+              defaultValue:
+                "You can now close this window and return to your terminal",
+            })}
           </p>
         </div>
       </CliLoginPanel>
@@ -376,10 +436,15 @@ function CliLoginContent() {
  * Uses Steward session auth (`useSessionAuth`), then generates an API key for CLI access.
  */
 export default function CliLoginPage() {
+  const t = useT();
   return (
     <>
       <Helmet>
-        <title>CLI Authentication | Eliza Cloud</title>
+        <title>
+          {t("cloud.cliLogin.metaTitle", {
+            defaultValue: "CLI Authentication | Eliza Cloud",
+          })}
+        </title>
       </Helmet>
       <CliLoginContent />
     </>

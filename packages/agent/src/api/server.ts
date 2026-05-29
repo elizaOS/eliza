@@ -58,21 +58,25 @@ import { type WebSocket, WebSocketServer } from "ws";
 // imported via module-scope top-level await, which forced both plugins to
 // load (and pulled their transitive native deps) whenever anything imported
 // `@elizaos/agent`. That blocked container boot in cloud sandboxes. They are
-// now lazily loaded inside `startApiServer` via `initializeServerOptionalPlugins`,
-// which runs once before any handler that uses them can fire.
+// now lazily loaded. X402 is loaded during `startApiServer` because route
+// validation is synchronous; browser is loaded on first browser route hit so it
+// does not gate API bind.
 type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
 type X402PluginModule = typeof import("@elizaos/plugin-x402");
 
 let browserPluginModule: BrowserPluginModule | null = null;
 let x402PluginModule: X402PluginModule | null = null;
+let browserPluginModulePromise: Promise<BrowserPluginModule> | null = null;
 
-function getBrowserPlugin(): BrowserPluginModule {
-  if (!browserPluginModule) {
-    throw new Error(
-      "[server] @elizaos/plugin-browser accessed before initializeServerOptionalPlugins()",
-    );
-  }
-  return browserPluginModule;
+async function getBrowserPlugin(): Promise<BrowserPluginModule> {
+  if (browserPluginModule) return browserPluginModule;
+  browserPluginModulePromise ??= import("@elizaos/plugin-browser").then(
+    (browser) => {
+      browserPluginModule = browser;
+      return browser;
+    },
+  );
+  return browserPluginModulePromise;
 }
 
 function getX402Plugin(): X402PluginModule {
@@ -85,13 +89,8 @@ function getX402Plugin(): X402PluginModule {
 }
 
 async function initializeServerOptionalPlugins(): Promise<void> {
-  if (browserPluginModule && x402PluginModule) return;
-  const [browser, x402] = await Promise.all([
-    import("@elizaos/plugin-browser"),
-    import("@elizaos/plugin-x402"),
-  ]);
-  browserPluginModule = browser;
-  x402PluginModule = x402;
+  if (x402PluginModule) return;
+  x402PluginModule = await import("@elizaos/plugin-x402");
 }
 
 const optionalPluginImports = {
@@ -737,24 +736,25 @@ async function readOptionalTrainingConfig(): Promise<OptionalTrainingConfig> {
 }
 
 function parseBrowserBridgeKind(
+  browserPlugin: BrowserPluginModule,
   value: string | undefined,
 ): BrowserBridgeKind | null {
   if (!value) return null;
   const decoded = decodeURIComponent(value);
-  return (
-    getBrowserPlugin().BROWSER_BRIDGE_KINDS as readonly string[]
-  ).includes(decoded)
+  return (browserPlugin.BROWSER_BRIDGE_KINDS as readonly string[]).includes(
+    decoded,
+  )
     ? (decoded as BrowserBridgeKind)
     : null;
 }
 
 function parseBrowserBridgePackageTarget(
+  browserPlugin: BrowserPluginModule,
   value: unknown,
 ): BrowserBridgePackagePathTarget | null {
   return typeof value === "string" &&
     (
-      getBrowserPlugin()
-        .BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]
+      browserPlugin.BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]
     ).includes(value)
     ? (value as BrowserBridgePackagePathTarget)
     : null;
@@ -847,8 +847,9 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/packages") {
+    const browserPlugin = await getBrowserPlugin();
     json(res, {
-      status: getBrowserPlugin().getBrowserBridgeCompanionPackageStatus(),
+      status: browserPlugin.getBrowserBridgeCompanionPackageStatus(),
     });
     return true;
   }
@@ -863,14 +864,15 @@ async function handleBuiltinOptionalRoutes(
         res,
       )) ?? null;
     if (!body) return true;
-    const target = parseBrowserBridgePackageTarget(body.target);
+    const browserPlugin = await getBrowserPlugin();
+    const target = parseBrowserBridgePackageTarget(browserPlugin, body.target);
     if (!target) {
       error(res, "Invalid browser bridge package target", 400);
       return true;
     }
     json(
       res,
-      await getBrowserPlugin().openBrowserBridgeCompanionPackagePath(target, {
+      await browserPlugin.openBrowserBridgeCompanionPackagePath(target, {
         revealOnly: body.revealOnly === true,
       }),
     );
@@ -881,14 +883,14 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/build$/,
   );
   if (method === "POST" && packageBuildMatch) {
-    const browser = parseBrowserBridgeKind(packageBuildMatch[1]);
+    const browserPlugin = await getBrowserPlugin();
+    const browser = parseBrowserBridgeKind(browserPlugin, packageBuildMatch[1]);
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
       return true;
     }
     json(res, {
-      status:
-        await getBrowserPlugin().buildBrowserBridgeCompanionPackage(browser),
+      status: await browserPlugin.buildBrowserBridgeCompanionPackage(browser),
     });
     return true;
   }
@@ -897,40 +899,45 @@ async function handleBuiltinOptionalRoutes(
     /^\/api\/browser-bridge\/packages\/([^/]+)\/open-manager$/,
   );
   if (method === "POST" && packageManagerMatch) {
-    const browser = parseBrowserBridgeKind(packageManagerMatch[1]);
+    const browserPlugin = await getBrowserPlugin();
+    const browser = parseBrowserBridgeKind(
+      browserPlugin,
+      packageManagerMatch[1],
+    );
     if (!browser) {
       error(res, "Invalid browser bridge package browser", 400);
       return true;
     }
-    json(
-      res,
-      await getBrowserPlugin().openBrowserBridgeCompanionManager(browser),
-    );
+    json(res, await browserPlugin.openBrowserBridgeCompanionManager(browser));
     return true;
   }
 
   if (pathname === "/api/browser-workspace" && method === "GET") {
-    json(res, await getBrowserPlugin().getBrowserWorkspaceSnapshot());
+    const browserPlugin = await getBrowserPlugin();
+    json(res, await browserPlugin.getBrowserWorkspaceSnapshot());
     return true;
   }
 
   if (pathname === "/api/browser-workspace/command" && method === "POST") {
+    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<BrowserWorkspaceCommand>(req, res)) ?? null;
     if (!body?.subaction) {
       error(res, "subaction is required", 400);
       return true;
     }
-    json(res, await getBrowserPlugin().executeBrowserWorkspaceCommand(body));
+    json(res, await browserPlugin.executeBrowserWorkspaceCommand(body));
     return true;
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
-    json(res, { tabs: await getBrowserPlugin().listBrowserWorkspaceTabs() });
+    const browserPlugin = await getBrowserPlugin();
+    json(res, { tabs: await browserPlugin.listBrowserWorkspaceTabs() });
     return true;
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "POST") {
+    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{
         url?: string;
@@ -939,7 +946,7 @@ async function handleBuiltinOptionalRoutes(
         partition?: string;
         kind?: BrowserWorkspaceTabKind;
       }>(req, res)) ?? {};
-    json(res, { tab: await getBrowserPlugin().openBrowserWorkspaceTab(body) });
+    json(res, { tab: await browserPlugin.openBrowserWorkspaceTab(body) });
     return true;
   }
 
@@ -954,27 +961,32 @@ async function handleBuiltinOptionalRoutes(
   const action = tabMatch[2] ?? null;
 
   if (!action && method === "DELETE") {
-    const closed = await getBrowserPlugin().closeBrowserWorkspaceTab(tabId);
+    const browserPlugin = await getBrowserPlugin();
+    const closed = await browserPlugin.closeBrowserWorkspaceTab(tabId);
     json(res, { closed }, closed ? 200 : 404);
     return true;
   }
 
   if (action === "show" && method === "POST") {
-    json(res, { tab: await getBrowserPlugin().showBrowserWorkspaceTab(tabId) });
+    const browserPlugin = await getBrowserPlugin();
+    json(res, { tab: await browserPlugin.showBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "hide" && method === "POST") {
-    json(res, { tab: await getBrowserPlugin().hideBrowserWorkspaceTab(tabId) });
+    const browserPlugin = await getBrowserPlugin();
+    json(res, { tab: await browserPlugin.hideBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "snapshot" && method === "GET") {
-    json(res, await getBrowserPlugin().snapshotBrowserWorkspaceTab(tabId));
+    const browserPlugin = await getBrowserPlugin();
+    json(res, await browserPlugin.snapshotBrowserWorkspaceTab(tabId));
     return true;
   }
 
   if (action === "navigate" && method === "POST") {
+    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ url?: string; partition?: string }>(req, res)) ??
       null;
@@ -983,7 +995,7 @@ async function handleBuiltinOptionalRoutes(
       return true;
     }
     json(res, {
-      tab: await getBrowserPlugin().navigateBrowserWorkspaceTab({
+      tab: await browserPlugin.navigateBrowserWorkspaceTab({
         id: tabId,
         url: body.url,
       }),
@@ -992,6 +1004,7 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (action === "eval" && method === "POST") {
+    const browserPlugin = await getBrowserPlugin();
     const body =
       (await readJsonBody<{ script?: string; partition?: string }>(req, res)) ??
       null;
@@ -1000,7 +1013,7 @@ async function handleBuiltinOptionalRoutes(
       return true;
     }
     json(res, {
-      value: await getBrowserPlugin().evaluateBrowserWorkspaceTab({
+      value: await browserPlugin.evaluateBrowserWorkspaceTab({
         id: tabId,
         script: body.script,
       }),
@@ -3018,9 +3031,13 @@ export async function startApiServer(opts?: {
     }
   }
 
-  // Pre-load steward wallet addresses so getWalletAddresses() has them
-  // available synchronously from the start (cloud-provisioned containers).
-  await initStewardWalletCache();
+  const blockOnStewardWalletCache =
+    process.env.ELIZA_STEWARD_WALLET_CACHE_BLOCKING?.trim() === "1";
+  if (blockOnStewardWalletCache) {
+    // Cloud/provisioned environments can opt into strict startup semantics
+    // when wallet addresses must be available before the first request.
+    await initStewardWalletCache();
+  }
 
   // Warn when wallet private keys live in plaintext config and the OS secure
   // store is not enabled.  This nudges operators toward ELIZA_WALLET_OS_STORE=1.
@@ -3520,6 +3537,16 @@ export async function startApiServer(opts?: {
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
   const startDeferredStartupWork = () => {
+    if (!blockOnStewardWalletCache) {
+      void initStewardWalletCache().catch((err) => {
+        logger.debug(
+          `[eliza-api] Steward wallet cache init failed after listen: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+    }
+
     void (async () => {
       try {
         const { discoverSkills } = await getAgentSkillsApi();

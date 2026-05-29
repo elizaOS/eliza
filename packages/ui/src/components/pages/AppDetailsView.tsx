@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state/useApp";
+import type { TranslationContextValue } from "../../state/TranslationContext";
 import { openExternalUrl } from "../../utils";
 import { getWidgetComponent } from "../../widgets/registry";
 import type { PluginWidgetDeclaration } from "../../widgets/types";
@@ -127,20 +128,27 @@ function resolveAppFromSlug(
   return null;
 }
 
-function sourceLabel(source: AppSource): string {
+type TranslateFn = TranslationContextValue["t"];
+
+function sourceLabel(source: AppSource, t: TranslateFn): string {
   switch (source) {
     case "internal-tool":
-      return "Internal Tool";
+      return t("appdetails.source.internalTool", {
+        defaultValue: "Internal Tool",
+      });
     case "overlay":
-      return "Overlay App";
+      return t("appdetails.source.overlay", { defaultValue: "Overlay App" });
     case "catalog":
-      return "Catalog App";
+      return t("appdetails.source.catalog", { defaultValue: "Catalog App" });
     default:
-      return "Unknown";
+      return t("appdetails.source.unknown", { defaultValue: "Unknown" });
   }
 }
 
-function appProvenanceBadges(app: RegistryAppInfo): Array<{
+function appProvenanceBadges(
+  app: RegistryAppInfo,
+  t: TranslateFn,
+): Array<{
   key: string;
   label: string;
   className: string;
@@ -158,14 +166,14 @@ function appProvenanceBadges(app: RegistryAppInfo): Array<{
   if (flags.isThirdParty) {
     badges.push({
       key: "origin",
-      label: "Third party",
+      label: t("appdetails.badge.thirdParty", { defaultValue: "Third party" }),
       className: "border-border/60 text-muted",
       title,
     });
   } else if (flags.isBuiltIn) {
     badges.push({
       key: "origin",
-      label: "Built in",
+      label: t("appdetails.badge.builtIn", { defaultValue: "Built in" }),
       className: "border-border/60 text-muted",
       title,
     });
@@ -174,14 +182,14 @@ function appProvenanceBadges(app: RegistryAppInfo): Array<{
   if (flags.isCommunity) {
     badges.push({
       key: "support",
-      label: "Community",
+      label: t("appdetails.badge.community", { defaultValue: "Community" }),
       className: "border-warn/45 text-warn",
       title,
     });
   } else if (flags.isFirstParty) {
     badges.push({
       key: "support",
-      label: "First party",
+      label: t("appdetails.badge.firstParty", { defaultValue: "First party" }),
       className: "border-accent/45 text-accent",
       title,
     });
@@ -214,9 +222,19 @@ function SectionHeader({ children }: { children: string }): React.JSX.Element {
   );
 }
 
-function ChipList({ items }: { items: readonly string[] }): React.JSX.Element {
+function ChipList({
+  items,
+  t,
+}: {
+  items: readonly string[];
+  t: TranslateFn;
+}): React.JSX.Element {
   if (items.length === 0) {
-    return <span className="text-xs text-muted">None declared</span>;
+    return (
+      <span className="text-xs text-muted">
+        {t("appdetails.noneDeclared", { defaultValue: "None declared" })}
+      </span>
+    );
   }
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -235,9 +253,11 @@ function ChipList({ items }: { items: readonly string[] }): React.JSX.Element {
 function WidgetPreview({
   declaration,
   pluginId,
+  t,
 }: {
   declaration: PluginWidgetDeclaration;
   pluginId: string;
+  t: TranslateFn;
 }): React.JSX.Element {
   const Component = useMemo(
     () => getWidgetComponent(pluginId, declaration.id),
@@ -246,7 +266,10 @@ function WidgetPreview({
   if (!Component) {
     return (
       <div className="rounded-sm border border-border/40 bg-card/30 px-3 py-2 text-xs text-muted">
-        No bundled component for this widget — preview unavailable.
+        {t("appdetails.widgetPreviewUnavailable", {
+          defaultValue:
+            "No bundled component for this widget — preview unavailable.",
+        })}
       </div>
     );
   }
@@ -449,7 +472,11 @@ export function AppDetailsView({
         },
       });
       if (!created?.id) {
-        throw new Error("Desktop bridge declined to open the window.");
+        throw new Error(
+          t("appdetails.bridgeDeclined", {
+            defaultValue: "Desktop bridge declined to open the window.",
+          }),
+        );
       }
       recordResult(true);
       onLaunched?.({ mode: "window", slug });
@@ -491,7 +518,10 @@ export function AppDetailsView({
   if (!resolved && catalogLoading) {
     return (
       <div className="flex h-full min-h-0 w-full items-center justify-center text-sm text-muted">
-        Loading {slug}…
+        {t("appdetails.loadingSlug", {
+          slug,
+          defaultValue: "Loading {{slug}}…",
+        })}
       </div>
     );
   }
@@ -499,7 +529,12 @@ export function AppDetailsView({
     return (
       <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted">
         <TriangleAlert className="h-5 w-5 text-accent" />
-        <span>App not found: {slug}</span>
+        <span>
+          {t("appdetails.appNotFound", {
+            slug,
+            defaultValue: "App not found: {{slug}}",
+          })}
+        </span>
       </div>
     );
   }
@@ -513,11 +548,11 @@ export function AppDetailsView({
   const launchTarget = viewerUrl ?? resolved.windowPath;
   const sessionMode = resolved.info.session?.mode;
   const sessionFeatures = resolved.info.session?.features ?? [];
-  const provenanceBadges = appProvenanceBadges(resolved.info);
+  const provenanceBadges = appProvenanceBadges(resolved.info, t);
   const launchModeLabel =
     config.launchMode === "inline" && supportsInlineMode
-      ? "Main window"
-      : "Dedicated window";
+      ? t("appdetails.mainWindow", { defaultValue: "Main window" })
+      : t("appdetails.dedicatedWindow", { defaultValue: "Dedicated window" });
 
   return (
     <div className="device-layout mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 lg:px-6">
@@ -543,7 +578,7 @@ export function AppDetailsView({
             </h2>
             <p className="truncate text-xs text-muted">{resolved.info.name}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted">
-              <span>{sourceLabel(resolved.source)}</span>
+              <span>{sourceLabel(resolved.source, t)}</span>
               {provenanceBadges.map((badge) => (
                 <span
                   key={badge.key}
@@ -555,7 +590,10 @@ export function AppDetailsView({
               ))}
               {recentRuns.length > 0 ? (
                 <span className="rounded-full bg-accent/15 px-2 py-0.5 text-accent">
-                  {recentRuns.length} running
+                  {t("appdetails.runningCount", {
+                    count: recentRuns.length,
+                    defaultValue: "{{count}} running",
+                  })}
                 </span>
               ) : null}
             </div>
@@ -569,23 +607,36 @@ export function AppDetailsView({
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
-            <SectionHeader>Launch</SectionHeader>
+            <SectionHeader>
+              {t("appdetails.launch", { defaultValue: "Launch" })}
+            </SectionHeader>
             <p className="text-xs text-muted">
               {activeRun
-                ? `${activeRun.displayName} is ${activeRun.status}.`
-                : "Ready to launch."}
+                ? t("appdetails.runStatus", {
+                    name: activeRun.displayName,
+                    status: activeRun.status,
+                    defaultValue: "{{name}} is {{status}}.",
+                  })
+                : t("appdetails.readyToLaunch", {
+                    defaultValue: "Ready to launch.",
+                  })}
             </p>
           </div>
           <button
             type="button"
             onClick={handleLaunch}
             disabled={launching}
-            title={`Launch ${resolved.info.displayName ?? resolved.info.name}`}
+            title={t("appdetails.launchTitle", {
+              name: resolved.info.displayName ?? resolved.info.name,
+              defaultValue: "Launch {{name}}",
+            })}
             className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Rocket className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">
-              {launching ? "Launching..." : "Launch"}
+              {launching
+                ? t("appdetails.launching", { defaultValue: "Launching..." })
+                : t("appdetails.launch", { defaultValue: "Launch" })}
             </span>
           </button>
         </div>
@@ -593,15 +644,16 @@ export function AppDetailsView({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="min-w-0 border-l border-border/35 pl-3">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
-              Run
+              {t("appdetails.statRun", { defaultValue: "Run" })}
             </div>
             <div className="truncate text-sm font-medium text-foreground">
-              {activeRun?.status ?? "Ready"}
+              {activeRun?.status ??
+                t("appdetails.statReady", { defaultValue: "Ready" })}
             </div>
           </div>
           <div className="min-w-0 border-l border-border/35 pl-3">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
-              Window
+              {t("appdetails.statWindow", { defaultValue: "Window" })}
             </div>
             <div className="truncate text-sm font-medium text-foreground">
               {launchModeLabel}
@@ -609,21 +661,27 @@ export function AppDetailsView({
           </div>
           <div className="min-w-0 border-l border-border/35 pl-3">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
-              Target
+              {t("appdetails.statTarget", { defaultValue: "Target" })}
             </div>
             <div
               className="truncate text-sm font-medium text-foreground"
               title={launchTarget}
             >
-              {viewerUrl ? "Viewer" : "App route"}
+              {viewerUrl
+                ? t("appdetails.targetViewer", { defaultValue: "Viewer" })
+                : t("appdetails.targetAppRoute", { defaultValue: "App route" })}
             </div>
           </div>
           <div className="min-w-0 border-l border-border/35 pl-3">
             <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
-              Session
+              {t("appdetails.statSession", { defaultValue: "Session" })}
             </div>
             <div className="truncate text-sm font-medium text-foreground">
-              {sessionMode ? formatLabel(sessionMode) : "Not declared"}
+              {sessionMode
+                ? formatLabel(sessionMode)
+                : t("appdetails.sessionNotDeclared", {
+                    defaultValue: "Not declared",
+                  })}
             </div>
           </div>
         </div>
@@ -643,14 +701,22 @@ export function AppDetailsView({
 
         {latestFailure ? (
           <div className="rounded-sm border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-muted">
-            <span className="font-medium text-destructive">Last failure: </span>
-            {latestFailure.errorMessage ?? "Launch failed."}
+            <span className="font-medium text-destructive">
+              {t("appdetails.lastFailure", { defaultValue: "Last failure: " })}
+            </span>
+            {latestFailure.errorMessage ??
+              t("appdetails.launchFailedShort", {
+                defaultValue: "Launch failed.",
+              })}
           </div>
         ) : null}
 
         <fieldset className="flex flex-col gap-2 rounded-sm border border-border/40 bg-bg/20 p-3">
           <legend className="px-1 text-xs uppercase tracking-[0.14em] text-muted">
-            <SettingsIcon className="mr-1 inline h-3 w-3" /> Launch Destination
+            <SettingsIcon className="mr-1 inline h-3 w-3" />{" "}
+            {t("appdetails.launchDestination", {
+              defaultValue: "Launch Destination",
+            })}
           </legend>
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
@@ -659,7 +725,11 @@ export function AppDetailsView({
               onChange={() => updateConfig({ launchMode: "window" })}
               className="h-3.5 w-3.5 accent-accent"
             />
-            <span>Dedicated window</span>
+            <span>
+              {t("appdetails.dedicatedWindow", {
+                defaultValue: "Dedicated window",
+              })}
+            </span>
           </label>
           <label
             className={`flex items-center gap-2 text-sm ${
@@ -676,7 +746,11 @@ export function AppDetailsView({
               className="h-3.5 w-3.5 accent-accent"
             />
             <span>
-              Main window{!supportsInlineMode ? " (not supported)" : ""}
+              {!supportsInlineMode
+                ? t("appdetails.mainWindowNotSupported", {
+                    defaultValue: "Main window (not supported)",
+                  })
+                : t("appdetails.mainWindow", { defaultValue: "Main window" })}
             </span>
           </label>
         </fieldset>
@@ -702,22 +776,30 @@ export function AppDetailsView({
           ) : (
             <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
           )}
-          <span>Keep this app's window on top</span>
+          <span>
+            {t("appdetails.keepOnTop", {
+              defaultValue: "Keep this app's window on top",
+            })}
+          </span>
         </label>
       </section>
 
       {/* Description + Capabilities */}
       <section className="flex flex-col gap-3">
-        <SectionHeader>About</SectionHeader>
+        <SectionHeader>
+          {t("appdetails.about", { defaultValue: "About" })}
+        </SectionHeader>
         {resolved.info.description ? (
           <p className="text-sm text-muted">{resolved.info.description}</p>
         ) : null}
-        <ChipList items={resolved.info.capabilities ?? []} />
+        <ChipList items={resolved.info.capabilities ?? []} t={t} />
       </section>
 
       {DetailExtension ? (
         <section className="flex flex-col gap-3">
-          <SectionHeader>Details</SectionHeader>
+          <SectionHeader>
+            {t("appdetails.details", { defaultValue: "Details" })}
+          </SectionHeader>
           <DetailExtension app={resolved.info} />
         </section>
       ) : null}
@@ -725,7 +807,9 @@ export function AppDetailsView({
       {/* Recent runs */}
       {recentRuns.length > 0 ? (
         <section className="flex flex-col gap-2">
-          <SectionHeader>Recent Runs</SectionHeader>
+          <SectionHeader>
+            {t("appdetails.recentRuns", { defaultValue: "Recent Runs" })}
+          </SectionHeader>
           <ul className="flex flex-col gap-1 text-xs text-muted">
             {recentRuns.map((run) => (
               <li
@@ -744,9 +828,17 @@ export function AppDetailsView({
 
       {/* Diagnostics */}
       <section className="flex flex-col gap-2">
-        <SectionHeader>Launch Diagnostics</SectionHeader>
+        <SectionHeader>
+          {t("appdetails.launchDiagnostics", {
+            defaultValue: "Launch Diagnostics",
+          })}
+        </SectionHeader>
         {history.length === 0 ? (
-          <p className="text-xs text-muted">No launch history yet.</p>
+          <p className="text-xs text-muted">
+            {t("appdetails.noLaunchHistory", {
+              defaultValue: "No launch history yet.",
+            })}
+          </p>
         ) : (
           <ul className="flex flex-col gap-1 text-xs">
             {history.slice(0, 5).map((entry) => (
@@ -763,7 +855,9 @@ export function AppDetailsView({
                       entry.succeeded ? "text-accent" : "text-destructive"
                     }
                   >
-                    {entry.succeeded ? "OK" : "FAILED"}
+                    {entry.succeeded
+                      ? t("appdetails.diagOk", { defaultValue: "OK" })
+                      : t("appdetails.diagFailed", { defaultValue: "FAILED" })}
                   </span>
                 </div>
                 {entry.errorMessage ? (
@@ -778,7 +872,9 @@ export function AppDetailsView({
       {/* Widgets */}
       {widgets.length > 0 ? (
         <section className="flex flex-col gap-2">
-          <SectionHeader>Widgets</SectionHeader>
+          <SectionHeader>
+            {t("appdetails.widgets", { defaultValue: "Widgets" })}
+          </SectionHeader>
           <ul className="flex flex-col gap-2">
             {widgets.map((decl) => {
               const visible = isWidgetVisible(decl, visibility.overrides);
@@ -806,7 +902,11 @@ export function AppDetailsView({
                         }
                         className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
                       >
-                        {expanded ? "Hide" : "Preview"}
+                        {expanded
+                          ? t("appdetails.hide", { defaultValue: "Hide" })
+                          : t("appdetails.preview", {
+                              defaultValue: "Preview",
+                            })}
                       </button>
                       <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs">
                         <input
@@ -817,7 +917,9 @@ export function AppDetailsView({
                           }
                           className="h-3.5 w-3.5 accent-accent"
                         />
-                        <span className="text-muted">Show</span>
+                        <span className="text-muted">
+                          {t("appdetails.show", { defaultValue: "Show" })}
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -826,6 +928,7 @@ export function AppDetailsView({
                       <WidgetPreview
                         declaration={decl}
                         pluginId={resolved.pluginId}
+                        t={t}
                       />
                     </div>
                   ) : null}

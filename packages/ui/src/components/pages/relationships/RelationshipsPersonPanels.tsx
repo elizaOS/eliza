@@ -37,6 +37,10 @@ import type {
   RelationshipsProfile,
 } from "../../../api/client-types-relationships";
 import { shouldUseHashNavigation } from "../../../navigation";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../../state/TranslationContext";
 import { formatDateTime, formatShortDate } from "../../../utils/format";
 import { PagePanel } from "../../composites/page-panel";
 import { MetaPill } from "../../composites/page-panel/page-panel-header";
@@ -133,10 +137,20 @@ function sentimentIcon(
   return Meh;
 }
 
-function sentimentAriaLabel(sentiment: string): string {
-  if (sentiment === "positive") return "Positive sentiment";
-  if (sentiment === "negative") return "Negative sentiment";
-  return "Neutral sentiment";
+type TranslateFn = TranslationContextValue["t"];
+
+function sentimentAriaLabel(sentiment: string, t: TranslateFn): string {
+  if (sentiment === "positive")
+    return t("relationships.sentiment.positive", {
+      defaultValue: "Positive sentiment",
+    });
+  if (sentiment === "negative")
+    return t("relationships.sentiment.negative", {
+      defaultValue: "Negative sentiment",
+    });
+  return t("relationships.sentiment.neutral", {
+    defaultValue: "Neutral sentiment",
+  });
 }
 
 function sourceTypeIcon(
@@ -181,9 +195,17 @@ function PanelMarker({
   count: number;
   label: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mb-2 flex justify-end">
-      <MetaPill compact aria-label={`${label} count`} title={label}>
+      <MetaPill
+        compact
+        aria-label={t("relationships.panel.countAria", {
+          label,
+          defaultValue: "{{label}} count",
+        })}
+        title={label}
+      >
         <Icon className="mr-1 h-3 w-3" />
         {count}
       </MetaPill>
@@ -212,6 +234,7 @@ function OwnerNameEditor({
   initialName: string;
   onSaved: (next: string) => void;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initialName);
   const [saving, setSaving] = useState(false);
@@ -241,7 +264,13 @@ function OwnerNameEditor({
       onSaved(next);
       setEditing(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save name.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("relationships.owner.saveFailed", {
+              defaultValue: "Failed to save name.",
+            }),
+      );
     } finally {
       setSaving(false);
     }
@@ -253,7 +282,9 @@ function OwnerNameEditor({
         type="button"
         onClick={() => setEditing(true)}
         className="group inline-flex items-center gap-2 rounded-sm text-left transition hover:bg-card/40"
-        aria-label="Edit owner name"
+        aria-label={t("relationships.owner.editAria", {
+          defaultValue: "Edit owner name",
+        })}
       >
         <span className="break-words text-[1.75rem] font-semibold leading-tight text-txt">
           {initialName}
@@ -277,10 +308,14 @@ function OwnerNameEditor({
         disabled={saving}
         maxLength={60}
         className="min-w-0 flex-1 rounded-sm border border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt outline-none focus:border-accent"
-        aria-label="Owner name"
+        aria-label={t("relationships.owner.nameAria", {
+          defaultValue: "Owner name",
+        })}
       />
       <Button type="submit" size="sm" disabled={saving}>
-        {saving ? "Saving..." : "Save"}
+        {saving
+          ? t("relationships.owner.saving", { defaultValue: "Saving..." })
+          : t("relationships.owner.save", { defaultValue: "Save" })}
       </Button>
       <Button
         type="button"
@@ -289,7 +324,7 @@ function OwnerNameEditor({
         disabled={saving}
         onClick={() => setEditing(false)}
       >
-        Cancel
+        {t("relationships.owner.cancel", { defaultValue: "Cancel" })}
       </Button>
       {error ? (
         <span className="text-xs text-danger" role="alert">
@@ -307,8 +342,10 @@ function ProfileCard({
   person: RelationshipsDisplayPerson;
   profile: RelationshipsProfile;
 }) {
+  const { t } = useTranslation();
   const primaryValue =
-    profilePrimaryValue(person, profile.source) ?? "Unknown profile";
+    profilePrimaryValue(person, profile.source) ??
+    t("relationships.unknownProfile", { defaultValue: "Unknown profile" });
   const secondary =
     profile.handle ??
     (profile.displayName && profile.displayName !== primaryValue
@@ -423,11 +460,14 @@ export function RelationshipsPersonSummaryPanel({
   onViewMemories?: (entityIds: string[]) => void;
   onOwnerNameUpdated?: (next: string) => void;
 }) {
+  const { t } = useTranslation();
   const avatarUrl = resolvePrimaryAvatar(person);
   const contacts = topContacts(person);
   const hasProfiles = person.profiles.length > 0;
   const ownerEdge = findOwnerEdge(person, ownerGroupId);
-  const ownerLabel = ownerDisplayName ?? "Owner";
+  const ownerLabel =
+    ownerDisplayName ??
+    t("relationships.owner.label", { defaultValue: "Owner" });
 
   const labels = [...person.categories, ...person.tags];
 
@@ -447,7 +487,9 @@ export function RelationshipsPersonSummaryPanel({
               {person.isOwner ? (
                 <Crown
                   className="h-4 w-4 shrink-0 text-accent"
-                  aria-label="Owner"
+                  aria-label={t("relationships.owner.label", {
+                    defaultValue: "Owner",
+                  })}
                 />
               ) : null}
               {person.isOwner ? (
@@ -503,7 +545,9 @@ export function RelationshipsPersonSummaryPanel({
               variant="outline"
               className="h-7 rounded-full px-3 text-2xs font-semibold"
               onClick={() => onViewMemories(person.memberEntityIds)}
-              aria-label="View memories"
+              aria-label={t("relationships.viewMemories", {
+                defaultValue: "View memories",
+              })}
             >
               <Brain className="h-3.5 w-3.5" />
             </Button>
@@ -557,7 +601,9 @@ export function RelationshipsPersonSummaryPanel({
         <details className="rounded-sm border border-border/24 bg-card/24 px-3 py-2">
           <summary
             className="inline-flex cursor-pointer list-none items-center gap-2 rounded-full text-xs-tight font-semibold text-muted transition hover:text-txt"
-            title="Profiles and identities"
+            title={t("relationships.profilesAndIdentities", {
+              defaultValue: "Profiles and identities",
+            })}
           >
             <AtSign className="h-3 w-3" />
             {person.profiles.length}
@@ -585,6 +631,7 @@ function OwnerRelationshipSection({
   ownerLabel: string;
   ownerEdge: RelationshipsGraphEdge | null;
 }) {
+  const { t } = useTranslation();
   const sentiment = ownerEdge?.sentiment ?? "neutral";
   const SentimentIcon = sentimentIcon(sentiment);
   const memoryCount = person.relevantMemories.length;
@@ -612,7 +659,7 @@ function OwnerRelationshipSection({
         <span className="ml-auto flex flex-wrap items-center gap-1.5">
           <span
             role="img"
-            aria-label={sentimentAriaLabel(sentiment)}
+            aria-label={sentimentAriaLabel(sentiment, t)}
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold ${sentimentClasses(sentiment)}`}
           >
             <SentimentIcon className="h-3 w-3" />
@@ -637,6 +684,7 @@ export function RelationshipsFactsPanel({
 }: {
   person: RelationshipsDisplayPerson;
 }) {
+  const { t } = useTranslation();
   const shownFacts = visibleItems(person.facts);
   const hiddenFacts = person.facts.slice(PANEL_PREVIEW_LIMIT);
 
@@ -649,14 +697,30 @@ export function RelationshipsFactsPanel({
         className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
       >
         <div className="flex flex-wrap items-center gap-1.5">
-          <IconPill icon={SourceIcon} ariaLabel={`${fact.sourceType} fact`} />
+          <IconPill
+            icon={SourceIcon}
+            ariaLabel={t("relationships.fact.sourceAria", {
+              sourceType: fact.sourceType,
+              defaultValue: "{{sourceType}} fact",
+            })}
+          />
           {typeof fact.confidence === "number" ? (
-            <IconPill icon={Gauge} ariaLabel="Confidence">
+            <IconPill
+              icon={Gauge}
+              ariaLabel={t("relationships.confidence", {
+                defaultValue: "Confidence",
+              })}
+            >
               {Math.round(fact.confidence * 100)}%
             </IconPill>
           ) : null}
           {evidenceCount > 0 ? (
-            <IconPill icon={FileText} ariaLabel="Evidence count">
+            <IconPill
+              icon={FileText}
+              ariaLabel={t("relationships.evidenceCount", {
+                defaultValue: "Evidence count",
+              })}
+            >
               {evidenceCount}
             </IconPill>
           ) : null}
@@ -669,9 +733,15 @@ export function RelationshipsFactsPanel({
   };
 
   return (
-    <DataPanel label="Facts" icon={BadgeCheck} count={person.facts.length}>
+    <DataPanel
+      label={t("relationships.facts.title", { defaultValue: "Facts" })}
+      icon={BadgeCheck}
+      count={person.facts.length}
+    >
       {person.facts.length === 0 ? (
-        <PanelEmpty icon={BadgeCheck}>No facts.</PanelEmpty>
+        <PanelEmpty icon={BadgeCheck}>
+          {t("relationships.facts.empty", { defaultValue: "No facts." })}
+        </PanelEmpty>
       ) : (
         <div className="space-y-2">
           {shownFacts.map(renderFact)}
@@ -689,6 +759,7 @@ export function RelationshipsConnectionsPanel({
 }: {
   person: RelationshipsDisplayPerson;
 }) {
+  const { t } = useTranslation();
   const shownRelationships = visibleItems(person.relationships);
   const hiddenRelationships = person.relationships.slice(PANEL_PREVIEW_LIMIT);
   const renderRelationship = (
@@ -703,7 +774,7 @@ export function RelationshipsConnectionsPanel({
         <div className="flex flex-wrap items-center gap-1.5">
           <span
             role="img"
-            aria-label={sentimentAriaLabel(relationship.sentiment)}
+            aria-label={sentimentAriaLabel(relationship.sentiment, t)}
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold ${sentimentClasses(relationship.sentiment)}`}
           >
             <SentimentIcon className="h-3 w-3" />
@@ -732,12 +803,18 @@ export function RelationshipsConnectionsPanel({
 
   return (
     <DataPanel
-      label="Relationships"
+      label={t("relationships.connections.title", {
+        defaultValue: "Relationships",
+      })}
       icon={Link2}
       count={person.relationships.length}
     >
       {person.relationships.length === 0 ? (
-        <PanelEmpty icon={Link2}>No relationships.</PanelEmpty>
+        <PanelEmpty icon={Link2}>
+          {t("relationships.connections.empty", {
+            defaultValue: "No relationships.",
+          })}
+        </PanelEmpty>
       ) : (
         <div className="space-y-2">
           {shownRelationships.map(renderRelationship)}
@@ -755,6 +832,7 @@ export function RelationshipsConversationsPanel({
 }: {
   person: RelationshipsDisplayPerson;
 }) {
+  const { t } = useTranslation();
   const shownConversations = visibleItems(
     person.recentConversations,
     CONVERSATION_PREVIEW_LIMIT,
@@ -806,12 +884,18 @@ export function RelationshipsConversationsPanel({
 
   return (
     <DataPanel
-      label="Conversations"
+      label={t("relationships.conversations.title", {
+        defaultValue: "Conversations",
+      })}
       icon={MessageCircle}
       count={person.recentConversations.length}
     >
       {person.recentConversations.length === 0 ? (
-        <PanelEmpty icon={MessageCircle}>No conversations.</PanelEmpty>
+        <PanelEmpty icon={MessageCircle}>
+          {t("relationships.conversations.empty", {
+            defaultValue: "No conversations.",
+          })}
+        </PanelEmpty>
       ) : (
         <div className="grid gap-2 xl:grid-cols-2">
           {shownConversations.map(renderConversation)}
@@ -838,6 +922,7 @@ export function RelationshipsRelevantMemoriesPanel({
 }: {
   person: RelationshipsDisplayPerson;
 }) {
+  const { t } = useTranslation();
   const shownMemories = visibleItems(person.relevantMemories);
   const hiddenMemories = person.relevantMemories.slice(PANEL_PREVIEW_LIMIT);
   const renderMemory = (memory: (typeof person.relevantMemories)[number]) => {
@@ -874,12 +959,14 @@ export function RelationshipsRelevantMemoriesPanel({
 
   return (
     <DataPanel
-      label="Memories"
+      label={t("relationships.memories.title", { defaultValue: "Memories" })}
       icon={Brain}
       count={person.relevantMemories.length}
     >
       {person.relevantMemories.length === 0 ? (
-        <PanelEmpty icon={Brain}>No memories.</PanelEmpty>
+        <PanelEmpty icon={Brain}>
+          {t("relationships.memories.empty", { defaultValue: "No memories." })}
+        </PanelEmpty>
       ) : (
         <div className="space-y-2">
           {shownMemories.map(renderMemory)}
@@ -897,6 +984,7 @@ export function RelationshipsUserPreferencesPanel({
 }: {
   person: RelationshipsDisplayPerson;
 }) {
+  const { t } = useTranslation();
   const shownPreferences = visibleItems(person.userPersonalityPreferences);
   const hiddenPreferences =
     person.userPersonalityPreferences.slice(PANEL_PREVIEW_LIMIT);
@@ -908,7 +996,12 @@ export function RelationshipsUserPreferencesPanel({
       className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <IconPill icon={Sparkles} ariaLabel="Preference">
+        <IconPill
+          icon={Sparkles}
+          ariaLabel={t("relationships.preference.aria", {
+            defaultValue: "Preference",
+          })}
+        >
           {preference.category ?? "preference"}
         </IconPill>
         {preference.createdAt ? (
@@ -930,7 +1023,9 @@ export function RelationshipsUserPreferencesPanel({
         <details className="mt-2">
           <summary className="inline-flex cursor-pointer list-none items-center rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt">
             <FileText className="mr-1 h-3 w-3" />
-            request
+            {t("relationships.preference.request", {
+              defaultValue: "request",
+            })}
           </summary>
           <div className="mt-1 text-xs leading-5 text-muted">
             {cleanPreviewText(preference.originalRequest, 260)}
@@ -942,12 +1037,18 @@ export function RelationshipsUserPreferencesPanel({
 
   return (
     <DataPanel
-      label="Preferences"
+      label={t("relationships.preferences.title", {
+        defaultValue: "Preferences",
+      })}
       icon={Sparkles}
       count={person.userPersonalityPreferences.length}
     >
       {person.userPersonalityPreferences.length === 0 ? (
-        <PanelEmpty icon={Sparkles}>No preferences.</PanelEmpty>
+        <PanelEmpty icon={Sparkles}>
+          {t("relationships.preferences.empty", {
+            defaultValue: "No preferences.",
+          })}
+        </PanelEmpty>
       ) : (
         <div className="space-y-2">
           {shownPreferences.map(renderPreference)}
@@ -965,6 +1066,7 @@ export function RelationshipsDocumentsPanel({
 }: {
   person: RelationshipsDisplayPerson;
 }) {
+  const { t } = useTranslation();
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1020,7 +1122,9 @@ export function RelationshipsDocumentsPanel({
         setError(
           loadError instanceof Error
             ? loadError.message
-            : "Failed to load documents.",
+            : t("relationships.documents.loadFailed", {
+                defaultValue: "Failed to load documents.",
+              }),
         );
         setDocuments([]);
       } finally {
@@ -1037,7 +1141,7 @@ export function RelationshipsDocumentsPanel({
     return () => {
       cancelled = true;
     };
-  }, [memberEntityKey]);
+  }, [memberEntityKey, t]);
 
   const shownDocuments = visibleItems(documents);
   const hiddenDocuments = documents.slice(PANEL_PREVIEW_LIMIT);
@@ -1057,10 +1161,20 @@ export function RelationshipsDocumentsPanel({
         className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
       >
         <div className="flex flex-wrap items-center gap-1.5">
-          <IconPill icon={FileText} ariaLabel="Document">
+          <IconPill
+            icon={FileText}
+            ariaLabel={t("relationships.document.aria", {
+              defaultValue: "Document",
+            })}
+          >
             {doc.filename}
           </IconPill>
-          <IconPill icon={ScopeIcon} ariaLabel="Scope">
+          <IconPill
+            icon={ScopeIcon}
+            ariaLabel={t("relationships.document.scopeAria", {
+              defaultValue: "Scope",
+            })}
+          >
             {doc.scope ?? "global"}
           </IconPill>
           {doc.createdAt ? (
@@ -1084,20 +1198,32 @@ export function RelationshipsDocumentsPanel({
           className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
         >
           <Link2 className="h-3 w-3" />
-          Open
+          {t("relationships.document.open", { defaultValue: "Open" })}
         </button>
       </div>
     );
   };
 
   return (
-    <DataPanel label="Documents" icon={FileText} count={documents.length}>
+    <DataPanel
+      label={t("relationships.documents.title", { defaultValue: "Documents" })}
+      icon={FileText}
+      count={documents.length}
+    >
       {loading ? (
-        <PanelEmpty icon={FileText}>Loading documents...</PanelEmpty>
+        <PanelEmpty icon={FileText}>
+          {t("relationships.documents.loading", {
+            defaultValue: "Loading documents...",
+          })}
+        </PanelEmpty>
       ) : error ? (
         <PanelEmpty icon={FileText}>{error}</PanelEmpty>
       ) : documents.length === 0 ? (
-        <PanelEmpty icon={FileText}>No documents.</PanelEmpty>
+        <PanelEmpty icon={FileText}>
+          {t("relationships.documents.empty", {
+            defaultValue: "No documents.",
+          })}
+        </PanelEmpty>
       ) : (
         <div className="space-y-2">
           {shownDocuments.map(renderDocument)}

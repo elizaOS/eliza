@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/types.eliza";
 import {
   applySubscriptionProviderConfig,
+  clearPersistedFirstRunConfig,
   clearSubscriptionProviderConfig,
   openAiBaseUrlIsThirdParty,
 } from "./provider-switch-config";
@@ -47,6 +48,91 @@ describe("applySubscriptionProviderConfig", () => {
 
     expect(config.agents?.defaults?.subscriptionProvider).toBeUndefined();
     expect(process.env.OPENAI_API_KEY).toBe("sk-direct-openai-key");
+  });
+});
+
+describe("clearPersistedFirstRunConfig (reset everything)", () => {
+  const CLOUD_ENV_KEYS = [
+    "ELIZAOS_CLOUD_API_KEY",
+    "ELIZAOS_CLOUD_ENABLED",
+    "ELIZAOS_CLOUD_NANO_MODEL",
+    "ELIZAOS_CLOUD_MEDIUM_MODEL",
+    "ELIZAOS_CLOUD_SMALL_MODEL",
+    "ELIZAOS_CLOUD_LARGE_MODEL",
+    "ELIZAOS_CLOUD_MEGA_MODEL",
+  ] as const;
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    for (const key of CLOUD_ENV_KEYS) {
+      delete process.env[key];
+    }
+  });
+
+  function buildFullyOnboardedConfig(): Partial<ElizaConfig> {
+    return {
+      meta: { firstRunComplete: true },
+      agents: { list: [{ id: "agent-1", name: "Eliza" }] },
+      cloud: { apiKey: "cloud-secret", enabled: true },
+      models: { nano: "n", small: "s", medium: "m", large: "l", mega: "x" },
+      messages: { tts: { provider: "elevenlabs" } },
+      ui: { selectedVrmIndex: 3 },
+      connection: { provider: "openai", apiKey: "sk-live" },
+      deploymentTarget: { runtime: "cloud" },
+      linkedAccounts: { elizacloud: { status: "linked" } },
+      serviceRouting: { llmText: { transport: "cloud-proxy", backend: "x" } },
+      env: { vars: { OPENAI_API_KEY: "sk-config" } },
+    } as unknown as Partial<ElizaConfig>;
+  }
+
+  it("wipes every onboarding-derived slot back to a fresh-install shape", () => {
+    process.env.OPENAI_API_KEY = "sk-config";
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-secret";
+    process.env.ELIZAOS_CLOUD_ENABLED = "true";
+
+    const config = buildFullyOnboardedConfig();
+    clearPersistedFirstRunConfig(config);
+
+    expect((config.meta as Record<string, unknown>)?.firstRunComplete).toBe(
+      undefined,
+    );
+    expect(config.agents).toEqual({ list: [] });
+    expect(config.cloud).toEqual({});
+    expect(config.models).toBeUndefined();
+    expect(config.messages).toBeUndefined();
+    expect(config.ui).toBeUndefined();
+    expect((config as Record<string, unknown>).connection).toBeUndefined();
+    expect(config.deploymentTarget).toBeUndefined();
+    expect(config.linkedAccounts).toBeUndefined();
+    expect(config.serviceRouting).toBeUndefined();
+  });
+
+  it("clears provider credentials from both config.env and process.env", () => {
+    process.env.OPENAI_API_KEY = "sk-config";
+
+    const config = buildFullyOnboardedConfig();
+    clearPersistedFirstRunConfig(config);
+
+    expect(config.env).toBeUndefined();
+    expect(process.env.OPENAI_API_KEY).toBeUndefined();
+  });
+
+  it("strips Eliza Cloud env keys so a fresh boot does not re-link cloud", () => {
+    for (const key of CLOUD_ENV_KEYS) {
+      process.env[key] = "stale";
+    }
+
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+
+    for (const key of CLOUD_ENV_KEYS) {
+      expect(process.env[key]).toBeUndefined();
+    }
+  });
+
+  it("is a no-op-safe on an already-empty config", () => {
+    const config: Partial<ElizaConfig> = {};
+    expect(() => clearPersistedFirstRunConfig(config)).not.toThrow();
+    expect(config.agents).toEqual({ list: [] });
   });
 });
 

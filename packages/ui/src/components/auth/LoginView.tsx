@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext";
 import {
   SetupStepDivider,
   setupBodyTextShadowStyle,
@@ -45,6 +46,7 @@ function PasswordTab({
   onLoginSuccess: () => void;
   loginFn?: LoginViewProps["loginFn"];
 }) {
+  const { t } = useTranslation();
   const displayNameId = useId().replace(/:/g, "");
   const passwordId = useId().replace(/:/g, "");
 
@@ -73,7 +75,11 @@ function PasswordTab({
         setSubmitState({
           phase: "error",
           message:
-            err instanceof Error ? err.message : "Network error — try again.",
+            err instanceof Error
+              ? err.message
+              : t("loginview.error.network", {
+                  defaultValue: "Network error — try again.",
+                }),
         });
         return;
       }
@@ -86,7 +92,7 @@ function PasswordTab({
       setSubmitState({ phase: "success" });
       onLoginSuccess();
     },
-    [displayName, password, rememberDevice, loginFn, onLoginSuccess],
+    [displayName, password, rememberDevice, loginFn, onLoginSuccess, t],
   );
 
   const isSubmitting = submitState.phase === "submitting";
@@ -99,13 +105,17 @@ function PasswordTab({
             htmlFor={displayNameId}
             className="text-xs uppercase tracking-wide text-muted-foreground"
           >
-            Display name
+            {t("loginview.displayName.label", {
+              defaultValue: "Display name",
+            })}
           </Label>
           <Input
             id={displayNameId}
             type="text"
             autoComplete="username"
-            placeholder="Your display name"
+            placeholder={t("loginview.displayName.placeholder", {
+              defaultValue: "Your display name",
+            })}
             value={displayName}
             onChange={(e) => {
               setDisplayName(e.target.value);
@@ -122,13 +132,15 @@ function PasswordTab({
             htmlFor={passwordId}
             className="text-xs uppercase tracking-wide text-muted-foreground"
           >
-            Password
+            {t("loginview.password.label", { defaultValue: "Password" })}
           </Label>
           <Input
             id={passwordId}
             type="password"
             autoComplete="current-password"
-            placeholder="Your password"
+            placeholder={t("loginview.password.placeholder", {
+              defaultValue: "Your password",
+            })}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
@@ -148,7 +160,9 @@ function PasswordTab({
             disabled={isSubmitting}
             className="h-4 w-4 rounded-sm border-border accent-primary"
           />
-          Remember this device for 30 days
+          {t("loginview.rememberDevice", {
+            defaultValue: "Remember this device for 30 days",
+          })}
         </label>
       </div>
 
@@ -166,7 +180,9 @@ function PasswordTab({
         disabled={isSubmitting || !displayName.trim() || !password}
         className="w-full"
       >
-        {isSubmitting ? "Signing in…" : "Sign in"}
+        {isSubmitting
+          ? t("loginview.signingIn", { defaultValue: "Signing in…" })
+          : t("loginview.signIn", { defaultValue: "Sign in" })}
       </Button>
     </form>
   );
@@ -180,6 +196,7 @@ const SCREEN_CARD_CLASS =
   "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95 backdrop-blur-xl";
 
 export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
+  const { t } = useTranslation();
   const remotePasswordMissing = reason === "remote_password_not_configured";
 
   return (
@@ -199,15 +216,24 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
               className={cn(setupTitleClass, "mt-2")}
               style={{ textShadow: "var(--first-run-text-shadow-strong)" }}
             >
-              {remotePasswordMissing ? "Remote access blocked" : "Sign in"}
+              {remotePasswordMissing
+                ? t("loginview.title.blocked", {
+                    defaultValue: "Remote access blocked",
+                  })
+                : t("loginview.title.signIn", { defaultValue: "Sign in" })}
             </CardTitle>
             <p
               className={cn(setupDescriptionClass, "mt-2")}
               style={setupBodyTextShadowStyle}
             >
               {remotePasswordMissing
-                ? "A remote password is required before this instance can accept browser logins from another machine."
-                : "Sign in with your password."}
+                ? t("loginview.description.blocked", {
+                    defaultValue:
+                      "A remote password is required before this instance can accept browser logins from another machine.",
+                  })
+                : t("loginview.description.signIn", {
+                    defaultValue: "Sign in with your password.",
+                  })}
             </p>
           </div>
         </CardHeader>
@@ -219,18 +245,23 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
               className="space-y-3 rounded-sm border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
             >
               <p>
-                The remote agent has no owner password configured yet, so it
-                cannot accept logins from another machine. Set one on the host
-                first.
+                {t("loginview.blocked.body", {
+                  defaultValue:
+                    "The remote agent has no owner password configured yet, so it cannot accept logins from another machine. Set one on the host first.",
+                })}
               </p>
               <div className="space-y-2">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground/70">
-                  Two ways to fix it:
+                  {t("loginview.blocked.twoWays", {
+                    defaultValue: "Two ways to fix it:",
+                  })}
                 </p>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground/80">
-                    From a browser on the host machine, open this URL then go to
-                    Settings → Security:
+                    {t("loginview.blocked.browserHint", {
+                      defaultValue:
+                        "From a browser on the host machine, open this URL then go to Settings → Security:",
+                    })}
                   </p>
                   <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
                     http://localhost:31337/
@@ -238,7 +269,10 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground/80">
-                    Or via SSH (replace YOURNAME and YOURPASS with your own):
+                    {t("loginview.blocked.sshHint", {
+                      defaultValue:
+                        "Or via SSH (replace YOURNAME and YOURPASS with your own):",
+                    })}
                   </p>
                   <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
                     {`curl -X POST http://127.0.0.1:31337/api/auth/setup -H "Content-Type: application/json" -d '{"displayName":"YOURNAME","password":"YOURPASS"}'`}
@@ -246,7 +280,10 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground/70">
-                Then return to this screen — it will refresh automatically.
+                {t("loginview.blocked.returnHint", {
+                  defaultValue:
+                    "Then return to this screen — it will refresh automatically.",
+                })}
               </p>
             </div>
           ) : (

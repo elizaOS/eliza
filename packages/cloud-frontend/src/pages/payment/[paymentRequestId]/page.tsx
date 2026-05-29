@@ -11,7 +11,10 @@ import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError, api } from "../../../lib/api-client";
+
+type TFn = ReturnType<typeof useT>;
 
 type PaymentProvider = "stripe" | "oxapay" | "x402" | "crypto";
 type PaymentContext = "verified_payer" | "any_payer";
@@ -68,13 +71,16 @@ function formatDate(value: string | null): string | null {
   }).format(new Date(value));
 }
 
-function normalizeError(error: unknown): string {
+function normalizeError(error: unknown, t: TFn): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
-  return "Unable to load payment request.";
+  return t("cloud.paymentRequest.unableToLoad", {
+    defaultValue: "Unable to load payment request.",
+  });
 }
 
 export default function PaymentRequestPage() {
+  const t = useT();
   const { paymentRequestId } = useParams<{ paymentRequestId: string }>();
   const [paymentRequest, setPaymentRequest] =
     useState<PublicPaymentRequest | null>(null);
@@ -84,7 +90,11 @@ export default function PaymentRequestPage() {
 
   const load = useCallback(async () => {
     if (!paymentRequestId) {
-      setError("Missing payment request id.");
+      setError(
+        t("cloud.paymentRequest.missingId", {
+          defaultValue: "Missing payment request id.",
+        }),
+      );
       setIsLoading(false);
       return;
     }
@@ -97,11 +107,11 @@ export default function PaymentRequestPage() {
       );
       setPaymentRequest(response.paymentRequest);
     } catch (loadError) {
-      setError(normalizeError(loadError));
+      setError(normalizeError(loadError, t));
     } finally {
       setIsLoading(false);
     }
-  }, [paymentRequestId]);
+  }, [paymentRequestId, t]);
 
   useEffect(() => {
     load();
@@ -111,7 +121,11 @@ export default function PaymentRequestPage() {
     if (!paymentRequest) return;
     const url = paymentRequest.hostedUrl;
     if (!url) {
-      setError("This payment request has no hosted checkout URL yet.");
+      setError(
+        t("cloud.paymentRequest.noCheckoutUrl", {
+          defaultValue: "This payment request has no hosted checkout URL yet.",
+        }),
+      );
       return;
     }
     setIsPaying(true);
@@ -123,7 +137,11 @@ export default function PaymentRequestPage() {
   // ("Eliza Cloud - Launch Eliza") bleeds through.
   const head = (
     <Helmet>
-      <title>Payment Request | Eliza Cloud</title>
+      <title>
+        {t("cloud.paymentRequest.metaTitle", {
+          defaultValue: "Payment Request | Eliza Cloud",
+        })}
+      </title>
     </Helmet>
   );
 
@@ -148,10 +166,15 @@ export default function PaymentRequestPage() {
               <AlertCircle className="h-6 w-6 text-red-300" />
               <div>
                 <h1 className="text-base font-semibold">
-                  Payment request unavailable
+                  {t("cloud.paymentRequest.unavailableTitle", {
+                    defaultValue: "Payment request unavailable",
+                  })}
                 </h1>
                 <p className="mt-1 text-sm text-red-100/75">
-                  {error || "This payment link is unavailable."}
+                  {error ||
+                    t("cloud.paymentRequest.linkUnavailable", {
+                      defaultValue: "This payment link is unavailable.",
+                    })}
                 </p>
               </div>
             </div>
@@ -159,7 +182,9 @@ export default function PaymentRequestPage() {
               className="mt-5 inline-flex text-sm text-white/70 hover:text-white"
               to="/"
             >
-              Return home
+              {t("cloud.paymentRequest.returnHome", {
+                defaultValue: "Return home",
+              })}
             </Link>
           </div>
         </div>
@@ -198,16 +223,27 @@ export default function PaymentRequestPage() {
               </div>
               <div className="mt-3 text-sm text-white/55">
                 {isPaid
-                  ? "Paid"
+                  ? t("cloud.paymentRequest.paid", { defaultValue: "Paid" })
                   : isExpired
                     ? paymentRequest.status === "cancelled"
-                      ? "Cancelled"
+                      ? t("cloud.paymentRequest.cancelled", {
+                          defaultValue: "Cancelled",
+                        })
                       : paymentRequest.status === "failed"
-                        ? "Failed"
-                        : "Expired"
+                        ? t("cloud.paymentRequest.failed", {
+                            defaultValue: "Failed",
+                          })
+                        : t("cloud.paymentRequest.expired", {
+                            defaultValue: "Expired",
+                          })
                     : expiresLabel
-                      ? `Pending - expires ${expiresLabel}`
-                      : "Pending"}
+                      ? t("cloud.paymentRequest.pendingExpires", {
+                          date: expiresLabel,
+                          defaultValue: "Pending - expires {{date}}",
+                        })
+                      : t("cloud.paymentRequest.pending", {
+                          defaultValue: "Pending",
+                        })}
               </div>
               {paymentRequest.reason && (
                 <p className="mt-3 max-w-md text-sm text-white/65">
@@ -237,8 +273,13 @@ export default function PaymentRequestPage() {
                 )}
                 <span className="text-sm font-medium">
                   {isPaid
-                    ? "Already paid"
-                    : `Pay with ${paymentRequest.provider}`}
+                    ? t("cloud.paymentRequest.alreadyPaid", {
+                        defaultValue: "Already paid",
+                      })
+                    : t("cloud.paymentRequest.payWith", {
+                        provider: paymentRequest.provider,
+                        defaultValue: "Pay with {{provider}}",
+                      })}
                 </span>
               </button>
             </div>

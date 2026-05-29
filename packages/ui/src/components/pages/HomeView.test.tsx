@@ -5,6 +5,24 @@ import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeView } from "./HomeView";
 
+type MockModelStatus = {
+  kind: string;
+  blocksSend: boolean;
+  percent: number | null;
+  etaMs: number | null;
+  modelName: string | null;
+  errors: string[];
+};
+
+const NOT_REQUIRED_STATUS: MockModelStatus = {
+  kind: "not-required",
+  blocksSend: false,
+  percent: null,
+  etaMs: null,
+  modelName: null,
+  errors: [],
+};
+
 const controllerMock = vi.hoisted(() => ({
   value: {
     waveformMode: "idle" as const,
@@ -23,6 +41,14 @@ const controllerMock = vi.hoisted(() => ({
       },
     ],
     canSend: true,
+    modelStatus: {
+      kind: "not-required",
+      blocksSend: false,
+      percent: null,
+      etaMs: null,
+      modelName: null,
+      errors: [],
+    } as MockModelStatus,
     recording: false,
     send: vi.fn(),
     toggleRecording: vi.fn(),
@@ -52,6 +78,8 @@ afterEach(() => {
   cleanup();
   controllerMock.value.send.mockClear();
   controllerMock.value.toggleRecording.mockClear();
+  controllerMock.value.canSend = true;
+  controllerMock.value.modelStatus = { ...NOT_REQUIRED_STATUS };
   backgroundRenders.count = 0;
 });
 
@@ -100,6 +128,92 @@ describe("HomeView", () => {
     // The memoized, child-free background layer must stay mounted without a
     // single extra render across all of the composer's state churn.
     expect(backgroundRenders.count).toBe(1);
+  });
+
+  it("shows a download progress bar under the avatar while the model installs", () => {
+    controllerMock.value.modelStatus = {
+      kind: "downloading",
+      blocksSend: true,
+      percent: 63,
+      etaMs: 90_000,
+      modelName: "Eliza 1",
+      errors: [],
+    };
+    controllerMock.value.canSend = false;
+
+    render(<HomeView />);
+
+    const panel = screen.getByTestId("home-model-status");
+    expect(panel.getAttribute("data-kind")).toBe("downloading");
+    expect(panel.textContent).toContain("Eliza 1");
+    expect(panel.textContent).toContain("63%");
+    const bar = panel.querySelector('[role="progressbar"]');
+    expect(bar?.getAttribute("aria-valuenow")).toBe("63");
+    // The assistant transcript is replaced by the status panel.
+    expect(screen.queryByTestId("home-assistant-transcript")).toBeNull();
+  });
+
+  it("gates send while the local model blocks send", () => {
+    controllerMock.value.modelStatus = {
+      kind: "downloading",
+      blocksSend: true,
+      percent: 10,
+      etaMs: null,
+      modelName: "Eliza 1",
+      errors: [],
+    };
+    controllerMock.value.canSend = false;
+
+    render(<HomeView />);
+
+    const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+
+    const sendButton = screen.getByRole("button", {
+      name: "Send message",
+    }) as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(true);
+
+    fireEvent.click(sendButton);
+    expect(controllerMock.value.send).not.toHaveBeenCalled();
+  });
+
+  it("offers recovery affordances when the assigned model is missing", () => {
+    controllerMock.value.modelStatus = {
+      kind: "missing",
+      blocksSend: true,
+      percent: null,
+      etaMs: null,
+      modelName: "Eliza 1",
+      errors: [],
+    };
+    controllerMock.value.canSend = false;
+
+    render(<HomeView />);
+
+    const panel = screen.getByTestId("home-model-status");
+    expect(panel.getAttribute("data-kind")).toBe("missing");
+    expect(
+      screen.getByRole("button", { name: "Manage models" }),
+    ).toBeTruthy();
+  });
+
+  it("surfaces the failure message when model activation errors", () => {
+    controllerMock.value.modelStatus = {
+      kind: "error",
+      blocksSend: true,
+      percent: null,
+      etaMs: null,
+      modelName: "Eliza 1",
+      errors: ["checksum mismatch"],
+    };
+    controllerMock.value.canSend = false;
+
+    render(<HomeView />);
+
+    const panel = screen.getByTestId("home-model-status");
+    expect(panel.getAttribute("data-kind")).toBe("error");
+    expect(panel.textContent).toContain("checksum mismatch");
   });
 
   it("starts voice input from the home surface", () => {

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import type { App } from "../../../lib/data/apps";
 
 interface AppPromoteProps {
@@ -35,6 +36,7 @@ interface AdAccount {
 }
 
 export function AppPromote({ app }: AppPromoteProps) {
+  const t = useT();
   const [showPromoteDialog, setShowPromoteDialog] = useState(false);
   const [suggestions, setSuggestions] = useState<PromotionSuggestions | null>(
     null,
@@ -99,10 +101,16 @@ export function AppPromote({ app }: AppPromoteProps) {
         <div>
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
             <Megaphone className="h-4 w-4 text-[#FF5800]" />
-            Promote {app.name}
+            {t("cloud.appPromote.title", {
+              name: app.name,
+              defaultValue: "Promote {{name}}",
+            })}
           </h3>
           <p className="text-xs text-neutral-500 mt-1">
-            Reach more users through social media, SEO, and advertising
+            {t("cloud.appPromote.subtitle", {
+              defaultValue:
+                "Reach more users through social media, SEO, and advertising",
+            })}
           </p>
         </div>
         <Button
@@ -111,7 +119,7 @@ export function AppPromote({ app }: AppPromoteProps) {
           className="bg-[#FF5800] hover:bg-black hover:text-white text-white rounded-sm"
         >
           <Megaphone className="h-4 w-4 mr-1.5" />
-          Launch Promotion
+          {t("cloud.appPromote.launch", { defaultValue: "Launch Promotion" })}
         </Button>
       </div>
 
@@ -123,7 +131,11 @@ export function AppPromote({ app }: AppPromoteProps) {
               <Share2 className="h-5 w-5 text-[#FF5800]" />
             </div>
             <div>
-              <p className="text-xs text-neutral-500">Social Posts</p>
+              <p className="text-xs text-neutral-500">
+                {t("cloud.appPromote.socialPosts", {
+                  defaultValue: "Social Posts",
+                })}
+              </p>
               <p className="text-xl font-semibold text-white">0</p>
             </div>
           </div>
@@ -135,7 +147,9 @@ export function AppPromote({ app }: AppPromoteProps) {
               <Search className="h-5 w-5 text-green-400" />
             </div>
             <div>
-              <p className="text-xs text-neutral-500">SEO Score</p>
+              <p className="text-xs text-neutral-500">
+                {t("cloud.appPromote.seoScore", { defaultValue: "SEO Score" })}
+              </p>
               <p className="text-xl font-semibold text-white">--</p>
             </div>
           </div>
@@ -147,7 +161,11 @@ export function AppPromote({ app }: AppPromoteProps) {
               <TrendingUp className="h-5 w-5 text-purple-400" />
             </div>
             <div>
-              <p className="text-xs text-neutral-500">Ad Campaigns</p>
+              <p className="text-xs text-neutral-500">
+                {t("cloud.appPromote.adCampaigns", {
+                  defaultValue: "Ad Campaigns",
+                })}
+              </p>
               <p className="text-xl font-semibold text-white">0</p>
             </div>
           </div>
@@ -160,10 +178,14 @@ export function AppPromote({ app }: AppPromoteProps) {
           <div>
             <h3 className="text-sm font-medium text-white flex items-center gap-2">
               <ImageIcon className="h-4 w-4 text-purple-400" />
-              Promotional Assets
+              {t("cloud.appPromote.assetsTitle", {
+                defaultValue: "Promotional Assets",
+              })}
             </h3>
             <p className="text-xs text-neutral-500 mt-1">
-              AI-generated images and copy for your campaigns
+              {t("cloud.appPromote.assetsSubtitle", {
+                defaultValue: "AI-generated images and copy for your campaigns",
+              })}
             </p>
           </div>
           <Button
@@ -176,12 +198,16 @@ export function AppPromote({ app }: AppPromoteProps) {
             {isGeneratingAssets ? (
               <>
                 <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                Generating...
+                {t("cloud.appPromote.generating", {
+                  defaultValue: "Generating...",
+                })}
               </>
             ) : (
               <>
                 <Sparkles className="h-4 w-4 mr-1.5" />
-                Generate Assets
+                {t("cloud.appPromote.generateAssets", {
+                  defaultValue: "Generate Assets",
+                })}
               </>
             )}
           </Button>
@@ -190,19 +216,29 @@ export function AppPromote({ app }: AppPromoteProps) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <ImageIcon className="h-6 w-6 mb-1.5" />
-            <span className="text-xs">Social Card</span>
+            <span className="text-xs">
+              {t("cloud.appPromote.socialCard", {
+                defaultValue: "Social Card",
+              })}
+            </span>
           </div>
           <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <ImageIcon className="h-6 w-6 mb-1.5" />
-            <span className="text-xs">Banner</span>
+            <span className="text-xs">
+              {t("cloud.appPromote.banner", { defaultValue: "Banner" })}
+            </span>
           </div>
           <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <Video className="h-6 w-6 mb-1.5" />
-            <span className="text-xs">Video</span>
+            <span className="text-xs">
+              {t("cloud.appPromote.video", { defaultValue: "Video" })}
+            </span>
           </div>
           <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <Plus className="h-6 w-6 mb-1.5" />
-            <span className="text-xs">Upload</span>
+            <span className="text-xs">
+              {t("cloud.appPromote.upload", { defaultValue: "Upload" })}
+            </span>
           </div>
         </div>
       </div>
@@ -210,7 +246,11 @@ export function AppPromote({ app }: AppPromoteProps) {
       {/* Suggestions */}
       {suggestions && (
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
-          <h3 className="text-sm font-medium text-white">Promotion Tips</h3>
+          <h3 className="text-sm font-medium text-white">
+            {t("cloud.appPromote.tipsTitle", {
+              defaultValue: "Promotion Tips",
+            })}
+          </h3>
           <div className="space-y-2">
             {suggestions.tips.map((tip, index) => (
               <div key={tip} className="flex items-start gap-2">
@@ -226,7 +266,11 @@ export function AppPromote({ app }: AppPromoteProps) {
 
           <div className="pt-3 border-t border-white/10">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-neutral-500">Estimated budget range:</span>
+              <span className="text-neutral-500">
+                {t("cloud.appPromote.estimatedBudget", {
+                  defaultValue: "Estimated budget range:",
+                })}
+              </span>
               <span className="text-white font-medium">
                 ${suggestions.estimatedBudget.min} - $
                 {suggestions.estimatedBudget.max}
@@ -240,7 +284,9 @@ export function AppPromote({ app }: AppPromoteProps) {
       <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-white">
-            Connected Ad Accounts
+            {t("cloud.appPromote.connectedAccounts", {
+              defaultValue: "Connected Ad Accounts",
+            })}
           </h3>
           <Button
             variant="outline"
@@ -250,7 +296,7 @@ export function AppPromote({ app }: AppPromoteProps) {
           >
             <Link to="/dashboard/settings?tab=connections">
               <Plus className="h-4 w-4 mr-1.5" />
-              Connect
+              {t("cloud.appPromote.connect", { defaultValue: "Connect" })}
             </Link>
           </Button>
         </div>
@@ -258,9 +304,15 @@ export function AppPromote({ app }: AppPromoteProps) {
         {adAccounts.length === 0 ? (
           <div className="text-center py-6 text-neutral-500">
             <Megaphone className="h-10 w-10 mx-auto mb-2 opacity-40" />
-            <p className="text-xs">No ad accounts connected</p>
+            <p className="text-xs">
+              {t("cloud.appPromote.noAccounts", {
+                defaultValue: "No ad accounts connected",
+              })}
+            </p>
             <p className="text-xs text-neutral-600">
-              Connect a Meta, Google, or TikTok ads account
+              {t("cloud.appPromote.connectHint", {
+                defaultValue: "Connect a Meta, Google, or TikTok ads account",
+              })}
             </p>
           </div>
         ) : (

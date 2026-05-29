@@ -69,20 +69,17 @@ describe("per-tier text + embedding bundle resolution", () => {
 				);
 			});
 
-			it("declares a drafter GGUF component only for tiers with a MTP companion", () => {
+			it("declares same-file MTP (no separate drafter component) for MTP tiers", () => {
 				if (!MTP_TIERS.has(tierId)) {
 					expect(model?.sourceModel?.components.mtp).toBeUndefined();
 					expect(model?.runtime?.mtp).toBeUndefined();
 					return;
 				}
-				const slug = tierId.slice("eliza-1-".length);
-				expect(model?.sourceModel?.components.mtp).toBeTruthy();
-				expect(model?.sourceModel?.components.mtp?.file).toBe(
-					`bundles/${slug}/mtp/eliza-1-${slug}-drafter.gguf`,
-				);
-				expect(model?.runtime?.mtp?.drafterFile).toBe(
-					`mtp/eliza-1-${slug}-drafter.gguf`,
-				);
+				// Same-file MTP: NextN head is embedded in the text GGUF, so
+				// there is no separate drafter component or drafterFile.
+				expect(model?.sourceModel?.components.mtp).toBeUndefined();
+				expect(model?.runtime?.mtp?.specType).toBe("draft-mtp");
+				expect(model?.runtime?.mtp?.drafterFile).toBeUndefined();
 			});
 
 			it("declares the embedding GGUF component on tiers that ship a dedicated 1024-dim region", () => {
@@ -121,15 +118,6 @@ describe("per-tier text + embedding bundle resolution", () => {
 				expect(url).toContain("embedding/eliza-1-embedding.gguf");
 			});
 
-			it("resolves the drafter component to a HuggingFace URL on the same repo when present", () => {
-				if (!MTP_TIERS.has(tierId)) return;
-				const file = model?.sourceModel?.components.mtp?.file;
-				expect(file).toBeTruthy();
-				if (!model || !file) return;
-				const url = buildHuggingFaceResolveUrlForPath(model, file);
-				expect(url).toContain(`/${ELIZA_1_HF_REPO}/resolve/main/`);
-				expect(url).toContain(`mtp/eliza-1-`);
-			});
 
 			it("declares a kvCache profile (TurboQuant / QJL / PolarQuant types) — these are wired into llama-server args at boot", () => {
 				expect(model?.runtime?.kvCache).toBeTruthy();

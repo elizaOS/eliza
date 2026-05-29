@@ -16,6 +16,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useTranslation } from "../../../state/TranslationContext";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -52,6 +53,7 @@ export function RoutingTab(props: RoutingTabProps) {
     focusKey,
     onFocusApplied,
   } = props;
+  const { t } = useTranslation();
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -121,12 +123,16 @@ export function RoutingTab(props: RoutingTabProps) {
         const body = (await res.json()) as { config: RoutingConfig };
         onConfigChange(body.config);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "save failed");
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("routing.error.saveFailed", { defaultValue: "save failed" }),
+        );
       } finally {
         setSaving(false);
       }
     },
-    [onConfigChange],
+    [onConfigChange, t],
   );
 
   const onAddRule = useCallback(
@@ -168,13 +174,16 @@ export function RoutingTab(props: RoutingTabProps) {
   const onDeleteRule = useCallback(
     async (rule: RoutingRule) => {
       const confirmed = window.confirm(
-        `Delete routing rule for ${rule.keyPattern}?`,
+        t("routing.confirmDelete", {
+          keyPattern: rule.keyPattern,
+          defaultValue: "Delete routing rule for {{keyPattern}}?",
+        }),
       );
       if (!confirmed) return;
       const newRules = config.rules.filter((r) => r !== rule);
       await saveConfig({ ...config, rules: newRules });
     },
-    [config, saveConfig],
+    [config, saveConfig, t],
   );
 
   const onDefaultProfileChange = useCallback(
@@ -206,10 +215,16 @@ export function RoutingTab(props: RoutingTabProps) {
       <section className="space-y-2 rounded-sm border border-border/40 bg-card/30 p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-txt">Default profile</p>
+            <p className="text-sm font-medium text-txt">
+              {t("routing.defaultProfile.title", {
+                defaultValue: "Default profile",
+              })}
+            </p>
             <p className="text-2xs text-muted">
-              Applied when no rule below matches a (key × scope) lookup.
-              "default" is the fallback when this is empty.
+              {t("routing.defaultProfile.description", {
+                defaultValue:
+                  'Applied when no rule below matches a (key × scope) lookup. "default" is the fallback when this is empty.',
+              })}
             </p>
           </div>
           <select
@@ -232,17 +247,23 @@ export function RoutingTab(props: RoutingTabProps) {
       <section className="space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-txt">Routing rules</p>
+            <p className="text-sm font-medium text-txt">
+              {t("routing.rules.title", { defaultValue: "Routing rules" })}
+            </p>
             <p className="text-2xs text-muted">
-              Per-context overrides. Match keys exactly (e.g.
+              {t("routing.rules.descriptionPrefix", {
+                defaultValue: "Per-context overrides. Match keys exactly (e.g.",
+              })}
               <code className="mx-1 rounded-sm bg-bg/40 px-1 font-mono">
                 OPENROUTER_API_KEY
               </code>
-              ) or use wildcards (e.g.
+              {t("routing.rules.descriptionMid", {
+                defaultValue: ") or use wildcards (e.g.",
+              })}
               <code className="mx-1 rounded-sm bg-bg/40 px-1 font-mono">
                 OPENROUTER_*
               </code>
-              ).
+              {t("routing.rules.descriptionSuffix", { defaultValue: ")." })}
             </p>
           </div>
           <Button
@@ -251,9 +272,12 @@ export function RoutingTab(props: RoutingTabProps) {
             className="h-8 shrink-0 gap-1 rounded-sm px-2"
             onClick={() => setShowAdd((v) => !v)}
             disabled={saving}
-            aria-label="Add routing rule"
+            aria-label={t("routing.addRule", {
+              defaultValue: "Add routing rule",
+            })}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden /> Add rule
+            <Plus className="h-3.5 w-3.5" aria-hidden />{" "}
+            {t("routing.addRuleShort", { defaultValue: "Add rule" })}
           </Button>
         </div>
 
@@ -271,7 +295,9 @@ export function RoutingTab(props: RoutingTabProps) {
           <Input
             value={rulesFilter}
             onChange={(e) => setRulesFilter(e.target.value)}
-            placeholder="Filter rules by key, scope, or profile"
+            placeholder={t("routing.filterPlaceholder", {
+              defaultValue: "Filter rules by key, scope, or profile",
+            })}
             className="h-8 text-xs"
             autoComplete="off"
             data-testid="routing-rules-filter"
@@ -285,7 +311,11 @@ export function RoutingTab(props: RoutingTabProps) {
             className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-3"
           >
             <div>
-              <Label className="text-2xs text-muted">Key pattern</Label>
+              <Label className="text-2xs text-muted">
+                {t("routing.field.keyPattern", {
+                  defaultValue: "Key pattern",
+                })}
+              </Label>
               <Input
                 value={keyPattern}
                 onChange={(e) => setKeyPattern(e.target.value)}
@@ -303,7 +333,9 @@ export function RoutingTab(props: RoutingTabProps) {
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <div>
-                <Label className="text-2xs text-muted">Scope</Label>
+                <Label className="text-2xs text-muted">
+                  {t("routing.field.scope", { defaultValue: "Scope" })}
+                </Label>
                 <select
                   value={scopeKind}
                   onChange={(e) =>
@@ -311,13 +343,19 @@ export function RoutingTab(props: RoutingTabProps) {
                   }
                   className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                 >
-                  <option value="agent">Agent</option>
-                  <option value="app">App</option>
+                  <option value="agent">
+                    {t("routing.scope.agent", { defaultValue: "Agent" })}
+                  </option>
+                  <option value="app">
+                    {t("routing.scope.app", { defaultValue: "App" })}
+                  </option>
                 </select>
               </div>
               <div>
                 <Label className="text-2xs text-muted">
-                  {scopeKind === "agent" ? "Agent" : "App"}
+                  {scopeKind === "agent"
+                    ? t("routing.scope.agent", { defaultValue: "Agent" })
+                    : t("routing.scope.app", { defaultValue: "App" })}
                 </Label>
                 {scopeKind === "agent" ? (
                   <select
@@ -326,7 +364,11 @@ export function RoutingTab(props: RoutingTabProps) {
                     className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                     required
                   >
-                    <option value="">Select agent…</option>
+                    <option value="">
+                      {t("routing.selectAgent", {
+                        defaultValue: "Select agent…",
+                      })}
+                    </option>
                     {agents.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name}
@@ -340,7 +382,9 @@ export function RoutingTab(props: RoutingTabProps) {
                     className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                     required
                   >
-                    <option value="">Select app…</option>
+                    <option value="">
+                      {t("routing.selectApp", { defaultValue: "Select app…" })}
+                    </option>
                     {apps.map((a) => (
                       <option key={a.name} value={a.name}>
                         {a.displayName ?? a.name}
@@ -350,14 +394,20 @@ export function RoutingTab(props: RoutingTabProps) {
                 )}
               </div>
               <div>
-                <Label className="text-2xs text-muted">Profile</Label>
+                <Label className="text-2xs text-muted">
+                  {t("routing.field.profile", { defaultValue: "Profile" })}
+                </Label>
                 <select
                   value={profileId}
                   onChange={(e) => setProfileId(e.target.value)}
                   className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                   required
                 >
-                  <option value="">Select profile…</option>
+                  <option value="">
+                    {t("routing.selectProfile", {
+                      defaultValue: "Select profile…",
+                    })}
+                  </option>
                   {profilesForNewRule.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
@@ -375,7 +425,7 @@ export function RoutingTab(props: RoutingTabProps) {
                 onClick={() => setShowAdd(false)}
                 disabled={saving}
               >
-                Cancel
+                {t("routing.cancel", { defaultValue: "Cancel" })}
               </Button>
               <Button
                 type="submit"
@@ -384,7 +434,9 @@ export function RoutingTab(props: RoutingTabProps) {
                 className="h-7 rounded-sm px-3 text-xs"
                 disabled={saving || !keyPattern.trim() || !profileId}
               >
-                {saving ? "Saving…" : "Save rule"}
+                {saving
+                  ? t("routing.saving", { defaultValue: "Saving…" })
+                  : t("routing.saveRule", { defaultValue: "Save rule" })}
               </Button>
             </div>
           </form>
@@ -395,14 +447,20 @@ export function RoutingTab(props: RoutingTabProps) {
             data-testid="routing-rules-empty"
             className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
           >
-            No routing rules. The default profile applies for every caller.
+            {t("routing.empty", {
+              defaultValue:
+                "No routing rules. The default profile applies for every caller.",
+            })}
           </div>
         ) : visibleRules.length === 0 ? (
           <div
             data-testid="routing-rules-no-match"
             className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
           >
-            No rules match "{rulesFilter}".
+            {t("routing.noMatch", {
+              filter: rulesFilter,
+              defaultValue: 'No rules match "{{filter}}".',
+            })}
           </div>
         ) : (
           <table
@@ -411,11 +469,17 @@ export function RoutingTab(props: RoutingTabProps) {
           >
             <thead>
               <tr className="text-left text-muted">
-                <th className="px-2 py-1 font-medium">Key</th>
-                <th className="px-2 py-1 font-medium">Scope</th>
-                <th className="px-2 py-1 font-medium">Profile</th>
+                <th className="px-2 py-1 font-medium">
+                  {t("routing.table.key", { defaultValue: "Key" })}
+                </th>
+                <th className="px-2 py-1 font-medium">
+                  {t("routing.table.scope", { defaultValue: "Scope" })}
+                </th>
+                <th className="px-2 py-1 font-medium">
+                  {t("routing.table.profile", { defaultValue: "Profile" })}
+                </th>
                 <th className="w-16 px-2 py-1 font-medium text-right">
-                  Actions
+                  {t("routing.table.actions", { defaultValue: "Actions" })}
                 </th>
               </tr>
             </thead>
@@ -455,7 +519,10 @@ export function RoutingTab(props: RoutingTabProps) {
                           }
                           data-testid={`routing-key-chip-${ruleKey}`}
                           className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
-                          aria-label={`Open ${rule.keyPattern} in Secrets tab`}
+                          aria-label={t("routing.openInSecrets", {
+                            keyPattern: rule.keyPattern,
+                            defaultValue: "Open {{keyPattern}} in Secrets tab",
+                          })}
                         >
                           {rule.keyPattern}
                           <ArrowRight className="h-3 w-3" aria-hidden />
@@ -485,7 +552,10 @@ export function RoutingTab(props: RoutingTabProps) {
                         size="sm"
                         className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
                         onClick={() => void onDeleteRule(rule)}
-                        aria-label={`Delete rule for ${rule.keyPattern}`}
+                        aria-label={t("routing.deleteRule", {
+                          keyPattern: rule.keyPattern,
+                          defaultValue: "Delete rule for {{keyPattern}}",
+                        })}
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden />
                       </Button>
@@ -499,7 +569,8 @@ export function RoutingTab(props: RoutingTabProps) {
 
         {saving && (
           <div className="flex items-center gap-2 px-1 text-2xs text-muted">
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Saving…
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />{" "}
+            {t("routing.saving", { defaultValue: "Saving…" })}
           </div>
         )}
       </section>

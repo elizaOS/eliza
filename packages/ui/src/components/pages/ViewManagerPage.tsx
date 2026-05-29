@@ -23,6 +23,7 @@ import {
   type ViewRegistryEntry,
 } from "../../hooks/useAvailableViews";
 import { useDesktopTabs } from "../../hooks/useDesktopTabs";
+import { useTranslation } from "../../state/TranslationContext";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import {
   readRecentViewIds,
@@ -54,6 +55,7 @@ function ViewCard({
   onDelete?: (view: ViewRegistryEntry) => void;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
   const showManagementButtons = Boolean(onEdit || onDelete);
@@ -68,13 +70,18 @@ function ViewCard({
           {showPinButton && (
             <button
               type="button"
-              title="Pin as desktop tab"
+              title={t("viewmanager.card.pinTitle", {
+                defaultValue: "Pin as desktop tab",
+              })}
               onClick={(e) => {
                 e.stopPropagation();
                 onPin(view);
               }}
               className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={`Pin ${view.label} as desktop tab`}
+              aria-label={t("viewmanager.card.pinAria", {
+                label: view.label,
+                defaultValue: "Pin {{label}} as desktop tab",
+              })}
             >
               <Pin className="h-3 w-3" />
             </button>
@@ -82,13 +89,18 @@ function ViewCard({
           {onEdit && (
             <button
               type="button"
-              title="Edit dynamic view"
+              title={t("viewmanager.card.editTitle", {
+                defaultValue: "Edit dynamic view",
+              })}
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit(view);
               }}
               className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={`Edit ${view.label}`}
+              aria-label={t("viewmanager.card.editAria", {
+                label: view.label,
+                defaultValue: "Edit {{label}}",
+              })}
             >
               <Pencil className="h-3 w-3" />
             </button>
@@ -96,13 +108,18 @@ function ViewCard({
           {onDelete && (
             <button
               type="button"
-              title="Delete dynamic view"
+              title={t("viewmanager.card.deleteTitle", {
+                defaultValue: "Delete dynamic view",
+              })}
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(view);
               }}
               className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-destructive hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label={`Delete ${view.label}`}
+              aria-label={t("viewmanager.card.deleteAria", {
+                label: view.label,
+                defaultValue: "Delete {{label}}",
+              })}
             >
               <Trash2 className="h-3 w-3" />
             </button>
@@ -168,15 +185,24 @@ function ViewCard({
 }
 
 function ViewsEmptyState({ hasQuery }: { hasQuery: boolean }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
       <p className="text-sm font-medium text-muted">
-        {hasQuery ? "No views match your search" : "No views available"}
+        {hasQuery
+          ? t("viewmanager.empty.noMatch", {
+              defaultValue: "No views match your search",
+            })
+          : t("viewmanager.empty.none", {
+              defaultValue: "No views available",
+            })}
       </p>
       {!hasQuery && (
         <p className="max-w-xs text-xs text-muted/60">
-          Views are registered by plugins. Install a plugin that provides a view
-          to see it here.
+          {t("viewmanager.empty.hint", {
+            defaultValue:
+              "Views are registered by plugins. Install a plugin that provides a view to see it here.",
+          })}
         </p>
       )}
     </div>
@@ -243,11 +269,14 @@ function TopViewsSection({
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
 }) {
+  const { t } = useTranslation();
   if (views.length === 0) return null;
   return (
     <div className="mb-5" data-testid="views-top-section">
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
-        Pinned & recent
+        {t("viewmanager.section.pinnedRecent", {
+          defaultValue: "Pinned & recent",
+        })}
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {views.map((view) => (
@@ -281,6 +310,7 @@ async function fetchSearchResults(
 }
 
 export function ViewManagerPage() {
+  const { t } = useTranslation();
   const { views, loading, error, refresh } = useAvailableViews();
   const { tabs: desktopTabs } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
@@ -426,7 +456,12 @@ export function ViewManagerPage() {
     setFormTitle(view.label);
     setFormEntrypoint(view.bundleUrl ?? view.path ?? `/apps/${view.id}`);
     setFormDescription(view.description ?? "");
-    setFormStatus(`Editing ${view.label}`);
+    setFormStatus(
+      t("viewmanager.form.editing", {
+        label: view.label,
+        defaultValue: "Editing {{label}}",
+      }),
+    );
   }
 
   function buildManagedManifest(): DynamicViewManifest {
@@ -448,16 +483,29 @@ export function ViewManagerPage() {
     try {
       const manifest = buildManagedManifest();
       if (!manifest.id || !manifest.title || !manifest.entrypoint) {
-        setFormStatus("View ID, title, and entrypoint are required.");
+        setFormStatus(
+          t("viewmanager.form.required", {
+            defaultValue: "View ID, title, and entrypoint are required.",
+          }),
+        );
         return;
       }
       const registered = await registerDynamicView(manifest, { update: true });
       if (!registered) {
-        setFormStatus("Dynamic view bridge unavailable.");
+        setFormStatus(
+          t("viewmanager.form.bridgeUnavailable", {
+            defaultValue: "Dynamic view bridge unavailable.",
+          }),
+        );
         return;
       }
       await refresh();
-      setFormStatus(`Saved ${registered.title}.`);
+      setFormStatus(
+        t("viewmanager.form.saved", {
+          title: registered.title,
+          defaultValue: "Saved {{title}}.",
+        }),
+      );
     } catch (err) {
       setFormStatus(err instanceof Error ? err.message : String(err));
     } finally {
@@ -471,14 +519,24 @@ export function ViewManagerPage() {
     try {
       const result = await unregisterDynamicView(view.id);
       if (!result) {
-        setFormStatus("Dynamic view bridge unavailable.");
+        setFormStatus(
+          t("viewmanager.form.bridgeUnavailable", {
+            defaultValue: "Dynamic view bridge unavailable.",
+          }),
+        );
         return;
       }
       await refresh();
       setFormStatus(
         result.removed
-          ? `Deleted ${view.label}.`
-          : `${view.label} was not registered.`,
+          ? t("viewmanager.form.deleted", {
+              label: view.label,
+              defaultValue: "Deleted {{label}}.",
+            })
+          : t("viewmanager.form.notRegistered", {
+              label: view.label,
+              defaultValue: "{{label}} was not registered.",
+            }),
       );
     } catch (err) {
       setFormStatus(err instanceof Error ? err.message : String(err));
@@ -491,7 +549,9 @@ export function ViewManagerPage() {
     <div className="flex flex-1 min-h-0 flex-col">
       {/* Header */}
       <div className="shrink-0 border-b border-border/50 px-4 py-3">
-        <h1 className="text-sm font-semibold text-txt">Views</h1>
+        <h1 className="text-sm font-semibold text-txt">
+          {t("viewmanager.title", { defaultValue: "Views" })}
+        </h1>
       </div>
 
       {/* Search */}
@@ -500,7 +560,9 @@ export function ViewManagerPage() {
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted pointer-events-none" />
           <input
             type="search"
-            placeholder="Search views…"
+            placeholder={t("viewmanager.searchPlaceholder", {
+              defaultValue: "Search views…",
+            })}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full rounded-sm border border-border bg-muted/20 py-2 pl-9 pr-3 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
@@ -511,7 +573,9 @@ export function ViewManagerPage() {
       {canManageDynamicViews && (
         <form
           className="shrink-0 border-y border-border/40 px-4 py-3"
-          aria-label="Dynamic view management"
+          aria-label={t("viewmanager.management.aria", {
+            defaultValue: "Dynamic view management",
+          })}
           onSubmit={(event) => {
             event.preventDefault();
             void handleRegisterView();
@@ -519,7 +583,9 @@ export function ViewManagerPage() {
         >
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
-              Dynamic view management
+              {t("viewmanager.management.heading", {
+                defaultValue: "Dynamic view management",
+              })}
             </h2>
             {formStatus && (
               <p className="text-xs text-muted" role="status">
@@ -529,32 +595,46 @@ export function ViewManagerPage() {
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.4fr_1.4fr_auto]">
             <input
-              aria-label="Dynamic view ID"
+              aria-label={t("viewmanager.form.idAria", {
+                defaultValue: "Dynamic view ID",
+              })}
               value={formViewId}
               onChange={(event) => setFormViewId(event.target.value)}
               className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="View ID"
+              placeholder={t("viewmanager.form.idPlaceholder", {
+                defaultValue: "View ID",
+              })}
             />
             <input
-              aria-label="Dynamic view title"
+              aria-label={t("viewmanager.form.titleAria", {
+                defaultValue: "Dynamic view title",
+              })}
               value={formTitle}
               onChange={(event) => setFormTitle(event.target.value)}
               className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Title"
+              placeholder={t("viewmanager.form.titlePlaceholder", {
+                defaultValue: "Title",
+              })}
             />
             <input
-              aria-label="Dynamic view entrypoint"
+              aria-label={t("viewmanager.form.entrypointAria", {
+                defaultValue: "Dynamic view entrypoint",
+              })}
               value={formEntrypoint}
               onChange={(event) => setFormEntrypoint(event.target.value)}
               className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="/dynamic-views/view.js"
             />
             <input
-              aria-label="Dynamic view description"
+              aria-label={t("viewmanager.form.descriptionAria", {
+                defaultValue: "Dynamic view description",
+              })}
               value={formDescription}
               onChange={(event) => setFormDescription(event.target.value)}
               className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="Description"
+              placeholder={t("viewmanager.form.descriptionPlaceholder", {
+                defaultValue: "Description",
+              })}
             />
             <button
               type="submit"
@@ -562,7 +642,7 @@ export function ViewManagerPage() {
               className="inline-flex items-center justify-center gap-2 rounded-sm border border-border bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus className="h-3.5 w-3.5" />
-              Save
+              {t("viewmanager.form.save", { defaultValue: "Save" })}
             </button>
           </div>
         </form>
@@ -572,7 +652,10 @@ export function ViewManagerPage() {
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
         {error && (
           <div className="mb-3 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            Failed to load views: {error.message}
+            {t("viewmanager.loadError", {
+              message: error.message,
+              defaultValue: "Failed to load views: {{message}}",
+            })}
           </div>
         )}
 
@@ -588,13 +671,15 @@ export function ViewManagerPage() {
               onViewPin={handleViewPin}
             />
             <ViewSection
-              title="Core"
+              title={t("viewmanager.section.core", { defaultValue: "Core" })}
               views={builtinViews}
               onViewClick={handleViewClick}
               onViewPin={handleViewPin}
             />
             <ViewSection
-              title="Plugins"
+              title={t("viewmanager.section.plugins", {
+                defaultValue: "Plugins",
+              })}
               views={pluginViews}
               onViewClick={handleViewClick}
               onViewPin={handleViewPin}

@@ -3,6 +3,12 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  jsonResponse,
+  readAppControlHttpRequests,
+  registerAppControlHttpHandler,
+  resetAppControlHttpStub,
+} from "./_helpers/app-control-http-stub";
 
 function readParameters(action: CapturedAction): Record<string, unknown> {
   return action.parameters &&
@@ -10,35 +16,6 @@ function readParameters(action: CapturedAction): Record<string, unknown> {
     !Array.isArray(action.parameters)
     ? (action.parameters as Record<string, unknown>)
     : {};
-}
-
-const viewApiRequests: Array<{
-  body: unknown;
-  method: string;
-  pathname: string;
-  search: string;
-}> = [];
-
-function isViewApiUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname === "127.0.0.1" &&
-      parsed.pathname.startsWith("/api/views")
-    );
-  } catch {
-    return false;
-  }
-}
-
-async function parseJsonBody(init?: RequestInit): Promise<unknown> {
-  const body = init?.body;
-  if (typeof body !== "string") return undefined;
-  try {
-    return JSON.parse(body);
-  } catch {
-    return body;
-  }
 }
 
 function expectViewsAction(
@@ -112,49 +89,18 @@ export default scenario({
       type: "custom",
       name: "stub local view API for deterministic shell actions",
       apply: () => {
-        viewApiRequests.length = 0;
-        const originalFetch = globalThis.fetch.bind(globalThis);
-        globalThis.fetch = (async (
-          input: string | URL | Request,
-          init?: RequestInit,
-        ) => {
-          const rawUrl =
-            typeof input === "string"
-              ? input
-              : input instanceof URL
-                ? input.toString()
-                : input.url;
-          if (!isViewApiUrl(rawUrl)) {
-            return originalFetch(input as Parameters<typeof fetch>[0], init);
+        resetAppControlHttpStub();
+        registerAppControlHttpHandler((request) => {
+          if (!request.pathname.startsWith("/api/views")) return undefined;
+          if (request.pathname.endsWith("/interact")) {
+            return jsonResponse({
+              ok: true,
+              capability: "fill-input",
+              value: "Remote Ledger Updated",
+            });
           }
-
-          const url = new URL(rawUrl);
-          viewApiRequests.push({
-            body: await parseJsonBody(init),
-            method: init?.method ?? "GET",
-            pathname: url.pathname,
-            search: url.search,
-          });
-
-          if (url.pathname.endsWith("/interact")) {
-            return new Response(
-              JSON.stringify({
-                ok: true,
-                capability: "fill-input",
-                value: "Remote Ledger Updated",
-              }),
-              {
-                status: 200,
-                headers: { "Content-Type": "application/json" },
-              },
-            );
-          }
-
-          return new Response(JSON.stringify({ ok: true }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }) as typeof fetch;
+          return jsonResponse({ ok: true });
+        });
         return undefined;
       },
     },
@@ -281,18 +227,21 @@ export default scenario({
             body: { path: "/views" },
             method: "POST",
             pathname: "/api/views/__view-manager__/navigate",
+            response: { body: { ok: true }, status: 200 },
             search: "",
           },
           {
             body: { action: "pin-tab", alwaysOnTop: false },
             method: "POST",
             pathname: "/api/views/remote-ledger/navigate",
+            response: { body: { ok: true }, status: 200 },
             search: "",
           },
           {
             body: { action: "open-window", alwaysOnTop: true },
             method: "POST",
             pathname: "/api/views/remote-ledger/navigate",
+            response: { body: { ok: true }, status: 200 },
             search: "",
           },
           {
@@ -303,14 +252,25 @@ export default scenario({
             },
             method: "POST",
             pathname: "/api/views/remote-ledger/interact",
+            response: {
+              body: {
+                ok: true,
+                capability: "fill-input",
+                value: "Remote Ledger Updated",
+              },
+              status: 200,
+            },
             search: "",
           },
         ];
 
-        const actual = viewApiRequests.map((request) => ({
+        const actual = readAppControlHttpRequests((request) =>
+          request.pathname.startsWith("/api/views"),
+        ).map((request) => ({
           body: request.body,
           method: request.method,
           pathname: request.pathname,
+          response: request.response,
           search: request.search,
         }));
 

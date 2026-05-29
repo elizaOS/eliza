@@ -6,7 +6,10 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `ci.yaml` | Push/PR to main | Main CI - tests, lint, build |
+| `ci.yaml` | Push/PR to main | Main CI - tests, lint, build, zero-key deterministic E2E |
+| `test.yml` | Push/PR to main/develop, manual, schedule | Broader tests plus required zero-key deterministic E2E; live jobs are separate |
+| `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
+| `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release.yaml` | Push to main, Release | NPM beta/production package releases |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
@@ -47,6 +50,16 @@ Runs on PRs and pushes to main:
 - Linting and formatting checks
 - Build verification
 - Interop TypeScript tests (`packages/interop`)
+- Zero-key deterministic E2E. This lane clears provider keys, sets `TEST_LANE=pr`,
+  `ELIZA_LIVE_TEST=0`, and `SCENARIO_USE_LLM_PROXY=1`, then runs the deterministic
+  scenario/browser coverage plus the scenario catalog coverage gate.
+
+### Live E2E
+
+PR E2E does not require `CEREBRAS_API_KEY`, `OPENAI_API_KEY`, or any other paid
+provider key. Live/provider-key coverage belongs to the dedicated live jobs and
+workflows (`cloud-live-e2e`, `provider-live-e2e`, `live-scenarios.yml`,
+`scenario-matrix.yml`) where missing-key behavior is documented per lane.
 
 ## Code Review Workflows
 
@@ -109,7 +122,7 @@ Use `bunx lerna publish` from the repo root when automation is not sufficient (s
 |--------|---------|------------|
 | `NPM_TOKEN` | NPM publishing | [npmjs.com/settings/~/tokens](https://www.npmjs.com/settings/~/tokens) |
 | `ANTHROPIC_API_KEY` | Claude workflows | [console.anthropic.com](https://console.anthropic.com) |
-| `OPENAI_API_KEY` | Tests requiring OpenAI | [platform.openai.com](https://platform.openai.com) |
+| `OPENAI_API_KEY` | Opt-in live/provider-key lanes | [platform.openai.com](https://platform.openai.com) |
 
 ### Optional Secrets
 

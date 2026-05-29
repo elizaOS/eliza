@@ -56,8 +56,6 @@
   --ok: #3fa37c;
   --ok-muted: rgba(63, 163, 124, 0.3);
   --ok-subtle: rgba(63, 163, 124, 0.12);
-  --accent: var(--classic-gold);
-  --accent-foreground: var(--jet-black);
   --first-run-text-strong: rgba(5, 8, 14, 0.98);
   --first-run-text-primary: rgba(9, 14, 22, 0.96);
   --first-run-text-subtle: rgba(29, 38, 52, 0.88);

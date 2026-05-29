@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCopyFeedback } from "@/hooks/use-copy-feedback";
+import { useT } from "@/providers/I18nProvider";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ function formatUsd(val?: number): string {
 // ── Sub-components ───────────────────────────────────────────────────────────
 
 function CopyButton({ text }: { text: string }) {
+  const t = useT();
   const { copied, markCopied } = useCopyFeedback(1500);
   const handleCopy = useCallback(async () => {
     try {
@@ -81,7 +83,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      title="Copy"
+      title={t("cloud.elizaWallet.copy", { defaultValue: "Copy" })}
       className="ml-1.5 text-white/30 hover:text-white/70 transition-colors"
     >
       {copied ? (
@@ -143,6 +145,7 @@ interface WalletData {
 }
 
 export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
+  const t = useT();
   const [data, setData] = useState<WalletData>({
     addresses: null,
     balances: null,
@@ -180,12 +183,16 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
     } catch (err) {
       if (!mountedRef.current) return;
       setError(
-        err instanceof Error ? err.message : "Failed to load wallet data",
+        err instanceof Error
+          ? err.message
+          : t("cloud.elizaWallet.loadFailed", {
+              defaultValue: "Failed to load wallet data",
+            }),
       );
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [base]);
+  }, [base, t]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -213,7 +220,9 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
         <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1" />
         <div>
           <p className="font-mono text-xs text-red-400">
-            Failed to load wallet data
+            {t("cloud.elizaWallet.loadFailed", {
+              defaultValue: "Failed to load wallet data",
+            })}
           </p>
           <p className="font-mono text-[11px] text-red-400/60 mt-0.5">
             {error}
@@ -230,7 +239,9 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
     return (
       <div className="p-8 text-center border border-white/10 bg-black/40">
         <p className="font-mono text-sm text-white/40">
-          No wallets configured for this agent
+          {t("cloud.elizaWallet.noWallets", {
+            defaultValue: "No wallets configured for this agent",
+          })}
         </p>
       </div>
     );
@@ -240,7 +251,11 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
     <div className="space-y-6">
       {/* Addresses */}
       <div>
-        <SectionHeader label="Addresses" />
+        <SectionHeader
+          label={t("cloud.elizaWallet.addresses", {
+            defaultValue: "Addresses",
+          })}
+        />
         <div className="border border-white/10 bg-black/40 divide-y divide-white/5">
           {hasEvm && (
             <div className="px-4 py-3 grid grid-cols-[80px_1fr] gap-4 items-center">
@@ -274,11 +289,15 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
       {/* Steward status */}
       {data.steward && (
         <div>
-          <SectionHeader label="Steward" />
+          <SectionHeader
+            label={t("cloud.elizaWallet.steward", {
+              defaultValue: "Steward",
+            })}
+          />
           <div className="border border-white/10 bg-black/40 divide-y divide-white/5">
             <div className="px-4 py-3 grid grid-cols-[80px_1fr] gap-4 items-center">
               <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
-                Status
+                {t("cloud.elizaWallet.status", { defaultValue: "Status" })}
               </p>
               <div className="flex items-center gap-2">
                 <span
@@ -289,16 +308,22 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
                 <span className="font-mono text-sm text-white/80">
                   {data.steward.configured
                     ? data.steward.connected
-                      ? "Connected"
-                      : "Configured (disconnected)"
-                    : "Not configured"}
+                      ? t("cloud.elizaWallet.connected", {
+                          defaultValue: "Connected",
+                        })
+                      : t("cloud.elizaWallet.disconnected", {
+                          defaultValue: "Configured (disconnected)",
+                        })
+                    : t("cloud.elizaWallet.notConfigured", {
+                        defaultValue: "Not configured",
+                      })}
                 </span>
               </div>
             </div>
             {data.steward.version && (
               <div className="px-4 py-3 grid grid-cols-[80px_1fr] gap-4 items-center">
                 <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
-                  Version
+                  {t("cloud.elizaWallet.version", { defaultValue: "Version" })}
                 </p>
                 <span className="font-mono text-sm text-white/80">
                   {data.steward.version}
@@ -312,7 +337,11 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
       {/* Balances */}
       {data.balances?.evm && data.balances.evm.length > 0 && (
         <div>
-          <SectionHeader label="Balances" />
+          <SectionHeader
+            label={t("cloud.elizaWallet.balances", {
+              defaultValue: "Balances",
+            })}
+          />
           <div className="space-y-2">
             {data.balances.evm.map((chain) => (
               <div
@@ -371,7 +400,7 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
       <div className="flex items-center gap-2 pt-1">
         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
         <span className="font-mono text-[10px] text-white/30 tracking-wide">
-          LIVE · 30S
+          {t("cloud.elizaWallet.liveIndicator", { defaultValue: "LIVE · 30S" })}
         </span>
       </div>
     </div>

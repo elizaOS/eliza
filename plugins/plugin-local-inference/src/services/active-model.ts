@@ -536,14 +536,18 @@ export async function resolveLocalInferenceLoadArgs(
 		// Native MTP launch defaults. Do NOT replace catalog `contextLength`
 		// here; `applyCatalogDefaults` owns the chat-side context. The MTP
 		// block only owns the speculative draft window.
-		const drafterPath = resolveMtpDrafterPath(
-			installed,
-			catalog,
-			manifestLoader,
-		);
-		if (installed.bundleRoot && !drafterPath) {
+		//
+		// Two MTP shapes: same-file MTP embeds the NextN head in the text
+		// GGUF (no `drafterFile` in the catalog) and runs with no separate
+		// draft model; separate-drafter MTP declares a `drafterFile` and
+		// requires the bundled drafter GGUF to be present on disk.
+		const sameFileMtp = !mtp.drafterFile;
+		const drafterPath = sameFileMtp
+			? undefined
+			: resolveMtpDrafterPath(installed, catalog, manifestLoader);
+		if (!sameFileMtp && installed.bundleRoot && !drafterPath) {
 			throw new Error(
-				`[local-inference] ${installed.id} declares mandatory MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
+				`[local-inference] ${installed.id} declares a separate-drafter MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
 			);
 		}
 		args.useGpu = true;

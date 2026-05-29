@@ -42,6 +42,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -67,14 +68,15 @@ const CATEGORY_ORDER: VaultEntryCategory[] = [
 
 const CATEGORY_INPUT_OPTIONS: Array<{
   value: VaultEntryCategory;
-  label: string;
+  labelKey: string;
+  defaultLabel: string;
 }> = [
-  { value: "provider", label: "Provider" },
-  { value: "plugin", label: "Plugin" },
-  { value: "wallet", label: "Wallet" },
-  { value: "credential", label: "Saved login" },
-  { value: "session", label: "Session" },
-  { value: "system", label: "System" },
+  { value: "provider", labelKey: "vaultinventory.category.provider", defaultLabel: "Provider" },
+  { value: "plugin", labelKey: "vaultinventory.category.plugin", defaultLabel: "Plugin" },
+  { value: "wallet", labelKey: "vaultinventory.category.wallet", defaultLabel: "Wallet" },
+  { value: "credential", labelKey: "vaultinventory.category.credential", defaultLabel: "Saved login" },
+  { value: "session", labelKey: "vaultinventory.category.session", defaultLabel: "Session" },
+  { value: "system", labelKey: "vaultinventory.category.system", defaultLabel: "System" },
 ];
 
 // ── Public component ───────────────────────────────────────────────
@@ -116,6 +118,7 @@ export interface VaultInventoryPanelProps {
 }
 
 export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
+  const { t } = useTranslation();
   const {
     entries: externalEntries,
     onChanged: externalOnChanged,
@@ -178,10 +181,16 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
     <section data-testid="vault-inventory-panel" className="space-y-2 pt-1">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">Stored secrets</p>
+          <p className="text-sm font-medium text-txt">
+            {t("vaultinventory.storedSecrets", {
+              defaultValue: "Stored secrets",
+            })}
+          </p>
           <p className="text-2xs text-muted">
-            Every secret stored locally, grouped by category. Add API keys,
-            wallet keys, and plugin tokens here.
+            {t("vaultinventory.storedSecrets.description", {
+              defaultValue:
+                "Every secret stored locally, grouped by category. Add API keys, wallet keys, and plugin tokens here.",
+            })}
           </p>
         </div>
         <Button
@@ -189,10 +198,12 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
           size="sm"
           className="h-8 shrink-0 gap-1 rounded-sm px-2"
           onClick={() => setShowAdd((v) => !v)}
-          aria-label="Add secret"
+          aria-label={t("vaultinventory.addSecret", {
+            defaultValue: "Add secret",
+          })}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          Add secret
+          {t("vaultinventory.addSecret", { defaultValue: "Add secret" })}
         </Button>
       </div>
 
@@ -310,6 +321,7 @@ function EntryRow({
   focusProfileId: string | null;
   onFocusApplied?: () => void;
 }) {
+  const { t } = useTranslation();
   const [revealed, setRevealed] = useState<{
     value: string;
     source: string;
@@ -476,9 +488,10 @@ function EntryRow({
             size="sm"
             className="h-6 shrink-0 gap-1 rounded-sm px-2 text-2xs"
             onClick={() => void copy()}
-            aria-label="Copy"
+            aria-label={t("vaultinventory.copy", { defaultValue: "Copy" })}
           >
-            <Copy className="h-3 w-3" aria-hidden /> Copy
+            <Copy className="h-3 w-3" aria-hidden />{" "}
+            {t("vaultinventory.copy", { defaultValue: "Copy" })}
           </Button>
         </div>
       )}
@@ -512,6 +525,7 @@ function ProfilesPanel({
   onJumpToRouting?: (key: string) => void;
   highlightProfileId: string | null;
 }) {
+  const { t } = useTranslation();
   const [showAdd, setShowAdd] = useState(false);
   const [newId, setNewId] = useState("");
   const [newLabel, setNewLabel] = useState("");
@@ -605,7 +619,9 @@ function ProfilesPanel({
       className="mt-2 space-y-2 rounded-sm border border-border/40 bg-bg/30 p-2"
     >
       <div className="flex items-center justify-between gap-2">
-        <p className="text-2xs font-semibold uppercase text-muted">Profiles</p>
+        <p className="text-2xs font-semibold uppercase text-muted">
+          {t("vaultinventory.profiles.title", { defaultValue: "Profiles" })}
+        </p>
         <div className="flex items-center gap-1">
           {hasProfiles && onJumpToRouting && (
             <Button
@@ -613,9 +629,14 @@ function ProfilesPanel({
               size="sm"
               className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => onJumpToRouting(entry.key)}
-              aria-label={`Routing rules for ${entry.label}`}
+              aria-label={t("vaultinventory.profiles.routingRulesFor", {
+                label: entry.label,
+                defaultValue: "Routing rules for {{label}}",
+              })}
             >
-              Routing rules for this profile
+              {t("vaultinventory.profiles.routingRules", {
+                defaultValue: "Routing rules for this profile",
+              })}
               <ArrowRight className="h-3 w-3" aria-hidden />
             </Button>
           )}
@@ -625,9 +646,14 @@ function ProfilesPanel({
               size="sm"
               className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => setShowAdd((v) => !v)}
-              aria-label="Add profile"
+              aria-label={t("vaultinventory.profiles.addProfile", {
+                defaultValue: "Add profile",
+              })}
             >
-              <Plus className="h-3 w-3" aria-hidden /> Add profile
+              <Plus className="h-3 w-3" aria-hidden />{" "}
+              {t("vaultinventory.profiles.addProfile", {
+                defaultValue: "Add profile",
+              })}
             </Button>
           ) : (
             <Button
@@ -636,14 +662,18 @@ function ProfilesPanel({
               className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => void onMigrate()}
               disabled={migrating}
-              aria-label="Enable profiles for this key"
+              aria-label={t("vaultinventory.profiles.enableForKey", {
+                defaultValue: "Enable profiles for this key",
+              })}
             >
               {migrating ? (
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
               ) : (
                 <Plus className="h-3 w-3" aria-hidden />
               )}
-              Enable profiles
+              {t("vaultinventory.profiles.enable", {
+                defaultValue: "Enable profiles",
+              })}
             </Button>
           )}
         </div>
@@ -670,7 +700,10 @@ function ProfilesPanel({
                   checked={entry.activeProfile === p.id}
                   onChange={() => void onActivate(p.id)}
                   className="h-3 w-3 cursor-pointer accent-accent"
-                  aria-label={`Make ${p.label} active`}
+                  aria-label={t("vaultinventory.profiles.makeActive", {
+                    label: p.label,
+                    defaultValue: "Make {{label}} active",
+                  })}
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-txt">{p.label}</p>
@@ -680,14 +713,20 @@ function ProfilesPanel({
                 </div>
                 {entry.activeProfile === p.id && (
                   <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-                    <CheckCircle2 className="h-3 w-3" aria-hidden /> Active
+                    <CheckCircle2 className="h-3 w-3" aria-hidden />{" "}
+                    {t("vaultinventory.profiles.active", {
+                      defaultValue: "Active",
+                    })}
                   </span>
                 )}
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-                  aria-label={`Delete profile ${p.label}`}
+                  aria-label={t("vaultinventory.profiles.deleteProfile", {
+                    label: p.label,
+                    defaultValue: "Delete profile {{label}}",
+                  })}
                   onClick={() => void onDelete(p.id)}
                 >
                   <Trash2 className="h-3 w-3" aria-hidden />
@@ -706,28 +745,44 @@ function ProfilesPanel({
         >
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             <div>
-              <Label className="text-2xs text-muted">Profile id</Label>
+              <Label className="text-2xs text-muted">
+                {t("vaultinventory.profiles.idLabel", {
+                  defaultValue: "Profile id",
+                })}
+              </Label>
               <Input
                 value={newId}
                 onChange={(e) => setNewId(e.target.value)}
-                placeholder="work"
+                placeholder={t("vaultinventory.profiles.idPlaceholder", {
+                  defaultValue: "work",
+                })}
                 className="h-7 text-xs"
                 pattern="[A-Za-z0-9_-]+"
                 required
               />
             </div>
             <div>
-              <Label className="text-2xs text-muted">Display label</Label>
+              <Label className="text-2xs text-muted">
+                {t("vaultinventory.profiles.labelLabel", {
+                  defaultValue: "Display label",
+                })}
+              </Label>
               <Input
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="Work"
+                placeholder={t("vaultinventory.profiles.labelPlaceholder", {
+                  defaultValue: "Work",
+                })}
                 className="h-7 text-xs"
               />
             </div>
           </div>
           <div>
-            <Label className="text-2xs text-muted">Value</Label>
+            <Label className="text-2xs text-muted">
+              {t("vaultinventory.profiles.valueLabel", {
+                defaultValue: "Value",
+              })}
+            </Label>
             <Input
               type="password"
               autoComplete="off"
@@ -746,7 +801,9 @@ function ProfilesPanel({
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("vaultinventory.profiles.cancel", {
+                defaultValue: "Cancel",
+              })}
             </Button>
             <Button
               type="submit"
@@ -755,7 +812,13 @@ function ProfilesPanel({
               className="h-6 rounded-sm px-2 text-2xs"
               disabled={submitting || !newId || !newValue}
             >
-              {submitting ? "Saving…" : "Save profile"}
+              {submitting
+                ? t("vaultinventory.profiles.saving", {
+                    defaultValue: "Saving…",
+                  })
+                : t("vaultinventory.profiles.saveProfile", {
+                    defaultValue: "Save profile",
+                  })}
             </Button>
           </div>
         </form>
@@ -773,6 +836,7 @@ function AddSecretForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
   const [label, setLabel] = useState("");
@@ -817,12 +881,16 @@ function AddSecretForm({
       className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
     >
       <p className="text-2xs text-muted">
-        Stored locally and encrypted at rest. The key is the env-var-style
-        identifier; the value is what plugins read at runtime.
+        {t("vaultinventory.addForm.help", {
+          defaultValue:
+            "Stored locally and encrypted at rest. The key is the env-var-style identifier; the value is what plugins read at runtime.",
+        })}
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <Label className="text-2xs text-muted">Key</Label>
+          <Label className="text-2xs text-muted">
+            {t("vaultinventory.addForm.key.label", { defaultValue: "Key" })}
+          </Label>
           <Input
             value={key}
             onChange={(e) => setKey(e.target.value)}
@@ -833,7 +901,11 @@ function AddSecretForm({
           />
         </div>
         <div>
-          <Label className="text-2xs text-muted">Display label</Label>
+          <Label className="text-2xs text-muted">
+            {t("vaultinventory.addForm.displayLabel.label", {
+              defaultValue: "Display label",
+            })}
+          </Label>
           <Input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
@@ -844,7 +916,9 @@ function AddSecretForm({
         </div>
       </div>
       <div>
-        <Label className="text-2xs text-muted">Value</Label>
+        <Label className="text-2xs text-muted">
+          {t("vaultinventory.addForm.value.label", { defaultValue: "Value" })}
+        </Label>
         <Input
           type="password"
           value={value}
@@ -856,7 +930,11 @@ function AddSecretForm({
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <Label className="text-2xs text-muted">Category</Label>
+          <Label className="text-2xs text-muted">
+            {t("vaultinventory.addForm.category.label", {
+              defaultValue: "Category",
+            })}
+          </Label>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value as VaultEntryCategory)}
@@ -864,13 +942,17 @@ function AddSecretForm({
           >
             {CATEGORY_INPUT_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
-                {opt.label}
+                {t(opt.labelKey, { defaultValue: opt.defaultLabel })}
               </option>
             ))}
           </select>
         </div>
         <div>
-          <Label className="text-2xs text-muted">Provider id (optional)</Label>
+          <Label className="text-2xs text-muted">
+            {t("vaultinventory.addForm.providerId.label", {
+              defaultValue: "Provider id (optional)",
+            })}
+          </Label>
           <Input
             value={providerId}
             onChange={(e) => setProviderId(e.target.value)}
@@ -896,7 +978,7 @@ function AddSecretForm({
           onClick={onClose}
           disabled={submitting}
         >
-          Cancel
+          {t("vaultinventory.addForm.cancel", { defaultValue: "Cancel" })}
         </Button>
         <Button
           type="submit"
@@ -905,7 +987,11 @@ function AddSecretForm({
           className="h-7 rounded-sm px-3 text-xs"
           disabled={submitting || !key.trim() || !value}
         >
-          {submitting ? "Saving…" : "Save secret"}
+          {submitting
+            ? t("vaultinventory.addForm.saving", { defaultValue: "Saving…" })
+            : t("vaultinventory.addForm.save", {
+                defaultValue: "Save secret",
+              })}
         </Button>
       </div>
     </form>

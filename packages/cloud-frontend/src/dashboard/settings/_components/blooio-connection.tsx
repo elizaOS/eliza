@@ -18,6 +18,7 @@ import { ExternalLink, Loader2, MessageCircle, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
+import { useT } from "@/providers/I18nProvider";
 
 interface BlooioStatus {
   connected: boolean;
@@ -29,13 +30,16 @@ interface BlooioStatus {
 }
 
 export function BlooioConnection() {
+  const t = useT();
   const {
     status,
     isLoading,
     refetch: fetchStatus,
   } = useConnectionStatus<BlooioStatus>(
     "/api/v1/blooio/status",
-    "Failed to fetch Blooio status",
+    t("cloud.blooio.statusFetchFailed", {
+      defaultValue: "Failed to fetch Blooio status",
+    }),
   );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -48,11 +52,19 @@ export function BlooioConnection() {
   const handleConnect = async () => {
     if (isConnecting) return;
     if (!apiKey.trim()) {
-      toast.error("Please enter your Blooio API key");
+      toast.error(
+        t("cloud.blooio.enterApiKey", {
+          defaultValue: "Please enter your Blooio API key",
+        }),
+      );
       return;
     }
     if (!phoneNumber.trim()) {
-      toast.error("Please enter your iMessage phone number");
+      toast.error(
+        t("cloud.blooio.enterPhoneNumber", {
+          defaultValue: "Please enter your iMessage phone number",
+        }),
+      );
       return;
     }
 
@@ -71,15 +83,28 @@ export function BlooioConnection() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        toast.success("Blooio connected! Now set up the webhook.");
+        toast.success(
+          t("cloud.blooio.connected", {
+            defaultValue: "Blooio connected! Now set up the webhook.",
+          }),
+        );
         setApiKey("");
         setPhoneNumber("");
         void fetchStatus();
       } else {
-        toast.error(data.error || "Failed to connect Blooio");
+        toast.error(
+          data.error ||
+            t("cloud.blooio.connectFailed", {
+              defaultValue: "Failed to connect Blooio",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.blooio.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsConnecting(false);
@@ -95,14 +120,27 @@ export function BlooioConnection() {
       });
 
       if (response.ok) {
-        toast.success("Blooio disconnected");
+        toast.success(
+          t("cloud.blooio.disconnected", {
+            defaultValue: "Blooio disconnected",
+          }),
+        );
         void fetchStatus();
       } else {
         const data = await response.json().catch(() => ({}));
-        toast.error(data.error || "Failed to disconnect");
+        toast.error(
+          data.error ||
+            t("cloud.blooio.disconnectFailed", {
+              defaultValue: "Failed to disconnect",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.blooio.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsDisconnecting(false);
@@ -111,7 +149,11 @@ export function BlooioConnection() {
   const handleSaveSecret = async () => {
     if (isSavingSecret) return;
     if (!webhookSecret.trim()) {
-      toast.error("Please enter the webhook signing secret");
+      toast.error(
+        t("cloud.blooio.enterWebhookSecret", {
+          defaultValue: "Please enter the webhook signing secret",
+        }),
+      );
       return;
     }
 
@@ -127,14 +169,27 @@ export function BlooioConnection() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        toast.success("Webhook secret saved!");
+        toast.success(
+          t("cloud.blooio.webhookSecretSaved", {
+            defaultValue: "Webhook secret saved!",
+          }),
+        );
         setWebhookSecret("");
         void fetchStatus();
       } else {
-        toast.error(data.error || "Failed to save webhook secret");
+        toast.error(
+          data.error ||
+            t("cloud.blooio.saveSecretFailed", {
+              defaultValue: "Failed to save webhook secret",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.blooio.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsSavingSecret(false);
@@ -143,9 +198,13 @@ export function BlooioConnection() {
   if (isLoading) {
     return (
       <ConnectionCard
-        name="iMessage (Blooio)"
+        name={t("cloud.blooio.cardName", {
+          defaultValue: "iMessage (Blooio)",
+        })}
         icon={<MessageCircle className="text-green-500" />}
-        description="Connect iMessage for AI-powered text conversations"
+        description={t("cloud.blooio.cardDescription", {
+          defaultValue: "Connect iMessage for AI-powered text conversations",
+        })}
         status="loading"
       />
     );
@@ -153,9 +212,11 @@ export function BlooioConnection() {
 
   return (
     <ConnectionCard
-      name="iMessage (Blooio)"
+      name={t("cloud.blooio.cardName", { defaultValue: "iMessage (Blooio)" })}
       icon={<MessageCircle className="text-green-500" />}
-      description="Connect iMessage for AI-powered text conversations"
+      description={t("cloud.blooio.cardDescription", {
+        defaultValue: "Connect iMessage for AI-powered text conversations",
+      })}
       status={status?.connected ? "connected" : "disconnected"}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
@@ -164,20 +225,32 @@ export function BlooioConnection() {
             icon={<Smartphone className="h-6 w-6 text-green-600" />}
             iconClassName="bg-green-100"
             title={status?.phoneNumber}
-            subtitle="iMessage Connected via Blooio"
+            subtitle={t("cloud.blooio.connectedVia", {
+              defaultValue: "iMessage Connected via Blooio",
+            })}
           >
             {status?.webhookConfigured && (
               <Badge variant="outline" className="mt-1 text-xs">
-                Webhook Active
+                {t("cloud.blooio.webhookActive", {
+                  defaultValue: "Webhook Active",
+                })}
               </Badge>
             )}
           </ConnectionIdentityPanel>
 
           {status?.webhookUrl && (
             <ConnectionCopyRow
-              label="Step 1: Copy this webhook URL"
+              label={t("cloud.blooio.step1Copy", {
+                defaultValue: "Step 1: Copy this webhook URL",
+              })}
               value={status.webhookUrl}
-              onCopied={() => toast.success("Webhook URL copied to clipboard")}
+              onCopied={() =>
+                toast.success(
+                  t("cloud.blooio.webhookUrlCopied", {
+                    defaultValue: "Webhook URL copied to clipboard",
+                  }),
+                )
+              }
             />
           )}
 
@@ -185,18 +258,39 @@ export function BlooioConnection() {
             <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-sm space-y-3">
               <div>
                 <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-1">
-                  Step 2: Create a webhook in Blooio
+                  {t("cloud.blooio.step2Title", {
+                    defaultValue: "Step 2: Create a webhook in Blooio",
+                  })}
                 </p>
                 <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-                  <li>Go to Webhooks in your Blooio dashboard</li>
-                  <li>Click &quot;Create Webhook&quot;</li>
-                  <li>Paste the URL above</li>
-                  <li>Copy the signing secret shown after creating</li>
+                  <li>
+                    {t("cloud.blooio.step2Item1", {
+                      defaultValue: "Go to Webhooks in your Blooio dashboard",
+                    })}
+                  </li>
+                  <li>
+                    {t("cloud.blooio.step2Item2", {
+                      defaultValue: 'Click "Create Webhook"',
+                    })}
+                  </li>
+                  <li>
+                    {t("cloud.blooio.step2Item3", {
+                      defaultValue: "Paste the URL above",
+                    })}
+                  </li>
+                  <li>
+                    {t("cloud.blooio.step2Item4", {
+                      defaultValue:
+                        "Copy the signing secret shown after creating",
+                    })}
+                  </li>
                 </ol>
               </div>
               <div className="space-y-2 pt-2 border-t border-yellow-500/20">
                 <Label className="text-xs text-yellow-700 dark:text-yellow-400">
-                  Step 3: Paste signing secret here
+                  {t("cloud.blooio.step3Label", {
+                    defaultValue: "Step 3: Paste signing secret here",
+                  })}
                 </Label>
                 <div className="flex items-center gap-2">
                   <Input
@@ -214,7 +308,7 @@ export function BlooioConnection() {
                     {isSavingSecret ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      "Save"
+                      t("cloud.blooio.save", { defaultValue: "Save" })
                     )}
                   </Button>
                 </div>
@@ -224,21 +318,40 @@ export function BlooioConnection() {
 
           {status?.hasWebhookSecret && (
             <ConnectionCallout
-              title="Your AI agent can now:"
+              title={t("cloud.blooio.calloutTitle", {
+                defaultValue: "Your AI agent can now:",
+              })}
               tone="green"
               items={[
-                "Receive and respond to iMessages",
-                "Send proactive messages to contacts",
-                "Handle multi-turn conversations",
-                "Process images and attachments",
+                t("cloud.blooio.calloutItem1", {
+                  defaultValue: "Receive and respond to iMessages",
+                }),
+                t("cloud.blooio.calloutItem2", {
+                  defaultValue: "Send proactive messages to contacts",
+                }),
+                t("cloud.blooio.calloutItem3", {
+                  defaultValue: "Handle multi-turn conversations",
+                }),
+                t("cloud.blooio.calloutItem4", {
+                  defaultValue: "Process images and attachments",
+                }),
               ]}
             />
           )}
 
-          <ConnectionFooterActions note="Messages are processed in real-time">
+          <ConnectionFooterActions
+            note={t("cloud.blooio.realtimeNote", {
+              defaultValue: "Messages are processed in real-time",
+            })}
+          >
             <ConnectionDisconnectAction
-              title="Disconnect iMessage?"
-              description="This will stop your AI agent from receiving and sending iMessages. You can reconnect at any time."
+              title={t("cloud.blooio.disconnectTitle", {
+                defaultValue: "Disconnect iMessage?",
+              })}
+              description={t("cloud.blooio.disconnectDescription", {
+                defaultValue:
+                  "This will stop your AI agent from receiving and sending iMessages. You can reconnect at any time.",
+              })}
               onDisconnect={handleDisconnect}
               isDisconnecting={isDisconnecting}
             />
@@ -248,13 +361,15 @@ export function BlooioConnection() {
       setupContent={
         <div className="space-y-4">
           <ConnectionInstructions
-            title="How to get Blooio credentials"
+            title={t("cloud.blooio.instructionsTitle", {
+              defaultValue: "How to get Blooio credentials",
+            })}
             open={showInstructions}
             onOpenChange={setShowInstructions}
           >
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
-                Go to{" "}
+                {t("cloud.blooio.instructGoTo", { defaultValue: "Go to" })}{" "}
                 <a
                   href="https://app.blooio.com"
                   target="_blank"
@@ -265,16 +380,41 @@ export function BlooioConnection() {
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </li>
-              <li>Create an account and start a free trial</li>
-              <li>Go to Numbers section to get your Blooio number</li>
-              <li>Go to API Keys section and copy your API key</li>
-              <li>Enter the API key and phone number below</li>
-              <li>After connecting, you&apos;ll set up the webhook</li>
+              <li>
+                {t("cloud.blooio.instructCreateAccount", {
+                  defaultValue: "Create an account and start a free trial",
+                })}
+              </li>
+              <li>
+                {t("cloud.blooio.instructNumbers", {
+                  defaultValue:
+                    "Go to Numbers section to get your Blooio number",
+                })}
+              </li>
+              <li>
+                {t("cloud.blooio.instructApiKeys", {
+                  defaultValue: "Go to API Keys section and copy your API key",
+                })}
+              </li>
+              <li>
+                {t("cloud.blooio.instructEnterBelow", {
+                  defaultValue: "Enter the API key and phone number below",
+                })}
+              </li>
+              <li>
+                {t("cloud.blooio.instructWebhook", {
+                  defaultValue: "After connecting, you'll set up the webhook",
+                })}
+              </li>
             </ol>
           </ConnectionInstructions>
 
           <div className="space-y-2">
-            <Label htmlFor="blooioApiKey">Blooio API Key</Label>
+            <Label htmlFor="blooioApiKey">
+              {t("cloud.blooio.apiKeyLabel", {
+                defaultValue: "Blooio API Key",
+              })}
+            </Label>
             <Input
               id="blooioApiKey"
               type="password"
@@ -283,12 +423,18 @@ export function BlooioConnection() {
               onChange={(e) => setApiKey(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Get this from your Blooio dashboard
+              {t("cloud.blooio.apiKeyHint", {
+                defaultValue: "Get this from your Blooio dashboard",
+              })}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phoneNumber">Blooio Phone Number</Label>
+            <Label htmlFor="phoneNumber">
+              {t("cloud.blooio.phoneLabel", {
+                defaultValue: "Blooio Phone Number",
+              })}
+            </Label>
             <Input
               id="phoneNumber"
               type="tel"
@@ -297,17 +443,40 @@ export function BlooioConnection() {
               onChange={(e) => setPhoneNumber(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              The number Blooio generated for you (in Numbers section)
+              {t("cloud.blooio.phoneHint", {
+                defaultValue:
+                  "The number Blooio generated for you (in Numbers section)",
+              })}
             </p>
           </div>
 
           <div className="p-4 bg-muted rounded-sm">
-            <h4 className="font-medium mb-2">What you can do with iMessage:</h4>
+            <h4 className="font-medium mb-2">
+              {t("cloud.blooio.whatYouCanDo", {
+                defaultValue: "What you can do with iMessage:",
+              })}
+            </h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Have AI conversations via text message</li>
-              <li>• Receive real-time notifications</li>
-              <li>• Send automated responses 24/7</li>
-              <li>• Handle customer inquiries naturally</li>
+              <li>
+                {t("cloud.blooio.capability1", {
+                  defaultValue: "• Have AI conversations via text message",
+                })}
+              </li>
+              <li>
+                {t("cloud.blooio.capability2", {
+                  defaultValue: "• Receive real-time notifications",
+                })}
+              </li>
+              <li>
+                {t("cloud.blooio.capability3", {
+                  defaultValue: "• Send automated responses 24/7",
+                })}
+              </li>
+              <li>
+                {t("cloud.blooio.capability4", {
+                  defaultValue: "• Handle customer inquiries naturally",
+                })}
+              </li>
             </ul>
           </div>
 
@@ -319,12 +488,16 @@ export function BlooioConnection() {
             {isConnecting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Connecting...
+                {t("cloud.blooio.connecting", {
+                  defaultValue: "Connecting...",
+                })}
               </>
             ) : (
               <>
                 <MessageCircle className="h-4 w-4 mr-2" />
-                Connect iMessage
+                {t("cloud.blooio.connectButton", {
+                  defaultValue: "Connect iMessage",
+                })}
               </>
             )}
           </Button>

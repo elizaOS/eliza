@@ -11,9 +11,11 @@ import {
   ConnectionIdentityPanel,
 } from "@elizaos/ui";
 import { Calendar, Loader2, Mail } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 import { useOAuthConnections } from "./oauth-connection";
 
 export function MicrosoftConnection() {
+  const t = useT();
   const {
     activeConnections,
     isLoading,
@@ -42,22 +44,48 @@ export function MicrosoftConnection() {
   };
 
   const getScopeName = (scope: string) => {
-    if (scope === "Mail.Send") return "Send emails";
-    if (scope === "Mail.Read") return "Read emails";
-    if (scope === "Mail.ReadWrite") return "Read & write emails";
-    if (scope === "Calendars.Read") return "Read calendar";
-    if (scope === "Calendars.ReadWrite") return "Read & write calendar";
-    if (scope === "User.Read") return "Read profile";
-    if (scope === "offline_access") return "Offline access";
+    if (scope === "Mail.Send")
+      return t("cloud.microsoft.scopeSendEmails", {
+        defaultValue: "Send emails",
+      });
+    if (scope === "Mail.Read")
+      return t("cloud.microsoft.scopeReadEmails", {
+        defaultValue: "Read emails",
+      });
+    if (scope === "Mail.ReadWrite")
+      return t("cloud.microsoft.scopeReadWriteEmails", {
+        defaultValue: "Read & write emails",
+      });
+    if (scope === "Calendars.Read")
+      return t("cloud.microsoft.scopeReadCalendar", {
+        defaultValue: "Read calendar",
+      });
+    if (scope === "Calendars.ReadWrite")
+      return t("cloud.microsoft.scopeReadWriteCalendar", {
+        defaultValue: "Read & write calendar",
+      });
+    if (scope === "User.Read")
+      return t("cloud.microsoft.scopeReadProfile", {
+        defaultValue: "Read profile",
+      });
+    if (scope === "offline_access")
+      return t("cloud.microsoft.scopeOfflineAccess", {
+        defaultValue: "Offline access",
+      });
     return scope;
   };
 
   if (isLoading) {
     return (
       <ConnectionCard
-        name="Microsoft Services"
+        name={t("cloud.microsoft.cardName", {
+          defaultValue: "Microsoft Services",
+        })}
         icon={<MicrosoftIcon />}
-        description="Connect Outlook Mail, Calendar for AI-powered automation"
+        description={t("cloud.microsoft.cardDescription", {
+          defaultValue:
+            "Connect Outlook Mail, Calendar for AI-powered automation",
+        })}
         status="loading"
       />
     );
@@ -65,9 +93,14 @@ export function MicrosoftConnection() {
 
   return (
     <ConnectionCard
-      name="Microsoft Services"
+      name={t("cloud.microsoft.cardName", {
+        defaultValue: "Microsoft Services",
+      })}
       icon={<MicrosoftIcon />}
-      description="Connect Outlook Mail, Calendar for AI-powered automation"
+      description={t("cloud.microsoft.cardDescription", {
+        defaultValue:
+          "Connect Outlook Mail, Calendar for AI-powered automation",
+      })}
       status={activeConnection ? "connected" : "disconnected"}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
@@ -76,12 +109,18 @@ export function MicrosoftConnection() {
             icon={<Mail className="h-6 w-6 text-[#FF5800]" />}
             iconClassName="bg-[#FF5800]/10"
             title={activeConnection?.email}
-            subtitle="Microsoft Account Connected"
+            subtitle={t("cloud.microsoft.connectedSubtitle", {
+              defaultValue: "Microsoft Account Connected",
+            })}
           />
 
           {activeConnection?.scopes && activeConnection.scopes.length > 0 && (
             <div className="p-3 bg-muted rounded-sm">
-              <p className="text-sm font-medium mb-2">Permissions granted:</p>
+              <p className="text-sm font-medium mb-2">
+                {t("cloud.microsoft.permissionsGranted", {
+                  defaultValue: "Permissions granted:",
+                })}
+              </p>
               <div className="flex flex-wrap gap-2">
                 {activeConnection.scopes
                   .filter((s) => !["openid", "profile", "email"].includes(s))
@@ -96,20 +135,39 @@ export function MicrosoftConnection() {
           )}
 
           <ConnectionCallout
-            title="Available automations:"
+            title={t("cloud.microsoft.availableAutomations", {
+              defaultValue: "Available automations:",
+            })}
             tone="blue"
             items={[
-              "Send emails via Outlook on your behalf",
-              "Create and manage calendar events",
-              "Read emails for AI-powered responses",
-              "Build email workflows with AI",
+              t("cloud.microsoft.automation1", {
+                defaultValue: "Send emails via Outlook on your behalf",
+              }),
+              t("cloud.microsoft.automation2", {
+                defaultValue: "Create and manage calendar events",
+              }),
+              t("cloud.microsoft.automation3", {
+                defaultValue: "Read emails for AI-powered responses",
+              }),
+              t("cloud.microsoft.automation4", {
+                defaultValue: "Build email workflows with AI",
+              }),
             ]}
           />
 
-          <ConnectionFooterActions note="Used for workflow automation">
+          <ConnectionFooterActions
+            note={t("cloud.microsoft.footerNote", {
+              defaultValue: "Used for workflow automation",
+            })}
+          >
             <ConnectionDisconnectAction
-              title="Disconnect Microsoft Account?"
-              description="This will revoke access to Outlook Mail and Calendar. Any active automations using Microsoft services will stop working until you reconnect."
+              title={t("cloud.microsoft.disconnectTitle", {
+                defaultValue: "Disconnect Microsoft Account?",
+              })}
+              description={t("cloud.microsoft.disconnectDescription", {
+                defaultValue:
+                  "This will revoke access to Outlook Mail and Calendar. Any active automations using Microsoft services will stop working until you reconnect.",
+              })}
               onDisconnect={handleDisconnect}
               isDisconnecting={isDisconnecting}
             />
@@ -121,25 +179,45 @@ export function MicrosoftConnection() {
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 bg-muted rounded-sm text-center">
               <Mail className="h-6 w-6 mx-auto mb-2 text-[#FF5800]" />
-              <p className="text-sm font-medium">Outlook</p>
+              <p className="text-sm font-medium">
+                {t("cloud.microsoft.outlook", { defaultValue: "Outlook" })}
+              </p>
               <p className="text-xs text-muted-foreground">
-                Send & read emails
+                {t("cloud.microsoft.outlookDesc", {
+                  defaultValue: "Send & read emails",
+                })}
               </p>
             </div>
             <div className="p-3 bg-muted rounded-sm text-center">
               <Calendar className="h-6 w-6 mx-auto mb-2 text-[#FF5800]" />
-              <p className="text-sm font-medium">Calendar</p>
-              <p className="text-xs text-muted-foreground">Manage events</p>
+              <p className="text-sm font-medium">
+                {t("cloud.microsoft.calendar", { defaultValue: "Calendar" })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("cloud.microsoft.calendarDesc", {
+                  defaultValue: "Manage events",
+                })}
+              </p>
             </div>
           </div>
 
           <ConnectionCallout
-            title="What you can do with Microsoft integration:"
+            title={t("cloud.microsoft.calloutTitle", {
+              defaultValue: "What you can do with Microsoft integration:",
+            })}
             items={[
-              "Send AI-generated emails via Outlook",
-              "Schedule and manage calendar events",
-              "Create email workflows triggered by messages",
-              "Auto-respond based on calendar availability",
+              t("cloud.microsoft.calloutItem1", {
+                defaultValue: "Send AI-generated emails via Outlook",
+              }),
+              t("cloud.microsoft.calloutItem2", {
+                defaultValue: "Schedule and manage calendar events",
+              }),
+              t("cloud.microsoft.calloutItem3", {
+                defaultValue: "Create email workflows triggered by messages",
+              }),
+              t("cloud.microsoft.calloutItem4", {
+                defaultValue: "Auto-respond based on calendar availability",
+              }),
             ]}
           />
 
@@ -151,12 +229,16 @@ export function MicrosoftConnection() {
             {isConnecting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Connecting...
+                {t("cloud.microsoft.connecting", {
+                  defaultValue: "Connecting...",
+                })}
               </>
             ) : (
               <>
                 <MicrosoftIcon className="h-4 w-4 mr-2 text-current" />
-                Connect with Microsoft
+                {t("cloud.microsoft.connectButton", {
+                  defaultValue: "Connect with Microsoft",
+                })}
               </>
             )}
           </Button>

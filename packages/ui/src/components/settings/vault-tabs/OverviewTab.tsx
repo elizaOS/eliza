@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "../../../state/TranslationContext";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -72,6 +73,7 @@ export function OverviewTab(props: OverviewTabProps) {
     onSigninComplete,
     onSignout,
   } = props;
+  const { t } = useTranslation();
 
   const [installSheet, setInstallSheet] = useState<InstallableBackendId | null>(
     null,
@@ -135,15 +137,21 @@ export function OverviewTab(props: OverviewTabProps) {
     <div className="space-y-3">
       <div className="flex items-center justify-between pb-1">
         <p className="text-2xs text-muted">
-          Sensitive values route to the first enabled backend.
+          {t("vault.overview.routeHint", {
+            defaultValue: "Sensitive values route to the first enabled backend.",
+          })}
         </p>
         <Button
           variant="ghost"
           size="sm"
           className="h-7 rounded-sm px-2"
           onClick={onReload}
-          aria-label="Re-detect backends"
-          title="Re-detect backends"
+          aria-label={t("vault.overview.redetect", {
+            defaultValue: "Re-detect backends",
+          })}
+          title={t("vault.overview.redetect", {
+            defaultValue: "Re-detect backends",
+          })}
         >
           <RefreshCw className="h-3.5 w-3.5" aria-hidden />
         </Button>
@@ -199,7 +207,13 @@ export function OverviewTab(props: OverviewTabProps) {
           onClick={onSave}
           disabled={saving}
         >
-          {saving ? "Saving…" : savedAt !== null ? "Saved" : "Save preferences"}
+          {saving
+            ? t("vault.overview.saving", { defaultValue: "Saving…" })
+            : savedAt !== null
+              ? t("vault.overview.saved", { defaultValue: "Saved" })
+              : t("vault.overview.savePreferences", {
+                  defaultValue: "Save preferences",
+                })}
         </Button>
       </div>
     </div>
@@ -262,6 +276,7 @@ export function BackendRow(props: BackendRowProps) {
     onSigninComplete,
     onSignout,
   } = props;
+  const { t } = useTranslation();
   const tone = backend.available
     ? backend.signedIn === false
       ? "warn"
@@ -269,9 +284,11 @@ export function BackendRow(props: BackendRowProps) {
     : "muted";
   const status = backend.available
     ? backend.signedIn === false
-      ? "Detected"
-      : "Ready"
-    : "Not detected";
+      ? t("vault.backend.status.detected", { defaultValue: "Detected" })
+      : t("vault.backend.status.ready", { defaultValue: "Ready" })
+    : t("vault.backend.status.notDetected", {
+        defaultValue: "Not detected",
+      });
   const lockedInHouse = backend.id === "in-house";
   const isInstallable = !lockedInHouse;
   const showInstallButton = isInstallable && !backend.available;
@@ -294,7 +311,10 @@ export function BackendRow(props: BackendRowProps) {
           disabled={lockedInHouse}
           onChange={(e) => onToggle(e.target.checked)}
           className="h-4 w-4 cursor-pointer accent-accent disabled:cursor-not-allowed"
-          aria-label={`Enable ${backend.label}`}
+          aria-label={t("vault.backend.enableLabel", {
+            label: backend.label,
+            defaultValue: "Enable {{label}}",
+          })}
         />
 
         <div className="min-w-0 flex-1">
@@ -307,14 +327,18 @@ export function BackendRow(props: BackendRowProps) {
               <span
                 data-testid={`auth-mode-badge-${backend.id}`}
                 className="rounded-full border border-info/40 bg-info/10 px-1.5 py-0.5 text-2xs font-medium text-info"
-                title="Authenticated via 1Password desktop app"
+                title={t("vault.backend.desktopAppTitle", {
+                  defaultValue: "Authenticated via 1Password desktop app",
+                })}
               >
-                via desktop app
+                {t("vault.backend.viaDesktopApp", {
+                  defaultValue: "via desktop app",
+                })}
               </span>
             )}
             {isPrimary && enabled && (
               <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-                Primary
+                {t("vault.backend.primary", { defaultValue: "Primary" })}
               </span>
             )}
           </div>
@@ -332,10 +356,13 @@ export function BackendRow(props: BackendRowProps) {
               size="sm"
               className="h-7 gap-1 rounded-sm px-2 text-xs"
               onClick={onOpenInstallSheet}
-              aria-label={`Install ${backend.label}`}
+              aria-label={t("vault.backend.installLabel", {
+                label: backend.label,
+                defaultValue: "Install {{label}}",
+              })}
             >
               <Download className="h-3.5 w-3.5" aria-hidden />
-              Install
+              {t("vault.backend.install", { defaultValue: "Install" })}
             </Button>
           )}
           {showSigninButton && (
@@ -344,10 +371,13 @@ export function BackendRow(props: BackendRowProps) {
               size="sm"
               className="h-7 gap-1 rounded-sm px-2 text-xs"
               onClick={onOpenSigninSheet}
-              aria-label={`Sign in to ${backend.label}`}
+              aria-label={t("vault.backend.signInLabel", {
+                label: backend.label,
+                defaultValue: "Sign in to {{label}}",
+              })}
             >
               <LogIn className="h-3.5 w-3.5" aria-hidden />
-              Sign in
+              {t("vault.backend.signIn", { defaultValue: "Sign in" })}
             </Button>
           )}
           {showSignoutButton && (
@@ -356,11 +386,14 @@ export function BackendRow(props: BackendRowProps) {
               size="sm"
               className="h-7 gap-1 rounded-sm px-2 text-xs text-muted"
               onClick={onSignout}
-              aria-label={`Sign out of ${backend.label}`}
-              title="Sign out"
+              aria-label={t("vault.backend.signOutLabel", {
+                label: backend.label,
+                defaultValue: "Sign out of {{label}}",
+              })}
+              title={t("vault.backend.signOut", { defaultValue: "Sign out" })}
             >
               <LogOut className="h-3.5 w-3.5" aria-hidden />
-              Sign out
+              {t("vault.backend.signOut", { defaultValue: "Sign out" })}
             </Button>
           )}
           {enabled && backend.available && backend.signedIn !== false && (
@@ -371,8 +404,10 @@ export function BackendRow(props: BackendRowProps) {
                 className="h-7 w-7 rounded-sm p-0"
                 onClick={onMoveUp}
                 disabled={position <= 0}
-                title="Move up"
-                aria-label="Move up"
+                title={t("vault.backend.moveUp", { defaultValue: "Move up" })}
+                aria-label={t("vault.backend.moveUp", {
+                  defaultValue: "Move up",
+                })}
               >
                 <ChevronUp className="h-3.5 w-3.5" aria-hidden />
               </Button>
@@ -382,8 +417,12 @@ export function BackendRow(props: BackendRowProps) {
                 className="h-7 w-7 rounded-sm p-0"
                 onClick={onMoveDown}
                 disabled={position < 0 || position >= totalEnabled - 1}
-                title="Move down"
-                aria-label="Move down"
+                title={t("vault.backend.moveDown", {
+                  defaultValue: "Move down",
+                })}
+                aria-label={t("vault.backend.moveDown", {
+                  defaultValue: "Move down",
+                })}
               >
                 <ChevronDown className="h-3.5 w-3.5" aria-hidden />
               </Button>
@@ -454,6 +493,7 @@ export function InstallSheet({
   onCancel,
   onComplete,
 }: InstallSheetProps) {
+  const { t } = useTranslation();
   const [running, setRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -530,17 +570,25 @@ export function InstallSheet({
           source.close();
           sourceRef.current = null;
           if (!done && !error) {
-            setError("install stream disconnected");
+            setError(
+              t("vault.install.streamDisconnected", {
+                defaultValue: "install stream disconnected",
+              }),
+            );
             setRunning(false);
           }
         };
       } catch (err) {
         // Boundary translation: fetch / parse failures land here.
-        setError(err instanceof Error ? err.message : "install failed");
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("vault.install.failed", { defaultValue: "install failed" }),
+        );
         setRunning(false);
       }
     },
-    [backendId, done, error],
+    [backendId, done, error, t],
   );
 
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
@@ -548,7 +596,12 @@ export function InstallSheet({
   return (
     <div className="mt-3 space-y-2 rounded-sm border border-border/50 bg-bg/30 p-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-txt">Install {backendLabel}</p>
+        <p className="text-xs font-medium text-txt">
+          {t("vault.install.title", {
+            label: backendLabel,
+            defaultValue: "Install {{label}}",
+          })}
+        </p>
         <Button
           variant="ghost"
           size="sm"
@@ -556,7 +609,7 @@ export function InstallSheet({
           onClick={close}
           disabled={running}
         >
-          Close
+          {t("vault.install.close", { defaultValue: "Close" })}
         </Button>
       </div>
 
@@ -564,8 +617,11 @@ export function InstallSheet({
         <div className="space-y-1.5">
           {methods.length === 0 ? (
             <p className="text-2xs text-muted">
-              No automated installer is available on this OS for {backendLabel}.
-              The vendor's CLI may need a manual install.
+              {t("vault.install.noInstaller", {
+                label: backendLabel,
+                defaultValue:
+                  "No automated installer is available on this OS for {{label}}. The vendor's CLI may need a manual install.",
+              })}
             </p>
           ) : (
             methods.map((m) => (
@@ -592,7 +648,7 @@ export function InstallSheet({
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs text-muted">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-            Installing…
+            {t("vault.install.installing", { defaultValue: "Installing…" })}
           </div>
           {lastLog && (
             <pre className="overflow-x-auto whitespace-pre-wrap rounded-sm border border-border/40 bg-card/40 p-2 text-2xs text-muted">
@@ -606,7 +662,7 @@ export function InstallSheet({
         <div className="flex items-center justify-between gap-2 rounded-sm border border-ok/30 bg-ok/10 px-2 py-1.5 text-xs text-ok">
           <span className="flex items-center gap-1.5">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-            Install complete.
+            {t("vault.install.complete", { defaultValue: "Install complete." })}
           </span>
           <Button
             variant="ghost"
@@ -614,7 +670,7 @@ export function InstallSheet({
             className="h-6 rounded-sm px-2 text-2xs"
             onClick={onComplete}
           >
-            Continue
+            {t("vault.install.continue", { defaultValue: "Continue" })}
           </Button>
         </div>
       )}
@@ -665,6 +721,7 @@ export function SigninSheet({
   onCancel,
   onComplete,
 }: SigninSheetProps) {
+  const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -706,7 +763,11 @@ export function SigninSheet({
       onComplete();
     } catch (err) {
       // Boundary translation: surface vendor sign-in errors to the form.
-      setError(err instanceof Error ? err.message : "sign-in failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("vault.signin.failed", { defaultValue: "sign-in failed" }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -719,7 +780,10 @@ export function SigninSheet({
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-txt">
-          Sign in to {backendLabel}
+          {t("vault.signin.title", {
+            label: backendLabel,
+            defaultValue: "Sign in to {{label}}",
+          })}
         </p>
         <Button
           variant="ghost"
@@ -729,7 +793,7 @@ export function SigninSheet({
           onClick={onCancel}
           disabled={submitting}
         >
-          Cancel
+          {t("vault.signin.cancel", { defaultValue: "Cancel" })}
         </Button>
       </div>
 
@@ -737,7 +801,7 @@ export function SigninSheet({
         <>
           <div className="space-y-1">
             <Label htmlFor="op-email" className="text-2xs text-muted">
-              Email
+              {t("vault.signin.email", { defaultValue: "Email" })}
             </Label>
             <Input
               id="op-email"
@@ -751,7 +815,9 @@ export function SigninSheet({
           </div>
           <div className="space-y-1">
             <Label htmlFor="op-secret-key" className="text-2xs text-muted">
-              Secret key (34 chars)
+              {t("vault.signin.secretKey", {
+                defaultValue: "Secret key (34 chars)",
+              })}
             </Label>
             <Input
               id="op-secret-key"
@@ -764,7 +830,10 @@ export function SigninSheet({
           </div>
           <div className="space-y-1">
             <Label htmlFor="op-address" className="text-2xs text-muted">
-              Sign-in address (optional, e.g. my.1password.com)
+              {t("vault.signin.address", {
+                defaultValue:
+                  "Sign-in address (optional, e.g. my.1password.com)",
+              })}
             </Label>
             <Input
               id="op-address"
@@ -780,12 +849,16 @@ export function SigninSheet({
       {backendId === "bitwarden" && (
         <>
           <p className="text-2xs text-muted">
-            Bitwarden requires API key credentials for non-interactive sign-in.
-            Create one at Settings → Security → Keys → API key.
+            {t("vault.signin.bitwardenHint", {
+              defaultValue:
+                "Bitwarden requires API key credentials for non-interactive sign-in. Create one at Settings → Security → Keys → API key.",
+            })}
           </p>
           <div className="space-y-1">
             <Label htmlFor="bw-client-id" className="text-2xs text-muted">
-              client_id (BW_CLIENTID)
+              {t("vault.signin.clientId", {
+                defaultValue: "client_id (BW_CLIENTID)",
+              })}
             </Label>
             <Input
               id="bw-client-id"
@@ -798,7 +871,9 @@ export function SigninSheet({
           </div>
           <div className="space-y-1">
             <Label htmlFor="bw-client-secret" className="text-2xs text-muted">
-              client_secret (BW_CLIENTSECRET)
+              {t("vault.signin.clientSecret", {
+                defaultValue: "client_secret (BW_CLIENTSECRET)",
+              })}
             </Label>
             <Input
               id="bw-client-secret"
@@ -815,14 +890,18 @@ export function SigninSheet({
 
       {backendId === "protonpass" && (
         <p className="text-2xs text-warn">
-          Proton Pass CLI is in closed beta — automated sign-in is not yet
-          supported.
+          {t("vault.signin.protonpassBeta", {
+            defaultValue:
+              "Proton Pass CLI is in closed beta — automated sign-in is not yet supported.",
+          })}
         </p>
       )}
 
       <div className="space-y-1">
         <Label htmlFor="master-password" className="text-2xs text-muted">
-          Master password
+          {t("vault.signin.masterPassword", {
+            defaultValue: "Master password",
+          })}
         </Label>
         <Input
           id="master-password"
@@ -852,12 +931,12 @@ export function SigninSheet({
           {submitting ? (
             <>
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-              Signing in…
+              {t("vault.signin.signingIn", { defaultValue: "Signing in…" })}
             </>
           ) : (
             <>
               <LogIn className="h-3.5 w-3.5" aria-hidden />
-              Sign in
+              {t("vault.signin.signIn", { defaultValue: "Sign in" })}
             </>
           )}
         </Button>

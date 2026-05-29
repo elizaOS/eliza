@@ -17,6 +17,7 @@ import type { CSSProperties } from "react";
 import { toast } from "sonner";
 import { useAccount } from "wagmi";
 import { useAttachWallet } from "@/lib/data/use-attach-wallet";
+import { useT } from "@/providers/I18nProvider";
 
 const CLOUD_BUTTON_STYLE: CSSProperties = {
   backgroundColor: "#000",
@@ -30,21 +31,35 @@ interface AttachWalletCardProps {
 }
 
 export function AttachWalletCard({ chainId = 56 }: AttachWalletCardProps) {
+  const t = useT();
   const { address, isConnected } = useAccount();
   const attach = useAttachWallet({ chainId });
 
   const handleAttach = () => {
     attach.mutate(undefined, {
       onSuccess: () => {
-        toast.success("Wallet verified — you can pay now.");
+        toast.success(
+          t("cloud.attachWallet.verified", {
+            defaultValue: "Wallet verified — you can pay now.",
+          }),
+        );
       },
       onError: (error) => {
         if (error.code === "signature_rejected") {
-          toast.message("Signature canceled. Try again to verify your wallet.");
+          toast.message(
+            t("cloud.attachWallet.signatureCanceled", {
+              defaultValue:
+                "Signature canceled. Try again to verify your wallet.",
+            }),
+          );
           return;
         }
         if (error.code === "wallet_not_connected") {
-          toast.error("Connect a wallet before verifying.");
+          toast.error(
+            t("cloud.attachWallet.connectFirst", {
+              defaultValue: "Connect a wallet before verifying.",
+            }),
+          );
           return;
         }
         toast.error(error.message);
@@ -62,19 +77,35 @@ export function AttachWalletCard({ chainId = 56 }: AttachWalletCardProps) {
         </div>
         <div>
           <CardTitle className="text-base text-black">
-            Verify your BSC wallet
+            {t("cloud.attachWallet.title", {
+              defaultValue: "Verify your BSC wallet",
+            })}
           </CardTitle>
           <p className="mt-1 text-sm text-black/62">
-            Sign a one-time message so credits can land on your account when you
-            pay. We don&apos;t move funds — this is only a signature.
+            {t("cloud.attachWallet.description", {
+              defaultValue:
+                "Sign a one-time message so credits can land on your account when you pay. We don't move funds — this is only a signature.",
+            })}
           </p>
         </div>
       </CardHeader>
       <CardContent className="space-y-4 border-t border-black/10 p-5">
         <ol className="space-y-2 text-sm text-black/72">
-          <li>1. Connect the BSC wallet you&apos;ll pay from.</li>
-          <li>2. Sign the verification message.</li>
-          <li>3. Buy cloud credit with the $5 BSC bonus.</li>
+          <li>
+            {t("cloud.attachWallet.step1", {
+              defaultValue: "1. Connect the BSC wallet you'll pay from.",
+            })}
+          </li>
+          <li>
+            {t("cloud.attachWallet.step2", {
+              defaultValue: "2. Sign the verification message.",
+            })}
+          </li>
+          <li>
+            {t("cloud.attachWallet.step3", {
+              defaultValue: "3. Buy cloud credit with the $5 BSC bonus.",
+            })}
+          </li>
         </ol>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -89,8 +120,12 @@ export function AttachWalletCard({ chainId = 56 }: AttachWalletCardProps) {
                 {account
                   ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
                   : chain?.unsupported
-                    ? "Wrong network"
-                    : "Connect Wallet"}
+                    ? t("cloud.attachWallet.wrongNetwork", {
+                        defaultValue: "Wrong network",
+                      })
+                    : t("cloud.attachWallet.connectWallet", {
+                        defaultValue: "Connect Wallet",
+                      })}
               </Button>
             )}
           </ConnectButton.Custom>
@@ -107,7 +142,9 @@ export function AttachWalletCard({ chainId = 56 }: AttachWalletCardProps) {
             ) : (
               <ShieldCheck className="h-4 w-4" />
             )}
-            Verify wallet
+            {t("cloud.attachWallet.verifyWallet", {
+              defaultValue: "Verify wallet",
+            })}
           </Button>
         </div>
       </CardContent>

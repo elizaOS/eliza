@@ -14,11 +14,13 @@ import { cn } from "../../lib/utils";
 import type { Tab } from "../../navigation";
 import { useApp } from "../../state";
 import { useTranslation } from "../../state/TranslationContext";
+import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { AppIdentityTile } from "../apps/app-identity";
 import {
   getInternalToolApps,
   getInternalToolAppTargetTab,
 } from "../apps/internal-tool-apps";
+import { formatEta } from "../local-inference/hub-utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -93,6 +95,11 @@ export function HomeView(): React.JSX.Element {
   const { setTab } = useApp();
   const { t } = useTranslation();
   const mode = controller?.waveformMode ?? "idle";
+  const modelStatus = controller?.modelStatus ?? null;
+  const showModelStatus =
+    modelStatus != null &&
+    modelStatus.kind !== "not-required" &&
+    modelStatus.kind !== "ready";
 
   const latestAssistant = useMemo(
     () =>
@@ -140,7 +147,12 @@ export function HomeView(): React.JSX.Element {
             />
           </div>
 
-          {noLlmConnection ? (
+          {showModelStatus && modelStatus ? (
+            <ModelStatusPanel
+              status={modelStatus}
+              onOpenSettings={() => setTab("settings")}
+            />
+          ) : noLlmConnection ? (
             <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
           ) : (
             <p
@@ -276,6 +288,121 @@ function NoLlmConnectionPanel({
         >
           {t("homeview.noLlm.settings", { defaultValue: "Settings" })}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// Local text-model readiness shown under the avatar: a live download bar while
+// the assigned model installs/loads, or a recovery panel when it is missing or
+// failed. Send is gated upstream (controller.canSend) on `status.blocksSend`.
+function ModelStatusPanel({
+  status,
+  onOpenSettings,
+}: {
+  status: HomeModelStatus;
+  onOpenSettings: () => void;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const modelName =
+    status.modelName ??
+    t("homeview.model.fallbackName", { defaultValue: "the local model" });
+
+  if (status.kind === "downloading" || status.kind === "loading") {
+    const percent = status.percent ?? 0;
+    const eta = formatEta(status.etaMs);
+    const label =
+      status.kind === "downloading"
+        ? t("homeview.model.downloading", {
+            name: modelName,
+            defaultValue: "Downloading {{name}}…",
+          })
+        : t("homeview.model.loading", {
+            name: modelName,
+            defaultValue: "Loading {{name}}…",
+          });
+    return (
+      <div
+        className="w-full max-w-md rounded-md border border-border/40 bg-bg/55 p-4 text-center backdrop-blur"
+        data-testid="home-model-status"
+        data-kind={status.kind}
+        aria-live="polite"
+      >
+        <p className="mb-2 text-sm font-medium text-txt">{label}</p>
+        <div
+          className="h-2 w-full overflow-hidden rounded-sm bg-muted/60"
+          role="progressbar"
+          aria-valuenow={percent}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div
+            className="h-full bg-accent transition-[width] duration-300"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          {percent}%{eta ? ` · ${eta} left` : ""}
+        </p>
+      </div>
+    );
+  }
+
+  return <ModelRecoveryPanel status={status} onOpenSettings={onOpenSettings} />;
+}
+
+function ModelRecoveryPanel({
+  status,
+  onOpenSettings,
+}: {
+  status: HomeModelStatus;
+  onOpenSettings: () => void;
+}): React.JSX.Element {
+  const { elizaCloudConnected, elizaCloudLoginBusy, handleCloudLogin } =
+    useApp();
+  const { t } = useTranslation();
+  const modelName =
+    status.modelName ??
+    t("homeview.model.fallbackName", { defaultValue: "the local model" });
+
+  const title =
+    status.kind === "error"
+      ? t("homeview.model.errorTitle", {
+          name: modelName,
+          defaultValue: "Couldn't load {{name}}",
+        })
+      : t("homeview.model.missingTitle", {
+          name: modelName,
+          defaultValue: "{{name}} isn't downloaded yet",
+        });
+
+  return (
+    <div
+      className="w-full max-w-md rounded-md border border-warn/30 bg-bg/55 p-4 text-center backdrop-blur"
+      data-testid="home-model-status"
+      data-kind={status.kind}
+    >
+      <p className="mb-1 text-sm font-medium text-txt">{title}</p>
+      {status.errors.length > 0 ? (
+        <p className="mb-3 text-xs text-muted">{status.errors[0]}</p>
+      ) : null}
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+        <Button type="button" size="sm" onClick={onOpenSettings}>
+          {t("homeview.model.manage", { defaultValue: "Manage models" })}
+        </Button>
+        {!elizaCloudConnected ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={elizaCloudLoginBusy}
+            onClick={() => void handleCloudLogin()}
+          >
+            {t("homeview.model.useCloud", {
+              defaultValue: "Use Eliza Cloud",
+            })}
+          </Button>
+        ) : null}
       </div>
     </div>
   );

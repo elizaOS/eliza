@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 
 interface AppUserDisplay {
   id: string;
@@ -33,6 +34,7 @@ interface AppUsersProps {
 }
 
 export function AppUsers({ appId }: AppUsersProps) {
+  const t = useT();
   const [isLoading, setIsLoading] = useState(true);
   const [users, setUsers] = useState<AppUserDisplay[]>([]);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
@@ -59,11 +61,15 @@ export function AppUsers({ appId }: AppUsersProps) {
         setVisitors(visitorsData.visitors);
       }
     } catch (_error) {
-      toast.error("Failed to load app users");
+      toast.error(
+        t("cloud.appUsers.loadFailed", {
+          defaultValue: "Failed to load app users",
+        }),
+      );
     } finally {
       setIsLoading(false);
     }
-  }, [appId]);
+  }, [appId, t]);
 
   useEffect(() => {
     fetchData();
@@ -85,8 +91,10 @@ export function AppUsers({ appId }: AppUsersProps) {
       <EmptyState
         variant="dashed"
         icon={<UsersIcon className="h-6 w-6" />}
-        title="No users yet"
-        description="Users will appear here once they start using your app"
+        title={t("cloud.appUsers.emptyTitle", { defaultValue: "No users yet" })}
+        description={t("cloud.appUsers.emptyDescription", {
+          defaultValue: "Users will appear here once they start using your app",
+        })}
       />
     );
   }
@@ -98,7 +106,10 @@ export function AppUsers({ appId }: AppUsersProps) {
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
               <UsersIcon className="h-4 w-4 text-accent" />
-              Authenticated Users ({users.length})
+              {t("cloud.appUsers.authenticatedUsers", {
+                count: users.length,
+                defaultValue: "Authenticated Users ({{count}})",
+              })}
             </h3>
           </div>
 
@@ -117,7 +128,10 @@ export function AppUsers({ appId }: AppUsersProps) {
 
                   <div className="flex-1 min-w-0">
                     <p className="truncate text-sm font-medium text-txt">
-                      User {appUser.user_id.substring(0, 8)}
+                      {t("cloud.appUsers.userLabel", {
+                        id: appUser.user_id.substring(0, 8),
+                        defaultValue: "User {{id}}",
+                      })}
                     </p>
                     <div className="flex items-center gap-3 text-xs text-muted">
                       <span className="flex items-center gap-1">
@@ -133,15 +147,21 @@ export function AppUsers({ appId }: AppUsersProps) {
 
                   <div className="text-right hidden lg:block">
                     <p className="text-xs text-muted">
-                      First seen{" "}
-                      {formatDistanceToNow(new Date(appUser.first_seen_at), {
-                        addSuffix: true,
+                      {t("cloud.appUsers.firstSeen", {
+                        time: formatDistanceToNow(
+                          new Date(appUser.first_seen_at),
+                          { addSuffix: true },
+                        ),
+                        defaultValue: "First seen {{time}}",
                       })}
                     </p>
                     <p className="mt-0.5 text-[10px] text-muted">
-                      Last seen{" "}
-                      {formatDistanceToNow(new Date(appUser.last_seen_at), {
-                        addSuffix: true,
+                      {t("cloud.appUsers.lastSeen", {
+                        time: formatDistanceToNow(
+                          new Date(appUser.last_seen_at),
+                          { addSuffix: true },
+                        ),
+                        defaultValue: "Last seen {{time}}",
                       })}
                     </p>
                   </div>
@@ -157,7 +177,10 @@ export function AppUsers({ appId }: AppUsersProps) {
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
               <Globe className="h-4 w-4 text-accent" />
-              Visitors ({visitors.length})
+              {t("cloud.appUsers.visitors", {
+                count: visitors.length,
+                defaultValue: "Visitors ({{count}})",
+              })}
             </h3>
             <Button
               variant="ghost"
@@ -177,13 +200,19 @@ export function AppUsers({ appId }: AppUsersProps) {
               <thead>
                 <tr className="border-b border-border">
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted">
-                    IP Address
+                    {t("cloud.appUsers.ipAddress", {
+                      defaultValue: "IP Address",
+                    })}
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-muted">
-                    Requests
+                    {t("cloud.appUsers.requests", {
+                      defaultValue: "Requests",
+                    })}
                   </th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-muted">
-                    Last Seen
+                    {t("cloud.appUsers.lastSeenHeader", {
+                      defaultValue: "Last Seen",
+                    })}
                   </th>
                 </tr>
               </thead>

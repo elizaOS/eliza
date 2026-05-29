@@ -2,6 +2,7 @@ import { CheckCircle, Loader2 } from "lucide-react";
 import { Suspense, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 
 /**
  * Payment Success Callback Page
@@ -16,6 +17,7 @@ import { useSessionAuth } from "@/lib/hooks/use-session-auth";
  * 4. If not authenticated, redirects to login with return URL
  */
 function PaymentSuccessContent() {
+  const t = useT();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { ready, authenticated } = useSessionAuth();
@@ -63,9 +65,15 @@ function PaymentSuccessContent() {
           <Loader2 className="absolute -bottom-1 -right-1 h-5 w-5 animate-spin text-white/60" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-xl font-mono text-white">Payment Received</h1>
+          <h1 className="text-xl font-mono text-white">
+            {t("cloud.paymentSuccess.received", {
+              defaultValue: "Payment Received",
+            })}
+          </h1>
           <p className="text-sm text-white/74 font-mono">
-            Redirecting to your dashboard...
+            {t("cloud.paymentSuccess.redirecting", {
+              defaultValue: "Redirecting to your dashboard...",
+            })}
           </p>
         </div>
       </div>

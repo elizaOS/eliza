@@ -11,6 +11,11 @@ const cloudWorkflowPath = resolve(
   "../../../.github/workflows/cloud-tests.yml",
 );
 const rootPackagePath = resolve(import.meta.dirname, "../../../package.json");
+const scenarioRunnerPackagePath = resolve(
+  import.meta.dirname,
+  "../package.json",
+);
+const scenarioExecutorPath = resolve(import.meta.dirname, "./executor.ts");
 const appAssistantFlowPath = resolve(
   import.meta.dirname,
   "../../app/test/ui-smoke/assistant-home-flow.spec.ts",
@@ -71,6 +76,14 @@ const deterministicPrScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-pr-smoke.scenario.ts",
 );
+const deterministicAppControlActionsScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-app-control-actions.scenario.ts",
+);
+const deterministicScenarioReadmePath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/README.md",
+);
 const appControlViewsManagementPath = resolve(
   import.meta.dirname,
   "../../../plugins/plugin-app-control/src/actions/views-management.test.ts",
@@ -87,6 +100,18 @@ describe("scenario PR workflow contract", () => {
       deterministicPrScenarioPath,
       "utf8",
     );
+    const deterministicAppControlActionsScenario = readFileSync(
+      deterministicAppControlActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicScenarioReadme = readFileSync(
+      deterministicScenarioReadmePath,
+      "utf8",
+    );
+    const scenarioRunnerPackage = JSON.parse(
+      readFileSync(scenarioRunnerPackagePath, "utf8"),
+    ) as { scripts?: Record<string, string> };
+    const scenarioExecutor = readFileSync(scenarioExecutorPath, "utf8");
     const appControlViewsManagement = readFileSync(
       appControlViewsManagementPath,
       "utf8",
@@ -125,6 +150,18 @@ describe("scenario PR workflow contract", () => {
     );
     expect(workflow).toContain(
       "bun run --cwd packages/scenario-runner test:pr:e2e",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:pr:e2e"]).toBe(
+      "bun run test:deterministic:e2e",
+    );
+    expect(
+      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
+    ).toContain("SCENARIO_USE_LLM_PROXY=1");
+    expect(
+      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
+    ).toContain("deterministic-pr-smoke,deterministic-app-control-actions");
+    expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
+      "SCENARIO_USE_LLM_PROXY",
     );
     expect(workflow).toContain(
       "bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts",
@@ -175,6 +212,7 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicPrScenario).toContain(
       "view shell API received exact deterministic requests",
     );
+    expect(deterministicPrScenario).toContain("response: { body: { ok: true }");
     expect(deterministicPrScenario).not.toContain(
       "Failed to interact with view",
     );
@@ -187,6 +225,31 @@ describe("scenario PR workflow contract", () => {
     );
     expect(deterministicPrScenario).toContain("alwaysOnTop: true");
     expect(deterministicPrScenario).toContain("/alwaysOnTop/");
+    expect(deterministicAppControlActionsScenario).toContain(
+      "app-control loopback requests and responses are exact",
+    );
+    expect(deterministicAppControlActionsScenario).toContain(
+      "run-feed-relaunch-2",
+    );
+    expect(deterministicAppControlActionsScenario).toContain(
+      "Broadcast view event \"wallet:refresh\"",
+    );
+    expect(deterministicAppControlActionsScenario).toContain(
+      "data.launch.run.runId",
+    );
+    expect(deterministicAppControlActionsScenario).toContain(
+      "/api/apps/runs/run-feed-old/stop",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "Worker B's strict action/tool registry",
+    );
+    expect(deterministicScenarioReadme).toContain(
+      "runtime currently removes `UPDATE_ENTITY`",
+    );
+    expect(scenarioExecutor).toContain(
+      "../../../plugins/plugin-app-control/src/index.ts",
+    );
+    expect(scenarioExecutor).toContain("actions: [mod.appAction, mod.viewsAction]");
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",
     );

@@ -148,22 +148,38 @@ export function CapabilitiesSection() {
       const cloudAuthToken = capabilityCloudAuthToken.trim();
       const cloudName = capabilityCloudName.trim();
       if (capabilityConnectMode === "endpoint" && !baseUrl) {
-        setCapabilityConnectError("Endpoint URL is required.");
+        setCapabilityConnectError(
+          t("capabilities.error.endpointRequired", {
+            defaultValue: "Endpoint URL is required.",
+          }),
+        );
         setCapabilityConnectResult(null);
         return;
       }
       if (capabilityConnectMode === "cloud" && !cloudApiBase) {
-        setCapabilityConnectError("Cloud API base URL is required.");
+        setCapabilityConnectError(
+          t("capabilities.error.cloudApiBaseRequired", {
+            defaultValue: "Cloud API base URL is required.",
+          }),
+        );
         setCapabilityConnectResult(null);
         return;
       }
       if (capabilityConnectMode === "cloud" && !cloudAuthToken) {
-        setCapabilityConnectError("Cloud auth token is required.");
+        setCapabilityConnectError(
+          t("capabilities.error.cloudAuthTokenRequired", {
+            defaultValue: "Cloud auth token is required.",
+          }),
+        );
         setCapabilityConnectResult(null);
         return;
       }
       if (capabilityConnectMode === "cloud" && !cloudName) {
-        setCapabilityConnectError("Cloud sandbox name is required.");
+        setCapabilityConnectError(
+          t("capabilities.error.cloudNameRequired", {
+            defaultValue: "Cloud sandbox name is required.",
+          }),
+        );
         setCapabilityConnectResult(null);
         return;
       }
@@ -239,7 +255,9 @@ export function CapabilitiesSection() {
         setCapabilityConnectError(
           err instanceof Error
             ? err.message
-            : "Failed to connect capability router endpoint.",
+            : t("capabilities.error.connectFailed", {
+                defaultValue: "Failed to connect capability router endpoint.",
+              }),
         );
       } finally {
         setCapabilityConnectLoading(false);
@@ -256,6 +274,7 @@ export function CapabilitiesSection() {
       capabilityEndpointProvider,
       capabilityEndpointToken,
       capabilityEndpointUrl,
+      t,
     ],
   );
 
@@ -351,7 +370,9 @@ export function CapabilitiesSection() {
         </div>
         <fieldset
           className="inline-flex rounded-sm border border-border p-0.5"
-          aria-label="Capability router connection mode"
+          aria-label={t("capabilities.connectionModeAria", {
+            defaultValue: "Capability router connection mode",
+          })}
         >
           <button
             type="button"
@@ -364,7 +385,7 @@ export function CapabilitiesSection() {
             onClick={() => setCapabilityConnectMode("endpoint")}
           >
             <PlugZap className="h-3.5 w-3.5" aria-hidden />
-            Endpoint
+            {t("capabilities.mode.endpoint", { defaultValue: "Endpoint" })}
           </button>
           <button
             type="button"
@@ -377,7 +398,7 @@ export function CapabilitiesSection() {
             onClick={() => setCapabilityConnectMode("cloud")}
           >
             <Cloud className="h-3.5 w-3.5" aria-hidden />
-            Cloud
+            {t("capabilities.mode.cloud", { defaultValue: "Cloud" })}
           </button>
         </fieldset>
         {capabilityConnectMode === "cloud" ? (
@@ -388,7 +409,9 @@ export function CapabilitiesSection() {
                 setCapabilityCloudApiBase(event.target.value)
               }
               placeholder="https://api.elizacloud.ai"
-              aria-label="Capability cloud API base URL"
+              aria-label={t("capabilities.cloud.apiBaseAria", {
+                defaultValue: "Capability cloud API base URL",
+              })}
               autoComplete="url"
               inputMode="url"
             />
@@ -397,23 +420,35 @@ export function CapabilitiesSection() {
               onChange={(event) =>
                 setCapabilityCloudAuthToken(event.target.value)
               }
-              placeholder="Cloud API token"
-              aria-label="Capability cloud auth token"
+              placeholder={t("capabilities.cloud.tokenPlaceholder", {
+                defaultValue: "Cloud API token",
+              })}
+              aria-label={t("capabilities.cloud.authTokenAria", {
+                defaultValue: "Capability cloud auth token",
+              })}
               type="password"
               autoComplete="off"
             />
             <Input
               value={capabilityCloudName}
               onChange={(event) => setCapabilityCloudName(event.target.value)}
-              placeholder="Remote Tools Sandbox"
-              aria-label="Capability cloud sandbox name"
+              placeholder={t("capabilities.cloud.namePlaceholder", {
+                defaultValue: "Remote Tools Sandbox",
+              })}
+              aria-label={t("capabilities.cloud.nameAria", {
+                defaultValue: "Capability cloud sandbox name",
+              })}
               autoComplete="off"
             />
             <Input
               value={capabilityCloudBio}
               onChange={(event) => setCapabilityCloudBio(event.target.value)}
-              placeholder="Sandbox bio"
-              aria-label="Capability cloud sandbox bio"
+              placeholder={t("capabilities.cloud.bioPlaceholder", {
+                defaultValue: "Sandbox bio",
+              })}
+              aria-label={t("capabilities.cloud.bioAria", {
+                defaultValue: "Capability cloud sandbox bio",
+              })}
               autoComplete="off"
             />
           </div>
@@ -421,7 +456,9 @@ export function CapabilitiesSection() {
         {capabilityConnectMode === "endpoint" ? (
           <label className="block min-w-0">
             <span className="mb-1 block text-2xs text-muted">
-              Capability endpoint provider
+              {t("capabilities.endpoint.providerLabel", {
+                defaultValue: "Capability endpoint provider",
+              })}
             </span>
             <select
               value={capabilityEndpointProvider}
@@ -430,14 +467,36 @@ export function CapabilitiesSection() {
                   event.target.value as typeof capabilityEndpointProvider,
                 )
               }
-              aria-label="Capability endpoint provider"
+              aria-label={t("capabilities.endpoint.providerLabel", {
+                defaultValue: "Capability endpoint provider",
+              })}
               className="h-9 w-full rounded-sm border border-input bg-background px-3 py-1 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <option value="direct">Direct endpoint</option>
-              <option value="e2b">E2B sandbox</option>
-              <option value="home-machine">Home machine</option>
-              <option value="mobile-companion">Mobile companion</option>
-              <option value="desktop-companion">Desktop companion</option>
+              <option value="direct">
+                {t("capabilities.provider.direct", {
+                  defaultValue: "Direct endpoint",
+                })}
+              </option>
+              <option value="e2b">
+                {t("capabilities.provider.e2b", {
+                  defaultValue: "E2B sandbox",
+                })}
+              </option>
+              <option value="home-machine">
+                {t("capabilities.provider.homeMachine", {
+                  defaultValue: "Home machine",
+                })}
+              </option>
+              <option value="mobile-companion">
+                {t("capabilities.provider.mobileCompanion", {
+                  defaultValue: "Mobile companion",
+                })}
+              </option>
+              <option value="desktop-companion">
+                {t("capabilities.provider.desktopCompanion", {
+                  defaultValue: "Desktop companion",
+                })}
+              </option>
             </select>
           </label>
         ) : null}
@@ -446,7 +505,9 @@ export function CapabilitiesSection() {
             value={capabilityEndpointUrl}
             onChange={(event) => setCapabilityEndpointUrl(event.target.value)}
             placeholder="https://capability.example"
-            aria-label="Capability router endpoint URL"
+            aria-label={t("capabilities.endpoint.urlAria", {
+              defaultValue: "Capability router endpoint URL",
+            })}
             autoComplete="url"
             inputMode="url"
             disabled={capabilityConnectMode === "cloud"}
@@ -455,7 +516,9 @@ export function CapabilitiesSection() {
             value={capabilityEndpointId}
             onChange={(event) => setCapabilityEndpointId(event.target.value)}
             placeholder="device"
-            aria-label="Capability router endpoint ID"
+            aria-label={t("capabilities.endpoint.idAria", {
+              defaultValue: "Capability router endpoint ID",
+            })}
             autoComplete="off"
           />
         </div>
@@ -463,8 +526,12 @@ export function CapabilitiesSection() {
           <Input
             value={capabilityEndpointToken}
             onChange={(event) => setCapabilityEndpointToken(event.target.value)}
-            placeholder="Bearer token"
-            aria-label="Capability router endpoint token"
+            placeholder={t("capabilities.endpoint.tokenPlaceholder", {
+              defaultValue: "Bearer token",
+            })}
+            aria-label={t("capabilities.endpoint.tokenAria", {
+              defaultValue: "Capability router endpoint token",
+            })}
             type="password"
             autoComplete="off"
           />
@@ -474,7 +541,9 @@ export function CapabilitiesSection() {
               setCapabilityAllowedModules(event.target.value)
             }
             placeholder="module-id, other-module"
-            aria-label="Allowed remote module IDs"
+            aria-label={t("capabilities.endpoint.modulesAria", {
+              defaultValue: "Allowed remote module IDs",
+            })}
             autoComplete="off"
           />
           <Button type="submit" disabled={capabilityConnectLoading}>
@@ -538,13 +607,17 @@ function CapabilityStatusIcon({
 }: {
   status?: "loading" | "unavailable" | null;
 }) {
+  const { t } = useApp();
   if (status === "loading") {
+    const loadingLabel = t("capabilities.status.loading", {
+      defaultValue: "Loading",
+    });
     return (
       <span
         className="inline-flex text-muted"
-        title="Loading"
+        title={loadingLabel}
         role="status"
-        aria-label="Loading"
+        aria-label={loadingLabel}
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
       </span>
@@ -552,12 +625,15 @@ function CapabilityStatusIcon({
   }
 
   if (status === "unavailable") {
+    const unavailableLabel = t("capabilities.status.unavailable", {
+      defaultValue: "Unavailable",
+    });
     return (
       <span
         className="inline-flex text-warn"
-        title="Unavailable"
+        title={unavailableLabel}
         role="img"
-        aria-label="Unavailable"
+        aria-label={unavailableLabel}
       >
         <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
       </span>

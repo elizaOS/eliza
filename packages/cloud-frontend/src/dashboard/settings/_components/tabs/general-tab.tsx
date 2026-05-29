@@ -23,6 +23,7 @@ import {
 } from "@elizaos/ui";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface GeneralTabProps {
@@ -40,6 +41,7 @@ interface FormState {
 }
 
 export function GeneralTab({ user }: GeneralTabProps) {
+  const t = useT();
   const [formState, setFormState] = useState<FormState>({
     fullName: user.name || "",
     nickname: user.nickname || "",
@@ -74,10 +76,19 @@ export function GeneralTab({ user }: GeneralTabProps) {
     const data = await response.json();
 
     if (!response.ok || !data.success) {
-      throw new Error(data.error || "Failed to save settings");
+      throw new Error(
+        data.error ||
+          t("cloud.generalTab.saveFailed", {
+            defaultValue: "Failed to save settings",
+          }),
+      );
     }
 
-    toast.success("Settings saved successfully");
+    toast.success(
+      t("cloud.generalTab.saveSuccess", {
+        defaultValue: "Settings saved successfully",
+      }),
+    );
     window.location.reload();
     updateForm({ saving: false });
   };
@@ -103,7 +114,7 @@ export function GeneralTab({ user }: GeneralTabProps) {
             {/* Full Name */}
             <div className="flex-1 space-y-2">
               <Label className="text-white font-mono text-sm md:text-base">
-                Full name
+                {t("cloud.generalTab.fullName", { defaultValue: "Full name" })}
               </Label>
               <div className="flex gap-2">
                 {/* Avatar */}
@@ -117,7 +128,9 @@ export function GeneralTab({ user }: GeneralTabProps) {
                   value={formState.fullName}
                   onChange={(e) => updateForm({ fullName: e.target.value })}
                   className="flex-1 bg-transparent border-[#303030] text-white"
-                  placeholder="Enter your full name"
+                  placeholder={t("cloud.generalTab.fullNamePlaceholder", {
+                    defaultValue: "Enter your full name",
+                  })}
                 />
               </div>
             </div>
@@ -125,7 +138,9 @@ export function GeneralTab({ user }: GeneralTabProps) {
             {/* Nickname */}
             <div className="flex-1 space-y-2">
               <Label className="text-white font-mono text-sm md:text-base">
-                What should we call you?
+                {t("cloud.generalTab.nicknameLabel", {
+                  defaultValue: "What should we call you?",
+                })}
               </Label>
               <Input
                 value={formState.nickname}
@@ -139,23 +154,53 @@ export function GeneralTab({ user }: GeneralTabProps) {
           {/* Work Function */}
           <div className="space-y-2">
             <Label className="text-white font-mono text-sm md:text-base">
-              What best describes your work?
+              {t("cloud.generalTab.workFunctionLabel", {
+                defaultValue: "What best describes your work?",
+              })}
             </Label>
             <Select
               value={formState.workFunction}
               onValueChange={(v) => updateForm({ workFunction: v })}
             >
               <SelectTrigger className="bg-transparent border-[#303030] text-white data-[placeholder]:text-white/60">
-                <SelectValue placeholder="Select your work function" />
+                <SelectValue
+                  placeholder={t("cloud.generalTab.workFunctionPlaceholder", {
+                    defaultValue: "Select your work function",
+                  })}
+                />
               </SelectTrigger>
               <SelectContent className="bg-[#1a1a1a] border-[#303030]">
-                <SelectItem value="developer">Software Developer</SelectItem>
-                <SelectItem value="designer">Designer</SelectItem>
-                <SelectItem value="product">Product Manager</SelectItem>
-                <SelectItem value="data">Data Scientist</SelectItem>
-                <SelectItem value="marketing">Marketing</SelectItem>
-                <SelectItem value="sales">Sales</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
+                <SelectItem value="developer">
+                  {t("cloud.generalTab.workDeveloper", {
+                    defaultValue: "Software Developer",
+                  })}
+                </SelectItem>
+                <SelectItem value="designer">
+                  {t("cloud.generalTab.workDesigner", {
+                    defaultValue: "Designer",
+                  })}
+                </SelectItem>
+                <SelectItem value="product">
+                  {t("cloud.generalTab.workProduct", {
+                    defaultValue: "Product Manager",
+                  })}
+                </SelectItem>
+                <SelectItem value="data">
+                  {t("cloud.generalTab.workData", {
+                    defaultValue: "Data Scientist",
+                  })}
+                </SelectItem>
+                <SelectItem value="marketing">
+                  {t("cloud.generalTab.workMarketing", {
+                    defaultValue: "Marketing",
+                  })}
+                </SelectItem>
+                <SelectItem value="sales">
+                  {t("cloud.generalTab.workSales", { defaultValue: "Sales" })}
+                </SelectItem>
+                <SelectItem value="other">
+                  {t("cloud.generalTab.workOther", { defaultValue: "Other" })}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -163,23 +208,36 @@ export function GeneralTab({ user }: GeneralTabProps) {
           {/* Personal Preferences */}
           <div className="space-y-2">
             <Label className="text-white font-mono text-sm md:text-base">
-              What personal preferences should Eliza consider in responses?
+              {t("cloud.generalTab.preferencesLabel", {
+                defaultValue:
+                  "What personal preferences should Eliza consider in responses?",
+              })}
             </Label>
             <p className="text-xs text-[#858585] font-mono">
-              Your preferences will apply to all conversations, within{" "}
+              {t("cloud.generalTab.preferencesIntro", {
+                defaultValue:
+                  "Your preferences will apply to all conversations, within",
+              })}{" "}
               <span className="underline cursor-pointer hover:text-white transition-colors">
-                Eliza&apos;s guidelines
+                {t("cloud.generalTab.elizasGuidelines", {
+                  defaultValue: "Eliza's guidelines",
+                })}
               </span>
               .{" "}
               <span className="underline cursor-pointer hover:text-white transition-colors">
-                Learn about preferences.
+                {t("cloud.generalTab.learnAboutPreferences", {
+                  defaultValue: "Learn about preferences.",
+                })}
               </span>
             </p>
             <Textarea
               value={formState.preferences}
               onChange={(e) => updateForm({ preferences: e.target.value })}
               className="bg-transparent border-[#303030] text-white min-h-[80px] resize-none"
-              placeholder="e.g. when learning new concepts, I find analogies particularly helpful"
+              placeholder={t("cloud.generalTab.preferencesPlaceholder", {
+                defaultValue:
+                  "e.g. when learning new concepts, I find analogies particularly helpful",
+              })}
             />
           </div>
 
@@ -199,7 +257,11 @@ export function GeneralTab({ user }: GeneralTabProps) {
               }}
             />
             <span className="relative z-10 text-black font-mono font-medium text-sm md:text-base whitespace-nowrap">
-              {formState.saving ? "Saving..." : "Save changes"}
+              {formState.saving
+                ? t("cloud.generalTab.saving", { defaultValue: "Saving..." })
+                : t("cloud.generalTab.saveChanges", {
+                    defaultValue: "Save changes",
+                  })}
             </span>
           </button>
         </div>
@@ -213,12 +275,16 @@ export function GeneralTab({ user }: GeneralTabProps) {
           {/* Response Completions */}
           <div className="space-y-2">
             <Label className="text-white font-mono text-sm md:text-base">
-              Response completions
+              {t("cloud.generalTab.responseCompletions", {
+                defaultValue: "Response completions",
+              })}
             </Label>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <p className="text-xs text-[#858585] font-mono max-w-2xl">
-                Get notiified when Eliza has finished a response. Most useful
-                for long-running tasks like too calls, and research.
+                {t("cloud.generalTab.responseCompletionsDesc", {
+                  defaultValue:
+                    "Get notiified when Eliza has finished a response. Most useful for long-running tasks like too calls, and research.",
+                })}
               </p>
               <Switch
                 checked={formState.responseNotifications}
@@ -233,12 +299,16 @@ export function GeneralTab({ user }: GeneralTabProps) {
           {/* Email Notifications */}
           <div className="space-y-2">
             <Label className="text-white font-mono text-sm md:text-base">
-              Emails from Eliza
+              {t("cloud.generalTab.emailsFromEliza", {
+                defaultValue: "Emails from Eliza",
+              })}
             </Label>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <p className="text-xs text-[#858585] font-mono max-w-2xl">
-                Get an email when Eliza has finished building or needs your
-                response.
+                {t("cloud.generalTab.emailsFromElizaDesc", {
+                  defaultValue:
+                    "Get an email when Eliza has finished building or needs your response.",
+                })}
               </p>
               <Switch
                 checked={formState.emailNotifications}

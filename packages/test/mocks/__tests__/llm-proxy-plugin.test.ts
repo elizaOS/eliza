@@ -16,6 +16,15 @@ function actualDiagnosticsFrom(error: unknown): Record<string, unknown> {
   return JSON.parse(actualLine?.slice("Actual: ".length) ?? "{}");
 }
 
+function actualFixtureDiagnosticsFrom(error: unknown): Record<string, unknown> {
+  const message = error instanceof Error ? error.message : String(error);
+  const actualLine = message
+    .split("\n")
+    .find((line) => line.startsWith("Actual: "));
+  expect(actualLine).toBeDefined();
+  return JSON.parse(actualLine?.slice("Actual: ".length) ?? "{}");
+}
+
 describe("deterministic LLM proxy plugin", () => {
   it("registers high-priority deterministic text and embedding handlers", async () => {
     const plugin = createDeterministicLlmProxyPlugin({
@@ -700,6 +709,66 @@ describe("deterministic LLM proxy plugin", () => {
     ]);
   });
 
+  it.each([
+    { text: "can you show me the settings?", view: "settings" },
+    { text: "open my wallet", view: "wallet" },
+    { text: "show me my character profile", view: "character" },
+    { text: "take me to the chat", view: "chat" },
+    { text: "open the memory viewer", view: "memory" },
+    { text: "show my skills", view: "skills" },
+    { text: "open the plugins page", view: "plugins" },
+    { text: "go to training", view: "training" },
+    { text: "show me the apps", view: "apps" },
+    { text: "take me home", view: "home" },
+  ])("navigates to built-in view $view with exact show action and params", async ({
+    text,
+    view,
+  }) => {
+    const plugin = createDeterministicLlmProxyPlugin();
+    const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+      messages: [{ role: "user", content: text }],
+      tools: [
+        {
+          name: "VIEWS",
+          description:
+            "Manage and navigate UI views: list, show, open, search, manager, broadcast, interact, pin, window, create, edit, delete",
+          parameters: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: [
+                  "list",
+                  "current",
+                  "show",
+                  "open",
+                  "search",
+                  "manager",
+                  "broadcast",
+                  "interact",
+                  "pin",
+                  "window",
+                  "create",
+                  "edit",
+                  "delete",
+                ],
+              },
+              view: { type: "string" },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = JSON.parse(String(raw));
+    expect(result.toolCalls).toEqual([
+      expect.objectContaining({
+        name: "VIEWS",
+        arguments: { action: "show", view },
+      }),
+    ]);
+  });
+
   it("feeds Stage 1 candidateActionNames from the intent-ranked action tool", async () => {
     const plugin = createDeterministicLlmProxyPlugin();
     const raw = await plugin.models?.[ModelType.RESPONSE_HANDLER]?.(runtime, {
@@ -819,6 +888,249 @@ describe("deterministic LLM proxy plugin", () => {
         score: expect.any(Number),
         description: "Open the remote ledger view",
       },
+    ]);
+  });
+
+  it("matches strict named fixtures by model, input, and schema with exact JSON output", async () => {
+    const responseSchema = {
+      type: "object",
+      required: ["answer", "count"],
+      additionalProperties: false,
+      properties: {
+        answer: { const: "fixture-exact" },
+        count: { type: "integer" },
+      },
+    };
+    const exact = { answer: "fixture-exact", count: 2 };
+    const plugin = createDeterministicLlmProxyPlugin({
+      strict: true,
+      fixtures: [
+        {
+          name: "exact-json-response",
+          match: {
+            modelType: ModelType.TEXT_SMALL,
+            input: "run the strict fixture",
+            responseSchema,
+          },
+          response: exact,
+          times: 1,
+        },
+      ],
+    });
+
+    const raw = await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+      messages: [{ role: "user", content: "run the strict fixture" }],
+      responseSchema,
+    });
+
+    expect(raw).toBe(JSON.stringify(exact));
+    plugin.assertFixturesConsumed();
+    expect(plugin.getFixtureDiagnostics().fixtures).toEqual([
+      expect.objectContaining({
+        name: "exact-json-response",
+        consumed: 1,
+      }),
+    ]);
+  });
+
+  it("returns exact strict ACTION_PLANNER tool-call JSON and validates tool arguments", async () => {
+    const exact = {
+      text: "",
+      finishReason: "tool-calls",
+      toolCalls: [
+        {
+          id: "call-create-ledger",
+          name: "CREATE_LEDGER_VIEW",
+          type: "function",
+          arguments: {
+            viewId: "remote-ledger",
+            pinned: true,
+          },
+        },
+      ],
+    };
+    const plugin = createDeterministicLlmProxyPlugin({
+      strict: true,
+      fixtures: [
+        {
+          name: "planner-create-ledger",
+          match: {
+            modelType: ModelType.ACTION_PLANNER,
+            input: /create the ledger view/i,
+            toolName: "CREATE_LEDGER_VIEW",
+          },
+          response: exact,
+          times: 1,
+        },
+      ],
+    });
+
+    const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+      messages: [{ role: "user", content: "Create the ledger view" }],
+      tools: [
+        {
+          name: "CREATE_LEDGER_VIEW",
+          description: "Create a deterministic ledger view",
+          parameters: {
+            type: "object",
+            required: ["viewId", "pinned"],
+            additionalProperties: false,
+            properties: {
+              viewId: { type: "string" },
+              pinned: { type: "boolean" },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(raw).toBe(JSON.stringify(exact));
+    plugin.assertFixturesConsumed();
+  });
+
+  it("lets tests register strict named resolver fixtures after plugin creation", async () => {
+    const plugin = createDeterministicLlmProxyPlugin({ strict: true });
+    plugin.llmFixtures.register({
+      name: "late-registered-resolver",
+      match: {
+        modelType: ModelType.TEXT_SMALL,
+        input: /registered resolver/i,
+      },
+      resolve(call) {
+        return {
+          ok: true,
+          input: call.latestUserText,
+          tool: call.toolNames[0] ?? "none",
+        };
+      },
+      times: 1,
+    });
+
+    const raw = await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+      messages: [{ role: "user", content: "Use registered resolver" }],
+      tools: [{ name: "ASSERT_RESOLVER_USED" }],
+    });
+
+    expect(JSON.parse(String(raw))).toEqual({
+      ok: true,
+      input: "Use registered resolver",
+      tool: "ASSERT_RESOLVER_USED",
+    });
+    plugin.assertFixturesConsumed();
+  });
+
+  it("fails strict fixture mode on unhandled calls with call diagnostics", async () => {
+    const plugin = createDeterministicLlmProxyPlugin({
+      strict: true,
+      fixtures: [
+        {
+          name: "different-input",
+          match: {
+            modelType: ModelType.TEXT_SMALL,
+            input: "handled input",
+          },
+          response: { ok: true },
+        },
+      ],
+    });
+
+    let thrown: unknown;
+    try {
+      await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+        messages: [{ role: "user", content: "unhandled input" }],
+        tools: [{ name: "ASSERT_EXACT_FIXTURE" }],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "deterministic LLM proxy fixture registry has no fixture for this call",
+    );
+    const actual = actualFixtureDiagnosticsFrom(thrown);
+    expect(actual.call).toEqual(
+      expect.objectContaining({
+        modelType: ModelType.TEXT_SMALL,
+        latestUserText: "unhandled input",
+        toolNames: ["ASSERT_EXACT_FIXTURE"],
+      }),
+    );
+    expect(plugin.getFixtureDiagnostics().unexpectedCalls).toHaveLength(1);
+  });
+
+  it("fails strict fixture mode when more than one fixture matches", async () => {
+    const plugin = createDeterministicLlmProxyPlugin({
+      strict: true,
+      fixtures: [
+        {
+          name: "ambiguous-one",
+          match: {
+            modelType: ModelType.TEXT_SMALL,
+            input: "same input",
+          },
+          response: { one: true },
+        },
+        {
+          name: "ambiguous-two",
+          match: {
+            modelType: ModelType.TEXT_SMALL,
+            input: "same input",
+          },
+          response: { two: true },
+        },
+      ],
+    });
+
+    let thrown: unknown;
+    try {
+      await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+        messages: [{ role: "user", content: "same input" }],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "deterministic LLM proxy fixture registry matched multiple fixtures",
+    );
+    const actual = actualFixtureDiagnosticsFrom(thrown);
+    expect(actual.matchingFixtures).toEqual(["ambiguous-one", "ambiguous-two"]);
+  });
+
+  it("fails fixture consumption assertions when an expected fixture is unused", () => {
+    const plugin = createDeterministicLlmProxyPlugin({
+      strict: true,
+      fixtures: [
+        {
+          name: "must-be-used",
+          match: {
+            modelType: ModelType.TEXT_SMALL,
+            input: "consume me",
+          },
+          response: { ok: true },
+        },
+      ],
+    });
+
+    let thrown: unknown;
+    try {
+      plugin.assertFixturesConsumed();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "deterministic LLM proxy fixture registry has unused fixtures",
+    );
+    const actual = actualFixtureDiagnosticsFrom(thrown);
+    expect(actual.unused).toEqual([
+      expect.objectContaining({
+        name: "must-be-used",
+        consumed: 0,
+      }),
     ]);
   });
 

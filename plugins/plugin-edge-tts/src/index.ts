@@ -67,17 +67,21 @@ const VOICE_PRESETS: Record<string, string> = {
   // Direct Edge TTS voice names pass through
 };
 
-function getSetting(runtime: IAgentRuntime, key: string): string | undefined;
-function getSetting(runtime: IAgentRuntime, key: string, fallback: string): string;
-function getSetting(runtime: IAgentRuntime, key: string, fallback?: string): string | undefined {
+function getSetting(runtime: IAgentRuntime | null, key: string): string | undefined;
+function getSetting(runtime: IAgentRuntime | null, key: string, fallback: string): string;
+function getSetting(
+  runtime: IAgentRuntime | null,
+  key: string,
+  fallback?: string
+): string | undefined {
   const envValue =
     typeof process !== "undefined" && (process as { env?: Record<string, string> }).env
       ? (process as { env: Record<string, string> }).env[key]
       : undefined;
-  return (runtime.getSetting(key) as string | undefined) ?? envValue ?? fallback;
+  return (runtime?.getSetting(key) as string | undefined) ?? envValue ?? fallback;
 }
 
-function getEdgeTTSSettings(runtime: IAgentRuntime): EdgeTTSSettings {
+function getEdgeTTSSettings(runtime: IAgentRuntime | null): EdgeTTSSettings {
   const timeoutStr = getSetting(runtime, "EDGE_TTS_TIMEOUT_MS");
   const settings: EdgeTTSSettings = {
     voice: getSetting(runtime, "EDGE_TTS_VOICE", DEFAULT_VOICE),
@@ -364,6 +368,26 @@ export const edgeTTSPlugin: Plugin = {
 };
 
 export default edgeTTSPlugin;
+
+/**
+ * Synthesize speech without an AgentRuntime, reading voice settings from the
+ * environment. Used by pre-agent server routes (e.g. first-run onboarding TTS)
+ * that must produce audio before any agent exists.
+ */
+export async function synthesizeEdgeSpeech(
+  text: string,
+  overrides: Omit<EdgeTTSParams, "text"> = {}
+): Promise<Buffer> {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    throw new Error("synthesizeEdgeSpeech requires non-empty text");
+  }
+  if (trimmed.length > 5000) {
+    throw new Error("synthesizeEdgeSpeech text exceeds 5000 character limit");
+  }
+  const settings = getEdgeTTSSettings(null);
+  return generateSpeech(settings, { text: trimmed, ...overrides });
+}
 
 // Re-export types
 export type { EdgeTTSParams, EdgeTTSSettings };

@@ -303,13 +303,13 @@ function pluginIsRegistered(runtime: AgentRuntime, name: string): boolean {
 async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
   if (pkg === "@elizaos/plugin-app-control") {
     const mod = (await import(
-      "../../../plugins/plugin-app-control/src/actions/views.ts"
-    )) as { viewsAction?: Action };
-    if (!mod.viewsAction) return null;
+      "../../../plugins/plugin-app-control/src/index.ts"
+    )) as { appAction?: Action; viewsAction?: Action };
+    if (!mod.appAction || !mod.viewsAction) return null;
     return {
       name: "app-control",
-      description: "App control VIEWS action",
-      actions: [mod.viewsAction],
+      description: "App control deterministic scenario actions",
+      actions: [mod.appAction, mod.viewsAction],
     };
   }
 

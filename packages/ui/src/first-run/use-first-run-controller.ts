@@ -31,6 +31,8 @@ import {
   type FirstRunProfileDraft,
   type FirstRunRuntime,
   type FirstRunStep,
+  firstRunDownloadsLocalModel,
+  firstRunNeedsCloudConnect,
   firstRunRuntimeTarget,
   isFirstRunPromptEcho,
   loadPersistedFirstRunState,
@@ -295,6 +297,7 @@ export function useFirstRunController(): FirstRunController {
   const voiceCaptureRef = React.useRef<VoiceCaptureHandle | null>(null);
   const voiceCaptureGenerationRef = React.useRef(0);
   const voiceOutputActiveRef = React.useRef(false);
+  const firstRunAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const activePromptTextRef = React.useRef("");
   const listenAfterSpeechTimerRef = React.useRef<ReturnType<
     typeof setTimeout
@@ -323,6 +326,17 @@ export function useFirstRunController(): FirstRunController {
     listenAfterSpeechTimerRef.current = null;
   }, []);
 
+  const stopFirstRunAudio = React.useCallback(() => {
+    const element = firstRunAudioRef.current;
+    if (!element) return;
+    firstRunAudioRef.current = null;
+    element.onended = null;
+    element.onerror = null;
+    element.onplay = null;
+    element.pause();
+    if (element.src) URL.revokeObjectURL(element.src);
+  }, []);
+
   const cancelVoiceCapture = React.useCallback(() => {
     clearListenAfterSpeechTimer();
     voiceCaptureGenerationRef.current += 1;
@@ -342,12 +356,13 @@ export function useFirstRunController(): FirstRunController {
   React.useEffect(
     () => () => {
       clearListenAfterSpeechTimer();
+      stopFirstRunAudio();
       voiceCaptureRef.current?.dispose();
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
         window.speechSynthesis.cancel();
       }
     },
-    [clearListenAfterSpeechTimer],
+    [clearListenAfterSpeechTimer, stopFirstRunAudio],
   );
 
   const setStep = React.useCallback((next: FirstRunStep) => {
@@ -389,6 +404,17 @@ export function useFirstRunController(): FirstRunController {
 
   const finishLocal = React.useCallback(
     async (sourceDraft: FirstRunProfileDraft) => {
+      // Local + cloud-inference (hybrid) routes inference through Eliza Cloud,
+      // so connect the cloud account first; the user starts again once linked.
+      if (firstRunNeedsCloudConnect(sourceDraft, elizaCloudConnected)) {
+        syncIdentity(sourceDraft);
+        setError(null);
+        setState("firstRunRuntimeTarget", "elizacloud-hybrid");
+        setState("firstRunProvider", "elizacloud");
+        const authWindow = preOpenWindow();
+        await handleCloudLogin(authWindow);
+        return;
+      }
       syncIdentity(sourceDraft);
       setError(null);
       setBusyText("Starting local agent");
@@ -430,12 +456,21 @@ export function useFirstRunController(): FirstRunController {
       setState("firstRunRuntimeTarget", "local");
       setBusyText("Saving first-run profile");
       await submitFirstRun(sourceDraft, "local");
-      void autoDownloadRecommendedLocalModelInBackground(apiBase);
+      if (firstRunDownloadsLocalModel(sourceDraft.localInference)) {
+        void autoDownloadRecommendedLocalModelInBackground(apiBase);
+      }
       clearPersistedFirstRunState();
       setBusyText(null);
       completeFirstRun("home", { launchCompanionOverlay: true });
     },
-    [completeFirstRun, setState, submitFirstRun, syncIdentity],
+    [
+      completeFirstRun,
+      elizaCloudConnected,
+      handleCloudLogin,
+      setState,
+      submitFirstRun,
+      syncIdentity,
+    ],
   );
 
   const finishRemote = React.useCallback(
@@ -485,7 +520,7 @@ export function useFirstRunController(): FirstRunController {
       setError(null);
       setState("firstRunRuntimeTarget", firstRunRuntimeTarget("cloud"));
       setState("firstRunProvider", "elizacloud");
-      if (!elizaCloudConnected) {
+      if (firstRunNeedsCloudConnect(sourceDraft, elizaCloudConnected)) {
         const authWindow = preOpenWindow();
         await handleCloudLogin(authWindow);
         return;
@@ -750,9 +785,9 @@ export function useFirstRunController(): FirstRunController {
 
       voiceOutputActiveRef.current = true;
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(promptText);
-      utterance.lang = resolveFirstRunVoiceLocale(uiLanguage);
-      utterance.onstart = () => {
+      stopFirstRunAudio();
+
+      const markSpeaking = () => {
         if (promptSequenceRef.current !== sequence) return;
         setVoice((current) => ({
           ...current,
@@ -771,11 +806,58 @@ export function useFirstRunController(): FirstRunController {
           void startVoice();
         }, FIRST_RUN_LISTEN_AFTER_SPEECH_DELAY_MS);
       };
-      utterance.onend = startListeningAfterSpeech;
-      utterance.onerror = startListeningAfterSpeech;
-      window.speechSynthesis.speak(utterance);
+
+      const speakWithBrowser = () => {
+        if (promptSequenceRef.current !== sequence) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(promptText);
+        utterance.lang = resolveFirstRunVoiceLocale(uiLanguage);
+        utterance.onstart = markSpeaking;
+        utterance.onend = startListeningAfterSpeech;
+        utterance.onerror = startListeningAfterSpeech;
+        window.speechSynthesis.speak(utterance);
+      };
+
+      // Prefer edge-tts neural voice; fall back to browser speechSynthesis so
+      // onboarding never goes silent (no network, autoplay block, etc.).
+      void (async () => {
+        try {
+          const audioData = await client.synthesizeFirstRunSpeech(promptText);
+          if (promptSequenceRef.current !== sequence) return;
+          const url = URL.createObjectURL(
+            new Blob([audioData], { type: "audio/mpeg" }),
+          );
+          const element = new Audio(url);
+          firstRunAudioRef.current = element;
+          const release = () => {
+            URL.revokeObjectURL(url);
+            if (firstRunAudioRef.current === element) {
+              firstRunAudioRef.current = null;
+            }
+          };
+          element.onplay = markSpeaking;
+          element.onended = () => {
+            release();
+            startListeningAfterSpeech();
+          };
+          element.onerror = () => {
+            release();
+            speakWithBrowser();
+          };
+          await element.play();
+        } catch {
+          if (promptSequenceRef.current !== sequence) return;
+          speakWithBrowser();
+        }
+      })();
     },
-    [cancelVoiceCapture, clearListenAfterSpeechTimer, startVoice, uiLanguage],
+    [
+      cancelVoiceCapture,
+      clearListenAfterSpeechTimer,
+      startVoice,
+      stopFirstRunAudio,
+      uiLanguage,
+    ],
   );
 
   const goBack = React.useCallback(() => {
@@ -786,7 +868,7 @@ export function useFirstRunController(): FirstRunController {
   const submitting = busyText !== null || elizaCloudLoginBusy;
   const primaryLabel =
     step === "runtime"
-      ? draft.runtime === "cloud" && !elizaCloudConnected
+      ? firstRunNeedsCloudConnect(draft, elizaCloudConnected)
         ? "Connect"
         : "Start"
       : step === "remote"

@@ -5,6 +5,7 @@ import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import type { ElizaCharacter } from "@/lib/types";
+import { useT } from "@/providers/I18nProvider";
 import { ElizaPageClient } from "../../../components/chat/eliza-page-client";
 import { api } from "../../../lib/api-client";
 
@@ -32,6 +33,7 @@ function normalizeCharacterRef(ref: string | undefined): string | null {
 }
 
 export default function PublicChatPage() {
+  const t = useT();
   const { characterRef } = useParams<{ characterRef: string }>();
   const normalizedRef = normalizeCharacterRef(characterRef);
   const { authenticated, user } = useSessionAuth();
@@ -42,7 +44,11 @@ export default function PublicChatPage() {
   useEffect(() => {
     if (!normalizedRef) {
       setLoading(false);
-      setError("Missing agent identifier.");
+      setError(
+        t("cloud.publicChat.missingIdentifier", {
+          defaultValue: "Missing agent identifier.",
+        }),
+      );
       return;
     }
 
@@ -59,27 +65,41 @@ export default function PublicChatPage() {
     )
       .then((payload) => {
         if (!payload.success || !payload.data) {
-          throw new Error(payload?.error ?? "Agent not found.");
+          throw new Error(
+            payload?.error ??
+              t("cloud.publicChat.notFound", {
+                defaultValue: "Agent not found.",
+              }),
+          );
         }
         setCharacter(payload.data);
       })
       .catch((err: unknown) => {
         if (err instanceof Error && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Agent not found.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("cloud.publicChat.notFound", {
+                defaultValue: "Agent not found.",
+              }),
+        );
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
 
     return () => controller.abort();
-  }, [normalizedRef]);
+  }, [normalizedRef, t]);
 
   const title = useMemo(
     () =>
       character
-        ? `Chat with ${character.name} | Eliza Cloud`
-        : "Chat | Eliza Cloud",
-    [character],
+        ? t("cloud.publicChat.titleWithName", {
+            name: character.name,
+            defaultValue: "Chat with {{name}} | Eliza Cloud",
+          })
+        : t("cloud.publicChat.title", { defaultValue: "Chat | Eliza Cloud" }),
+    [character, t],
   );
   const sharedCharacter = useMemo(
     () =>
@@ -104,7 +124,9 @@ export default function PublicChatPage() {
         </Helmet>
         <div className="flex items-center gap-3 text-white/70">
           <Loader2 className="h-5 w-5 animate-spin" />
-          Loading agent...
+          {t("cloud.publicChat.loadingAgent", {
+            defaultValue: "Loading agent...",
+          })}
         </div>
       </div>
     );
@@ -114,19 +136,31 @@ export default function PublicChatPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
         <Helmet>
-          <title>Agent Not Found | Eliza Cloud</title>
+          <title>
+            {t("cloud.publicChat.notFoundTitle", {
+              defaultValue: "Agent Not Found | Eliza Cloud",
+            })}
+          </title>
           <meta name="robots" content="noindex" />
         </Helmet>
         <div className="max-w-md space-y-4 text-center">
-          <h1 className="text-2xl font-semibold">Agent not found</h1>
+          <h1 className="text-2xl font-semibold">
+            {t("cloud.publicChat.notFoundHeading", {
+              defaultValue: "Agent not found",
+            })}
+          </h1>
           <p className="text-sm text-white/60">
-            {error ?? "This shared agent link is unavailable or private."}
+            {error ??
+              t("cloud.publicChat.unavailableOrPrivate", {
+                defaultValue:
+                  "This shared agent link is unavailable or private.",
+              })}
           </p>
           <Link
             className="text-sm text-white/70 hover:text-white transition-colors"
             to="/dashboard/chat"
           >
-            Open chat
+            {t("cloud.publicChat.openChat", { defaultValue: "Open chat" })}
           </Link>
         </div>
       </div>
@@ -139,7 +173,10 @@ export default function PublicChatPage() {
         <title>{title}</title>
         <meta
           name="description"
-          content={`Chat with ${character.name} on Eliza Cloud.`}
+          content={t("cloud.publicChat.metaDescription", {
+            name: character.name,
+            defaultValue: "Chat with {{name}} on Eliza Cloud.",
+          })}
         />
       </Helmet>
       <div className="dashboard-theme flex h-screen min-h-screen bg-neutral-950 text-white">

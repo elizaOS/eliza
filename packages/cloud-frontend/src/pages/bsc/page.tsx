@@ -16,6 +16,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import type { CryptoStatusResponse } from "@/lib/types/crypto-status";
+import { useT } from "@/providers/I18nProvider";
 import { useUserProfile } from "../../lib/data/user";
 
 const LazyDirectCryptoCreditCard = lazy(async () => {
@@ -26,6 +27,7 @@ const LazyDirectCryptoCreditCard = lazy(async () => {
 });
 
 export default function BscPromoPage() {
+  const t = useT();
   const { user, isReady, isAuthenticated, isLoading, isError, error } =
     useUserProfile();
   const [amount, setAmount] = useState("10");
@@ -62,10 +64,17 @@ export default function BscPromoPage() {
   return (
     <>
       <Helmet>
-        <title>BSC Cloud Credit Promotion</title>
+        <title>
+          {t("cloud.bsc.metaTitle", {
+            defaultValue: "BSC Cloud Credit Promotion",
+          })}
+        </title>
         <meta
           name="description"
-          content="Buy $10 or more in Eliza Cloud credit with BSC and receive $5 extra credit."
+          content={t("cloud.bsc.metaDescription", {
+            defaultValue:
+              "Buy $10 or more in Eliza Cloud credit with BSC and receive $5 extra credit.",
+          })}
         />
       </Helmet>
       <CloudVideoBackground
@@ -81,7 +90,9 @@ export default function BscPromoPage() {
             <Link
               to="/"
               className="inline-flex items-center transition-opacity hover:opacity-80"
-              aria-label="Eliza Cloud home"
+              aria-label={t("cloud.bsc.homeAria", {
+                defaultValue: "Eliza Cloud home",
+              })}
             >
               <img
                 src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudBlack}`}
@@ -95,11 +106,15 @@ export default function BscPromoPage() {
           <section className="grid flex-1 gap-8 py-10 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center lg:py-16">
             <div className="max-w-2xl">
               <h1 className="text-5xl font-semibold leading-[0.95] text-black sm:text-6xl lg:text-7xl">
-                Buy cloud credit on BSC
+                {t("cloud.bsc.heading", {
+                  defaultValue: "Buy cloud credit on BSC",
+                })}
               </h1>
               <p className="mt-5 inline-flex items-center gap-2 rounded-xs border border-black/14 bg-white/72 px-3 py-2 text-sm font-medium text-black backdrop-blur-sm">
                 <Gift className="size-4" />
-                $10+ in BSC = $5 bonus credit
+                {t("cloud.bsc.bonusBadge", {
+                  defaultValue: "$10+ in BSC = $5 bonus credit",
+                })}
               </p>
             </div>
 
@@ -116,7 +131,7 @@ export default function BscPromoPage() {
               <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
                 <CardHeader className="p-5 pb-4">
                   <CardTitle className="text-lg text-black">
-                    Top up credit
+                    {t("cloud.bsc.topUp", { defaultValue: "Top up credit" })}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 border-t border-black/10 p-5">
@@ -125,7 +140,9 @@ export default function BscPromoPage() {
                     htmlFor="bsc-credit-amount"
                   >
                     <span className="text-xs font-medium text-black/62">
-                      Purchase amount
+                      {t("cloud.bsc.purchaseAmount", {
+                        defaultValue: "Purchase amount",
+                      })}
                     </span>
                     <div className="flex items-center rounded-xs border border-black/14 bg-white">
                       <span className="px-3 text-black/56">$</span>
@@ -166,15 +183,24 @@ export default function BscPromoPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
-                      <p className="text-xs text-black/58">You pay</p>
+                      <p className="text-xs text-black/58">
+                        {t("cloud.bsc.youPay", { defaultValue: "You pay" })}
+                      </p>
                       <p className="mt-1 text-lg font-semibold text-black">
                         ${amountValue?.toFixed(2) ?? "0.00"}
                       </p>
                     </div>
                     <div className="rounded-xs border border-black/10 bg-black/[0.03] p-3">
-                      <p className="text-xs text-black/58">You receive</p>
+                      <p className="text-xs text-black/58">
+                        {t("cloud.bsc.youReceive", {
+                          defaultValue: "You receive",
+                        })}
+                      </p>
                       <p className="mt-1 text-lg font-semibold text-black">
-                        {totalCredits.toFixed(2)} credits
+                        {t("cloud.bsc.credits", {
+                          amount: totalCredits.toFixed(2),
+                          defaultValue: "{{amount}} credits",
+                        })}
                       </p>
                     </div>
                   </div>
@@ -199,17 +225,25 @@ export default function BscPromoPage() {
               ) : isError ? (
                 <DashboardErrorState
                   message={
-                    (error as Error)?.message ?? "Failed to load account"
+                    (error as Error)?.message ??
+                    t("cloud.bsc.loadAccountFailed", {
+                      defaultValue: "Failed to load account",
+                    })
                   }
                 />
               ) : !user ? (
                 <Card className="rounded-xs border-black/12 bg-white/88 text-black shadow-xl backdrop-blur-md">
                   <CardContent className="space-y-4 p-5">
                     <p className="text-sm leading-6 text-black/68">
-                      Sign in first so we know whose account to credit.
+                      {t("cloud.bsc.signInFirst", {
+                        defaultValue:
+                          "Sign in first so we know whose account to credit.",
+                      })}
                     </p>
                     <Button asChild className="w-full rounded-xs">
-                      <Link to="/login?returnTo=%2Fbsc">Sign in</Link>
+                      <Link to="/login?returnTo=%2Fbsc">
+                        {t("cloud.bsc.signIn", { defaultValue: "Sign in" })}
+                      </Link>
                     </Button>
                   </CardContent>
                 </Card>

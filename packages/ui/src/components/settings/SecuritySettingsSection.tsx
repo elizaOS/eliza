@@ -28,6 +28,7 @@ import {
 } from "../../api/auth-client";
 import { useBootConfig } from "../../config/boot-config-react";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -257,73 +258,154 @@ function AccessModeSection({
   onRefresh: () => Promise<void>;
 }) {
   const bootConfig = useBootConfig();
+  const { t } = useTranslation();
 
-  let title = "Checking access";
-  let detail = "Confirming how this browser is connected.";
-  let status = "Checking";
+  let title = t("security.access.checking.title", {
+    defaultValue: "Checking access",
+  });
+  let detail = t("security.access.checking.detail", {
+    defaultValue: "Confirming how this browser is connected.",
+  });
+  let status = t("security.access.status.checking", {
+    defaultValue: "Checking",
+  });
   let statusTone: "neutral" | "ok" | "warn" | "danger" = "neutral";
-  let currentBrowserValue: ReactNode = "Checking";
-  let currentBrowserDetail =
-    "Waiting for the auth endpoint to identify this browser.";
-  let remotePasswordValue = "Checking";
-  let remotePasswordDetail =
-    "Waiting for the auth endpoint to report remote password state.";
+  let currentBrowserValue: ReactNode = t("security.access.status.checking", {
+    defaultValue: "Checking",
+  });
+  let currentBrowserDetail = t("security.access.currentBrowser.checking", {
+    defaultValue: "Waiting for the auth endpoint to identify this browser.",
+  });
+  let remotePasswordValue = t("security.access.status.checking", {
+    defaultValue: "Checking",
+  });
+  let remotePasswordDetail = t("security.access.remotePassword.checking", {
+    defaultValue:
+      "Waiting for the auth endpoint to report remote password state.",
+  });
   let remotePasswordTone: "neutral" | "ok" | "warn" | "danger" = "neutral";
 
   if (state.phase === "loaded") {
     if (state.access.mode === "local") {
-      title = "Local access";
-      detail =
-        "This browser is on the host machine. Localhost and Electrobun access do not require a password. Remote browsers use the remote password below.";
+      title = t("security.access.local.title", {
+        defaultValue: "Local access",
+      });
+      detail = t("security.access.local.detail", {
+        defaultValue:
+          "This browser is on the host machine. Localhost and Electrobun access do not require a password. Remote browsers use the remote password below.",
+      });
       status = state.access.passwordConfigured
-        ? "Remote password set"
-        : "Remote password not set";
+        ? t("security.access.status.remotePasswordSet", {
+            defaultValue: "Remote password set",
+          })
+        : t("security.access.status.remotePasswordNotSet", {
+            defaultValue: "Remote password not set",
+          });
       statusTone = state.access.passwordConfigured ? "ok" : "warn";
-      currentBrowserValue = "Local host";
-      currentBrowserDetail =
-        "The current browser is trusted because it is running from localhost or the desktop renderer.";
+      currentBrowserValue = t("security.access.currentBrowser.localHost", {
+        defaultValue: "Local host",
+      });
+      currentBrowserDetail = t("security.access.currentBrowser.localDetail", {
+        defaultValue:
+          "The current browser is trusted because it is running from localhost or the desktop renderer.",
+      });
     } else {
-      title = "Remote session";
-      detail =
-        "This browser is signed in remotely. Localhost and Electrobun still use local access on the host machine.";
-      status = "Signed in";
+      title = t("security.access.remote.title", {
+        defaultValue: "Remote session",
+      });
+      detail = t("security.access.remote.detail", {
+        defaultValue:
+          "This browser is signed in remotely. Localhost and Electrobun still use local access on the host machine.",
+      });
+      status = t("security.access.status.signedIn", {
+        defaultValue: "Signed in",
+      });
       statusTone = "ok";
-      currentBrowserValue = "Remote browser";
-      currentBrowserDetail =
-        "This session is authenticated with the configured remote password.";
+      currentBrowserValue = t("security.access.currentBrowser.remoteBrowser", {
+        defaultValue: "Remote browser",
+      });
+      currentBrowserDetail = t("security.access.currentBrowser.remoteDetail", {
+        defaultValue:
+          "This session is authenticated with the configured remote password.",
+      });
     }
-    remotePasswordValue = state.access.passwordConfigured ? "Set" : "Not set";
+    remotePasswordValue = state.access.passwordConfigured
+      ? t("security.access.value.set", { defaultValue: "Set" })
+      : t("security.access.value.notSet", { defaultValue: "Not set" });
     remotePasswordDetail = state.access.passwordConfigured
-      ? "Remote browsers can sign in with the configured password."
-      : "Remote browsers cannot sign in until a remote password is set.";
+      ? t("security.access.remotePassword.canSignIn", {
+          defaultValue:
+            "Remote browsers can sign in with the configured password.",
+        })
+      : t("security.access.remotePassword.cannotSignIn", {
+          defaultValue:
+            "Remote browsers cannot sign in until a remote password is set.",
+        });
     remotePasswordTone = state.access.passwordConfigured ? "ok" : "warn";
   } else if (state.phase === "locked") {
-    title = "Remote access";
+    title = t("security.access.lockedRemote.title", {
+      defaultValue: "Remote access",
+    });
     detail =
       state.reason === "remote_password_not_configured"
-        ? "Remote access is disabled until this instance is opened on the host machine and a remote password is set."
-        : "Remote access requires a password session.";
-    status = state.access?.passwordConfigured ? "Password required" : "Not set";
+        ? t("security.access.lockedRemote.detailNotConfigured", {
+            defaultValue:
+              "Remote access is disabled until this instance is opened on the host machine and a remote password is set.",
+          })
+        : t("security.access.lockedRemote.detailRequiresPassword", {
+            defaultValue: "Remote access requires a password session.",
+          });
+    status = state.access?.passwordConfigured
+      ? t("security.access.status.passwordRequired", {
+          defaultValue: "Password required",
+        })
+      : t("security.access.value.notSet", { defaultValue: "Not set" });
     statusTone = state.access?.passwordConfigured ? "warn" : "danger";
-    currentBrowserValue = "Remote browser";
+    currentBrowserValue = t("security.access.currentBrowser.remoteBrowser", {
+      defaultValue: "Remote browser",
+    });
     currentBrowserDetail =
       state.reason === "remote_password_not_configured"
-        ? "This browser is remote and no remote password is configured yet."
-        : "This browser is remote and needs a password session.";
-    remotePasswordValue = state.access?.passwordConfigured ? "Set" : "Not set";
+        ? t("security.access.currentBrowser.lockedNotConfigured", {
+            defaultValue:
+              "This browser is remote and no remote password is configured yet.",
+          })
+        : t("security.access.currentBrowser.lockedNeedsPassword", {
+            defaultValue:
+              "This browser is remote and needs a password session.",
+          });
+    remotePasswordValue = state.access?.passwordConfigured
+      ? t("security.access.value.set", { defaultValue: "Set" })
+      : t("security.access.value.notSet", { defaultValue: "Not set" });
     remotePasswordDetail = state.access?.passwordConfigured
-      ? "Remote password exists; sign in to manage sessions and changes."
-      : "Remote access is disabled until the host machine sets a password.";
+      ? t("security.access.remotePassword.existsSignIn", {
+          defaultValue:
+            "Remote password exists; sign in to manage sessions and changes.",
+        })
+      : t("security.access.remotePassword.disabledUntilSet", {
+          defaultValue:
+            "Remote access is disabled until the host machine sets a password.",
+        });
     remotePasswordTone = state.access?.passwordConfigured ? "warn" : "danger";
   } else if (state.phase === "error") {
-    title = "Access unavailable";
+    title = t("security.access.error.title", {
+      defaultValue: "Access unavailable",
+    });
     detail = state.message;
-    status = "Unavailable";
+    status = t("security.access.status.unavailable", {
+      defaultValue: "Unavailable",
+    });
     statusTone = "danger";
-    currentBrowserValue = "Unavailable";
+    currentBrowserValue = t("security.access.status.unavailable", {
+      defaultValue: "Unavailable",
+    });
     currentBrowserDetail = state.message;
-    remotePasswordValue = "Unavailable";
-    remotePasswordDetail = "The auth endpoint did not return password state.";
+    remotePasswordValue = t("security.access.status.unavailable", {
+      defaultValue: "Unavailable",
+    });
+    remotePasswordDetail = t("security.access.remotePassword.unavailable", {
+      defaultValue: "The auth endpoint did not return password state.",
+    });
     remotePasswordTone = "danger";
   }
 
@@ -342,13 +424,13 @@ function AccessModeSection({
     : null;
   const pageUrlLabel =
     pageEndpoint && !isLoopbackHost(pageEndpoint.hostname)
-      ? "Remote URL"
-      : "Local URL";
+      ? t("security.access.pageUrl.remote", { defaultValue: "Remote URL" })
+      : t("security.access.pageUrl.local", { defaultValue: "Local URL" });
 
   return (
     <SectionShell
       icon={<Shield className="h-4 w-4 opacity-60" />}
-      title="Access"
+      title={t("security.access.sectionTitle", { defaultValue: "Access" })}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
@@ -370,17 +452,26 @@ function AccessModeSection({
       </div>
       <div className="rounded-sm border border-border/40 bg-bg/35 px-3">
         <AccessInfoRow
-          label="Current browser"
+          label={t("security.access.row.currentBrowser", {
+            defaultValue: "Current browser",
+          })}
           value={currentBrowserValue}
           detail={currentBrowserDetail}
         />
         <AccessInfoRow
-          label="Local access"
-          value="Enabled"
-          detail="Host-machine localhost and desktop renderer sessions do not require the remote password."
+          label={t("security.access.row.localAccess", {
+            defaultValue: "Local access",
+          })}
+          value={t("security.access.row.enabled", { defaultValue: "Enabled" })}
+          detail={t("security.access.row.localAccessDetail", {
+            defaultValue:
+              "Host-machine localhost and desktop renderer sessions do not require the remote password.",
+          })}
         />
         <AccessInfoRow
-          label="Remote password"
+          label={t("security.access.row.remotePassword", {
+            defaultValue: "Remote password",
+          })}
           value={
             <StatusBadge tone={remotePasswordTone}>
               {remotePasswordValue}
@@ -397,16 +488,23 @@ function AccessModeSection({
         )}
         {apiBase && apiEndpointDescription && (
           <AccessInfoRow
-            label="API base"
+            label={t("security.access.row.apiBase", {
+              defaultValue: "API base",
+            })}
             value={trimTrailingSlash(apiBase)}
             detail={`${apiEndpointDescription.value}: ${apiEndpointDescription.detail}`}
           />
         )}
         {state.phase === "loaded" && (
           <AccessInfoRow
-            label="Identity"
+            label={t("security.access.row.identity", {
+              defaultValue: "Identity",
+            })}
             value={state.identity.displayName}
-            detail={`Signed in as ${state.identity.kind}.`}
+            detail={t("security.access.row.signedInAs", {
+              kind: state.identity.kind,
+              defaultValue: "Signed in as {{kind}}.",
+            })}
           />
         )}
       </div>
@@ -416,7 +514,7 @@ function AccessModeSection({
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <RefreshCw className="h-3 w-3" />
-        Refresh
+        {t("security.refresh", { defaultValue: "Refresh" })}
       </button>
     </SectionShell>
   );
@@ -428,6 +526,7 @@ type SessionsState =
   | { phase: "error"; message: string };
 
 function SessionsSection() {
+  const { t } = useTranslation();
   const [state, setState] = useState<SessionsState>({ phase: "loading" });
   const [revokingIds, setRevokingIds] = useState<Set<string>>(new Set());
 
@@ -441,11 +540,15 @@ function SessionsSection() {
         phase: "error",
         message:
           result.status === 401
-            ? "You must be signed in to view sessions."
-            : "Could not load sessions. Try reloading the page.",
+            ? t("security.sessions.error.signInRequired", {
+                defaultValue: "You must be signed in to view sessions.",
+              })
+            : t("security.sessions.error.loadFailed", {
+                defaultValue: "Could not load sessions. Try reloading the page.",
+              }),
       });
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -476,12 +579,16 @@ function SessionsSection() {
   return (
     <SectionShell
       icon={<Shield className="h-4 w-4 opacity-60" />}
-      title="Active sessions"
+      title={t("security.sessions.title", {
+        defaultValue: "Active sessions",
+      })}
     >
       {state.phase === "loading" && (
         <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading sessions...
+          {t("security.sessions.loading", {
+            defaultValue: "Loading sessions...",
+          })}
         </div>
       )}
 
@@ -492,7 +599,11 @@ function SessionsSection() {
       {state.phase === "loaded" && (
         <div className="space-y-3">
           {state.sessions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active sessions.</p>
+            <p className="text-sm text-muted-foreground">
+              {t("security.sessions.empty", {
+                defaultValue: "No active sessions.",
+              })}
+            </p>
           ) : (
             <div className="divide-y divide-border/30">
               {state.sessions.map((session) => (
@@ -513,7 +624,7 @@ function SessionsSection() {
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
             >
               <RefreshCw className="h-3 w-3" />
-              Refresh
+              {t("security.refresh", { defaultValue: "Refresh" })}
             </button>
 
             {state.sessions.filter((s) => !s.current).length > 1 && (
@@ -523,7 +634,9 @@ function SessionsSection() {
                 onClick={handleRevokeOthers}
                 className="border-danger/40 text-xs text-danger hover:bg-danger/10"
               >
-                Sign out everywhere else
+                {t("security.sessions.signOutEverywhere", {
+                  defaultValue: "Sign out everywhere else",
+                })}
               </Button>
             )}
           </div>
@@ -542,6 +655,7 @@ function SessionRow({
   revoking: boolean;
   onRevoke: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-3 py-3">
       <DeviceIcon userAgent={session.userAgent} />
@@ -552,19 +666,28 @@ function SessionRow({
           </span>
           {session.current && (
             <span className="rounded-full border border-[var(--ok-muted)] bg-[var(--ok-subtle)] px-2 py-0.5 text-3xs font-medium uppercase tracking-[0.08em] text-ok">
-              This session
+              {t("security.sessions.thisSession", {
+                defaultValue: "This session",
+              })}
             </span>
           )}
         </div>
         <p className="truncate text-xs text-muted-foreground/80">
-          {session.ip ?? "Unknown IP"} &middot;{" "}
+          {session.ip ??
+            t("security.sessions.unknownIp", { defaultValue: "Unknown IP" })}{" "}
+          &middot;{" "}
           {session.userAgent
             ? session.userAgent.slice(0, 60)
-            : "Unknown client"}
+            : t("security.sessions.unknownClient", {
+                defaultValue: "Unknown client",
+              })}
         </p>
         <p className="text-xs text-muted-foreground/60">
-          Last seen {formatRelativeTime(session.lastSeenAt)} &middot; expires{" "}
-          {formatRelativeTime(session.expiresAt)}
+          {t("security.sessions.lastSeenExpires", {
+            lastSeen: formatRelativeTime(session.lastSeenAt),
+            expires: formatRelativeTime(session.expiresAt),
+            defaultValue: "Last seen {{lastSeen}} · expires {{expires}}",
+          })}
         </p>
       </div>
 
@@ -575,7 +698,9 @@ function SessionRow({
           disabled={revoking}
           onClick={() => onRevoke(session.id)}
           className="shrink-0 text-xs text-danger hover:bg-danger/10 hover:text-danger"
-          aria-label="Revoke this session"
+          aria-label={t("security.sessions.revoke", {
+            defaultValue: "Revoke this session",
+          })}
         >
           {revoking ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -601,6 +726,7 @@ function RemotePasswordSection({
   accessState: AccessState;
   onAccessChanged: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const displayNameId = useId().replace(/:/g, "");
   const currentPasswordId = useId().replace(/:/g, "");
   const newPasswordId = useId().replace(/:/g, "");
@@ -633,7 +759,12 @@ function RemotePasswordSection({
       event.preventDefault();
       if (!loaded) return;
       if (newPassword !== confirmPassword) {
-        setState({ phase: "error", message: "New passwords do not match." });
+        setState({
+          phase: "error",
+          message: t("security.password.error.mismatch", {
+            defaultValue: "New passwords do not match.",
+          }),
+        });
         return;
       }
 
@@ -657,8 +788,10 @@ function RemotePasswordSection({
 
       setState({
         phase: "success",
-        message:
-          "Remote access is enabled. Remote browsers can sign in with this password when they can reach this instance.",
+        message: t("security.password.success", {
+          defaultValue:
+            "Remote access is enabled. Remote browsers can sign in with this password when they can reach this instance.",
+        }),
       });
       setCurrentPassword("");
       setNewPassword("");
@@ -674,6 +807,7 @@ function RemotePasswordSection({
       newPassword,
       onAccessChanged,
       setupMode,
+      t,
     ],
   );
 
@@ -681,11 +815,15 @@ function RemotePasswordSection({
     return (
       <SectionShell
         icon={<KeyRound className="h-4 w-4 opacity-60" />}
-        title="Remote password"
+        title={t("security.password.title", {
+          defaultValue: "Remote password",
+        })}
       >
         <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading password settings...
+          {t("security.password.loading", {
+            defaultValue: "Loading password settings...",
+          })}
         </div>
       </SectionShell>
     );
@@ -695,12 +833,19 @@ function RemotePasswordSection({
     const message =
       accessState.phase === "locked" &&
       accessState.reason === "remote_password_not_configured"
-        ? "Remote access is not enabled yet. Open this instance on the host machine via localhost and set a remote password here."
-        : "Sign in to manage the remote password.";
+        ? t("security.password.notEnabled", {
+            defaultValue:
+              "Remote access is not enabled yet. Open this instance on the host machine via localhost and set a remote password here.",
+          })
+        : t("security.password.signInToManage", {
+            defaultValue: "Sign in to manage the remote password.",
+          });
     return (
       <SectionShell
         icon={<KeyRound className="h-4 w-4 opacity-60" />}
-        title="Remote password"
+        title={t("security.password.title", {
+          defaultValue: "Remote password",
+        })}
       >
         <p className="text-sm text-muted-foreground">{message}</p>
       </SectionShell>
@@ -708,17 +853,28 @@ function RemotePasswordSection({
   }
 
   const description = localAccess
-    ? "Set the password used by browsers that connect to this instance from another machine. Localhost and Electrobun do not use it."
-    : "Change the password for this remote browser session.";
+    ? t("security.password.description.local", {
+        defaultValue:
+          "Set the password used by browsers that connect to this instance from another machine. Localhost and Electrobun do not use it.",
+      })
+    : t("security.password.description.remote", {
+        defaultValue: "Change the password for this remote browser session.",
+      });
   const buttonLabel =
     setupMode || !accessState.access.passwordConfigured
-      ? "Set remote password"
-      : "Change remote password";
+      ? t("security.password.setButton", {
+          defaultValue: "Set remote password",
+        })
+      : t("security.password.changeButton", {
+          defaultValue: "Change remote password",
+        });
 
   return (
     <SectionShell
       icon={<KeyRound className="h-4 w-4 opacity-60" />}
-      title="Remote password"
+      title={t("security.password.title", {
+        defaultValue: "Remote password",
+      })}
     >
       <p className="text-sm leading-6 text-muted-foreground">{description}</p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
@@ -728,7 +884,9 @@ function RemotePasswordSection({
               htmlFor={displayNameId}
               className="text-xs uppercase tracking-wide text-muted-foreground"
             >
-              Display name
+              {t("security.password.field.displayName", {
+                defaultValue: "Display name",
+              })}
             </Label>
             <Input
               id={displayNameId}
@@ -750,7 +908,9 @@ function RemotePasswordSection({
               htmlFor={currentPasswordId}
               className="text-xs uppercase tracking-wide text-muted-foreground"
             >
-              Current password
+              {t("security.password.field.current", {
+                defaultValue: "Current password",
+              })}
             </Label>
             <Input
               id={currentPasswordId}
@@ -771,13 +931,17 @@ function RemotePasswordSection({
             htmlFor={newPasswordId}
             className="text-xs uppercase tracking-wide text-muted-foreground"
           >
-            New password
+            {t("security.password.field.new", {
+              defaultValue: "New password",
+            })}
           </Label>
           <Input
             id={newPasswordId}
             type="password"
             autoComplete="new-password"
-            placeholder="At least 12 characters"
+            placeholder={t("security.password.field.newPlaceholder", {
+              defaultValue: "At least 12 characters",
+            })}
             value={newPassword}
             onChange={(event) => {
               setNewPassword(event.target.value);
@@ -792,7 +956,9 @@ function RemotePasswordSection({
             htmlFor={confirmPasswordId}
             className="text-xs uppercase tracking-wide text-muted-foreground"
           >
-            Confirm new password
+            {t("security.password.field.confirm", {
+              defaultValue: "Confirm new password",
+            })}
           </Label>
           <Input
             id={confirmPasswordId}
@@ -810,7 +976,11 @@ function RemotePasswordSection({
             )}
           />
           {confirmMismatch && (
-            <p className="text-xs text-danger">Passwords do not match.</p>
+            <p className="text-xs text-danger">
+              {t("security.password.error.mismatchShort", {
+                defaultValue: "Passwords do not match.",
+              })}
+            </p>
           )}
         </div>
 
@@ -826,7 +996,9 @@ function RemotePasswordSection({
 
         <div className="flex justify-end pt-1">
           <Button type="submit" disabled={!canSubmit} size="sm">
-            {isSubmitting ? "Saving..." : buttonLabel}
+            {isSubmitting
+              ? t("security.password.saving", { defaultValue: "Saving..." })
+              : buttonLabel}
           </Button>
         </div>
       </form>

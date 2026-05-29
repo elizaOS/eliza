@@ -19,14 +19,25 @@ env:
   BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
   NODE_OPTIONS: "--max-old-space-size=4096"
+  TEST_LANE: "pr"
+  ELIZA_LIVE_TEST: "0"
   SCENARIO_USE_LLM_PROXY: "1"
+  CEREBRAS_API_KEY: ""
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  GROQ_API_KEY: ""
+  OPENROUTER_API_KEY: ""
+  GOOGLE_GENERATIVE_AI_API_KEY: ""
+  XAI_API_KEY: ""
+  NVIDIA_API_KEY: ""
+  ELIZAOS_CLOUD_API_KEY: ""
 
 permissions:
   contents: read
 
 jobs:
   deterministic-scenario:
-    name: Deterministic Scenario Smoke
+    name: Zero-Key Deterministic E2E
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -97,6 +108,9 @@ jobs:
       - name: Cloud screenshot quality diagnostics coverage
         run: bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts
 
+      - name: Scenario catalog coverage gate
+        run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
+
       - name: Zero-cost scenario e2e
         run: bun run --cwd packages/scenario-runner test:pr:e2e
 
@@ -105,4 +119,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: scenario-pr-deterministic-report
-          path: reports/scenarios/pr-deterministic/
+          path: |
+            reports/scenarios/pr-deterministic/
+            reports/scenarios/catalog-inventory/

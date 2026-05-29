@@ -187,6 +187,35 @@ export function firstRunRuntimeTarget(
   return localInference === "cloud-inference" ? "elizacloud-hybrid" : "local";
 }
 
+/**
+ * Whether the current runtime selection needs an Eliza Cloud connection before
+ * setup can finish. True for the Cloud runtime and for Local + cloud-inference
+ * (the hybrid, where the on-device agent routes inference through Eliza Cloud).
+ * Drives both the primary-button label ("Connect" vs "Start") and the OAuth
+ * gate in the finish handlers, so the decision lives in one place.
+ */
+export function firstRunNeedsCloudConnect(
+  draft: Pick<FirstRunProfileDraft, "runtime" | "localInference">,
+  elizaCloudConnected: boolean,
+): boolean {
+  if (elizaCloudConnected) return false;
+  if (draft.runtime === "cloud") return true;
+  return (
+    draft.runtime === "local" && draft.localInference === "cloud-inference"
+  );
+}
+
+/**
+ * Whether finishing a Local runtime should kick off the on-device model
+ * download. Only `all-local` pulls a local model; `cloud-inference` routes
+ * inference through Eliza Cloud and must not download one.
+ */
+export function firstRunDownloadsLocalModel(
+  localInference: FirstRunLocalInference,
+): boolean {
+  return localInference === "all-local";
+}
+
 function stripFirstRunVoicePrefix(value: string): string {
   return value
     .trim()

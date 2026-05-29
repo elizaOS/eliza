@@ -1,12 +1,9 @@
-import { useState } from "react";
-import { client } from "../../api";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import type { StartupErrorState } from "../../state";
 import { useApp } from "../../state";
-import { Banner } from "../ui/banner";
 import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
+import { Card, CardContent, CardHeader } from "../ui/card";
 import { StatusBadge } from "../ui/status-badge";
 
 function startupReasonLabel(
@@ -75,100 +72,12 @@ function buildStartupBugReportDraft(
   };
 }
 
-function normalizeReportUrl(url?: string): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
-}
-
-export function StartupFailureView({
-  error,
-  onRetry,
-}: StartupFailureViewProps) {
+export function StartupFailureView({ error, onRetry }: StartupFailureViewProps) {
   const { t } = useApp();
   const branding = useBranding();
   const bugReport = useOptionalBugReport();
-  const [reportState, setReportState] = useState<
-    "idle" | "submitting" | "success" | "error"
-  >("idle");
-  const [reportMessage, setReportMessage] = useState<string | null>(null);
-  const isBackendUnreachable = error.reason === "backend-unreachable";
   const reasonLabel = startupReasonLabel(t, error.reason);
   const startupDraft = buildStartupBugReportDraft(reasonLabel, error);
-
-  async function handleShareReport() {
-    setReportState("submitting");
-    setReportMessage(null);
-    try {
-      const info = await client.checkBugReportInfo();
-      const result = await client.submitBugReport({
-        category: "startup-failure",
-        description: `${branding.appName} startup failed: ${reasonLabel}`,
-        stepsToReproduce: `1. Launch ${branding.appName}\n2. Wait for startup to complete\n3. Observe the startup failure screen`,
-        expectedBehavior: `${branding.appName} should finish startup successfully.`,
-        actualBehavior: error.message,
-        environment:
-          info.platform === "darwin"
-            ? "macOS"
-            : info.platform === "win32"
-              ? "Windows"
-              : info.platform === "linux"
-                ? "Linux"
-                : info.platform || "Unknown",
-        nodeVersion: info.nodeVersion,
-        logs: [
-          `reason=${error.reason}`,
-          `phase=${error.phase}`,
-          error.status ? `status=${error.status}` : null,
-          error.path ? `path=${error.path}` : null,
-          error.detail ? `detail=${error.detail}` : null,
-        ]
-          .filter(Boolean)
-          .join("\n"),
-        startup: {
-          reason: error.reason,
-          phase: error.phase,
-          message: error.message,
-          detail: error.detail,
-          status: error.status,
-          path: error.path,
-        },
-      });
-      const safeResultUrl = normalizeReportUrl(result.url);
-      if (safeResultUrl) {
-        setReportState("success");
-        setReportMessage(`Report shared: ${safeResultUrl}`);
-        return;
-      }
-      if (result.accepted) {
-        setReportState("success");
-        setReportMessage("Diagnostic report shared successfully.");
-        return;
-      }
-      if (result.fallback) {
-        setReportState("error");
-        setReportMessage(
-          bugReport
-            ? "Automatic sharing is unavailable. Use Report Bug to review and submit it manually."
-            : "Automatic sharing is unavailable on this screen.",
-        );
-        return;
-      }
-      setReportState("error");
-      setReportMessage("Failed to share diagnostic report.");
-    } catch (submitError) {
-      setReportState("error");
-      setReportMessage(
-        submitError instanceof Error
-          ? submitError.message
-          : "Failed to share diagnostic report.",
-      );
-    }
-  }
 
   return (
     <div className={SCREEN_SHELL_CLASS}>
@@ -185,40 +94,23 @@ export function StartupFailureView({
               withDot
               className="self-start border-[#0B35F1]/25 bg-[#0B35F1]/10 text-[#0B35F1] [&_[class*='bg-status-info']]:bg-[#0B35F1]"
             />
-            <div className="space-y-2">
-              <h1 className="text-xl font-semibold leading-tight text-[#0B35F1]">
-                {t("startupfailureview.StartupFailed")} {reasonLabel}
-              </h1>
-            </div>
-            {isBackendUnreachable ? null : null}
+            <h1 className="text-xl font-semibold leading-tight text-[#0B35F1]">
+              {t("startupfailureview.StartupFailed")} {reasonLabel}
+            </h1>
           </div>
         </CardHeader>
 
         <CardContent className="flex flex-col gap-5 pt-6">
-          {reportMessage ? (
-            <Banner
-              variant={reportState === "success" ? "info" : "error"}
-              className="rounded-sm text-xs"
-            >
-              {reportMessage}
-            </Banner>
-          ) : null}
           {error.detail ? (
             <section className="space-y-2 rounded-sm border border-[#0B35F1]/16 bg-[#F7F9FF] p-4 ">
               <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-[#0B35F1]/75">
-                {t("common.details", {
-                  defaultValue: "Details",
-                })}
+                {t("common.details", { defaultValue: "Details" })}
               </div>
               <pre className="max-h-60 overflow-auto rounded-sm border border-[#0B35F1]/16 bg-white p-3 text-xs leading-relaxed text-[#0B35F1]/70 whitespace-pre-wrap break-words">
                 {error.detail}
               </pre>
             </section>
-          ) : (
-            <CardDescription className="max-w-[56ch] leading-relaxed text-[#0B35F1]/75">
-              {reasonLabel}
-            </CardDescription>
-          )}
+          ) : null}
 
           <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
             <Button
@@ -239,20 +131,7 @@ export function StartupFailureView({
                 {t("bugreportmodal.ReportABug")}
               </Button>
             ) : null}
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => {
-                void handleShareReport();
-              }}
-              disabled={reportState === "submitting"}
-              className="w-full border-[#0B35F1]/25 bg-white text-[#0B35F1] hover:border-[#0B35F1]/45 hover:bg-[#F7F9FF] sm:w-auto sm:min-w-[12rem]"
-            >
-              {reportState === "submitting"
-                ? "Sharing report..."
-                : "Share diagnostic report"}
-            </Button>
-            {isBackendUnreachable ? (
+            {error.reason === "backend-unreachable" ? (
               <Button
                 variant="outline"
                 size="lg"

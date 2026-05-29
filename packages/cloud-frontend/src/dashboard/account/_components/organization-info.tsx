@@ -10,6 +10,7 @@
 
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Building2, Calendar, CreditCard } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 import type { OrganizationDto } from "@/types/cloud-api";
 
 interface OrganizationInfoProps {
@@ -17,8 +18,10 @@ interface OrganizationInfoProps {
 }
 
 export function OrganizationInfo({ organization }: OrganizationInfoProps) {
+  const t = useT();
   const formatDate = (date: Date | string | null) => {
-    if (!date) return "N/A";
+    if (!date)
+      return t("cloud.organizationInfo.notAvailable", { defaultValue: "N/A" });
     return new Date(date).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
@@ -40,10 +43,16 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <Building2 className="h-5 w-5 text-[#FF5800]" />
-            <h3 className="text-lg font-bold text-white">Organization</h3>
+            <h3 className="text-lg font-bold text-white">
+              {t("cloud.organizationInfo.title", {
+                defaultValue: "Organization",
+              })}
+            </h3>
           </div>
           <p className="text-sm text-white/60">
-            Information about your organization
+            {t("cloud.organizationInfo.subtitle", {
+              defaultValue: "Information about your organization",
+            })}
           </p>
         </div>
 
@@ -51,14 +60,16 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide">
-                Organization Name
+                {t("cloud.organizationInfo.orgName", {
+                  defaultValue: "Organization Name",
+                })}
               </p>
               <p className="font-medium text-white">{organization.name}</p>
             </div>
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide">
-                Slug
+                {t("cloud.organizationInfo.slug", { defaultValue: "Slug" })}
               </p>
               <p className="font-mono text-sm text-white">
                 {organization.slug}
@@ -68,7 +79,9 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
                 <CreditCard className="h-4 w-4 text-[#FF5800]" />
-                Balance
+                {t("cloud.organizationInfo.balance", {
+                  defaultValue: "Balance",
+                })}
               </p>
               <p className="font-semibold text-lg text-white">
                 {formatBalance(organization.credit_balance)}
@@ -77,19 +90,27 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide">
-                Status
+                {t("cloud.organizationInfo.status", { defaultValue: "Status" })}
               </p>
               <span
                 className={`rounded-sm px-2 py-1 text-xs font-bold uppercase tracking-wide border ${organization.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-red-500/20 text-red-400 border-red-500/40"}`}
               >
-                {organization.is_active ? "Active" : "Inactive"}
+                {organization.is_active
+                  ? t("cloud.organizationInfo.active", {
+                      defaultValue: "Active",
+                    })
+                  : t("cloud.organizationInfo.inactive", {
+                      defaultValue: "Inactive",
+                    })}
               </span>
             </div>
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-[#FF5800]" />
-                Member Since
+                {t("cloud.organizationInfo.memberSince", {
+                  defaultValue: "Member Since",
+                })}
               </p>
               <p className="text-sm text-white">
                 {formatDate(organization.created_at)}
@@ -100,7 +121,9 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
           {organization.billing_email && (
             <div className="pt-4 border-t border-white/10 space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide">
-                Billing Email
+                {t("cloud.organizationInfo.billingEmail", {
+                  defaultValue: "Billing Email",
+                })}
               </p>
               <p className="text-sm text-white">{organization.billing_email}</p>
             </div>

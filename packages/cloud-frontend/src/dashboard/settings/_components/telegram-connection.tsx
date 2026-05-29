@@ -16,6 +16,7 @@ import { Bot, ExternalLink, Loader2, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
+import { useT } from "@/providers/I18nProvider";
 
 interface TelegramStatus {
   configured: boolean;
@@ -26,13 +27,16 @@ interface TelegramStatus {
 }
 
 export function TelegramConnection() {
+  const t = useT();
   const {
     status,
     isLoading,
     refetch: fetchStatus,
   } = useConnectionStatus<TelegramStatus>(
     "/api/v1/telegram/status",
-    "Failed to fetch Telegram status",
+    t("cloud.telegram.statusFetchFailed", {
+      defaultValue: "Failed to fetch Telegram status",
+    }),
   );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -42,7 +46,11 @@ export function TelegramConnection() {
   const handleConnect = async () => {
     if (isConnecting) return;
     if (!botToken.trim()) {
-      toast.error("Please enter a bot token");
+      toast.error(
+        t("cloud.telegram.enterBotToken", {
+          defaultValue: "Please enter a bot token",
+        }),
+      );
       return;
     }
 
@@ -58,14 +66,28 @@ export function TelegramConnection() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        toast.success(`Telegram bot @${data.botUsername} connected!`);
+        toast.success(
+          t("cloud.telegram.connected", {
+            username: data.botUsername,
+            defaultValue: "Telegram bot @{{username}} connected!",
+          }),
+        );
         setBotToken("");
         void fetchStatus();
       } else {
-        toast.error(data.error || "Failed to connect bot");
+        toast.error(
+          data.error ||
+            t("cloud.telegram.connectFailed", {
+              defaultValue: "Failed to connect bot",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.telegram.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsConnecting(false);
@@ -81,14 +103,27 @@ export function TelegramConnection() {
       });
 
       if (response.ok) {
-        toast.success("Telegram bot disconnected");
+        toast.success(
+          t("cloud.telegram.disconnected", {
+            defaultValue: "Telegram bot disconnected",
+          }),
+        );
         void fetchStatus();
       } else {
         const data = await response.json().catch(() => ({}));
-        toast.error(data.error || "Failed to disconnect");
+        toast.error(
+          data.error ||
+            t("cloud.telegram.disconnectFailed", {
+              defaultValue: "Failed to disconnect",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.telegram.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsDisconnecting(false);
@@ -97,9 +132,11 @@ export function TelegramConnection() {
   if (isLoading) {
     return (
       <ConnectionCard
-        name="Telegram Bot"
+        name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
         icon={<MessageSquare className="text-[#0088cc]" />}
-        description="Connect your Telegram bot for AI-powered automation"
+        description={t("cloud.telegram.cardDescription", {
+          defaultValue: "Connect your Telegram bot for AI-powered automation",
+        })}
         status="loading"
       />
     );
@@ -107,9 +144,11 @@ export function TelegramConnection() {
 
   return (
     <ConnectionCard
-      name="Telegram Bot"
+      name={t("cloud.telegram.cardName", { defaultValue: "Telegram Bot" })}
       icon={<MessageSquare className="text-[#0088cc]" />}
-      description="Connect your Telegram bot for AI-powered automation"
+      description={t("cloud.telegram.cardDescription", {
+        defaultValue: "Connect your Telegram bot for AI-powered automation",
+      })}
       status={status?.connected ? "connected" : "disconnected"}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
@@ -128,7 +167,7 @@ export function TelegramConnection() {
                 }
               >
                 <ExternalLink className="h-4 w-4 mr-1" />
-                Open Bot
+                {t("cloud.telegram.openBot", { defaultValue: "Open Bot" })}
               </Button>
             }
           >
@@ -138,20 +177,44 @@ export function TelegramConnection() {
           </ConnectionIdentityPanel>
 
           <ConnectionCallout
-            title="Next: Start chatting with your bot"
+            title={t("cloud.telegram.nextTitle", {
+              defaultValue: "Next: Start chatting with your bot",
+            })}
             tone="blue"
           >
             <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-              <li>Open Telegram and search for @{status?.botUsername}</li>
-              <li>Click &quot;Start&quot; to begin a conversation</li>
-              <li>Send a message - your AI agent will respond</li>
+              <li>
+                {t("cloud.telegram.nextStep1", {
+                  username: status?.botUsername ?? "",
+                  defaultValue: "Open Telegram and search for @{{username}}",
+                })}
+              </li>
+              <li>
+                {t("cloud.telegram.nextStep2", {
+                  defaultValue: 'Click "Start" to begin a conversation',
+                })}
+              </li>
+              <li>
+                {t("cloud.telegram.nextStep3", {
+                  defaultValue: "Send a message - your AI agent will respond",
+                })}
+              </li>
             </ol>
           </ConnectionCallout>
 
-          <ConnectionFooterActions note="Chats are auto-detected when bot is added.">
+          <ConnectionFooterActions
+            note={t("cloud.telegram.footerNote", {
+              defaultValue: "Chats are auto-detected when bot is added.",
+            })}
+          >
             <ConnectionDisconnectAction
-              title="Disconnect Telegram Bot?"
-              description="This will remove your bot credentials. Any active Telegram automation will stop working until you reconnect."
+              title={t("cloud.telegram.disconnectTitle", {
+                defaultValue: "Disconnect Telegram Bot?",
+              })}
+              description={t("cloud.telegram.disconnectDescription", {
+                defaultValue:
+                  "This will remove your bot credentials. Any active Telegram automation will stop working until you reconnect.",
+              })}
               onDisconnect={handleDisconnect}
               isDisconnecting={isDisconnecting}
             />
@@ -161,13 +224,17 @@ export function TelegramConnection() {
       setupContent={
         <div className="space-y-4">
           <ConnectionInstructions
-            title="How to create a Telegram bot"
+            title={t("cloud.telegram.instructionsTitle", {
+              defaultValue: "How to create a Telegram bot",
+            })}
             open={showInstructions}
             onOpenChange={setShowInstructions}
           >
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
-                Open Telegram and search for{" "}
+                {t("cloud.telegram.instructSearch", {
+                  defaultValue: "Open Telegram and search for",
+                })}{" "}
                 <a
                   href="https://t.me/BotFather"
                   target="_blank"
@@ -178,24 +245,51 @@ export function TelegramConnection() {
                 </a>
               </li>
               <li>
-                Send{" "}
+                {t("cloud.telegram.instructSendBefore", {
+                  defaultValue: "Send",
+                })}{" "}
                 <code className="bg-background px-1 rounded-sm">/newbot</code>{" "}
-                command
-              </li>
-              <li>Choose a name for your bot (e.g., &quot;My App Bot&quot;)</li>
-              <li>
-                Choose a username ending in &quot;bot&quot; (e.g.,
-                &quot;myapp_bot&quot;)
+                {t("cloud.telegram.instructSendAfter", {
+                  defaultValue: "command",
+                })}
               </li>
               <li>
-                Copy the <strong>API token</strong> BotFather gives you
+                {t("cloud.telegram.instructName", {
+                  defaultValue:
+                    'Choose a name for your bot (e.g., "My App Bot")',
+                })}
               </li>
-              <li>Paste the token below</li>
+              <li>
+                {t("cloud.telegram.instructUsername", {
+                  defaultValue:
+                    'Choose a username ending in "bot" (e.g., "myapp_bot")',
+                })}
+              </li>
+              <li>
+                {t("cloud.telegram.instructCopyBefore", {
+                  defaultValue: "Copy the",
+                })}{" "}
+                <strong>
+                  {t("cloud.telegram.instructCopyToken", {
+                    defaultValue: "API token",
+                  })}
+                </strong>{" "}
+                {t("cloud.telegram.instructCopyAfter", {
+                  defaultValue: "BotFather gives you",
+                })}
+              </li>
+              <li>
+                {t("cloud.telegram.instructPaste", {
+                  defaultValue: "Paste the token below",
+                })}
+              </li>
             </ol>
           </ConnectionInstructions>
 
           <div className="space-y-2">
-            <Label htmlFor="botToken">Bot Token</Label>
+            <Label htmlFor="botToken">
+              {t("cloud.telegram.botTokenLabel", { defaultValue: "Bot Token" })}
+            </Label>
             <Input
               id="botToken"
               type="password"
@@ -205,19 +299,40 @@ export function TelegramConnection() {
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             />
             <p className="text-xs text-muted-foreground">
-              Get this from @BotFather after creating your bot
+              {t("cloud.telegram.botTokenHint", {
+                defaultValue:
+                  "Get this from @BotFather after creating your bot",
+              })}
             </p>
           </div>
 
           <div className="p-4 bg-muted rounded-sm">
             <h4 className="font-medium mb-2">
-              What you can do with Telegram automation:
+              {t("cloud.telegram.whatYouCanDo", {
+                defaultValue: "What you can do with Telegram automation:",
+              })}
             </h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Post AI-generated announcements to channels</li>
-              <li>• Auto-reply to messages in groups</li>
-              <li>• Welcome new members with custom messages</li>
-              <li>• Handle commands like /help and /about</li>
+              <li>
+                {t("cloud.telegram.capability1", {
+                  defaultValue: "• Post AI-generated announcements to channels",
+                })}
+              </li>
+              <li>
+                {t("cloud.telegram.capability2", {
+                  defaultValue: "• Auto-reply to messages in groups",
+                })}
+              </li>
+              <li>
+                {t("cloud.telegram.capability3", {
+                  defaultValue: "• Welcome new members with custom messages",
+                })}
+              </li>
+              <li>
+                {t("cloud.telegram.capability4", {
+                  defaultValue: "• Handle commands like /help and /about",
+                })}
+              </li>
             </ul>
           </div>
 
@@ -229,12 +344,16 @@ export function TelegramConnection() {
             {isConnecting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Connecting...
+                {t("cloud.telegram.connecting", {
+                  defaultValue: "Connecting...",
+                })}
               </>
             ) : (
               <>
                 <MessageSquare className="h-4 w-4 mr-2" />
-                Connect Telegram Bot
+                {t("cloud.telegram.connectButton", {
+                  defaultValue: "Connect Telegram Bot",
+                })}
               </>
             )}
           </Button>

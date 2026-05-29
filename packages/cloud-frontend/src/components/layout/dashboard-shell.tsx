@@ -7,6 +7,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { Suspense, useCallback, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { OnboardingOverlay } from "../onboarding/onboarding-overlay";
 import { OnboardingProvider } from "../onboarding/onboarding-provider";
 import Header from "./header";
@@ -29,6 +30,7 @@ export function DashboardShell({
   headerAnonymous,
   headerAuthGraceActive,
 }: DashboardShellProps) {
+  const t = useT();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleToggleSidebar = useCallback(() => {
@@ -40,7 +42,9 @@ export function DashboardShell({
       <div className="flex min-h-dvh w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <p className="text-sm text-muted-foreground">
+            {t("cloud.dashboardShell.loading", { defaultValue: "Loading..." })}
+          </p>
         </div>
       </div>
     );

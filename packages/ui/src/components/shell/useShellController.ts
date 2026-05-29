@@ -1,17 +1,21 @@
 import * as React from "react";
 
+import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import { useApp } from "../../state";
 import {
   createVoiceCapture,
   type VoiceCaptureHandle,
   type VoiceCaptureState,
 } from "../../voice/voice-capture-factory";
+import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 
 export interface ShellController {
   phase: ShellPhase;
   messages: readonly ShellMessage[];
   canSend: boolean;
+  /** Local text-model readiness for the home surface. Gates send while not ready. */
+  modelStatus: HomeModelStatus;
   recording: boolean;
   /** Visual mode for the waveform visualizer. */
   waveformMode: "idle" | "listening" | "responding";
@@ -44,6 +48,7 @@ export function useShellController(): ShellController {
   } = app;
 
   const ready = startupCoordinator.phase === "ready";
+  const modelStatus = useHomeModelStatus();
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
   const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
@@ -142,14 +147,20 @@ export function useShellController(): ShellController {
         ? "responding"
         : "idle";
 
-  // Allow text/voice submission whenever the agent is reachable and not
-  // mid-response. Mirrors the ChatView composer gate.
-  const canSend = ready && !chatSending && agentStatus?.state !== "stopped";
+  // Allow text/voice submission whenever the agent is reachable, not
+  // mid-response, and a local text model (when required) is ready. Mirrors
+  // the ChatView composer gate plus the home model-readiness gate.
+  const canSend =
+    ready &&
+    !chatSending &&
+    agentStatus?.state !== "stopped" &&
+    !modelStatus.blocksSend;
 
   return {
     phase,
     messages,
     canSend,
+    modelStatus,
     recording,
     waveformMode,
     analyser,

@@ -18,7 +18,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError, api } from "../../../lib/api-client";
+
+type TFn = ReturnType<typeof useT>;
 
 type ApprovalChallengeKind = "login" | "signature" | "generic";
 type ApprovalSignerKind = "wallet" | "ed25519";
@@ -74,24 +77,27 @@ function formatTimestamp(value: string | null): string | null {
   }).format(new Date(value));
 }
 
-function statusLabel(status: ApprovalRequestStatus): string {
+function statusLabel(status: ApprovalRequestStatus, t: TFn): string {
   switch (status) {
     case "approved":
-      return "Approved";
+      return t("cloud.approval.statusApproved", { defaultValue: "Approved" });
     case "denied":
-      return "Denied";
+      return t("cloud.approval.statusDenied", { defaultValue: "Denied" });
     case "expired":
-      return "Expired";
+      return t("cloud.approval.statusExpired", { defaultValue: "Expired" });
     case "canceled":
-      return "Canceled";
+      return t("cloud.approval.statusCanceled", { defaultValue: "Canceled" });
     case "delivered":
-      return "Awaiting signature";
+      return t("cloud.approval.statusAwaiting", {
+        defaultValue: "Awaiting signature",
+      });
     default:
-      return "Pending";
+      return t("cloud.approval.statusPending", { defaultValue: "Pending" });
   }
 }
 
 export default function ApprovalPage() {
+  const t = useT();
   const params = useParams<{ approvalId: string }>();
   const approvalId = params.approvalId ?? "";
   const [request, setRequest] = useState<PublicApprovalRequest | null>(null);
@@ -118,12 +124,14 @@ export default function ApprovalPage() {
       const message =
         error instanceof ApiError
           ? error.message
-          : "Failed to load approval request";
+          : t("cloud.approval.loadFailed", {
+              defaultValue: "Failed to load approval request",
+            });
       setLoadError(message);
     } finally {
       setLoading(false);
     }
-  }, [approvalId]);
+  }, [approvalId, t]);
 
   useEffect(() => {
     fetchRequest();
@@ -158,12 +166,14 @@ export default function ApprovalPage() {
       const message =
         error instanceof ApiError
           ? error.message
-          : "Failed to submit signature";
+          : t("cloud.approval.submitFailed", {
+              defaultValue: "Failed to submit signature",
+            });
       setSubmitError(message);
     } finally {
       setSubmitting(false);
     }
-  }, [approvalId, signature]);
+  }, [approvalId, signature, t]);
 
   const handleDeny = useCallback(async () => {
     if (!approvalId) return;
@@ -182,16 +192,24 @@ export default function ApprovalPage() {
       setSubmitResult("denied");
     } catch (error) {
       const message =
-        error instanceof ApiError ? error.message : "Failed to deny approval";
+        error instanceof ApiError
+          ? error.message
+          : t("cloud.approval.denyFailed", {
+              defaultValue: "Failed to deny approval",
+            });
       setSubmitError(message);
     } finally {
       setSubmitting(false);
     }
-  }, [approvalId]);
+  }, [approvalId, t]);
 
   const head = (
     <Helmet>
-      <title>Approval Request | Eliza Cloud</title>
+      <title>
+        {t("cloud.approval.metaTitle", {
+          defaultValue: "Approval Request | Eliza Cloud",
+        })}
+      </title>
     </Helmet>
   );
 
@@ -213,10 +231,15 @@ export default function ApprovalPage() {
         <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
           <AlertCircle className="h-8 w-8 text-red-500" />
           <h1 className="text-lg font-semibold">
-            Could not load approval request
+            {t("cloud.approval.couldNotLoad", {
+              defaultValue: "Could not load approval request",
+            })}
           </h1>
           <p className="text-sm text-zinc-500">
-            {loadError ?? "Unknown error"}
+            {loadError ??
+              t("cloud.approval.unknownError", {
+                defaultValue: "Unknown error",
+              })}
           </p>
         </div>
       </>
@@ -233,28 +256,40 @@ export default function ApprovalPage() {
       <div className="mx-auto max-w-xl p-6">
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-6 w-6 text-[#FF5800]" />
-          <h1 className="text-xl font-semibold">Approval request</h1>
+          <h1 className="text-xl font-semibold">
+            {t("cloud.approval.heading", { defaultValue: "Approval request" })}
+          </h1>
         </div>
 
         <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
           <dl className="grid grid-cols-1 gap-3 text-sm">
             <div>
-              <dt className="text-zinc-500">Kind</dt>
+              <dt className="text-zinc-500">
+                {t("cloud.approval.kind", { defaultValue: "Kind" })}
+              </dt>
               <dd className="font-mono">{request.challengeKind}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Status</dt>
-              <dd>{statusLabel(request.status)}</dd>
+              <dt className="text-zinc-500">
+                {t("cloud.approval.status", { defaultValue: "Status" })}
+              </dt>
+              <dd>{statusLabel(request.status, t)}</dd>
             </div>
             {expiresAt ? (
               <div>
-                <dt className="text-zinc-500">Expires</dt>
+                <dt className="text-zinc-500">
+                  {t("cloud.approval.expires", { defaultValue: "Expires" })}
+                </dt>
                 <dd>{expiresAt}</dd>
               </div>
             ) : null}
             {request.expectedSignerIdentityId ? (
               <div>
-                <dt className="text-zinc-500">Expected signer</dt>
+                <dt className="text-zinc-500">
+                  {t("cloud.approval.expectedSigner", {
+                    defaultValue: "Expected signer",
+                  })}
+                </dt>
                 <dd className="break-all font-mono text-xs">
                   {request.expectedSignerIdentityId}
                 </dd>
@@ -262,7 +297,11 @@ export default function ApprovalPage() {
             ) : null}
             {signerKind ? (
               <div>
-                <dt className="text-zinc-500">Signer kind</dt>
+                <dt className="text-zinc-500">
+                  {t("cloud.approval.signerKind", {
+                    defaultValue: "Signer kind",
+                  })}
+                </dt>
                 <dd>{signerKind}</dd>
               </div>
             ) : null}
@@ -271,7 +310,9 @@ export default function ApprovalPage() {
           {challenge.message ? (
             <div className="mt-4">
               <p className="text-xs uppercase tracking-wide text-zinc-500">
-                Challenge message
+                {t("cloud.approval.challengeMessage", {
+                  defaultValue: "Challenge message",
+                })}
               </p>
               <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-50 p-3 text-xs dark:bg-zinc-900">
                 {challenge.message}
@@ -283,14 +324,18 @@ export default function ApprovalPage() {
         {submitResult === "approved" ? (
           <div className="mt-6 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
             <CheckCircle2 className="h-5 w-5" />
-            Signature accepted.
+            {t("cloud.approval.signatureAccepted", {
+              defaultValue: "Signature accepted.",
+            })}
           </div>
         ) : null}
 
         {submitResult === "denied" ? (
           <div className="mt-6 flex items-center gap-2 rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
             <XCircle className="h-5 w-5" />
-            Approval denied.
+            {t("cloud.approval.approvalDenied", {
+              defaultValue: "Approval denied.",
+            })}
           </div>
         ) : null}
 
@@ -300,7 +345,7 @@ export default function ApprovalPage() {
               htmlFor="approval-signature"
               className="block text-sm font-medium"
             >
-              Signature
+              {t("cloud.approval.signature", { defaultValue: "Signature" })}
             </label>
             <textarea
               id="approval-signature"
@@ -310,8 +355,12 @@ export default function ApprovalPage() {
                 signerKind === "wallet"
                   ? "0x..."
                   : signerKind === "ed25519"
-                    ? "base64 ed25519 signature"
-                    : "Paste signature"
+                    ? t("cloud.approval.placeholderEd25519", {
+                        defaultValue: "base64 ed25519 signature",
+                      })
+                    : t("cloud.approval.placeholderPaste", {
+                        defaultValue: "Paste signature",
+                      })
               }
               rows={4}
               className="w-full rounded border border-zinc-300 bg-white p-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-950"
@@ -329,7 +378,7 @@ export default function ApprovalPage() {
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : null}
-                Approve
+                {t("cloud.approval.approve", { defaultValue: "Approve" })}
               </button>
               <button
                 type="button"
@@ -337,7 +386,7 @@ export default function ApprovalPage() {
                 disabled={submitting}
                 className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
               >
-                Deny
+                {t("cloud.approval.deny", { defaultValue: "Deny" })}
               </button>
             </div>
           </div>

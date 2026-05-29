@@ -13,6 +13,7 @@ import { LogIn, Settings, UserPlus } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 
 interface SidebarBottomPanelProps {
   className?: string;
@@ -23,6 +24,7 @@ export function SidebarBottomPanel({
   className,
   isCollapsed = false,
 }: SidebarBottomPanelProps) {
+  const t = useT();
   const { ready, authenticated, user } = useSessionAuth();
   const pathname = useLocation().pathname;
 
@@ -45,7 +47,9 @@ export function SidebarBottomPanel({
           <Link
             to={loginHref}
             className="border border-white/10 bg-white/5 p-2 transition-colors hover:border-white/20 hover:bg-white/10"
-            title="Sign Up / Log In"
+            title={t("cloud.sidebar.signUpLogIn", {
+              defaultValue: "Sign Up / Log In",
+            })}
           >
             <UserPlus className="h-5 w-5 text-white/60" />
           </Link>
@@ -62,7 +66,9 @@ export function SidebarBottomPanel({
         <div className="relative z-10 px-3 py-3">
           <div className="flex flex-col gap-2">
             <p className="text-[10px] text-white/40 mb-1">
-              Sign up for full access
+              {t("cloud.sidebar.signUpForFullAccess", {
+                defaultValue: "Sign up for full access",
+              })}
             </p>
 
             <Link
@@ -70,7 +76,9 @@ export function SidebarBottomPanel({
               className="flex w-full items-center justify-center gap-1.5 bg-[#FF5800] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-black hover:text-white"
             >
               <UserPlus className="h-3.5 w-3.5" />
-              <span>Sign Up</span>
+              <span>
+                {t("cloud.sidebar.signUp", { defaultValue: "Sign Up" })}
+              </span>
             </Link>
 
             <Link
@@ -78,17 +86,27 @@ export function SidebarBottomPanel({
               className="flex w-full items-center justify-center gap-1.5 border border-white/15 px-3 py-2 text-xs text-white/70 transition-colors hover:bg-white/5 hover:text-white"
             >
               <LogIn className="h-3.5 w-3.5" />
-              <span>Log In</span>
+              <span>
+                {t("cloud.sidebar.logIn", { defaultValue: "Log In" })}
+              </span>
             </Link>
 
             <div className="mt-1 space-y-1 text-[10px] text-white/30">
               <div className="flex items-center gap-1.5">
                 <div className="h-1 w-1 rounded-full bg-[#FF5800]/60" />
-                <span>Unlimited chats</span>
+                <span>
+                  {t("cloud.sidebar.unlimitedChats", {
+                    defaultValue: "Unlimited chats",
+                  })}
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-1 w-1 rounded-full bg-[#FF5800]/60" />
-                <span>Custom agents</span>
+                <span>
+                  {t("cloud.sidebar.customAgents", {
+                    defaultValue: "Custom agents",
+                  })}
+                </span>
               </div>
             </div>
           </div>
@@ -104,7 +122,7 @@ export function SidebarBottomPanel({
         <Link
           to="/dashboard/settings"
           className="border border-white/10 bg-white/5 p-2 transition-colors hover:border-white/20 hover:bg-white/10"
-          title="Settings"
+          title={t("cloud.sidebar.settings", { defaultValue: "Settings" })}
         >
           <Settings className="h-5 w-5 text-white/60" />
         </Link>

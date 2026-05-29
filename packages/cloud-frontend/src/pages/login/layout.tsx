@@ -1,14 +1,20 @@
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 export default function LoginLayout() {
+  const t = useT();
   return (
     <>
       <Helmet>
-        <title>Login | Eliza Cloud</title>
+        <title>
+          {t("cloud.login.pageTitle", { defaultValue: "Login | Eliza Cloud" })}
+        </title>
         <meta
           name="description"
-          content="Sign in to run your Eliza in Cloud."
+          content={t("cloud.login.metaDescription", {
+            defaultValue: "Sign in to run your Eliza in Cloud.",
+          })}
         />
         <meta name="robots" content="noindex" />
       </Helmet>

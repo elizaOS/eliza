@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * Print shell `export` statements that wire the test suite to Cerebras
- * `gpt-oss-120b` (the default LLM for both PR and post-merge lanes).
+ * Print shell `export` statements for the repo test lanes.
+ *
+ * The PR lane is deterministic and secret-free. The post-merge lane wires the
+ * live model-provider aliases to Cerebras `gpt-oss-120b`.
  *
  * Usage:
- *   node packages/scripts/test-env.mjs              # PR lane (default)
+ *   node packages/scripts/test-env.mjs              # PR lane (default, no keys)
  *   node packages/scripts/test-env.mjs --lane=post-merge
  *
  * Then `eval "$(node packages/scripts/test-env.mjs)"` in your shell, or pipe to
@@ -68,11 +70,24 @@ function shellEscape(value) {
 await loadDotenv();
 const { lane } = parseArgs(process.argv.slice(2));
 
+if (lane === "pr") {
+  const exports = [
+    ["TEST_LANE", "pr"],
+    ["ELIZA_LIVE_TEST", "0"],
+    ["SCENARIO_USE_LLM_PROXY", "1"],
+  ];
+
+  for (const [key, value] of exports) {
+    process.stdout.write(`export ${key}=${shellEscape(value)}\n`);
+  }
+  process.exit(0);
+}
+
 const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
 if (!cerebrasKey) {
   process.stderr.write(
-    "error: CEREBRAS_API_KEY is not set.\n" +
-      "Create one at https://inference.cerebras.ai and put it in .env or .env.test.\n",
+    "error: CEREBRAS_API_KEY is not set for --lane=post-merge.\n" +
+      "Create one at https://inference.cerebras.ai and put it in .env or .env.test before running the live lane.\n",
   );
   process.exit(1);
 }

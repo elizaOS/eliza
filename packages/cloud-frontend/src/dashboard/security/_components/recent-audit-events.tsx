@@ -2,12 +2,14 @@ import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { useEffect, useState } from "react";
 import { AuditEventList, type AuditEventRow } from "@/components/security";
 import { ApiError, api } from "@/lib/api-client";
+import { useT } from "@/providers/I18nProvider";
 
 interface AuditEventsResponse {
   events: AuditEventRow[];
 }
 
 export function RecentAuditEvents() {
+  const t = useT();
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "missing" }
@@ -47,17 +49,26 @@ export function RecentAuditEvents() {
       <div className="relative z-10 space-y-3">
         <div>
           <h3 className="text-lg font-bold text-white">
-            Recent security events
+            {t("cloud.recentAuditEvents.title", {
+              defaultValue: "Recent security events",
+            })}
           </h3>
           <p className="text-sm text-white/60">
-            Last 50 audit events recorded against your account.
+            {t("cloud.recentAuditEvents.subtitle", {
+              defaultValue:
+                "Last 50 audit events recorded against your account.",
+            })}
           </p>
         </div>
         {state.kind === "loading" ? (
-          <p className="text-sm text-white/50">Loading…</p>
+          <p className="text-sm text-white/50">
+            {t("cloud.recentAuditEvents.loading", { defaultValue: "Loading…" })}
+          </p>
         ) : state.kind === "missing" ? (
           <p className="text-sm text-white/50">
-            Audit log isn't exposed yet on this server.
+            {t("cloud.recentAuditEvents.notExposed", {
+              defaultValue: "Audit log isn't exposed yet on this server.",
+            })}
           </p>
         ) : state.kind === "error" ? (
           <p className="text-sm text-red-300">{state.message}</p>

@@ -31,6 +31,7 @@ import {
 } from "@elizaos/ui";
 import { format } from "date-fns";
 import { Crown, Mail, Shield, User, UserMinus, Wallet } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 import type { OrgMemberDto } from "@/types/cloud-api";
 
 interface MembersListProps {
@@ -50,11 +51,16 @@ export function MembersList({
   onUpdateRole,
   onRemove,
 }: MembersListProps) {
+  const t = useT();
   if (members.length === 0) {
     return (
       <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-8 text-center">
         <User className="h-12 w-12 mx-auto text-white/40 mb-4" />
-        <p className="text-sm font-mono text-white/60">No members found</p>
+        <p className="text-sm font-mono text-white/60">
+          {t("cloud.membersList.noMembers", {
+            defaultValue: "No members found",
+          })}
+        </p>
       </div>
     );
   }
@@ -105,7 +111,7 @@ export function MembersList({
     if (member.wallet_address) {
       return `${member.wallet_address.substring(0, 6)}...${member.wallet_address.substring(member.wallet_address.length - 4)}`;
     }
-    return "Unknown";
+    return t("cloud.membersList.unknown", { defaultValue: "Unknown" });
   };
 
   const canUpdateRole = (member: OrgMemberDto) => {
@@ -145,7 +151,7 @@ export function MembersList({
                     </h4>
                     {member.id === currentUserId && (
                       <span className="px-2 py-0.5 border border-white/20 text-xs font-mono text-white/60">
-                        You
+                        {t("cloud.membersList.you", { defaultValue: "You" })}
                       </span>
                     )}
                   </div>
@@ -174,8 +180,13 @@ export function MembersList({
                       </p>
                     )}
                     <p className="text-xs font-mono text-white/40">
-                      Member since{" "}
-                      {format(new Date(member.created_at), "MMM d, yyyy")}
+                      {t("cloud.membersList.memberSince", {
+                        date: format(
+                          new Date(member.created_at),
+                          "MMM d, yyyy",
+                        ),
+                        defaultValue: "Member since {{date}}",
+                      })}
                     </p>
                   </div>
                 </div>
@@ -201,13 +212,21 @@ export function MembersList({
                         <SelectItem value="admin">
                           <div className="flex items-center gap-1.5">
                             <Shield className="h-4 w-4" />
-                            <span className="font-mono">Admin</span>
+                            <span className="font-mono">
+                              {t("cloud.membersList.admin", {
+                                defaultValue: "Admin",
+                              })}
+                            </span>
                           </div>
                         </SelectItem>
                         <SelectItem value="member">
                           <div className="flex items-center gap-1.5">
                             <User className="h-4 w-4" />
-                            <span className="font-mono">Member</span>
+                            <span className="font-mono">
+                              {t("cloud.membersList.member", {
+                                defaultValue: "Member",
+                              })}
+                            </span>
                           </div>
                         </SelectItem>
                       </SelectContent>
@@ -234,12 +253,16 @@ export function MembersList({
                       <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
                         <AlertDialogHeader>
                           <AlertDialogTitle className="text-white font-mono">
-                            Remove Member
+                            {t("cloud.membersList.removeMember", {
+                              defaultValue: "Remove Member",
+                            })}
                           </AlertDialogTitle>
                           <AlertDialogDescription className="text-white/60 font-mono text-sm">
-                            Are you sure you want to remove{" "}
-                            {getDisplayName(member)} from the organization? They
-                            will lose access to all resources.
+                            {t("cloud.membersList.removeConfirm", {
+                              name: getDisplayName(member),
+                              defaultValue:
+                                "Are you sure you want to remove {{name}} from the organization? They will lose access to all resources.",
+                            })}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>

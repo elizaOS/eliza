@@ -13,7 +13,10 @@ import { AlertCircle, CheckCircle2, Loader2, Vote } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useParams, useSearchParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError, api } from "../../../lib/api-client";
+
+type TFn = ReturnType<typeof useT>;
 
 type BallotStatus = "open" | "tallied" | "expired" | "canceled";
 
@@ -50,13 +53,16 @@ function formatDate(value: string | null | undefined): string | null {
   }).format(new Date(value));
 }
 
-function normalizeError(error: unknown): string {
+function normalizeError(error: unknown, t: TFn): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
-  return "Unable to load ballot.";
+  return t("cloud.ballot.unableToLoad", {
+    defaultValue: "Unable to load ballot.",
+  });
 }
 
 export default function BallotPage() {
+  const t = useT();
   const { ballotId } = useParams<{ ballotId: string }>();
   const [searchParams] = useSearchParams();
   const presetToken = searchParams.get("token") ?? "";
@@ -70,7 +76,9 @@ export default function BallotPage() {
 
   const load = useCallback(async () => {
     if (!ballotId) {
-      setError("Missing ballot id.");
+      setError(
+        t("cloud.ballot.missingId", { defaultValue: "Missing ballot id." }),
+      );
       setIsLoading(false);
       return;
     }
@@ -83,11 +91,11 @@ export default function BallotPage() {
       );
       setBallot(response.ballot);
     } catch (loadError) {
-      setError(normalizeError(loadError));
+      setError(normalizeError(loadError, t));
     } finally {
       setIsLoading(false);
     }
-  }, [ballotId]);
+  }, [ballotId, t]);
 
   useEffect(() => {
     load();
@@ -108,20 +116,33 @@ export default function BallotPage() {
       );
       if (response.success) {
         const replay = response.outcome === "replay_same_value";
-        setSubmitMessage(replay ? "Vote already recorded." : "Vote recorded.");
+        setSubmitMessage(
+          replay
+            ? t("cloud.ballot.alreadyRecorded", {
+                defaultValue: "Vote already recorded.",
+              })
+            : t("cloud.ballot.recorded", { defaultValue: "Vote recorded." }),
+        );
       } else {
-        setSubmitMessage(response.error ?? "Unable to record vote.");
+        setSubmitMessage(
+          response.error ??
+            t("cloud.ballot.unableToRecord", {
+              defaultValue: "Unable to record vote.",
+            }),
+        );
       }
     } catch (submitError) {
-      setSubmitMessage(normalizeError(submitError));
+      setSubmitMessage(normalizeError(submitError, t));
     } finally {
       setIsSubmitting(false);
     }
-  }, [ballotId, scopedToken, value]);
+  }, [ballotId, scopedToken, value, t]);
 
   const head = (
     <Helmet>
-      <title>Ballot | Eliza Cloud</title>
+      <title>
+        {t("cloud.ballot.metaTitle", { defaultValue: "Ballot | Eliza Cloud" })}
+      </title>
     </Helmet>
   );
 
@@ -143,7 +164,10 @@ export default function BallotPage() {
         <div className="mx-auto max-w-md py-16 text-center">
           <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
           <p className="mt-4 text-sm text-gray-700">
-            {error ?? "Ballot not found."}
+            {error ??
+              t("cloud.ballot.notFound", {
+                defaultValue: "Ballot not found.",
+              })}
           </p>
         </div>
       </>
@@ -159,21 +183,37 @@ export default function BallotPage() {
         <header className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Vote className="h-4 w-4" />
-            <span>Secret ballot</span>
+            <span>
+              {t("cloud.ballot.secretBallot", {
+                defaultValue: "Secret ballot",
+              })}
+            </span>
           </div>
           <h1 className="text-2xl font-semibold">{ballot.purpose}</h1>
           <p className="text-sm text-gray-600">
-            {ballot.threshold} of {ballot.participants.length} participants
-            required.
+            {t("cloud.ballot.participantsRequired", {
+              threshold: ballot.threshold,
+              total: ballot.participants.length,
+              defaultValue: "{{threshold}} of {{total}} participants required.",
+            })}
           </p>
           <p className="text-xs text-gray-500">
-            Expires {formatDate(ballot.expiresAt) ?? "soon"}.
+            {t("cloud.ballot.expires", {
+              date:
+                formatDate(ballot.expiresAt) ??
+                t("cloud.ballot.soon", { defaultValue: "soon" }),
+              defaultValue: "Expires {{date}}.",
+            })}
           </p>
         </header>
 
         {isClosed ? (
           <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-            This ballot is {ballot.status} and is no longer accepting votes.
+            {t("cloud.ballot.closed", {
+              status: ballot.status,
+              defaultValue:
+                "This ballot is {{status}} and is no longer accepting votes.",
+            })}
           </div>
         ) : (
           <form
@@ -184,7 +224,11 @@ export default function BallotPage() {
             }}
           >
             <label className="block text-sm">
-              <span className="text-gray-700">Your scoped token</span>
+              <span className="text-gray-700">
+                {t("cloud.ballot.scopedToken", {
+                  defaultValue: "Your scoped token",
+                })}
+              </span>
               <input
                 type="text"
                 value={scopedToken}
@@ -197,7 +241,9 @@ export default function BallotPage() {
               />
             </label>
             <label className="block text-sm">
-              <span className="text-gray-700">Your vote</span>
+              <span className="text-gray-700">
+                {t("cloud.ballot.yourVote", { defaultValue: "Your vote" })}
+              </span>
               <textarea
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
@@ -216,7 +262,7 @@ export default function BallotPage() {
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
-              Submit vote
+              {t("cloud.ballot.submitVote", { defaultValue: "Submit vote" })}
             </button>
           </form>
         )}

@@ -2,6 +2,7 @@ import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
 
@@ -31,6 +32,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
  * Login page — Steward is the sole auth provider.
  */
 export default function LoginPage() {
+  const t = useT();
   return (
     <LoginBackground>
       <div className="space-y-6">
@@ -42,27 +44,31 @@ export default function LoginPage() {
             draggable={false}
           />
           <h1 className="font-poppins text-2xl font-semibold text-white">
-            Sign in
+            {t("cloud.login.signIn", { defaultValue: "Sign in" })}
           </h1>
-          <p className="text-sm text-white/70">Run Eliza in Cloud.</p>
+          <p className="text-sm text-white/70">
+            {t("cloud.login.tagline", { defaultValue: "Run Eliza in Cloud." })}
+          </p>
         </div>
         <Suspense fallback={<StewardLoginSectionFallback />}>
           <StewardLoginSection />
         </Suspense>
         <p className="border-t border-white/14 pt-4 text-center text-xs text-white/74">
-          By signing in, you agree to the{" "}
+          {t("cloud.login.agreePrefix", {
+            defaultValue: "By signing in, you agree to the",
+          })}{" "}
           <Link
             to="/terms-of-service"
             className="text-white transition-colors hover:opacity-80"
           >
-            Terms
+            {t("cloud.login.terms", { defaultValue: "Terms" })}
           </Link>{" "}
-          and{" "}
+          {t("cloud.login.and", { defaultValue: "and" })}{" "}
           <Link
             to="/privacy-policy"
             className="text-white transition-colors hover:opacity-80"
           >
-            Privacy Policy
+            {t("cloud.login.privacyPolicy", { defaultValue: "Privacy Policy" })}
           </Link>
         </p>
       </div>

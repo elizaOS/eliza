@@ -46,6 +46,9 @@ import {
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
+
+type TFn = ReturnType<typeof useT>;
 
 interface BalanceData {
   balance: {
@@ -154,11 +157,11 @@ const SOURCE_ICONS = {
   mcp: Server,
 };
 
-const SOURCE_LABELS = {
-  miniapp: "Apps",
-  agent: "Agents",
-  mcp: "MCPs",
-};
+const buildSourceLabels = (t: TFn): Record<string, string> => ({
+  miniapp: t("cloud.earnings.sourceApps", { defaultValue: "Apps" }),
+  agent: t("cloud.earnings.sourceAgents", { defaultValue: "Agents" }),
+  mcp: t("cloud.earnings.sourceMcps", { defaultValue: "MCPs" }),
+});
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
@@ -170,6 +173,8 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function EarningsPageClient() {
+  const t = useT();
+  const SOURCE_LABELS = buildSourceLabels(t);
   const [balance, setBalance] = useState<BalanceData | null>(null);
   const [redemptions, setRedemptions] = useState<RedemptionData[]>([]);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -247,7 +252,11 @@ export function EarningsPageClient() {
           const error = await res.json();
           setQuote({
             success: false,
-            error: error.error || "Failed to get quote",
+            error:
+              error.error ||
+              t("cloud.earnings.quoteFailed", {
+                defaultValue: "Failed to get quote",
+              }),
           });
         }
         setQuoteLoading(false);
@@ -263,7 +272,7 @@ export function EarningsPageClient() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [redeemAmount, redeemNetwork]);
+  }, [redeemAmount, redeemNetwork, t]);
 
   const handleSubmitRedemption = async () => {
     if (!quote?.quote || !redeemAddress) return;
@@ -280,9 +289,16 @@ export function EarningsPageClient() {
     });
 
     if (res.ok) {
-      toast.success("Redemption request submitted!", {
-        description: "Your request is being processed.",
-      });
+      toast.success(
+        t("cloud.earnings.submittedTitle", {
+          defaultValue: "Redemption request submitted!",
+        }),
+        {
+          description: t("cloud.earnings.submittedDescription", {
+            defaultValue: "Your request is being processed.",
+          }),
+        },
+      );
       setShowRedeemDialog(false);
       setRedeemAmount("");
       setRedeemAddress("");
@@ -291,9 +307,16 @@ export function EarningsPageClient() {
       fetchRedemptions();
     } else {
       const error = await res.json();
-      toast.error("Redemption failed", {
-        description: error.error || "Please try again.",
-      });
+      toast.error(
+        t("cloud.earnings.redemptionFailed", {
+          defaultValue: "Redemption failed",
+        }),
+        {
+          description:
+            error.error ||
+            t("cloud.earnings.tryAgain", { defaultValue: "Please try again." }),
+        },
+      );
     }
     setSubmitting(false);
   };
@@ -342,7 +365,9 @@ export function EarningsPageClient() {
             <AlertTriangle className="h-5 w-5 text-yellow-400" />
             <div>
               <h4 className="font-semibold text-yellow-400">
-                Redemptions Limited
+                {t("cloud.earnings.redemptionsLimited", {
+                  defaultValue: "Redemptions Limited",
+                })}
               </h4>
               <p className="text-sm text-yellow-400/80">
                 {systemStatus.message}
@@ -358,12 +383,18 @@ export function EarningsPageClient() {
         <BrandCard className="relative" corners={false}>
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-white/60 mb-1">Available to Redeem</p>
+              <p className="text-sm text-white/60 mb-1">
+                {t("cloud.earnings.availableToRedeem", {
+                  defaultValue: "Available to Redeem",
+                })}
+              </p>
               <p className="text-3xl font-bold text-[var(--brand-orange)]">
                 {formatCurrency(balance?.balance.availableBalance || 0)}
               </p>
               <p className="text-xs text-white/40 mt-1">
-                ≈ elizaOS tokens at current price
+                {t("cloud.earnings.elizaAtCurrentPrice", {
+                  defaultValue: "≈ elizaOS tokens at current price",
+                })}
               </p>
             </div>
             <div className="p-2 rounded-sm bg-[var(--brand-orange)]/20">
@@ -376,7 +407,9 @@ export function EarningsPageClient() {
             onClick={() => setShowRedeemDialog(true)}
           >
             <Coins className="mr-2 h-4 w-4" />
-            Redeem for elizaOS
+            {t("cloud.earnings.redeemForEliza", {
+              defaultValue: "Redeem for elizaOS",
+            })}
           </Button>
           {balance?.eligibility?.reason && !balance.eligibility?.canRedeem && (
             <p className="text-xs text-white/40 mt-2 text-center">
@@ -389,11 +422,19 @@ export function EarningsPageClient() {
         <BrandCard className="relative" corners={false}>
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-white/60 mb-1">Total Earned</p>
+              <p className="text-sm text-white/60 mb-1">
+                {t("cloud.earnings.totalEarned", {
+                  defaultValue: "Total Earned",
+                })}
+              </p>
               <p className="text-3xl font-bold text-white">
                 {formatCurrency(balance?.balance.totalEarned || 0)}
               </p>
-              <p className="text-xs text-white/40 mt-1">Lifetime earnings</p>
+              <p className="text-xs text-white/40 mt-1">
+                {t("cloud.earnings.lifetimeEarnings", {
+                  defaultValue: "Lifetime earnings",
+                })}
+              </p>
             </div>
             <div className="p-2 rounded-sm bg-green-500/20">
               <TrendingUp className="h-6 w-6 text-green-400" />
@@ -421,12 +462,18 @@ export function EarningsPageClient() {
         <BrandCard className="relative" corners={false}>
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-white/60 mb-1">Already Redeemed</p>
+              <p className="text-sm text-white/60 mb-1">
+                {t("cloud.earnings.alreadyRedeemed", {
+                  defaultValue: "Already Redeemed",
+                })}
+              </p>
               <p className="text-3xl font-bold text-white">
                 {formatCurrency(balance?.balance.totalRedeemed || 0)}
               </p>
               <p className="text-xs text-white/40 mt-1">
-                Converted to elizaOS tokens
+                {t("cloud.earnings.convertedToEliza", {
+                  defaultValue: "Converted to elizaOS tokens",
+                })}
               </p>
             </div>
             <div className="p-2 rounded-sm bg-white/10">
@@ -435,16 +482,26 @@ export function EarningsPageClient() {
           </div>
           <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-white/60">Spent on hosting</span>
+              <span className="text-white/60">
+                {t("cloud.earnings.spentOnHosting", {
+                  defaultValue: "Spent on hosting",
+                })}
+              </span>
               <span
                 className="text-white"
-                title="Earnings auto-converted into org credits"
+                title={t("cloud.earnings.autoConvertedTooltip", {
+                  defaultValue: "Earnings auto-converted into org credits",
+                })}
               >
                 {formatCurrency(balance?.balance.totalConvertedToCredits || 0)}
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/60">Daily limit remaining</span>
+              <span className="text-white/60">
+                {t("cloud.earnings.dailyLimitRemaining", {
+                  defaultValue: "Daily limit remaining",
+                })}
+              </span>
               <span className="text-white">
                 {formatCurrency(balance?.eligibility.dailyLimitRemaining || 0)}
               </span>
@@ -459,15 +516,15 @@ export function EarningsPageClient() {
           <Info className="h-4 w-4 text-[var(--brand-orange)] mt-0.5 shrink-0" />
           <div>
             <h4 className="font-semibold text-white mb-1">
-              How Token Redemption Works
+              {t("cloud.earnings.howItWorksTitle", {
+                defaultValue: "How Token Redemption Works",
+              })}
             </h4>
             <p className="text-sm text-white/60">
-              Earnings from your apps, agents, and MCPs can be redeemed for
-              elizaOS tokens. The conversion rate is $1 = equivalent value in
-              elizaOS at current market price. Tokens are sent directly to your
-              wallet on your chosen network (Base, Solana, Ethereum, or BNB).
-              Large redemptions ({">"} $1,000) require admin approval for
-              security.
+              {t("cloud.earnings.howItWorksBody", {
+                defaultValue:
+                  "Earnings from your apps, agents, and MCPs can be redeemed for elizaOS tokens. The conversion rate is $1 = equivalent value in elizaOS at current market price. Tokens are sent directly to your wallet on your chosen network (Base, Solana, Ethereum, or BNB). Large redemptions (> $1,000) require admin approval for security.",
+              })}
             </p>
           </div>
         </div>
@@ -477,7 +534,9 @@ export function EarningsPageClient() {
       {balance?.recentEarnings && balance.recentEarnings.length > 0 && (
         <BrandCard corners={false}>
           <h3 className="text-lg font-semibold text-white mb-4">
-            Recent Earnings
+            {t("cloud.earnings.recentEarnings", {
+              defaultValue: "Recent Earnings",
+            })}
           </h3>
           <div className="space-y-3">
             {balance.recentEarnings.map((earning) => {
@@ -514,7 +573,9 @@ export function EarningsPageClient() {
       <BrandCard corners={false}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-white">
-            Redemption History
+            {t("cloud.earnings.redemptionHistory", {
+              defaultValue: "Redemption History",
+            })}
           </h3>
           <Button
             variant="ghost"
@@ -539,18 +600,36 @@ export function EarningsPageClient() {
         ) : redemptions.length === 0 ? (
           <div className="text-center py-8 text-white/40">
             <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>No redemptions yet</p>
-            <p className="text-sm">Your redemption history will appear here</p>
+            <p>
+              {t("cloud.earnings.noRedemptionsYet", {
+                defaultValue: "No redemptions yet",
+              })}
+            </p>
+            <p className="text-sm">
+              {t("cloud.earnings.historyWillAppear", {
+                defaultValue: "Your redemption history will appear here",
+              })}
+            </p>
           </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow className="border-white/10">
-                <TableHead className="text-white/60">Date</TableHead>
-                <TableHead className="text-white/60">Amount</TableHead>
-                <TableHead className="text-white/60">Network</TableHead>
-                <TableHead className="text-white/60">Status</TableHead>
-                <TableHead className="text-white/60">TX</TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.earnings.colDate", { defaultValue: "Date" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.earnings.colAmount", { defaultValue: "Amount" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.earnings.colNetwork", { defaultValue: "Network" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.earnings.colStatus", { defaultValue: "Status" })}
+                </TableHead>
+                <TableHead className="text-white/60">
+                  {t("cloud.earnings.colTx", { defaultValue: "TX" })}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -589,7 +668,8 @@ export function EarningsPageClient() {
                         rel="noopener noreferrer"
                         className="text-[var(--brand-orange)] hover:underline flex items-center gap-1"
                       >
-                        View <ExternalLink className="h-3 w-3" />
+                        {t("cloud.earnings.view", { defaultValue: "View" })}{" "}
+                        <ExternalLink className="h-3 w-3" />
                       </a>
                     ) : (
                       <span className="text-white/40">-</span>
@@ -607,11 +687,15 @@ export function EarningsPageClient() {
         <DialogContent className="sm:max-w-lg bg-zinc-900 border-white/10">
           <DialogHeader>
             <DialogTitle className="text-white">
-              Redeem for elizaOS Tokens
+              {t("cloud.earnings.redeemDialogTitle", {
+                defaultValue: "Redeem for elizaOS Tokens",
+              })}
             </DialogTitle>
             <DialogDescription className="text-white/60">
-              Convert your earnings to elizaOS tokens. Tokens will be sent to
-              your wallet.
+              {t("cloud.earnings.redeemDialogDescription", {
+                defaultValue:
+                  "Convert your earnings to elizaOS tokens. Tokens will be sent to your wallet.",
+              })}
             </DialogDescription>
           </DialogHeader>
 
@@ -622,12 +706,16 @@ export function EarningsPageClient() {
                 htmlFor="redeem-amount"
                 className="text-sm text-white/60 mb-2 block"
               >
-                Amount to Redeem (USD)
+                {t("cloud.earnings.amountToRedeem", {
+                  defaultValue: "Amount to Redeem (USD)",
+                })}
               </label>
               <Input
                 id="redeem-amount"
                 type="number"
-                placeholder="Enter amount"
+                placeholder={t("cloud.earnings.enterAmount", {
+                  defaultValue: "Enter amount",
+                })}
                 value={redeemAmount}
                 onChange={(e) => setRedeemAmount(e.target.value)}
                 className="bg-white/5 border-white/10 text-white"
@@ -639,23 +727,32 @@ export function EarningsPageClient() {
               />
               <div className="flex justify-between text-xs text-white/40 mt-1">
                 <span>
-                  Min: {formatCurrency(balance?.limits.minRedemptionUsd || 1)}
+                  {t("cloud.earnings.min", {
+                    amount: formatCurrency(
+                      balance?.limits.minRedemptionUsd || 1,
+                    ),
+                    defaultValue: "Min: {{amount}}",
+                  })}
                 </span>
                 <span>
-                  Max:{" "}
-                  {formatCurrency(
-                    Math.min(
-                      balance?.balance.availableBalance || 0,
-                      balance?.limits.maxSingleRedemptionUsd || 10000,
+                  {t("cloud.earnings.max", {
+                    amount: formatCurrency(
+                      Math.min(
+                        balance?.balance.availableBalance || 0,
+                        balance?.limits.maxSingleRedemptionUsd || 10000,
+                      ),
                     ),
-                  )}
+                    defaultValue: "Max: {{amount}}",
+                  })}
                 </span>
               </div>
             </div>
 
             {/* Network Select */}
             <div>
-              <p className="text-sm text-white/60 mb-2 block">Network</p>
+              <p className="text-sm text-white/60 mb-2 block">
+                {t("cloud.earnings.networkLabel", { defaultValue: "Network" })}
+              </p>
               <Select value={redeemNetwork} onValueChange={setRedeemNetwork}>
                 <SelectTrigger className="bg-white/5 border-white/10 text-white">
                   <SelectValue />
@@ -677,7 +774,9 @@ export function EarningsPageClient() {
                         {systemStatus?.networks?.[network.value]?.available ===
                           false && (
                           <span className="text-xs text-red-400">
-                            (unavailable)
+                            {t("cloud.earnings.unavailable", {
+                              defaultValue: "(unavailable)",
+                            })}
                           </span>
                         )}
                       </span>
@@ -693,15 +792,25 @@ export function EarningsPageClient() {
                 htmlFor="redeem-wallet-address"
                 className="text-sm text-white/60 mb-2 block"
               >
-                {redeemNetwork === "solana" ? "Solana" : "EVM"} Wallet Address
+                {t("cloud.earnings.walletAddressLabel", {
+                  network:
+                    redeemNetwork === "solana"
+                      ? t("cloud.earnings.solana", { defaultValue: "Solana" })
+                      : t("cloud.earnings.evm", { defaultValue: "EVM" }),
+                  defaultValue: "{{network}} Wallet Address",
+                })}
               </label>
               <Input
                 id="redeem-wallet-address"
                 type="text"
                 placeholder={
                   redeemNetwork === "solana"
-                    ? "Enter Solana address"
-                    : "Enter 0x address"
+                    ? t("cloud.earnings.enterSolanaAddress", {
+                        defaultValue: "Enter Solana address",
+                      })
+                    : t("cloud.earnings.enterEvmAddress", {
+                        defaultValue: "Enter 0x address",
+                      })
                 }
                 value={redeemAddress}
                 onChange={(e) => setRedeemAddress(e.target.value)}
@@ -712,7 +821,11 @@ export function EarningsPageClient() {
             {/* Quote Display */}
             {quoteLoading && (
               <div className="p-4 rounded-sm bg-white/5 animate-pulse">
-                <p className="text-white/40 text-center">Getting quote...</p>
+                <p className="text-white/40 text-center">
+                  {t("cloud.earnings.gettingQuote", {
+                    defaultValue: "Getting quote...",
+                  })}
+                </p>
               </div>
             )}
 
@@ -721,7 +834,11 @@ export function EarningsPageClient() {
                 {quote.success && quote.quote ? (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-white/60">You pay</span>
+                      <span className="text-white/60">
+                        {t("cloud.earnings.youPay", {
+                          defaultValue: "You pay",
+                        })}
+                      </span>
                       <span className="text-white font-semibold">
                         {formatCurrency(quote.quote.usdValue)}
                       </span>
@@ -730,21 +847,33 @@ export function EarningsPageClient() {
                       <ArrowRight className="h-4 w-4 text-white/40" />
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-white/60">You receive</span>
+                      <span className="text-white/60">
+                        {t("cloud.earnings.youReceive", {
+                          defaultValue: "You receive",
+                        })}
+                      </span>
                       <span className="text-[var(--brand-orange)] font-semibold">
                         {parseFloat(quote.quote.elizaAmount).toFixed(4)} elizaOS
                       </span>
                     </div>
                     <div className="pt-2 border-t border-white/10 text-xs text-white/40">
                       <div className="flex justify-between">
-                        <span>Price</span>
+                        <span>
+                          {t("cloud.earnings.price", {
+                            defaultValue: "Price",
+                          })}
+                        </span>
                         <span>
                           ${parseFloat(quote.quote.elizaPriceUsd).toFixed(6)}
                           /token
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Expires</span>
+                        <span>
+                          {t("cloud.earnings.expires", {
+                            defaultValue: "Expires",
+                          })}
+                        </span>
                         <span>
                           <Clock className="inline h-3 w-3 mr-1" />
                           {new Date(quote.quote.expiresAt).toLocaleTimeString()}
@@ -767,7 +896,7 @@ export function EarningsPageClient() {
               onClick={() => setShowRedeemDialog(false)}
               className="text-white/60"
             >
-              Cancel
+              {t("cloud.earnings.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               onClick={handleSubmitRedemption}
@@ -782,12 +911,16 @@ export function EarningsPageClient() {
               {submitting ? (
                 <>
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Submitting...
+                  {t("cloud.earnings.submitting", {
+                    defaultValue: "Submitting...",
+                  })}
                 </>
               ) : (
                 <>
                   <Coins className="mr-2 h-4 w-4" />
-                  Redeem Tokens
+                  {t("cloud.earnings.redeemTokens", {
+                    defaultValue: "Redeem Tokens",
+                  })}
                 </>
               )}
             </Button>

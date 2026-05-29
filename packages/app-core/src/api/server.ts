@@ -16,7 +16,6 @@ import {
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
   handleCloudCompatRoute,
-  initStewardWalletCache,
   isAllowedHost,
   isAuthorized,
   loadElizaConfig,
@@ -142,6 +141,7 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleFirstRunRoute } from "./first-run-routes";
+import { handleFirstRunTtsRoute } from "./first-run-tts-route";
 import { handleInternalWakeRoute } from "./internal-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
@@ -730,6 +730,14 @@ async function handleCompatRoute(
     return handleCloudTtsPreviewRoute(req, res);
   }
 
+  // Onboarding voice: synthesize the fixed first-run script lines with edge-tts
+  // (free, no-key neural TTS) before any agent exists. The client falls back to
+  // browser speechSynthesis if this route fails, so onboarding never goes silent.
+  if (method === "POST" && url.pathname === "/api/tts/first-run/speak") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    return handleFirstRunTtsRoute(req, res);
+  }
+
   if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {
     // Intentional passthrough: ElevenLabs TTS is handled by the upstream
     // Eliza server handler, not by the app API layer. Returning false
@@ -1107,9 +1115,6 @@ export async function startApiServer(
   hydrateWalletOsStoreFlagFromConfig();
   await hydrateWalletKeysFromNodePlatformSecureStore();
 
-  // Pre-load steward wallet addresses so getWalletAddresses() has them
-  // available synchronously from the start.
-  await initStewardWalletCache();
   // Use the module-scoped shared state instead of a fresh local object so
   // any earlier patch installation (e.g. the `startEliza` boot-time install
   // that ensures upstream's listener engages the compat dispatcher) sees the

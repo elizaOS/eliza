@@ -88,7 +88,9 @@ export function RelationshipsWorkspaceView({
         setGraphError(
           error instanceof Error
             ? error.message
-            : "Failed to load the relationships graph.",
+            : t("relationships.graphLoadError", {
+                defaultValue: "Failed to load the relationships graph.",
+              }),
         );
         setGraph(null);
       } finally {
@@ -97,7 +99,7 @@ export function RelationshipsWorkspaceView({
         }
       }
     },
-    [],
+    [t],
   );
 
   useEffect(() => {
@@ -143,7 +145,9 @@ export function RelationshipsWorkspaceView({
           setDetailError(
             err instanceof Error
               ? err.message
-              : "Failed to load the selected person.",
+              : t("relationships.personLoadError", {
+                  defaultValue: "Failed to load the selected person.",
+                }),
           );
         }
       })
@@ -156,7 +160,7 @@ export function RelationshipsWorkspaceView({
     return () => {
       cancelled = true;
     };
-  }, [selectedPersonId]);
+  }, [selectedPersonId, t]);
 
   const platforms = platformOptions(graph);
   const selectedSummary =
@@ -190,7 +194,9 @@ export function RelationshipsWorkspaceView({
           {embedded ? (
             <>
               <label className="sr-only" htmlFor="relationships-search">
-                Search people, aliases, handles
+                {t("relationships.searchLabel", {
+                  defaultValue: "Search people, aliases, handles",
+                })}
               </label>
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
@@ -198,8 +204,12 @@ export function RelationshipsWorkspaceView({
                   id="relationships-search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search"
-                  aria-label="Search people, aliases, handles"
+                  placeholder={t("relationships.searchPlaceholder", {
+                    defaultValue: "Search",
+                  })}
+                  aria-label={t("relationships.searchLabel", {
+                    defaultValue: "Search people, aliases, handles",
+                  })}
                   className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-10 text-sm text-txt outline-none transition focus:border-accent/55"
                 />
                 {search ? (
@@ -207,7 +217,9 @@ export function RelationshipsWorkspaceView({
                     type="button"
                     className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted transition hover:bg-bg-hover hover:text-txt"
                     onClick={() => setSearch("")}
-                    aria-label="Clear relationship search"
+                    aria-label={t("relationships.clearSearch", {
+                      defaultValue: "Clear relationship search",
+                    })}
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -218,17 +230,23 @@ export function RelationshipsWorkspaceView({
 
           <div className="relative min-w-0">
             <label className="sr-only" htmlFor="relationships-platform">
-              Platform filter
+              {t("relationships.platformFilter", {
+                defaultValue: "Platform filter",
+              })}
             </label>
             <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <select
               id="relationships-platform"
               value={platform}
               onChange={(event) => setPlatform(event.target.value)}
-              aria-label="Platform filter"
+              aria-label={t("relationships.platformFilter", {
+                defaultValue: "Platform filter",
+              })}
               className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
             >
-              <option value="all">All</option>
+              <option value="all">
+                {t("relationships.platformAll", { defaultValue: "All" })}
+              </option>
               {platforms.map((entry) => (
                 <option key={entry} value={entry}>
                   {entry}
@@ -243,7 +261,9 @@ export function RelationshipsWorkspaceView({
             variant="outline"
             className="h-9 w-9 shrink-0 rounded-sm p-0"
             onClick={refreshGraph}
-            aria-label="Refresh relationships"
+            aria-label={t("relationships.refresh", {
+              defaultValue: "Refresh relationships",
+            })}
           >
             <RefreshCw
               className={`h-4 w-4 ${graphLoading ? "animate-spin" : ""}`}
@@ -270,7 +290,9 @@ export function RelationshipsWorkspaceView({
         <PagePanel.Empty
           variant="panel"
           className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
-          title="Relationships failed to load"
+          title={t("relationships.failedToLoad", {
+            defaultValue: "Relationships failed to load",
+          })}
           description={graphError}
         />
       ) : !graph && graphLoading ? (
@@ -288,24 +310,43 @@ export function RelationshipsWorkspaceView({
             </div>
             <h2 className="mt-4 text-base font-semibold text-txt">
               {search || platform !== "all"
-                ? "No matching relationships"
-                : "No relationships yet"}
+                ? t("relationships.noMatching", {
+                    defaultValue: "No matching relationships",
+                  })
+                : t("relationships.noneYet", {
+                    defaultValue: "No relationships yet",
+                  })}
             </h2>
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               {[
-                { label: "People", icon: UserRound, tone: "text-info" },
-                { label: "Facts", icon: Sparkles, tone: "text-warning" },
-                { label: "Graph", icon: Network, tone: "text-accent" },
+                {
+                  labelKey: "relationships.statPeople",
+                  defaultLabel: "People",
+                  icon: UserRound,
+                  tone: "text-info",
+                },
+                {
+                  labelKey: "relationships.statFacts",
+                  defaultLabel: "Facts",
+                  icon: Sparkles,
+                  tone: "text-warning",
+                },
+                {
+                  labelKey: "relationships.statGraph",
+                  defaultLabel: "Graph",
+                  icon: Network,
+                  tone: "text-accent",
+                },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
                   <div
-                    key={item.label}
+                    key={item.labelKey}
                     className="rounded-sm border border-border/24 bg-bg/45 px-3 py-3"
                   >
                     <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
                     <div className="mt-2 text-xs font-semibold text-muted">
-                      {item.label}
+                      {t(item.labelKey, { defaultValue: item.defaultLabel })}
                     </div>
                   </div>
                 );
@@ -348,12 +389,20 @@ export function RelationshipsWorkspaceView({
                 />
               </div>
             ) : detailLoading ? (
-              <PagePanel.Loading heading="Loading person..." />
+              <PagePanel.Loading
+                heading={t("relationships.loadingPerson", {
+                  defaultValue: "Loading person...",
+                })}
+              />
             ) : (
               <PagePanel.Empty
                 variant="panel"
-                title="Select a person"
-                description="Choose a person from the list or graph."
+                title={t("relationships.selectPerson", {
+                  defaultValue: "Select a person",
+                })}
+                description={t("relationships.selectPersonDesc", {
+                  defaultValue: "Choose a person from the list or graph.",
+                })}
               />
             )}
           </div>
@@ -383,7 +432,9 @@ export function RelationshipsWorkspaceView({
               <PagePanel
                 as="section"
                 variant="surface"
-                aria-label="Activity"
+                aria-label={t("relationships.activity", {
+                  defaultValue: "Activity",
+                })}
                 className="px-3 py-3"
               >
                 <div className="max-h-[24rem] overflow-auto pr-1">

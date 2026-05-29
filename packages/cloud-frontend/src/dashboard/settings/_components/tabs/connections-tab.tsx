@@ -1,6 +1,7 @@
 "use client";
 
 import { DashboardSection } from "@elizaos/ui";
+import { useT } from "@/providers/I18nProvider";
 import { BlooioConnection } from "../blooio-connection";
 import { DiscordGatewayConnection } from "../discord-gateway-connection";
 import { GoogleConnection } from "../google-connection";
@@ -10,13 +11,18 @@ import { TwilioConnection } from "../twilio-connection";
 import { WhatsAppConnection } from "../whatsapp-connection";
 
 export function ConnectionsTab() {
+  const t = useT();
   return (
     <div className="space-y-8">
       {/* Messaging & Communication Section */}
       <div className="space-y-4">
         <DashboardSection
-          label="Connections"
-          title="Messaging & Communication"
+          label={t("cloud.connectionsTab.connectionsLabel", {
+            defaultValue: "Connections",
+          })}
+          title={t("cloud.connectionsTab.messagingTitle", {
+            defaultValue: "Messaging & Communication",
+          })}
         />
 
         <div className="grid gap-4">
@@ -30,7 +36,14 @@ export function ConnectionsTab() {
 
       {/* Social Media Section */}
       <div className="space-y-4">
-        <DashboardSection label="Channels" title="Social Media Connections" />
+        <DashboardSection
+          label={t("cloud.connectionsTab.channelsLabel", {
+            defaultValue: "Channels",
+          })}
+          title={t("cloud.connectionsTab.socialTitle", {
+            defaultValue: "Social Media Connections",
+          })}
+        />
 
         <div className="grid gap-4">
           <DiscordGatewayConnection />

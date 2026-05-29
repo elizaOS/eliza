@@ -455,12 +455,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
-  if (mtpSupportedForTier(id)) {
-    components.mtp = bundleComponent(
-      id,
-      `mtp/eliza-1-${tierSlug(id)}-drafter.gguf`,
-    );
-  }
+  // Same-file MTP: the NextN head is embedded in the text GGUF
+  // (`qwen35.nextn_predict_layers > 0`), so there is no separate `mtp`
+  // drafter component to download.
 
   return { finetuned: false, components };
 }
@@ -494,11 +491,16 @@ function runtimeForTier(
   };
 
   if (mtpSupportedForTier(id)) {
+    // Same-file MTP: no separate `drafterFile`. The NextN head lives in
+    // the text GGUF and is activated by `--spec-type draft-mtp` with no
+    // `-md`. These tiers carry a single NextN head
+    // (`nextn_predict_layers = 1`); benchmarks show `draft-n-max 2` is the
+    // throughput peak (a single head autoregressed past 2 collapses
+    // acceptance), so we do not scale the draft window with context length.
     runtime.mtp = {
       specType: "draft-mtp",
-      drafterFile: `mtp/eliza-1-${tierSlug(id)}-drafter.gguf`,
       draftMin: 1,
-      draftMax: contextLength >= 65536 ? 6 : 4,
+      draftMax: 2,
       gpuLayers: "auto",
     };
   }

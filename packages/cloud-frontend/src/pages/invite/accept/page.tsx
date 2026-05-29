@@ -24,6 +24,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 
 interface InviteDetails {
   organization_name: string;
@@ -34,6 +35,7 @@ interface InviteDetails {
 }
 
 function InviteAcceptContent() {
+  const t = useT();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { authenticated } = useSessionAuth();
@@ -58,19 +60,28 @@ function InviteAcceptContent() {
         setInviteDetails(data.data);
         setError(null);
       } else {
-        setError(data.error || "Invalid or expired invitation");
+        setError(
+          data.error ||
+            t("cloud.invite.invalidOrExpired", {
+              defaultValue: "Invalid or expired invitation",
+            }),
+        );
       }
       setIsValidating(false);
     };
 
     if (!token) {
-      setError("No invitation token provided");
+      setError(
+        t("cloud.invite.noToken", {
+          defaultValue: "No invitation token provided",
+        }),
+      );
       setIsValidating(false);
       return;
     }
 
     validateInvite();
-  }, [token]);
+  }, [token, t]);
 
   const handleAcceptInvite = async () => {
     if (!authenticated) {
@@ -92,12 +103,21 @@ function InviteAcceptContent() {
     const data = await response.json();
 
     if (data.success) {
-      toast.success("Invitation accepted! Redirecting to dashboard...");
+      toast.success(
+        t("cloud.invite.accepted", {
+          defaultValue: "Invitation accepted! Redirecting to dashboard...",
+        }),
+      );
       setTimeout(() => {
         navigate("/dashboard");
       }, 1500);
     } else {
-      setError(data.error || "Failed to accept invitation");
+      setError(
+        data.error ||
+          t("cloud.invite.acceptFailed", {
+            defaultValue: "Failed to accept invitation",
+          }),
+      );
       setIsAccepting(false);
     }
   };
@@ -119,9 +139,15 @@ function InviteAcceptContent() {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
-            <CardTitle>Validating Invitation</CardTitle>
+            <CardTitle>
+              {t("cloud.invite.validating", {
+                defaultValue: "Validating Invitation",
+              })}
+            </CardTitle>
             <CardDescription>
-              Please wait while we verify your invitation...
+              {t("cloud.invite.validatingDescription", {
+                defaultValue: "Please wait while we verify your invitation...",
+              })}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -138,10 +164,16 @@ function InviteAcceptContent() {
               <AlertCircle className="h-6 w-6 text-destructive" />
             </div>
             <CardTitle role="heading" aria-level={1}>
-              Invalid Invitation
+              {t("cloud.invite.invalidTitle", {
+                defaultValue: "Invalid Invitation",
+              })}
             </CardTitle>
             <CardDescription>
-              {error || "This invitation link is invalid or has expired"}
+              {error ||
+                t("cloud.invite.invalidDescription", {
+                  defaultValue:
+                    "This invitation link is invalid or has expired",
+                })}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -150,7 +182,7 @@ function InviteAcceptContent() {
               onClick={() => navigate("/")}
               className="w-full"
             >
-              Go to Home
+              {t("cloud.invite.goToHome", { defaultValue: "Go to Home" })}
             </Button>
           </CardContent>
         </Card>
@@ -168,9 +200,15 @@ function InviteAcceptContent() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <Mail className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl">You&apos;re Invited!</CardTitle>
+          <CardTitle className="text-2xl">
+            {t("cloud.invite.youreInvited", {
+              defaultValue: "You're Invited!",
+            })}
+          </CardTitle>
           <CardDescription>
-            You&apos;ve been invited to join an organization
+            {t("cloud.invite.invitedToJoin", {
+              defaultValue: "You've been invited to join an organization",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -179,7 +217,9 @@ function InviteAcceptContent() {
               <Building2 className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground">
-                  Organization
+                  {t("cloud.invite.organization", {
+                    defaultValue: "Organization",
+                  })}
                 </p>
                 <p className="text-lg font-semibold">
                   {inviteDetails.organization_name}
@@ -191,7 +231,9 @@ function InviteAcceptContent() {
               <Mail className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground">
-                  Invited Email
+                  {t("cloud.invite.invitedEmail", {
+                    defaultValue: "Invited Email",
+                  })}
                 </p>
                 <p className="text-base font-medium">
                   {inviteDetails.invited_email}
@@ -203,7 +245,7 @@ function InviteAcceptContent() {
               {getRoleIcon(inviteDetails.role)}
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground">
-                  Role
+                  {t("cloud.invite.role", { defaultValue: "Role" })}
                 </p>
                 <Badge
                   variant="outline"
@@ -220,7 +262,9 @@ function InviteAcceptContent() {
                 <User className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">
-                    Invited by
+                    {t("cloud.invite.invitedBy", {
+                      defaultValue: "Invited by",
+                    })}
                   </p>
                   <p className="text-base">{inviteDetails.inviter_name}</p>
                 </div>
@@ -232,8 +276,10 @@ function InviteAcceptContent() {
             <Alert variant="destructive">
               <Clock className="h-4 w-4" />
               <AlertDescription>
-                This invitation expires on{" "}
-                {format(expiresAt, "MMM d, yyyy 'at' h:mm a")}
+                {t("cloud.invite.expiresOn", {
+                  date: format(expiresAt, "MMM d, yyyy 'at' h:mm a"),
+                  defaultValue: "This invitation expires on {{date}}",
+                })}
               </AlertDescription>
             </Alert>
           )}
@@ -248,12 +294,24 @@ function InviteAcceptContent() {
               {isAccepting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {authenticated ? "Accepting..." : "Redirecting to Login..."}
+                  {authenticated
+                    ? t("cloud.invite.accepting", {
+                        defaultValue: "Accepting...",
+                      })
+                    : t("cloud.invite.redirectingToLogin", {
+                        defaultValue: "Redirecting to Login...",
+                      })}
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4 mr-2" />
-                  {authenticated ? "Accept Invitation" : "Sign In to Accept"}
+                  {authenticated
+                    ? t("cloud.invite.acceptInvitation", {
+                        defaultValue: "Accept Invitation",
+                      })
+                    : t("cloud.invite.signInToAccept", {
+                        defaultValue: "Sign In to Accept",
+                      })}
                 </>
               )}
             </Button>
@@ -264,13 +322,15 @@ function InviteAcceptContent() {
               disabled={isAccepting}
               className="w-full"
             >
-              Decline
+              {t("cloud.invite.decline", { defaultValue: "Decline" })}
             </Button>
           </div>
 
           <div className="text-center text-xs text-muted-foreground">
-            By accepting, you&apos;ll gain access to the organization&apos;s
-            resources and workspace.
+            {t("cloud.invite.acceptingNote", {
+              defaultValue:
+                "By accepting, you'll gain access to the organization's resources and workspace.",
+            })}
           </div>
         </CardContent>
       </Card>
@@ -284,6 +344,7 @@ function InviteAcceptContent() {
  * Redirects unauthenticated users to login first.
  */
 export default function InviteAcceptPage() {
+  const t = useT();
   return (
     <Suspense
       fallback={
@@ -293,8 +354,16 @@ export default function InviteAcceptPage() {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
               </div>
-              <CardTitle>Loading Invitation</CardTitle>
-              <CardDescription>Please wait...</CardDescription>
+              <CardTitle>
+                {t("cloud.invite.loading", {
+                  defaultValue: "Loading Invitation",
+                })}
+              </CardTitle>
+              <CardDescription>
+                {t("cloud.invite.pleaseWait", {
+                  defaultValue: "Please wait...",
+                })}
+              </CardDescription>
             </CardHeader>
           </Card>
         </div>

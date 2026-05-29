@@ -17,6 +17,7 @@ import { ExternalLink, Loader2, MessageSquare, Phone } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
+import { useT } from "@/providers/I18nProvider";
 
 interface TwilioStatus {
   connected: boolean;
@@ -27,13 +28,16 @@ interface TwilioStatus {
 }
 
 export function TwilioConnection() {
+  const t = useT();
   const {
     status,
     isLoading,
     refetch: fetchStatus,
   } = useConnectionStatus<TwilioStatus>(
     "/api/v1/twilio/status",
-    "Failed to fetch Twilio status",
+    t("cloud.twilio.statusFetchFailed", {
+      defaultValue: "Failed to fetch Twilio status",
+    }),
   );
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -45,15 +49,27 @@ export function TwilioConnection() {
   const handleConnect = async () => {
     if (isConnecting) return;
     if (!accountSid.trim()) {
-      toast.error("Please enter your Twilio Account SID");
+      toast.error(
+        t("cloud.twilio.enterAccountSid", {
+          defaultValue: "Please enter your Twilio Account SID",
+        }),
+      );
       return;
     }
     if (!authToken.trim()) {
-      toast.error("Please enter your Twilio Auth Token");
+      toast.error(
+        t("cloud.twilio.enterAuthToken", {
+          defaultValue: "Please enter your Twilio Auth Token",
+        }),
+      );
       return;
     }
     if (!phoneNumber.trim()) {
-      toast.error("Please enter your Twilio phone number");
+      toast.error(
+        t("cloud.twilio.enterPhoneNumber", {
+          defaultValue: "Please enter your Twilio phone number",
+        }),
+      );
       return;
     }
 
@@ -69,16 +85,29 @@ export function TwilioConnection() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        toast.success("Twilio SMS/Voice connected successfully!");
+        toast.success(
+          t("cloud.twilio.connected", {
+            defaultValue: "Twilio SMS/Voice connected successfully!",
+          }),
+        );
         setAccountSid("");
         setAuthToken("");
         setPhoneNumber("");
         fetchStatus();
       } else {
-        toast.error(data.error || "Failed to connect Twilio");
+        toast.error(
+          data.error ||
+            t("cloud.twilio.connectFailed", {
+              defaultValue: "Failed to connect Twilio",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.twilio.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsConnecting(false);
@@ -94,14 +123,27 @@ export function TwilioConnection() {
       });
 
       if (response.ok) {
-        toast.success("Twilio disconnected");
+        toast.success(
+          t("cloud.twilio.disconnected", {
+            defaultValue: "Twilio disconnected",
+          }),
+        );
         fetchStatus();
       } else {
         const data = await response.json().catch(() => ({}));
-        toast.error(data.error || "Failed to disconnect");
+        toast.error(
+          data.error ||
+            t("cloud.twilio.disconnectFailed", {
+              defaultValue: "Failed to disconnect",
+            }),
+        );
       }
     } catch {
-      toast.error("Network error. Please check your connection.");
+      toast.error(
+        t("cloud.twilio.networkError", {
+          defaultValue: "Network error. Please check your connection.",
+        }),
+      );
     }
 
     setIsDisconnecting(false);
@@ -110,9 +152,14 @@ export function TwilioConnection() {
   if (isLoading) {
     return (
       <ConnectionCard
-        name="Twilio SMS & Voice"
+        name={t("cloud.twilio.cardName", {
+          defaultValue: "Twilio SMS & Voice",
+        })}
         icon={<Phone className="text-red-500" />}
-        description="Connect Twilio for SMS, MMS, and voice call automation"
+        description={t("cloud.twilio.cardDescription", {
+          defaultValue:
+            "Connect Twilio for SMS, MMS, and voice call automation",
+        })}
         status="loading"
       />
     );
@@ -120,9 +167,11 @@ export function TwilioConnection() {
 
   return (
     <ConnectionCard
-      name="Twilio SMS & Voice"
+      name={t("cloud.twilio.cardName", { defaultValue: "Twilio SMS & Voice" })}
       icon={<Phone className="text-red-500" />}
-      description="Connect Twilio for SMS, MMS, and voice call automation"
+      description={t("cloud.twilio.cardDescription", {
+        defaultValue: "Connect Twilio for SMS, MMS, and voice call automation",
+      })}
       status={status?.connected ? "connected" : "disconnected"}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
@@ -131,32 +180,54 @@ export function TwilioConnection() {
             icon={<Phone className="h-6 w-6 text-red-600" />}
             iconClassName="bg-red-100"
             title={status?.phoneNumber}
-            subtitle="Twilio Number Connected"
+            subtitle={t("cloud.twilio.connectedSubtitle", {
+              defaultValue: "Twilio Number Connected",
+            })}
           >
             {status?.webhookConfigured && (
               <Badge variant="outline" className="mt-1 text-xs">
-                Webhook Active
+                {t("cloud.twilio.webhookActive", {
+                  defaultValue: "Webhook Active",
+                })}
               </Badge>
             )}
           </ConnectionIdentityPanel>
 
           <ConnectionCallout
-            title="Your AI agent can now:"
+            title={t("cloud.twilio.calloutTitle", {
+              defaultValue: "Your AI agent can now:",
+            })}
             tone="red"
             items={[
-              "Send and receive SMS messages",
-              "Handle MMS with images",
-              "Make and receive voice calls",
-              "Build conversational IVR systems",
+              t("cloud.twilio.calloutItem1", {
+                defaultValue: "Send and receive SMS messages",
+              }),
+              t("cloud.twilio.calloutItem2", {
+                defaultValue: "Handle MMS with images",
+              }),
+              t("cloud.twilio.calloutItem3", {
+                defaultValue: "Make and receive voice calls",
+              }),
+              t("cloud.twilio.calloutItem4", {
+                defaultValue: "Build conversational IVR systems",
+              }),
             ]}
           />
 
           <ConnectionFooterActions
-            note={`Account: ${status?.accountSid?.slice(0, 8) ?? ""}...`}
+            note={t("cloud.twilio.accountNote", {
+              account: status?.accountSid?.slice(0, 8) ?? "",
+              defaultValue: "Account: {{account}}...",
+            })}
           >
             <ConnectionDisconnectAction
-              title="Disconnect Twilio?"
-              description="This will stop your AI agent from sending and receiving SMS/Voice calls. You can reconnect at any time."
+              title={t("cloud.twilio.disconnectTitle", {
+                defaultValue: "Disconnect Twilio?",
+              })}
+              description={t("cloud.twilio.disconnectDescription", {
+                defaultValue:
+                  "This will stop your AI agent from sending and receiving SMS/Voice calls. You can reconnect at any time.",
+              })}
               onDisconnect={handleDisconnect}
               isDisconnecting={isDisconnecting}
             />
@@ -166,33 +237,58 @@ export function TwilioConnection() {
       setupContent={
         <div className="space-y-4">
           <ConnectionInstructions
-            title="How to get Twilio credentials"
+            title={t("cloud.twilio.instructionsTitle", {
+              defaultValue: "How to get Twilio credentials",
+            })}
             open={showInstructions}
             onOpenChange={setShowInstructions}
           >
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
-                Go to{" "}
+                {t("cloud.twilio.instructGoTo", { defaultValue: "Go to" })}{" "}
                 <a
                   href="https://console.twilio.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-red-600 hover:underline inline-flex items-center gap-1"
                 >
-                  Twilio Console
+                  {t("cloud.twilio.console", {
+                    defaultValue: "Twilio Console",
+                  })}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </li>
-              <li>Create an account or sign in</li>
-              <li>Copy your Account SID and Auth Token from the dashboard</li>
-              <li>Buy or use an existing phone number</li>
-              <li>Enter your credentials below</li>
+              <li>
+                {t("cloud.twilio.instructSignIn", {
+                  defaultValue: "Create an account or sign in",
+                })}
+              </li>
+              <li>
+                {t("cloud.twilio.instructCopyCreds", {
+                  defaultValue:
+                    "Copy your Account SID and Auth Token from the dashboard",
+                })}
+              </li>
+              <li>
+                {t("cloud.twilio.instructBuyNumber", {
+                  defaultValue: "Buy or use an existing phone number",
+                })}
+              </li>
+              <li>
+                {t("cloud.twilio.instructEnterBelow", {
+                  defaultValue: "Enter your credentials below",
+                })}
+              </li>
             </ol>
           </ConnectionInstructions>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="accountSid">Account SID</Label>
+              <Label htmlFor="accountSid">
+                {t("cloud.twilio.accountSidLabel", {
+                  defaultValue: "Account SID",
+                })}
+              </Label>
               <Input
                 id="accountSid"
                 type="text"
@@ -203,7 +299,11 @@ export function TwilioConnection() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="authToken">Auth Token</Label>
+              <Label htmlFor="authToken">
+                {t("cloud.twilio.authTokenLabel", {
+                  defaultValue: "Auth Token",
+                })}
+              </Label>
               <Input
                 id="authToken"
                 type="password"
@@ -212,12 +312,18 @@ export function TwilioConnection() {
                 onChange={(e) => setAuthToken(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Found in your Twilio Console dashboard
+                {t("cloud.twilio.authTokenHint", {
+                  defaultValue: "Found in your Twilio Console dashboard",
+                })}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="twilioPhoneNumber">Twilio Phone Number</Label>
+              <Label htmlFor="twilioPhoneNumber">
+                {t("cloud.twilio.phoneLabel", {
+                  defaultValue: "Twilio Phone Number",
+                })}
+              </Label>
               <Input
                 id="twilioPhoneNumber"
                 type="tel"
@@ -226,18 +332,40 @@ export function TwilioConnection() {
                 onChange={(e) => setPhoneNumber(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Your Twilio phone number with SMS capability
+                {t("cloud.twilio.phoneHint", {
+                  defaultValue: "Your Twilio phone number with SMS capability",
+                })}
               </p>
             </div>
           </div>
 
           <div className="p-4 bg-muted rounded-sm">
-            <h4 className="font-medium mb-2">What you can do with Twilio:</h4>
+            <h4 className="font-medium mb-2">
+              {t("cloud.twilio.whatYouCanDo", {
+                defaultValue: "What you can do with Twilio:",
+              })}
+            </h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Send and receive SMS/MMS messages</li>
-              <li>• Create voice call automations</li>
-              <li>• Build two-factor authentication</li>
-              <li>• Handle customer support via text</li>
+              <li>
+                {t("cloud.twilio.capability1", {
+                  defaultValue: "• Send and receive SMS/MMS messages",
+                })}
+              </li>
+              <li>
+                {t("cloud.twilio.capability2", {
+                  defaultValue: "• Create voice call automations",
+                })}
+              </li>
+              <li>
+                {t("cloud.twilio.capability3", {
+                  defaultValue: "• Build two-factor authentication",
+                })}
+              </li>
+              <li>
+                {t("cloud.twilio.capability4", {
+                  defaultValue: "• Handle customer support via text",
+                })}
+              </li>
             </ul>
           </div>
 
@@ -254,12 +382,16 @@ export function TwilioConnection() {
             {isConnecting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Connecting...
+                {t("cloud.twilio.connecting", {
+                  defaultValue: "Connecting...",
+                })}
               </>
             ) : (
               <>
                 <MessageSquare className="h-4 w-4 mr-2" />
-                Connect Twilio
+                {t("cloud.twilio.connectButton", {
+                  defaultValue: "Connect Twilio",
+                })}
               </>
             )}
           </Button>

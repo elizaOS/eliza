@@ -1019,6 +1019,10 @@ declare module "./client-base" {
       voice: { enabled: boolean; autoSpeak: boolean };
     }>;
     streamVoiceSpeak(text: string): Promise<{ ok: boolean; speaking: boolean }>;
+    synthesizeFirstRunSpeech(
+      text: string,
+      voice?: string,
+    ): Promise<ArrayBuffer>;
     getOverlayLayout(
       destinationId?: string | null,
     ): Promise<{ ok: boolean; layout: unknown; destinationId?: string }>;
@@ -3630,6 +3634,19 @@ ElizaClient.prototype.streamVoiceSpeak = async function (
     method: "POST",
     body: JSON.stringify({ text }),
   });
+};
+
+ElizaClient.prototype.synthesizeFirstRunSpeech = async function (
+  this: ElizaClient,
+  text,
+  voice,
+) {
+  const res = await this.rawRequest("/api/tts/first-run/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(voice ? { text, voice } : { text }),
+  });
+  return res.arrayBuffer();
 };
 
 ElizaClient.prototype.getOverlayLayout = async function (

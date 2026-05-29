@@ -150,51 +150,57 @@ export function DiscordGatewayConnection() {
     >
   >({});
 
-  const fetchConnections = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await fetch("/api/v1/discord/connections", { signal });
-      if (!signal?.aborted && response.ok) {
-        const data = await response.json();
-        setConnections(data.connections || []);
+  const fetchConnections = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await fetch("/api/v1/discord/connections", { signal });
+        if (!signal?.aborted && response.ok) {
+          const data = await response.json();
+          setConnections(data.connections || []);
+        }
+      } catch {
+        if (!signal?.aborted) {
+          toast.error(
+            t("cloud.discord.fetchConnectionsFailed", {
+              defaultValue: "Failed to fetch Discord connections",
+            }),
+          );
+        }
       }
-    } catch {
-      if (!signal?.aborted) {
-        toast.error(
-          t("cloud.discord.fetchConnectionsFailed", {
-            defaultValue: "Failed to fetch Discord connections",
-          }),
-        );
-      }
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
-  const fetchCharacters = useCallback(async (signal?: AbortSignal) => {
-    setIsLoadingCharacters(true);
-    try {
-      const response = await fetch("/api/v1/dashboard", { signal });
-      if (!signal?.aborted && response.ok) {
-        const data = await response.json();
-        setCharacters(
-          data.agents?.map((a: { id: string; name: string }) => ({
-            id: a.id,
-            name: a.name,
-          })) || [],
-        );
+  const fetchCharacters = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoadingCharacters(true);
+      try {
+        const response = await fetch("/api/v1/dashboard", { signal });
+        if (!signal?.aborted && response.ok) {
+          const data = await response.json();
+          setCharacters(
+            data.agents?.map((a: { id: string; name: string }) => ({
+              id: a.id,
+              name: a.name,
+            })) || [],
+          );
+        }
+      } catch {
+        if (!signal?.aborted) {
+          toast.error(
+            t("cloud.discord.fetchCharactersFailed", {
+              defaultValue: "Failed to fetch characters",
+            }),
+          );
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoadingCharacters(false);
+        }
       }
-    } catch {
-      if (!signal?.aborted) {
-        toast.error(
-          t("cloud.discord.fetchCharactersFailed", {
-            defaultValue: "Failed to fetch characters",
-          }),
-        );
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoadingCharacters(false);
-      }
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
   const fetchData = useCallback(
     async (signal?: AbortSignal) => {
@@ -441,7 +447,8 @@ export function DiscordGatewayConnection() {
         })}
         icon={<DiscordIcon className="text-[#5865F2]" />}
         description={t("cloud.discord.cardDescription", {
-          defaultValue: "Connect Discord gateway bots for AI-powered automation",
+          defaultValue:
+            "Connect Discord gateway bots for AI-powered automation",
         })}
         status="loading"
       />
@@ -606,7 +613,10 @@ export function DiscordGatewayConnection() {
                                       <SelectValue
                                         placeholder={t(
                                           "cloud.discord.selectCharacterPlaceholder",
-                                          { defaultValue: "Select a character..." },
+                                          {
+                                            defaultValue:
+                                              "Select a character...",
+                                          },
                                         )}
                                       />
                                     </SelectTrigger>
@@ -746,15 +756,21 @@ export function DiscordGatewayConnection() {
                                   defaultValue:
                                     "Delete Discord Bot Connection?",
                                 })}
-                                description={t("cloud.discord.deleteDescription", {
-                                  defaultValue:
-                                    "This will disconnect the bot and remove it from all servers. The bot will stop responding to messages immediately.",
-                                })}
+                                description={t(
+                                  "cloud.discord.deleteDescription",
+                                  {
+                                    defaultValue:
+                                      "This will disconnect the bot and remove it from all servers. The bot will stop responding to messages immediately.",
+                                  },
+                                )}
                                 onDisconnect={() => handleDelete(conn.id)}
                                 isDisconnecting={deletingId === conn.id}
-                                buttonLabel={t("cloud.discord.deleteConnection", {
-                                  defaultValue: "Delete Connection",
-                                })}
+                                buttonLabel={t(
+                                  "cloud.discord.deleteConnection",
+                                  {
+                                    defaultValue: "Delete Connection",
+                                  },
+                                )}
                                 confirmLabel={t("cloud.discord.confirmDelete", {
                                   defaultValue: "Delete",
                                 })}
@@ -842,7 +858,8 @@ export function DiscordGatewayConnection() {
                   </li>
                   <li>
                     {t("cloud.discord.stepNewApp", {
-                      defaultValue: 'Click "New Application" and give it a name',
+                      defaultValue:
+                        'Click "New Application" and give it a name',
                     })}
                   </li>
                   <li>
@@ -860,7 +877,8 @@ export function DiscordGatewayConnection() {
                   </li>
                   <li>
                     {t("cloud.discord.stepBotSection", {
-                      defaultValue: 'Go to the "Bot" section in the left sidebar',
+                      defaultValue:
+                        'Go to the "Bot" section in the left sidebar',
                     })}
                   </li>
                   <li>
@@ -1074,10 +1092,9 @@ export function DiscordGatewayConnection() {
               <Select value={characterId} onValueChange={setCharacterId}>
                 <SelectTrigger id="character" className="flex-1">
                   <SelectValue
-                    placeholder={t(
-                      "cloud.discord.selectCharacterPlaceholder",
-                      { defaultValue: "Select a character..." },
-                    )}
+                    placeholder={t("cloud.discord.selectCharacterPlaceholder", {
+                      defaultValue: "Select a character...",
+                    })}
                   />
                 </SelectTrigger>
                 <SelectContent>

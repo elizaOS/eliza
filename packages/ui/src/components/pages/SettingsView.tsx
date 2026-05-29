@@ -90,6 +90,8 @@ export function SettingsView({
   const shellRef = useRef<HTMLDivElement>(null);
   const initialAlignmentPendingRef = useRef(true);
   const scrollSelectionSuppressionTimerRef = useRef<number | null>(null);
+  const alignmentRafRef = useRef<number | null>(null);
+  const alignmentTimerRef = useRef<number | null>(null);
 
   const suppressScrollSelection = useCallback((durationMs = 700) => {
     if (typeof window === "undefined") return;
@@ -105,11 +107,15 @@ export function SettingsView({
 
   useEffect(() => {
     return () => {
-      if (
-        typeof window !== "undefined" &&
-        scrollSelectionSuppressionTimerRef.current != null
-      ) {
+      if (typeof window === "undefined") return;
+      if (scrollSelectionSuppressionTimerRef.current != null) {
         window.clearTimeout(scrollSelectionSuppressionTimerRef.current);
+      }
+      if (alignmentRafRef.current != null) {
+        window.cancelAnimationFrame(alignmentRafRef.current);
+      }
+      if (alignmentTimerRef.current != null) {
+        window.clearTimeout(alignmentTimerRef.current);
       }
     };
   }, []);
@@ -161,9 +167,16 @@ export function SettingsView({
       suppressScrollSelection();
       queueContentAlignment(sectionId);
       if (typeof window === "undefined") return;
-      window.requestAnimationFrame(() => {
+      if (alignmentRafRef.current != null) {
+        window.cancelAnimationFrame(alignmentRafRef.current);
+      }
+      alignmentRafRef.current = window.requestAnimationFrame(() => {
+        alignmentRafRef.current = null;
         if (!alignContentToSection(sectionId)) {
-          window.setTimeout(() => alignContentToSection(sectionId), 50);
+          alignmentTimerRef.current = window.setTimeout(() => {
+            alignmentTimerRef.current = null;
+            alignContentToSection(sectionId);
+          }, 50);
         }
       });
     },

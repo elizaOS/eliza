@@ -27,6 +27,7 @@ import {
   useState,
 } from "react";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
+import { useTranslation } from "../../state/TranslationContext";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
@@ -317,34 +318,54 @@ async function handleStandardCapability(
 }
 
 function ViewLoadingSkeleton() {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-      Loading view…
+      {t("dynamicviewloader.loading", { defaultValue: "Loading view…" })}
     </div>
   );
 }
 
 function ViewErrorState({ viewId }: { viewId: string }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 min-h-0 min-w-0 flex-col items-center justify-center gap-2 p-6 text-center">
       <p className="text-sm font-semibold text-destructive">
-        Failed to load view
+        {t("dynamicviewloader.error.title", {
+          defaultValue: "Failed to load view",
+        })}
       </p>
-      <p className="text-xs text-muted">View ID: {viewId}</p>
+      <p className="text-xs text-muted">
+        {t("dynamicviewloader.viewId", {
+          viewId,
+          defaultValue: "View ID: {{viewId}}",
+        })}
+      </p>
     </div>
   );
 }
 
 function ViewRestrictedState({ viewId }: { viewId: string }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-1 min-h-0 min-w-0 flex-col items-center justify-center gap-2 p-6 text-center">
       <p className="text-sm font-semibold text-muted-foreground">
-        View not available on this platform
+        {t("dynamicviewloader.restricted.title", {
+          defaultValue: "View not available on this platform",
+        })}
       </p>
       <p className="text-xs text-muted">
-        Dynamic views cannot be loaded on iOS or Android store builds.
+        {t("dynamicviewloader.restricted.body", {
+          defaultValue:
+            "Dynamic views cannot be loaded on iOS or Android store builds.",
+        })}
       </p>
-      <p className="text-xs text-muted">View ID: {viewId}</p>
+      <p className="text-xs text-muted">
+        {t("dynamicviewloader.viewId", {
+          viewId,
+          defaultValue: "View ID: {{viewId}}",
+        })}
+      </p>
     </div>
   );
 }

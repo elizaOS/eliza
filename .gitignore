@@ -94,6 +94,7 @@ tsup.config.bundled_*.mjs
 .turbo
 instructions.md
 wallet_data.txt
+.i18n-staging/
 
 coverage
 .eslintcache

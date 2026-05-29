@@ -269,9 +269,13 @@ export function DesktopWorkspaceSection({
         devConsoleText,
       }),
     );
-    setActionMessage("Copied desktop diagnostics bundle.");
+    setActionMessage(
+      t("desktopworkspacesection.copiedBundle", {
+        defaultValue: "Copied desktop diagnostics bundle.",
+      }),
+    );
     setActionError(null);
-  }, [diagnosticsText, devConsoleText, devStackText]);
+  }, [diagnosticsText, devConsoleText, devStackText, t]);
 
   if (!desktopRuntime) {
     return (
@@ -340,9 +344,16 @@ export function DesktopWorkspaceSection({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Desktop Dev Stack</CardTitle>
+            <CardTitle className="text-sm">
+              {t("desktopworkspacesection.devStack.title", {
+                defaultValue: "Desktop Dev Stack",
+              })}
+            </CardTitle>
             <CardDescription>
-              Live `/api/dev/stack` snapshot for the current desktop session.
+              {t("desktopworkspacesection.devStack.description", {
+                defaultValue:
+                  "Live `/api/dev/stack` snapshot for the current desktop session.",
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -353,7 +364,9 @@ export function DesktopWorkspaceSection({
                 className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() => void refreshDevDiagnostics()}
               >
-                Refresh Desktop Logs
+                {t("desktopworkspacesection.devStack.refreshLogs", {
+                  defaultValue: "Refresh Desktop Logs",
+                })}
               </Button>
               <Button
                 variant="outline"
@@ -361,7 +374,9 @@ export function DesktopWorkspaceSection({
                 className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() => void copyTextToClipboard(devStackText)}
               >
-                Copy Dev Stack
+                {t("desktopworkspacesection.devStack.copyStack", {
+                  defaultValue: "Copy Dev Stack",
+                })}
               </Button>
               <Button
                 variant="outline"
@@ -369,7 +384,9 @@ export function DesktopWorkspaceSection({
                 className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() => void copyDesktopDiagnosticsBundle()}
               >
-                Copy Full Diagnostics Bundle
+                {t("desktopworkspacesection.devStack.copyBundle", {
+                  defaultValue: "Copy Full Diagnostics Bundle",
+                })}
               </Button>
             </div>
             <pre className="max-h-72 overflow-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
@@ -417,10 +434,16 @@ export function DesktopWorkspaceSection({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Desktop Console Log</CardTitle>
+          <CardTitle className="text-sm">
+            {t("desktopworkspacesection.console.title", {
+              defaultValue: "Desktop Console Log",
+            })}
+          </CardTitle>
           <CardDescription>
-            Live tail of the state-dir desktop console log, including renderer
-            console, network failures, RPC failures, and Electrobun/main logs.
+            {t("desktopworkspacesection.console.description", {
+              defaultValue:
+                "Live tail of the state-dir desktop console log, including renderer console, network failures, RPC failures, and Electrobun/main logs.",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -431,7 +454,9 @@ export function DesktopWorkspaceSection({
               className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
               onClick={() => void refreshDevDiagnostics()}
             >
-              Refresh Console Tail
+              {t("desktopworkspacesection.console.refreshTail", {
+                defaultValue: "Refresh Console Tail",
+              })}
             </Button>
             <Button
               variant="outline"
@@ -443,27 +468,67 @@ export function DesktopWorkspaceSection({
                 )
               }
             >
-              Copy Visible Console Tail
+              {t("desktopworkspacesection.console.copyTail", {
+                defaultValue: "Copy Visible Console Tail",
+              })}
             </Button>
           </div>
           <div className="flex flex-wrap gap-2 text-xs text-muted">
-            <span>Total: {devConsoleSummary.total}</span>
-            <span>Errors: {devConsoleSummary.errors}</span>
-            <span>Warnings: {devConsoleSummary.warnings}</span>
-            <span>RPC: {devConsoleSummary.rpc}</span>
-            <span>Fetch: {devConsoleSummary.fetch}</span>
-            <span>TalkMode: {devConsoleSummary.talkmode}</span>
+            <span>
+              {t("desktopworkspacesection.console.total", {
+                count: devConsoleSummary.total,
+                defaultValue: "Total: {{count}}",
+              })}
+            </span>
+            <span>
+              {t("desktopworkspacesection.console.errors", {
+                count: devConsoleSummary.errors,
+                defaultValue: "Errors: {{count}}",
+              })}
+            </span>
+            <span>
+              {t("desktopworkspacesection.console.warnings", {
+                count: devConsoleSummary.warnings,
+                defaultValue: "Warnings: {{count}}",
+              })}
+            </span>
+            <span>
+              {t("desktopworkspacesection.console.rpc", {
+                count: devConsoleSummary.rpc,
+                defaultValue: "RPC: {{count}}",
+              })}
+            </span>
+            <span>
+              {t("desktopworkspacesection.console.fetch", {
+                count: devConsoleSummary.fetch,
+                defaultValue: "Fetch: {{count}}",
+              })}
+            </span>
+            <span>
+              {t("desktopworkspacesection.console.talkmode", {
+                count: devConsoleSummary.talkmode,
+                defaultValue: "TalkMode: {{count}}",
+              })}
+            </span>
           </div>
           <Textarea
             value={devConsoleFilter}
             onChange={(event) => setDevConsoleFilter(event.target.value)}
-            placeholder="Filter console lines (e.g. rpc, fetch, talkmode, 404)"
+            placeholder={t(
+              "desktopworkspacesection.console.filterPlaceholder",
+              {
+                defaultValue:
+                  "Filter console lines (e.g. rpc, fetch, talkmode, 404)",
+              },
+            )}
             className="min-h-[4rem] text-xs"
           />
           <Textarea
             value={
               filteredDevConsoleText ||
-              "No console lines match the current filter."
+              t("desktopworkspacesection.console.noMatch", {
+                defaultValue: "No console lines match the current filter.",
+              })
             }
             readOnly
             className="min-h-[22rem] font-mono text-xs-tight leading-5"

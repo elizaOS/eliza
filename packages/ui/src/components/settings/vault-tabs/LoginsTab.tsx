@@ -8,6 +8,7 @@
 
 import { Bot, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useTranslation } from "../../../state/TranslationContext";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
@@ -46,6 +47,14 @@ function relativeAge(ms: number): string {
 }
 
 export function LoginsTab() {
+  const { t } = useTranslation();
+  const sourceLabel = useCallback(
+    (source: SavedLoginSource): string =>
+      source === "in-house"
+        ? t("logins.source.local", { defaultValue: "Local" })
+        : SOURCE_LABEL[source],
+    [t],
+  );
   const [logins, setLogins] = useState<SavedLogin[] | null>(null);
   const [failures, setFailures] = useState<SavedLoginsListFailure[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -114,11 +123,15 @@ export function LoginsTab() {
         setAutoallowMap({});
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "load failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("logins.error.loadFailed", { defaultValue: "load failed" }),
+      );
       setLogins([]);
       setFailures([]);
     }
-  }, [loadAutoallowFor]);
+  }, [loadAutoallowFor, t]);
 
   const onToggleAutoallow = useCallback(
     async (domain: string, next: boolean) => {
@@ -178,7 +191,11 @@ export function LoginsTab() {
     async (login: SavedLogin) => {
       if (login.source !== "in-house") return;
       const ok = window.confirm(
-        `Delete saved login for ${login.domain ?? "—"} (${login.username})?`,
+        t("logins.confirmDelete", {
+          domain: login.domain ?? "—",
+          username: login.username,
+          defaultValue: "Delete saved login for {{domain}} ({{username}})?",
+        }),
       );
       if (!ok) return;
       setError(null);
@@ -193,7 +210,7 @@ export function LoginsTab() {
       }
       await load();
     },
-    [load],
+    [load, t],
   );
 
   const filtered = (logins ?? []).filter((l) => {
@@ -210,9 +227,14 @@ export function LoginsTab() {
     <section data-testid="saved-logins-panel" className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">Saved logins</p>
+          <p className="text-sm font-medium text-txt">
+            {t("logins.title", { defaultValue: "Saved logins" })}
+          </p>
           <p className="text-2xs text-muted">
-            Browser autofill from local vault, 1Password, and Bitwarden.
+            {t("logins.description", {
+              defaultValue:
+                "Browser autofill from local vault, 1Password, and Bitwarden.",
+            })}
           </p>
         </div>
         <Button
@@ -222,7 +244,7 @@ export function LoginsTab() {
           onClick={() => setShowAdd((v) => !v)}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          Add login
+          {t("logins.addLogin", { defaultValue: "Add login" })}
         </Button>
       </div>
 
@@ -246,7 +268,11 @@ export function LoginsTab() {
               key={f.source}
               className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-1.5 text-2xs text-warn"
             >
-              {SOURCE_LABEL[f.source]} failed to load: {f.message}
+              {t("logins.sourceLoadFailed", {
+                source: sourceLabel(f.source),
+                message: f.message,
+                defaultValue: "{{source}} failed to load: {{message}}",
+              })}
             </div>
           ))}
         </div>
@@ -259,12 +285,16 @@ export function LoginsTab() {
           data-testid="saved-logins-add-form"
         >
           <p className="text-2xs text-muted">
-            Saved to local (encrypted) vault. To add to 1Password or Bitwarden,
-            use that app directly.
+            {t("logins.addForm.help", {
+              defaultValue:
+                "Saved to local (encrypted) vault. To add to 1Password or Bitwarden, use that app directly.",
+            })}
           </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
-              <Label className="text-2xs text-muted">Domain</Label>
+              <Label className="text-2xs text-muted">
+                {t("logins.addForm.domain", { defaultValue: "Domain" })}
+              </Label>
               <Input
                 value={addDomain}
                 onChange={(e) => setAddDomain(e.target.value)}
@@ -275,7 +305,11 @@ export function LoginsTab() {
               />
             </div>
             <div>
-              <Label className="text-2xs text-muted">Username / email</Label>
+              <Label className="text-2xs text-muted">
+                {t("logins.addForm.username", {
+                  defaultValue: "Username / email",
+                })}
+              </Label>
               <Input
                 value={addUsername}
                 onChange={(e) => setAddUsername(e.target.value)}
@@ -287,7 +321,9 @@ export function LoginsTab() {
             </div>
           </div>
           <div>
-            <Label className="text-2xs text-muted">Password</Label>
+            <Label className="text-2xs text-muted">
+              {t("logins.addForm.password", { defaultValue: "Password" })}
+            </Label>
             <Input
               type="password"
               value={addPassword}
@@ -306,7 +342,7 @@ export function LoginsTab() {
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
-              Cancel
+              {t("logins.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               type="submit"
@@ -320,10 +356,10 @@ export function LoginsTab() {
               {submitting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  Saving…
+                  {t("logins.saving", { defaultValue: "Saving…" })}
                 </>
               ) : (
-                "Save"
+                t("logins.save", { defaultValue: "Save" })
               )}
             </Button>
           </div>
@@ -334,7 +370,9 @@ export function LoginsTab() {
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter by title, user, or domain"
+          placeholder={t("logins.filterPlaceholder", {
+            defaultValue: "Filter by title, user, or domain",
+          })}
           className="h-8 text-xs"
           autoComplete="off"
           data-testid="saved-logins-filter"
@@ -343,22 +381,28 @@ export function LoginsTab() {
 
       {logins === null ? (
         <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading…
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />{" "}
+          {t("logins.loading", { defaultValue: "Loading…" })}
         </div>
       ) : logins.length === 0 ? (
         <div
           data-testid="saved-logins-empty"
           className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
-          No saved logins yet. Add one here, or sign in to 1Password / Bitwarden
-          on the Overview tab to surface their entries.
+          {t("logins.empty", {
+            defaultValue:
+              "No saved logins yet. Add one here, or sign in to 1Password / Bitwarden on the Overview tab to surface their entries.",
+          })}
         </div>
       ) : filtered.length === 0 ? (
         <div
           data-testid="saved-logins-no-match"
           className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
-          No logins match "{filter}".
+          {t("logins.noMatch", {
+            filter,
+            defaultValue: 'No logins match "{{filter}}".',
+          })}
         </div>
       ) : (
         <ul
@@ -373,7 +417,7 @@ export function LoginsTab() {
               <span
                 className={`shrink-0 rounded-full border px-1.5 py-0.5 text-2xs font-medium ${SOURCE_PILL_CLASS[login.source]}`}
               >
-                {SOURCE_LABEL[login.source]}
+                {sourceLabel(login.source)}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-txt">
@@ -400,7 +444,10 @@ export function LoginsTab() {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
-                  aria-label={`Delete saved login for ${login.domain ?? login.username}`}
+                  aria-label={t("logins.deleteLabel", {
+                    target: login.domain ?? login.username,
+                    defaultValue: "Delete saved login for {{target}}",
+                  })}
                   onClick={() => void onDelete(login)}
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -425,9 +472,16 @@ function AgentAutoallowToggle({
   allowed: boolean;
   onChange: (next: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const label = allowed
-    ? `Agent autofill enabled for ${domain}. Click to disable.`
-    : `Allow the agent to autofill ${domain} without prompting.`;
+    ? t("logins.autoallow.enabled", {
+        domain,
+        defaultValue: "Agent autofill enabled for {{domain}}. Click to disable.",
+      })
+    : t("logins.autoallow.disabled", {
+        domain,
+        defaultValue: "Allow the agent to autofill {{domain}} without prompting.",
+      });
   return (
     <Button
       variant="ghost"
@@ -447,21 +501,26 @@ function AgentAutoallowToggle({
 }
 
 function ExternalRowAction({ login }: { login: SavedLogin }) {
+  const { t } = useTranslation();
   const href =
     login.source === "1password"
       ? `https://my.1password.com/vaults/all/allitems/${encodeURIComponent(login.identifier)}`
       : "https://vault.bitwarden.com/";
+  const viewLabel = t("logins.viewIn", {
+    source: SOURCE_LABEL[login.source],
+    defaultValue: "View in {{source}}",
+  });
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex h-7 shrink-0 items-center gap-1 rounded-sm border border-border/40 px-2 text-2xs text-muted hover:text-txt"
-      aria-label={`View in ${SOURCE_LABEL[login.source]}`}
-      title={`View in ${SOURCE_LABEL[login.source]}`}
+      aria-label={viewLabel}
+      title={viewLabel}
     >
       <ExternalLink className="h-3 w-3" aria-hidden />
-      View
+      {t("logins.view", { defaultValue: "View" })}
     </a>
   );
 }

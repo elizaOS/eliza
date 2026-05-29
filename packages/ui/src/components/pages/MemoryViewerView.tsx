@@ -24,6 +24,10 @@ import type {
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import {
+  type TranslationContextValue,
+  useTranslation,
+} from "../../state/TranslationContext";
 import { formatDateTime } from "../../utils/format";
 import { PagePanel } from "../composites/page-panel";
 import { MetaPill } from "../composites/page-panel/page-panel-header";
@@ -37,11 +41,13 @@ import { SegmentedControl } from "../ui/segmented-control";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-const TYPE_LABELS: Record<string, string> = {
-  messages: "Messages",
-  memories: "Memories",
-  facts: "Facts",
-  documents: "Documents",
+type TranslateFn = TranslationContextValue["t"];
+
+const TYPE_LABELS: Record<string, { key: string; defaultLabel: string }> = {
+  messages: { key: "memoryviewer.type.messages", defaultLabel: "Messages" },
+  memories: { key: "memoryviewer.type.memories", defaultLabel: "Memories" },
+  facts: { key: "memoryviewer.type.facts", defaultLabel: "Facts" },
+  documents: { key: "memoryviewer.type.documents", defaultLabel: "Documents" },
 };
 
 // Memory type color tokens are defined as CSS custom properties in
@@ -65,15 +71,28 @@ function memoryTypeKey(type: string): MemoryTypeKey {
 
 type ViewMode = "feed" | "browse";
 
-const VIEW_MODE_ITEMS = [
-  { value: "feed" as const, label: "Feed", testId: "memory-view-feed" },
-  { value: "browse" as const, label: "Browse", testId: "memory-view-browse" },
-];
-
 const MEMORY_FEED_EMPTY_FEATURES = [
-  { id: "chat", label: "Chat", icon: MessageSquareText, tone: "text-info" },
-  { id: "facts", label: "Facts", icon: Sparkles, tone: "text-warning" },
-  { id: "docs", label: "Docs", icon: FileText, tone: "text-ok" },
+  {
+    id: "chat",
+    labelKey: "memoryviewer.empty.chat",
+    defaultLabel: "Chat",
+    icon: MessageSquareText,
+    tone: "text-info",
+  },
+  {
+    id: "facts",
+    labelKey: "memoryviewer.empty.facts",
+    defaultLabel: "Facts",
+    icon: Sparkles,
+    tone: "text-warning",
+  },
+  {
+    id: "docs",
+    labelKey: "memoryviewer.empty.docs",
+    defaultLabel: "Docs",
+    icon: FileText,
+    tone: "text-ok",
+  },
 ] as const;
 
 const FEED_PAGE_SIZE = 50;
@@ -83,8 +102,9 @@ const BROWSE_PAGE_SIZE = 50;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function typeLabel(type: string): string {
-  return TYPE_LABELS[type] ?? type;
+function typeLabel(type: string, t: TranslateFn): string {
+  const entry = TYPE_LABELS[type];
+  return entry ? t(entry.key, { defaultValue: entry.defaultLabel }) : type;
 }
 
 function truncateText(text: string, max = 200): string {
@@ -92,14 +112,28 @@ function truncateText(text: string, max = 200): string {
   return `${text.slice(0, max)}…`;
 }
 
-function formatRelativeTime(timestamp: number): string {
+function formatRelativeTime(timestamp: number, t: TranslateFn): string {
   const diff = Date.now() - timestamp;
-  if (diff < 0) return formatDateTime(timestamp, { fallback: "unknown" });
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-  return formatDateTime(timestamp, { fallback: "unknown" });
+  const unknown = t("memoryviewer.unknown", { defaultValue: "unknown" });
+  if (diff < 0) return formatDateTime(timestamp, { fallback: unknown });
+  if (diff < 60_000)
+    return t("memoryviewer.justNow", { defaultValue: "just now" });
+  if (diff < 3_600_000)
+    return t("memoryviewer.minutesAgo", {
+      minutes: Math.floor(diff / 60_000),
+      defaultValue: "{{minutes}}m ago",
+    });
+  if (diff < 86_400_000)
+    return t("memoryviewer.hoursAgo", {
+      hours: Math.floor(diff / 3_600_000),
+      defaultValue: "{{hours}}h ago",
+    });
+  if (diff < 604_800_000)
+    return t("memoryviewer.daysAgo", {
+      days: Math.floor(diff / 86_400_000),
+      defaultValue: "{{days}}d ago",
+    });
+  return formatDateTime(timestamp, { fallback: unknown });
 }
 
 // ── Memory Card ──────────────────────────────────────────────────────────
@@ -113,8 +147,10 @@ function MemoryCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   const typeKey = memoryTypeKey(memory.type);
-  const text = memory.text || "(empty)";
+  const text =
+    memory.text || t("memoryviewer.empty.value", { defaultValue: "(empty)" });
 
   return (
     <button
@@ -127,7 +163,7 @@ function MemoryCard({
         <span
           className={`memory-type-badge-${typeKey} inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em]`}
         >
-          {typeLabel(memory.type)}
+          {typeLabel(memory.type, t)}
         </span>
         {memory.source ? (
           <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
@@ -135,7 +171,7 @@ function MemoryCard({
           </span>
         ) : null}
         <span className="ml-auto text-xs-tight text-muted">
-          {formatRelativeTime(memory.createdAt)}
+          {formatRelativeTime(memory.createdAt, t)}
         </span>
       </div>
       <div className="mt-2 text-sm leading-6 text-txt">
@@ -146,7 +182,7 @@ function MemoryCard({
           {memory.entityId ? (
             <div className="text-xs-tight text-muted">
               <span className="font-semibold uppercase tracking-[0.12em]">
-                Entity
+                {t("memoryviewer.field.entity", { defaultValue: "Entity" })}
               </span>{" "}
               <span className="font-mono text-2xs">{memory.entityId}</span>
             </div>
@@ -154,20 +190,22 @@ function MemoryCard({
           {memory.roomId ? (
             <div className="text-xs-tight text-muted">
               <span className="font-semibold uppercase tracking-[0.12em]">
-                Room
+                {t("memoryviewer.field.room", { defaultValue: "Room" })}
               </span>{" "}
               <span className="font-mono text-2xs">{memory.roomId}</span>
             </div>
           ) : null}
           <div className="text-xs-tight text-muted">
             <span className="font-semibold uppercase tracking-[0.12em]">
-              Created
+              {t("memoryviewer.field.created", { defaultValue: "Created" })}
             </span>{" "}
-            {formatDateTime(memory.createdAt, { fallback: "unknown" })}
+            {formatDateTime(memory.createdAt, {
+              fallback: t("memoryviewer.unknown", { defaultValue: "unknown" }),
+            })}
           </div>
           <div className="text-xs-tight text-muted">
             <span className="font-semibold uppercase tracking-[0.12em]">
-              ID
+              {t("memoryviewer.field.id", { defaultValue: "ID" })}
             </span>{" "}
             <span className="font-mono text-2xs">{memory.id}</span>
           </div>
@@ -180,6 +218,7 @@ function MemoryCard({
 // ── Memory Feed ──────────────────────────────────────────────────────────
 
 function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [feed, setFeed] = useState<MemoryBrowseItem[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -213,14 +252,18 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
         setHasMore(result.hasMore);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to load memory feed.",
+          err instanceof Error
+            ? err.message
+            : t("memoryviewer.error.feed", {
+                defaultValue: "Failed to load memory feed.",
+              }),
         );
       } finally {
         setLoading(false);
         loadingMore.current = false;
       }
     },
-    [typeFilter],
+    [typeFilter, t],
   );
 
   useEffect(() => {
@@ -233,7 +276,13 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
   };
 
   if (loading && feed.length === 0) {
-    return <PagePanel.Loading heading="Loading memory feed…" />;
+    return (
+      <PagePanel.Loading
+        heading={t("memoryviewer.loadingFeed", {
+          defaultValue: "Loading memory feed…",
+        })}
+      />
+    );
   }
 
   if (error) {
@@ -248,10 +297,15 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
     return (
       <PagePanel.FeatureEmpty
         className="min-h-[24rem]"
-        features={MEMORY_FEED_EMPTY_FEATURES}
+        features={MEMORY_FEED_EMPTY_FEATURES.map((feature) => ({
+          ...feature,
+          label: t(feature.labelKey, { defaultValue: feature.defaultLabel }),
+        }))}
         icon={Brain}
         iconTone="border-accent/25 bg-accent/12 text-accent"
-        title="No memories yet"
+        title={t("memoryviewer.noMemoriesYet", {
+          defaultValue: "No memories yet",
+        })}
       />
     );
   }
@@ -260,8 +314,11 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
     <div className="space-y-3" data-testid="memory-feed">
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-          Recent activity ({feed.length}
-          {hasMore ? "+" : ""})
+          {t("memoryviewer.recentActivity", {
+            count: feed.length,
+            more: hasMore ? "+" : "",
+            defaultValue: "Recent activity ({{count}}{{more}})",
+          })}
         </div>
         <Button
           type="button"
@@ -269,7 +326,9 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           variant="ghost"
           className="h-7 w-7 p-0"
           onClick={() => void loadFeed()}
-          aria-label="Refresh feed"
+          aria-label={t("memoryviewer.refreshFeed", {
+            defaultValue: "Refresh feed",
+          })}
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -292,7 +351,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           className="w-full"
           onClick={loadMore}
         >
-          Load older
+          {t("memoryviewer.loadOlder", { defaultValue: "Load older" })}
         </Button>
       ) : null}
     </div>
@@ -310,6 +369,7 @@ function MemoryBrowserPanel({
   entityId: string | null;
   entityIds: string[] | null;
 }) {
+  const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState("");
   const deferredSearch = useDeferredValue(searchInput);
   const [loading, setLoading] = useState(true);
@@ -339,13 +399,17 @@ function MemoryBrowserPanel({
         setResult(resp);
       } catch (err) {
         setError(
-          err instanceof Error ? err.message : "Failed to load memories.",
+          err instanceof Error
+            ? err.message
+            : t("memoryviewer.error.memories", {
+                defaultValue: "Failed to load memories.",
+              }),
         );
       } finally {
         setLoading(false);
       }
     },
-    [typeFilter, entityId, entityIds, deferredSearch],
+    [typeFilter, entityId, entityIds, deferredSearch, t],
   );
 
   useEffect(() => {
@@ -371,7 +435,9 @@ function MemoryBrowserPanel({
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search memory text…"
+            placeholder={t("memoryviewer.searchMemoryText", {
+              defaultValue: "Search memory text…",
+            })}
             className="h-9 w-full rounded-sm border border-border/32 bg-card/40 pl-9 pr-3 text-sm text-txt placeholder:text-muted/50 focus:border-accent/50 focus:outline-none"
             data-testid="memory-browser-search"
           />
@@ -379,7 +445,11 @@ function MemoryBrowserPanel({
       ) : null}
 
       {loading && !result ? (
-        <PagePanel.Loading heading="Loading memories…" />
+        <PagePanel.Loading
+          heading={t("memoryviewer.loadingMemories", {
+            defaultValue: "Loading memories…",
+          })}
+        />
       ) : error ? (
         <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
@@ -388,7 +458,9 @@ function MemoryBrowserPanel({
         <PagePanel.FeatureEmpty
           icon={Search}
           iconTone="border-border/30 bg-bg-hover text-muted"
-          title="No memories found"
+          title={t("memoryviewer.noMemoriesFound", {
+            defaultValue: "No memories found",
+          })}
         >
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             {TYPE_KEYS.slice(0, 4).map((type) => (
@@ -396,7 +468,7 @@ function MemoryBrowserPanel({
                 key={type}
                 className={`memory-type-badge-${type} rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.12em]`}
               >
-                {typeLabel(type)}
+                {typeLabel(type, t)}
               </span>
             ))}
           </div>
@@ -405,7 +477,12 @@ function MemoryBrowserPanel({
         <>
           <div className="flex items-center justify-between gap-3 text-xs-tight text-muted">
             <span>
-              {offset + 1}–{offset + result.memories.length} of {result.total}
+              {t("memoryviewer.pageRange", {
+                start: offset + 1,
+                end: offset + result.memories.length,
+                total: result.total,
+                defaultValue: "{{start}}–{{end}} of {{total}}",
+              })}
             </span>
             <div className="flex gap-2">
               <Button
@@ -415,7 +492,7 @@ function MemoryBrowserPanel({
                 disabled={offset === 0}
                 onClick={() => handlePage("prev")}
               >
-                Prev
+                {t("memoryviewer.prev", { defaultValue: "Prev" })}
               </Button>
               <Button
                 type="button"
@@ -424,7 +501,7 @@ function MemoryBrowserPanel({
                 disabled={offset + BROWSE_PAGE_SIZE >= result.total}
                 onClick={() => handlePage("next")}
               >
-                Next
+                {t("memoryviewer.next", { defaultValue: "Next" })}
               </Button>
             </div>
           </div>
@@ -507,6 +584,19 @@ export function MemoryViewerView({
     setSelectedPersonId(null);
   };
 
+  const viewModeItems = [
+    {
+      value: "feed" as const,
+      label: t("memoryviewer.feed", { defaultValue: "Feed" }),
+      testId: "memory-view-feed",
+    },
+    {
+      value: "browse" as const,
+      label: t("memoryviewer.browse", { defaultValue: "Browse" }),
+      testId: "memory-view-browse",
+    },
+  ];
+
   const sidebar = (
     <AppPageSidebar
       testId="memory-viewer-sidebar"
@@ -520,7 +610,9 @@ export function MemoryViewerView({
           placeholder: t("memoryviewer.SearchPeople", {
             defaultValue: "Search people…",
           }),
-          "aria-label": "Search people",
+          "aria-label": t("memoryviewer.SearchPeople", {
+            defaultValue: "Search people…",
+          }),
           onClear: () => setSearch(""),
         }}
       />
@@ -532,7 +624,7 @@ export function MemoryViewerView({
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-sm border border-border/24 bg-card/35 px-2.5 py-2">
                   <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                    Total
+                    {t("memoryviewer.total", { defaultValue: "Total" })}
                   </div>
                   <div className="mt-1 text-sm font-semibold text-txt">
                     {stats.total}
@@ -544,7 +636,7 @@ export function MemoryViewerView({
                     className="rounded-sm border border-border/24 bg-card/35 px-2.5 py-2"
                   >
                     <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                      {typeLabel(type)}
+                      {typeLabel(type, t)}
                     </div>
                     <div className="mt-1 text-sm font-semibold text-txt">
                       {count}
@@ -555,7 +647,9 @@ export function MemoryViewerView({
 
               <div>
                 <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-                  Filter by type
+                  {t("memoryviewer.filterByType", {
+                    defaultValue: "Filter by type",
+                  })}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Button
@@ -569,7 +663,7 @@ export function MemoryViewerView({
                     }`}
                     onClick={() => setTypeFilter(null)}
                   >
-                    All
+                    {t("memoryviewer.all", { defaultValue: "All" })}
                   </Button>
                   {Object.keys(stats.byType).map((type) => {
                     const typeKey = memoryTypeKey(type);
@@ -588,7 +682,7 @@ export function MemoryViewerView({
                         <span
                           className={`memory-type-dot-${typeKey} mr-1.5 inline-block h-2 w-2 rounded-full`}
                         />
-                        {typeLabel(type)}
+                        {typeLabel(type, t)}
                       </Button>
                     );
                   })}
@@ -597,16 +691,22 @@ export function MemoryViewerView({
             </>
           ) : statsError ? (
             <div className="text-xs text-muted">
-              Could not load memory stats.
+              {t("memoryviewer.statsError", {
+                defaultValue: "Could not load memory stats.",
+              })}
             </div>
           ) : (
-            <div className="text-xs text-muted">Loading stats…</div>
+            <div className="text-xs text-muted">
+              {t("memoryviewer.loadingStats", {
+                defaultValue: "Loading stats…",
+              })}
+            </div>
           )}
         </PagePanel.SummaryCard>
 
         {/* People list */}
         <SidebarContent.SectionLabel className="mt-3">
-          People
+          {t("memoryviewer.people", { defaultValue: "People" })}
         </SidebarContent.SectionLabel>
 
         {selectedPersonId ? (
@@ -618,7 +718,7 @@ export function MemoryViewerView({
               className="flex-1 text-xs-tight"
               onClick={handleClearPerson}
             >
-              Show all
+              {t("memoryviewer.showAll", { defaultValue: "Show all" })}
             </Button>
             <Button
               type="button"
@@ -627,7 +727,9 @@ export function MemoryViewerView({
               className="flex-1 text-xs-tight"
               onClick={() => setTab("relationships")}
             >
-              Relationships
+              {t("memoryviewer.relationships", {
+                defaultValue: "Relationships",
+              })}
             </Button>
           </div>
         ) : null}
@@ -635,10 +737,16 @@ export function MemoryViewerView({
         <SidebarScrollRegion className="mt-2">
           <div className="space-y-1.5">
             {peopleLoading ? (
-              <div className="px-2 text-xs text-muted">Loading…</div>
+              <div className="px-2 text-xs text-muted">
+                {t("memoryviewer.loading", { defaultValue: "Loading…" })}
+              </div>
             ) : filteredPeople.length === 0 ? (
               <div className="px-2 text-xs text-muted">
-                {deferredSearch ? "No match." : "No people yet."}
+                {deferredSearch
+                  ? t("memoryviewer.noMatch", { defaultValue: "No match." })
+                  : t("memoryviewer.noPeopleYet", {
+                      defaultValue: "No people yet.",
+                    })}
               </div>
             ) : (
               filteredPeople.map((person) => {
@@ -658,7 +766,10 @@ export function MemoryViewerView({
                         {person.displayName}
                       </SidebarContent.ItemTitle>
                       <SidebarContent.ItemDescription>
-                        {person.platforms.join(" · ") || "No platforms"}
+                        {person.platforms.join(" · ") ||
+                          t("memoryviewer.noPlatforms", {
+                            defaultValue: "No platforms",
+                          })}
                       </SidebarContent.ItemDescription>
                     </span>
                     <MetaPill compact>{person.factCount}</MetaPill>
@@ -684,12 +795,12 @@ export function MemoryViewerView({
           <SegmentedControl
             value={viewMode}
             onValueChange={(v) => setViewMode(v as ViewMode)}
-            items={VIEW_MODE_ITEMS}
+            items={viewModeItems}
             buttonClassName="min-h-8 px-4 py-2"
           />
           {selectedPerson ? (
             <div className="flex items-center gap-2 text-sm text-muted">
-              Filtered to
+              {t("memoryviewer.filteredTo", { defaultValue: "Filtered to" })}
               <MetaPill compact>{selectedPerson.displayName}</MetaPill>
               <Button
                 type="button"
@@ -698,7 +809,7 @@ export function MemoryViewerView({
                 className="h-6 px-2 text-xs-tight"
                 onClick={handleClearPerson}
               >
-                Clear
+                {t("memoryviewer.clear", { defaultValue: "Clear" })}
               </Button>
             </div>
           ) : null}

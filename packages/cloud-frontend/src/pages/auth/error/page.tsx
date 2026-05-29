@@ -3,8 +3,10 @@ import { AlertCircle, Home, RefreshCw } from "lucide-react";
 import { Suspense } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 function AuthErrorContent() {
+  const t = useT();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const reason = searchParams.get("reason") || "unknown";
@@ -12,19 +14,31 @@ function AuthErrorContent() {
   const errorMessages: Record<string, { title: string; description: string }> =
     {
       auth_failed: {
-        title: "Authentication Failed",
-        description:
-          "We could not authenticate your account. Please try signing in again.",
+        title: t("cloud.authError.authFailedTitle", {
+          defaultValue: "Authentication Failed",
+        }),
+        description: t("cloud.authError.authFailedDescription", {
+          defaultValue:
+            "We could not authenticate your account. Please try signing in again.",
+        }),
       },
       sync_failed: {
-        title: "Authentication Sync Failed",
-        description:
-          "We could not sync your account information. Please try signing in again.",
+        title: t("cloud.authError.syncFailedTitle", {
+          defaultValue: "Authentication Sync Failed",
+        }),
+        description: t("cloud.authError.syncFailedDescription", {
+          defaultValue:
+            "We could not sync your account information. Please try signing in again.",
+        }),
       },
       unknown: {
-        title: "Authentication Error",
-        description:
-          "An unexpected error occurred during authentication. Please try again.",
+        title: t("cloud.authError.unknownTitle", {
+          defaultValue: "Authentication Error",
+        }),
+        description: t("cloud.authError.unknownDescription", {
+          defaultValue:
+            "An unexpected error occurred during authentication. Please try again.",
+        }),
       },
     };
 
@@ -53,7 +67,7 @@ function AuthErrorContent() {
               className="w-full h-11  bg-[#FF5800] hover:bg-black hover:text-white text-white"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
+              {t("cloud.authError.tryAgain", { defaultValue: "Try Again" })}
             </Button>
             <Button
               variant="outline"
@@ -62,13 +76,15 @@ function AuthErrorContent() {
             >
               <Link to="/">
                 <Home className="h-4 w-4 mr-2" />
-                Go Home
+                {t("cloud.authError.goHome", { defaultValue: "Go Home" })}
               </Link>
             </Button>
           </div>
 
           <p className="text-xs text-neutral-600">
-            If this problem persists, please contact support.
+            {t("cloud.authError.contactSupport", {
+              defaultValue: "If this problem persists, please contact support.",
+            })}
           </p>
         </div>
       </div>
@@ -81,10 +97,15 @@ function AuthErrorContent() {
  * Supports retry functionality and displays appropriate error details.
  */
 export default function AuthErrorPage() {
+  const t = useT();
   return (
     <>
       <Helmet>
-        <title>Authentication Error | Eliza Cloud</title>
+        <title>
+          {t("cloud.authError.metaTitle", {
+            defaultValue: "Authentication Error | Eliza Cloud",
+          })}
+        </title>
       </Helmet>
       <Suspense
         fallback={
@@ -97,10 +118,14 @@ export default function AuthErrorPage() {
                 </div>
                 <div className="space-y-1">
                   <h2 className="text-xl font-semibold text-white">
-                    Authentication Error
+                    {t("cloud.authError.unknownTitle", {
+                      defaultValue: "Authentication Error",
+                    })}
                   </h2>
                   <p className="text-sm text-neutral-500">
-                    Loading error details...
+                    {t("cloud.authError.loadingDetails", {
+                      defaultValue: "Loading error details...",
+                    })}
                   </p>
                 </div>
               </div>

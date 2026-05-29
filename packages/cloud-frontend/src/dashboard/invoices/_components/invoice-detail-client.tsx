@@ -11,6 +11,7 @@
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import type { InvoiceDto } from "@/types/cloud-api";
 
 interface InvoiceDetailClientProps {
@@ -18,6 +19,7 @@ interface InvoiceDetailClientProps {
 }
 
 export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
+  const t = useT();
   const navigate = useNavigate();
 
   const formattedDate = new Date(invoice.created_at).toLocaleDateString(
@@ -61,7 +63,11 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           <div className="flex items-center justify-center w-8 h-8 rounded-sm bg-black/40 group-hover:bg-white/10 transition-all duration-200">
             <ArrowLeft className="h-4 w-4" />
           </div>
-          <span className="font-medium">Back to Billing</span>
+          <span className="font-medium">
+            {t("cloud.invoiceDetail.backToBilling", {
+              defaultValue: "Back to Billing",
+            })}
+          </span>
         </button>
       </div>
 
@@ -74,7 +80,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             <div className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
               <h1 className="text-2xl font-mono text-[#e1e1e1] uppercase">
-                Invoice Details
+                {t("cloud.invoiceDetail.title", {
+                  defaultValue: "Invoice Details",
+                })}
               </h1>
             </div>
             <div className="flex items-center gap-3">
@@ -88,7 +96,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   className="flex items-center gap-2 text-base font-mono text-white underline hover:text-white/80 transition-colors"
                 >
                   <Download className="h-4 w-4" />
-                  Download PDF
+                  {t("cloud.invoiceDetail.downloadPdf", {
+                    defaultValue: "Download PDF",
+                  })}
                 </button>
               )}
               {invoice.hosted_invoice_url && (
@@ -101,7 +111,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   className="flex items-center gap-2 text-base font-mono text-white underline hover:text-white/80 transition-colors"
                 >
                   <ExternalLink className="h-4 w-4" />
-                  View in Stripe
+                  {t("cloud.invoiceDetail.viewInStripe", {
+                    defaultValue: "View in Stripe",
+                  })}
                 </button>
               )}
             </div>
@@ -110,7 +122,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           <div className="grid grid-cols-3 gap-6">
             <div className="space-y-2">
               <p className="text-sm font-mono text-white/60 uppercase">
-                Invoice Number
+                {t("cloud.invoiceDetail.invoiceNumber", {
+                  defaultValue: "Invoice Number",
+                })}
               </p>
               <p className="text-base font-mono text-white">
                 {invoice.invoice_number ||
@@ -118,12 +132,14 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">Date</p>
+              <p className="text-sm font-mono text-white/60 uppercase">
+                {t("cloud.invoiceDetail.date", { defaultValue: "Date" })}
+              </p>
               <p className="text-base font-mono text-white">{formattedDate}</p>
             </div>
             <div className="space-y-2">
               <p className="text-sm font-mono text-white/60 uppercase">
-                Status
+                {t("cloud.invoiceDetail.status", { defaultValue: "Status" })}
               </p>
               <p className={`text-base font-mono uppercase ${statusColor}`}>
                 {invoice.status}
@@ -141,7 +157,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
             <h2 className="text-base font-mono text-[#e1e1e1] uppercase">
-              Transaction Summary
+              {t("cloud.invoiceDetail.transactionSummary", {
+                defaultValue: "Transaction Summary",
+              })}
             </h2>
           </div>
 
@@ -149,12 +167,14 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             <div className="flex w-full">
               <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface flex-1 p-4">
                 <p className="text-sm font-mono text-white/60 uppercase">
-                  Description
+                  {t("cloud.invoiceDetail.description", {
+                    defaultValue: "Description",
+                  })}
                 </p>
               </div>
               <div className="bg-[rgba(10,10,10,0.75)] border-t border-r border-b border-brand-surface flex-1 p-4">
                 <p className="text-sm font-mono text-white/60 uppercase">
-                  Amount
+                  {t("cloud.invoiceDetail.amount", { defaultValue: "Amount" })}
                 </p>
               </div>
             </div>
@@ -163,10 +183,16 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
               <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
                 <p className="text-base font-mono text-white">
                   {invoice.invoice_type === "one_time_purchase"
-                    ? "One-Time Credit Purchase"
+                    ? t("cloud.invoiceDetail.oneTimeCreditPurchase", {
+                        defaultValue: "One-Time Credit Purchase",
+                      })
                     : invoice.invoice_type === "auto_top_up"
-                      ? "Auto Top-Up"
-                      : "Credit Purchase"}
+                      ? t("cloud.invoiceDetail.autoTopUp", {
+                          defaultValue: "Auto Top-Up",
+                        })
+                      : t("cloud.invoiceDetail.creditPurchase", {
+                          defaultValue: "Credit Purchase",
+                        })}
                 </p>
               </div>
               <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
@@ -180,7 +206,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
               <div className="flex w-full">
                 <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
                   <p className="text-base font-mono text-white">
-                    Credits Added
+                    {t("cloud.invoiceDetail.creditsAdded", {
+                      defaultValue: "Credits Added",
+                    })}
                   </p>
                 </div>
                 <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
@@ -194,7 +222,11 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             {paidDate && (
               <div className="flex w-full">
                 <div className="bg-[rgba(10,10,10,0.75)] border-l border-r border-b border-brand-surface flex-1 p-4">
-                  <p className="text-base font-mono text-white">Payment Date</p>
+                  <p className="text-base font-mono text-white">
+                    {t("cloud.invoiceDetail.paymentDate", {
+                      defaultValue: "Payment Date",
+                    })}
+                  </p>
                 </div>
                 <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
                   <p className="text-base font-mono text-white">{paidDate}</p>
@@ -213,14 +245,18 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
             <h2 className="text-base font-mono text-[#e1e1e1] uppercase">
-              Payment Information
+              {t("cloud.invoiceDetail.paymentInformation", {
+                defaultValue: "Payment Information",
+              })}
             </h2>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-2">
               <p className="text-sm font-mono text-white/60 uppercase">
-                Amount Due
+                {t("cloud.invoiceDetail.amountDue", {
+                  defaultValue: "Amount Due",
+                })}
               </p>
               <p className="text-base font-mono text-white">
                 ${Number(invoice.amount_due).toFixed(2)}
@@ -228,7 +264,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
             <div className="space-y-2">
               <p className="text-sm font-mono text-white/60 uppercase">
-                Amount Paid
+                {t("cloud.invoiceDetail.amountPaid", {
+                  defaultValue: "Amount Paid",
+                })}
               </p>
               <p className="text-base font-mono text-[var(--brand-orange)]">
                 ${Number(invoice.amount_paid).toFixed(2)}
@@ -236,19 +274,27 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             </div>
             <div className="space-y-2">
               <p className="text-sm font-mono text-white/60 uppercase">
-                Currency
+                {t("cloud.invoiceDetail.currency", {
+                  defaultValue: "Currency",
+                })}
               </p>
               <p className="text-base font-mono text-white uppercase">
                 {invoice.currency}
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm font-mono text-white/60 uppercase">Type</p>
+              <p className="text-sm font-mono text-white/60 uppercase">
+                {t("cloud.invoiceDetail.type", { defaultValue: "Type" })}
+              </p>
               <p className="text-base font-mono text-white">
                 {invoice.invoice_type === "one_time_purchase"
-                  ? "One-Time Purchase"
+                  ? t("cloud.invoiceDetail.oneTimePurchase", {
+                      defaultValue: "One-Time Purchase",
+                    })
                   : invoice.invoice_type === "auto_top_up"
-                    ? "Auto Top-Up"
+                    ? t("cloud.invoiceDetail.autoTopUp", {
+                        defaultValue: "Auto Top-Up",
+                      })
                     : invoice.invoice_type}
               </p>
             </div>
@@ -258,7 +304,9 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
             <div className="border-t border-brand-surface pt-4">
               <div className="space-y-2">
                 <p className="text-sm font-mono text-white/60 uppercase">
-                  Payment Intent ID
+                  {t("cloud.invoiceDetail.paymentIntentId", {
+                    defaultValue: "Payment Intent ID",
+                  })}
                 </p>
                 <p className="text-xs font-mono text-white/40 break-all">
                   {invoice.stripe_payment_intent_id}

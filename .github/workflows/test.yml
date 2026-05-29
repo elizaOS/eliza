@@ -43,19 +43,8 @@ env:
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
   NODE_OPTIONS: "--max-old-space-size=8192"
-  # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly
-  # with a yellow warning when a key is missing — the workflow stays green.
-  # Cerebras is the universal default LLM (gpt-oss-120b); the OPENAI_* aliases
-  # are auto-applied by packages/scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
-  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-  NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-  ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+  # Baseline PR jobs are secret-free. Dedicated live jobs inject provider keys
+  # locally and remain opt-in/scheduled where external services are involved.
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -251,6 +240,109 @@ jobs:
       - name: Run Electrobun contract tests
         working-directory: packages/app-core/platforms/electrobun
         run: bun run test
+
+  zero-key-e2e:
+    name: Zero-Key Deterministic E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TEST_LANE: "pr"
+      ELIZA_LIVE_TEST: "0"
+      SCENARIO_USE_LLM_PROXY: "1"
+      CEREBRAS_API_KEY: ""
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      GROQ_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+      XAI_API_KEY: ""
+      NVIDIA_API_KEY: ""
+      ELIZAOS_CLOUD_API_KEY: ""
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Scenario runner unit coverage
+        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
+
+      - name: Deterministic LLM proxy unit coverage
+        working-directory: packages
+        run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/llm-proxy-plugin.test.ts
+
+      - name: UI voice interaction coverage
+        run: bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx
+
+      - name: UI dynamic view interaction coverage
+        run: bun run --cwd packages/ui test -- src/App.navigate-view-wiring.test.tsx src/app-navigate-view.test.ts src/components/pages/ViewManagerPage.test.tsx src/components/shell/__tests__/shell-assistant-flow.test.tsx src/components/views/DynamicViewLoader.test.tsx src/hooks/useAvailableViews.test.tsx src/hooks/useDesktopTabs.test.tsx src/state/startup-phase-hydrate.view-interact.test.ts
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Actual app assistant pill browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"
+
+      - name: Actual app assistant voice browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"
+
+      - name: Actual app TTS and STT browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
+
+      - name: Actual app view manager browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
+
+      - name: Electrobun window and dynamic-view coverage
+        run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts
+
+      - name: View management action coverage
+        run: bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts
+
+      - name: App verification diagnostics coverage
+        run: bun run --cwd plugins/plugin-app-control test -- src/services/__tests__/app-verification.integration.test.ts src/services/__tests__/verification-room-bridge.test.ts
+
+      - name: Computer-use screenshot quality diagnostics coverage
+        run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts
+
+      - name: App screenshot quality diagnostics coverage
+        run: bun run --cwd packages/app test -- test/screenshot-quality.test.ts
+
+      - name: App-core screenshot quality diagnostics coverage
+        run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts
+
+      - name: Cloud screenshot quality diagnostics coverage
+        run: bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts
+
+      - name: Scenario catalog coverage gate
+        run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
+
+      - name: Zero-cost scenario e2e
+        run: bun run --cwd packages/scenario-runner test:pr:e2e
+
+      - name: Upload deterministic E2E reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: tests-zero-key-e2e-report
+          path: |
+            reports/scenarios/pr-deterministic/
+            reports/scenarios/catalog-inventory/
 
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)
@@ -548,6 +640,7 @@ jobs:
       - client-tests
       - plugin-tests
       - desktop-contract
+      - zero-key-e2e
       - cloud-live-e2e
       - provider-live-e2e
       - github-live-artifact-validate
@@ -562,6 +655,7 @@ jobs:
           echo "client-tests:     ${{ needs.client-tests.result }}"
           echo "plugin-tests:     ${{ needs.plugin-tests.result }}"
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
+          echo "zero-key-e2e:     ${{ needs.zero-key-e2e.result }}"
           echo "cloud-live-e2e:   ${{ needs.cloud-live-e2e.result }}"
           echo "provider-live-e2e:${{ needs.provider-live-e2e.result }}"
           echo "github-live-artifact-validate:${{ needs.github-live-artifact-validate.result }}"
@@ -573,6 +667,7 @@ jobs:
             "client-tests:${{ needs.client-tests.result }}" \
             "plugin-tests:${{ needs.plugin-tests.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \
+            "zero-key-e2e:${{ needs.zero-key-e2e.result }}" \
             "cloud-live-e2e:${{ needs.cloud-live-e2e.result }}" \
             "provider-live-e2e:${{ needs.provider-live-e2e.result }}" \
             "github-live-artifact-validate:${{ needs.github-live-artifact-validate.result }}"; do

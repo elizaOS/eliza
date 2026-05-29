@@ -10,9 +10,11 @@ import {
   ConnectionIdentityPanel,
 } from "@elizaos/ui";
 import { Calendar, Loader2, Mail, Plus, Users } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 import { useOAuthConnections } from "./oauth-connection";
 
 export function GoogleConnection() {
+  const t = useT();
   const {
     activeConnections,
     isLoading,
@@ -36,22 +38,40 @@ export function GoogleConnection() {
   };
 
   const getScopeName = (scope: string) => {
-    if (scope.includes("gmail.send")) return "Send emails";
-    if (scope.includes("gmail.readonly")) return "Read emails";
-    if (scope.includes("gmail.modify")) return "Modify emails";
-    if (scope.includes("calendar.events")) return "Calendar events";
-    if (scope.includes("calendar.readonly")) return "Read calendar";
-    if (scope.includes("contacts.readonly")) return "Read contacts";
-    if (scope.includes("people")) return "Contacts";
+    if (scope.includes("gmail.send"))
+      return t("cloud.google.scopeSendEmails", { defaultValue: "Send emails" });
+    if (scope.includes("gmail.readonly"))
+      return t("cloud.google.scopeReadEmails", { defaultValue: "Read emails" });
+    if (scope.includes("gmail.modify"))
+      return t("cloud.google.scopeModifyEmails", {
+        defaultValue: "Modify emails",
+      });
+    if (scope.includes("calendar.events"))
+      return t("cloud.google.scopeCalendarEvents", {
+        defaultValue: "Calendar events",
+      });
+    if (scope.includes("calendar.readonly"))
+      return t("cloud.google.scopeReadCalendar", {
+        defaultValue: "Read calendar",
+      });
+    if (scope.includes("contacts.readonly"))
+      return t("cloud.google.scopeReadContacts", {
+        defaultValue: "Read contacts",
+      });
+    if (scope.includes("people"))
+      return t("cloud.google.scopeContacts", { defaultValue: "Contacts" });
     return scope.split("/").pop() || scope;
   };
 
   if (isLoading) {
     return (
       <ConnectionCard
-        name="Google Services"
+        name={t("cloud.google.cardName", { defaultValue: "Google Services" })}
         icon={<GoogleIcon />}
-        description="Connect Gmail, Calendar, and Contacts for AI-powered automation"
+        description={t("cloud.google.cardDescription", {
+          defaultValue:
+            "Connect Gmail, Calendar, and Contacts for AI-powered automation",
+        })}
         status="loading"
       />
     );
@@ -61,13 +81,19 @@ export function GoogleConnection() {
 
   return (
     <ConnectionCard
-      name="Google Services"
+      name={t("cloud.google.cardName", { defaultValue: "Google Services" })}
       icon={<GoogleIcon />}
-      description="Connect Gmail, Calendar, and Contacts for AI-powered automation"
+      description={t("cloud.google.cardDescription", {
+        defaultValue:
+          "Connect Gmail, Calendar, and Contacts for AI-powered automation",
+      })}
       status={hasConnections ? "connected" : "disconnected"}
       statusBadge={
         <ConnectionConnectedBadge
-          label={`${activeConnections.length} connected`}
+          label={t("cloud.google.connectedCount", {
+            count: activeConnections.length,
+            defaultValue: "{{count}} connected",
+          })}
         />
       }
       connectedContent={
@@ -83,8 +109,18 @@ export function GoogleConnection() {
                 }
                 actions={
                   <ConnectionDisconnectAction
-                    title={`Disconnect ${connection.email || "Google account"}?`}
-                    description="This will revoke access for this account. Other connected Google accounts will continue to work."
+                    title={t("cloud.google.disconnectTitle", {
+                      account:
+                        connection.email ||
+                        t("cloud.google.googleAccount", {
+                          defaultValue: "Google account",
+                        }),
+                      defaultValue: "Disconnect {{account}}?",
+                    })}
+                    description={t("cloud.google.disconnectDescription", {
+                      defaultValue:
+                        "This will revoke access for this account. Other connected Google accounts will continue to work.",
+                    })}
                     onDisconnect={() => handleDisconnect(connection.id)}
                     isDisconnecting={disconnectingId === connection.id}
                   />
@@ -113,12 +149,16 @@ export function GoogleConnection() {
             {isConnecting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Connecting...
+                {t("cloud.google.connecting", {
+                  defaultValue: "Connecting...",
+                })}
               </>
             ) : (
               <>
                 <Plus className="h-4 w-4 mr-2" />
-                Add another Google account
+                {t("cloud.google.addAnother", {
+                  defaultValue: "Add another Google account",
+                })}
               </>
             )}
           </Button>
@@ -129,30 +169,57 @@ export function GoogleConnection() {
           <div className="grid grid-cols-3 gap-3">
             <div className="p-3 bg-muted rounded-sm text-center">
               <Mail className="h-6 w-6 mx-auto mb-2 text-red-500" />
-              <p className="text-sm font-medium">Gmail</p>
+              <p className="text-sm font-medium">
+                {t("cloud.google.gmail", { defaultValue: "Gmail" })}
+              </p>
               <p className="text-xs text-muted-foreground">
-                Send & read emails
+                {t("cloud.google.gmailDesc", {
+                  defaultValue: "Send & read emails",
+                })}
               </p>
             </div>
             <div className="p-3 bg-muted rounded-sm text-center">
               <Calendar className="h-6 w-6 mx-auto mb-2 text-[#FF5800]" />
-              <p className="text-sm font-medium">Calendar</p>
-              <p className="text-xs text-muted-foreground">Manage events</p>
+              <p className="text-sm font-medium">
+                {t("cloud.google.calendar", { defaultValue: "Calendar" })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("cloud.google.calendarDesc", {
+                  defaultValue: "Manage events",
+                })}
+              </p>
             </div>
             <div className="p-3 bg-muted rounded-sm text-center">
               <Users className="h-6 w-6 mx-auto mb-2 text-green-500" />
-              <p className="text-sm font-medium">Contacts</p>
-              <p className="text-xs text-muted-foreground">Access contacts</p>
+              <p className="text-sm font-medium">
+                {t("cloud.google.contacts", { defaultValue: "Contacts" })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t("cloud.google.contactsDesc", {
+                  defaultValue: "Access contacts",
+                })}
+              </p>
             </div>
           </div>
 
           <ConnectionCallout
-            title="What you can do with Google integration:"
+            title={t("cloud.google.calloutTitle", {
+              defaultValue: "What you can do with Google integration:",
+            })}
             items={[
-              "Send AI-generated emails on your behalf",
-              "Schedule and manage calendar events",
-              "Create email workflows triggered by messages",
-              "Connect multiple Google accounts (personal + work)",
+              t("cloud.google.calloutItem1", {
+                defaultValue: "Send AI-generated emails on your behalf",
+              }),
+              t("cloud.google.calloutItem2", {
+                defaultValue: "Schedule and manage calendar events",
+              }),
+              t("cloud.google.calloutItem3", {
+                defaultValue: "Create email workflows triggered by messages",
+              }),
+              t("cloud.google.calloutItem4", {
+                defaultValue:
+                  "Connect multiple Google accounts (personal + work)",
+              }),
             ]}
           />
 
@@ -164,12 +231,16 @@ export function GoogleConnection() {
             {isConnecting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Connecting...
+                {t("cloud.google.connecting", {
+                  defaultValue: "Connecting...",
+                })}
               </>
             ) : (
               <>
                 <GoogleIcon className="h-4 w-4 mr-2 text-current" />
-                Connect with Google
+                {t("cloud.google.connectButton", {
+                  defaultValue: "Connect with Google",
+                })}
               </>
             )}
           </Button>

@@ -2,6 +2,7 @@ import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api-client";
+import { useT } from "@/providers/I18nProvider";
 
 interface MfaStatusResponse {
   enrolled: boolean;
@@ -9,6 +10,7 @@ interface MfaStatusResponse {
 }
 
 export function MfaPanel() {
+  const t = useT();
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "missing" }
@@ -51,30 +53,49 @@ export function MfaPanel() {
         <div className="flex items-center gap-2">
           <Lock className="h-5 w-5 text-[#FF5800]" />
           <h3 className="text-lg font-bold text-white">
-            Two-factor authentication
+            {t("cloud.mfaPanel.title", {
+              defaultValue: "Two-factor authentication",
+            })}
           </h3>
         </div>
         {state.kind === "loading" ? (
-          <p className="text-sm text-white/50">Loading MFA status…</p>
+          <p className="text-sm text-white/50">
+            {t("cloud.mfaPanel.loading", {
+              defaultValue: "Loading MFA status…",
+            })}
+          </p>
         ) : state.kind === "missing" ? (
           <p className="text-sm text-white/60">
-            MFA enrollment is not yet available on this server. We'll surface
-            this CTA once the backend ships.
+            {t("cloud.mfaPanel.notAvailable", {
+              defaultValue:
+                "MFA enrollment is not yet available on this server. We'll surface this CTA once the backend ships.",
+            })}
           </p>
         ) : state.kind === "error" ? (
           <p className="text-sm text-red-300">{state.message}</p>
         ) : state.enrolled ? (
           <p className="text-sm text-green-300">
-            Enabled · method: {state.method ?? "unknown"}
+            {t("cloud.mfaPanel.enabled", {
+              method:
+                state.method ??
+                t("cloud.mfaPanel.unknownMethod", {
+                  defaultValue: "unknown",
+                }),
+              defaultValue: "Enabled · method: {{method}}",
+            })}
           </p>
         ) : (
           <div className="space-y-2">
             <p className="text-sm text-white/60">
-              MFA is not enabled. Adding a second factor protects your account
-              even if your password is compromised.
+              {t("cloud.mfaPanel.notEnabled", {
+                defaultValue:
+                  "MFA is not enabled. Adding a second factor protects your account even if your password is compromised.",
+              })}
             </p>
             <BrandButton size="sm" variant="outline">
-              Enroll a second factor
+              {t("cloud.mfaPanel.enroll", {
+                defaultValue: "Enroll a second factor",
+              })}
             </BrandButton>
           </div>
         )}

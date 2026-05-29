@@ -23,6 +23,7 @@ import {
   isValidAddress,
   TIMEZONES,
 } from "../policy-controls";
+import { useTranslation } from "../../state/TranslationContext";
 import { StewardLogo } from "../steward/injected";
 import { Button } from "../ui/button";
 import { ConfirmDialog } from "../ui/confirm-dialog";
@@ -50,6 +51,7 @@ const HOUR_TO_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 }));
 
 export function PolicyControlsView() {
+  const { t } = useTranslation();
   const [policies, setPolicies] = useState<PolicyRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +80,11 @@ export function PolicyControlsView() {
       } catch (err) {
         if (cancelled) return;
         setError(
-          err instanceof Error ? err.message : "Failed to load policies",
+          err instanceof Error
+            ? err.message
+            : t("policycontrols.error.loadFailed", {
+                defaultValue: "Failed to load policies",
+              }),
         );
       } finally {
         if (!cancelled) setLoading(false);
@@ -88,7 +94,7 @@ export function PolicyControlsView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const performSave = useCallback(async () => {
     setError(null);
@@ -96,10 +102,16 @@ export function PolicyControlsView() {
       await client.setStewardPolicies(policies);
       setDirty(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save policies");
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("policycontrols.error.saveFailed", {
+              defaultValue: "Failed to save policies",
+            }),
+      );
       throw err;
     }
-  }, [policies]);
+  }, [policies, t]);
 
   const {
     saving,
@@ -108,7 +120,9 @@ export function PolicyControlsView() {
     resetStatus: resetSaveStatus,
   } = useSettingsSave({
     onSave: performSave,
-    errorFallback: "Failed to save policies",
+    errorFallback: t("policycontrols.error.saveFailed", {
+      defaultValue: "Failed to save policies",
+    }),
   });
 
   const getPolicy = useCallback(
@@ -149,7 +163,10 @@ export function PolicyControlsView() {
       const existing = findPolicy(policies, type);
       if (!enabled && existing?.enabled) {
         setConfirmMessage(
-          "Disabling this removes a safety guardrail. Are you sure?",
+          t("policycontrols.confirm.message", {
+            defaultValue:
+              "Disabling this removes a safety guardrail. Are you sure?",
+          }),
         );
         setConfirmCallback(() => () => updatePolicy(type, { enabled: false }));
         setConfirmOpen(true);
@@ -160,7 +177,7 @@ export function PolicyControlsView() {
         config: existing?.config ?? defaultConfig,
       });
     },
-    [policies, updatePolicy],
+    [policies, updatePolicy, t],
   );
 
   // Extract configs (must be before early returns so hooks are unconditional)
@@ -204,7 +221,9 @@ export function PolicyControlsView() {
     return (
       <div className="flex items-center justify-center py-12">
         <Spinner size={24} />
-        <span className="ml-3 text-sm text-muted">Loading…</span>
+        <span className="ml-3 text-sm text-muted">
+          {t("policycontrols.loading", { defaultValue: "Loading…" })}
+        </span>
       </div>
     );
   }
@@ -213,9 +232,16 @@ export function PolicyControlsView() {
     return (
       <div className="flex flex-col items-center gap-4 py-8 text-center">
         <StewardLogo size={48} className="opacity-30" />
-        <p className="text-sm font-semibold text-txt">Steward Not Connected</p>
+        <p className="text-sm font-semibold text-txt">
+          {t("policycontrols.notConnected.title", {
+            defaultValue: "Steward Not Connected",
+          })}
+        </p>
         <p className="text-xs text-muted max-w-sm">
-          Connect your Steward instance to manage wallet policies.
+          {t("policycontrols.notConnected.description", {
+            defaultValue:
+              "Connect your Steward instance to manage wallet policies.",
+          })}
         </p>
       </div>
     );
@@ -232,11 +258,16 @@ export function PolicyControlsView() {
 
       {/* Auto-Approve */}
       <PolicyRow
-        title="Auto-Approve"
+        title={t("policycontrols.autoApprove.title", {
+          defaultValue: "Auto-Approve",
+        })}
         desc={
           autoApprovePolicy?.enabled
-            ? `Under $${autoApproveConfig.threshold ?? "5"}`
-            : "Off"
+            ? t("policycontrols.autoApprove.desc", {
+                threshold: autoApproveConfig.threshold ?? "5",
+                defaultValue: "Under ${{threshold}}",
+              })
+            : t("policycontrols.off", { defaultValue: "Off" })
         }
         enabled={autoApprovePolicy?.enabled ?? false}
         onToggle={(v) =>
@@ -249,7 +280,7 @@ export function PolicyControlsView() {
       >
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted whitespace-nowrap">
-            Threshold
+            {t("policycontrols.threshold", { defaultValue: "Threshold" })}
           </Label>
           <UsdField
             value={autoApproveConfig.threshold ?? "5"}
@@ -264,11 +295,19 @@ export function PolicyControlsView() {
 
       {/* Spending Limits */}
       <PolicyRow
-        title="Spending Limits"
+        title={t("policycontrols.spending.title", {
+          defaultValue: "Spending Limits",
+        })}
         desc={
           spendingPolicy?.enabled
-            ? `$${spendingConfig.maxPerTx}/tx · $${spendingConfig.maxPerDay}/day · $${spendingConfig.maxPerWeek}/wk`
-            : "Off"
+            ? t("policycontrols.spending.desc", {
+                perTx: spendingConfig.maxPerTx,
+                perDay: spendingConfig.maxPerDay,
+                perWeek: spendingConfig.maxPerWeek,
+                defaultValue:
+                  "${{perTx}}/tx · ${{perDay}}/day · ${{perWeek}}/wk",
+              })
+            : t("policycontrols.off", { defaultValue: "Off" })
         }
         enabled={spendingPolicy?.enabled ?? false}
         onToggle={(v) =>
@@ -277,7 +316,9 @@ export function PolicyControlsView() {
       >
         <div className="grid grid-cols-3 gap-3">
           <UsdFieldLabeled
-            label="Per Tx"
+            label={t("policycontrols.spending.perTx", {
+              defaultValue: "Per Tx",
+            })}
             value={spendingConfig.maxPerTx}
             onChange={(v) =>
               updatePolicy("spending-limit", {
@@ -286,7 +327,9 @@ export function PolicyControlsView() {
             }
           />
           <UsdFieldLabeled
-            label="Daily"
+            label={t("policycontrols.spending.daily", {
+              defaultValue: "Daily",
+            })}
             value={spendingConfig.maxPerDay}
             onChange={(v) =>
               updatePolicy("spending-limit", {
@@ -295,7 +338,9 @@ export function PolicyControlsView() {
             }
           />
           <UsdFieldLabeled
-            label="Weekly"
+            label={t("policycontrols.spending.weekly", {
+              defaultValue: "Weekly",
+            })}
             value={spendingConfig.maxPerWeek}
             onChange={(v) =>
               updatePolicy("spending-limit", {
@@ -308,11 +353,17 @@ export function PolicyControlsView() {
 
       {/* Rate Limits */}
       <PolicyRow
-        title="Rate Limits"
+        title={t("policycontrols.rateLimit.title", {
+          defaultValue: "Rate Limits",
+        })}
         desc={
           rateLimitPolicy?.enabled
-            ? `${rateLimitConfig.maxTxPerHour}/hr · ${rateLimitConfig.maxTxPerDay}/day`
-            : "Off"
+            ? t("policycontrols.rateLimit.desc", {
+                perHour: rateLimitConfig.maxTxPerHour,
+                perDay: rateLimitConfig.maxTxPerDay,
+                defaultValue: "{{perHour}}/hr · {{perDay}}/day",
+              })
+            : t("policycontrols.off", { defaultValue: "Off" })
         }
         enabled={rateLimitPolicy?.enabled ?? false}
         onToggle={(v) =>
@@ -321,7 +372,9 @@ export function PolicyControlsView() {
       >
         <div className="grid grid-cols-2 gap-4">
           <SliderField
-            label="Per Hour"
+            label={t("policycontrols.rateLimit.perHour", {
+              defaultValue: "Per Hour",
+            })}
             value={rateLimitConfig.maxTxPerHour}
             min={1}
             max={100}
@@ -332,7 +385,9 @@ export function PolicyControlsView() {
             }
           />
           <SliderField
-            label="Per Day"
+            label={t("policycontrols.rateLimit.perDay", {
+              defaultValue: "Per Day",
+            })}
             value={rateLimitConfig.maxTxPerDay}
             min={1}
             max={500}
@@ -347,11 +402,21 @@ export function PolicyControlsView() {
 
       {/* Address Controls */}
       <PolicyRow
-        title="Address Controls"
+        title={t("policycontrols.address.title", {
+          defaultValue: "Address Controls",
+        })}
         desc={
           addressPolicy?.enabled
-            ? `${normalizedAddresses.length} ${addressConfig.mode === "whitelist" ? "allowed" : "blocked"}`
-            : "Off"
+            ? addressConfig.mode === "whitelist"
+              ? t("policycontrols.address.descAllowed", {
+                  count: normalizedAddresses.length,
+                  defaultValue: "{{count}} allowed",
+                })
+              : t("policycontrols.address.descBlocked", {
+                  count: normalizedAddresses.length,
+                  defaultValue: "{{count}} blocked",
+                })
+            : t("policycontrols.off", { defaultValue: "Off" })
         }
         enabled={addressPolicy?.enabled ?? false}
         onToggle={(v) =>
@@ -373,11 +438,16 @@ export function PolicyControlsView() {
 
       {/* Time Restrictions */}
       <PolicyRow
-        title="Time Restrictions"
+        title={t("policycontrols.time.title", {
+          defaultValue: "Time Restrictions",
+        })}
         desc={
           timeWindowPolicy?.enabled
-            ? `${timeWindowConfig.allowedDays?.length ?? 0} days`
-            : "Off"
+            ? t("policycontrols.time.desc", {
+                count: timeWindowConfig.allowedDays?.length ?? 0,
+                defaultValue: "{{count}} days",
+              })
+            : t("policycontrols.off", { defaultValue: "Off" })
         }
         enabled={timeWindowPolicy?.enabled ?? false}
         onToggle={(v) =>
@@ -395,7 +465,11 @@ export function PolicyControlsView() {
       {/* Save */}
       {dirty && (
         <div className="flex items-center justify-end gap-3 pt-4 border-t-0">
-          <span className="text-xs text-accent">Unsaved changes</span>
+          <span className="text-xs text-accent">
+            {t("policycontrols.unsavedChanges", {
+              defaultValue: "Unsaved changes",
+            })}
+          </span>
           <Button
             variant="default"
             size="sm"
@@ -406,26 +480,36 @@ export function PolicyControlsView() {
             {saving ? (
               <>
                 <Spinner size={14} />
-                <span className="ml-1.5">Saving…</span>
+                <span className="ml-1.5">
+                  {t("policycontrols.saving", { defaultValue: "Saving…" })}
+                </span>
               </>
             ) : (
-              "Save"
+              t("policycontrols.save", { defaultValue: "Save" })
             )}
           </Button>
         </div>
       )}
       {saveSuccess && !dirty && (
         <div className="pt-3 text-right border-t-0">
-          <span className="text-xs text-ok">Saved</span>
+          <span className="text-xs text-ok">
+            {t("policycontrols.saved", { defaultValue: "Saved" })}
+          </span>
         </div>
       )}
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Disable Policy"
+        title={t("policycontrols.confirm.title", {
+          defaultValue: "Disable Policy",
+        })}
         message={confirmMessage}
-        confirmLabel="Disable"
-        cancelLabel="Keep"
+        confirmLabel={t("policycontrols.confirm.confirmLabel", {
+          defaultValue: "Disable",
+        })}
+        cancelLabel={t("policycontrols.confirm.cancelLabel", {
+          defaultValue: "Keep",
+        })}
         variant="warn"
         onConfirm={() => {
           confirmCallback?.();
@@ -555,6 +639,7 @@ function AddressSection({
   addresses: string[];
   onUpdate: (cfg: ApprovedAddressesConfig) => void;
 }) {
+  const { t } = useTranslation();
   const [newAddr, setNewAddr] = useState("");
   const [addrError, setAddrError] = useState<string | null>(null);
 
@@ -562,13 +647,21 @@ function AddressSection({
     const trimmed = newAddr.trim();
     if (!trimmed) return;
     if (!isValidAddress(trimmed)) {
-      setAddrError("Invalid address (EVM 0x... or Solana base58)");
+      setAddrError(
+        t("policycontrols.address.invalid", {
+          defaultValue: "Invalid address (EVM 0x... or Solana base58)",
+        }),
+      );
       return;
     }
     if (
       config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)
     ) {
-      setAddrError("Already in list");
+      setAddrError(
+        t("policycontrols.address.duplicate", {
+          defaultValue: "Already in list",
+        }),
+      );
       return;
     }
     onUpdate({ ...config, addresses: [...config.addresses, trimmed] });
@@ -597,7 +690,9 @@ function AddressSection({
           className="text-xs-tight h-7"
           onClick={() => onUpdate({ ...config, mode: "whitelist" })}
         >
-          Allowlist
+          {t("policycontrols.address.allowlist", {
+            defaultValue: "Allowlist",
+          })}
         </Button>
         <Button
           variant={config.mode === "blacklist" ? "default" : "ghost"}
@@ -605,7 +700,9 @@ function AddressSection({
           className="text-xs-tight h-7"
           onClick={() => onUpdate({ ...config, mode: "blacklist" })}
         >
-          Blocklist
+          {t("policycontrols.address.blocklist", {
+            defaultValue: "Blocklist",
+          })}
         </Button>
       </div>
 
@@ -631,7 +728,9 @@ function AddressSection({
                   className="text-danger opacity-0 group-hover:opacity-100 text-2xs ml-2"
                   onClick={() => handleRemove(addr)}
                 >
-                  remove
+                  {t("policycontrols.address.remove", {
+                    defaultValue: "remove",
+                  })}
                 </button>
               </div>
             );
@@ -648,7 +747,9 @@ function AddressSection({
             setAddrError(null);
           }}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          placeholder="EVM or Solana address"
+          placeholder={t("policycontrols.address.placeholder", {
+            defaultValue: "EVM or Solana address",
+          })}
           className="h-8 text-xs font-mono flex-1"
         />
         <Button
@@ -657,7 +758,7 @@ function AddressSection({
           className="text-xs h-8"
           onClick={handleAdd}
         >
-          Add
+          {t("policycontrols.address.add", { defaultValue: "Add" })}
         </Button>
       </div>
       {addrError && (
@@ -674,6 +775,7 @@ function TimeSection({
   config: TimeWindowConfig;
   onUpdate: (cfg: TimeWindowConfig) => void;
 }) {
+  const { t } = useTranslation();
   const hours = config.allowedHours?.[0] ?? { start: 9, end: 17 };
   const days = config.allowedDays ?? [1, 2, 3, 4, 5];
 
@@ -681,7 +783,9 @@ function TimeSection({
     <div className="space-y-3">
       <div className="flex items-center gap-3">
         <div className="space-y-1">
-          <Label className="text-xs-tight text-muted">From</Label>
+          <Label className="text-xs-tight text-muted">
+            {t("policycontrols.time.from", { defaultValue: "From" })}
+          </Label>
           <select
             value={hours.start}
             onChange={(e) =>
@@ -703,7 +807,9 @@ function TimeSection({
         </div>
         <span className="text-muted text-xs mt-5">→</span>
         <div className="space-y-1">
-          <Label className="text-xs-tight text-muted">To</Label>
+          <Label className="text-xs-tight text-muted">
+            {t("policycontrols.time.to", { defaultValue: "To" })}
+          </Label>
           <select
             value={hours.end}
             onChange={(e) =>
@@ -748,7 +854,9 @@ function TimeSection({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs-tight text-muted">Timezone</Label>
+        <Label className="text-xs-tight text-muted">
+          {t("policycontrols.time.timezone", { defaultValue: "Timezone" })}
+        </Label>
         <select
           value={
             config.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone

@@ -9,8 +9,11 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError, api } from "../../../../../lib/api-client";
 import { navigateToExternalPayment } from "./payment-navigation";
+
+type TFn = ReturnType<typeof useT>;
 
 type AppChargeProvider = "stripe" | "oxapay";
 
@@ -74,13 +77,16 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function normalizeError(error: unknown): string {
+function normalizeError(error: unknown, t: TFn): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
-  return "Unable to complete the request.";
+  return t("cloud.appCharge.unableToComplete", {
+    defaultValue: "Unable to complete the request.",
+  });
 }
 
 export default function AppChargePaymentPage() {
+  const t = useT();
   const { appId, chargeId } = useParams<{ appId: string; chargeId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -96,7 +102,11 @@ export default function AppChargePaymentPage() {
   const loadCharge = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!appId || !chargeId) {
-        setError("Missing charge link details.");
+        setError(
+          t("cloud.appCharge.missingDetails", {
+            defaultValue: "Missing charge link details.",
+          }),
+        );
         setIsLoading(false);
         return;
       }
@@ -112,14 +122,14 @@ export default function AppChargePaymentPage() {
         );
         setDetails(response);
       } catch (loadError) {
-        setError(normalizeError(loadError));
+        setError(normalizeError(loadError, t));
       } finally {
         if (!options?.silent) {
           setIsLoading(false);
         }
       }
     },
-    [appId, chargeId],
+    [appId, chargeId, t],
   );
 
   useEffect(() => {
@@ -219,12 +229,16 @@ export default function AppChargePaymentPage() {
           : response.checkout.payLink;
 
       if (!checkoutUrl) {
-        throw new Error("Payment provider did not return a checkout link.");
+        throw new Error(
+          t("cloud.appCharge.noCheckoutLink", {
+            defaultValue: "Payment provider did not return a checkout link.",
+          }),
+        );
       }
 
       navigateToExternalPayment(checkoutUrl);
     } catch (checkoutError) {
-      setError(normalizeError(checkoutError));
+      setError(normalizeError(checkoutError, t));
       setCheckoutProvider(null);
     }
   };
@@ -244,9 +258,16 @@ export default function AppChargePaymentPage() {
           <div className="flex items-center gap-3">
             <AlertCircle className="h-6 w-6 text-red-300" />
             <div>
-              <h1 className="text-base font-semibold">Charge unavailable</h1>
+              <h1 className="text-base font-semibold">
+                {t("cloud.appCharge.unavailableTitle", {
+                  defaultValue: "Charge unavailable",
+                })}
+              </h1>
               <p className="mt-1 text-sm text-red-100/75">
-                {error || "This payment link is unavailable."}
+                {error ||
+                  t("cloud.appCharge.linkUnavailable", {
+                    defaultValue: "This payment link is unavailable.",
+                  })}
               </p>
             </div>
           </div>
@@ -254,7 +275,7 @@ export default function AppChargePaymentPage() {
             className="mt-5 inline-flex text-sm text-white/80 hover:text-white"
             to="/"
           >
-            Return home
+            {t("cloud.appCharge.returnHome", { defaultValue: "Return home" })}
           </Link>
         </div>
       </div>
@@ -271,12 +292,12 @@ export default function AppChargePaymentPage() {
     <CreditCard className="h-7 w-7 text-white/80" />
   );
   const statusText = isPaid
-    ? "Paid"
+    ? t("cloud.appCharge.statusPaid", { defaultValue: "Paid" })
     : isExpired
-      ? "Expired"
+      ? t("cloud.appCharge.statusExpired", { defaultValue: "Expired" })
       : returnedFromPayment
-        ? "Confirming"
-        : "Ready";
+        ? t("cloud.appCharge.statusConfirming", { defaultValue: "Confirming" })
+        : t("cloud.appCharge.statusReady", { defaultValue: "Ready" });
   const statusClass = isPaid
     ? "border-green-300/30 bg-green-400/10 text-green-100"
     : isExpired
@@ -311,14 +332,20 @@ export default function AppChargePaymentPage() {
                 <p className="truncate text-sm text-white/50">
                   {charge.description ||
                     details.app.description ||
-                    "App credit charge"}
+                    t("cloud.appCharge.creditCharge", {
+                      defaultValue: "App credit charge",
+                    })}
                 </p>
               </div>
             </div>
             <button
               type="button"
-              aria-label="Refresh status"
-              title="Refresh status"
+              aria-label={t("cloud.appCharge.refreshStatus", {
+                defaultValue: "Refresh status",
+              })}
+              title={t("cloud.appCharge.refreshStatus", {
+                defaultValue: "Refresh status",
+              })}
               onClick={() => loadCharge()}
               disabled={isLoading}
               className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/10 bg-white/5 text-white/55 transition hover:border-white/25 hover:text-white disabled:opacity-40"
@@ -337,11 +364,18 @@ export default function AppChargePaymentPage() {
               {formatAmount(charge.amountUsd)}
             </div>
             <div className="mt-3 text-sm text-white/55">
-              {statusText} - expires {formatDate(charge.expiresAt)}
+              {t("cloud.appCharge.statusExpiresLine", {
+                status: statusText,
+                date: formatDate(charge.expiresAt),
+                defaultValue: "{{status}} - expires {{date}}",
+              })}
             </div>
             {charge.paidAt && (
               <div className="mt-2 text-xs text-green-200/75">
-                Confirmed {formatDate(charge.paidAt)}
+                {t("cloud.appCharge.confirmedAt", {
+                  date: formatDate(charge.paidAt),
+                  defaultValue: "Confirmed {{date}}",
+                })}
               </div>
             )}
           </div>
@@ -356,14 +390,20 @@ export default function AppChargePaymentPage() {
           {returnedFromPayment && !isPaid && !isExpired && (
             <div className="mt-7 flex items-center gap-3 border border-white/15 bg-white/[0.06] p-3 text-sm text-white">
               <Loader2 className="h-5 w-5 shrink-0 animate-spin text-white/80" />
-              <span>Waiting for confirmation.</span>
+              <span>
+                {t("cloud.appCharge.waitingConfirmation", {
+                  defaultValue: "Waiting for confirmation.",
+                })}
+              </span>
             </div>
           )}
 
           <div className="mt-8 grid grid-cols-2 gap-3">
             <button
               type="button"
-              aria-label="Pay with card"
+              aria-label={t("cloud.appCharge.payWithCard", {
+                defaultValue: "Pay with card",
+              })}
               disabled={
                 !canPay ||
                 !enabledProviders.has("stripe") ||
@@ -377,11 +417,15 @@ export default function AppChargePaymentPage() {
               ) : (
                 <CreditCard className="h-9 w-9 transition group-hover:scale-105" />
               )}
-              <span className="text-sm font-medium">Card</span>
+              <span className="text-sm font-medium">
+                {t("cloud.appCharge.card", { defaultValue: "Card" })}
+              </span>
             </button>
             <button
               type="button"
-              aria-label="Pay with crypto"
+              aria-label={t("cloud.appCharge.payWithCrypto", {
+                defaultValue: "Pay with crypto",
+              })}
               disabled={
                 !canPay ||
                 !enabledProviders.has("oxapay") ||
@@ -395,7 +439,9 @@ export default function AppChargePaymentPage() {
               ) : (
                 <Coins className="h-9 w-9 transition group-hover:scale-105" />
               )}
-              <span className="text-sm font-medium">Crypto</span>
+              <span className="text-sm font-medium">
+                {t("cloud.appCharge.crypto", { defaultValue: "Crypto" })}
+              </span>
             </button>
           </div>
 

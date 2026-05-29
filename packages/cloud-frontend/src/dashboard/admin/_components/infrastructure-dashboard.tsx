@@ -1119,28 +1119,28 @@ export function InfrastructureDashboard() {
         );
         return;
       }
-    setDetailsTarget(row);
-    setDetailsData(null);
-    setDetailsResources(null);
-    setDetailsOpen(true);
-    setDetailsLoading(true);
-    try {
-      const res = await fetch(
-        "/api/v1/admin/infrastructure/containers/actions",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "inspect",
-            nodeId: row.nodeId,
-            containerName: row.containerName,
-          }),
-        },
-      );
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error);
-      setDetailsData(json.data?.inspect ?? null);
-      setDetailsResources(json.data?.resourceUsage ?? null);
+      setDetailsTarget(row);
+      setDetailsData(null);
+      setDetailsResources(null);
+      setDetailsOpen(true);
+      setDetailsLoading(true);
+      try {
+        const res = await fetch(
+          "/api/v1/admin/infrastructure/containers/actions",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "inspect",
+              nodeId: row.nodeId,
+              containerName: row.containerName,
+            }),
+          },
+        );
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+        setDetailsData(json.data?.inspect ?? null);
+        setDetailsResources(json.data?.resourceUsage ?? null);
       } catch (err) {
         toast.error(
           t("cloud.infra.inspectFailed", {

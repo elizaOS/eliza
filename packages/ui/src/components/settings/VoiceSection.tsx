@@ -22,6 +22,7 @@ import { Cloud, Database, Mic, Shield, Sliders } from "lucide-react";
 import * as React from "react";
 import type { VoiceProfilesClient } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext";
 import {
   DEFAULT_VOICE_CONTINUOUS_MODE,
   type VoiceContinuousMode,
@@ -113,6 +114,7 @@ export function VoiceSection({
   onWakeWordToggle,
   className,
 }: VoiceSectionProps): React.ReactElement {
+  const { t } = useTranslation();
   const updatePrefs = React.useCallback(
     (patch: Partial<VoiceSectionPrefs>) => {
       onPrefsChange({ ...prefs, ...patch });
@@ -129,8 +131,13 @@ export function VoiceSection({
 
       <FieldRow
         icon={Mic}
-        title="Continuous chat"
-        description="When on, the mic stays open and the agent decides when you finished speaking."
+        title={t("voicesection.continuousChat", {
+          defaultValue: "Continuous chat",
+        })}
+        description={t("voicesection.continuousChatDesc", {
+          defaultValue:
+            "When on, the mic stays open and the agent decides when you finished speaking.",
+        })}
         data-testid="voice-section-continuous-row"
       >
         <ContinuousChatToggle
@@ -142,8 +149,11 @@ export function VoiceSection({
 
       <FieldRow
         icon={Sliders}
-        title="Wake word"
-        description="Listen for a phrase like 'Hey Eliza' before opening the mic."
+        title={t("voicesection.wakeWord", { defaultValue: "Wake word" })}
+        description={t("voicesection.wakeWordDesc", {
+          defaultValue:
+            "Listen for a phrase like 'Hey Eliza' before opening the mic.",
+        })}
         data-testid="voice-section-wake-row"
       >
         <label className="inline-flex cursor-pointer items-center gap-2 text-xs">
@@ -153,16 +163,26 @@ export function VoiceSection({
             onChange={(e) => onWakeWordToggle?.(e.target.checked)}
             data-testid="voice-section-wake-toggle"
             className="h-4 w-4 rounded-sm border-border/40"
-            aria-label="Toggle wake word"
+            aria-label={t("voicesection.toggleWakeWord", {
+              defaultValue: "Toggle wake word",
+            })}
           />
-          <span className="text-muted">{wakeWordEnabled ? "On" : "Off"}</span>
+          <span className="text-muted">
+            {wakeWordEnabled
+              ? t("voicesection.on", { defaultValue: "On" })
+              : t("voicesection.off", { defaultValue: "Off" })}
+          </span>
         </label>
       </FieldRow>
 
       <FieldRow
         icon={Cloud}
-        title="Local vs Cloud"
-        description="Where speech recognition and synthesis run."
+        title={t("voicesection.localVsCloud", {
+          defaultValue: "Local vs Cloud",
+        })}
+        description={t("voicesection.localVsCloudDesc", {
+          defaultValue: "Where speech recognition and synthesis run.",
+        })}
       >
         <select
           value={prefs.strategy}
@@ -173,11 +193,25 @@ export function VoiceSection({
           }
           className="rounded-sm border border-border/40 bg-bg/50 px-2 py-1 text-xs"
           data-testid="voice-section-strategy-select"
-          aria-label="Local vs Cloud strategy"
+          aria-label={t("voicesection.localVsCloudStrategy", {
+            defaultValue: "Local vs Cloud strategy",
+          })}
         >
-          <option value="auto">Auto (recommended)</option>
-          <option value="force-local">Force local</option>
-          <option value="force-cloud">Force cloud</option>
+          <option value="auto">
+            {t("voicesection.strategyAuto", {
+              defaultValue: "Auto (recommended)",
+            })}
+          </option>
+          <option value="force-local">
+            {t("voicesection.strategyForceLocal", {
+              defaultValue: "Force local",
+            })}
+          </option>
+          <option value="force-cloud">
+            {t("voicesection.strategyForceCloud", {
+              defaultValue: "Force cloud",
+            })}
+          </option>
         </select>
       </FieldRow>
 
@@ -187,15 +221,19 @@ export function VoiceSection({
       >
         <div className="mb-2 flex items-center gap-2">
           <Database className="h-4 w-4 text-muted" aria-hidden />
-          <h3 className="text-sm font-semibold">Models</h3>
+          <h3 className="text-sm font-semibold">
+            {t("voicesection.models", { defaultValue: "Models" })}
+          </h3>
         </div>
         {modelsPanel ?? (
           <p
             className="text-xs text-muted"
             data-testid="voice-section-models-empty"
           >
-            Voice models will appear here once they're available. Voice updates
-            appear automatically on Wi-Fi; on cellular we'll ask first.
+            {t("voicesection.modelsEmpty", {
+              defaultValue:
+                "Voice models will appear here once they're available. Voice updates appear automatically on Wi-Fi; on cellular we'll ask first.",
+            })}
           </p>
         )}
       </div>
@@ -208,14 +246,22 @@ export function VoiceSection({
       >
         <div className="mb-2 flex items-center gap-2">
           <Shield className="h-4 w-4 text-muted" aria-hidden />
-          <h3 className="text-sm font-semibold">Privacy</h3>
+          <h3 className="text-sm font-semibold">
+            {t("voicesection.privacy", { defaultValue: "Privacy" })}
+          </h3>
         </div>
         <label className="mb-2 flex cursor-pointer items-center justify-between gap-3 text-xs">
           <span>
-            <span className="block text-sm">Cloud first-line cache</span>
+            <span className="block text-sm">
+              {t("voicesection.cloudFirstLineCache", {
+                defaultValue: "Cloud first-line cache",
+              })}
+            </span>
             <span className="text-muted">
-              Lets Eliza Cloud cache the agent's short opener phrases for faster
-              replies. Disabled by default.
+              {t("voicesection.cloudFirstLineCacheDesc", {
+                defaultValue:
+                  "Lets Eliza Cloud cache the agent's short opener phrases for faster replies. Disabled by default.",
+              })}
             </span>
           </span>
           <input
@@ -226,15 +272,23 @@ export function VoiceSection({
             }
             data-testid="voice-section-cloud-cache-toggle"
             className="h-4 w-4 rounded-sm border-border/40"
-            aria-label="Cloud first-line cache opt-in"
+            aria-label={t("voicesection.cloudFirstLineCacheAria", {
+              defaultValue: "Cloud first-line cache opt-in",
+            })}
           />
         </label>
         <label className="flex cursor-pointer items-center justify-between gap-3 text-xs">
           <span>
-            <span className="block text-sm">Auto-learn new voices</span>
+            <span className="block text-sm">
+              {t("voicesection.autoLearnVoices", {
+                defaultValue: "Auto-learn new voices",
+              })}
+            </span>
             <span className="text-muted">
-              When the agent hears an unfamiliar voice, build a profile for them
-              automatically.
+              {t("voicesection.autoLearnVoicesDesc", {
+                defaultValue:
+                  "When the agent hears an unfamiliar voice, build a profile for them automatically.",
+              })}
             </span>
           </span>
           <input
@@ -243,7 +297,9 @@ export function VoiceSection({
             onChange={(e) => updatePrefs({ autoLearnVoices: e.target.checked })}
             data-testid="voice-section-auto-learn-toggle"
             className="h-4 w-4 rounded-sm border-border/40"
-            aria-label="Auto-learn new voices"
+            aria-label={t("voicesection.autoLearnVoices", {
+              defaultValue: "Auto-learn new voices",
+            })}
           />
         </label>
       </div>

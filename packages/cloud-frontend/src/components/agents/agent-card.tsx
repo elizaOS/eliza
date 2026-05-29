@@ -103,7 +103,9 @@ export function AgentCard({
       setDropdownOpen(false);
 
       toast.info(
-        t("cloud.agentCard.duplicating", { defaultValue: "Duplicating agent..." }),
+        t("cloud.agentCard.duplicating", {
+          defaultValue: "Duplicating agent...",
+        }),
       );
 
       try {

@@ -546,20 +546,29 @@ test("chat SSE stream emits token + done events for assistant message", async ({
     fullText?: string;
     agentName?: string;
   }>;
+  const assistantPayload = JSON.parse(
+    parsedEvents[0]?.fullText ?? "{}",
+  ) as Record<string, unknown>;
   expect(parsedEvents).toEqual([
     expect.objectContaining({
       type: "token",
-      text: "This is a stubbed QA response. The app surface is loaded and interactive.",
-      fullText:
-        "This is a stubbed QA response. The app surface is loaded and interactive.",
+      text: parsedEvents[0]?.fullText,
+      fullText: parsedEvents[0]?.fullText,
     }),
     expect.objectContaining({
       type: "done",
-      fullText:
-        "This is a stubbed QA response. The app surface is loaded and interactive.",
+      fullText: parsedEvents[0]?.fullText,
       agentName: "Eliza",
     }),
   ]);
+  expect(assistantPayload).toMatchObject({
+    fixture: "ui-smoke-assistant-v1",
+    registrySeam: "strict-fixture-registry",
+    transport: "sse",
+    input: expect.objectContaining({
+      text: "Hello agent, how are you?",
+    }),
+  });
 });
 
 test("TTS cloud endpoint receives the assistant text + voiceId payload", async ({

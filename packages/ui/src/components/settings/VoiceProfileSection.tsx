@@ -15,6 +15,7 @@ import type {
   VoiceProfilesClient,
 } from "../../api/client-voice-profiles";
 import { cn } from "../../lib/utils";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 
 export interface VoiceProfileSectionProps {
@@ -75,6 +76,7 @@ export function VoiceProfileSection({
   framed = true,
   className,
 }: VoiceProfileSectionProps): React.ReactElement {
+  const { t } = useTranslation();
   const [profiles, setProfiles] = React.useState<VoiceProfile[]>(
     initialProfiles ?? [],
   );
@@ -93,12 +95,16 @@ export function VoiceProfileSection({
       setProfiles(list);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to load voice profiles.",
+        err instanceof Error
+          ? err.message
+          : t("voiceprofile.error.load", {
+              defaultValue: "Failed to load voice profiles.",
+            }),
       );
     } finally {
       setLoading(false);
     }
-  }, [profilesClient]);
+  }, [profilesClient, t]);
 
   React.useEffect(() => {
     if (initialProfiles !== undefined) {
@@ -144,7 +150,12 @@ export function VoiceProfileSection({
           case "delete": {
             const target = profiles.find((p) => p.id === action.id);
             if (target?.isOwner) {
-              setError("Owner profile cannot be deleted from this panel.");
+              setError(
+                t("voiceprofile.error.ownerDelete", {
+                  defaultValue:
+                    "Owner profile cannot be deleted from this panel.",
+                }),
+              );
               return;
             }
             await profilesClient.delete(action.id);
@@ -156,11 +167,13 @@ export function VoiceProfileSection({
         setError(
           err instanceof Error
             ? err.message
-            : "Failed to update voice profile.",
+            : t("voiceprofile.error.update", {
+                defaultValue: "Failed to update voice profile.",
+              }),
         );
       }
     },
-    [profiles, profilesClient],
+    [profiles, profilesClient, t],
   );
 
   const onExport = React.useCallback(async () => {
@@ -171,10 +184,14 @@ export function VoiceProfileSection({
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to export profiles.",
+        err instanceof Error
+          ? err.message
+          : t("voiceprofile.error.export", {
+              defaultValue: "Failed to export profiles.",
+            }),
       );
     }
-  }, [profilesClient]);
+  }, [profilesClient, t]);
 
   const onDeleteAll = React.useCallback(async () => {
     try {
@@ -182,10 +199,14 @@ export function VoiceProfileSection({
       setProfiles((prev) => prev.filter((p) => p.isOwner));
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to delete profiles.",
+        err instanceof Error
+          ? err.message
+          : t("voiceprofile.error.delete", {
+              defaultValue: "Failed to delete profiles.",
+            }),
       );
     }
-  }, [profilesClient]);
+  }, [profilesClient, t]);
 
   const ownerCount = sorted.filter((p) => p.isOwner).length;
   const otherCount = sorted.length - ownerCount;
@@ -201,13 +222,28 @@ export function VoiceProfileSection({
       <header className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-muted" aria-hidden />
-          <h3 className="text-sm font-semibold">Voice profiles</h3>
+          <h3 className="text-sm font-semibold">
+            {t("voiceprofile.title", { defaultValue: "Voice profiles" })}
+          </h3>
           <span
             className="rounded-full bg-bg/60 px-1.5 py-0.5 text-[10px] text-muted"
             data-testid="voice-profile-count"
           >
-            {ownerCount > 0 ? `${ownerCount} owner · ` : ""}
-            {otherCount} {otherCount === 1 ? "other" : "others"}
+            {ownerCount > 0
+              ? t("voiceprofile.ownerCount", {
+                  count: ownerCount,
+                  defaultValue: "{{count}} owner · ",
+                })
+              : ""}
+            {otherCount === 1
+              ? t("voiceprofile.otherCountOne", {
+                  count: otherCount,
+                  defaultValue: "{{count}} other",
+                })
+              : t("voiceprofile.otherCount", {
+                  count: otherCount,
+                  defaultValue: "{{count}} others",
+                })}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -216,18 +252,24 @@ export function VoiceProfileSection({
             size="sm"
             onClick={() => void onExport()}
             data-testid="voice-profile-export"
-            aria-label="Export voice profile metadata"
+            aria-label={t("voiceprofile.exportAria", {
+              defaultValue: "Export voice profile metadata",
+            })}
           >
-            <Download className="mr-1 h-3.5 w-3.5" /> Export
+            <Download className="mr-1 h-3.5 w-3.5" />{" "}
+            {t("voiceprofile.export", { defaultValue: "Export" })}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => void onDeleteAll()}
             data-testid="voice-profile-delete-all"
-            aria-label="Delete all non-owner voice profiles"
+            aria-label={t("voiceprofile.resetAria", {
+              defaultValue: "Delete all non-owner voice profiles",
+            })}
           >
-            <Trash2 className="mr-1 h-3.5 w-3.5" /> Reset
+            <Trash2 className="mr-1 h-3.5 w-3.5" />{" "}
+            {t("voiceprofile.reset", { defaultValue: "Reset" })}
           </Button>
         </div>
       </header>
@@ -246,7 +288,7 @@ export function VoiceProfileSection({
           className="px-4 py-6 text-center text-xs text-muted"
           data-testid="voice-profile-loading"
         >
-          Loading profiles…
+          {t("voiceprofile.loading", { defaultValue: "Loading profiles…" })}
         </div>
       ) : sorted.length === 0 ? (
         <div
@@ -254,8 +296,10 @@ export function VoiceProfileSection({
           data-testid="voice-profile-empty"
         >
           <Mic className="mx-auto mb-2 h-5 w-5 text-muted" aria-hidden />
-          No voice profiles yet. They'll appear here automatically when the
-          agent hears a distinct voice (or you can add one in first-run).
+          {t("voiceprofile.empty", {
+            defaultValue:
+              "No voice profiles yet. They'll appear here automatically when the agent hears a distinct voice (or you can add one in first-run).",
+          })}
         </div>
       ) : (
         <ul
@@ -275,7 +319,9 @@ export function VoiceProfileSection({
                 {profile.isOwner ? (
                   <Crown
                     className="h-4 w-4 shrink-0 text-accent"
-                    aria-label="Owner"
+                    aria-label={t("voiceprofile.owner", {
+                      defaultValue: "Owner",
+                    })}
                     data-testid={`voice-profile-crown-${profile.id}`}
                   />
                 ) : (
@@ -317,7 +363,9 @@ export function VoiceProfileSection({
                       autoFocus
                       className="w-full rounded-sm border border-border/40 bg-bg/50 px-2 py-0.5 text-sm"
                       data-testid={`voice-profile-rename-input-${profile.id}`}
-                      aria-label="Rename voice profile"
+                      aria-label={t("voiceprofile.renameAria", {
+                        defaultValue: "Rename voice profile",
+                      })}
                     />
                   ) : (
                     <button
@@ -334,8 +382,15 @@ export function VoiceProfileSection({
                   )}
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
                     <span data-testid={`voice-profile-samples-${profile.id}`}>
-                      {profile.embeddingCount} sample
-                      {profile.embeddingCount === 1 ? "" : "s"}
+                      {profile.embeddingCount === 1
+                        ? t("voiceprofile.sampleOne", {
+                            count: profile.embeddingCount,
+                            defaultValue: "{{count}} sample",
+                          })
+                        : t("voiceprofile.sampleOther", {
+                            count: profile.embeddingCount,
+                            defaultValue: "{{count}} samples",
+                          })}
                     </span>
                     {profile.relationshipLabel ? (
                       <span
@@ -362,9 +417,15 @@ export function VoiceProfileSection({
                       }
                       className="rounded-sm border border-border/40 bg-bg/50 px-1 py-0.5 text-xs"
                       data-testid={`voice-profile-relationship-select-${profile.id}`}
-                      aria-label="Set relationship"
+                      aria-label={t("voiceprofile.setRelationship", {
+                        defaultValue: "Set relationship",
+                      })}
                     >
-                      <option value="">(no label)</option>
+                      <option value="">
+                        {t("voiceprofile.noLabel", {
+                          defaultValue: "(no label)",
+                        })}
+                      </option>
                       {COMMON_RELATIONSHIPS.map((r) => (
                         <option key={r} value={r}>
                           {r}
@@ -380,7 +441,9 @@ export function VoiceProfileSection({
                         setRenameValue(profile.displayName);
                       }}
                       data-testid={`voice-profile-rename-${profile.id}`}
-                      aria-label="Rename voice profile"
+                      aria-label={t("voiceprofile.renameAria", {
+                        defaultValue: "Rename voice profile",
+                      })}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -392,7 +455,9 @@ export function VoiceProfileSection({
                         void dispatch({ type: "delete", id: profile.id })
                       }
                       data-testid={`voice-profile-delete-${profile.id}`}
-                      aria-label="Delete voice profile"
+                      aria-label={t("voiceprofile.deleteAria", {
+                        defaultValue: "Delete voice profile",
+                      })}
                     >
                       <Trash2 className="h-3.5 w-3.5 text-danger" />
                     </Button>
