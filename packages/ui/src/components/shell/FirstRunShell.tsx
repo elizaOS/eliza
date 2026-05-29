@@ -25,6 +25,7 @@ export interface FirstRunShellProps {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
   localRuntimeAvailable: boolean;
+  cloudOnly: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   busyText: string | null;
@@ -349,6 +350,7 @@ function FirstRunControls(props: {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
   localRuntimeAvailable: boolean;
+  cloudOnly: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   primaryLabel: string;
@@ -450,18 +452,20 @@ function FirstRunControls(props: {
           </div>
         ) : null}
 
-        <RuntimeCard
-          active={props.draft.runtime === "remote"}
-          icon={Network}
-          label="Use as remote"
-          emphasis="muted"
-          testId="first-run-runtime-remote"
-          detail="Connect to your local machine from another device."
-          onClick={() => {
-            props.updateDraft("runtime", "remote");
-            props.setStep("remote");
-          }}
-        />
+        {props.cloudOnly ? null : (
+          <RuntimeCard
+            active={props.draft.runtime === "remote"}
+            icon={Network}
+            label="Use as remote"
+            emphasis="muted"
+            testId="first-run-runtime-remote"
+            detail="Connect to your local machine from another device."
+            onClick={() => {
+              props.updateDraft("runtime", "remote");
+              props.setStep("remote");
+            }}
+          />
+        )}
       </div>
       <GlassButton
         variant="primary"
@@ -479,6 +483,7 @@ export function FirstRunShell({
   step,
   draft,
   localRuntimeAvailable,
+  cloudOnly,
   elizaCloudConnected,
   submitting,
   busyText,
@@ -553,6 +558,7 @@ export function FirstRunShell({
                 step={step}
                 draft={draft}
                 localRuntimeAvailable={localRuntimeAvailable}
+                cloudOnly={cloudOnly}
                 elizaCloudConnected={elizaCloudConnected}
                 submitting={submitting}
                 primaryLabel={primaryLabel}

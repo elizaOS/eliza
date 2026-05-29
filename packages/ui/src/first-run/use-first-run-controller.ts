@@ -80,6 +80,7 @@ export interface FirstRunController {
   step: FirstRunStep;
   draft: FirstRunProfileDraft;
   localRuntimeAvailable: boolean;
+  cloudOnly: boolean;
   elizaCloudConnected: boolean;
   submitting: boolean;
   busyText: string | null;
@@ -253,6 +254,12 @@ export function useFirstRunController(): FirstRunController {
     uiLanguage,
   } = useApp();
   const initialRuntimeTarget = React.useMemo(readFirstRunRuntimeTarget, []);
+  // Desktop cloud-only opt-in: branding.cloudOnly is set from the injected
+  // __ELIZA_DESKTOP_RUNTIME_MODE__ signal (api-base-owner → main.tsx branding).
+  // When on, the runtime is forced to cloud and the Local/Remote options are
+  // hidden. Off (the default) everywhere else, so web/mobile/default-desktop are
+  // unchanged.
+  const cloudOnly = Boolean(getBootConfig().branding?.cloudOnly);
   const initialDraft = React.useMemo<FirstRunProfileDraft>(
     () => ({
       agentName: normalizeFirstRunName(firstRunName) || "Eliza",
@@ -271,12 +278,18 @@ export function useFirstRunController(): FirstRunController {
   );
   const [step, setStepState] = React.useState<FirstRunStep>(() => {
     if (persistedFirstRunState) return persistedFirstRunState.step;
-    if (initialRuntimeTarget === "remote") return "remote";
+    if (!cloudOnly && initialRuntimeTarget === "remote") return "remote";
     return "runtime";
   });
-  const localRuntimeAvailable = React.useMemo(canSelectLocalRuntime, []);
+  const localRuntimeAvailable =
+    React.useMemo(canSelectLocalRuntime, []) && !cloudOnly;
   const [draft, setDraft] = React.useState<FirstRunProfileDraft>(() => {
     const resolved = persistedFirstRunState?.draft ?? initialDraft;
+    // Cloud-only desktop: the only valid runtime is cloud, so coerce any
+    // persisted/forced local-or-remote choice back to cloud.
+    if (cloudOnly && resolved.runtime !== "cloud") {
+      return { ...resolved, runtime: "cloud" };
+    }
     if (!localRuntimeAvailable && resolved.runtime === "local") {
       return { ...resolved, runtime: "cloud" };
     }
@@ -879,6 +892,7 @@ export function useFirstRunController(): FirstRunController {
     step,
     draft,
     localRuntimeAvailable,
+    cloudOnly,
     elizaCloudConnected,
     submitting,
     busyText,

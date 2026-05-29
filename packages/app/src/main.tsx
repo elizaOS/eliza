@@ -323,17 +323,40 @@ function getInjectedAppApiBase(): string | undefined {
   );
 }
 
+// Resolve the desktop "cloud-only" runtime-mode signal from whichever path is
+// available before React boots. Undefined on web/mobile and on default desktop.
+//   - Packaged desktop (electrobun static server): a window global is injected
+//     ahead of renderer JS by api-base-owner.injectIntoHtml.
+//   - Dev (`dev:desktop`, Vite) and cloud-only renderer builds: exposed as the
+//     `VITE_ELIZA_DESKTOP_RUNTIME_MODE` build env, since Vite serves index.html
+//     directly and the static-server inject never runs.
+function getInjectedDesktopRuntimeMode(): string | undefined {
+  if (typeof window !== "undefined") {
+    const injected: unknown = Reflect.get(
+      window,
+      "__ELIZA_DESKTOP_RUNTIME_MODE__",
+    );
+    if (typeof injected === "string" && injected) return injected;
+  }
+  const fromEnv = (import.meta.env as Record<string, string | undefined>)
+    .VITE_ELIZA_DESKTOP_RUNTIME_MODE;
+  return typeof fromEnv === "string" && fromEnv ? fromEnv : undefined;
+}
+
 const APP_BRANDING: Partial<BrandingConfig> = {
   ...APP_BRANDING_BASE,
   theme: ELIZA_DEFAULT_THEME,
   // The hosted web bundle stays cloud-only in production. Desktop shells and
   // other hosts inject an explicit API base before React boots, and that host
-  // backend should control first-run capabilities instead.
+  // backend should control first-run capabilities instead — UNLESS the desktop
+  // shell explicitly opted into cloud-only mode (desktopRuntimeMode === "cloud"),
+  // which forces cloud-only regardless of the injected loopback proxy base.
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
       typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
+    desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
 

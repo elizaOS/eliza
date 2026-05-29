@@ -85,6 +85,25 @@ export function resolveDesktopRuntimeMode(
   return { mode: "local", externalApi };
 }
 
+/**
+ * Desktop cloud-only opt-in. Returns `"cloud"` when the desktop shell should run
+ * cloud-only — cloud model providers only (no local model/embedding warmup) and a
+ * cloud-only first-run UI. This is ORTHOGONAL to {@link resolveDesktopRuntimeMode}
+ * (external/local/disabled, i.e. *where* the agent runs): in cloud-only mode the
+ * loopback agent still runs and serves the cloud-login proxy + becomes cloud-backed
+ * after sign-in; only its model sourcing and the renderer's first-run UI change.
+ * Returns `null` (the default) when no cloud-only opt-in is present, so existing
+ * desktop/mobile/web behavior is unchanged.
+ */
+export function resolveDesktopRuntimeModeSignal(
+  env: Record<string, string | undefined>,
+): "cloud" | null {
+  const explicit = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
+  if (explicit === "cloud" || explicit === "elizacloud") return "cloud";
+  if (isEnabledFlag(env.ELIZA_DESKTOP_CLOUD_ONLY)) return "cloud";
+  return null;
+}
+
 export function resolveInitialApiBase(
   env: Record<string, string | undefined>,
 ): string | null {

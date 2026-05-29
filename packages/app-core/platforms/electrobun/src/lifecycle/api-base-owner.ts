@@ -29,7 +29,10 @@
  * see two sources of truth.
  */
 
-import { pushApiBaseToRenderer } from "../api-base";
+import {
+  pushApiBaseToRenderer,
+  resolveDesktopRuntimeModeSignal,
+} from "../api-base";
 
 interface ApiBaseSnapshot {
   base: string | null;
@@ -82,7 +85,16 @@ export function injectIntoHtml(html: string): string {
     ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
     : "";
   const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
-  const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${tokenInject}${bootConfigInject}</script>`;
+  // Desktop cloud-only opt-in: expose the runtime-mode signal as a window global
+  // before any renderer JS runs, so the renderer's cloud-only branding
+  // (shouldUseCloudOnlyBranding) resolves correctly at module-eval time. Only
+  // injected when explicitly cloud, so the default desktop/web behavior is
+  // unchanged.
+  const runtimeModeSignal = resolveDesktopRuntimeModeSignal(process.env);
+  const runtimeModeInject = runtimeModeSignal
+    ? `window.__ELIZA_DESKTOP_RUNTIME_MODE__=${safeJsonForHtml(runtimeModeSignal)};`
+    : "";
+  const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${runtimeModeInject}${tokenInject}${bootConfigInject}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${script}</head>`);
   }
