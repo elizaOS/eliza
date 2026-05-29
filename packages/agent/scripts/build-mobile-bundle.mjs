@@ -392,7 +392,6 @@ const optionalPluginStubs = {
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-commands": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-video": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-mlx": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-pdf": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-computeruse": path.join(stubsDir, "null-plugin.cjs"),
   // Browser bridge can still be resolved through workspace/plugin fallback

@@ -323,9 +323,6 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-background-runner") {
       return await import("@elizaos/plugin-background-runner");
     }
-    if (packageName === "@elizaos/plugin-mlx") {
-      return await import("@elizaos/plugin-mlx");
-    }
     if (packageName === "@elizaos/plugin-anthropic") {
       return await import("@elizaos/plugin-anthropic");
     }
@@ -486,7 +483,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginBackgroundRunner,
       pluginElizacloud,
       pluginOllama,
-      pluginMlx,
       pluginAnthropic,
       pluginOpenai,
       pluginGoogle,
@@ -538,11 +534,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       trackImport(
         "@elizaos/plugin-ollama",
         () => getOptionalPlugin("@elizaos/plugin-ollama"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-mlx",
-        () => getOptionalPlugin("@elizaos/plugin-mlx"),
         { required: false },
       ),
       trackImport(
@@ -599,7 +590,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         ? { "@elizaos/plugin-anthropic": pluginAnthropic }
         : {}),
       ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
-      ...(pluginMlx ? { "@elizaos/plugin-mlx": pluginMlx } : {}),
       ...(pluginElizacloud
         ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
         : {}),

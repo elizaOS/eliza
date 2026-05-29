@@ -283,7 +283,6 @@
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
-    "@elizaos/plugin-mlx": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",

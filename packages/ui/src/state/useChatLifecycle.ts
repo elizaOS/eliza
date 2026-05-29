@@ -18,6 +18,7 @@ import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
+  isMobileLocalAgentIpcBase,
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
@@ -820,9 +821,13 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
   const handleReset = useCallback(async () => {
     logResetInfo("handleReset: invoked");
     const activeServer = loadPersistedActiveServer();
+    // Capture before the reset cascade runs — `markFirstRunReset()` clears the
+    // persisted mobile runtime mode mid-reset, so reading it after the local
+    // wipe would always come back null.
+    const mobileRuntimeModeAtStart = readPersistedMobileRuntimeMode();
     const resetTarget = inferAgentRuntimeTarget({
       activeServer,
-      mobileRuntimeMode: readPersistedMobileRuntimeMode(),
+      mobileRuntimeMode: mobileRuntimeModeAtStart,
       clientBaseUrl: client.getBaseUrl(),
     });
     const resetTargetName =
@@ -999,12 +1004,19 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       );
       await completeResetLocalStateAfterServerWipe(null);
 
-      const isIosLocalInProcessReset =
+      // Mobile (iOS + Android) runs the agent in-process via the native IPC
+      // bridge. There is no separate process to restart, so the desktop bridge
+      // and HTTP restart paths below are no-ops that hang/time out. The reset
+      // POST already cleared the in-process runtime + DB; wiping local state
+      // above marked first-run, so the UI returns to onboarding from here.
+      const isMobileLocalInProcessReset =
         resetTarget.kind === "local" &&
-        isIosInProcessLocalAgentBase(resetApiBase);
-      if (isIosLocalInProcessReset) {
+        (isIosInProcessLocalAgentBase(resetApiBase) ||
+          isMobileLocalAgentIpcBase(resetApiBase) ||
+          mobileRuntimeModeAtStart === "local");
+      if (isMobileLocalInProcessReset) {
         const elapsedMs = Math.round(performance.now() - resetStartedAt);
-        logResetInfo("handleReset: success — iOS local reset", {
+        logResetInfo("handleReset: success — mobile local in-process reset", {
           elapsedMs,
         });
         setActionNotice(LIFECYCLE_MESSAGES.reset.success, "success", 3200);

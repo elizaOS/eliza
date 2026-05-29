@@ -429,16 +429,6 @@ const PROVIDER_DEFAULT_MODELS: Record<
     largeKey: "NEARAI_LARGE_MODEL",
     largeVal: "zai-org/GLM-5.1-FP8",
   },
-  // MLX (Apple Silicon, mlx_lm.server). Defaults pick small/fast 4-bit
-  // quantizations from the `mlx-community` HuggingFace org — they're the
-  // canonical converted models the MLX team publishes. Operators with their
-  // own conversions override via `MLX_SMALL_MODEL` / `MLX_LARGE_MODEL`.
-  mlx: {
-    smallKey: "MLX_SMALL_MODEL",
-    smallVal: "mlx-community/Llama-3.2-3B-Instruct-4bit",
-    largeKey: "MLX_LARGE_MODEL",
-    largeVal: "mlx-community/Llama-3.1-8B-Instruct-4bit",
-  },
 };
 
 /**
@@ -713,7 +703,6 @@ export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
     "grok",
     "groq",
     "mistral",
-    "mlx",
     "moonshot",
     "nearai",
     "ollama",

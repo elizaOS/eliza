@@ -156,7 +156,6 @@
       ],
       "@elizaos/plugin-mcp": ["./plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-messages": ["./plugins/plugin-messages/src/index.ts"],
-      "@elizaos/plugin-mlx": ["./plugins/plugin-mlx/index.ts"],
       "@elizaos/plugin-ollama": ["./plugins/plugin-ollama/index.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-phone": ["./plugins/plugin-phone/src/index.ts"],

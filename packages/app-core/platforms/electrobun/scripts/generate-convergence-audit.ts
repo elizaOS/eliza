@@ -210,7 +210,6 @@ const MODEL_NAMES = new Set([
   "plugin-aosp-local-inference",
   "plugin-local-inference",
   "plugin-lmstudio",
-  "plugin-mlx",
   "plugin-native-llama",
   "plugin-ollama",
   "plugin-omnivoice",

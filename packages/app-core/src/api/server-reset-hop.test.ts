@@ -72,6 +72,28 @@ describe("server reset hop (regression for #7409)", () => {
     expect(elapsedMs).toBeLessThan(2000);
   });
 
+  it("deletes the data dir even when runtime.stop() never resolves", async () => {
+    vi.useFakeTimers();
+    try {
+      const stop = vi.fn(() => new Promise<void>(() => {}));
+      const runtime = { stop } as unknown as Parameters<
+        typeof _clearCompatPgliteDataDirForTests
+      >[0];
+      const config = {
+        database: { pglite: { dataDir: elizadb } },
+      } as Parameters<typeof _clearCompatPgliteDataDirForTests>[1];
+
+      const pending = _clearCompatPgliteDataDirForTests(runtime, config);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await pending;
+
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(elizadb)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("refuses to delete an unexpected directory name (safety guard)", async () => {
     const wrongDir = join(dataParent, "not-elizadb");
     fs.mkdirSync(wrongDir, { recursive: true });

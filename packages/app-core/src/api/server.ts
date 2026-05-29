@@ -285,6 +285,8 @@ export function syncCompatConfigFiles(): void {
   fs.copyFileSync(sourcePath, targetPath);
 }
 
+const RUNTIME_STOP_RESET_TIMEOUT_MS = 20_000;
+
 function resolveCompatPgliteDataDir(config: ElizaConfig): string {
   const explicitDataDir = process.env.PGLITE_DATA_DIR?.trim();
   if (explicitDataDir) {
@@ -317,7 +319,38 @@ async function clearCompatPgliteDataDir(
   config: ElizaConfig,
 ): Promise<void> {
   if (typeof runtime?.stop === "function") {
-    await runtime.stop();
+    // `runtime.stop()` releases plugins/services to drop the PGlite write lock
+    // before we delete the data dir. On mobile CPU with many plugins loaded it
+    // can take a while, and a hung plugin shutdown must not wedge reset forever.
+    // POSIX `rm` succeeds with open file handles, so if stop overruns we log and
+    // proceed to delete anyway; the lingering runtime is torn down by the
+    // first-run restart that follows on the client.
+    let stopTimedOut = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        Promise.resolve(runtime.stop()),
+        new Promise<void>((resolve) => {
+          timeoutHandle = setTimeout(() => {
+            stopTimedOut = true;
+            resolve();
+          }, RUNTIME_STOP_RESET_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (err) {
+      logger.warn(
+        `[eliza][reset] runtime.stop() failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+    if (stopTimedOut) {
+      logger.warn(
+        `[eliza][reset] runtime.stop() exceeded ${RUNTIME_STOP_RESET_TIMEOUT_MS}ms; deleting PGlite data dir anyway`,
+      );
+    }
   }
 
   const dataDir = resolveCompatPgliteDataDir(config);

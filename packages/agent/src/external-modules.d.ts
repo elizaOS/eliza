@@ -391,7 +391,6 @@ declare module "@elizaos/plugin-imessage" {
   export default imessagePlugin;
 }
 declare module "@elizaos/plugin-ollama";
-declare module "@elizaos/plugin-mlx";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/plugin-x402" {

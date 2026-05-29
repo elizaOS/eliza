@@ -27,6 +27,10 @@
  * decision be replayed offline.
  */
 
+// MLX (Apple Silicon) is not a separate provider/plugin. If we ever need it
+// for better Apple compatibility than llama.cpp's Metal path, it belongs here
+// as an additional backend compiled into the fused libelizainference target —
+// never an external mlx_lm.server HTTP sidecar.
 export type LocalInferenceBackend = "ffi-streaming";
 
 export type LocalInferencePlatform = "desktop" | "mobile";

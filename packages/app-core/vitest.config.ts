@@ -70,7 +70,6 @@ const pluginLocalInferenceSrc = path.join(
   "plugins/plugin-local-inference/src",
 );
 const pluginMcpSrc = path.join(monorepoRoot, "plugins/plugin-mcp/src");
-const pluginMlxRoot = path.join(monorepoRoot, "plugins/plugin-mlx");
 const pluginOllamaRoot = path.join(monorepoRoot, "plugins/plugin-ollama");
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
@@ -380,14 +379,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-mcp$/,
         replacement: path.join(pluginMcpSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-mlx$/,
-        replacement: path.join(pluginMlxRoot, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-mlx\/(.+)$/,
-        replacement: path.join(pluginMlxRoot, "$1"),
       },
       {
         find: /^@elizaos\/plugin-ollama$/,

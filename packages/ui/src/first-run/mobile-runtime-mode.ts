@@ -61,6 +61,17 @@ export function isMobileLocalAgentIpcUrl(
   }
 }
 
+export function isMobileLocalAgentIpcBase(
+  baseUrl: string | null | undefined,
+): boolean {
+  if (!baseUrl) return false;
+  const normalized = baseUrl.replace(/\/+$/, "");
+  return (
+    isMobileLocalAgentIpcUrl(normalized) ||
+    isMobileLocalAgentIpcUrl(`${normalized}/api/health`)
+  );
+}
+
 export function mobileLocalAgentPathFromUrl(
   value: string | URL | null | undefined,
 ): string | null {

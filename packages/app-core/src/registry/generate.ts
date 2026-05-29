@@ -150,7 +150,6 @@ const DEFAULT_ICONS: Record<string, string> = {
   "google-genai": "Sparkles",
   groq: "Zap",
   "local-ai": "Monitor",
-  mlx: "Apple",
   ollama: "Bot",
   openai: "CircleDashed",
   openrouter: "Shuffle",

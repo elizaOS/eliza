@@ -13,6 +13,13 @@ const LOCAL_INFERENCE_TTS_FETCH_TIMEOUT_MS = 3 * 60_000;
 // on the typing indicator with no response visible. Match the bun ceiling
 // so the two layers fail/succeed together.
 const CHAT_MESSAGE_FETCH_TIMEOUT_MS = 10 * 60_000;
+// `POST /api/agent/reset` stops the in-process runtime to release the PGlite
+// lock before deleting the data dir. On mobile CPU with many plugins loaded,
+// the runtime stop alone can exceed the generic 10 s budget; the bridge would
+// then abort a reset that is actually progressing, the catch path fires, and
+// the UI stays stuck instead of wiping local state and returning to first-run
+// setup.
+const AGENT_RESET_FETCH_TIMEOUT_MS = 60_000;
 
 function requestPathname(path: string): string {
   try {
@@ -39,6 +46,9 @@ export function defaultFetchTimeoutMs(
   }
   if (pathname === "/api/tts/local-inference") {
     return LOCAL_INFERENCE_TTS_FETCH_TIMEOUT_MS;
+  }
+  if (pathname === "/api/agent/reset") {
+    return AGENT_RESET_FETCH_TIMEOUT_MS;
   }
   return DEFAULT_FETCH_TIMEOUT_MS;
 }

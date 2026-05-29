@@ -10,6 +10,14 @@ describe("defaultFetchTimeoutMs", () => {
     ).toBe(180_000);
   });
 
+  it("gives the in-process agent reset time to stop the runtime", () => {
+    expect(
+      defaultFetchTimeoutMs("/api/agent/reset", {
+        method: "POST",
+      }),
+    ).toBe(60_000);
+  });
+
   it("keeps ordinary API calls on the short default timeout", () => {
     expect(
       defaultFetchTimeoutMs("http://127.0.0.1:31337/api/health", {

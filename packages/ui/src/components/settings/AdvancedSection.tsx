@@ -29,6 +29,7 @@ export function AdvancedSection() {
   const developerMode = useIsDeveloperMode();
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   const resetExportState = useCallback(() => {
@@ -149,9 +150,8 @@ export function AdvancedSection() {
                 variant="destructive"
                 size="sm"
                 className="rounded-sm whitespace-nowrap"
-                onClick={() => {
-                  void handleReset();
-                }}
+                aria-haspopup="dialog"
+                onClick={() => setResetConfirmOpen(true)}
               >
                 {t("settings.resetEverything")}
               </Button>
@@ -336,6 +336,50 @@ export function AdvancedSection() {
               >
                 {importBusy && <Spinner size={16} />}
                 {t("settings.import")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resetConfirmOpen}
+        onOpenChange={(open: boolean) => setResetConfirmOpen(open)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-danger">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              {t("settings.resetConfirmTitle")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p
+              className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+              role="alert"
+              aria-live="assertive"
+            >
+              {t("settings.resetConfirmBody")}
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-[2.625rem] px-4 rounded-sm"
+                onClick={() => setResetConfirmOpen(false)}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="min-h-[2.625rem] px-4 rounded-sm"
+                onClick={() => {
+                  setResetConfirmOpen(false);
+                  void handleReset();
+                }}
+              >
+                {t("settings.resetConfirmAction")}
               </Button>
             </div>
           </div>

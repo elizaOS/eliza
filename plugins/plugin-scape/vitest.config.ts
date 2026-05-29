@@ -139,10 +139,6 @@ export default defineConfig({
       pluginAlias("plugin-matrix"),
       pluginAlias("plugin-mcp"),
       pluginAlias("plugin-minecraft"),
-      pluginAlias(
-        "plugin-mlx",
-        path.join(repoRoot, "plugins/plugin-mlx/index.ts"),
-      ),
       pluginAlias("plugin-music"),
       pluginAlias("plugin-mysticism"),
       pluginAlias("plugin-ngrok"),

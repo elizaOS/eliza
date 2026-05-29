@@ -195,7 +195,6 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
-  MLX_BASE_URL: "@elizaos/plugin-mlx",
   NEARAI_API_KEY: "@elizaos/plugin-nearai",
   ZAI_API_KEY: "@elizaos/plugin-zai",
   Z_AI_API_KEY: "@elizaos/plugin-zai",
@@ -206,7 +205,6 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
 
 const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
   "@elizaos/plugin-ollama",
-  "@elizaos/plugin-mlx",
   "@elizaos/plugin-local-inference",
 ]);
 

@@ -247,7 +247,7 @@ export async function handlePermissionRoutes(
     const permission: PermissionState = {
       id: "shell",
       status: enabled ? "granted" : "denied",
-      lastChecked: shellState.lastChecked,
+      lastChecked: shellState?.lastChecked ?? Date.now(),
       canRequest: false,
       platform: currentPlatform(),
     };

@@ -46,7 +46,6 @@
 			"@elizaos/plugin-worker-runtime/*": [
 				"../../packages/plugin-worker-runtime/src/*"
 			],
-			"@elizaos/plugin-mlx": ["../plugin-mlx/dist/node/index.d.ts"],
 			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
 			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
 			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],

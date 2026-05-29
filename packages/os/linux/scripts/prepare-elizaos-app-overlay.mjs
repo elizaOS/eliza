@@ -479,9 +479,6 @@ export default undefined;
     "@elizaos/plugin-background-runner": `
 export default undefined;
 `,
-    "@elizaos/plugin-mlx": `
-export default undefined;
-`,
   }).map(([packageName, source]) => [packageName, `${source.trimStart()}\n`]),
 );
 
