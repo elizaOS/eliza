@@ -101,43 +101,10 @@ export default scenario({
         runtime.scenarioLlmFixtures?.register({
           name: "pr-smoke-deterministic-reply",
           match: {
-            modelType: ModelType.RESPONSE_HANDLER,
+            modelType: ModelType.TEXT_SMALL,
             input: "hello deterministic proxy",
-            toolName: "HANDLE_RESPONSE",
           },
-          response: {
-            text: JSON.stringify({
-              shouldRespond: "RESPOND",
-              contexts: ["simple"],
-              intents: ["deterministic reply"],
-              replyText: "deterministic-test-response: hello deterministic proxy",
-              candidateActionNames: [],
-              facts: [],
-              relationships: [],
-              addressedTo: [],
-              emotion: "none",
-            }),
-            finishReason: "tool-calls",
-            toolCalls: [
-              {
-                id: "call-pr-smoke-handle-response",
-                name: "HANDLE_RESPONSE",
-                type: "function",
-                arguments: {
-                  shouldRespond: "RESPOND",
-                  contexts: ["simple"],
-                  intents: ["deterministic reply"],
-                  replyText:
-                    "deterministic-test-response: hello deterministic proxy",
-                  candidateActionNames: [],
-                  facts: [],
-                  relationships: [],
-                  addressedTo: [],
-                  emotion: "none",
-                },
-              },
-            ],
-          },
+          response: "deterministic-test-response: hello deterministic proxy",
           times: 1,
         });
         registerAppControlHttpHandler((request) => {

@@ -77,6 +77,7 @@ function expectActionTurn(
 
 const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
 const feedPluginDir = path.join(process.cwd(), "plugins", "plugin-feed");
+const statPatchKey = Symbol.for("scenario-runner.app-control-feed-stat-patch");
 
 const views = [
   {
@@ -211,6 +212,8 @@ export default scenario({
       name: "stub app-control loopback APIs for deterministic APP and VIEWS actions",
       apply: () => {
         resetAppControlHttpStub();
+        process.env.ELIZA_REPO_ROOT = repoRoot;
+        process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         let launchCount = 0;
 
         registerAppControlHttpHandler((request) => {
@@ -315,6 +318,25 @@ export default scenario({
           | undefined;
         if (!runtime?.actions) {
           return "runtime actions unavailable";
+        }
+
+        const fsWithPatch = fs as typeof fs & { [statPatchKey]?: true };
+        if (fsWithPatch[statPatchKey] !== true) {
+          const originalStat = fs.stat.bind(fs);
+          fsWithPatch.stat = (async (target, ...args) => {
+            if (
+              String(target).endsWith(
+                `${path.sep}plugins${path.sep}plugin-feed`,
+              )
+            ) {
+              return {
+                isDirectory: () => true,
+                isFile: () => false,
+              };
+            }
+            return originalStat(target, ...args);
+          }) as typeof fs.stat;
+          fsWithPatch[statPatchKey] = true;
         }
 
         await fs.rm(path.dirname(appLoadDirectory), {

@@ -39,6 +39,13 @@ function valuesEqual(actual: unknown, expected: unknown): boolean {
   return JSON.stringify(actual) === JSON.stringify(expected);
 }
 
+function matchesScenarioInput(expected: string) {
+  return (value: string) =>
+    value === expected ||
+    value.endsWith(`message:user:\n${expected}`) ||
+    value.includes(`\nmessage:user:\n${expected}`);
+}
+
 function expectRoutedAction(
   execution: ScenarioTurnExecution,
   expected: {
@@ -77,22 +84,18 @@ function expectRoutedAction(
 
 function handleResponseFixture(input: string, actionName: "APP" | "VIEWS") {
   const args = {
-    shouldRespond: "RESPOND",
     contexts: ["actions"],
     intents: [input.toLowerCase()],
     replyText: "On it.",
+    threadOps: [],
     candidateActionNames: [actionName],
-    facts: [],
-    relationships: [],
-    addressedTo: [],
-    emotion: "none",
   };
 
   return {
     name: `route-${actionName.toLowerCase()}-stage1-${input}`,
     match: {
       modelType: ModelType.RESPONSE_HANDLER,
-      input,
+      input: matchesScenarioInput(input),
       toolName: "HANDLE_RESPONSE",
     },
     response: {
@@ -121,7 +124,7 @@ function plannerFixture(
     name: `route-${actionName.toLowerCase()}-planner-${input}`,
     match: {
       modelType: ModelType.ACTION_PLANNER,
-      input,
+      input: matchesScenarioInput(input),
       toolName: actionName,
     },
     response: {
