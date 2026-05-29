@@ -16,6 +16,7 @@ _ADAPTER_PACKAGES: dict[str, tuple[str, str]] = {
     "eliza": ("eliza-adapter", "eliza_adapter"),
     "hermes": ("hermes-adapter", "hermes_adapter"),
     "openclaw": ("openclaw-adapter", "openclaw_adapter"),
+    "smithers": ("smithers-adapter", "smithers_adapter"),
 }
 
 
