@@ -44,11 +44,12 @@ describe("Local AI Plugin (Capacitor-llama)", () => {
 		it("includes small, medium, and embedding specs", () => {
 			expect(MODEL_SPECS.small.name).toContain("eliza-1");
 			expect(MODEL_SPECS.medium.name).toContain("eliza-1");
-			expect(MODEL_SPECS.embedding.name).toContain("eliza-1");
+			// Embeddings use the compact gte-small model, not an eliza-1 chat GGUF.
+			expect(MODEL_SPECS.embedding.name).toContain("gte-small");
 		});
 
-		it("declares 1024 embedding dimensions to match plugin-local-inference", () => {
-			expect(MODEL_SPECS.embedding.dimensions).toBe(1024);
+		it("declares 384 embedding dimensions to match plugin-local-inference", () => {
+			expect(MODEL_SPECS.embedding.dimensions).toBe(384);
 		});
 
 		it("does not declare any node-llama-cpp-specific fields", () => {

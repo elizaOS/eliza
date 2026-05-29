@@ -291,7 +291,7 @@ async function finalLedgerCheck(
 }
 
 export default scenario({
-  id: scenarioId,
+  id: "deterministic-coding-tools-actions",
   title: "Deterministic coding-tools action execution",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "coding-tools"],
@@ -312,6 +312,7 @@ export default scenario({
           | {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (plugin: typeof codingToolsPlugin) => Promise<void>;
+              getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
               getService?: (serviceType: string) => unknown;
             }
           | undefined;
@@ -327,6 +328,10 @@ export default scenario({
         ) {
           await runtime.registerPlugin(codingToolsPlugin);
         }
+        await Promise.all([
+          runtime.getServiceLoadPromise?.("CODING_TOOLS_SESSION_CWD"),
+          runtime.getServiceLoadPromise?.("CODING_TOOLS_SANDBOX"),
+        ]);
         const session = runtime.getService?.("CODING_TOOLS_SESSION_CWD") as
           | { setCwd?: (conversationId: string, absPath: string) => void }
           | null

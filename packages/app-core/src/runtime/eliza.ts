@@ -858,9 +858,10 @@ export async function bootElizaRuntime(
     // still surfaces progress via updateStartupEmbeddingProgress.
     void warmupEmbeddingModel(opts.onEmbeddingProgress);
 
-    // Cap embedding dimension to 384 — plugin-sql's DIMENSION_MAP only
-    // supports up to 3072, and the performance-tier E5-Mistral-7B model
-    // outputs 4096-dim vectors which would silently fall back to 384 anyway.
+    // Default the embedding dimension to 384 — the local default model
+    // (gte-small) natively emits 384-dim vectors, which matches plugin-sql's
+    // dim384 column exactly. Only set it when unset so an explicit override
+    // (e.g. a different local model, or cloud embeddings) still wins.
     if (!process.env.EMBEDDING_DIMENSION) {
       process.env.EMBEDDING_DIMENSION = "384";
     }

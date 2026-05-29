@@ -113,7 +113,7 @@ import type {
   UpdateStatus,
   UpdateTriggerRequest,
 } from "./client-types";
-import { mapAcpSessionsToCodingAgentSessions } from "./client-types";
+import { ApiError, mapAcpSessionsToCodingAgentSessions } from "./client-types";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -3391,32 +3391,63 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
   }
 };
 
-ElizaClient.prototype.listCodingAgentTaskThreads = function (
+ElizaClient.prototype.listCodingAgentTaskThreads = async function (
   this: ElizaClient,
-  _options,
+  options,
 ) {
-  return Promise.resolve([]);
+  const params = new URLSearchParams();
+  if (options?.includeArchived) params.set("includeArchived", "true");
+  if (options?.status) params.set("status", options.status);
+  if (options?.search) params.set("search", options.search);
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  const qs = params.toString();
+  const res = await this.fetch<{ tasks: CodingAgentTaskThread[] }>(
+    `/api/orchestrator/tasks${qs ? `?${qs}` : ""}`,
+  );
+  return res.tasks;
 };
 
-ElizaClient.prototype.getCodingAgentTaskThread = function (
+ElizaClient.prototype.getCodingAgentTaskThread = async function (
   this: ElizaClient,
-  _threadId,
+  threadId,
 ) {
-  return Promise.resolve(null);
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(threadId)}`,
+    );
+  } catch (error) {
+    // A task that no longer exists (deleted between list and detail fetch) is a
+    // normal "no detail" outcome, not a load failure. Every other error
+    // propagates so the caller can surface it.
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 };
 
 ElizaClient.prototype.archiveCodingAgentTaskThread = async function (
   this: ElizaClient,
-  _threadId,
+  threadId,
 ) {
-  return false;
+  await this.fetch<CodingAgentTaskThreadDetail>(
+    `/api/orchestrator/tasks/${encodeURIComponent(threadId)}/archive`,
+    { method: "POST" },
+  );
+  return true;
 };
 
 ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
   this: ElizaClient,
-  _threadId,
+  threadId,
 ) {
-  return false;
+  await this.fetch<CodingAgentTaskThreadDetail>(
+    `/api/orchestrator/tasks/${encodeURIComponent(threadId)}/reopen`,
+    { method: "POST" },
+  );
+  return true;
 };
 
 ElizaClient.prototype.stopCodingAgent = async function (

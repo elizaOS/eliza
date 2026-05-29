@@ -359,13 +359,13 @@ export const MODEL_SPECS = {
 		tokenizer: { name: "elizaos/eliza-1", type: "eliza1" },
 	},
 	embedding: {
-		name: "text/eliza-1-0_8b-128k.gguf",
-		repo: "elizaos/eliza-1",
-		size: "512 MB",
-		quantization: "fused GGUF",
-		contextSize: 131072,
-		dimensions: 1024,
-		tokenizer: { name: "elizaos/eliza-1", type: "eliza1" },
+		name: "gte-small_fp16.gguf",
+		repo: "ChristianAzinn/gte-small-gguf",
+		size: "64 MB",
+		quantization: "fp16 GGUF",
+		contextSize: 512,
+		dimensions: 384,
+		tokenizer: { name: "ChristianAzinn/gte-small-gguf", type: "bert" },
 	},
 } as const satisfies {
 	small: ModelSpec;

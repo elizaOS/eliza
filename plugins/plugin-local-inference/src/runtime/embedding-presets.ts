@@ -14,13 +14,15 @@ export interface EmbeddingPreset {
 	downloadSizeMB: number;
 }
 
-const COMPACT_ELIZA_1_EMBEDDING = {
-	// Canonical bundle layout: elizaos/eliza-1 + bundles/<tier>/<subdir>/<file>.
-	model: "bundles/0_8b/text/eliza-1-0_8b-128k.gguf",
-	modelRepo: "elizaos/eliza-1",
-	dimensions: 1024,
-	contextSize: 131072,
-	downloadSizeMB: 512,
+const GTE_SMALL_EMBEDDING = {
+	// gte-small: 384-dim general-purpose text embedding, ~64MB fp16 GGUF.
+	// Chosen for broad device support (mobile included) and an exact match to
+	// plugin-sql's dim384 column — no truncation, no per-device model juggling.
+	model: "gte-small_fp16.gguf",
+	modelRepo: "ChristianAzinn/gte-small-gguf",
+	dimensions: 384,
+	contextSize: 512,
+	downloadSizeMB: 64,
 } as const;
 
 export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
@@ -28,37 +30,37 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 		tier: "fallback",
 		label: "Efficient (CPU)",
 		description:
-			"Eliza-1 lite local embeddings for Intel Macs and low-RAM machines",
-		model: COMPACT_ELIZA_1_EMBEDDING.model,
-		modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
-		dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
+			"gte-small local embeddings for Intel Macs and low-RAM machines",
+		model: GTE_SMALL_EMBEDDING.model,
+		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
+		dimensions: GTE_SMALL_EMBEDDING.dimensions,
 		gpuLayers: 0,
-		contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
-		downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
+		contextSize: GTE_SMALL_EMBEDDING.contextSize,
+		downloadSizeMB: GTE_SMALL_EMBEDDING.downloadSizeMB,
 	},
 	standard: {
 		tier: "standard",
 		label: "Efficient (Metal GPU)",
-		description: "Eliza-1 lite local embeddings with Metal acceleration",
-		model: COMPACT_ELIZA_1_EMBEDDING.model,
-		modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
-		dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
+		description: "gte-small local embeddings with Metal acceleration",
+		model: GTE_SMALL_EMBEDDING.model,
+		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
+		dimensions: GTE_SMALL_EMBEDDING.dimensions,
 		gpuLayers: "auto",
-		contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
-		downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
+		contextSize: GTE_SMALL_EMBEDDING.contextSize,
+		downloadSizeMB: GTE_SMALL_EMBEDDING.downloadSizeMB,
 	},
 	performance: {
 		tier: "performance",
 		label: "Efficient (compact text embedding)",
 		description:
-			"1024-dim compact Eliza-1 text embedding model. Powers memory / knowledge vectors only; not chat. " +
+			"384-dim gte-small text embedding model. Powers memory / knowledge vectors only; not chat. " +
 			"The framework keeps the default SQL-safe and fast instead of auto-selecting a multi-GB embedding GGUF.",
-		model: COMPACT_ELIZA_1_EMBEDDING.model,
-		modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
-		dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
+		model: GTE_SMALL_EMBEDDING.model,
+		modelRepo: GTE_SMALL_EMBEDDING.modelRepo,
+		dimensions: GTE_SMALL_EMBEDDING.dimensions,
 		gpuLayers: "auto",
-		contextSize: COMPACT_ELIZA_1_EMBEDDING.contextSize,
-		downloadSizeMB: COMPACT_ELIZA_1_EMBEDDING.downloadSizeMB,
+		contextSize: GTE_SMALL_EMBEDDING.contextSize,
+		downloadSizeMB: GTE_SMALL_EMBEDDING.downloadSizeMB,
 	},
 };
 
