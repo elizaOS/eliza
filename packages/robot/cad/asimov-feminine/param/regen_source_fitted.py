@@ -157,6 +157,19 @@ def _smooth_field(R, C0, C1, harmonics, axial_sigma):
     return R, C0, C1
 
 
+def _pin_interfaces(R, C0, C1, R0, C00, C10, L, levels, ramp=0.016):
+    """Within a short collar around every reserved joint level, blend the smoothed
+    rings back to the true (pre-smoothing) cross-section + centre. This restores
+    the exact mating interface each part had, so neighbours still overlap and the
+    constraints hold, while the shaft in between stays perfectly smooth."""
+    for lvl in levels:
+        w = np.exp(-(((L - lvl) / ramp) ** 2))
+        R = R * (1 - w[:, None]) + R0 * w[:, None]
+        C0 = C0 * (1 - w) + C00 * w
+        C1 = C1 * (1 - w) + C10 * w
+    return R, C0, C1
+
+
 def _torso_skin(mesh, n_ang=96, dz=0.005):
     """Smooth watertight outer skin of the torso lofted from per-slice outer
     envelopes, with the waist cinch, two breast effectors and back relief sculpted
@@ -177,11 +190,14 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     zs = np.array(zs); cxs = np.array(cxs); cys = np.array(cys)
     R_arr = np.array(rings_r)            # (N, n_ang)
     bins = rings_b[0]
+    R0, cx0, cy0 = R_arr.copy(), cxs.copy(), cys.copy()
     # genuinely smooth base surface: low Fourier order + axial low-pass
     R_arr, cxs, cys = _smooth_field(R_arr, cxs, cys, harmonics=6, axial_sigma=5.0)
 
     P, B = TORSO, BREAST
     reserved = C.reserved_levels("WAIST_YAW")
+    # preserve the exact neck / shoulder / pelvis mating interfaces
+    R_arr, cxs, cys = _pin_interfaces(R_arr, cxs, cys, R0, cx0, cy0, zs, reserved, ramp=0.018)
     w = W.connection_weight(zs, reserved, ramp=0.03)
     band = np.clip((zs - P["z_lo"]) / 0.04, 0, 1) * np.clip((P["z_hi"] - zs) / 0.04, 0, 1)
     w = w * band
@@ -224,11 +240,12 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     return skin
 
 
-def _skin_part(mesh, spine, n_ang=72, dz=0.004, vpass=2, taubin=8, flat_bottom=False):
+def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False, reserved=None):
     """Smooth watertight outer skin for a limb/head: loft per-slice outer
     envelopes along the spine axis about the slice centroid. Produces a clean
     single-solid futuristic shell with no bolt-boss lumps or voxel terracing.
-    The input mesh should already carry the slimming warp."""
+    The input mesh should already carry the slimming warp. `reserved` are the
+    spine-axis joint levels whose mating interface must be preserved exactly."""
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
     lo, hi = mesh.bounds[0][ai], mesh.bounds[1][ai]
@@ -246,8 +263,11 @@ def _skin_part(mesh, spine, n_ang=72, dz=0.004, vpass=2, taubin=8, flat_bottom=F
         Rs.append(r); C0.append(c[0]); C1.append(c[1]); L.append(t)
     Rs = np.array(Rs); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
     bins = b
+    R0, C00, C10 = Rs.copy(), C0.copy(), C1.copy()
     # low Fourier order + axial low-pass -> long smooth lines, no dimples
     Rs, C0, C1 = _smooth_field(Rs, C0, C1, harmonics=5, axial_sigma=6.0)
+    if reserved:  # restore the exact mating interface at each joint level
+        Rs, C0, C1 = _pin_interfaces(Rs, C0, C1, R0, C00, C10, L, reserved)
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
     for i, t in enumerate(L):
@@ -468,12 +488,14 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link == "WAIST_YAW":
         return _torso_skin(m)  # already a clean watertight skin
     if link == "IMU_ORIGIN":
-        return _skin_part(_pelvis_warp(m), "z")
+        return _skin_part(_pelvis_warp(m), "z", reserved=C.reserved_levels(link))
     shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
+    spine = C.LINKS[link]["spine"]
+    reserved = C.reserved_levels(link)
     if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
-        return _skin_part(shaped, C.LINKS[link]["spine"], flat_bottom=True)
+        return _skin_part(shaped, spine, flat_bottom=True, reserved=reserved)
     if link in SKIN_LIMBS:
-        return _skin_part(shaped, C.LINKS[link]["spine"])
+        return _skin_part(shaped, spine, reserved=reserved)
     return _watertight_cleanup(shaped) if cleanup else shaped
 
 
