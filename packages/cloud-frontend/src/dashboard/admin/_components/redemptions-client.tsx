@@ -1,5 +1,6 @@
 "use client";
 
+import { formatUsd as formatCurrency } from "@elizaos/shared";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -220,13 +221,6 @@ export function AdminRedemptionsClient() {
       toast.error("Failed to reject", { description: error.error });
     }
     setActionLoading(false);
-  };
-
-  const formatCurrency = (value: number | string) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(typeof value === "string" ? parseFloat(value) : value);
   };
 
   const formatDate = (dateStr: string) => {

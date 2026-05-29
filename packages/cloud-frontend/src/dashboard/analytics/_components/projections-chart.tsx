@@ -8,6 +8,7 @@
 
 "use client";
 
+import { formatUsd as formatCurrency } from "@elizaos/shared";
 import {
   Alert,
   AlertDescription,
@@ -49,15 +50,6 @@ const chartConfig = {
     color: "#F59E0B",
   },
 } as const;
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-};
 
 export function ProjectionsChart({ data }: ProjectionsChartProps) {
   const { projections, alerts, creditBalance } = data;

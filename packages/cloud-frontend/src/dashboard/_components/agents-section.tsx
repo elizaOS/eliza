@@ -14,11 +14,16 @@ import {
 } from "@elizaos/ui";
 import { Info, Rocket } from "lucide-react";
 import { Link } from "react-router-dom";
-import type { DashboardAgentStats as AgentStats } from "@/lib/types/dashboard-agent-stats";
+import type { DashboardAgentStats } from "@/lib/types/dashboard-agent-stats";
 import { cn } from "@/lib/utils";
 import { AgentCard } from "../../components/agents/agent-card";
 
-interface Agent {
+/**
+ * Agent record rendered on the dashboard overview. Sourced from the dashboard
+ * summary endpoint, distinct from the paginated characters list in
+ * `lib/data/agents.ts`.
+ */
+export interface DashboardAgent {
   id: string;
   name: string;
   bio: string | string[];
@@ -26,11 +31,11 @@ interface Agent {
   category: string | null;
   isPublic: boolean;
   username?: string | null;
-  stats?: AgentStats;
+  stats?: DashboardAgentStats;
 }
 
 interface AgentsSectionProps {
-  agents: Agent[];
+  agents: DashboardAgent[];
   className?: string;
 }
 

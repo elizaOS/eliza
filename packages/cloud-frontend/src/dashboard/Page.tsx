@@ -20,7 +20,6 @@ import type { ReactNode } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { useDashboardReferralMe } from "@/dashboard/affiliates/_components/use-dashboard-referral-me";
-import type { DashboardAgentStats } from "@/lib/types/dashboard-agent-stats";
 import { useT } from "@/providers/I18nProvider";
 import { api } from "../lib/api-client";
 import { useRequireAuth } from "../lib/auth-hooks";
@@ -31,18 +30,8 @@ import { useAgents } from "../lib/data/eliza-agents";
 import {
   AgentsSection,
   AgentsSectionSkeleton,
+  type DashboardAgent,
 } from "./_components/agents-section";
-
-interface DashboardAgent {
-  id: string;
-  name: string;
-  bio: string | string[];
-  avatarUrl: string | null;
-  category: string | null;
-  isPublic: boolean;
-  username?: string | null;
-  stats?: DashboardAgentStats;
-}
 
 interface DashboardResponse {
   user: { name: string };

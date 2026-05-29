@@ -11,143 +11,24 @@ import {
   ConnectionIdentityPanel,
 } from "@elizaos/ui";
 import { Calendar, Loader2, Mail } from "lucide-react";
-import { useEffect, useState } from "react";
-import { toast } from "sonner";
-
-interface MicrosoftConnection {
-  id: string;
-  platform: string;
-  email?: string;
-  displayName?: string;
-  scopes?: string[];
-  status: string;
-}
-
-interface MicrosoftStatus {
-  connected: boolean;
-  connectionId?: string;
-  email?: string;
-  scopes?: string[];
-}
+import { useOAuthConnections } from "./oauth-connection";
 
 export function MicrosoftConnection() {
-  const [status, setStatus] = useState<MicrosoftStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const {
+    activeConnections,
+    isLoading,
+    isConnecting,
+    disconnectingId,
+    connect: handleConnect,
+    disconnect,
+  } = useOAuthConnections({ platform: "microsoft", label: "Microsoft" });
 
-  const fetchStatus = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(
-        "/api/v1/oauth/connections?platform=microsoft",
-      );
-      const data = await response.json();
-      const connections: MicrosoftConnection[] = data.connections || [];
-      const activeConnection = connections.find((c) => c.status === "active");
-
-      setStatus({
-        connected: !!activeConnection,
-        connectionId: activeConnection?.id,
-        email: activeConnection?.email,
-        scopes: activeConnection?.scopes,
-      });
-    } catch {
-      toast.error("Failed to fetch Microsoft status");
-    }
-    setIsLoading(false);
-  };
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const loadStatus = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch(
-          "/api/v1/oauth/connections?platform=microsoft",
-          {
-            signal: controller.signal,
-          },
-        );
-        if (!controller.signal.aborted) {
-          const data = await response.json();
-          const connections: MicrosoftConnection[] = data.connections || [];
-          const activeConnection = connections.find(
-            (c) => c.status === "active",
-          );
-
-          setStatus({
-            connected: !!activeConnection,
-            connectionId: activeConnection?.id,
-            email: activeConnection?.email,
-            scopes: activeConnection?.scopes,
-          });
-          setIsLoading(false);
-        }
-      } catch {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadStatus();
-
-    return () => controller.abort();
-  }, []);
-
-  const handleConnect = async () => {
-    if (isConnecting) return;
-    setIsConnecting(true);
-
-    try {
-      const response = await fetch("/api/v1/oauth/microsoft/initiate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          redirectUrl: "/dashboard/settings?tab=connections",
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.authUrl) {
-        window.location.href = data.authUrl;
-      } else {
-        toast.error(data.error || "Failed to initiate Microsoft OAuth");
-        setIsConnecting(false);
-      }
-    } catch {
-      toast.error("Network error. Please check your connection.");
-      setIsConnecting(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    if (isDisconnecting || !status?.connectionId) return;
-    setIsDisconnecting(true);
-
-    try {
-      const response = await fetch(
-        `/api/v1/oauth/connections/${status.connectionId}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      if (response.ok) {
-        toast.success("Microsoft account disconnected");
-        fetchStatus();
-      } else {
-        const data = await response.json().catch(() => ({}));
-        toast.error(data.error || "Failed to disconnect");
-      }
-    } catch {
-      toast.error("Network error. Please check your connection.");
-    }
-
-    setIsDisconnecting(false);
+  // Microsoft is a single-account integration: surface the first active link.
+  const activeConnection = activeConnections[0];
+  const isDisconnecting = disconnectingId !== null;
+  const handleDisconnect = () => {
+    if (!activeConnection) return;
+    void disconnect(activeConnection.id);
   };
 
   const getScopeIcon = (scope: string) => {
@@ -187,22 +68,22 @@ export function MicrosoftConnection() {
       name="Microsoft Services"
       icon={<MicrosoftIcon />}
       description="Connect Outlook Mail, Calendar for AI-powered automation"
-      status={status?.connected ? "connected" : "disconnected"}
+      status={activeConnection ? "connected" : "disconnected"}
       statusBadge={<ConnectionConnectedBadge />}
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
             icon={<Mail className="h-6 w-6 text-[#FF5800]" />}
             iconClassName="bg-[#FF5800]/10"
-            title={status?.email}
+            title={activeConnection?.email}
             subtitle="Microsoft Account Connected"
           />
 
-          {status?.scopes && status.scopes.length > 0 && (
+          {activeConnection?.scopes && activeConnection.scopes.length > 0 && (
             <div className="p-3 bg-muted rounded-sm">
               <p className="text-sm font-medium mb-2">Permissions granted:</p>
               <div className="flex flex-wrap gap-2">
-                {status.scopes
+                {activeConnection.scopes
                   .filter((s) => !["openid", "profile", "email"].includes(s))
                   .map((scope) => (
                     <Badge key={scope} variant="outline" className="text-xs">

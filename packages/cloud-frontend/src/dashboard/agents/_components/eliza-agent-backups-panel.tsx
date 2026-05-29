@@ -1,5 +1,6 @@
 "use client";
 
+import { formatByteSize } from "@elizaos/shared";
 import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/ui";
 import { formatDistanceToNowStrict } from "date-fns";
 import {
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { formatByteSize } from "@elizaos/shared";
 
 interface ElizaAgentBackupsPanelProps {
   agentId: string;
