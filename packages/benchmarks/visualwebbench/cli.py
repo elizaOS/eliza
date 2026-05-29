@@ -84,9 +84,16 @@ def parse_args() -> argparse.Namespace:
             "eliza-app",
             "eliza-browser-app",
             "app-harness",
+            "local-eliza",
+            "local_eliza",
+            "eliza-local",
+            "eliza_local",
         ],
         default="eliza",
-        help="Eliza integration mode (ignored when --mock is set).",
+        help=(
+            "Eliza integration mode (ignored when --mock is set). "
+            "Use local-eliza to drive the on-device eliza-1 VLM via llama-mtmd-cli."
+        ),
     )
     parser.add_argument("--model", type=str, default=None)
     parser.add_argument("--temperature", type=float, default=0.0)

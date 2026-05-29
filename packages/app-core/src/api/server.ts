@@ -1104,7 +1104,11 @@ export async function startApiServer(
       await (await lazyEnsureTTS())(compatState.current);
     }
 
+    const upstreamStart = Date.now();
     const server = await upstreamStartApiServer(...args);
+    logger.info(
+      `[eliza-api] upstreamStartApiServer took ${Date.now() - upstreamStart}ms`,
+    );
 
     const originalUpdateRuntime = server.updateRuntime as (
       runtime: AgentRuntime,

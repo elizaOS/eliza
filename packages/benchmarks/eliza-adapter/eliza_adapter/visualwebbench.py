@@ -159,6 +159,98 @@ class ElizaVisualWebBenchAgent:
         return None
 
 
+def _load_vision_harness_runtime():
+    """Import the vision-language CLI bridge by file path (it lives in a sibling
+    benchmark package without an importable module name)."""
+    import importlib.util
+
+    repo_root = _repo_root()
+    script = (
+        repo_root
+        / "packages"
+        / "benchmarks"
+        / "vision-language"
+        / "scripts"
+        / "vision_harness_runtime.py"
+    )
+    spec = importlib.util.spec_from_file_location("vision_harness_runtime", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load vision harness runtime at {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _build_local_vlm_prompt(task: "VisualWebBenchTask") -> str:
+    """Compact instruction for the local eliza-1 VLM. The image is supplied
+    separately via --image, so the text only carries the task + JSON contract."""
+    parts = [
+        "You are answering a VisualWebBench task about the attached screenshot.",
+        "Look at the image, then reply with ONLY a compact JSON object:",
+        '{"answer_text": string, "choice_index": integer|null, '
+        '"bbox": [x1,y1,x2,y2]|null}',
+        "Use normalized 0..1 bbox coordinates when grounding; otherwise null.",
+        f"task_type: {task.task_type.value}",
+    ]
+    if task.question:
+        parts.append(f"question: {task.question}")
+    if task.instruction:
+        parts.append(f"instruction: {task.instruction}")
+    options = _jsonable_options(task.options)
+    if options:
+        parts.append(f"options: {json.dumps(options, ensure_ascii=True)}")
+    if task.prompt and task.prompt not in {task.question, task.instruction}:
+        parts.append(task.prompt)
+    return "\n".join(parts)
+
+
+class LocalElizaVisualWebBenchAgent:
+    """VisualWebBench agent backed by the local eliza-1 VLM via llama-mtmd-cli.
+
+    Requires no agent server or external API: each task's screenshot is passed
+    straight to the multimodal CLI, mirroring the vision-language harness.
+    """
+
+    def __init__(self, config: "VisualWebBenchConfig") -> None:
+        self.config = config
+        self._runtime = _load_vision_harness_runtime()
+        self._tier = (config.model or "eliza-1-9b").strip() or "eliza-1-9b"
+
+    async def initialize(self) -> None:
+        return None
+
+    async def predict(self, task: "VisualWebBenchTask") -> "VisualWebBenchPrediction":
+        from benchmarks.visualwebbench.types import VisualWebBenchPrediction
+
+        started = time.time()
+        if not task.image_path:
+            raise RuntimeError(
+                f"local-eliza VisualWebBench requires a screenshot file for task {task.id!r}; "
+                "use --hf-repo to pull real images (smoke fixtures have none)"
+            )
+        prompt = _build_local_vlm_prompt(task)
+        text = await asyncio.to_thread(
+            self._runtime._run_local_eliza_vlm,
+            tier=self._tier,
+            image_path=task.image_path,
+            question=prompt,
+            max_tokens=self.config.max_new_tokens if hasattr(self.config, "max_new_tokens") else 256,
+        )
+        parsed = _parse_response({}, text)
+        return VisualWebBenchPrediction(
+            task_id=task.id,
+            task_type=task.task_type,
+            answer_text=str(parsed.get("answer_text") or ""),
+            choice_index=_parse_int(parsed.get("choice_index")),
+            bbox=_parse_bbox(parsed.get("bbox")),
+            raw_output={"text": text, "mode": "local-eliza-vlm", "tier": self._tier},
+            latency_ms=(time.time() - started) * 1000,
+        )
+
+    async def close(self) -> None:
+        return None
+
+
 class ElizaVisualWebBenchAppHarnessAgent:
     """VisualWebBench agent that invokes the browser-app harness per task.
 

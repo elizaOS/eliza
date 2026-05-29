@@ -25,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
+import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
 import { resolvePlugins } from "./plugin-resolver.ts";
@@ -3126,11 +3127,14 @@ export const logToChatListener = (entry: LogEntry) => {
 export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  const bootTimer = new BootTimer("[eliza-boot]");
+
   // Resolve and register baseline `@elizaos/plugin-*` modules into the
   // STATIC_ELIZA_PLUGINS map BEFORE any plugin resolution happens. See the
   // comment on `ensureCoreStaticPluginsRegistered()` for why this isn't a
   // module-init top-level await.
   await ensureCoreStaticPluginsRegistered();
+  bootTimer.lap("static-plugins-import");
 
   // Start buffering logs early so startup messages appear in the UI log viewer
   const { captureEarlyLogs } = await import("../api/early-logs.ts");
@@ -3565,6 +3569,7 @@ export async function startEliza(
 
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
+  bootTimer.lap("pre-resolve-setup");
 
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
@@ -3580,6 +3585,7 @@ export async function startEliza(
   const resolvedPlugins = await resolvePlugins(config, {
     quiet: preOnboarding,
   });
+  bootTimer.lap("resolve-plugins-import");
 
   if (resolvedPlugins.length === 0) {
     if (preOnboarding) {
@@ -3967,6 +3973,7 @@ export async function startEliza(
     //     BEFORE other plugins run their init(). When legacy/corrupt PGLite
     //     state causes startup aborts, reset the local DB dir and retry once.
     await registerSqlPluginWithRecovery(runtime, sqlPlugin, config);
+    bootTimer.lap("register-sql");
   } else {
     const loadedNames = resolvedPlugins.map((p) => p.name).join(", ");
     logger.error(
@@ -3990,6 +3997,7 @@ export async function startEliza(
     moveLocalInferenceModelsToRuntimeHandlers(localEmbeddingPlugin.plugin);
     await runtime.registerPlugin(localEmbeddingPlugin.plugin);
     await ensureLocalInferenceRuntimeHandlers(runtime);
+    bootTimer.lap("register-local-inference");
     logger.info(
       "[eliza] plugin-local-inference pre-registered with runtime local handlers (TEXT_EMBEDDING follows ELIZA_DISABLE_LOCAL_EMBEDDINGS)",
     );
@@ -4024,6 +4032,7 @@ export async function startEliza(
       resolvedPlugins,
       alreadyPreRegistered,
     });
+    bootTimer.lap("core-plugin-waves");
   }
 
   const warmAgentSkillsService = async (): Promise<void> => {
@@ -4382,8 +4391,14 @@ export async function startEliza(
     await runStewardEvmPreBoot();
     await registerConnectorSetupService();
     await registerRemoteCodingRunner();
+    bootTimer.lap("svc:pre-init");
+
     await initializeCoreRuntime();
+    bootTimer.lap("svc:runtime.initialize");
+
     await runTeeBootGate();
+    bootTimer.lap("svc:tee-gate");
+
     await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
@@ -4391,10 +4406,13 @@ export async function startEliza(
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
     await installAnthropicWebSearchIfAvailable();
+    bootTimer.lap("svc:post-init");
+
     const autonomyLoopEnabled = isAutonomyEnabled();
     await startAutonomyServiceIfEnabled(true);
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
+    bootTimer.lap("svc:autonomy+warmup");
   };
 
   try {
@@ -4430,6 +4448,8 @@ export async function startEliza(
       pgliteRecoveryAttempted: true,
     });
   }
+
+  bootTimer.summary();
 
   installActionAliases(runtime);
 

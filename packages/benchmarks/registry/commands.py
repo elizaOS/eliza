@@ -824,11 +824,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        provider_name = (model.provider or "").strip().lower()
+        provider_name = str(extra.get("model_provider") or model.provider or "").strip().lower()
+        local_eliza_providers = {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
             if model.model:
                 args.extend(["--model", model.model])
+        elif provider_name in local_eliza_providers:
+            # Local eliza-1 VLM via llama-mtmd-cli — no agent server / API.
+            args.extend(["--provider", provider_name])
+            tier = str(extra.get("tier") or model.model or "eliza-1-9b").strip() or "eliza-1-9b"
+            args.extend(["--model", tier])
         elif agent == "eliza" or provider_name in {
             "cerebras",
             "openai",

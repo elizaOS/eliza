@@ -180,6 +180,25 @@ class FasterWhisperSTT:
         return text
 
 
+class Eliza1STT:
+    """Local eliza-1 llama.cpp ASR backend over real audio bytes."""
+
+    def __init__(self) -> None:
+        from .eliza1_asr import Eliza1ASRBackend
+
+        self._backend = Eliza1ASRBackend()
+
+    def transcribe(self, query: AudioQuery) -> str:
+        if query.audio_bytes is None:
+            raise RuntimeError(
+                "VoiceAgentBench task is missing audio bytes; refusing to use "
+                "ground-truth transcript as STT output."
+            )
+        return self._backend.transcribe_bytes(
+            query.audio_bytes, language=query.language
+        )
+
+
 def build_stt(*, mock: bool = False, provider: str = "groq") -> STTBackend:
     """Build the real STT backend."""
     if mock:
@@ -189,9 +208,11 @@ def build_stt(*, mock: bool = False, provider: str = "groq") -> STTBackend:
         return GroqWhisperSTT()
     if selected == "eliza-runtime":
         return ElizaRuntimeSTT()
+    if selected in {"eliza1", "eliza-1", "eliza1-asr"}:
+        return Eliza1STT()
     if selected in {"faster-whisper", "local-whisper"}:
         return FasterWhisperSTT()
     raise ValueError(
         f"unsupported STT provider {provider!r}; expected 'groq', "
-        "'eliza-runtime', or 'faster-whisper'"
+        "'eliza-runtime', 'eliza1', or 'faster-whisper'"
     )

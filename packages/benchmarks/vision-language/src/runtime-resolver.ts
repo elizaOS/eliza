@@ -188,7 +188,7 @@ export function createStubRuntime(tier: string = "stub"): VisionRuntime {
 }
 
 function createHarnessRuntime(args: {
-  harness: "hermes" | "openclaw" | "elizaos" | "opencode";
+  harness: "eliza" | "hermes" | "openclaw" | "elizaos" | "opencode";
   provider: string;
   model: string;
 }): VisionRuntime {
@@ -385,6 +385,26 @@ export async function resolveRuntime(
   if (args.forceStub) return createStubRuntime(args.tier);
   if (args.tier === "stub") return createStubRuntime();
   const harness = args.harness ?? "eliza";
+  const provider = (args.provider ?? process.env.VISION_LANGUAGE_PROVIDER ?? "")
+    .trim()
+    .toLowerCase();
+  const LOCAL_ELIZA_PROVIDERS = new Set([
+    "local-eliza",
+    "local_eliza",
+    "eliza-local",
+    "eliza_local",
+  ]);
+  // The local eliza-1 VLM runs through llama-mtmd-cli, driven by the Python
+  // vision harness runtime. Route any harness with a local-eliza provider
+  // through that bridge instead of the in-process FFI plugin path (which
+  // requires a specialized libelizainference build that isn't always present).
+  if (LOCAL_ELIZA_PROVIDERS.has(provider)) {
+    return createHarnessRuntime({
+      harness: "eliza",
+      provider,
+      model: (args.model ?? args.tier).trim() || args.tier,
+    });
+  }
   if (
     harness === "hermes" ||
     harness === "openclaw" ||

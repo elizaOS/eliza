@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import json
 import hashlib
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -40,13 +41,36 @@ def load_samples(
 ) -> list[Sample]:
     """Load samples for one suite.
 
-    The upstream HF dataset is fetched lazily unless ``mock`` is set, in
-    which case the bundled JSONL fixtures are used for no-cost smoke runs.
+    Sources, in priority order:
+
+      * ``mock`` — bundled JSONL fixtures (no audio), for no-cost smoke runs.
+      * ``VOICEBENCH_SYNTHESIZE_AUDIO=1`` — bundled fixture prompts with audio
+        synthesized locally via macOS ``say`` (real speech-in, non-mock).
+      * otherwise — the upstream Hugging Face dataset (real audio bytes).
     """
 
     if mock:
         return _load_fixture(suite, limit=limit)
+    if os.environ.get("VOICEBENCH_SYNTHESIZE_AUDIO", "").strip() in {"1", "true", "yes"}:
+        return _load_synthesized(suite, limit=limit)
     return _load_huggingface(suite, limit=limit)
+
+
+def _load_synthesized(suite: SuiteId, *, limit: int | None) -> list[Sample]:
+    """Load fixture prompts and synthesize their audio with macOS ``say``."""
+    import dataclasses
+
+    from .clients.say_tts import synthesize_wav
+
+    samples = _load_fixture(suite, limit=limit)
+    out: list[Sample] = []
+    for sample in samples:
+        out.append(
+            dataclasses.replace(
+                sample, audio_bytes=synthesize_wav(sample.reference_text)
+            )
+        )
+    return out
 
 
 def _load_fixture(suite: SuiteId, *, limit: int | None) -> list[Sample]:

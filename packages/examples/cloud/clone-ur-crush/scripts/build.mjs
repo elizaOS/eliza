@@ -125,25 +125,37 @@ function refreshCompatibilityFiles() {
 
 await refreshCompatibilityFiles();
 
-const exitCode = await new Promise((resolve) => {
-  const markerInterval = setInterval(() => {
-    void refreshCompatibilityFiles().catch(() => {});
-  }, 100);
+async function runNextBuild(args) {
+  return await new Promise((resolve) => {
+    const markerInterval = setInterval(() => {
+      void refreshCompatibilityFiles().catch(() => {});
+    }, 100);
 
-  const child = spawn(process.execPath, [nextCliPath, "build"], {
-    cwd: packageRoot,
-    env: {
-      ...process.env,
-      NEXT_DIST_DIR: tempDistDirName,
-    },
-    stdio: "inherit",
-  });
+    const child = spawn(process.execPath, [nextCliPath, "build", ...args], {
+      cwd: packageRoot,
+      env: {
+        ...process.env,
+        NEXT_DIST_DIR: tempDistDirName,
+      },
+      stdio: "inherit",
+    });
 
-  child.on("close", (code) => {
-    clearInterval(markerInterval);
-    resolve(code ?? 1);
+    child.on("close", (code) => {
+      clearInterval(markerInterval);
+      resolve(code ?? 1);
+    });
   });
-});
+}
+
+// Next 15 can hang indefinitely in the default monolithic build mode for this
+// workspace example after the server compile emits. The same work completes
+// deterministically when split into Next's documented compile/generate phases.
+let exitCode = await runNextBuild(["--experimental-build-mode", "compile"]);
+
+if (exitCode === 0) {
+  await refreshCompatibilityFiles();
+  exitCode = await runNextBuild(["--experimental-build-mode", "generate"]);
+}
 
 if (exitCode === 0) {
   await rm(finalDistDir, {

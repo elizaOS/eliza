@@ -10,10 +10,13 @@ in priority order:
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import Path
 from typing import Any, Iterable
+
+from .tts import synthesize_wav
 
 from .types import (
     AudioQuery,
@@ -260,6 +263,39 @@ def load_from_huggingface(
     return tasks
 
 
+import re as _re
+
+_TOOL_ANNOTATION_RE = _re.compile(r"\s*\[tool:.*?\]\s*", _re.DOTALL)
+
+
+def _synthesize_missing_audio(tasks: list[VoiceTask]) -> list[VoiceTask]:
+    """Return tasks with synthesized ``audio_bytes`` for audio-less queries.
+
+    Tool annotations such as ``[tool: get_weather {...}]`` are stripped from
+    the spoken text — they are scoring hints for the mock agent, not speech.
+    ``AudioQuery`` is frozen, so queries are rebuilt via ``dataclasses.replace``.
+    """
+    import dataclasses
+
+    out: list[VoiceTask] = []
+    for task in tasks:
+        new_queries: list[AudioQuery] = []
+        for query in task.queries:
+            if query.audio_bytes is not None:
+                new_queries.append(query)
+                continue
+            spoken = _TOOL_ANNOTATION_RE.sub(" ", query.transcript).strip()
+            if not spoken:
+                raise DatasetError(
+                    f"task {task.task_id!r} has no spoken text to synthesize"
+                )
+            new_queries.append(
+                dataclasses.replace(query, audio_bytes=synthesize_wav(spoken))
+            )
+        out.append(dataclasses.replace(task, queries=new_queries))
+    return out
+
+
 def load_tasks(
     *,
     data_path: Path | None = None,
@@ -267,6 +303,11 @@ def load_tasks(
     limit: int | None = None,
 ) -> list[VoiceTask]:
     """Load tasks from the configured source, optionally filtered."""
+    if data_path is None:
+        env_data_path = os.environ.get("VOICEAGENTBENCH_DATA_PATH", "").strip()
+        if env_data_path:
+            data_path = Path(env_data_path).expanduser()
+
     if data_path is not None:
         tasks = load_jsonl(data_path)
     else:
@@ -277,6 +318,9 @@ def load_tasks(
 
     if limit is not None and limit > 0:
         tasks = tasks[:limit]
+
+    if os.environ.get("VOICEAGENTBENCH_SYNTHESIZE_AUDIO", "").strip() in {"1", "true", "yes"}:
+        tasks = _synthesize_missing_audio(tasks)
 
     return tasks
 

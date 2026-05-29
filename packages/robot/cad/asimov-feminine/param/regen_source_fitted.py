@@ -83,12 +83,12 @@ TORSO = dict(
 # Gaussian falloff, gated to the front face so the lateral +-Y drums are untouched.
 # This gives two DISTINCT breasts instead of a single centre ridge.
 BREAST = dict(
-    amp=0.038,        # peak +X projection (m) -- lower => rounder, less pointy
-    y0=0.064,         # lateral offset of each mound centre (m)
-    z0=0.188,         # height of the mounds (m)
-    sigma_y=0.044, sigma_z=0.060,   # broad enough to read as smooth round breasts
-    front_halfdeg=82.0,
-    smooth_iter=18,   # Taubin passes that round off the apex
+    amp=0.030,        # peak +X projection (m) -- lower => rounder, less pointy
+    y0=0.060,         # lateral offset of each mound centre (m)
+    z0=0.184,         # height of the mounds (m)
+    sigma_y=0.052, sigma_z=0.072,   # broad domes -> smooth round breasts, not cones
+    front_halfdeg=85.0,
+    smooth_iter=34,   # Taubin passes that round off the apex
 )
 
 # Features removed by delete-faces-in-box + cap (robust for engraved/separate
@@ -215,6 +215,71 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
         except Exception:
             trimesh.smoothing.filter_taubin(skin, iterations=it)
     return skin
+
+
+def _skin_part(mesh, spine, n_ang=72, dz=0.004, vpass=2, taubin=22, flat_bottom=False):
+    """Smooth watertight outer skin for a limb/head: loft per-slice outer
+    envelopes along the spine axis about the slice centroid. Produces a clean
+    single-solid futuristic shell with no bolt-boss lumps or voxel terracing.
+    The input mesh should already carry the slimming warp."""
+    ai = AXIS_IDX[spine]
+    pd = [i for i in range(3) if i != ai]
+    lo, hi = mesh.bounds[0][ai], mesh.bounds[1][ai]
+    levels = np.arange(lo + dz * 0.5, hi, dz)
+    normal = np.zeros(3); normal[ai] = 1.0
+    Rs, C0, C1, L = [], [], [], []
+    for t in levels:
+        o = np.zeros(3); o[ai] = t
+        s = mesh.section(plane_origin=o, plane_normal=normal)
+        if s is None:
+            continue
+        pts = np.vstack([np.asarray(e)[:, pd] for e in s.discrete])
+        c = pts.mean(0)
+        b, r = _outer_ring(pts, c, n_ang)
+        Rs.append(r); C0.append(c[0]); C1.append(c[1]); L.append(t)
+    Rs = np.array(Rs); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
+    bins = b
+    kz = np.ones(5) / 5
+    for _ in range(vpass):
+        for k in range(n_ang):
+            Rs[:, k] = np.convolve(np.pad(Rs[:, k], 2, mode="edge"), kz, "same")[2:-2]
+        C0 = np.convolve(np.pad(C0, 2, mode="edge"), kz, "same")[2:-2]
+        C1 = np.convolve(np.pad(C1, 2, mode="edge"), kz, "same")[2:-2]
+    cosb, sinb = np.cos(bins), np.sin(bins)
+    verts = []
+    for i, t in enumerate(L):
+        p = np.zeros((n_ang, 3))
+        p[:, pd[0]] = C0[i] + Rs[i] * cosb
+        p[:, pd[1]] = C1[i] + Rs[i] * sinb
+        p[:, ai] = t
+        verts.append(p)
+    skin = _loft_rings(np.array(verts))
+    if taubin:
+        import pyvista as pv
+        f = np.hstack([np.full((len(skin.faces), 1), 3), skin.faces]).ravel()
+        sm = pv.PolyData(skin.vertices, f).smooth_taubin(n_iter=taubin, pass_band=0.1).triangulate()
+        skin = trimesh.Trimesh(sm.points, sm.faces.reshape(-1, 4)[:, 1:], process=True)
+    if flat_bottom:  # feet: snap the sole to a single plane so the foot sits flat
+        v = skin.vertices.copy()
+        z0 = v[:, 2].min()
+        sole = v[:, 2] < z0 + 0.010
+        v[sole, 2] = z0
+        skin.vertices = v
+        trimesh.repair.fix_normals(skin)
+    return skin
+
+
+# Limbs/head get the smooth skin treatment. Feet (flat soles) and the pelvis keep
+# the warp + watertight-cleanup path so their flat/socket features are preserved.
+SKIN_LIMBS = {
+    "NECK_YAW", "NECK_PITCH",
+    "LEFT_SHOULDER_PITCH", "LEFT_SHOULDER_ROLL", "LEFT_SHOULDER_YAW",
+    "LEFT_ELBOW", "LEFT_WRIST_YAW",
+    "LEFT_HIP_PITCH", "LEFT_HIP_ROLL", "LEFT_HIP_YAW", "LEFT_KNEE", "LEFT_ANKLE_A",
+}
+for _k in list(SKIN_LIMBS):
+    if _k.startswith("LEFT_"):
+        SKIN_LIMBS.add(_k.replace("LEFT_", "RIGHT_"))
 
 
 def _loft_rings(rings):
@@ -398,6 +463,10 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
         shaped = _pelvis_warp(m)
     else:
         shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
+    if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
+        return _skin_part(shaped, C.LINKS[link]["spine"], flat_bottom=True)
+    if link in SKIN_LIMBS:
+        return _skin_part(shaped, C.LINKS[link]["spine"])
     return _watertight_cleanup(shaped) if cleanup else shaped
 
 
