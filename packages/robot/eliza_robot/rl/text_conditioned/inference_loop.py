@@ -59,6 +59,7 @@ def _proprio_from_telemetry(
     *,
     proprio_dim: int,
     last_action: np.ndarray | None = None,
+    velocity_command: np.ndarray | None = None,
 ) -> np.ndarray:
     """Convert telemetry.basic into the profile-env proprio layout.
 
@@ -89,9 +90,15 @@ def _proprio_from_telemetry(
     # gravity(3) at [3:6] — world up in the body frame; default upright.
     if proprio_dim >= 6:
         proprio[3:6] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-    # velocity_command(3) at [6:9], root_linvel(3) at [9:12], and
-    # foot_telemetry(8) at [12:20] are not available from telemetry.basic
-    # and remain zero-filled.
+    # velocity_command(3) at [6:9] — the matched task's commanded
+    # [vx, vy, vyaw]. The policy is conditioned on this during training
+    # (TextConditionedProfileEnv._build_obs writes target_velocity_* here), so
+    # zeroing it is out-of-distribution on the primary locomotion signal and
+    # makes the deployed policy under-track. Inject the real command.
+    if velocity_command is not None and proprio_dim >= 9:
+        proprio[6:9] = np.asarray(velocity_command, dtype=np.float32).reshape(-1)[:3]
+    # root_linvel(3) at [9:12] and foot_telemetry(8) at [12:20] are not
+    # available from telemetry.basic and remain zero-filled.
 
     action_joints = [j.name for j in profile.kinematics.joints if j.group == "LEG"]
     joint_positions = latest.get("joint_positions") or {}
@@ -132,6 +139,7 @@ async def _read_proprio(
     *,
     proprio_dim: int,
     last_action: np.ndarray | None = None,
+    velocity_command: np.ndarray | None = None,
 ) -> np.ndarray:
     """Pull the latest telemetry.basic and convert to a proprio vector
     that's roughly compatible with the profile-driven text-conditioned env.
@@ -143,7 +151,11 @@ async def _read_proprio(
         if e.event == "telemetry.basic":
             latest = e.data
     return _proprio_from_telemetry(
-        latest, profile, proprio_dim=proprio_dim, last_action=last_action
+        latest,
+        profile,
+        proprio_dim=proprio_dim,
+        last_action=last_action,
+        velocity_command=velocity_command,
     )
 
 
@@ -183,6 +195,30 @@ async def run_inference(
         text, matched_task, similarity, config.max_steps, config.hz,
     )
 
+    # The policy is conditioned on the task's commanded velocity (the env writes
+    # target_velocity_* into proprio[6:9]). Resolve it from the curriculum so the
+    # deployed policy sees the same locomotion signal it trained on.
+    from eliza_robot.curriculum.loader import load_curriculum
+
+    velocity_command = np.zeros(3, dtype=np.float32)
+    for task in load_curriculum().tasks:
+        if task.id == matched_task:
+            reward = getattr(task, "reward", {}) or {}
+            velocity_command = np.array([
+                float(reward.get("target_velocity_x_m_s", 0.0)),
+                float(reward.get("target_velocity_y_m_s", 0.0)),
+                float(reward.get("target_yaw_rate_rad_s", 0.0)),
+            ], dtype=np.float32)
+            break
+
+    # Honour the checkpoint's own action scale when recorded; the 0.3 default is
+    # only a fallback for legacy manifests that omit it.
+    action_scale = (
+        float(policy.manifest.action_scale)
+        if policy.manifest.action_scale is not None
+        else config.action_scale
+    )
+
     # Indices of the LEG action joints within the full joint list, so we can
     # feed the policy's own previous (normalized) leg action back in as the
     # last_action proprio block — matching how the env builds observations.
@@ -199,6 +235,7 @@ async def run_inference(
                 profile,
                 proprio_dim=int(policy.manifest.proprio_dim or 45),
                 last_action=prev_action_legs,
+                velocity_command=velocity_command,
             )
             action, _ = policy.act(
                 text,
@@ -210,7 +247,7 @@ async def run_inference(
             if leg_idx:
                 prev_action_legs = action_clipped[leg_idx]
             # Joint-target = home + scaled action, clipped to safety window.
-            targets = home_rad + np.clip(action, -1.0, 1.0) * config.action_scale
+            targets = home_rad + np.clip(action, -1.0, 1.0) * action_scale
             targets = np.clip(
                 targets, home_rad - config.safety_clip_rad,
                 home_rad + config.safety_clip_rad,
