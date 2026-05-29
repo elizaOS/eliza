@@ -1,4 +1,5 @@
 import { ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 
 export interface AuditEventRow {
   event_id: string;
@@ -30,11 +31,19 @@ const RESULT_TONE = {
 
 export function AuditEventList({
   events,
-  emptyMessage = "No audit events recorded yet.",
+  emptyMessage,
   className,
 }: AuditEventListProps) {
+  const t = useT();
   if (events.length === 0) {
-    return <p className="text-sm text-white/60">{emptyMessage}</p>;
+    return (
+      <p className="text-sm text-white/60">
+        {emptyMessage ??
+          t("cloud.auditEvents.empty", {
+            defaultValue: "No audit events recorded yet.",
+          })}
+      </p>
+    );
   }
   return (
     <ul
@@ -65,7 +74,7 @@ export function AuditEventList({
               </div>
               {event.resource ? (
                 <p className="text-white/50">
-                  on{" "}
+                  {t("cloud.auditEvents.on", { defaultValue: "on" })}{" "}
                   <span className="font-mono">
                     {event.resource.type}:{event.resource.id}
                   </span>
@@ -73,7 +82,10 @@ export function AuditEventList({
               ) : null}
               {event.ip ? (
                 <p className="font-mono text-[11px] text-white/40">
-                  ip {event.ip}
+                  {t("cloud.auditEvents.ip", {
+                    ip: event.ip,
+                    defaultValue: "ip {{ip}}",
+                  })}
                 </p>
               ) : null}
             </div>

@@ -36,6 +36,7 @@ import {
   copyApiKeyToClipboard,
   listClientApiKeys,
 } from "@/lib/client/api-keys";
+import { useT } from "@/providers/I18nProvider";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";
 
 interface ApisTabProps {
@@ -60,6 +61,7 @@ interface FormState {
 }
 
 export function ApisTab({ user: _user }: ApisTabProps) {
+  const t = useT();
   const [apiKeys, setApiKeys] = useState<ClientApiKey[]>([]);
 
   const [modalState, setModalState] = useState<ModalState>({
@@ -117,7 +119,11 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
   const handleCreateSubmit = async () => {
     if (!formState.name.trim()) {
-      toast.error("API key name is required");
+      toast.error(
+        t("cloud.apisTab.nameRequired", {
+          defaultValue: "API key name is required",
+        }),
+      );
       return;
     }
 
@@ -135,7 +141,12 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || "Failed to create API key");
+      throw new Error(
+        error.error ||
+          t("cloud.apisTab.createFailed", {
+            defaultValue: "Failed to create API key",
+          }),
+      );
     }
 
     const data = await response.json();
@@ -148,7 +159,11 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
     await fetchApiKeys();
 
-    toast.success("API key created successfully");
+    toast.success(
+      t("cloud.apisTab.createdSuccess", {
+        defaultValue: "API key created successfully",
+      }),
+    );
     updateOperation({ creating: false });
   };
 
@@ -157,10 +172,18 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
     try {
       await copyApiKeyToClipboard(modalState.newlyCreatedKey);
-      toast.success("Full API key copied to clipboard");
+      toast.success(
+        t("cloud.apisTab.copiedFull", {
+          defaultValue: "Full API key copied to clipboard",
+        }),
+      );
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to copy API key",
+        error instanceof Error
+          ? error.message
+          : t("cloud.apisTab.copyFailed", {
+              defaultValue: "Failed to copy API key",
+            }),
       );
     }
   };
@@ -182,12 +205,21 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || "Failed to delete API key");
+      throw new Error(
+        error.error ||
+          t("cloud.apisTab.deleteFailed", {
+            defaultValue: "Failed to delete API key",
+          }),
+      );
     }
 
     setApiKeys(apiKeys.filter((key) => key.id !== keyId));
 
-    toast.success("API key deleted successfully");
+    toast.success(
+      t("cloud.apisTab.deletedSuccess", {
+        defaultValue: "API key deleted successfully",
+      }),
+    );
     updateOperation({ deletingKeyId: null });
   };
 
@@ -204,24 +236,30 @@ export function ApisTab({ user: _user }: ApisTabProps) {
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
-                  API keys
+                  {t("cloud.apisTab.apiKeys", { defaultValue: "API keys" })}
                 </h3>
               </div>
               <div className="text-xs md:text-sm font-mono text-[#858585] tracking-tight space-y-2">
                 <p>
-                  You have permission to view and manage all API Keys in this
-                  project.
+                  {t("cloud.apisTab.permissionInfo", {
+                    defaultValue:
+                      "You have permission to view and manage all API Keys in this project.",
+                  })}
                 </p>
                 <p>
-                  Do not share your API Key with others or expose it in the
-                  browser or other client-side code. To protect your
-                  account&apos;s security, Eliza may automatically disable any
-                  API Key that has leaked publicly.
+                  {t("cloud.apisTab.securityWarning", {
+                    defaultValue:
+                      "Do not share your API Key with others or expose it in the browser or other client-side code. To protect your account's security, Eliza may automatically disable any API Key that has leaked publicly.",
+                  })}
                 </p>
                 <p>
-                  View usage per Key on the{" "}
+                  {t("cloud.apisTab.viewUsagePre", {
+                    defaultValue: "View usage per Key on the",
+                  })}{" "}
                   <span className="underline cursor-pointer hover:text-white transition-colors">
-                    Usage page
+                    {t("cloud.apisTab.usagePage", {
+                      defaultValue: "Usage page",
+                    })}
                   </span>
                   .
                 </p>
@@ -243,7 +281,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
               />
               <Plus className="relative z-10 h-[18px] w-[18px] text-black flex-shrink-0" />
               <span className="relative z-10 text-black font-mono font-medium text-sm md:text-base whitespace-nowrap">
-                Create new secret key
+                {t("cloud.apisTab.createNewSecretKey", {
+                  defaultValue: "Create new secret key",
+                })}
               </span>
             </button>
           </div>
@@ -257,7 +297,10 @@ export function ApisTab({ user: _user }: ApisTabProps) {
             ) : apiKeys.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-8 border border-brand-surface gap-2">
                 <p className="text-sm text-white/60 font-mono">
-                  No API keys yet. Create one to get started.
+                  {t("cloud.apisTab.noKeys", {
+                    defaultValue:
+                      "No API keys yet. Create one to get started.",
+                  })}
                 </p>
               </div>
             ) : (
@@ -278,7 +321,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                           <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[var(--brand-orange)]/40 text-[var(--brand-orange)] text-xs font-mono uppercase flex-shrink-0">
                             {apiKey.permissions.length > 0
                               ? apiKey.permissions.join(", ")
-                              : "All"}
+                              : t("cloud.apisTab.all", {
+                                  defaultValue: "All",
+                                })}
                           </span>
                         </div>
                         {apiKey.description && (
@@ -291,7 +336,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                       {/* Secret Key Prefix */}
                       <div className="space-y-2">
                         <p className="text-xs font-mono text-white/40 uppercase">
-                          Secret Key
+                          {t("cloud.apisTab.secretKey", {
+                            defaultValue: "Secret Key",
+                          })}
                         </p>
                         <div className="flex items-center gap-2">
                           <div className="bg-[rgba(255,255,255,0.03)] border border-white/10 px-3 py-2 flex-1">
@@ -306,7 +353,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                       <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/10">
                         <div className="space-y-1">
                           <p className="text-xs font-mono text-white/40 uppercase">
-                            Created
+                            {t("cloud.apisTab.created", {
+                              defaultValue: "Created",
+                            })}
                           </p>
                           <p className="text-xs font-mono text-white/80">
                             {new Date(apiKey.created_at).toLocaleDateString(
@@ -322,7 +371,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
                         <div className="space-y-1">
                           <p className="text-xs font-mono text-white/40 uppercase">
-                            Last used
+                            {t("cloud.apisTab.lastUsed", {
+                              defaultValue: "Last used",
+                            })}
                           </p>
                           <p className="text-xs font-mono text-white/80">
                             {apiKey.last_used_at
@@ -333,13 +384,17 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                                   month: "short",
                                   day: "numeric",
                                 })
-                              : "Never"}
+                              : t("cloud.apisTab.never", {
+                                  defaultValue: "Never",
+                                })}
                           </p>
                         </div>
 
                         <div className="space-y-1">
                           <p className="text-xs font-mono text-white/40 uppercase">
-                            Usage Count
+                            {t("cloud.apisTab.usageCount", {
+                              defaultValue: "Usage Count",
+                            })}
                           </p>
                           <p className="text-xs font-mono text-white/80">
                             {apiKey.usage_count.toLocaleString()}
@@ -348,13 +403,23 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
                         <div className="space-y-1">
                           <p className="text-xs font-mono text-white/40 uppercase">
-                            Status
+                            {t("cloud.apisTab.status", {
+                              defaultValue: "Status",
+                            })}
                           </p>
                           <p className="text-xs font-mono text-white/80">
                             {apiKey.is_active ? (
-                              <span className="text-green-400">Active</span>
+                              <span className="text-green-400">
+                                {t("cloud.apisTab.active", {
+                                  defaultValue: "Active",
+                                })}
+                              </span>
                             ) : (
-                              <span className="text-white/40">Inactive</span>
+                              <span className="text-white/40">
+                                {t("cloud.apisTab.inactive", {
+                                  defaultValue: "Inactive",
+                                })}
+                              </span>
                             )}
                           </p>
                         </div>
@@ -374,14 +439,18 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                             <>
                               <Loader2 className="h-4 w-4 animate-spin text-[#EB4335]" />
                               <span className="text-xs font-mono text-[#EB4335]">
-                                Deleting...
+                                {t("cloud.apisTab.deleting", {
+                                  defaultValue: "Deleting...",
+                                })}
                               </span>
                             </>
                           ) : (
                             <>
                               <Trash2 className="h-4 w-4 text-[#EB4335]" />
                               <span className="text-xs font-mono text-[#EB4335]">
-                                Delete
+                                {t("cloud.apisTab.delete", {
+                                  defaultValue: "Delete",
+                                })}
                               </span>
                             </>
                           )}
@@ -411,7 +480,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                               <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[var(--brand-orange)]/40 text-[var(--brand-orange)] text-xs font-mono uppercase">
                                 {apiKey.permissions.length > 0
                                   ? apiKey.permissions.join(", ")
-                                  : "All"}
+                                  : t("cloud.apisTab.all", {
+                                      defaultValue: "All",
+                                    })}
                               </span>
                             </div>
                             {apiKey.description && (
@@ -437,7 +508,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                           <div className="flex gap-6">
                             <div className="space-y-1">
                               <p className="text-xs font-mono text-white/40 uppercase">
-                                Created
+                                {t("cloud.apisTab.created", {
+                                  defaultValue: "Created",
+                                })}
                               </p>
                               <p className="text-xs font-mono text-white/80">
                                 {new Date(apiKey.created_at).toLocaleDateString(
@@ -453,7 +526,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
 
                             <div className="space-y-1">
                               <p className="text-xs font-mono text-white/40 uppercase">
-                                Last Used
+                                {t("cloud.apisTab.lastUsed", {
+                                  defaultValue: "Last used",
+                                })}
                               </p>
                               <p className="text-xs font-mono text-white/80">
                                 {apiKey.last_used_at
@@ -464,13 +539,17 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                                       month: "short",
                                       day: "numeric",
                                     })
-                                  : "Never"}
+                                  : t("cloud.apisTab.never", {
+                                      defaultValue: "Never",
+                                    })}
                               </p>
                             </div>
 
                             <div className="space-y-1">
                               <p className="text-xs font-mono text-white/40 uppercase">
-                                Usage
+                                {t("cloud.apisTab.usage", {
+                                  defaultValue: "Usage",
+                                })}
                               </p>
                               <p className="text-xs font-mono text-white/80">
                                 {apiKey.usage_count.toLocaleString()}
@@ -488,7 +567,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                               operationState.deletingKeyId === apiKey.id
                             }
                             className="px-3 py-2 border border-[#EB4335]/40 bg-[#EB4335]/10 hover:bg-[#EB4335]/20 transition-colors disabled:opacity-50 group"
-                            title="Delete API key"
+                            title={t("cloud.apisTab.deleteApiKeyTitle", {
+                              defaultValue: "Delete API key",
+                            })}
                           >
                             {operationState.deletingKeyId === apiKey.id ? (
                               <Loader2 className="h-4 w-4 text-[#EB4335] animate-spin" />
@@ -517,29 +598,38 @@ export function ApisTab({ user: _user }: ApisTabProps) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-mono uppercase">
-              Create API Key
+              {t("cloud.apisTab.createApiKeyTitle", {
+                defaultValue: "Create API Key",
+              })}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label className="text-white font-mono text-sm">
-                Name <span className="text-red-500">*</span>
+                {t("cloud.apisTab.nameLabel", { defaultValue: "Name" })}{" "}
+                <span className="text-red-500">*</span>
               </Label>
               <Input
                 value={formState.name}
                 onChange={(e) => updateForm({ name: e.target.value })}
-                placeholder="My API Key"
+                placeholder={t("cloud.apisTab.namePlaceholder", {
+                  defaultValue: "My API Key",
+                })}
                 className="bg-transparent border-[#303030] text-white"
               />
             </div>
             <div className="space-y-2">
               <Label className="text-white font-mono text-sm">
-                Description (optional)
+                {t("cloud.apisTab.descriptionLabel", {
+                  defaultValue: "Description (optional)",
+                })}
               </Label>
               <Textarea
                 value={formState.description}
                 onChange={(e) => updateForm({ description: e.target.value })}
-                placeholder="Used for production deployment"
+                placeholder={t("cloud.apisTab.descriptionPlaceholder", {
+                  defaultValue: "Used for production deployment",
+                })}
                 className="bg-transparent border-[#303030] text-white min-h-[80px] resize-none"
               />
             </div>
@@ -551,7 +641,9 @@ export function ApisTab({ user: _user }: ApisTabProps) {
               className="px-4 py-2.5 text-white hover:bg-white/5 transition-colors"
               disabled={operationState.creating}
             >
-              <span className="font-mono text-sm">Cancel</span>
+              <span className="font-mono text-sm">
+                {t("cloud.apisTab.cancel", { defaultValue: "Cancel" })}
+              </span>
             </button>
             <button
               type="button"
@@ -570,10 +662,12 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                 {operationState.creating ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
-                    Creating...
+                    {t("cloud.apisTab.creating", {
+                      defaultValue: "Creating...",
+                    })}
                   </>
                 ) : (
-                  "Create Key"
+                  t("cloud.apisTab.createKey", { defaultValue: "Create Key" })
                 )}
               </span>
             </button>
@@ -591,17 +685,24 @@ export function ApisTab({ user: _user }: ApisTabProps) {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-mono uppercase">
-              Save Your API Key
+              {t("cloud.apisTab.saveYourApiKey", {
+                defaultValue: "Save Your API Key",
+              })}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="bg-[rgba(255,88,0,0.1)] border border-[var(--brand-orange)] p-4">
               <p className="text-sm text-[var(--brand-orange)] font-mono">
-                ⚠️ This is the only time you will see this key. Save it securely.
+                {t("cloud.apisTab.saveKeyWarning", {
+                  defaultValue:
+                    "⚠️ This is the only time you will see this key. Save it securely.",
+                })}
               </p>
             </div>
             <div className="space-y-2">
-              <Label className="text-white font-mono text-sm">API Key</Label>
+              <Label className="text-white font-mono text-sm">
+                {t("cloud.apisTab.apiKeyLabel", { defaultValue: "API Key" })}
+              </Label>
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="flex-1 bg-[rgba(10,10,10,0.75)] border border-brand-surface p-3">
                   <p className="text-xs sm:text-sm text-white/80 font-mono break-all">
@@ -612,11 +713,13 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                   type="button"
                   onClick={handleCopyFullKey}
                   className="px-4 py-2 bg-[#e1e1e1] hover:bg-white transition-colors flex items-center justify-center gap-2"
-                  title="Copy to clipboard"
+                  title={t("cloud.apisTab.copyToClipboard", {
+                    defaultValue: "Copy to clipboard",
+                  })}
                 >
                   <Copy className="h-5 w-5 text-black" />
                   <span className="text-black font-mono text-sm sm:hidden">
-                    Copy
+                    {t("cloud.apisTab.copy", { defaultValue: "Copy" })}
                   </span>
                 </button>
               </div>
@@ -638,7 +741,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                 }}
               />
               <span className="relative z-10 text-black font-mono font-medium text-sm sm:text-base">
-                Done
+                {t("cloud.apisTab.done", { defaultValue: "Done" })}
               </span>
             </button>
           </DialogFooter>
@@ -652,19 +755,28 @@ export function ApisTab({ user: _user }: ApisTabProps) {
       >
         <AlertDialogContentComp>
           <AlertDialogHeaderComp>
-            <AlertDialogTitleComp>Delete API Key</AlertDialogTitleComp>
+            <AlertDialogTitleComp>
+              {t("cloud.apisTab.deleteApiKeyTitle2", {
+                defaultValue: "Delete API Key",
+              })}
+            </AlertDialogTitleComp>
             <AlertDialogDescComp>
-              Are you sure you want to delete the API key "{deleteTarget?.name}
-              "? This action cannot be undone.
+              {t("cloud.apisTab.deleteConfirm", {
+                name: deleteTarget?.name,
+                defaultValue:
+                  'Are you sure you want to delete the API key "{{name}}"? This action cannot be undone.',
+              })}
             </AlertDialogDescComp>
           </AlertDialogHeaderComp>
           <AlertDialogFooterComp>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("cloud.apisTab.cancel", { defaultValue: "Cancel" })}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
               className="bg-red-600 hover:bg-red-700"
             >
-              Delete
+              {t("cloud.apisTab.delete", { defaultValue: "Delete" })}
             </AlertDialogAction>
           </AlertDialogFooterComp>
         </AlertDialogContentComp>

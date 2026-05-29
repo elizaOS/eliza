@@ -1,4 +1,5 @@
 import { Clock } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 
 interface RetentionCountdownProps {
   /** Epoch-ms at which the data expires / is purged. */
@@ -7,15 +8,29 @@ interface RetentionCountdownProps {
   className?: string;
 }
 
-function formatRemaining(ms: number): string {
-  if (ms <= 0) return "expired";
+function formatRemaining(ms: number, t: ReturnType<typeof useT>): string {
+  if (ms <= 0) return t("cloud.retention.expired", { defaultValue: "expired" });
   const days = Math.floor(ms / 86_400_000);
-  if (days >= 2) return `expires in ${days}d`;
+  if (days >= 2)
+    return t("cloud.retention.expiresInDays", {
+      days,
+      defaultValue: "expires in {{days}}d",
+    });
   const hours = Math.floor(ms / 3_600_000);
-  if (hours >= 2) return `expires in ${hours}h`;
+  if (hours >= 2)
+    return t("cloud.retention.expiresInHours", {
+      hours,
+      defaultValue: "expires in {{hours}}h",
+    });
   const minutes = Math.floor(ms / 60_000);
-  if (minutes >= 1) return `expires in ${minutes}m`;
-  return "expires in <1m";
+  if (minutes >= 1)
+    return t("cloud.retention.expiresInMinutes", {
+      minutes,
+      defaultValue: "expires in {{minutes}}m",
+    });
+  return t("cloud.retention.expiresSoon", {
+    defaultValue: "expires in <1m",
+  });
 }
 
 /**
@@ -28,6 +43,7 @@ export function RetentionCountdown({
   now = Date.now(),
   className,
 }: RetentionCountdownProps) {
+  const t = useT();
   const remaining = until - now;
   const expired = remaining <= 0;
   return (
@@ -38,10 +54,13 @@ export function RetentionCountdown({
           : "border-white/15 bg-white/5 text-white/70"
       } ${className ?? ""}`}
       data-testid="retention-countdown"
-      title={`Retention until ${new Date(until).toISOString()}`}
+      title={t("cloud.retention.retentionUntil", {
+        date: new Date(until).toISOString(),
+        defaultValue: "Retention until {{date}}",
+      })}
     >
       <Clock className="h-3 w-3" aria-hidden />
-      {formatRemaining(remaining)}
+      {formatRemaining(remaining, t)}
     </span>
   );
 }

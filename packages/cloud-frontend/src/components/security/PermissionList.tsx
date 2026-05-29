@@ -1,5 +1,6 @@
 import { Checkbox, Label } from "@elizaos/ui";
 import { Info } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 
 export interface PluginPermission {
   /** Stable identifier — e.g. `net.egress`, `fs.write`, `exec`, `vision`. */
@@ -32,10 +33,13 @@ export function PermissionList({
   onToggle,
   disabled,
 }: PermissionListProps) {
+  const t = useT();
   if (permissions.length === 0) {
     return (
       <p className="text-xs text-white/60">
-        This plugin requests no host or sandbox permissions.
+        {t("cloud.permissionList.noPermissions", {
+          defaultValue: "This plugin requests no host or sandbox permissions.",
+        })}
       </p>
     );
   }
@@ -69,7 +73,9 @@ export function PermissionList({
                 {perm.label}
                 {sensitive ? (
                   <span className="rounded-sm border border-yellow-500/40 bg-yellow-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-yellow-300">
-                    sensitive
+                    {t("cloud.permissionList.sensitive", {
+                      defaultValue: "sensitive",
+                    })}
                   </span>
                 ) : null}
                 <Info
@@ -80,7 +86,10 @@ export function PermissionList({
               <p className="text-xs text-white/60">{perm.description}</p>
               {perm.scope ? (
                 <p className="font-mono text-[11px] text-white/40">
-                  scope: {perm.scope}
+                  {t("cloud.permissionList.scope", {
+                    scope: perm.scope,
+                    defaultValue: "scope: {{scope}}",
+                  })}
                 </p>
               ) : null}
             </div>

@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@elizaos/ui";
 import { useMemo, useState } from "react";
+import { useT } from "@/providers/I18nProvider";
 import { PermissionList, type PluginPermission } from "./PermissionList";
 import { TrustBadge, type TrustBadgeVariant } from "./TrustBadge";
 
@@ -49,6 +50,7 @@ export function ConsentDialog({
   onCancel,
   busy,
 }: ConsentDialogProps) {
+  const t = useT();
   const initial = useMemo<ReadonlySet<string>>(() => {
     if (!initialSelected) return new Set();
     return new Set(
@@ -84,7 +86,10 @@ export function ConsentDialog({
       <DialogContent className="max-w-lg" data-testid="consent-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Install {pluginName}
+            {t("cloud.consentDialog.install", {
+              pluginName,
+              defaultValue: "Install {{pluginName}}",
+            })}
             {pluginVersion ? (
               <span className="text-xs font-normal text-white/50">
                 v{pluginVersion}
@@ -92,8 +97,10 @@ export function ConsentDialog({
             ) : null}
           </DialogTitle>
           <DialogDescription>
-            Review the permissions this plugin is requesting. Sensitive
-            permissions are off by default — grant only what you trust.
+            {t("cloud.consentDialog.description", {
+              defaultValue:
+                "Review the permissions this plugin is requesting. Sensitive permissions are off by default — grant only what you trust.",
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -101,7 +108,12 @@ export function ConsentDialog({
           <div className="flex items-center gap-2">
             <TrustBadge variant={trust} publisher={publisher} />
             {publisher ? (
-              <span className="text-xs text-white/50">by {publisher}</span>
+              <span className="text-xs text-white/50">
+                {t("cloud.consentDialog.by", {
+                  publisher,
+                  defaultValue: "by {{publisher}}",
+                })}
+              </span>
             ) : null}
           </div>
 
@@ -110,8 +122,10 @@ export function ConsentDialog({
               className="rounded-sm border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200"
               data-testid="consent-dialog-blocked"
             >
-              The publisher signature did not verify. Eliza will refuse to
-              install this plugin. There is no override.
+              {t("cloud.consentDialog.blocked", {
+                defaultValue:
+                  "The publisher signature did not verify. Eliza will refuse to install this plugin. There is no override.",
+              })}
             </p>
           ) : null}
 
@@ -132,7 +146,7 @@ export function ConsentDialog({
             }}
             disabled={busy}
           >
-            Cancel
+            {t("cloud.consentDialog.cancel", { defaultValue: "Cancel" })}
           </BrandButton>
           <BrandButton
             variant="primary"
@@ -142,7 +156,13 @@ export function ConsentDialog({
             }}
             data-testid="consent-dialog-confirm"
           >
-            {busy ? "Installing…" : "Install with selected permissions"}
+            {busy
+              ? t("cloud.consentDialog.installing", {
+                  defaultValue: "Installing…",
+                })
+              : t("cloud.consentDialog.installWithPermissions", {
+                  defaultValue: "Install with selected permissions",
+                })}
           </BrandButton>
         </DialogFooter>
       </DialogContent>
