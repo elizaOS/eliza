@@ -2085,11 +2085,35 @@ android smoke model works`,
 			"you may scan the prior_message blocks above and answer from what is literally visible there",
 		);
 		expect(sourceText).toContain(
-			"If the asked-about token does not appear in any visible prior_message block, say so plainly",
+			"Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly",
 		);
 		expect(sourceText).toContain(
 			"there is no separate chat-history search tool",
 		);
+	});
+
+	it("current_turn_boundary answers facts stated in the current message itself", async () => {
+		// Live regression: on 2026-05-28 the bot was asked "i told you my
+		// favorite color is teal, whats my favorite color?" and replied "I
+		// don't see any mention of your favorite color in the recent
+		// messages, so I don't know what it is." (trajectory
+		// tj-70a488a154fa31.json). Root cause: the recall exception directed
+		// the model to scan only the prior_message blocks; when the asserted
+		// fact lived in the CURRENT message it over-applied the "I don't see
+		// X" honesty escape and ignored the inline answer. The fix tells the
+		// model to read the final message:user itself before declaring it
+		// cannot find something.
+		const sourceText = await readFile(
+			join(import.meta.dirname, "..", "services", "message.ts"),
+			"utf-8",
+		);
+		expect(sourceText).toContain(
+			"Before saying you cannot find something, read the final message:user itself",
+		);
+		expect(sourceText).toContain(
+			"if the asker states a fact and asks about it in the same message",
+		);
+		expect(sourceText).toContain("answer from the current message directly");
 	});
 
 	it("renders platform reply references as current-turn context", async () => {
