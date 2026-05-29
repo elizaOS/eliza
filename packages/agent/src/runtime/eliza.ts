@@ -4009,30 +4009,19 @@ export async function startEliza(
     );
   }
 
-  // 7e. Pre-register remaining core plugins sequentially in CORE_PLUGINS order.
-  //     Each registerPlugin() call runs the plugin's init() before proceeding
-  //     to the next, guaranteeing that cross-plugin getService() calls resolve.
-  {
-    try {
-      logger.info("[eliza] Pre-registering roles capability...");
-      await runtime.registerPlugin(rolesPlugin);
-      logger.info("[eliza] ✓ roles capability pre-registered");
-    } catch (err) {
-      logger.warn(
-        `[eliza] Roles capability pre-registration failed: ${formatError(err)}`,
-      );
-    }
-
-    const alreadyPreRegistered = new Set<string>([
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-local-inference",
-    ]);
-    await preregisterCorePluginsInDependencyWaves({
-      runtime,
-      resolvedPlugins,
-      alreadyPreRegistered,
-    });
-    bootTimer.lap("core-plugin-waves");
+  // 7e. Register the roles capability (cheap, gates provider/action visibility).
+  //     The remaining core plugins (companion, app-control, device-filesystem,
+  //     shell, coding-tools, agent-skills, commands, google, lifeops, browser,
+  //     video) are NOT essential to the chat path and are loaded in the
+  //     background after the runtime is ready — see runDeferredBoot below.
+  try {
+    logger.info("[eliza] Pre-registering roles capability...");
+    await runtime.registerPlugin(rolesPlugin);
+    logger.info("[eliza] ✓ roles capability pre-registered");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Roles capability pre-registration failed: ${formatError(err)}`,
+    );
   }
 
   const warmAgentSkillsService = async (): Promise<void> => {
@@ -4387,6 +4376,10 @@ export async function startEliza(
     });
   };
 
+  // Essential boot: only what the chat path needs to function (sql +
+  // local-inference are already registered above; runtime.initialize() brings
+  // the provider/connector plugins and core message handler online). The
+  // runtime is reported ready as soon as this resolves.
   const initializeRuntimeServices = async (): Promise<void> => {
     await runStewardEvmPreBoot();
     await registerConnectorSetupService();
@@ -4395,9 +4388,31 @@ export async function startEliza(
 
     await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");
+  };
+
+  // Deferred boot: non-essential core plugins (companion, app-control,
+  // device-filesystem, shell, coding-tools, agent-skills, commands, google,
+  // lifeops, browser, video) plus the post-init tail. Runs in the background
+  // after the runtime is ready so chat is usable immediately; the deferred
+  // capabilities (actions/providers) light up as each plugin registers. The 3
+  // intra-core dependency edges (coding-tools/agent-skills → shell, lifeops →
+  // google) live entirely within this group, so the existing wave algorithm
+  // preserves ordering.
+  const runDeferredBoot = async (): Promise<void> => {
+    const alreadyPreRegistered = new Set<string>([
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-local-inference",
+    ]);
+    await preregisterCorePluginsInDependencyWaves({
+      runtime,
+      resolvedPlugins,
+      alreadyPreRegistered,
+      label: "deferred",
+    });
+    bootTimer.lap("deferred:core-plugin-waves");
 
     await runTeeBootGate();
-    bootTimer.lap("svc:tee-gate");
+    bootTimer.lap("deferred:tee-gate");
 
     await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
@@ -4406,13 +4421,19 @@ export async function startEliza(
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
     await installAnthropicWebSearchIfAvailable();
-    bootTimer.lap("svc:post-init");
+    bootTimer.lap("deferred:post-init");
 
     const autonomyLoopEnabled = isAutonomyEnabled();
     await startAutonomyServiceIfEnabled(true);
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
-    bootTimer.lap("svc:autonomy+warmup");
+    bootTimer.lap("deferred:autonomy+warmup");
+
+    // Re-install action aliases now that deferred plugins have registered
+    // their actions; the initial pass after the essential boot only saw the
+    // core message-handler actions.
+    installActionAliases(runtime);
+    bootTimer.lap("deferred:complete");
   };
 
   try {
@@ -4452,6 +4473,12 @@ export async function startEliza(
   bootTimer.summary();
 
   installActionAliases(runtime);
+
+  // Kick off non-essential plugin loading in the background. The runtime is
+  // already usable for chat; deferred capabilities register as they complete.
+  void runDeferredBoot().catch((err) => {
+    logger.warn(`[eliza] Deferred boot failed: ${formatError(err)}`);
+  });
 
   // 9. Graceful shutdown handler
   //

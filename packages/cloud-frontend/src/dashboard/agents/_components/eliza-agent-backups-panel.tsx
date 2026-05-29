@@ -1,6 +1,6 @@
 "use client";
 
-import { formatByteSize } from "@elizaos/shared";
+import { formatByteSize } from "@elizaos/shared/utils/format";
 import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/ui";
 import { formatDistanceToNowStrict } from "date-fns";
 import {
