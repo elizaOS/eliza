@@ -12,11 +12,13 @@ import { ArrowRight, CheckCircle, XCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useSearchParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useVerifyCheckout } from "../../../lib/data/credits";
 import { CreditBalanceDisplay } from "../_components/success-client";
 
 export default function BillingSuccessPage() {
+  const t = useT();
   const session = useRequireAuth();
   const [params] = useSearchParams();
   const fromSettings = params.get("from") === "settings";
@@ -38,8 +40,17 @@ export default function BillingSuccessPage() {
 
   const helmet = (
     <Helmet>
-      <title>Purchase Successful</title>
-      <meta name="description" content="Your credit purchase was successful" />
+      <title>
+        {t("cloud.billingSuccess.metaTitle", {
+          defaultValue: "Purchase Successful",
+        })}
+      </title>
+      <meta
+        name="description"
+        content={t("cloud.billingSuccess.metaDescription", {
+          defaultValue: "Your credit purchase was successful",
+        })}
+      />
     </Helmet>
   );
 
@@ -47,7 +58,11 @@ export default function BillingSuccessPage() {
     return (
       <>
         {helmet}
-        <DashboardLoadingState label="Loading" />
+        <DashboardLoadingState
+          label={t("cloud.billingSuccess.loading", {
+            defaultValue: "Loading",
+          })}
+        />
       </>
     );
   }
@@ -56,7 +71,11 @@ export default function BillingSuccessPage() {
     return (
       <>
         {helmet}
-        <DashboardLoadingState label="Verifying payment" />
+        <DashboardLoadingState
+          label={t("cloud.billingSuccess.verifyingPayment", {
+            defaultValue: "Verifying payment",
+          })}
+        />
       </>
     );
   }
@@ -65,7 +84,9 @@ export default function BillingSuccessPage() {
     const message =
       verify.error instanceof Error
         ? verify.error.message
-        : "Unable to verify payment";
+        : t("cloud.billingSuccess.unableToVerify", {
+            defaultValue: "Unable to verify payment",
+          });
     return (
       <>
         {helmet}
@@ -75,18 +96,27 @@ export default function BillingSuccessPage() {
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
                 <XCircle className="h-10 w-10 text-red-500" />
               </div>
-              <CardTitle className="text-2xl">Payment Issue</CardTitle>
+              <CardTitle className="text-2xl">
+                {t("cloud.billingSuccess.paymentIssue", {
+                  defaultValue: "Payment Issue",
+                })}
+              </CardTitle>
               <CardDescription>{message}</CardDescription>
             </CardHeader>
 
             <CardContent className="text-center space-y-4">
               <p className="text-sm text-muted-foreground">
-                If you believe this is an error, please contact support with
-                your session ID.
+                {t("cloud.billingSuccess.contactSupport", {
+                  defaultValue:
+                    "If you believe this is an error, please contact support with your session ID.",
+                })}
               </p>
               {sessionId && (
                 <p className="text-xs text-muted-foreground bg-muted p-2 rounded-sm">
-                  Session: {sessionId.substring(0, 20)}...
+                  {t("cloud.billingSuccess.sessionLabel", {
+                    sessionId: `${sessionId.substring(0, 20)}...`,
+                    defaultValue: "Session: {{sessionId}}",
+                  })}
                 </p>
               )}
             </CardContent>
@@ -100,7 +130,9 @@ export default function BillingSuccessPage() {
                       : "/dashboard/billing"
                   }
                 >
-                  Back to Billing
+                  {t("cloud.billingSuccess.backToBilling", {
+                    defaultValue: "Back to Billing",
+                  })}
                 </Link>
               </Button>
             </CardFooter>
@@ -119,17 +151,25 @@ export default function BillingSuccessPage() {
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
               <CheckCircle className="h-10 w-10 text-green-500" />
             </div>
-            <CardTitle className="text-2xl">Purchase Successful!</CardTitle>
+            <CardTitle className="text-2xl">
+              {t("cloud.billingSuccess.purchaseSuccessful", {
+                defaultValue: "Purchase Successful!",
+              })}
+            </CardTitle>
             <CardDescription>
-              Your credits have been added to your account
+              {t("cloud.billingSuccess.creditsAdded", {
+                defaultValue: "Your credits have been added to your account",
+              })}
             </CardDescription>
           </CardHeader>
 
           <CardContent className="text-center space-y-4">
             <CreditBalanceDisplay sessionId={sessionId} />
             <p className="text-sm text-muted-foreground">
-              You can now use your credits for text generation, image creation,
-              and video rendering.
+              {t("cloud.billingSuccess.creditsUsage", {
+                defaultValue:
+                  "You can now use your credits for text generation, image creation, and video rendering.",
+              })}
             </p>
           </CardContent>
 
@@ -138,12 +178,16 @@ export default function BillingSuccessPage() {
               <>
                 <Button asChild variant="outline" className="w-full">
                   <Link to="/dashboard/settings?tab=billing">
-                    Back to Billing Settings
+                    {t("cloud.billingSuccess.backToBillingSettings", {
+                      defaultValue: "Back to Billing Settings",
+                    })}
                   </Link>
                 </Button>
                 <Button asChild className="w-full">
                   <Link to="/dashboard">
-                    Go to Dashboard
+                    {t("cloud.billingSuccess.goToDashboard", {
+                      defaultValue: "Go to Dashboard",
+                    })}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
@@ -151,11 +195,17 @@ export default function BillingSuccessPage() {
             ) : (
               <>
                 <Button asChild variant="outline" className="w-full">
-                  <Link to="/dashboard/billing">View Billing</Link>
+                  <Link to="/dashboard/billing">
+                    {t("cloud.billingSuccess.viewBilling", {
+                      defaultValue: "View Billing",
+                    })}
+                  </Link>
                 </Button>
                 <Button asChild className="w-full">
                   <Link to="/dashboard">
-                    Go to Dashboard
+                    {t("cloud.billingSuccess.goToDashboard", {
+                      defaultValue: "Go to Dashboard",
+                    })}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>

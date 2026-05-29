@@ -17,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, ExternalLink, Loader2, XCircle } from "lucide-react";
 import { useEffect } from "react";
 
+import { useT } from "@/providers/I18nProvider";
 import { api } from "../../../lib/api-client";
 
 export interface PaymentWaitingStatus {
@@ -61,6 +62,7 @@ export function PaymentWaitingOverlay({
   onResolved,
   onDismiss,
 }: PaymentWaitingOverlayProps) {
+  const t = useT();
   const { data, error, isLoading } = useQuery({
     queryKey: ["direct-crypto-payment", paymentId],
     queryFn: async () => {
@@ -107,28 +109,50 @@ export function PaymentWaitingOverlay({
 
           <h2 className="mt-5 text-xl font-semibold">
             {isConfirmed
-              ? "Credit added"
+              ? t("cloud.paymentWaiting.creditAdded", {
+                  defaultValue: "Credit added",
+                })
               : isFailed
-                ? "Payment failed"
-                : "Confirming on-chain"}
+                ? t("cloud.paymentWaiting.paymentFailed", {
+                    defaultValue: "Payment failed",
+                  })
+                : t("cloud.paymentWaiting.confirmingOnChain", {
+                    defaultValue: "Confirming on-chain",
+                  })}
           </h2>
 
           <p className="mt-2 text-sm text-white/65">
             {isConfirmed
-              ? `Added $${data?.creditsToAdd ?? "—"} in cloud credit${
-                  data?.bonusCredits
-                    ? ` (incl. $${data.bonusCredits} bonus)`
-                    : ""
-                }.`
+              ? data?.bonusCredits
+                ? t("cloud.paymentWaiting.addedCreditWithBonus", {
+                    amount: data?.creditsToAdd ?? "—",
+                    bonus: data.bonusCredits,
+                    defaultValue:
+                      "Added ${{amount}} in cloud credit (incl. ${{bonus}} bonus).",
+                  })
+                : t("cloud.paymentWaiting.addedCredit", {
+                    amount: data?.creditsToAdd ?? "—",
+                    defaultValue: "Added ${{amount}} in cloud credit.",
+                  })
               : isFailed
                 ? (data?.error ??
-                  "We could not confirm this transaction on chain. Contact support with the tx hash below.")
-                : "Waiting for the network. This usually takes 10–30 seconds. Don't close this tab — we'll resume if you do."}
+                  t("cloud.paymentWaiting.couldNotConfirm", {
+                    defaultValue:
+                      "We could not confirm this transaction on chain. Contact support with the tx hash below.",
+                  }))
+                : t("cloud.paymentWaiting.waitingForNetwork", {
+                    defaultValue:
+                      "Waiting for the network. This usually takes 10–30 seconds. Don't close this tab — we'll resume if you do.",
+                  })}
           </p>
 
           {data?.txHash && (
             <div className="mt-4 w-full">
-              <div className="text-xs text-white/45">Transaction</div>
+              <div className="text-xs text-white/45">
+                {t("cloud.paymentWaiting.transaction", {
+                  defaultValue: "Transaction",
+                })}
+              </div>
               <div className="mt-1 break-all rounded-xs border border-white/10 bg-white/[0.04] px-3 py-2 font-mono text-xs text-white/85">
                 {data.txHash}
               </div>
@@ -139,7 +163,9 @@ export function PaymentWaitingOverlay({
                   rel="noopener noreferrer"
                   className="mt-2 inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white"
                 >
-                  View on explorer
+                  {t("cloud.paymentWaiting.viewOnExplorer", {
+                    defaultValue: "View on explorer",
+                  })}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               )}
@@ -148,14 +174,18 @@ export function PaymentWaitingOverlay({
 
           {error && !data && (
             <p className="mt-4 text-sm text-red-200">
-              {error instanceof Error ? error.message : "Status lookup failed."}
+              {error instanceof Error
+                ? error.message
+                : t("cloud.paymentWaiting.statusLookupFailed", {
+                    defaultValue: "Status lookup failed.",
+                  })}
             </p>
           )}
 
           <div className="mt-6 flex gap-3">
             {isConfirmed ? (
               <Button onClick={onDismiss} className="rounded-xs">
-                Done
+                {t("cloud.paymentWaiting.done", { defaultValue: "Done" })}
               </Button>
             ) : isFailed ? (
               <Button
@@ -163,7 +193,7 @@ export function PaymentWaitingOverlay({
                 variant="surface"
                 className="rounded-xs"
               >
-                Close
+                {t("cloud.paymentWaiting.close", { defaultValue: "Close" })}
               </Button>
             ) : (
               <Button
@@ -171,14 +201,19 @@ export function PaymentWaitingOverlay({
                 variant="surface"
                 className="rounded-xs text-white/80"
               >
-                Hide — keep watching in background
+                {t("cloud.paymentWaiting.hideKeepWatching", {
+                  defaultValue: "Hide — keep watching in background",
+                })}
               </Button>
             )}
           </div>
 
           {isWaiting && data?.expiresAt && (
             <p className="mt-4 text-xs text-white/40">
-              expires {new Date(data.expiresAt).toLocaleTimeString()}
+              {t("cloud.paymentWaiting.expires", {
+                time: new Date(data.expiresAt).toLocaleTimeString(),
+                defaultValue: "expires {{time}}",
+              })}
             </p>
           )}
         </div>

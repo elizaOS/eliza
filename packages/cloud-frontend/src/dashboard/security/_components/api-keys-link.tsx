@@ -1,8 +1,10 @@
 import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/ui";
 import { KeyRound } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 export function ApiKeysLink() {
+  const t = useT();
   return (
     <BrandCard className="relative">
       <CornerBrackets size="sm" className="opacity-50" />
@@ -12,15 +14,20 @@ export function ApiKeysLink() {
             <KeyRound className="h-4 w-4 text-[#FF5800]" />
           </div>
           <div className="space-y-0.5">
-            <p className="text-sm font-medium text-white">API keys</p>
+            <p className="text-sm font-medium text-white">
+              {t("cloud.apiKeysLink.title", { defaultValue: "API keys" })}
+            </p>
             <p className="text-xs text-white/60">
-              Manage long-lived keys, their scopes, and per-key audit history.
+              {t("cloud.apiKeysLink.description", {
+                defaultValue:
+                  "Manage long-lived keys, their scopes, and per-key audit history.",
+              })}
             </p>
           </div>
         </div>
         <Link to="/dashboard/api-keys">
           <BrandButton variant="outline" size="sm">
-            Manage keys
+            {t("cloud.apiKeysLink.manageKeys", { defaultValue: "Manage keys" })}
           </BrandButton>
         </Link>
       </div>

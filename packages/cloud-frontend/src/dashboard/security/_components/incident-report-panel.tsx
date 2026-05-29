@@ -2,14 +2,20 @@ import { BrandButton, BrandCard, CornerBrackets, Textarea } from "@elizaos/ui";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { useT } from "@/providers/I18nProvider";
 
 export function IncidentReportPanel() {
+  const t = useT();
   const [details, setDetails] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
     if (!details.trim()) {
-      toast.error("Please describe what happened.");
+      toast.error(
+        t("cloud.incidentReport.describeWhatHappened", {
+          defaultValue: "Please describe what happened.",
+        }),
+      );
       return;
     }
     setSubmitting(true);
@@ -18,7 +24,11 @@ export function IncidentReportPanel() {
         method: "POST",
         json: { details: details.trim() },
       });
-      toast.success("Incident report submitted. We'll follow up by email.");
+      toast.success(
+        t("cloud.incidentReport.submittedSuccess", {
+          defaultValue: "Incident report submitted. We'll follow up by email.",
+        }),
+      );
       setDetails("");
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -30,7 +40,12 @@ export function IncidentReportPanel() {
         return;
       }
       const message = err instanceof Error ? err.message : String(err);
-      toast.error(`Failed to submit: ${message}`);
+      toast.error(
+        t("cloud.incidentReport.failedToSubmit", {
+          message,
+          defaultValue: "Failed to submit: {{message}}",
+        }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -42,23 +57,31 @@ export function IncidentReportPanel() {
       <div className="relative z-10 space-y-3">
         <div>
           <h3 className="text-lg font-bold text-white">
-            Report a security incident
+            {t("cloud.incidentReport.title", {
+              defaultValue: "Report a security incident",
+            })}
           </h3>
           <p className="text-sm text-white/60">
-            Email{" "}
+            {t("cloud.incidentReport.emailPre", { defaultValue: "Email" })}{" "}
             <a
               href="mailto:security@elizalabs.ai"
               className="text-[#FF5800] underline"
             >
               security@elizalabs.ai
             </a>{" "}
-            or submit details below. Encrypted disclosures welcomed.
+            {t("cloud.incidentReport.emailPost", {
+              defaultValue:
+                "or submit details below. Encrypted disclosures welcomed.",
+            })}
           </p>
         </div>
         <Textarea
           value={details}
           onChange={(e) => setDetails(e.target.value)}
-          placeholder="What happened? Include affected URLs, timestamps, and steps to reproduce."
+          placeholder={t("cloud.incidentReport.placeholder", {
+            defaultValue:
+              "What happened? Include affected URLs, timestamps, and steps to reproduce.",
+          })}
           rows={5}
           disabled={submitting}
         />
@@ -68,7 +91,13 @@ export function IncidentReportPanel() {
           onClick={() => void submit()}
           disabled={submitting}
         >
-          {submitting ? "Submitting…" : "Submit incident report"}
+          {submitting
+            ? t("cloud.incidentReport.submitting", {
+                defaultValue: "Submitting…",
+              })
+            : t("cloud.incidentReport.submit", {
+                defaultValue: "Submit incident report",
+              })}
         </BrandButton>
       </div>
     </BrandCard>
