@@ -12,7 +12,10 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildFirstRunRuntimeConfig } from "../src/first-run/first-run-config.ts";
-import { selectLiveProvider } from "../test/helpers/live-provider.ts";
+import {
+  getFirstRunProviderForLiveProvider,
+  selectLiveProvider,
+} from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
@@ -499,7 +502,7 @@ async function submitFirstRun(apiBase: string): Promise<void> {
   const runtimeConfig = buildFirstRunRuntimeConfig({
     firstRunRuntimeTarget: "local",
     firstRunCloudApiKey: "",
-    firstRunProvider: LIVE_PROVIDER.name,
+    firstRunProvider: getFirstRunProviderForLiveProvider(LIVE_PROVIDER),
     firstRunApiKey: LIVE_PROVIDER.apiKey,
     firstRunVoiceProvider: "",
     firstRunVoiceApiKey: "",

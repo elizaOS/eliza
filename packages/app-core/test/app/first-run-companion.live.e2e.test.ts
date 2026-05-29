@@ -21,7 +21,10 @@ import {
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider.ts";
+import {
+  getFirstRunProviderForLiveProvider,
+  selectLiveProvider,
+} from "../helpers/live-provider.ts";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality.ts";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
@@ -734,7 +737,7 @@ async function submitFirstRun(apiBase: string): Promise<void> {
   const runtimeConfig = buildFirstRunRuntimeConfig({
     firstRunRuntimeTarget: "local",
     firstRunCloudApiKey: "",
-    firstRunProvider: LIVE_PROVIDER.name,
+    firstRunProvider: getFirstRunProviderForLiveProvider(LIVE_PROVIDER),
     firstRunApiKey: LIVE_PROVIDER.apiKey,
     firstRunVoiceProvider: "",
     firstRunVoiceApiKey: "",

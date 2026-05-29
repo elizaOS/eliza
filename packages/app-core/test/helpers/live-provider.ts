@@ -95,6 +95,18 @@ export type LiveProviderConfig = {
   env: Record<string, string>;
 };
 
+export function getFirstRunProviderForLiveProvider(
+  provider: Pick<LiveProviderConfig, "name">,
+): string {
+  if (provider.name === "cerebras" || provider.name === "local-llama-cpp") {
+    return "openai";
+  }
+  if (provider.name === "google") {
+    return "gemini";
+  }
+  return provider.name;
+}
+
 export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
   "ELIZA_PROVIDER",
   "SMALL_MODEL",

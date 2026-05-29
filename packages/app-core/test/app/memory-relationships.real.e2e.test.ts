@@ -16,7 +16,10 @@ import { buildFirstRunRuntimeConfig } from "@elizaos/ui";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider.ts";
+import {
+  getFirstRunProviderForLiveProvider,
+  selectLiveProvider,
+} from "../helpers/live-provider.ts";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality.ts";
 
 const DEFAULT_UI_URL = stripTrailingSlash(
@@ -777,7 +780,7 @@ async function submitFirstRun(apiBase: string): Promise<void> {
   const runtimeConfig = buildFirstRunRuntimeConfig({
     firstRunRuntimeTarget: "local",
     firstRunCloudApiKey: "",
-    firstRunProvider: LIVE_PROVIDER.name,
+    firstRunProvider: getFirstRunProviderForLiveProvider(LIVE_PROVIDER),
     firstRunApiKey: LIVE_PROVIDER.apiKey,
     firstRunVoiceProvider: "",
     firstRunVoiceApiKey: "",

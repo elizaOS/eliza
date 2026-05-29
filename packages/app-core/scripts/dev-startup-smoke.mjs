@@ -21,7 +21,9 @@ import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
 const BUDGET_MS = Number(process.env.ELIZA_DEV_STARTUP_BUDGET_MS || "60000");
-const HARD_KILL_MS = Number(process.env.ELIZA_DEV_STARTUP_HARD_KILL_MS || "8000");
+const HARD_KILL_MS = Number(
+  process.env.ELIZA_DEV_STARTUP_HARD_KILL_MS || "8000",
+);
 
 function getFreePort() {
   return new Promise((resolve, reject) => {

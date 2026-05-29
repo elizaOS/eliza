@@ -1,6 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 import { buildFirstRunRuntimeConfig } from "../../../app-core/src/first-run/first-run-config";
-import { selectLiveProvider } from "../../../app-core/test/helpers/live-provider";
+import {
+  getFirstRunProviderForLiveProvider,
+  selectLiveProvider,
+} from "../../../app-core/test/helpers/live-provider";
 
 const API_PORT = Number(process.env.ELIZA_API_PORT || "31337");
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
@@ -90,7 +93,7 @@ async function submitFirstRun(): Promise<void> {
   const runtimeConfig = buildFirstRunRuntimeConfig({
     firstRunRuntimeTarget: "local",
     firstRunCloudApiKey: "",
-    firstRunProvider: LIVE_PROVIDER.name,
+    firstRunProvider: getFirstRunProviderForLiveProvider(LIVE_PROVIDER),
     firstRunApiKey: LIVE_PROVIDER.apiKey,
     firstRunVoiceProvider: "",
     firstRunVoiceApiKey: "",

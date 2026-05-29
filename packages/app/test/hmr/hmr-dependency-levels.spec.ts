@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Page, expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // This spec lives at packages/app/test/hmr/, so the repo root is four levels up.
 const repoRoot = path.resolve(
@@ -24,7 +24,8 @@ const LEVELS = [
 ] as const;
 
 // Vite's client logs these to the page console when it processes a change.
-const VITE_UPDATE = /\[vite\].*(hot updated|hmr update|page reload|invalidate)/i;
+const VITE_UPDATE =
+  /\[vite\].*(hot updated|hmr update|page reload|invalidate)/i;
 
 function collectViteEvents(page: Page): string[] {
   const events: string[] = [];
