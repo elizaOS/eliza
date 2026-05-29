@@ -80,6 +80,7 @@ import {
   normalizeMobileRuntimeMode,
 } from "@elizaos/ui/first-run/mobile-runtime-mode";
 import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/first-run/pre-seed-local-runtime";
+import { createTranslator } from "@elizaos/ui/i18n";
 import {
   getWindowNavigationPath,
   isAppWindowRoute,
@@ -104,7 +105,6 @@ import {
   shouldInstallMainWindowFirstRunPatches,
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
-import { createTranslator } from "@elizaos/ui/i18n";
 import { AppProvider } from "@elizaos/ui/state";
 import {
   applyUiTheme,
