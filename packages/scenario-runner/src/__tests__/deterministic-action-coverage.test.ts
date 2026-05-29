@@ -36,9 +36,18 @@ import { describe, expect, it } from "vitest";
  * at module load, not inside a test where it would race the per-test timeout.
  */
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
-const scenarioDir = resolve(repoRoot, "packages/scenario-runner/test/scenarios");
-const packageJsonPath = resolve(repoRoot, "packages/scenario-runner/package.json");
+const repoRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../..",
+);
+const scenarioDir = resolve(
+  repoRoot,
+  "packages/scenario-runner/test/scenarios",
+);
+const packageJsonPath = resolve(
+  repoRoot,
+  "packages/scenario-runner/package.json",
+);
 
 /** Stable core plugins whose action surface is read live by import. */
 const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
@@ -170,7 +179,9 @@ function sorted(values: Iterable<string>): string[] {
 }
 
 function scenarioFiles(): string[] {
-  return readdirSync(scenarioDir).filter((file) => file.endsWith(".scenario.ts"));
+  return readdirSync(scenarioDir).filter((file) =>
+    file.endsWith(".scenario.ts"),
+  );
 }
 
 function scenarioActionNames(): string[] {
@@ -241,7 +252,9 @@ describe("deterministic action coverage", () => {
 
   it("every covered action still has a scenario (no coverage regression)", () => {
     const covered = new Set(scenarioActionNames());
-    const regressed = sorted(COVERED_ACTIONS).filter((name) => !covered.has(name));
+    const regressed = sorted(COVERED_ACTIONS).filter(
+      (name) => !covered.has(name),
+    );
     expect(
       regressed,
       `actions in COVERED_ACTIONS no longer referenced by any scenario: ${regressed.join(", ")}`,
@@ -283,7 +296,9 @@ describe("deterministic action coverage", () => {
       const base = file.replace(/\.scenario\.ts$/, "");
       const id = declaredScenarioId(file);
       if (id !== base) {
-        problems.push(`${file}: declared id ${JSON.stringify(id)} != filename base ${JSON.stringify(base)}`);
+        problems.push(
+          `${file}: declared id ${JSON.stringify(id)} != filename base ${JSON.stringify(base)}`,
+        );
       }
       if (!wired.has(base)) {
         problems.push(

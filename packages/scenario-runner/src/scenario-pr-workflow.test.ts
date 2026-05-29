@@ -202,15 +202,13 @@ describe("scenario PR workflow contract", () => {
     expect(scenarioRunnerPackage.scripts?.["test:pr:e2e"]).toBe(
       "bun run test:deterministic:e2e",
     );
-    expect(
-      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
-    ).toContain("SCENARIO_USE_LLM_PROXY=1");
-    expect(
-      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
-    ).toContain("SCENARIO_LLM_PROXY_STRICT=1");
-    expect(
-      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
-    ).toContain(
+    expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
+      "SCENARIO_USE_LLM_PROXY=1",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
+      "SCENARIO_LLM_PROXY_STRICT=1",
+    );
+    expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
       "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing,deterministic-browser-actions,deterministic-lifeops-scheduled-tasks,deterministic-coding-tools-actions,deterministic-agent-skills-actions,deterministic-media-emote-actions",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
@@ -285,7 +283,7 @@ describe("scenario PR workflow contract", () => {
       "run-feed-relaunch-2",
     );
     expect(deterministicAppControlActionsScenario).toContain(
-      "Broadcast view event \"wallet:refresh\"",
+      'Broadcast view event "wallet:refresh"',
     );
     expect(deterministicAppControlActionsScenario).toContain(
       "data.launch.run.runId",
@@ -314,9 +312,7 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicBrowserActionsScenario).toContain(
       "typed by strict browser scenario",
     );
-    expect(deterministicBrowserActionsScenario).toContain(
-      "BROWSER_SCREENSHOT",
-    );
+    expect(deterministicBrowserActionsScenario).toContain("BROWSER_SCREENSHOT");
     expect(deterministicLifeOpsScheduledTasksScenario).toContain(
       "Deterministic LifeOps ScheduledTask action execution",
     );
@@ -350,9 +346,7 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicMediaEmoteActionsScenario).toContain(
       "GENERATE_MEDIA_AUDIO",
     );
-    expect(deterministicMediaEmoteActionsScenario).toContain(
-      "PLAY_EMOTE",
-    );
+    expect(deterministicMediaEmoteActionsScenario).toContain("PLAY_EMOTE");
     expect(deterministicScenarioReadme).toContain(
       "strict Stage 1 and planner fixtures",
     );
@@ -377,7 +371,9 @@ describe("scenario PR workflow contract", () => {
     expect(scenarioExecutor).toContain(
       "../../../plugins/plugin-app-control/src/index.ts",
     );
-    expect(scenarioExecutor).toContain("actions: [mod.appAction, mod.viewsAction]");
+    expect(scenarioExecutor).toContain(
+      "actions: [mod.appAction, mod.viewsAction]",
+    );
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",
     );
