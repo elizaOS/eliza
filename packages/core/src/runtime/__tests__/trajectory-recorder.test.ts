@@ -341,7 +341,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 				],
 				toolChoice: "auto",
 			},
-		} as RecordedStage);
+		});
 		await recorder.endTrajectory(id, "finished");
 
 		const trajectory = await recorder.load(id);
