@@ -36,7 +36,6 @@ export {
   formatDashboardRouteErrorMessage,
 } from "./dashboard/dashboard-route-error";
 export {
-  DashboardEndpointPending,
   DashboardErrorState,
   DashboardLoadingState,
 } from "./dashboard/route-placeholders";

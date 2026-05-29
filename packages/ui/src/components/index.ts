@@ -165,7 +165,6 @@ export {
   DashboardActionCards,
   type DashboardActionCardsProps,
   DashboardActionCardsSkeleton,
-  DashboardEndpointPending,
   DashboardErrorState,
   DashboardLoadingState,
   DashboardRouteError,
@@ -219,9 +218,7 @@ export * from "./custom-actions/CustomActionsPanel";
 export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
-export * from "./pages/AutomationsChatPane";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
-export * from "./pages/ChatModalView";
 export * from "./pages/ChatView";
 export * from "./pages/ConfigPageView";
 export * from "./pages/DatabasePageView";
@@ -229,7 +226,6 @@ export * from "./pages/DatabaseView";
 export * from "./pages/DocumentsView";
 export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
-export * from "./pages/HomePlaceholderView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
 export * from "./pages/MemoryViewerView";

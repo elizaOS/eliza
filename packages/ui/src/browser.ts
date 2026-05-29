@@ -51,7 +51,6 @@ export {
   UiRenderer,
   type UiRendererProps,
 } from "./components/config-ui/ui-renderer.tsx";
-export * from "./components/pages/ChatModalView.tsx";
 export * from "./components/pages/PageScopedChatPane.tsx";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.tsx";
 export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
