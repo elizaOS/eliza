@@ -1,3 +1,4 @@
+import { logger } from "@elizaos/core";
 import { getPlugins, isFeatureAvailable } from "./plugin-bridge";
 
 export interface GatewayDiscoveryEndpoint {
@@ -65,7 +66,8 @@ export async function discoverGatewayEndpoints(args?: {
       timeout: args?.timeoutMs ?? 1500,
     });
     return normalizeGateways(result?.gateways);
-  } catch {
+  } catch (error) {
+    logger.warn({ error }, "[gateway-discovery] Discovery failed");
     return [];
   } finally {
     void plugin.stopDiscovery?.().catch(() => {});

@@ -74,15 +74,18 @@ export function canUseLocalTradeExecution(
 }
 
 /**
- * Assert that a trade quote is still fresh. Throws if the quote is older
- * than QUOTE_MAX_AGE_MS. Silently passes if `quotedAt` is undefined
- * (backwards compatibility with quotes that lack the field).
+ * Assert that a trade quote is still fresh. Fails closed: a missing or
+ * non-finite `quotedAt` cannot be proven fresh and is rejected, as is any
+ * quote older than QUOTE_MAX_AGE_MS.
  */
 export function assertQuoteFresh(
   quotedAt: number | undefined,
   now: number = Date.now(),
 ): void {
-  if (quotedAt && now - quotedAt > QUOTE_MAX_AGE_MS) {
+  if (typeof quotedAt !== "number" || !Number.isFinite(quotedAt)) {
+    throw new Error("Quote is missing a timestamp — please request a fresh quote");
+  }
+  if (now - quotedAt > QUOTE_MAX_AGE_MS) {
     throw new Error("Quote expired — please request a fresh quote");
   }
 }

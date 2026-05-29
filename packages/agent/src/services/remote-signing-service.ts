@@ -212,14 +212,21 @@ export class RemoteSigningService {
     humanConfirmed: boolean,
   ): Promise<SigningResult> {
     try {
-      const signedTx = await this.signer.signTransaction({
+      const unsigned: UnsignedTransaction = {
         to: request.to,
         value: request.value,
         data: request.data,
         chainId: request.chainId,
         nonce: request.nonce,
         gasLimit: request.gasLimit,
-      });
+      };
+      if (request.maxFeePerGas !== undefined) {
+        unsigned.maxFeePerGas = request.maxFeePerGas;
+      }
+      if (request.maxPriorityFeePerGas !== undefined) {
+        unsigned.maxPriorityFeePerGas = request.maxPriorityFeePerGas;
+      }
+      const signedTx = await this.signer.signTransaction(unsigned);
 
       // Record for replay protection and rate limiting
       this.policyEvaluator.recordRequest(request.requestId);

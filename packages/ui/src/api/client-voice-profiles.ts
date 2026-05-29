@@ -1,14 +1,11 @@
 /**
- * Voice profile client (R10 §5.3).
+ * Voice profile client.
  *
  * Adapter layer between the UI surfaces and the server-side speaker-id +
- * voice-profile endpoints I2 owns. R10 ships a stable internal
- * `VoiceProfile` shape; the adapter remaps once I2's server schema lands.
- *
- * **Defensive design:** every read returns an empty list / null on failure
- * so the UI compiles and renders before the server endpoints exist. Once
- * I2 lands the server side, the adapter swaps the fake fallbacks for real
- * HTTP calls without touching the consumers.
+ * voice-profile endpoints served by `@elizaos/plugin-local-inference`. Ships
+ * a stable internal `VoiceProfile` shape and normalises the server response
+ * into it. Every call issues a real HTTP request and surfaces failures as a
+ * `VoiceProfilesUnavailableError` — it never fabricates success or data.
  */
 
 export type VoiceProfileCohort = "owner" | "family" | "guest" | "unknown";
@@ -129,7 +126,7 @@ interface VoiceProfilesClientLike {
 export class VoiceProfilesClient {
   constructor(private readonly client: VoiceProfilesClientLike) {}
 
-  /** List all known profiles. Returns `[]` when the endpoint isn't available. */
+  /** List all known profiles. */
   async list(): Promise<VoiceProfile[]> {
     try {
       const raw = await this.client.fetch<{ profiles?: unknown[] } | unknown[]>(
@@ -142,7 +139,6 @@ export class VoiceProfilesClient {
           : [];
       return items.map(normaliseProfile).filter(isProfile);
     } catch (err) {
-      if (isMissingEndpointError(err)) return [];
       throw new VoiceProfilesUnavailableError("/api/voice/profiles", err);
     }
   }
@@ -156,9 +152,6 @@ export class VoiceProfilesClient {
       );
       return normaliseCaptureSession(raw);
     } catch (err) {
-      if (isMissingEndpointError(err)) {
-        return fallbackCaptureSession();
-      }
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/start",
         err,
@@ -177,8 +170,6 @@ export class VoiceProfilesClient {
         { method: "POST", body: JSON.stringify(payload) },
       );
     } catch (err) {
-      if (isMissingEndpointError(err)) return;
-      if (isUnsupportedCaptureRouteError(err)) return;
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/append",
         err,
@@ -197,8 +188,6 @@ export class VoiceProfilesClient {
         { method: "POST", body: JSON.stringify(payload) },
       );
     } catch (err) {
-      if (isMissingEndpointError(err) || isUnsupportedCaptureRouteError(err))
-        return fallbackOwnerSubmitResult(sessionId);
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/finalize",
         err,
@@ -209,8 +198,7 @@ export class VoiceProfilesClient {
   /**
    * Capture a family member's voice and create a bound non-OWNER entity.
    *
-   * Calls `POST /v1/voice/onboarding/family-member`. On 404 / 503 (encoder
-   * not available) falls back gracefully so onboarding is never blocked.
+   * Calls `POST /v1/voice/onboarding/family-member`.
    */
   async captureFamilyMember(
     payload: FamilyMemberCapturePayload,
@@ -225,17 +213,6 @@ export class VoiceProfilesClient {
         },
       );
     } catch (err) {
-      if (isMissingEndpointError(err)) {
-        // Graceful fallback — encoder not live or route not registered yet.
-        return {
-          profileId: `family-stub-${Date.now().toString(36)}`,
-          entityId: `family-entity-stub-${Date.now().toString(36)}`,
-          displayName: payload.displayName,
-          relationship: payload.relationship,
-          relationshipTag: "family_of",
-          ownerEntityId: payload.ownerEntityId ?? null,
-        };
-      }
       throw new VoiceProfilesUnavailableError(
         "/v1/voice/onboarding/family-member",
         err,
@@ -251,7 +228,6 @@ export class VoiceProfilesClient {
         body: JSON.stringify(patch),
       });
     } catch (err) {
-      if (isMissingEndpointError(err)) return;
       throw new VoiceProfilesUnavailableError(`/api/voice/profiles/${id}`, err);
     }
   }
@@ -264,7 +240,6 @@ export class VoiceProfilesClient {
         { method: "POST", body: JSON.stringify(into) },
       );
     } catch (err) {
-      if (isMissingEndpointError(err)) return;
       throw new VoiceProfilesUnavailableError(
         `/api/voice/profiles/${id}/merge`,
         err,
@@ -280,7 +255,6 @@ export class VoiceProfilesClient {
         { method: "POST", body: JSON.stringify(payload) },
       );
     } catch (err) {
-      if (isMissingEndpointError(err)) return;
       throw new VoiceProfilesUnavailableError(
         `/api/voice/profiles/${id}/split`,
         err,
@@ -295,12 +269,11 @@ export class VoiceProfilesClient {
         method: "DELETE",
       });
     } catch (err) {
-      if (isMissingEndpointError(err)) return;
       throw new VoiceProfilesUnavailableError(`/api/voice/profiles/${id}`, err);
     }
   }
 
-  /** Bulk export (metadata only). Returns a signed URL on the server, or `null` for the fallback. */
+  /** Bulk export (metadata only). Returns a server-signed download URL. */
   async exportAll(): Promise<{ downloadUrl: string | null }> {
     try {
       return await this.client.fetch<{ downloadUrl: string | null }>(
@@ -308,7 +281,6 @@ export class VoiceProfilesClient {
         { method: "POST" },
       );
     } catch (err) {
-      if (isMissingEndpointError(err)) return { downloadUrl: null };
       throw new VoiceProfilesUnavailableError(
         "/api/voice/profiles/export",
         err,
@@ -324,78 +296,37 @@ export class VoiceProfilesClient {
         method: "DELETE",
       });
     } catch (err) {
-      if (isMissingEndpointError(err)) return;
       throw new VoiceProfilesUnavailableError("/api/voice/profiles", err);
     }
   }
 }
 
-const OWNER_CAPTURE_FALLBACK_PROMPTS: VoiceCapturePrompt[] = [
-  {
-    id: "intro",
-    text: "Hi, I'm setting up Eliza. Can you remember the sound of my voice?",
-    targetSeconds: 5,
-  },
-  {
-    id: "long",
-    text:
-      "The quick brown fox jumps over the lazy dog. " +
-      "Pack my box with five dozen liquor jugs.",
-    targetSeconds: 7,
-  },
-  {
-    id: "natural",
-    text:
-      "Tell me about my schedule today, and let me know if anything urgent " +
-      "comes up while we're talking.",
-    targetSeconds: 6,
-  },
-];
-
-function fallbackCaptureSession(sessionId?: string): VoiceCaptureSession {
-  return {
-    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
-    prompts: OWNER_CAPTURE_FALLBACK_PROMPTS,
-    expectedSeconds: OWNER_CAPTURE_FALLBACK_PROMPTS.reduce(
-      (sum, prompt) => sum + prompt.targetSeconds,
-      0,
-    ),
-  };
-}
-
-function fallbackOwnerSubmitResult(
-  sessionId: string,
-): VoiceCaptureSubmitResult {
-  return {
-    profileId: `owner-${sessionId}`,
-    entityId: `owner-entity-${sessionId}`,
-    isOwner: true,
-  };
-}
-
 function normaliseCaptureSession(raw: unknown): VoiceCaptureSession {
-  if (!raw || typeof raw !== "object") return fallbackCaptureSession();
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Voice capture session response was not an object.");
+  }
   const r = raw as Record<string, unknown>;
   const sessionId =
     typeof r.sessionId === "string" && r.sessionId.length > 0
       ? r.sessionId
-      : undefined;
+      : null;
+  if (!sessionId) {
+    throw new Error("Voice capture session response is missing a sessionId.");
+  }
 
   let prompts: VoiceCapturePrompt[] = [];
   const promptList = r.prompts;
   const scriptList = r.script;
-  const hasPromptList = Array.isArray(promptList);
-  const hasScriptList = Array.isArray(scriptList);
-  if (hasPromptList) {
+  if (Array.isArray(promptList)) {
     prompts = promptList.map(normaliseCapturePrompt).filter(isCapturePrompt);
   }
 
-  if (prompts.length === 0 && hasScriptList) {
+  if (prompts.length === 0 && Array.isArray(scriptList)) {
     prompts = scriptList.map(normaliseScriptPrompt).filter(isCapturePrompt);
   }
 
   if (prompts.length === 0) {
-    return fallbackCaptureSession();
+    throw new Error("Voice capture session response contained no prompts.");
   }
 
   const expectedSeconds =
@@ -404,7 +335,7 @@ function normaliseCaptureSession(raw: unknown): VoiceCaptureSession {
       : prompts.reduce((sum, p) => sum + p.targetSeconds, 0);
 
   return {
-    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
+    sessionId,
     prompts,
     expectedSeconds,
   };
@@ -488,50 +419,6 @@ function isCohort(value: unknown): value is VoiceProfileCohort {
 function isSource(value: unknown): value is VoiceProfileSource {
   return (
     value === "onboarding" || value === "auto-clustered" || value === "manual"
-  );
-}
-
-function isMissingEndpointError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const obj = err as { status?: unknown; kind?: unknown; message?: unknown };
-  // Treat both 404 (route not registered) and the unwrapped network errors
-  // as "endpoint not landed yet" — the adapter renders an empty state.
-  if (
-    obj.status === 404 ||
-    obj.status === 405 ||
-    obj.status === 501 ||
-    obj.status === 503
-  )
-    return true;
-  if (
-    obj.kind === "http" &&
-    (obj.status === 404 ||
-      obj.status === 405 ||
-      obj.status === 501 ||
-      obj.status === 503)
-  )
-    return true;
-  if (obj.kind === "network" || obj.kind === "timeout" || obj.kind === "parse")
-    return true;
-  if (
-    typeof obj.message === "string" &&
-    /(not\s*found|unavailable|connection\s*refused|fetch\s*failed|invalid\s*json|request\s*timed\s*out|api\s*not\s*available)/i.test(
-      obj.message,
-    )
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function isUnsupportedCaptureRouteError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const obj = err as { status?: unknown; kind?: unknown; message?: unknown };
-  if (obj.status !== 400 && !(obj.kind === "http" && obj.status === 400))
-    return false;
-  if (typeof obj.message !== "string") return true;
-  return /(id query parameter|required|invalid pcm|invalid json|no embeddings captured|capture too short)/i.test(
-    obj.message,
   );
 }
 

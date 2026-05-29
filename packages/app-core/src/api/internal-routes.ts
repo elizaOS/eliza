@@ -26,9 +26,7 @@ import { sendJson } from "./response";
  * The runtime contract is `runDueTasks(): Promise<void>`. The optional
  * `maxWallTimeMs` is currently advisory — passed through so a future
  * TaskService update can honour deadline-bounded execution without a route
- * signature change. `ranTasks` similarly is reported as 0 today because the
- * service returns void; if/when core exposes an executed count we surface
- * that without breaking callers.
+ * signature change.
  */
 interface TaskServiceLike {
   runDueTasks(options?: { maxWallTimeMs?: number }): Promise<unknown>;
@@ -51,7 +49,6 @@ export interface WakeTelemetry {
   lastWakeFiredAt: number | null;
   lastWakeKind: "refresh" | "processing" | null;
   lastWakeDurationMs: number | null;
-  lastWakeRanTasks: number | null;
   lastWakeError: string | null;
 }
 
@@ -59,7 +56,6 @@ const wakeTelemetry: WakeTelemetry = {
   lastWakeFiredAt: null,
   lastWakeKind: null,
   lastWakeDurationMs: null,
-  lastWakeRanTasks: null,
   lastWakeError: null,
 };
 
@@ -72,7 +68,6 @@ export function __resetWakeTelemetryForTests(): void {
   wakeTelemetry.lastWakeFiredAt = null;
   wakeTelemetry.lastWakeKind = null;
   wakeTelemetry.lastWakeDurationMs = null;
-  wakeTelemetry.lastWakeRanTasks = null;
   wakeTelemetry.lastWakeError = null;
 }
 
@@ -253,17 +248,12 @@ export async function handleInternalWakeRoute(
   try {
     const result = await runDueTasksOnce(taskService, { maxWallTimeMs });
     const durationMs = Date.now() - startedAt;
-    // ranTasks is 0 today because runDueTasks returns void; surfaced for
-    // forward-compat when core exposes an executed count.
-    const ranTasks = 0;
     wakeTelemetry.lastWakeFiredAt = startedAt;
     wakeTelemetry.lastWakeKind = parsed.kind;
     wakeTelemetry.lastWakeDurationMs = durationMs;
-    wakeTelemetry.lastWakeRanTasks = ranTasks;
     wakeTelemetry.lastWakeError = null;
     sendJson(res, 200, {
       ok: true,
-      ranTasks,
       durationMs,
       coalesced: result.coalesced,
       lastWakeFiredAt: startedAt,
@@ -274,7 +264,6 @@ export async function handleInternalWakeRoute(
     wakeTelemetry.lastWakeFiredAt = startedAt;
     wakeTelemetry.lastWakeKind = parsed.kind;
     wakeTelemetry.lastWakeDurationMs = Date.now() - startedAt;
-    wakeTelemetry.lastWakeRanTasks = null;
     wakeTelemetry.lastWakeError = message;
     sendJson(res, 500, { ok: false, error: message });
   }

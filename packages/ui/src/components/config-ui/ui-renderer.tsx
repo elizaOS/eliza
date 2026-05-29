@@ -1644,7 +1644,7 @@ function ElementRenderer({ elementId }: { elementId: string }) {
 
     return (
       <>
-        {listData.map((item) => {
+        {listData.map((item, index) => {
           const itemCtx: UiRenderContext = { ...ctx, repeatItem: item };
           const childNodes = el.children.map((childId) => (
             <UiContext.Provider key={childId} value={itemCtx}>
@@ -1653,7 +1653,7 @@ function ElementRenderer({ elementId }: { elementId: string }) {
           ));
           const repeatKey = el.repeat?.key;
           const itemKey = String(
-            repeatKey != null ? item[repeatKey] : Math.random(),
+            repeatKey != null ? item[repeatKey] : index,
           );
           return (
             <React.Fragment key={itemKey}>

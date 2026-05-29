@@ -493,44 +493,11 @@ export function TrajectoryDetailView({
     );
   }
 
-  const totalPromptTokens = llmCalls.reduce(
-    (sum, call) => sum + (call.promptTokens ?? 0),
-    0,
-  );
-  const totalCompletionTokens = llmCalls.reduce(
-    (sum, call) => sum + (call.completionTokens ?? 0),
-    0,
-  );
-
   const orchestrator = trajectory.metadata?.orchestrator;
   const orchestratorData =
     orchestrator && typeof orchestrator === "object"
       ? (orchestrator as Record<string, unknown>)
       : null;
-
-  const _summaryCards = [
-    {
-      label: t("logsview.Source"),
-      value: trajectory.source,
-    },
-    {
-      label: t("common.status"),
-      value: trajectory.status,
-    },
-    {
-      label: t("common.duration"),
-      value: formatTrajectoryDuration(trajectory.durationMs),
-    },
-    {
-      label: t("trajectorydetailview.TotalTokens", {
-        defaultValue: "Total Tokens",
-      }),
-      value: formatTrajectoryTokenCount(
-        totalPromptTokens + totalCompletionTokens,
-        { emptyLabel: "—" },
-      ),
-    },
-  ];
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">

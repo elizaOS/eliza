@@ -14,10 +14,8 @@ export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
-export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
 export * from "./config/app-config";
-export * from "./diagnostics/integration-observability";
 export * from "./onboarding/onboarding-config";
 export * from "./permissions/types";
 // `./platform/empty-node-module` is intentionally NOT re-exported here.

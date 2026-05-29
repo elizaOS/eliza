@@ -15,8 +15,7 @@ export type NativeLibraryPolicyOptions = {
 };
 
 function isStoreBuildVariant(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw =
-    env.ELIZA_BUILD_VARIANT?.trim() || env.ELIZA_BUILD_VARIANT?.trim();
+  const raw = env.ELIZA_BUILD_VARIANT?.trim();
   return raw?.toLowerCase() === "store";
 }
 

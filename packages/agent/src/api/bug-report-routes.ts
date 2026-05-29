@@ -1,5 +1,5 @@
 import os from "node:os";
-import type { RouteRequestContext } from "@elizaos/core";
+import { logger, type RouteRequestContext } from "@elizaos/core";
 import { PostBugReportRequestSchema } from "@elizaos/shared";
 
 export const DEFAULT_BUG_REPORT_REPO = "eliza-ai/eliza";
@@ -301,7 +301,11 @@ export async function handleBugReportRoutes(
           return true;
         }
         json(res, result);
-      } catch {
+      } catch (err) {
+        logger.error(
+          { error: err },
+          "[bug-report] Remote intake submission failed",
+        );
         error(res, "Failed to submit bug report", 502);
       }
       return true;
@@ -348,7 +352,8 @@ export async function handleBugReportRoutes(
         return true;
       }
       json(res, { url });
-    } catch {
+    } catch (err) {
+      logger.error({ error: err }, "[bug-report] GitHub issue creation failed");
       error(res, "Failed to create GitHub issue", 500);
     }
     return true;

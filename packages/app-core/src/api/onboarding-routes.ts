@@ -177,9 +177,11 @@ export async function handleOnboardingCompatRoute(
     for await (const chunk of req) {
       chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
     }
-  } catch {
-    req.push(null);
-    return false;
+  } catch (err) {
+    sendJsonResponse(res, 400, {
+      error: `failed to read onboarding request body: ${err instanceof Error ? err.message : String(err)}`,
+    });
+    return true;
   }
   const rawBody = Buffer.concat(chunks);
 

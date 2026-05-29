@@ -1,10 +1,8 @@
 import { type RefObject, useEffect, useRef } from "react";
 import { type ConversationMessage, client } from "../api";
 import {
-  canonicalPathForPath,
   getWindowNavigationPath,
   isRouteRootPath,
-  shouldUseHashNavigation,
   type Tab,
   tabFromPath,
 } from "../navigation";
@@ -36,18 +34,6 @@ export function useNavigationPathSync({
       return;
     }
     const routeTab = tabFromPath(navPath);
-    const canonicalPath = canonicalPathForPath(navPath);
-    if (canonicalPath && typeof window !== "undefined") {
-      if (shouldUseHashNavigation()) {
-        window.location.hash = canonicalPath;
-      } else {
-        window.history.replaceState(
-          null,
-          "",
-          `${canonicalPath}${window.location.search}${window.location.hash}`,
-        );
-      }
-    }
     if (routeTab && routeTab !== tab) {
       setTabRaw(routeTab);
     }

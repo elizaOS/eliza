@@ -6,6 +6,28 @@ export interface ApiSuccessEnvelope<TData> {
   data: TData;
 }
 
+/**
+ * Raw transport shape for PostgreSQL `numeric` columns. The pg driver serializes
+ * `numeric` as a string to preserve precision, while `real`/`integer` columns
+ * arrive as numbers and nullable columns may be `null`. Every monetization value
+ * is therefore expressed with this alias on the wire, and consumers MUST run it
+ * through {@link coerceNumeric} at the API-client boundary so presentation code
+ * receives a clean `number | null` (commandment #3: clients display, never
+ * compute on ambiguous transport values).
+ */
+export type NumericLike = string | number | null;
+
+/**
+ * Coerce a raw `numeric`/`real` transport value into a finite number, or `null`
+ * when the field is genuinely absent or non-numeric. Returns `null` (not `0`)
+ * for missing data so callers never conflate "not loaded" with "zero earnings".
+ */
+export function coerceNumeric(value: NumericLike | undefined): number | null {
+  if (value == null) return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export interface CurrentUserOrganizationDto {
   id: string;
   name: string;
@@ -137,12 +159,12 @@ export interface AppDto {
   github_repo: string | null;
   linked_character_ids: string[] | null;
   monetization_enabled: boolean;
-  inference_markup_percentage: number | null;
-  purchase_share_percentage: number | null;
-  platform_offset_amount: number | null;
+  inference_markup_percentage: NumericLike;
+  purchase_share_percentage: NumericLike;
+  platform_offset_amount: NumericLike;
   custom_pricing_enabled: boolean | null;
-  total_creator_earnings: string | number | null;
-  total_platform_revenue: string | number | null;
+  total_creator_earnings: NumericLike;
+  total_platform_revenue: NumericLike;
   discord_automation: unknown;
   telegram_automation: unknown;
   twitter_automation: unknown;
@@ -201,11 +223,11 @@ export interface UserCharacterDto {
   erc8004_tx_hash: string | null;
   erc8004_registered_at: DateLike | null;
   monetization_enabled: boolean;
-  inference_markup_percentage: string | number;
+  inference_markup_percentage: NumericLike;
   payout_wallet_address: string | null;
   total_inference_requests: number;
-  total_creator_earnings: string | number;
-  total_platform_revenue: string | number;
+  total_creator_earnings: NumericLike;
+  total_platform_revenue: NumericLike;
   a2a_enabled: boolean;
   mcp_enabled: boolean;
   created_at: DateLike;

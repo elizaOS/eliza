@@ -12,13 +12,27 @@ import {
 const CUA_UNAVAILABLE_ERROR =
   "CUA service is unavailable. Set ELIZA_ENABLE_CUA=1 and configure CUA_HOST (or CUA_API_KEY + CUA_SANDBOX_NAME).";
 
+const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
+
 function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk) => {
+    let bytes = 0;
+    req.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > DEFAULT_MAX_BODY_BYTES) {
+        req.destroy();
+        reject(
+          new Error(
+            `Request body exceeded max size ${DEFAULT_MAX_BODY_BYTES} bytes`,
+          ),
+        );
+        return;
+      }
       body += chunk;
     });
     req.on("end", () => resolve(body));
+    req.on("error", reject);
   });
 }
 
@@ -94,7 +108,6 @@ export async function handleCuaRoute(params: {
   }
 
   if (pathname === "/api/benchmark/cua/run" && req.method === "POST") {
-    const body = await readBody(req);
     const service = getCuaService();
     if (!service) {
       writeJson(res, 503, { ok: false, error: CUA_UNAVAILABLE_ERROR });
@@ -102,6 +115,7 @@ export async function handleCuaRoute(params: {
     }
 
     try {
+      const body = await readBody(req);
       const parsed = body.trim()
         ? (JSON.parse(body) as {
             goal?: unknown;
@@ -177,7 +191,6 @@ export async function handleCuaRoute(params: {
   }
 
   if (pathname === "/api/benchmark/cua/approve" && req.method === "POST") {
-    const body = await readBody(req);
     const service = getCuaService();
     if (!service) {
       writeJson(res, 503, { ok: false, error: CUA_UNAVAILABLE_ERROR });
@@ -185,6 +198,7 @@ export async function handleCuaRoute(params: {
     }
 
     try {
+      const body = await readBody(req);
       const parsed = body.trim()
         ? (JSON.parse(body) as { room_id?: unknown; roomId?: unknown })
         : {};
@@ -206,7 +220,6 @@ export async function handleCuaRoute(params: {
   }
 
   if (pathname === "/api/benchmark/cua/cancel" && req.method === "POST") {
-    const body = await readBody(req);
     const service = getCuaService();
     if (!service) {
       writeJson(res, 503, { ok: false, error: CUA_UNAVAILABLE_ERROR });
@@ -214,6 +227,7 @@ export async function handleCuaRoute(params: {
     }
 
     try {
+      const body = await readBody(req);
       const parsed = body.trim()
         ? (JSON.parse(body) as { room_id?: unknown; roomId?: unknown })
         : {};

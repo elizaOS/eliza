@@ -136,11 +136,6 @@
       "import": "./dist/events/index.js",
       "default": "./dist/events/index.js"
     },
-    "./genui": {
-      "types": "./dist/genui/index.d.ts",
-      "import": "./dist/genui/index.js",
-      "default": "./dist/genui/index.js"
-    },
     "./hooks": {
       "types": "./dist/hooks/index.d.ts",
       "import": "./dist/hooks/index.js",

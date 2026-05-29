@@ -369,13 +369,6 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   return base ? `${base}${p}` : p;
 }
 
-export function canonicalPathForPath(
-  _pathname: string,
-  _basePath = "",
-): string | null {
-  return null;
-}
-
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
   return normalizePathForLookup(pathname, basePath) === "/";
 }

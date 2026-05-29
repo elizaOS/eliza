@@ -67,7 +67,9 @@ export async function hasPrivateAccess(
 
   const context = getAccessContext(runtime, message);
   if (!context) {
-    return true;
+    // Fail closed: a missing/invalid world context must deny private access,
+    // never grant it.
+    return false;
   }
 
   try {

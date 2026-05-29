@@ -169,7 +169,7 @@ describe("POST /api/internal/wake — happy path", () => {
     __resetWakeTelemetryForTests();
   });
 
-  it("triggers runDueTasks and returns ranTasks/durationMs/lastWakeFiredAt", async () => {
+  it("triggers runDueTasks and returns durationMs/lastWakeFiredAt", async () => {
     const runDueTasks = vi.fn(async () => {});
     const res = fakeRes();
     const before = Date.now();
@@ -186,13 +186,11 @@ describe("POST /api/internal/wake — happy path", () => {
     expect(res.status()).toBe(200);
     const body = res.body() as {
       ok: boolean;
-      ranTasks: number;
       durationMs: number;
       lastWakeFiredAt: number;
       coalesced: boolean;
     };
     expect(body.ok).toBe(true);
-    expect(body.ranTasks).toBe(0);
     expect(typeof body.durationMs).toBe("number");
     expect(body.durationMs).toBeGreaterThanOrEqual(0);
     expect(body.lastWakeFiredAt).toBeGreaterThanOrEqual(before);
@@ -202,7 +200,6 @@ describe("POST /api/internal/wake — happy path", () => {
     const telemetry = getWakeTelemetry();
     expect(telemetry.lastWakeFiredAt).toBe(body.lastWakeFiredAt);
     expect(telemetry.lastWakeKind).toBe("refresh");
-    expect(telemetry.lastWakeRanTasks).toBe(0);
     expect(telemetry.lastWakeError).toBe(null);
   });
 

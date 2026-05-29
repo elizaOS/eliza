@@ -111,8 +111,12 @@ async function countRoomMessages(
       tableName: "messages",
       unique: false,
     });
-  } catch {
-    return 0;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to count messages for room ${String(message.roomId)}: ${reason}`,
+      { cause: error },
+    );
   }
 }
 

@@ -1,13 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import {
-  getActiveAvatar,
-  getAvatarHistory,
-  listAvatars,
-  registerAvatar,
-  resetAvatarRegistry,
-  revertAvatar,
-  setActiveAvatar,
-} from "../registry";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AvatarModule } from "../types";
 
 function fakeAvatar(id: string): AvatarModule {
@@ -19,49 +10,39 @@ function fakeAvatar(id: string): AvatarModule {
   };
 }
 
+async function freshRegistry() {
+  vi.resetModules();
+  return import("../registry");
+}
+
 describe("avatar-runtime/registry", () => {
   beforeEach(() => {
-    resetAvatarRegistry();
+    vi.resetModules();
   });
 
-  it("auto-activates the first registered avatar", () => {
+  it("auto-activates the first registered avatar", async () => {
+    const { registerAvatar, getActiveAvatar } = await freshRegistry();
     registerAvatar(fakeAvatar("a"));
     expect(getActiveAvatar()?.id).toBe("a");
   });
 
-  it("setActiveAvatar switches the active module", () => {
+  it("keeps the first registered avatar active across registrations", async () => {
+    const { registerAvatar, getActiveAvatar } = await freshRegistry();
     registerAvatar(fakeAvatar("a"));
     registerAvatar(fakeAvatar("b"));
-    setActiveAvatar("b");
-    expect(getActiveAvatar()?.id).toBe("b");
-  });
-
-  it("setActiveAvatar returns undefined for unknown id", () => {
-    registerAvatar(fakeAvatar("a"));
-    expect(setActiveAvatar("missing")).toBeUndefined();
     expect(getActiveAvatar()?.id).toBe("a");
   });
 
-  it("listAvatars returns all registered modules", () => {
+  it("getAvatar returns a registered module by id", async () => {
+    const { registerAvatar, getAvatar } = await freshRegistry();
     registerAvatar(fakeAvatar("a"));
     registerAvatar(fakeAvatar("b"));
-    expect(listAvatars().map((m) => m.id)).toEqual(["a", "b"]);
+    expect(getAvatar("b")?.id).toBe("b");
   });
 
-  it("keeps at most three history entries", () => {
+  it("getAvatar returns undefined for an unknown id", async () => {
+    const { registerAvatar, getAvatar } = await freshRegistry();
     registerAvatar(fakeAvatar("a"));
-    registerAvatar(fakeAvatar("b"));
-    registerAvatar(fakeAvatar("c"));
-    registerAvatar(fakeAvatar("d"));
-    expect(getAvatarHistory().map((m) => m.id)).toEqual(["b", "c", "d"]);
-  });
-
-  it("revertAvatar moves to the previous history entry", () => {
-    registerAvatar(fakeAvatar("a"));
-    registerAvatar(fakeAvatar("b"));
-    setActiveAvatar("b");
-    const reverted = revertAvatar();
-    expect(reverted?.id).toBe("a");
-    expect(getActiveAvatar()?.id).toBe("a");
+    expect(getAvatar("missing")).toBeUndefined();
   });
 });

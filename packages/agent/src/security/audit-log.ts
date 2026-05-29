@@ -3,6 +3,8 @@
  * Never log real secret values — only token IDs and metadata.
  */
 
+import { logger } from "@elizaos/core";
+
 export const AUDIT_EVENT_TYPES = [
   "sandbox_mode_transition",
   "secret_token_replacement_outbound",
@@ -147,11 +149,14 @@ export class SandboxAuditLog {
     trimEntries(this.entries, this.maxEntries);
 
     if (this.consoleEnabled) {
-      const line = `[AUDIT:${full.severity.toUpperCase()}] ${full.type}: ${full.summary}`;
-      if (full.severity === "critical" || full.severity === "error")
-        console.error(line);
-      else if (full.severity === "warn") console.warn(line);
-      else console.log(line);
+      const line = `[SandboxAuditLog] [AUDIT:${full.severity.toUpperCase()}] ${full.type}: ${full.summary}`;
+      if (full.severity === "critical" || full.severity === "error") {
+        logger.error(line);
+      } else if (full.severity === "warn") {
+        logger.warn(line);
+      } else {
+        logger.info(line);
+      }
     }
 
     this.sink?.(full);

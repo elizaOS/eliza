@@ -29,12 +29,10 @@ import { MusicLibraryCharacterWidget } from "../components/character/MusicLibrar
 import { AGENT_ORCHESTRATOR_PLUGIN_WIDGETS } from "../components/chat/widgets/agent-orchestrator";
 import { BROWSER_STATUS_WIDGET } from "../components/chat/widgets/browser-status";
 import { MUSIC_PLAYER_WIDGET } from "../components/chat/widgets/music-player";
-import { TODO_PLUGIN_WIDGETS } from "../components/chat/widgets/todo";
 
 // -- Seed bundled widgets into the registry ----------------------------------
 
 seedLegacyWidgets(AGENT_ORCHESTRATOR_PLUGIN_WIDGETS);
-seedLegacyWidgets(TODO_PLUGIN_WIDGETS);
 seedLegacyWidgets([BROWSER_STATUS_WIDGET, MUSIC_PLAYER_WIDGET]);
 registerWidgetComponent(
   "music-library",

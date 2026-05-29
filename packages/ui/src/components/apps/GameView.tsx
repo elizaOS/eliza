@@ -46,6 +46,50 @@ import {
   shouldUseEmbeddedAppViewer,
 } from "./viewer-auth";
 
+/**
+ * Optional self-learning telemetry fields the "Defense of the Agents" game loop
+ * may push into {@link AppSessionState.telemetry}. Every field is optional: the
+ * loop only emits the keys it currently tracks, so absent fields must render an
+ * explicit empty state rather than a fabricated default.
+ */
+interface GameLearningTelemetry {
+  abilityPriority?: string[];
+  recallThreshold?: number;
+  ticksTracked?: number;
+  abilitiesLearned?: number;
+  survivalRate?: number;
+}
+
+function readLearningTelemetry(
+  telemetry: AppSessionState["telemetry"],
+): GameLearningTelemetry {
+  if (!telemetry) return {};
+  const abilityPriority = Array.isArray(telemetry.abilityPriority)
+    ? telemetry.abilityPriority.filter(
+        (ability): ability is string => typeof ability === "string",
+      )
+    : undefined;
+  return {
+    abilityPriority,
+    recallThreshold:
+      typeof telemetry.recallThreshold === "number"
+        ? telemetry.recallThreshold
+        : undefined,
+    ticksTracked:
+      typeof telemetry.ticksTracked === "number"
+        ? telemetry.ticksTracked
+        : undefined,
+    abilitiesLearned:
+      typeof telemetry.abilitiesLearned === "number"
+        ? telemetry.abilitiesLearned
+        : undefined,
+    survivalRate:
+      typeof telemetry.survivalRate === "number"
+        ? telemetry.survivalRate
+        : undefined,
+  };
+}
+
 export function buildDisconnectedSessionState(
   session: AppSessionState | null,
 ): AppSessionState | null {
@@ -1466,12 +1510,16 @@ export function GameView() {
     );
   }
 
-  const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => (
-    <div
-      className={`flex min-h-0 flex-col bg-card ${
-        layout === "sidebar" ? "w-80" : "h-full"
-      }`}
-    >
+  const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => {
+    const learningTelemetry = readLearningTelemetry(
+      activeSessionState?.telemetry,
+    );
+    return (
+      <div
+        className={`flex min-h-0 flex-col bg-card ${
+          layout === "sidebar" ? "w-80" : "h-full"
+        }`}
+      >
       <div className="flex items-center gap-2 px-3 py-2">
         <span className="font-bold text-xs">{t("game.agentActivity")}</span>
         <span className="flex-1" />
@@ -1580,40 +1628,24 @@ export function GameView() {
                   </span>
                 ) : null}
               </div>
-              {(activeSessionState.telemetry as Record<string, unknown>)
-                .abilityPriority ? (
+              {learningTelemetry.abilityPriority?.length ? (
                 <div className="text-3xs">
-                  Priority:{" "}
-                  {(
-                    (activeSessionState.telemetry as Record<string, unknown>)
-                      .abilityPriority as string[]
-                  ).join(" > ")}
+                  Priority: {learningTelemetry.abilityPriority.join(" > ")}
                   {" · "}
                   Recall @
-                  {Math.round(
-                    Number(
-                      (activeSessionState.telemetry as Record<string, unknown>)
-                        .recallThreshold ?? 0.25,
-                    ) * 100,
-                  )}
-                  % HP
+                  {learningTelemetry.recallThreshold != null
+                    ? `${Math.round(learningTelemetry.recallThreshold * 100)}% HP`
+                    : "—"}
                 </div>
               ) : null}
-              {(activeSessionState.telemetry as Record<string, unknown>)
-                .ticksTracked != null ? (
+              {learningTelemetry.ticksTracked != null ? (
                 <div className="text-3xs">
-                  {String(
-                    (activeSessionState.telemetry as Record<string, unknown>)
-                      .ticksTracked,
-                  )}{" "}
-                  ticks tracked ·{" "}
-                  {String(
-                    (activeSessionState.telemetry as Record<string, unknown>)
-                      .abilitiesLearned ?? 0,
-                  )}{" "}
-                  abilities learned
-                  {activeSessionState.telemetry.survivalRate != null
-                    ? ` · ${Math.round(Number(activeSessionState.telemetry.survivalRate) * 100)}% survival`
+                  {learningTelemetry.ticksTracked} ticks tracked ·{" "}
+                  {learningTelemetry.abilitiesLearned != null
+                    ? `${learningTelemetry.abilitiesLearned} abilities learned`
+                    : "— abilities learned"}
+                  {learningTelemetry.survivalRate != null
+                    ? ` · ${Math.round(learningTelemetry.survivalRate * 100)}% survival`
                     : ""}
                 </div>
               ) : null}
@@ -1845,8 +1877,9 @@ export function GameView() {
           ))
         )}
       </div>
-    </div>
-  );
+      </div>
+    );
+  };
 
   const activeRunSummary =
     activeGameRun?.summary ??
