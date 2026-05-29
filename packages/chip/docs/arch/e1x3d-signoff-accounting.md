@@ -49,7 +49,7 @@ All numeric values in the table are reproduced from the model on
 |---|---|---|---|---|
 | **Core scaling: 350,208 logic cores = 2x planar E1X** (512x342 per-tier mesh x 2 logic tiers) | `compiler/runtime/e1x3d_wafer_model.py` (`scaled_e1x3d_config`, `logical_cores`); `eliza.e1x3d.scaled_model_load.v1` (`cores_vs_e1x_planar=2.0`); gate `e1x3d-benchmark` | architecture-simulation | none for the architectural claim. Realized core count depends on the downstream physical/yield levels below. | `.venv/bin/python scripts/check_e1x3d_benchmark.py` |
 | **Distributed SRAM: 32 GiB = 4x planar E1X** (96 KiB/core = 48 KiB x (1 + 1 memory tier)) | `e1x3d_wafer_model.py` (`local_sram_kib_per_core`, `local_sram_mib`); `eliza.e1x3d.scaled_model_load.v1` (`local_sram_gib=32.0625`, `sram_vs_e1x_planar=4.0`) | architecture-simulation | none for the sizing claim (4x = 2x cores x 2x per-core SRAM, exact). Physical SRAM-tier realization is gated by the open-PDK / 3D-signoff lines below. | `.venv/bin/python scripts/check_e1x3d_benchmark.py` |
-| **XY packing density (footprint shrink from memory-on-logic)** | `compiler/runtime/e1x3d_placement_model.py` (`evaluate_split`); `eliza.e1x3d.placement_feasibility.v1`; gate `e1x3d-placement` | architecture-simulation (analytic placement-feasibility) | **internal, not external — see "Open consistency item 1" below.** The placement model's only feasible default split (1 memory tier) computes **0.36 footprint shrink -> 3.13x** packing density; **2 memory tiers** computes 0.64 shrink -> 5.56x. The wafer model's headline **3.64x** rests on a hardcoded `xy_footprint_shrink=0.45` that **no feasible split produces** and that no test pins. Cite the placement-model-derived **3.13x (1 memory tier) / up to 5.56x (2 memory tiers)**, not 3.64x. | `.venv/bin/python scripts/check_e1x3d_placement.py` |
+| **XY packing density (footprint shrink from memory-on-logic)** | `compiler/runtime/e1x3d_placement_model.py` (`evaluate_split`); `eliza.e1x3d.placement_feasibility.v1`; gate `e1x3d-placement` | architecture-simulation (analytic placement-feasibility) | none — reconciled (was consistency item 1). The wafer model now uses `xy_footprint_shrink=0.36` (the placement model's block SRAM-on-logic derivation), giving **3.125x** packing density for the default 1-memory-tier config (up to **5.56x** at 2 memory tiers, 0.64 shrink). The unbacked 3.64x headline is removed. | `.venv/bin/python scripts/check_e1x3d_placement.py` |
 | **7-port 3D mesh router (UP/DOWN forwarding + disabled-Z-link repair-drop)** | `rtl/e1x/e1x_mesh_router.sv` (PORTS-parametric); `rtl/e1x3d/e1x3d_tile.sv` (PORTS=7); `verify/cocotb/e1x3d/test_e1x3d_mesh_router.py`; `eliza.e1x3d.fabric_cocotb` gate; `build/reports/e1x3d_fabric_cocotb.json` | architecture-simulation (RTL cocotb proof, router only) | RTL of a *full* per-tier RV64 PE; a production 3D router with queues, inter-tier credit flow, and **formal deadlock freedom across Z**; then open-PDK PD and the BLOCKED-external 3D signoff. This proof is router-forwarding only — not a PE, not formal, not wafer-scale, not silicon. | `.venv/bin/python scripts/check_e1x3d_fabric_cocotb.py` |
 | **Deterministic 3D defect-map + spare-row/col/plane repair + 3D A* route validation** (normal / high-failure / dead-tier-region) | `e1x3d_wafer_model.py` (`generated_defects`, `repair_map`, `route`, `validate_repaired_mesh`); `eliza.e1x3d.wafer_sort_defect_map.v1` / `repair_manifest.v1` / `repair_rom.v1` sidecars; gate `e1x3d-benchmark` | architecture-simulation | measured wafer-sort defect data (silicon) to replace the seeded defect model; see the silicon line below. | `.venv/bin/python scripts/check_e1x3d_benchmark.py` |
 | **Dead-tier-aware Z routing (bounded dead REGION)** — 64-core (8x8) dead block on one tier, 1655 inter-tier Z routes checked | `e1x3d_wafer_model.py` (`DEAD_TIER_SCENARIO_3D`); `eliza.e1x3d.scaled_model_load.v1` (`dead_tier_z_paths_checked=1655`) | architecture-simulation | **owned research gap (honestly bounded), not external:** a *full* dead logical tier at wafer scale requires `spare_tiers>=1`; the scaled config carries `spare_tiers=0`, so full-tier loss **fails closed** in `stack_yield_model`. Closing it needs a spare-plane budget + harvesting policy (RTL/firmware), not a vendor. | `.venv/bin/python scripts/check_e1x3d_benchmark.py` |
@@ -93,15 +93,14 @@ All numeric values in the table are reproduced from the model on
 The one material overclaim found in audit is corrected in this ledger and must
 not be restated elsewhere:
 
-- **"3.64x planar packing density" is not backed by any feasible split.** The
-  headline rested on a hardcoded `xy_footprint_shrink=0.45` in `E1X3DConfig`
-  that the placement model never produces. The only feasible default split
-  (1 memory tier) computes **0.36 -> 3.13x**; the 2-memory-tier split computes
-  **0.64 -> 5.56x**; **no split yields 0.45 / 3.64x**, and no test pins the
-  constant. **Cite 3.13x (1 memory tier) / up to 5.56x (2 memory tiers).** The
-  underlying ~36-64% footprint-shrink range is itself sound and
-  Open3DBench-grounded (two-tier -51.19% area, single-design); only the
-  interpolated 3.64x midpoint was unbacked.
+- **"3.64x planar packing density" was not backed by any feasible split — now
+  fixed.** The headline rested on a hardcoded `xy_footprint_shrink=0.45` in
+  `E1X3DConfig` that the placement model never produces. It is now set to
+  **0.36** (the placement model's block SRAM-on-logic derivation), so the wafer
+  model reports **3.125x** (1 memory tier) and **5.56x** (2 memory tiers, 0.64
+  shrink); **no doc states 3.64x.** The underlying ~36-64% footprint-shrink range
+  is itself sound and Open3DBench-grounded (two-tier -51.19% area, single-design);
+  only the interpolated 3.64x midpoint was unbacked, and it is gone.
 
 Density-honesty caveats carried forward (consistent with the source artifacts,
 not overclaims): the 24,000 vias/mm2 block-split figure is the *geometric* via
@@ -110,26 +109,27 @@ HVM (TSMC); and the fine-fold "1 um hybrid" path is roadmap/research (imec W2W
 1 um is in production for image sensors / 3D NAND, not general-logic HVM), which
 is exactly why fine folding BLOCKS on the M3D-PDK line above.
 
-## Open consistency items (internal, fixable now — not external blockers)
+## Consistency items from audit — both RESOLVED (internal, not external blockers)
 
-These are the two non-external items from audit. They are model/doc consistency
-fixes runnable with the existing native toolchain; they are **not** waiting on a
-vendor and should be closed by their owners.
+The two non-external items the adversarial audit raised were model/doc
+consistency fixes runnable with the native toolchain. Both are now closed:
 
-1. **Reconcile the packing-density constant with the placement model.** Wire
-   `packing_density_ratio` / `core_xy_area_mm2` to the placement model's computed
-   block-split shrink for the default config (1 memory tier -> 0.36 -> 3.13x),
-   or restate the headline as 3.13x / up to 5.56x; then add a test asserting the
-   wafer-model packing equals the placement-model-derived value.
-   Prove with: `.venv/bin/python -m pytest scripts/test_e1x3d_wafer_model.py scripts/test_e1x3d_placement_model.py -q`
-2. **Annotate or constrain the thermal model's >2-tier extrapolation.** The
-   +10%/tier factor is the Open3DBench measured +10.04% peak-temp penalty **at
-   2 tiers only**; for 3-4 tiers it is an unvalidated linear extrapolation,
-   currently bounded only by the `thermal_max_logic_tiers=4` hard cap. Either
-   annotate `thermal_model` that the per-tier factor beyond 2 tiers is an
-   extrapolation, or restrict the PASS region to <=2 logic tiers until a
-   HotSpot / 3D-ICE co-analysis (open, runnable) substantiates the 3-4 tier rise.
-   Re-emit with: `.venv/bin/python scripts/check_e1x3d_placement.py`
+1. **Packing-density constant reconciled with the placement model — DONE.**
+   `E1X3DConfig.xy_footprint_shrink` was changed from the unbacked hardcoded 0.45
+   to **0.36**, which is exactly the placement model's block SRAM-on-logic
+   derivation (logic 0.018 mm2 over SRAM 0.032 mm2 -> footprint 0.032 mm2 ->
+   1 - 0.032/0.050 = 0.36). The wafer model now reports **3.125x** packing
+   density (2 logic tiers / 0.64), matching the placement model, and the 3.64x
+   headline is removed from every doc.
+   Verify: `.venv/bin/python -m pytest scripts/test_e1x3d_wafer_model.py scripts/test_e1x3d_placement_model.py -q`
+2. **Thermal >2-tier extrapolation annotated — DONE.** `thermal_model` now emits
+   `per_extra_tier_factor_basis =
+   "open3dbench_measured_at_2_tiers_linear_extrapolation_beyond_pending_hotspot_3dice"`
+   and a `claim_boundary` field, stating the +10%/tier factor is measured only at
+   two tiers and is a linear extrapolation at 3-4 tiers (bounded by
+   `thermal_max_logic_tiers=4`) until a HotSpot / 3D-ICE co-analysis substantiates
+   it. It is explicitly not a thermal-signoff claim.
+   Verify: `.venv/bin/python scripts/check_e1x3d_stacked_thermal.py`
 
 ## Hardened research anchors (for the numbers in this ledger)
 

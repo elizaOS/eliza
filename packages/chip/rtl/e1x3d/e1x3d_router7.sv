@@ -25,6 +25,16 @@ module e1x3d_router7 (
   output logic [6:0][31:0] out_payload_o,
   output logic [6:0] repaired_drop_o
 );
+  // Combinational core router outputs, then a single output-register stage so
+  // this PD block is a real sequential (pipelined) router: clk_i/rst_ni drive
+  // ~280 flops, giving a meaningful clock tree and STA rather than a pure-comb
+  // block with an unconnected clock.
+  logic [6:0] in_ready_c;
+  logic [6:0] out_valid_c;
+  logic [6:0][4:0] out_color_c;
+  logic [6:0][31:0] out_payload_c;
+  logic [6:0] repaired_drop_c;
+
   e1x_mesh_router #(
     .PORTS(7),
     .COLORS(24),
@@ -38,10 +48,26 @@ module e1x3d_router7 (
     .in_valid_i(in_valid_i),
     .in_color_i(in_color_i),
     .in_payload_i(in_payload_i),
-    .in_ready_o(in_ready_o),
-    .out_valid_o(out_valid_o),
-    .out_color_o(out_color_o),
-    .out_payload_o(out_payload_o),
-    .repaired_drop_o(repaired_drop_o)
+    .in_ready_o(in_ready_c),
+    .out_valid_o(out_valid_c),
+    .out_color_o(out_color_c),
+    .out_payload_o(out_payload_c),
+    .repaired_drop_o(repaired_drop_c)
   );
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      in_ready_o <= '0;
+      out_valid_o <= '0;
+      out_color_o <= '0;
+      out_payload_o <= '0;
+      repaired_drop_o <= '0;
+    end else begin
+      in_ready_o <= in_ready_c;
+      out_valid_o <= out_valid_c;
+      out_color_o <= out_color_c;
+      out_payload_o <= out_payload_c;
+      repaired_drop_o <= repaired_drop_c;
+    end
+  end
 endmodule

@@ -608,6 +608,16 @@ def thermal_model(config: E1X3DConfig) -> dict[str, object]:
         "tier_power_density_ceiling_w_per_mm2": config.tier_power_density_ceiling_w_per_mm2,
         "thermal_max_logic_tiers": config.thermal_max_logic_tiers,
         "per_tier": per_tier,
+        # The per-extra-tier temperature factor is the Open3DBench measured
+        # +~10% peak-temp penalty AT TWO TIERS only; for 3-4 tiers it is an
+        # unvalidated linear extrapolation, bounded by thermal_max_logic_tiers and
+        # superseded by a real HotSpot/3D-ICE co-analysis (the open prototype
+        # escalation). It is not a thermal-signoff claim.
+        "per_extra_logic_tier_temp_factor": config.per_extra_logic_tier_temp_factor,
+        "per_extra_tier_factor_basis": (
+            "open3dbench_measured_at_2_tiers_linear_extrapolation_beyond_pending_hotspot_3dice"
+        ),
+        "claim_boundary": "first_order_planning_thermal_no_package_model_tcad_or_silicon",
         "status": status,
         "reasons": reasons,
     }
