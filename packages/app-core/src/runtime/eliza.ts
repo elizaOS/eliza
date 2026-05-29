@@ -858,10 +858,13 @@ export async function bootElizaRuntime(
     // still surfaces progress via updateStartupEmbeddingProgress.
     void warmupEmbeddingModel(opts.onEmbeddingProgress);
 
-    // Default the embedding dimension to 384 — the local default model
-    // (gte-small) natively emits 384-dim vectors, which matches plugin-sql's
-    // dim384 column exactly. Only set it when unset so an explicit override
-    // (e.g. a different local model, or cloud embeddings) still wins.
+    // Default the embedding-vector dimension plugin-sql provisions to 384 when
+    // unset: that is the compact SQL-safe column and the native width of the
+    // standalone gte-small embedding model. Setting it here lets plugin-sql
+    // provision the column without a boot-time model probe (see core
+    // provisioning). An explicit EMBEDDING_DIMENSION — a different local model,
+    // the desktop Eliza-1 sidecar's Matryoshka width, or cloud embeddings —
+    // still wins.
     if (!process.env.EMBEDDING_DIMENSION) {
       process.env.EMBEDDING_DIMENSION = "384";
     }
