@@ -47,7 +47,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | scambench | $0.0034 | $0.0003 | $0.0128 | $0.0003† |
 | swe_bench | $0.0039 | $0.0038 | $0.0067 | $0.0038* |
 | swe_bench_orchestrated | $0.0020 | $0.0038 | $0.0044 | $0.0038* |
-| tau_bench | $0.0273 | $0.0126 | $0.0154 | $0.0126* |
+| tau_bench | $0.0273 | $0.0126 | $0.0154 | $0.0120† |
 | terminal_bench | $0.0006 | $0.0003 | $0.0002 | $0.0003* |
 | trust | $0.0155 | $0.0019 | $0.0019 | $0.0019* |
 | vending_bench | $0.0131 | $0.0120 | $0.0085 | $0.0120* |
@@ -99,7 +99,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | scambench | $0.2103 | $0.0139 | $0.5473 | $0.0137† |
 | swe_bench | $0.1865 | $0.1810 | $0.3693 | $0.1810* |
 | swe_bench_orchestrated | $0.1017 | $0.1844 | $0.2364 | $0.1844* |
-| tau_bench | $1.4568 | $0.5832 | $0.7175 | $0.5832* |
+| tau_bench | $1.4568 | $0.5832 | $0.7175 | $0.5590† |
 | terminal_bench | $0.0349 | $0.0155 | $0.0132 | $0.0155* |
 | trust | $0.8930 | $0.1256 | $0.1248 | $0.1256* |
 | vending_bench | $0.7989 | $0.5900 | $0.4227 | $0.5900* |
@@ -107,6 +107,6 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | visualwebbench | $0.0477 | $0.0345 | $0.0365 | $0.0345* |
 | webshop | $0.1236 | $0.1219 | $0.1224 | $0.1219* |
 | woobench | $1.8356 | $1.5618 | $2.3336 | $1.6197† |
-| **TOTAL** | **$30.93** | **$23.88** | **$32.02** | **$25.46** |
-| **AVG/bench** | $0.7192 | $0.5552 | $0.7277 | $0.5786 |
+| **TOTAL** | **$30.93** | **$23.88** | **$32.02** | **$25.43** |
+| **AVG/bench** | $0.7192 | $0.5552 | $0.7277 | $0.5780 |
 | benchmarks counted | 43 | 43 | 44 | 44 |

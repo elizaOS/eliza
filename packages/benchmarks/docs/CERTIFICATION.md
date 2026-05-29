@@ -32,11 +32,12 @@ Published through the real orchestrator path, same
 | clawbench | 1.00 | 1.00 | 1.00 | **1.00** |
 | agentbench | 1.00 | 1.00 | 1.00 | **1.00** |
 | woobench | 0.89 | 0.89 | 0.93 | **0.91** |
+| tau_bench | 1.00 | 1.00 | 1.00 | **1.00** |
 
-11 benchmarks posted 4-way (10 exact-parity; woobench in range on a heuristic
-evaluator). `tau_bench` wiring is complete (`SmithersTauAgent`) and runs
-end-to-end, but bursts agent+user+judge calls and hits the Cerebras per-minute
-token quota (429s) on this key — re-enable with quota headroom / throttling.
+12 benchmarks posted 4-way (11 exact-parity; woobench in range on a heuristic
+evaluator). tau_bench passes after adding rate-limit resilience to the smithers
+harness (7-attempt backoff honoring Retry-After) — it previously failed on
+Cerebras per-minute token-quota 429s under its agent+user+judge burst.
 
 Smithers wiring spans five reusable integration patterns: per-benchmark
 agent-class (bfcl), bare-client `_make_harness_client` (action-calling,

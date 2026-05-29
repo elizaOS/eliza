@@ -1,6 +1,6 @@
 # Full benchmark × harness results matrix
 
-**11/53 benchmarks have a smithers post; 11/53 full 4-way.** Cells: score = posted; `gated` = harness incompatible here (infra/credentials absent, applies to all harnesses); `—` = compatible but not posted this pass. Smithers wiring spans 5 reusable patterns (agent-class, bare-client, standard framework, delegation, subclass). Remaining gaps: bridge-gated (mint/lifeops via eliza TS bridge), infra-gated (Docker/audio/multimodal/chain keys), rate-limit-blocked (tau_bench — wiring done, Cerebras 429s under burst), or pending bespoke wiring. See CERTIFICATION.md.
+**12/53 benchmarks have a smithers post; 12/53 full 4-way.** Cells: score = posted; `gated` = harness incompatible here (infra/credentials absent, applies to all harnesses); `—` = compatible but not posted this pass. Smithers wiring spans 5 reusable patterns + rate-limit-resilient harness. Remaining gaps: bridge-gated (mint/lifeops/realm/rlm via eliza TS bench server), infra-gated (Docker/audio/multimodal/chain keys), or TS-only harness. See CERTIFICATION.md.
 
 | benchmark | eliza | hermes | openclaw | smithers |
 |---|---|---|---|---|
@@ -46,7 +46,7 @@
 | solana | 0.51 | 0.51 | 0.51 | gated |
 | swe_bench | 1.00 | 1.00 | 1.00 | gated |
 | swe_bench_orchestrated | 1.00 | 1.00 | 1.00 | gated |
-| tau_bench | 1.00 | 1.00 | 1.00 | gated |
+| tau_bench | 1.00 | 1.00 | 1.00 | 1.00 |
 | terminal_bench | 1.00 | 1.00 | 1.00 | gated |
 | trust | 0.89 | 0.89 | 0.89 | gated |
 | vending_bench | 616.44 | 577.02 | 590.54 | gated |
