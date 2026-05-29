@@ -4476,9 +4476,13 @@ export async function startEliza(
 
   // Kick off non-essential plugin loading in the background. The runtime is
   // already usable for chat; deferred capabilities register as they complete.
-  void runDeferredBoot().catch((err) => {
-    logger.warn(`[eliza] Deferred boot failed: ${formatError(err)}`);
-  });
+  // Fired AFTER the API server is listening (see below) so the deferred
+  // wave's awaited work cannot starve the API bind off the event loop.
+  const kickoffDeferredBoot = (): void => {
+    void runDeferredBoot().catch((err) => {
+      logger.warn(`[eliza] Deferred boot failed: ${formatError(err)}`);
+    });
+  };
 
   // 9. Graceful shutdown handler
   //
@@ -4518,6 +4522,9 @@ export async function startEliza(
     void loadHooksSystem().catch((err) => {
       logger.warn(`[eliza] Hooks system load failed: ${formatError(err)}`);
     });
+    // The caller (dev-server / desktop shell) starts the API server right
+    // after this returns; firing here yields the event loop to it first.
+    kickoffDeferredBoot();
     logger.info(
       "[eliza] Runtime initialised in headless mode (autonomy enabled)",
     );
@@ -4843,6 +4850,8 @@ export async function startEliza(
     });
     const dashboardUrl = `http://localhost:${actualApiPort}`;
     logger.info(`[eliza] Control UI: ${dashboardUrl}`);
+    // API is now listening — safe to begin the deferred plugin waves.
+    kickoffDeferredBoot();
   } catch (apiErr) {
     // Log to both stderr (visible to Electrobun agent.ts) and the in-memory
     // logger so the error is never silently swallowed in packaged builds.
@@ -4860,6 +4869,8 @@ export async function startEliza(
       process.exit(1);
     }
     // Non-fatal in CLI mode — the interactive chat loop still works.
+    // Still load deferred capabilities even though the API failed.
+    kickoffDeferredBoot();
   }
 
   // ── Server-only mode — keep running without chat loop ────────────────────
