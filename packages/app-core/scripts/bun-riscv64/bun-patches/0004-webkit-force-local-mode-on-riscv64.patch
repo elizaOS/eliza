@@ -16,18 +16,18 @@ index 00fea58..64f50f9 100644
      buildDir,
      codegenDir,
 diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
-index c940da8..6490635 100644
+index c940da8..c5210de 100644
 --- a/scripts/build/deps/webkit.ts
 +++ b/scripts/build/deps/webkit.ts
-@@ -69,6 +69,11 @@ function prebuiltSuffix(cfg: Config): string {
-   return s;
+@@ -70,6 +70,11 @@ function prebuiltSuffix(cfg: Config): string {
  }
  
+ function prebuiltUrl(cfg: Config): string {
 +  if (cfg.riscv64) {
 +    throw new Error(
 +      "deps/webkit: no prebuilt WebKit tarball for riscv64. Use --webkit=local with BUN_WEBKIT_PATH set.",
 +    );
 +  }
- function prebuiltUrl(cfg: Config): string {
    const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : cfg.freebsd ? "freebsd" : "linux";
    const arch = cfg.arm64 ? "arm64" : "amd64";
+   const name = `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}`;

@@ -98,7 +98,7 @@
       "0001-config-add-riscv64-arch.patch": "7ffff10be9048bc1c0ffed987a407cda5d5470550e21de39d36913c6e9a1918d",
       "0002-flags-add-riscv64-march-mabi.patch": "4140dd014c650cecdebcd495f3c7193ffcd6be4afe9d28b51394b658e14c0896",
       "0003-zig-add-riscv64-target-triple-and-cpu.patch": "d323f8ce19178748c37167fadba257f0bd1bb619cb1adb804994824c72812646",
-      "0004-webkit-force-local-mode-on-riscv64.patch": "fa9a4b41021947fd4a37b52e851e47fc05a3ab6a0ebfbe3f323f3b4fcaa97e69",
+      "0004-webkit-force-local-mode-on-riscv64.patch": "1e6f5de122a7ba59d6b99d9f14d9f2390fc5c11b1c3ad61b8cc8a7b6b75d838a",
       "0005-tinycc-disable-on-riscv64.patch": "ee3e9b0c64a5ccdb78397309ce2115381c353a3dfce313aba88dd951264dc7d3",
       "0006-build-add-riscv64-cli-validation.patch": "d621bff9ae125af7674bb4ee44dad62848c1ab6e333e61d4b1f6311eb139764c",
       "0007-deps-per-dep-riscv64-checks.patch": "0d1516c4655601174f5ee91a877ad1a0fcb287ed8df42f7e96297b47b03ea5e4",
@@ -115,7 +115,8 @@
       "0018-fix-serialized-script-identifier-big-endian-path.patch": "2bcf9fbcf86d0bd37be3ac5145b85c7bac8fddfd87caffe68a5e1ec3fdbf6c52",
       "0019-add-wtf-timer-fire-bridge-for-c-loop.patch": "e812c00feac0561de35fb4ca7aa37ce38280f47c84f0d8b246b4a62e6802f10b",
       "0020-run-riscv64-smoke-test-under-qemu.patch": "26997fbd4d7fd6025565733df8ee61d982244b61be3bce7666ed9df35a0e86ce",
-      "0021-fix-riscv64-linux-open-flags.patch": "71613fdce702893ce2375d728b112fa32cb526f44277e516ae88a6c73fdb15e7"
+      "0021-fix-riscv64-linux-open-flags.patch": "71613fdce702893ce2375d728b112fa32cb526f44277e516ae88a6c73fdb15e7",
+      "0022-zlib-riscv64-generic-kernels.patch": "0c39097e8f4513684ea25cb9eb83d4c48021b8e632c85c85faedf27ae9125f44"
     },
     "bun_patches_apply_status": "All 21 patches apply cleanly in sequence to oven-sh/bun @ bun-v1.3.14 via git apply (validate.sh confirms strict --check). Regenerated 2026-05-28 for the 1.3.14 source reorg: src/bun.js/{bindings,modules} -> src/jsc/{bindings,modules}, src/sys.zig -> src/sys/sys.zig, src/compile_target.zig -> src/options_types/CompileTarget.zig, src/crash_handler.zig -> src/crash_handler/crash_handler.zig, src/env.zig -> src/bun_core/env.zig, src/bun.js/bindings/CPUFeatures.zig -> src/crash_handler/CPUFeatures.zig. Patch 0008 adds the riscv64 toolchain overrides, external WebKit consumption, nested CMake cross settings, and Zig source enum guards; its 1.3.13 boringssl.ts hunk was dropped because 1.3.14's BoringSSL DirectBuild model self-guards per-arch asm (the wrong-target .S files assemble to empty objects via asm_base.h), so no OPENSSL_NO_ASM cmake arg is needed. Patches 0009-0020 disable JSC APIs unavailable in the C_LOOP/local-WebKit riscv64 artifact, fill riscv64 process/CPU feature fallbacks, fix riscv64-exposed source compatibility gaps, provide the WTFTimer fire bridge required by the local WebKit link, and run the riscv64 smoke test through qemu-riscv64-static; patch 0010's 1.3.13 BunInspector.cpp hunk was dropped because that file was removed upstream in 1.3.14. Patch 0021 fixes riscv64 Linux open flag constants so JS file entrypoints are not misclassified as missing directories.",
     "bun_patches_target": {
