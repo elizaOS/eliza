@@ -19,10 +19,12 @@ module e1x_mesh_router #(
   output logic [PORTS-1:0][PAYLOAD_BITS-1:0] out_payload_o,
   output logic [PORTS-1:0] repaired_drop_o
 );
-  import e1x_pkg::*;
 
   always_comb begin
-    automatic logic [PORTS-1:0] used_outputs;
+    logic [PORTS-1:0] used_outputs;
+    logic [2:0] raw_dir;
+    logic [$clog2(COLORS)-1:0] color;
+    int out_port;
     in_ready_o = '0;
     out_valid_o = '0;
     out_color_o = '0;
@@ -31,15 +33,11 @@ module e1x_mesh_router #(
     used_outputs = '0;
 
     for (int in_port = 0; in_port < PORTS; in_port++) begin
-      automatic logic [2:0] raw_dir;
-      automatic logic [$clog2(COLORS)-1:0] color;
-      automatic int out_port;
-
       color = in_color_i[in_port];
       raw_dir = route_table_i[color][in_port];
       out_port = int'(raw_dir);
 
-      if (in_valid_i[in_port] && !port_disable_i[in_port] && raw_dir != E1X_DIR_DROP) begin
+      if (in_valid_i[in_port] && !port_disable_i[in_port] && raw_dir != e1x_pkg::E1X_DIR_DROP) begin
         if (out_port < PORTS && !port_disable_i[out_port] && !used_outputs[out_port]) begin
           out_valid_o[out_port] = 1'b1;
           used_outputs[out_port] = 1'b1;

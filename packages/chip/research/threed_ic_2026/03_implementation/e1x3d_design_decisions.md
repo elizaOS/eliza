@@ -21,7 +21,7 @@ tiers** (graceful column degradation).
 |---|---|---|
 | Z fabric depth (active logic tiers) | `logical_tiers = 2`, hard max 4 | 2-tier folding = the characterized sweet spot; >4 logic tiers collapse on thermal + yield. |
 | Tier split style | memory-on-logic (logic tier + folded SRAM tier) | logic-on-logic is the worst thermal case; nobody ships it. SRAM tier = thermal buffer + the 3D V-Cache pattern. |
-| XY footprint shrink from folding | ~45% per core (NOT 2x/tier), diminishing returns | Open3DBench two-tier: -51% area, but full-chip folding is ~ -40-50%, not naive 2x. |
+| XY footprint shrink from folding | ~36% per core (block SRAM-on-logic; up to ~64% with 2 SRAM tiers), NOT 2x/tier | Derived in e1x3d_placement_model (logic 0.018 over SRAM 0.032 -> 0.36). Open3DBench two-tier: -51% area, but full-chip folding is ~ -36-50%, not naive 2x. |
 | Per-core SRAM | 48 KiB x (1 + memory_tiers_per_core) | stack SRAM tiers to grow local memory without growing XY (wordline-folded 3D SRAM ~ -57% footprint). |
 | Bonding | `hybrid_bond_f2f` default; `monolithic_miv` for per-PE split | F2F (~6 um) = production, block-level. MIV (~70 nm) = only way to split a *small* PE, research TRL. |
 | Inter-tier via budget | F2F ~1e4/mm2; MIV ~30M/mm2 | sets how fine the tier split can be. |

@@ -401,7 +401,7 @@ e1x-fabric-cocotb:
 e1x-fabric-cocotb-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_fabric_cocotb.py -q
 
-.PHONY: e1x3d-wafer-stack-evidence e1x3d-scaled-model-evidence e1x3d-model-test e1x3d-benchmark e1x3d-fabric-cocotb e1x3d-fabric-cocotb-test e1x3d-placement-evidence e1x3d-placement e1x3d-placement-test
+.PHONY: e1x3d-wafer-stack-evidence e1x3d-scaled-model-evidence e1x3d-model-test e1x3d-benchmark e1x3d-fabric-cocotb e1x3d-fabric-cocotb-test e1x3d-placement-evidence e1x3d-placement e1x3d-placement-test e1x3d-pd-signoff e1x3d-tier-split-evidence e1x3d-3d-split e1x3d-stacked-thermal-evidence e1x3d-stacked-thermal e1x3d-signoff
 
 e1x3d-wafer-stack-evidence:
 	@$(PYTHON) scripts/generate_e1x3d_wafer_stack_evidence.py
@@ -429,6 +429,27 @@ e1x3d-placement:
 
 e1x3d-placement-test:
 	@$(PYTHON) -m pytest scripts/test_e1x3d_placement_model.py -q
+
+e1x3d-pd-signoff:
+	@$(PYTHON) scripts/check_e1x3d_pd_signoff.py
+
+e1x3d-tier-split-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_tier_split_manifest.py
+
+e1x3d-3d-split:
+	@$(PYTHON) scripts/check_e1x3d_3d_split.py
+
+e1x3d-stacked-thermal-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_stacked_thermal.py
+
+e1x3d-stacked-thermal:
+	@$(PYTHON) scripts/check_e1x3d_stacked_thermal.py
+
+# Aggregate: every E1X3D gate that runs on open tools here. e1x3d-pd-signoff
+# stays BLOCKED (fail-closed) until a completed open-PDK OpenLane2 tile run
+# exists; run that via config.e1x3d-tile.sky130.json first.
+e1x3d-signoff: e1x3d-model-test e1x3d-benchmark e1x3d-placement e1x3d-3d-split e1x3d-stacked-thermal e1x3d-fabric-cocotb
+	@echo "E1X3D open-tool gates complete; see docs/arch/e1x3d-signoff-accounting.md for the signoff ledger and BLOCKED-external residuals."
 
 e1x-credit-router-cocotb:
 	@$(PYTHON) scripts/check_e1x_credit_router_cocotb.py
@@ -1200,10 +1221,13 @@ pd-signoff-manifest-check:
 pd-signoff-check:
 	@$(PYTHON) scripts/check_pd_signoff.py
 
-.PHONY: chip-visualizer chip-visualizer-test
+.PHONY: chip-visualizer chip-visualizer-full-gds chip-visualizer-test
 
 chip-visualizer:
 	@$(PYTHON) scripts/build_chip_visualizer.py $(CHIP_VISUALIZER_ARGS)
+
+chip-visualizer-full-gds:
+	@$(PYTHON) scripts/build_chip_visualizer.py --export-gds --render-gds --tile-gds --tile-overlays --out build/chip-visualizer-fullchip-gds $(CHIP_VISUALIZER_ARGS)
 
 chip-visualizer-test:
 	@$(PYTHON) scripts/test_chip_visualizer.py

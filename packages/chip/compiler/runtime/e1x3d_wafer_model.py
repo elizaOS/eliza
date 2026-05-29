@@ -75,7 +75,11 @@ class E1X3DConfig:
     inter_tier_via_pitch_um: float = 6.0
     inter_tier_vias_per_core: int = 4096
     base_core_area_mm2: float = 0.050
-    xy_footprint_shrink: float = 0.45
+    # Derived, not assumed: the block SRAM-on-logic split in e1x3d_placement_model
+    # (logic 0.018 mm2 over SRAM 0.032 mm2 -> footprint max = 0.032 mm2) yields a
+    # 1 - 0.032/0.050 = 0.36 XY footprint shrink. Kept in sync with that model so
+    # packing_density_ratio is not an unsupported headline.
+    xy_footprint_shrink: float = 0.36
     thermal_max_logic_tiers: int = 4
     # Thermal model (grounded in Open3DBench +10%/extra-tier, NSF W/mm2 ceiling).
     ambient_c: float = 45.0

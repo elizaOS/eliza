@@ -29,7 +29,9 @@ separate. Its 3D wins over planar E1X are:
 
 The scaled point (`scaled_e1x3d_config`) is an E1X-class 512 x 342 per-tier mesh
 x 2 logic tiers = **350,208 logic cores (2x E1X)**, **32 GiB distributed SRAM
-(4x E1X)**, at **3.64x planar packing density**.
+(4x E1X)**, at **3.125x planar packing density** (2 logic tiers / (1 - 0.36 XY
+footprint shrink); the 0.36 shrink is derived by the block SRAM-on-logic split in
+`compiler/runtime/e1x3d_placement_model.py`, not assumed).
 
 ## Current E1X3D contract
 
