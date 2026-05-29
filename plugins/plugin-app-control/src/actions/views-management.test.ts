@@ -8,6 +8,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runCreate } from "./app-create.js";
 import { createViewsAction } from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { runViewsCreate } from "./views-create.js";
@@ -599,5 +600,46 @@ describe("view management actions", () => {
 		} finally {
 			repo.cleanup();
 		}
+	});
+
+	it("treats explicit create cancel as terminal even if the pending task is gone", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const appClient = {
+			listInstalledApps: vi.fn(async () => []),
+		};
+
+		const appResult = await runCreate({
+			runtime: runtime as never,
+			client: appClient as never,
+			message: message("Cancel the app create flow") as never,
+			options: { action: "create", choice: "cancel" },
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+
+		expect(appResult.success).toBe(true);
+		expect(appResult.values).toMatchObject({
+			mode: "create",
+			subMode: "cancel",
+		});
+		expect(appClient.listInstalledApps).not.toHaveBeenCalled();
+		expect(runtime.createTask).not.toHaveBeenCalled();
+
+		const viewResult = await runViewsCreate({
+			runtime: runtime as never,
+			message: message("Cancel the view create flow") as never,
+			options: { action: "create", choice: "cancel" },
+			views: [view()],
+			callback,
+			repoRoot: "/tmp/no-view-create",
+		});
+
+		expect(viewResult.success).toBe(true);
+		expect(viewResult.values).toMatchObject({
+			mode: "create",
+			subMode: "cancel",
+		});
+		expect(runtime.createTask).not.toHaveBeenCalled();
 	});
 });
