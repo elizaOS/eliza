@@ -91,7 +91,23 @@ import { AcpService } from "../../src/services/acp-service.js";
 
 vi.mock("node:child_process", () => ({
   exec: vi.fn(),
-  execFile: vi.fn(),
+  // execFile is promisified by workspace-diff (baseline/diff capture). The
+  // promisified form hangs unless the callback is invoked, which would stall
+  // every spawn test; make the mock behave like an unavailable git so capture
+  // degrades to undefined.
+  execFile: vi.fn(
+    (
+      _file: string,
+      _args: string[],
+      _opts: unknown,
+      cb?: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      const callback = typeof _opts === "function" ? _opts : cb;
+      if (typeof callback === "function") {
+        callback(new Error("git unavailable in test"), "", "");
+      }
+    },
+  ),
   execFileSync: vi.fn(),
   spawn: vi.fn(),
 }));
@@ -1299,5 +1315,63 @@ describe("AcpService", () => {
     expect(result.sessionId).not.toBe(sessionId);
     expect(result.name).toBe("reattach");
     expect(spawnMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("AcpService.runHealthCheck state_lost guards", () => {
+  function staleSession(
+    over: Partial<import("../../src/services/types.ts").SessionInfo>,
+  ) {
+    const old = new Date(Date.now() - 10 * 60_000); // well past grace window
+    return {
+      id: over.id ?? "00000000-0000-0000-0000-0000000000aa",
+      name: "hc",
+      agentType: "opencode" as const,
+      workdir: "/tmp/acp-test",
+      status: "ready" as const,
+      approvalPreset: "standard" as const,
+      createdAt: old,
+      lastActivityAt: old,
+      acpxSessionId: "ses_doesnotexist_health_check",
+      metadata: { roomId: "11111111-2222-3333-4444-555555555555" },
+      ...over,
+    };
+  }
+
+  it("does NOT mark an idle 'ready' session state_lost (a finished session is not a crash)", async () => {
+    const service = new AcpService(runtime());
+    await service.start();
+    const store = Reflect.get(service, "store") as {
+      create: (s: unknown) => Promise<void>;
+    };
+    const id = "00000000-0000-0000-0000-0000000000a1";
+    await store.create(staleSession({ id, status: "ready" }));
+
+    await (
+      service as unknown as { runHealthCheck: () => Promise<void> }
+    ).runHealthCheck();
+
+    const after = await service.getSession(id);
+    // The old bug flipped this to "errored"+session_state_lost (the cascade
+    // trigger) purely because the .stream.ndjson probe never matched. A ready
+    // session must be left alone.
+    expect(after?.status).toBe("ready");
+  });
+
+  it("still marks a genuinely mid-flight session errored when its state artifact is gone", async () => {
+    const service = new AcpService(runtime());
+    await service.start();
+    const store = Reflect.get(service, "store") as {
+      create: (s: unknown) => Promise<void>;
+    };
+    const id = "00000000-0000-0000-0000-0000000000a2";
+    await store.create(staleSession({ id, status: "running" }));
+
+    await (
+      service as unknown as { runHealthCheck: () => Promise<void> }
+    ).runHealthCheck();
+
+    const after = await service.getSession(id);
+    expect(after?.status).toBe("errored");
   });
 });

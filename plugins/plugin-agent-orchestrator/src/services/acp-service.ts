@@ -33,6 +33,7 @@ import {
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
+import { captureBaselineDirty, captureBaselineSha } from "./workspace-diff.js";
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -85,6 +86,14 @@ const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
+// Sessions that are genuinely mid-flight (have in-progress work that could be
+// lost if the process died). "ready" is idle/finished and must NOT be treated
+// as a crash by the health-check — see runHealthCheck.
+const ACP_MIDFLIGHT_SESSION_STATUSES: ReadonlySet<string> = new Set([
+  "running",
+  "busy",
+  "tool_running",
+]);
 const ACP_STALE_LOCK_MAX_AGE_MS = 10 * 60_000;
 // Untracked acpx stream files older than this get unlinked. Real spawns
 // finalize their store entry in seconds; 24h is grace for in-flight spawns.
@@ -157,6 +166,11 @@ export class AcpService extends Service {
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
   private readonly outputBuffers = new Map<string, string[]>();
+  // Per-session set of file paths the agent wrote via edit/write tool calls.
+  // The only signal that distinguishes a gitignored deploy target the agent
+  // authored from gitignored install output git never sees. Accumulated live
+  // (the ACP stream is gone by completion) and consumed at task_complete.
+  private readonly changedPathsBySession = new Map<string, Set<string>>();
   private started = false;
   private healthCheckTimer: NodeJS.Timeout | undefined;
 
@@ -247,18 +261,16 @@ export class AcpService extends Service {
       (s) => !TERMINAL_SESSION_STATUSES.has(s.status),
     );
     if (orphaned.length === 0) return;
-    const sessionsDir = join(this.acpxStateRoot(), "sessions");
     const liveCutoffMs = Date.now() - RECONCILE_LIVE_WINDOW_MS;
     const verdicts = await Promise.all(
       orphaned.map(async (s) => {
         if (!s.acpxSessionId) return { session: s, alive: false };
-        const stateFile = join(sessionsDir, `${s.acpxSessionId}.stream.ndjson`);
-        try {
-          const st = await stat(stateFile);
-          return { session: s, alive: st.mtimeMs > liveCutoffMs };
-        } catch {
-          return { session: s, alive: false };
-        }
+        // Probe the real `<acpxSessionId>.json` artifact, not the never-written
+        // `.stream.ndjson` (which made every session look dead on restart).
+        const { exists, mtimeMs } = await this.acpxSessionStateStat(
+          s.acpxSessionId,
+        );
+        return { session: s, alive: exists && mtimeMs > liveCutoffMs };
       }),
     );
     const dead = verdicts.filter((v) => !v.alive).map((v) => v.session);
@@ -285,7 +297,7 @@ export class AcpService extends Service {
           .updateStatus(
             s.id,
             "errored",
-            "Sub-agent was mid-flight when the runtime restarted; spawn a fresh sub-agent to continue the work.",
+            "Sub-agent was mid-flight when the runtime restarted. No automatic action taken.",
           )
           .catch((err) =>
             this.log("warn", "failed to mark orphaned session errored", {
@@ -374,17 +386,32 @@ export class AcpService extends Service {
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
     const sessions = await this.store.list().catch(() => [] as SessionInfo[]);
-    const sessionsDir = join(this.acpxStateRoot(), "sessions");
+    const liveCutoffMs = Date.now() - RECONCILE_LIVE_WINDOW_MS;
     let healed = 0;
     for (const s of sessions) {
       if (TERMINAL_SESSION_STATUSES.has(s.status)) continue;
       if (!s.acpxSessionId) continue;
-      const stateFile = join(sessionsDir, `${s.acpxSessionId}.stream.ndjson`);
-      try {
-        await stat(stateFile);
-      } catch {
+      // Only sessions that are genuinely MID-FLIGHT can lose unrecoverable
+      // work. A "ready" session has already finished its prompt and is idle —
+      // a missing state file there is not a crash, and emitting a respawn
+      // directive for it is exactly what drove the runaway cascade (a session
+      // that successfully deployed the dog site got flipped to errored +
+      // "spawn a fresh sub-agent"). Skip non-mid-flight sessions.
+      if (!ACP_MIDFLIGHT_SESSION_STATUSES.has(s.status)) continue;
+      // Grace window: a freshly-spawned session may not have written its state
+      // file yet. Mirror reconcileOrphanedSessions' live-window allowance.
+      const lastActivityMs = new Date(s.lastActivityAt).getTime();
+      if (Number.isFinite(lastActivityMs) && lastActivityMs > liveCutoffMs) {
+        continue;
+      }
+      const { exists } = await this.acpxSessionStateStat(s.acpxSessionId);
+      if (!exists) {
+        // Descriptive status, NOT an imperative. The old text literally said
+        // "spawn a fresh sub-agent to continue", which the planner obeyed
+        // verbatim every cycle — the load-bearing line of the respawn loop.
+        // The structural signal is failureKind, not the prose.
         const message =
-          "Sub-agent state was lost (process exited without persisting); spawn a fresh sub-agent to continue.";
+          "Sub-agent state was lost (process exited without persisting). No automatic action taken.";
         await this.store.updateStatus(s.id, "errored", message).catch((err) =>
           this.log("warn", "health-check: failed to mark errored", {
             sessionId: s.id,
@@ -404,18 +431,30 @@ export class AcpService extends Service {
     await this.cleanReverseOrphanedAcpxFiles();
   }
 
-  private async hasAcpxSessionState(acpxSessionId: string): Promise<boolean> {
-    const stateFile = join(
-      this.acpxStateRoot(),
-      "sessions",
-      `${acpxSessionId}.stream.ndjson`,
-    );
+  // The acpx transport persists session state as `<acpxSessionId>.json` under
+  // <stateRoot>/sessions. The old probe checked `<acpxSessionId>.stream.ndjson`
+  // which NEVER exists for opencode/native sessions (verified: 0 such files on
+  // disk, only ses_*.json) — a permanent false-negative that made every healthy
+  // session look "state lost", triggering a runaway "spawn a fresh sub-agent"
+  // respawn cascade AND spuriously throwing on the first real prompt to any
+  // opencode session. Probe the artifact the transport actually writes.
+  private acpxSessionStateFile(acpxSessionId: string): string {
+    return join(this.acpxStateRoot(), "sessions", `${acpxSessionId}.json`);
+  }
+
+  private async acpxSessionStateStat(
+    acpxSessionId: string,
+  ): Promise<{ exists: boolean; mtimeMs: number }> {
     try {
-      await stat(stateFile);
-      return true;
+      const st = await stat(this.acpxSessionStateFile(acpxSessionId));
+      return { exists: true, mtimeMs: st.mtimeMs };
     } catch {
-      return false;
+      return { exists: false, mtimeMs: 0 };
     }
+  }
+
+  private async hasAcpxSessionState(acpxSessionId: string): Promise<boolean> {
+    return (await this.acpxSessionStateStat(acpxSessionId)).exists;
   }
 
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
@@ -436,6 +475,14 @@ export class AcpService extends Service {
     await mkdir(workdir, { recursive: true });
     await this.enforceSessionLimit();
 
+    // Record the workspace HEAD + already-dirty files at spawn so the change
+    // set captured at task_complete is scoped to exactly what this sub-agent
+    // did (and excludes pre-existing churn it never touched). Empty/undefined
+    // when the workspace isn't a git repo — capture then relies on the agent's
+    // own edit/write tool-call paths.
+    const baselineSha = await captureBaselineSha(workdir);
+    const baselineDirty = await captureBaselineDirty(workdir);
+
     const now = new Date();
     const session: SessionInfo = {
       id,
@@ -446,7 +493,15 @@ export class AcpService extends Service {
       approvalPreset,
       createdAt: now,
       lastActivityAt: now,
-      metadata: opts.metadata,
+      metadata: baselineSha
+        ? {
+            ...(opts.metadata ?? {}),
+            codingBaselineSha: baselineSha,
+            ...(baselineDirty.length > 0
+              ? { codingBaselineDirty: baselineDirty }
+              : {}),
+          }
+        : opts.metadata,
     };
     await this.store.create(session);
 
@@ -563,7 +618,7 @@ export class AcpService extends Service {
       const exists = await this.hasAcpxSessionState(session.acpxSessionId);
       if (!exists) {
         const message =
-          "Sub-agent state was lost (process exited without persisting); spawn a fresh sub-agent to continue.";
+          "Sub-agent state was lost (process exited without persisting). No automatic action taken.";
         await this.store.updateStatus(sessionId, "errored", message);
         this.emitSessionEvent(sessionId, "error", {
           message,
@@ -739,6 +794,7 @@ export class AcpService extends Service {
     });
     await this.store.delete(sessionId);
     this.outputBuffers.delete(sessionId);
+    this.changedPathsBySession.delete(sessionId);
   }
 
   async listSessions(): Promise<SessionInfo[]> {
@@ -1595,6 +1651,7 @@ export class AcpService extends Service {
           rawInput,
           locations,
         };
+        if (sessionId) this.recordEditedPaths(sessionId, toolCall);
         const isInitialSubmission = sessionUpdate === "tool_call";
         const isRunningStatus =
           status === "in_progress" || status === "running";
@@ -1815,6 +1872,68 @@ export class AcpService extends Service {
     buffer.push(text);
     if (buffer.length > 2_000) buffer.splice(0, buffer.length - 2_000);
     this.outputBuffers.set(sessionId, buffer);
+  }
+
+  // Tool-call arg keys that carry a target file path / signal a write.
+  private static readonly EDIT_PATH_KEYS = [
+    "filePath",
+    "file_path",
+    "path",
+    "file",
+    "target",
+    "abspath",
+  ];
+  private static readonly WRITE_CONTENT_KEYS = [
+    "content",
+    "contents",
+    "new_string",
+    "newText",
+    "patch",
+    "diff",
+  ];
+  private static readonly MUTATING_TOOL_KINDS = new Set([
+    "edit",
+    "write",
+    "create",
+    "patch",
+    "move",
+    "delete",
+  ]);
+
+  /**
+   * Record the file path(s) of an edit/write tool call so the change set at
+   * completion includes gitignored files the agent authored. Self-gates: only
+   * records when the call's kind is mutating OR its args carry write content,
+   * so reads/searches/shell calls are ignored.
+   */
+  private recordEditedPaths(sessionId: string, toolCall: AcpToolCall): void {
+    const kind = (toolCall.kind ?? "").toLowerCase();
+    const rawInput = toolCall.rawInput ?? {};
+    const looksMutating =
+      AcpService.MUTATING_TOOL_KINDS.has(kind) ||
+      AcpService.WRITE_CONTENT_KEYS.some((key) => key in rawInput);
+    if (!looksMutating) return;
+    const paths: string[] = [];
+    for (const key of AcpService.EDIT_PATH_KEYS) {
+      const value = rawInput[key];
+      if (typeof value === "string" && value.trim()) paths.push(value.trim());
+    }
+    for (const location of toolCall.locations ?? []) {
+      if (typeof location?.path === "string" && location.path.trim())
+        paths.push(location.path.trim());
+    }
+    if (paths.length === 0) return;
+    const set = this.changedPathsBySession.get(sessionId) ?? new Set<string>();
+    for (const path of paths) {
+      if (set.size >= 500) break;
+      set.add(path);
+    }
+    this.changedPathsBySession.set(sessionId, set);
+  }
+
+  /** File paths the agent wrote via edit/write tool calls this session. */
+  getChangedPaths(sessionId: string): string[] {
+    return [...(this.changedPathsBySession.get(sessionId) ?? [])];
   }
 
   private setting(key: string): string | undefined {
