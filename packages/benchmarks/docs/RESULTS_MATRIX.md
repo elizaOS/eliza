@@ -1,6 +1,6 @@
 # Full benchmark × harness results matrix
 
-**12/53 benchmarks have a smithers post; 12/53 full 4-way.** Cells: score = posted; `gated` = harness incompatible here (infra/credentials absent, applies to all harnesses); `—` = compatible but not posted this pass. Smithers wiring spans 5 reusable patterns + rate-limit-resilient harness. Remaining gaps: bridge-gated (mint/lifeops/realm/rlm via eliza TS bench server), infra-gated (Docker/audio/multimodal/chain keys), or TS-only harness. See CERTIFICATION.md.
+**15/53 benchmarks have a smithers post; 15/53 full 4-way.** Cells: score = posted; `gated` = harness incompatible here (infra/credentials absent, applies to all harnesses); `—` = compatible but not posted this pass. Smithers wiring spans 6 reusable patterns (agent-class, bare-client, standard framework, query-factory, agent_fn delegation, client-injection into client-agnostic agents) + a rate-limit-resilient harness. Remaining gaps: bridge-runner-centric + eliza-native provider benchmarks (adhdbench/experience/trust/personality_bench/social_alpha/mind2web — measure elizaOS-specific behavior via ElizaServerManager), infra-gated (Docker/audio/multimodal/chain keys), or TS-only (configbench/interrupt-bench). See CERTIFICATION.md.
 
 | benchmark | eliza | hermes | openclaw | smithers |
 |---|---|---|---|---|
@@ -28,10 +28,10 @@
 | humaneval | 1.00 | 1.00 | 1.00 | 1.00 |
 | hyperliquid_bench | gated | gated | gated | gated |
 | interrupt_bench | 1.00 | 1.00 | 1.00 | gated |
-| lifeops_bench | 1.00 | 1.00 | 1.00 | gated |
+| lifeops_bench | 1.00 | 1.00 | 1.00 | 1.00 |
 | loca_bench | 1.00 | 1.00 | 1.00 | gated |
 | mind2web | 1.00 | 1.00 | 1.00 | gated |
-| mint | 1.00 | 1.00 | 1.00 | gated |
+| mint | 1.00 | 1.00 | 1.00 | 1.00 |
 | mmau | 1.00 | 1.00 | 1.00 | gated |
 | mmlu | 1.00 | 1.00 | 1.00 | 1.00 |
 | mt_bench | 0.85 | 0.85 | 0.85 | gated |
@@ -39,7 +39,7 @@
 | orchestrator_lifecycle | 1.00 | 1.00 | 1.00 | gated |
 | osworld | 1.00 | 1.00 | 1.00 | gated |
 | personality_bench | 0.45 | 0.45 | 0.45 | gated |
-| realm | 1.00 | 1.00 | 1.00 | gated |
+| realm | 1.00 | 1.00 | 1.00 | 1.00 |
 | rlm_bench | 1.00 | 1.00 | 1.00 | gated |
 | scambench | 1.00 | 1.00 | 1.00 | 1.00 |
 | social_alpha | 0.86 | 0.86 | 0.86 | gated |

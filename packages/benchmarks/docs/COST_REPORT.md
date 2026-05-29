@@ -32,7 +32,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | hermes_yc_bench | $0.0022 | — | $0.0291 | $0.0291* |
 | humaneval | $0.0081 | $0.0004 | $0.0004 | $0.0004† |
 | interrupt_bench | $0.0263 | $0.0054 | $0.0053 | $0.0054* |
-| lifeops_bench | $0.0068 | $0.1058 | $0.1056 | $0.1058* |
+| lifeops_bench | $0.0068 | $0.1058 | $0.1056 | $0.1057† |
 | loca_bench | $0.0653 | $0.0322 | $0.0370 | $0.0322* |
 | mind2web | $0.0325 | $0.0006 | $0.0006 | $0.0006* |
 | mint | $0.0015 | $0.0002 | $0.0001 | $0.0001† |
@@ -84,7 +84,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | hermes_yc_bench | $0.1071 | — | $1.5372 | $1.5372* |
 | humaneval | $0.4456 | $0.0260 | $0.0260 | $0.0260† |
 | interrupt_bench | $1.5411 | $0.3567 | $0.3446 | $0.3567* |
-| lifeops_bench | $0.3005 | $4.5555 | $4.5480 | $4.5555* |
+| lifeops_bench | $0.3005 | $4.5555 | $4.5480 | $4.5550† |
 | loca_bench | $3.3284 | $1.5272 | $1.7342 | $1.5272* |
 | mind2web | $1.7517 | $0.0381 | $0.0388 | $0.0381* |
 | mint | $0.0998 | $0.0132 | $0.0097 | $0.0105† |

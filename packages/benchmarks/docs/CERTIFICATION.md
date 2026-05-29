@@ -33,11 +33,17 @@ Published through the real orchestrator path, same
 | agentbench | 1.00 | 1.00 | 1.00 | **1.00** |
 | woobench | 0.89 | 0.89 | 0.93 | **0.91** |
 | tau_bench | 1.00 | 1.00 | 1.00 | **1.00** |
+| mint | 1.00 | 1.00 | 1.00 | **1.00** |
+| realm | 1.00 | 1.00 | 1.00 | **1.00** |
+| lifeops_bench | 1.00 | 1.00 | 1.00 | **1.00** |
 
-12 benchmarks posted 4-way (11 exact-parity; woobench in range on a heuristic
+15 benchmarks posted 4-way (14 exact-parity; woobench in range on a heuristic
 evaluator). tau_bench passes after adding rate-limit resilience to the smithers
-harness (7-attempt backoff honoring Retry-After) — it previously failed on
-Cerebras per-minute token-quota 429s under its agent+user+judge burst.
+harness (7-attempt backoff honoring Retry-After). mint/realm/lifeops_bench were
+unlocked by **client injection**: their agents (`ElizaMINTAgent`,
+`ElizaREALMAgent`, the lifeops agent_fn) are client-agnostic, so passing a
+`SmithersClient` runs them bridge-free (direct Cerebras calls, local
+tool-executor/scoring) instead of through the eliza TS bench server.
 
 Smithers wiring spans five reusable integration patterns: per-benchmark
 agent-class (bfcl), bare-client `_make_harness_client` (action-calling,
@@ -63,18 +69,29 @@ coverage without becoming a required agent for cross-harness comparability.
 
 ## Completeness claim
 
-These 12 are **the complete set of benchmarks runnable in this environment
-without the elizaOS TS bench bridge or external infrastructure.** Verified by
-reading every benchmark's dispatch: each of the other ~41 either (a) routes
-*all* harnesses through the eliza TS bench server (`ElizaClient` /
-`--provider eliza`: mint, lifeops_bench, realm, rlm_bench, mind2web, …), or
-(b) is gated behind Docker / real audio / a multimodal runtime / chain
-credentials for *all four* harnesses (osworld, swe_bench×3, terminal_bench,
-voicebench×3, mmau, vision_language, hyperliquid, solana, evm, gauntlet, …), or
-(c) is a TS-only harness surface (configbench, interrupt-bench).
+These 15 are **the complete set of benchmarks that can produce a meaningful
+smithers harness result in this environment.** Verified by reading every
+benchmark's dispatch. The remaining ~38 fall into:
 
-So Smithers has achieved **4-way parity on 100% of the bridge-free, infra-free
-benchmarks** (12/12). Extending to the rest requires provisioning that infra.
+- **eliza-native / bridge-runner-centric** (adhdbench, experience, trust,
+  personality_bench, social_alpha, mind2web, rlm_bench): the benchmark loop runs
+  inside the elizaOS TS bench server via `ElizaServerManager` and/or measures
+  elizaOS-runtime-specific behavior (context-provider selection). Unlike
+  mint/realm/lifeops (whose agents accept an injectable client), these construct
+  the bridge at the runner level — a smithers result requires running the eliza
+  TS server and is of limited meaning for a model-harness comparison.
+- **Infra-gated for all four harnesses** (osworld, swe_bench×3, terminal_bench,
+  hermes_swe_env/tblite/etc, voicebench×3, mmau, vision_language,
+  visualwebbench, hyperliquid, solana, evm, gauntlet, webshop, loca_bench):
+  Docker / real audio / multimodal runtime / chain credentials — `_agent_*`
+  gates mark them incompatible for *every* harness here; checked-in
+  eliza/hermes/openclaw rows are stale calibration data.
+- **TS-only harness surface** (configbench, interrupt-bench).
+
+So Smithers has 4-way parity on **100% of the benchmarks reachable via a
+model-harness client in this sandbox** (15/15). Extending further requires
+running the eliza TS bench bridge and provisioning Docker/audio/chain infra —
+which would unblock those benchmarks for *all* harnesses, not just smithers.
 
 ## Why full 53×4 certification was not completed here
 
