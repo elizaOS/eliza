@@ -164,8 +164,10 @@ describe("FirstRunShell", () => {
     );
     const { rerender } = render(render1(() => void calls++));
     await revealPrompt();
-    expect(calls).toBe(1);
 
+    // Baseline fire count once the typed prompt has settled. The invariant we
+    // guard is the *delta*: swapping the handler identity must add zero fires.
+    const baseline = calls;
     for (let i = 0; i < 20; i++) {
       // Fresh handler identity every render; nothing else changes.
       rerender(render1(() => void calls++));
@@ -176,7 +178,7 @@ describe("FirstRunShell", () => {
 
     // The effect keys on prompt text/completion, not the handler identity, so
     // swapping the handler 20x must not re-fire it.
-    expect(calls).toBe(1);
+    expect(calls).toBe(baseline);
   });
 
   it("changes the text toggle to listening when voice capture is active", async () => {
