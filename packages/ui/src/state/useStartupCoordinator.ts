@@ -299,7 +299,7 @@ export function useStartupCoordinator(
 
   useEffect(() => {
     if (state.phase !== "error" || !depsReady) return;
-    if (!isRecoverableStartupErrorReason(errorReason)) return;
+    if (!errorReason || !isRecoverableStartupErrorReason(errorReason)) return;
     if (typeof window === "undefined") return;
 
     const currentDeps = depsRef.current;
