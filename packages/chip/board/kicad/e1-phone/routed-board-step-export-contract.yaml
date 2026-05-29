@@ -37,15 +37,15 @@ current_state:
   enclosure_fit_status: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
   board_step_readiness_status: blocked_local_routed_step_candidate_not_release
   routed_board_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
-  full_cad_boolean_status: pass
+  full_cad_boolean_status: blocked_boolean_interference_incomplete
   full_cad_concept_aabb_interference_scan_pass: true
   full_cad_concept_aabb_interference_count: 0
   full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
-  full_cad_boolean_parts_loaded: 258
-  full_cad_boolean_pair_count_brep_evaluated: 989
+  full_cad_boolean_parts_loaded: 0
+  full_cad_boolean_pair_count_brep_evaluated: 0
   full_cad_boolean_unintentional_clash_count: 0
-  full_cad_boolean_scope_result_count: 11
-  full_cad_boolean_passing_scope_result_count: 11
+  full_cad_boolean_scope_result_count: 0
+  full_cad_boolean_passing_scope_result_count: 0
   concept_pcb_only: true
   placeholder_footprints_present: true
   production_step_present: false

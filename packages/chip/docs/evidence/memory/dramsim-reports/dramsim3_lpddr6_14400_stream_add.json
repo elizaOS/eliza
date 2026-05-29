@@ -9,6 +9,9 @@
   "data_rate_mtps": 14400,
   "evidence_class": "dramsim3_behavioral_simulation",
   "generated_utc": "2026-05-29T02:54:06Z",
+  "linux_memory_claim_allowed": false,
+  "lpddr_phy_claim_allowed": false,
+  "memory_bandwidth_claim_allowed": false,
   "peak_bandwidth_gbps": 172.8,
   "phone_claim_allowed": false,
   "raw_artifacts": [
@@ -18,17 +21,19 @@
     },
     {
       "path": "docs/evidence/memory/dramsim-reports/raw/dramsim3_lpddr6_14400_stream_add.json",
-      "sha256": "aa1a93e4bcc328c87962e6f8d77fd59d17e71bc6bcd6cec4592df0294fb5d457"
+      "sha256": "bb81d165fe4ece7fcba3ea58e59050e782344fde19cdde9970734f8843a7263d"
     }
   ],
   "raw_log_path": "docs/evidence/memory/dramsim-reports/raw/dramsim3_lpddr6_14400_stream_add.log",
   "raw_stats_path": "docs/evidence/memory/dramsim-reports/raw/dramsim3_lpddr6_14400_stream_add.json",
   "release_claim_allowed": false,
   "schema": "eliza.memory.dram_sim_sweep.v1",
+  "silicon_capacity_claim_allowed": false,
   "simulated_p95_latency_ns": 254.17,
   "simulated_total_bandwidth_gbps": 13.7,
   "simulator_only_note": "DRAMSim3 behavioural-model archive. Cannot satisfy the phone-class real-target bandwidth gate in docs/evidence/memory/uma-dram-evidence-gate.yaml.",
   "standard": "LPDDR6-14400",
   "status": "simulator_only",
+  "uma_claim_allowed": false,
   "workload": "stream_add"
 }

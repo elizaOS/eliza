@@ -145,7 +145,9 @@ function validateBlockedFeature(
  */
 function validatePermissionStates(
   raw: Record<string, Record<string, unknown>>,
-): { ok: true; value: Record<string, PermissionState> } | { ok: false; reason: string } {
+):
+  | { ok: true; value: Record<string, PermissionState> }
+  | { ok: false; reason: string } {
   const result: Record<string, PermissionState> = {};
 
   for (const [key, entry] of Object.entries(raw)) {

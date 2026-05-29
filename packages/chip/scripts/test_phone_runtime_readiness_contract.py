@@ -18,6 +18,13 @@ if str(ROOT / "scripts") not in sys.path:
 
 import check_phone_runtime_readiness_contract as gate  # noqa: E402
 
+
+def assert_false_claim_flags(testcase: unittest.TestCase, payload: dict[str, object]) -> None:
+    testcase.assertEqual(payload["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(payload.get(key), expected, key)
+
+
 PERIPHERAL_HELPER_PATH = ROOT / "scripts/android/capture_simulated_peripheral_evidence.py"
 peripheral_spec = importlib.util.spec_from_file_location(
     "capture_simulated_peripheral_evidence", PERIPHERAL_HELPER_PATH
@@ -63,6 +70,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with mock.patch.object(gate, "SCOPES", (blocked,)):
             payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "blocked")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["summary"]["blockers"], 1)
         self.assertEqual(payload["findings"][0]["code"], "media_runtime_surface_blocked")
         self.assertEqual(
@@ -95,6 +103,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with mock.patch.object(gate, "SCOPES", (spec("media"), spec("security"))):
             payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "pass")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["findings"], [])
         self.assertRegex(payload["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
@@ -110,6 +119,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with mock.patch.object(gate, "SCOPES", (invalid,)):
             payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "fail")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["summary"]["failures"], 1)
         self.assertEqual(payload["findings"][0]["code"], "radio_scope_report_invalid")
 
@@ -875,6 +885,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             with mock.patch.object(gate, "SCOPES", (ready_with_file,)):
                 payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "pass")
+        assert_false_claim_flags(self, payload)
         self.assertEqual(payload["runtime_evidence_collection_inventory"], [])
         runtime_files = payload["evidence"]["scopes"]["media"]["runtime_evidence_files"]
         self.assertEqual(runtime_files[0]["status"], "pass")
@@ -944,6 +955,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             ):
                 payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "pass")
+        assert_false_claim_flags(self, payload)
         runtime_files = payload["evidence"]["scopes"]["media"]["runtime_evidence_files"]
         self.assertEqual(
             runtime_files[0]["json_expectations"],

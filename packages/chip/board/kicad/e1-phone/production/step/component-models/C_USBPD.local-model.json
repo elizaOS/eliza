@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/C_USBPD.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "8b98160101de01f59366ea72178fb4b45b3caa1954982ddc753e911ad47fff30",
+  "local_discrete_step_sha256": "3a0448f2d6d914d42c71c93dfa6dc935220193e13a697e92ac81ea3b99e1baf7",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

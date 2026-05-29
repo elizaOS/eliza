@@ -7064,7 +7064,7 @@ kicad_cad_traceability:
     incomplete_cad_connections: []
     captured_pinout_files_missing: []
     incomplete_captured_pinout_details: []
-artifact_count: 42
+artifact_count: 45
 release_credit: false
 artifacts:
 - path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -7130,6 +7130,12 @@ artifacts:
 - path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
   kind: json
   metadata: ''
+- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+  kind: json
+  metadata: ''
+- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+  kind: json
+  metadata: ''
 - path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
   kind: json
   metadata: ''
@@ -7167,6 +7173,9 @@ artifacts:
   kind: json
   metadata: ''
 - path: board/kicad/e1-phone/production/reports/power-thermal/load-step.json
+  kind: json
+  metadata: ''
+- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
   kind: json
   metadata: ''
 - path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json

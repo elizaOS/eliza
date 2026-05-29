@@ -146,6 +146,27 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
             result.stdout,
         )
 
+    def test_simulator_artifacts_without_false_claim_flags_block_release_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive = Path(tmpdir) / "release.tar.gz"
+            self.write_archive(
+                archive,
+                drop_tokens={
+                    "reports/qemu_smoke.manifest": {"release_claim_allowed=false"},
+                    "renode/eliza_e1_status.json": {'"silicon_evidence_claim_allowed": false'},
+                },
+            )
+            result = self.run_checker(archive)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(
+            "reports/qemu_smoke.manifest missing required text token: release_claim_allowed=false",
+            result.stdout,
+        )
+        self.assertIn(
+            'renode/eliza_e1_status.json missing required text token: "silicon_evidence_claim_allowed": false',
+            result.stdout,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

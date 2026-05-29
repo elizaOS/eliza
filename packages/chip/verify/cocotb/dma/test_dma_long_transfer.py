@@ -28,6 +28,17 @@ CTRL_REG = 0x03
 STATUS_REG = 0x03
 BYTES_DONE_REG = 0x05
 _COVERED_CONTRACTS: set[str] = set()
+_FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_memory_system_claim_allowed": False,
+    "soc_fabric_claim_allowed": False,
+    "coherent_dma_claim_allowed": False,
+    "cache_coherency_claim_allowed": False,
+    "iommu_claim_allowed": False,
+    "linux_dmaengine_driver_claim_allowed": False,
+    "throughput_claim_allowed": False,
+}
 
 
 def write_coverage_artifact(extra):
@@ -38,7 +49,8 @@ def write_coverage_artifact(extra):
         "claim_boundary": "directed_dma_long_transfer_cocotb_coverage_only_not_system_or_release_evidence",
         "source": "verify/cocotb/dma/test_dma_long_transfer.py",
         "covered_contracts": sorted(_COVERED_CONTRACTS),
-        "boundary": "Directed standalone e1_dma long-transfer, partial-tail, IRQ, unaligned-programming, and SLVERR propagation coverage only; no coherent DMA, IOMMU, cache, or production memory hierarchy coverage.",
+        "boundary": "Directed standalone e1_dma long-transfer, partial-tail, IRQ, unaligned-programming, and SLVERR propagation coverage only; no SoC fabric, no coherent DMA, no IOMMU, no cache, no Linux dmaengine driver, no throughput, or production memory hierarchy coverage.",
+        **_FALSE_CLAIM_FLAGS,
     }
     out = REPO_ROOT / "build/reports/dma_long_transfer_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)

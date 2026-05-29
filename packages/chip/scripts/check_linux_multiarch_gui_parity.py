@@ -25,6 +25,15 @@ REPORT = ROOT / "build/reports/linux_multiarch_gui_parity.json"
 
 SCHEMA = "eliza.linux_multiarch_gui_parity.v1"
 CLAIM_BOUNDARY = "multiarch_gui_parity_rollup_only_not_runtime_screenshot_or_chip_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "runtime_screenshot_claim_allowed": False,
+    "chip_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 REQUIRED_ARCHES = ("arm64", "riscv64")
 REQUIRED_GUI_SCHEMA = "eliza.os.linux.gui_kiosk_iso_check.v1"
 REQUIRED_MATRIX_SCHEMA = "eliza.os.linux.multiarch_boot_matrix.v1"
@@ -152,6 +161,7 @@ def build_report() -> dict[str, Any]:
         "schema": SCHEMA,
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "sources": {
             "multiarch_boot_matrix": rel(MATRIX),
             "gui_reports": {arch: rel(path) for arch, path in REPORTS.items()},

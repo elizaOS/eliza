@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,12 @@ def preflight(status: str) -> dict:
         },
         "handoff_commands": list(gate.REQUIRED_HANDOFF_COMMANDS),
     }
+
+
+def assert_no_production_claims(report: dict) -> None:
+    assert re.match(r"^\d{4}-\d{2}-\d{2}T", report["generated_utc"])
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
 
 
 class AospLinuxHandoffContractTests(unittest.TestCase):
@@ -84,6 +91,7 @@ class AospLinuxHandoffContractTests(unittest.TestCase):
         self.assertIn("aosp_renode_smoke_command_unset", codes)
         self.assertIn("aosp_qemu_stage_is_version_placeholder", codes)
         self.assertIn("aosp_renode_stage_is_version_placeholder", codes)
+        assert_no_production_claims(report)
 
     def test_ready_preflight_and_real_stages_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -109,6 +117,7 @@ class AospLinuxHandoffContractTests(unittest.TestCase):
                 report = gate.run_check(Namespace(aosp_dir="/aosp"))
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
+        assert_no_production_claims(report)
 
 
 class PatchStack:

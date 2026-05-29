@@ -394,6 +394,7 @@ def blocked_contract_error_report(message: str) -> dict[str, Any]:
             }
         ],
         "blocked_evidence_inventory": [],
+        "validation_commands": [VALIDATION_COMMAND],
         "blocker_diagnostics": {
             "blocked_by_failure": {"routed_output_contract_blocked": 1},
             "next_unblock_groups": [
@@ -1030,6 +1031,39 @@ def directory_failures(path: Path) -> list[str]:
     ]
     if not children:
         failures.append("directory_missing_release_children")
+    child_paths = sorted(rel(child) for child in children)
+    inventory = parsed.get("child_artifact_inventory")
+    if isinstance(inventory, list):
+        inventory_paths = sorted(
+            str(record.get("path"))
+            for record in inventory
+            if isinstance(record, dict) and record.get("path")
+        )
+        if inventory_paths != child_paths:
+            failures.append("directory_child_artifact_inventory_stale")
+        placeholder_paths = sorted(
+            str(record.get("path"))
+            for record in inventory
+            if isinstance(record, dict) and record.get("candidate_placeholder") is True
+        )
+        actual_placeholder_paths = sorted(
+            rel(child) for child in children if child.name == "candidate-placeholder.txt"
+        )
+        if placeholder_paths != actual_placeholder_paths:
+            failures.append("directory_candidate_placeholder_inventory_stale")
+        if int(parsed.get("child_artifact_count") or 0) != len(child_paths):
+            failures.append("directory_child_artifact_count_stale")
+        if int(parsed.get("candidate_placeholder_child_count") or 0) != len(
+            actual_placeholder_paths
+        ):
+            failures.append("directory_candidate_placeholder_child_count_stale")
+        if parsed.get("release_child_count") != 0:
+            failures.append("directory_claims_release_children")
+        if (
+            "board/kicad/e1-phone/production/reports/" in rel(path)
+            and parsed.get("all_non_manifest_children_classified") is not True
+        ):
+            failures.append("directory_unclassified_non_manifest_children")
     return sorted(dict.fromkeys(failures))
 
 
@@ -2280,6 +2314,7 @@ def main() -> int:
                     unblock_action(path_text, outputs.get(path_text, {}), failures)
                     for path_text, failures in blocked
                 ],
+                "validation_commands": [VALIDATION_COMMAND],
                 "blocker_diagnostics": blocker_diagnostics(outputs, blocked),
                 "routed_output_blocker_categories": blocker_categories,
                 "repo_generation_summary": generation_summary,

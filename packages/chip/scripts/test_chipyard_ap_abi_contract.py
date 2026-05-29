@@ -135,6 +135,17 @@ class ChipyardApAbiContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
+        for flag in gate.FALSE_CLAIM_FLAGS:
+            self.assertIs(report[flag], False)
+
+    def test_static_abi_report_never_promotes_boot_or_release_claims(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches = self._patch_tree(Path(tmpdir))
+            with PatchStack(patches):
+                report = gate.run_check(Namespace())
+        for flag in gate.FALSE_CLAIM_FLAGS:
+            self.assertIs(report[flag], False)
 
 
 class PatchStack:

@@ -40,9 +40,13 @@ from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.loop import evaluate, train_online
 
 DEFAULT_ACTION_SCALE_INITIAL = 0.15
+DEFAULT_LOCOMOTION_PRIOR_ACTION_SCALE_INITIAL = 0.28
+DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INITIAL = 0.0
+DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INCREMENT = 0.01
 DEFAULT_ACTION_SCALE_INCREMENT = 0.05
 DEFAULT_PHASE_EVAL_INTERVAL_STEPS = 50_000
 ACTION_SCALE_SCHEDULE_SCHEMA = "alberta-action-scale-schedule-v1"
+LOCOMOTION_PRIOR_RESIDUAL_SCHEDULE_SCHEMA = "alberta-locomotion-prior-residual-schedule-v1"
 
 
 def _sha256_file(path: Path) -> str:
@@ -89,6 +93,7 @@ def _build_action_scale_schedule(
     initial_scale: float | None,
     increment: float,
     min_success_rate: float,
+    allow_stable_partial_progress: bool = True,
 ) -> dict:
     target = float(target_scale)
     initial = DEFAULT_ACTION_SCALE_INITIAL if initial_scale is None else float(initial_scale)
@@ -101,23 +106,187 @@ def _build_action_scale_schedule(
         raise ValueError("action_scale_increment must be finite and > 0")
     if initial > target:
         raise ValueError("action_scale_initial must be <= action_scale")
+    mode = (
+        "no_fall_physical_gate_ramp"
+        if allow_stable_partial_progress
+        else "full_physical_success_gate_ramp"
+    )
+    criteria = {
+        "failure_rate_lte": 0.0,
+        "success_rate_gte": float(min_success_rate),
+    }
+    if allow_stable_partial_progress:
+        criteria["physical_success_or_stable_partial_progress"] = True
+    else:
+        criteria["physical_success"] = True
+    rationale = (
+        "start at a stable small action scale, then ramp after either "
+        "full GoalChecker physical success or no-fall partial directional "
+        "progress with drift checks still passing"
+        if allow_stable_partial_progress
+        else "start at a stable small action scale, then ramp only after "
+        "full GoalChecker physical success"
+    )
     return {
         "schema": ACTION_SCALE_SCHEDULE_SCHEMA,
-        "mode": "no_fall_physical_gate_ramp",
+        "mode": mode,
         "enabled": initial < target,
         "initial_scale": initial,
         "target_scale": target,
         "increment": min(step, target),
+        "criteria": criteria,
+        "rationale": rationale,
+    }
+
+
+def _build_locomotion_prior_residual_schedule(
+    *,
+    target_scale: float,
+    initial_scale: float | None,
+    increment: float,
+    locomotion_action_prior: str,
+) -> dict:
+    target = float(target_scale)
+    initial = (
+        min(target, DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INITIAL)
+        if initial_scale is None
+        else float(initial_scale)
+    )
+    step = float(increment)
+    if not np.isfinite(target) or target < 0.0:
+        raise ValueError("locomotion_prior_residual_scale must be finite and >= 0")
+    if not np.isfinite(initial) or initial < 0.0:
+        raise ValueError("locomotion_prior_residual_scale_initial must be finite and >= 0")
+    if not np.isfinite(step) or step <= 0.0:
+        raise ValueError("locomotion_prior_residual_scale_increment must be finite and > 0")
+    if initial > target:
+        raise ValueError(
+            "locomotion_prior_residual_scale_initial must be <= "
+            "locomotion_prior_residual_scale"
+        )
+    enabled = locomotion_action_prior != "none" and initial < target
+    return {
+        "schema": LOCOMOTION_PRIOR_RESIDUAL_SCHEDULE_SCHEMA,
+        "mode": "full_physical_success_gate_ramp",
+        "enabled": enabled,
+        "initial_scale": initial,
+        "target_scale": target,
+        "increment": min(step, target) if target > 0.0 else step,
         "criteria": {
             "failure_rate_lte": 0.0,
-            "physical_success_or_stable_partial_progress": True,
-            "success_rate_gte": float(min_success_rate),
+            "physical_success": True,
         },
         "rationale": (
-            "start at a stable small action scale, then ramp after either "
-            "full GoalChecker physical success or no-fall partial directional "
-            "progress with drift checks still passing"
+            "when using a locomotion prior, start with no residual override so "
+            "the robot first demonstrates stable prior gait, then admit learned "
+            "residual control only after full GoalChecker physical success; "
+            "actor updates are scaled by current residual authority so the "
+            "residual policy only learns while its actions are causal"
         ),
+    }
+
+
+def _initial_action_scale_for_training(
+    *,
+    target_scale: float,
+    requested_initial_scale: float | None,
+    locomotion_action_prior: str,
+) -> float | None:
+    if requested_initial_scale is not None:
+        return requested_initial_scale
+    if locomotion_action_prior != "none":
+        return min(float(target_scale), DEFAULT_LOCOMOTION_PRIOR_ACTION_SCALE_INITIAL)
+    return None
+
+
+def _parse_hidden_sizes(value: str | tuple[int, ...] | list[int]) -> tuple[int, ...]:
+    if isinstance(value, str):
+        parts = [part.strip() for part in value.replace("x", ",").split(",")]
+        sizes = tuple(int(part) for part in parts if part)
+    else:
+        sizes = tuple(int(part) for part in value)
+    if not sizes or any(size <= 0 for size in sizes):
+        raise ValueError("hidden sizes must contain positive integers")
+    return sizes
+
+
+def _controller_manifest(
+    *,
+    controller_type: str,
+    linear_cfg: AlbertaControllerConfig | None,
+    feature_cfg: FeatureConfig | None,
+    cbp_cfg,
+) -> dict:
+    if controller_type == "linear":
+        if linear_cfg is None or feature_cfg is None:
+            raise ValueError("linear controller manifest requires linear config")
+        return {
+            "type": "linear_stream_ac_v1",
+            "gamma": linear_cfg.gamma,
+            "actor_step_size": linear_cfg.actor_step_size,
+            "critic_step_size": linear_cfg.critic_step_size,
+            "actor_lamda": linear_cfg.actor_lamda,
+            "critic_lamda": linear_cfg.critic_lamda,
+            "log_sigma_init": linear_cfg.log_sigma_init,
+            "log_sigma_min": linear_cfg.log_sigma_min,
+            "log_sigma_max": linear_cfg.log_sigma_max,
+            "action_low": linear_cfg.action_low,
+            "action_high": linear_cfg.action_high,
+            "obgd_kappa": linear_cfg.obgd_kappa,
+            "normalize": linear_cfg.normalize,
+            "normalizer_decay": linear_cfg.normalizer_decay,
+            "decouple_global_bias": linear_cfg.decouple_global_bias,
+            "features": {
+                "mode": feature_cfg.mode,
+                "embed_dim": feature_cfg.embed_dim,
+                "n_prototypes": feature_cfg.n_prototypes,
+                "gate_hard": feature_cfg.gate_hard,
+                "gate_temperature": feature_cfg.gate_temperature,
+                "proprio_random_dim": feature_cfg.proprio_random_dim,
+                "random_dim": feature_cfg.random_dim,
+                "scale": feature_cfg.scale,
+                "seed": feature_cfg.seed,
+            },
+        }
+    if cbp_cfg is None:
+        raise ValueError("cbp controller manifest requires cbp config")
+    return {
+        "type": "cbp_stream_ac_v1",
+        "obs_dim": int(cbp_cfg.obs_dim),
+        "action_dim": int(cbp_cfg.action_dim),
+        "hidden_sizes": list(cbp_cfg.hidden_sizes),
+        "gamma": float(cbp_cfg.gamma),
+        "actor_step_size": float(cbp_cfg.actor_step_size),
+        "critic_step_size": float(cbp_cfg.critic_step_size),
+        "actor_lamda": float(cbp_cfg.actor_lamda),
+        "critic_lamda": float(cbp_cfg.critic_lamda),
+        "log_sigma_init": float(cbp_cfg.log_sigma_init),
+        "log_sigma_min": float(cbp_cfg.log_sigma_min),
+        "log_sigma_max": float(cbp_cfg.log_sigma_max),
+        "learn_log_sigma": bool(cbp_cfg.learn_log_sigma),
+        "action_low": float(cbp_cfg.action_low),
+        "action_high": float(cbp_cfg.action_high),
+        "obgd_kappa": cbp_cfg.obgd_kappa,
+        "sparsity": float(cbp_cfg.sparsity),
+        "leaky_relu_slope": float(cbp_cfg.leaky_relu_slope),
+        "use_layer_norm": bool(cbp_cfg.use_layer_norm),
+        "normalize": bool(cbp_cfg.normalize),
+        "normalizer_decay": float(cbp_cfg.normalizer_decay),
+        "seed": int(cbp_cfg.seed),
+        "cbp": {
+            "enabled": bool(cbp_cfg.cbp.enabled),
+            "decay_rate": float(cbp_cfg.cbp.decay_rate),
+            "replacement_rate": float(cbp_cfg.cbp.replacement_rate),
+            "maturity_threshold": int(cbp_cfg.cbp.maturity_threshold),
+        },
+        "retention": {
+            "mode": cbp_cfg.retention.mode,
+            "n_slots": int(cbp_cfg.retention.n_slots),
+            "embed_dim": int(cbp_cfg.retention.embed_dim),
+            "trunk_step_scale": float(cbp_cfg.retention.trunk_step_scale),
+            "trunk_freeze_after": int(cbp_cfg.retention.trunk_freeze_after),
+            "proto_seed": int(cbp_cfg.retention.proto_seed),
+        },
     }
 
 
@@ -125,16 +294,26 @@ def _set_env_action_scale(env, action_scale: float) -> None:
     env.config = replace(env.config, action_scale=float(action_scale))
 
 
+def _set_env_locomotion_prior_residual_scale(env, residual_scale: float) -> None:
+    env.config = replace(
+        env.config,
+        locomotion_prior_residual_scale=float(residual_scale),
+    )
+
+
 def _action_scale_gate_passed(
     promotion_eval: dict,
     *,
     task_id: str,
     min_success_rate: float,
+    allow_stable_partial_progress: bool = True,
 ) -> bool:
     if float(promotion_eval.get("failure_rate", 1.0)) > 0.0:
         return False
     if _promotion_passed(promotion_eval, min_success_rate):
         return True
+    if not allow_stable_partial_progress:
+        return False
     return _stable_partial_progress_gate_passed(promotion_eval, task_id=task_id)
 
 
@@ -341,6 +520,12 @@ def _evaluate_task_success(
     action_l2: list[float] = []
     action_abs_mean: list[float] = []
     action_max_abs: list[float] = []
+    effective_action_max_abs: list[float] = []
+    locomotion_prior_action_max_abs: list[float] = []
+    locomotion_prior_residual_max_abs: list[float] = []
+    locomotion_prior_residual_pre_guard_max_abs: list[float] = []
+    locomotion_prior_residual_stability_scales: list[float] = []
+    locomotion_prior_residual_scales: list[float] = []
     tracked_body_names: list[str] = []
     reward_term_totals: dict[str, list[float]] = {}
     try:
@@ -362,6 +547,33 @@ def _evaluate_task_success(
                 action_abs_mean.append(float(np.mean(np.abs(action))))
                 action_max_abs.append(float(np.max(np.abs(action))))
                 obs, reward, terminated, truncated, info = env.step(action)
+                effective_action_max_abs.append(
+                    float(info.get("effective_action_max_abs", 0.0) or 0.0)
+                )
+                locomotion_prior_action_max_abs.append(
+                    float(info.get("locomotion_prior_action_max_abs", 0.0) or 0.0)
+                )
+                locomotion_prior_residual_max_abs.append(
+                    float(info.get("locomotion_prior_residual_max_abs", 0.0) or 0.0)
+                )
+                locomotion_prior_residual_pre_guard_max_abs.append(
+                    float(
+                        info.get(
+                            "locomotion_prior_residual_pre_guard_max_abs",
+                            0.0,
+                        )
+                        or 0.0
+                    )
+                )
+                locomotion_prior_residual_stability_scales.append(
+                    float(
+                        info.get("locomotion_prior_residual_stability_scale", 1.0)
+                        or 0.0
+                    )
+                )
+                locomotion_prior_residual_scales.append(
+                    float(info.get("locomotion_prior_residual_scale", 0.0) or 0.0)
+                )
                 total += float(reward)
                 reward_terms = info.get("reward_terms")
                 if isinstance(reward_terms, dict):
@@ -514,6 +726,20 @@ def _evaluate_task_success(
             "l2_norm": _float_stats(action_l2),
             "mean_abs": _float_stats(action_abs_mean),
             "max_abs": _float_stats(action_max_abs),
+            "effective_max_abs": _float_stats(effective_action_max_abs),
+            "locomotion_prior_max_abs": _float_stats(locomotion_prior_action_max_abs),
+            "locomotion_prior_residual_max_abs": _float_stats(
+                locomotion_prior_residual_max_abs
+            ),
+            "locomotion_prior_residual_pre_guard_max_abs": _float_stats(
+                locomotion_prior_residual_pre_guard_max_abs
+            ),
+            "locomotion_prior_residual_stability_scale": _float_stats(
+                locomotion_prior_residual_stability_scales
+            ),
+            "locomotion_prior_residual_scale": _float_stats(
+                locomotion_prior_residual_scales
+            ),
         },
         "physical_checks": physical_checks,
         "physical_success": bool(physical_checks) and all(physical_checks.values()),
@@ -545,6 +771,7 @@ def train_robot(
     steps_per_task: int,
     out_dir: Path,
     *,
+    controller_type: str = "linear",
     pca_dim: int = 32,
     episode_steps: int = 200,
     eval_episodes: int = 3,
@@ -564,9 +791,21 @@ def train_robot(
     phase_eval_interval_steps: int | None = None,
     locomotion_action_prior: str = "none",
     locomotion_prior_residual_scale: float = 1.0,
+    locomotion_prior_residual_scale_initial: float | None = None,
+    locomotion_prior_residual_scale_increment: float = (
+        DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INCREMENT
+    ),
+    locomotion_prior_residual_mode: str = "joint",
     locomotion_prior_feedback_pitch: float = 0.0,
     locomotion_prior_feedback_roll: float = 0.0,
     locomotion_prior_feedback_yaw: float = 0.0,
+    cbp_hidden_sizes: str | tuple[int, ...] | list[int] = (128, 128),
+    cbp_replacement_rate: float = 1e-4,
+    cbp_maturity_threshold: int = 100,
+    cbp_retention_mode: str = "multihead",
+    cbp_retention_slots: int | None = None,
+    cbp_trunk_step_scale: float = 0.5,
+    cbp_trunk_freeze_after: int = 0,
 ) -> dict:
     """Train an Alberta controller on the MuJoCo env over a task sequence."""
     from eliza_robot.curriculum.loader import load_curriculum
@@ -581,11 +820,25 @@ def train_robot(
     curriculum = load_curriculum()
     action_scale_schedule = _build_action_scale_schedule(
         target_scale=action_scale,
-        initial_scale=action_scale_initial,
+        initial_scale=_initial_action_scale_for_training(
+            target_scale=action_scale,
+            requested_initial_scale=action_scale_initial,
+            locomotion_action_prior=locomotion_action_prior,
+        ),
         increment=action_scale_increment,
         min_success_rate=min_phase_success_rate,
+        allow_stable_partial_progress=locomotion_action_prior == "none",
     )
     current_action_scale = float(action_scale_schedule["initial_scale"])
+    residual_scale_schedule = _build_locomotion_prior_residual_schedule(
+        target_scale=locomotion_prior_residual_scale,
+        initial_scale=locomotion_prior_residual_scale_initial,
+        increment=locomotion_prior_residual_scale_increment,
+        locomotion_action_prior=locomotion_action_prior,
+    )
+    current_locomotion_prior_residual_scale = float(
+        residual_scale_schedule["initial_scale"]
+    )
     # One env spanning all requested tasks (shared obs/action space); pin a
     # single task per phase so the controller learns them sequentially.
     env = make_text_conditioned_env(
@@ -598,7 +851,8 @@ def train_robot(
             episode_steps=episode_steps,
             action_scale=current_action_scale,
             locomotion_action_prior=locomotion_action_prior,
-            locomotion_prior_residual_scale=locomotion_prior_residual_scale,
+            locomotion_prior_residual_scale=current_locomotion_prior_residual_scale,
+            locomotion_prior_residual_mode=locomotion_prior_residual_mode,
             locomotion_prior_feedback_pitch=locomotion_prior_feedback_pitch,
             locomotion_prior_feedback_roll=locomotion_prior_feedback_roll,
             locomotion_prior_feedback_yaw=locomotion_prior_feedback_yaw,
@@ -608,27 +862,76 @@ def train_robot(
     obs_dim = int(env.observation_space.shape[0])
     action_dim = int(env.action_space.shape[0])
 
-    feature_cfg = FeatureConfig(
-        mode="sparse_gated",
-        embed_dim=pca_dim,
-        n_prototypes=64,
-        gate_hard=True,
-        proprio_random_dim=32,
-        seed=seed,
-    )
-    controller_cfg = AlbertaControllerConfig(
-        obs_dim=obs_dim,
-        action_dim=action_dim,
-        gamma=gamma,
-        actor_step_size=actor_step_size,
-        critic_step_size=critic_step_size,
-        log_sigma_init=log_sigma_init,
-        normalize=normalize,
-        obgd_kappa=2.0,
-        features=feature_cfg,
-        seed=seed,
-    )
-    controller = AlbertaContinualController(controller_cfg)
+    controller_type = controller_type.lower().strip()
+    if controller_type not in {"linear", "cbp"}:
+        raise ValueError("controller_type must be 'linear' or 'cbp'")
+    feature_cfg: FeatureConfig | None = None
+    cbp_controller_cfg = None
+    if controller_type == "linear":
+        feature_cfg = FeatureConfig(
+            mode="sparse_gated",
+            embed_dim=pca_dim,
+            n_prototypes=64,
+            gate_hard=True,
+            proprio_random_dim=32,
+            seed=seed,
+        )
+        controller_cfg = AlbertaControllerConfig(
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            gamma=gamma,
+            actor_step_size=actor_step_size,
+            critic_step_size=critic_step_size,
+            log_sigma_init=log_sigma_init,
+            normalize=normalize,
+            obgd_kappa=2.0,
+            features=feature_cfg,
+            seed=seed,
+        )
+        controller = AlbertaContinualController(controller_cfg)
+    else:
+        from alberta_framework.core.continual_backprop import ContinualBackpropConfig
+
+        from eliza_robot.rl.alberta.cbp_agent import (
+            AlbertaCBPController,
+            CBPControllerConfig,
+            RetentionConfig,
+        )
+
+        hidden_sizes = _parse_hidden_sizes(cbp_hidden_sizes)
+        retention_mode = cbp_retention_mode.lower().strip()
+        if retention_mode not in {"none", "multihead"}:
+            raise ValueError("cbp_retention_mode must be 'none' or 'multihead'")
+        retention_slots = (
+            max(1, len(tasks) * 2)
+            if cbp_retention_slots is None
+            else int(cbp_retention_slots)
+        )
+        cbp_controller_cfg = CBPControllerConfig(
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            gamma=gamma,
+            actor_step_size=actor_step_size,
+            critic_step_size=critic_step_size,
+            log_sigma_init=log_sigma_init,
+            normalize=normalize,
+            obgd_kappa=2.0,
+            hidden_sizes=hidden_sizes,
+            cbp=ContinualBackpropConfig(
+                replacement_rate=float(cbp_replacement_rate),
+                maturity_threshold=int(cbp_maturity_threshold),
+            ),
+            retention=RetentionConfig(
+                mode=retention_mode,
+                n_slots=max(1, retention_slots),
+                embed_dim=pca_dim,
+                trunk_step_scale=float(cbp_trunk_step_scale),
+                trunk_freeze_after=int(cbp_trunk_freeze_after),
+                proto_seed=seed + 12_345,
+            ),
+            seed=seed,
+        )
+        controller = AlbertaCBPController(cbp_controller_cfg)
 
     # Snapshot the full active-task list once; pinning replaces env.active_tasks
     # per phase, so we must index into this stable snapshot, not the mutated list.
@@ -643,6 +946,17 @@ def train_robot(
             "from_scale": None,
             "to_scale": current_action_scale,
             "reason": "initial_stability_scale",
+            "gate_passed": True,
+        }
+    ]
+    residual_scale_events = [
+        {
+            "phase": None,
+            "task": None,
+            "step": 0,
+            "from_scale": None,
+            "to_scale": current_locomotion_prior_residual_scale,
+            "reason": "initial_prior_residual_scale",
             "gate_passed": True,
         }
     ]
@@ -677,10 +991,23 @@ def train_robot(
         phase_train_returns = []
         phase_scale_start = current_action_scale
         phase_scale_events = []
+        phase_residual_scale_start = current_locomotion_prior_residual_scale
+        phase_residual_scale_events = []
         promoted = False
         first_promotion_step: int | None = None
         promotion_eval = None
         while phase_steps_run < steps_per_task:
+            if hasattr(controller, "set_actor_update_scale"):
+                target_residual_scale = float(residual_scale_schedule["target_scale"])
+                if locomotion_action_prior == "none":
+                    actor_update_scale = 1.0
+                elif target_residual_scale > 0.0:
+                    actor_update_scale = (
+                        current_locomotion_prior_residual_scale / target_residual_scale
+                    )
+                else:
+                    actor_update_scale = 0.0
+                controller.set_actor_update_scale(actor_update_scale)
             chunk_steps = min(eval_interval, steps_per_task - phase_steps_run)
             stats = train_online(
                 controller,
@@ -714,6 +1041,11 @@ def train_robot(
                 promotion_eval,
                 task_id=task,
                 min_success_rate=min_phase_success_rate,
+                allow_stable_partial_progress=locomotion_action_prior == "none",
+            )
+            residual_gate_passed = _promotion_passed(
+                promotion_eval,
+                min_phase_success_rate,
             )
             target_scale = float(action_scale_schedule["target_scale"])
             if (
@@ -733,7 +1065,7 @@ def train_robot(
                     "step": int(phase_steps_run),
                     "from_scale": float(old_scale),
                     "to_scale": float(current_action_scale),
-                    "reason": "no_fall_physical_gate_passed",
+                    "reason": "full_physical_success_gate_passed",
                     "gate_passed": True,
                     "success_rate": float(promotion_eval["success_rate"]),
                     "failure_rate": float(promotion_eval["failure_rate"]),
@@ -747,6 +1079,42 @@ def train_robot(
                 }
                 phase_scale_events.append(event)
                 action_scale_events.append(event)
+            residual_target_scale = float(residual_scale_schedule["target_scale"])
+            if (
+                residual_scale_schedule["enabled"]
+                and residual_gate_passed
+                and current_locomotion_prior_residual_scale < residual_target_scale
+            ):
+                old_residual_scale = current_locomotion_prior_residual_scale
+                current_locomotion_prior_residual_scale = min(
+                    residual_target_scale,
+                    current_locomotion_prior_residual_scale
+                    + float(residual_scale_schedule["increment"]),
+                )
+                _set_env_locomotion_prior_residual_scale(
+                    env,
+                    current_locomotion_prior_residual_scale,
+                )
+                event = {
+                    "phase": phase,
+                    "task": task,
+                    "step": int(phase_steps_run),
+                    "from_scale": float(old_residual_scale),
+                    "to_scale": float(current_locomotion_prior_residual_scale),
+                    "reason": "full_physical_success_gate_passed",
+                    "gate_passed": True,
+                    "success_rate": float(promotion_eval["success_rate"]),
+                    "failure_rate": float(promotion_eval["failure_rate"]),
+                    "physical_success": bool(promotion_eval["physical_success"]),
+                    "partial_progress_gate": bool(
+                        _stable_partial_progress_gate_passed(
+                            promotion_eval,
+                            task_id=task,
+                        )
+                    ),
+                }
+                phase_residual_scale_events.append(event)
+                residual_scale_events.append(event)
         if promotion_eval is None:
             promotion_eval = {
                 "episodes": 0,
@@ -786,6 +1154,16 @@ def train_robot(
                 "action_scale_end": float(current_action_scale),
                 "action_scale_target": float(action_scale_schedule["target_scale"]),
                 "action_scale_events": phase_scale_events,
+                "locomotion_prior_residual_scale_start": float(
+                    phase_residual_scale_start
+                ),
+                "locomotion_prior_residual_scale_end": float(
+                    current_locomotion_prior_residual_scale
+                ),
+                "locomotion_prior_residual_scale_target": float(
+                    residual_scale_schedule["target_scale"]
+                ),
+                "locomotion_prior_residual_scale_events": phase_residual_scale_events,
                 "train_steps": int(phase_steps_run),
                 "train_episodes": len(phase_train_returns),
                 "train_mean_return": float(np.mean(phase_train_returns))
@@ -861,6 +1239,16 @@ def train_robot(
                 "action_scale_end": float(current_action_scale),
                 "action_scale_target": float(action_scale_schedule["target_scale"]),
                 "action_scale_events": phase_scale_events,
+                "locomotion_prior_residual_scale_start": float(
+                    phase_residual_scale_start
+                ),
+                "locomotion_prior_residual_scale_end": float(
+                    current_locomotion_prior_residual_scale
+                ),
+                "locomotion_prior_residual_scale_target": float(
+                    residual_scale_schedule["target_scale"]
+                ),
+                "locomotion_prior_residual_scale_events": phase_residual_scale_events,
                 "steps_trained": int(phase_steps_run),
                 "cumulative_steps": int(total_steps_run),
                 "eval_episodes": int(eval_episodes),
@@ -939,7 +1327,12 @@ def train_robot(
 
     # Persist controller params + manifest in the TextConditionedPolicy layout.
     snap = controller.state_dict()
-    np.savez(out_dir / "alberta_policy.npz", **snap)
+    if controller_type == "cbp":
+        from eliza_robot.rl.alberta.checkpoint import save_state_npz
+
+        save_state_npz(out_dir / "alberta_policy.npz", snap)
+    else:
+        np.savez(out_dir / "alberta_policy.npz", **snap)
     all_promoted = all(row["promoted"] for row in promotion_rows)
     failed_phase = next(
         (row["phase"] for row in promotion_rows if not row["promoted"]),
@@ -947,6 +1340,7 @@ def train_robot(
     )
     manifest = {
         "regime": "alberta_streaming",
+        "controller_type": controller_type,
         "phase_promotion_schema": "alberta-phase-promotion-v1",
         "curriculum_version": curriculum.version,
         "pca_dim": pca_dim,
@@ -978,6 +1372,12 @@ def train_robot(
         "domain_rand": bool(domain_rand),
         "locomotion_action_prior": locomotion_action_prior,
         "locomotion_prior_residual_scale": float(locomotion_prior_residual_scale),
+        "locomotion_prior_residual_mode": locomotion_prior_residual_mode,
+        "locomotion_prior_residual_scale_schedule": {
+            **residual_scale_schedule,
+            "final_scale": float(current_locomotion_prior_residual_scale),
+            "events": residual_scale_events,
+        },
         "locomotion_prior_feedback": {
             "pitch": float(locomotion_prior_feedback_pitch),
             "roll": float(locomotion_prior_feedback_roll),
@@ -1000,33 +1400,12 @@ def train_robot(
         },
         # Full controller config so TextConditionedPolicy can rebuild the exact
         # feature map + agent for inference.
-        "controller": {
-            "gamma": controller_cfg.gamma,
-            "actor_step_size": controller_cfg.actor_step_size,
-            "critic_step_size": controller_cfg.critic_step_size,
-            "actor_lamda": controller_cfg.actor_lamda,
-            "critic_lamda": controller_cfg.critic_lamda,
-            "log_sigma_init": controller_cfg.log_sigma_init,
-            "log_sigma_min": controller_cfg.log_sigma_min,
-            "log_sigma_max": controller_cfg.log_sigma_max,
-            "action_low": controller_cfg.action_low,
-            "action_high": controller_cfg.action_high,
-            "obgd_kappa": controller_cfg.obgd_kappa,
-            "normalize": controller_cfg.normalize,
-            "normalizer_decay": controller_cfg.normalizer_decay,
-            "decouple_global_bias": controller_cfg.decouple_global_bias,
-            "features": {
-                "mode": feature_cfg.mode,
-                "embed_dim": feature_cfg.embed_dim,
-                "n_prototypes": feature_cfg.n_prototypes,
-                "gate_hard": feature_cfg.gate_hard,
-                "gate_temperature": feature_cfg.gate_temperature,
-                "proprio_random_dim": feature_cfg.proprio_random_dim,
-                "random_dim": feature_cfg.random_dim,
-                "scale": feature_cfg.scale,
-                "seed": feature_cfg.seed,
-            },
-        },
+        "controller": _controller_manifest(
+            controller_type=controller_type,
+            linear_cfg=controller_cfg if controller_type == "linear" else None,
+            feature_cfg=feature_cfg,
+            cbp_cfg=cbp_controller_cfg,
+        ),
         "trained_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "history": history,
     }
@@ -1078,6 +1457,17 @@ def main(argv: list[str] | None = None) -> None:
         default="none",
     )
     p.add_argument("--locomotion-prior-residual-scale", type=float, default=1.0)
+    p.add_argument("--locomotion-prior-residual-scale-initial", type=float, default=None)
+    p.add_argument(
+        "--locomotion-prior-residual-scale-increment",
+        type=float,
+        default=DEFAULT_LOCOMOTION_PRIOR_RESIDUAL_SCALE_INCREMENT,
+    )
+    p.add_argument(
+        "--locomotion-prior-residual-mode",
+        choices=("joint", "hiwonder_stride_mod"),
+        default="joint",
+    )
     p.add_argument("--locomotion-prior-feedback-pitch", type=float, default=0.0)
     p.add_argument("--locomotion-prior-feedback-roll", type=float, default=0.0)
     p.add_argument("--locomotion-prior-feedback-yaw", type=float, default=0.0)
@@ -1085,6 +1475,19 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--require-phase-success", action="store_true")
     p.add_argument("--min-phase-success-rate", type=float, default=1.0)
     p.add_argument("--phase-eval-interval-steps", type=int, default=None)
+    p.add_argument(
+        "--controller-type",
+        choices=("linear", "cbp"),
+        default="linear",
+        help="Alberta controller implementation to train",
+    )
+    p.add_argument("--cbp-hidden-sizes", default="128,128")
+    p.add_argument("--cbp-replacement-rate", type=float, default=1e-4)
+    p.add_argument("--cbp-maturity-threshold", type=int, default=100)
+    p.add_argument("--cbp-retention-mode", choices=("none", "multihead"), default="multihead")
+    p.add_argument("--cbp-retention-slots", type=int, default=None)
+    p.add_argument("--cbp-trunk-step-scale", type=float, default=0.5)
+    p.add_argument("--cbp-trunk-freeze-after", type=int, default=0)
     p.add_argument(
         "--no-domain-rand",
         action="store_true",
@@ -1096,6 +1499,7 @@ def main(argv: list[str] | None = None) -> None:
         args.tasks,
         args.steps_per_task,
         Path(args.out_dir),
+        controller_type=args.controller_type,
         pca_dim=args.pca_dim,
         episode_steps=args.episode_steps,
         eval_episodes=args.eval_episodes,
@@ -1110,6 +1514,13 @@ def main(argv: list[str] | None = None) -> None:
         normalize=not args.no_normalize,
         locomotion_action_prior=args.locomotion_action_prior,
         locomotion_prior_residual_scale=args.locomotion_prior_residual_scale,
+        locomotion_prior_residual_scale_initial=(
+            args.locomotion_prior_residual_scale_initial
+        ),
+        locomotion_prior_residual_scale_increment=(
+            args.locomotion_prior_residual_scale_increment
+        ),
+        locomotion_prior_residual_mode=args.locomotion_prior_residual_mode,
         locomotion_prior_feedback_pitch=args.locomotion_prior_feedback_pitch,
         locomotion_prior_feedback_roll=args.locomotion_prior_feedback_roll,
         locomotion_prior_feedback_yaw=args.locomotion_prior_feedback_yaw,
@@ -1117,6 +1528,13 @@ def main(argv: list[str] | None = None) -> None:
         require_phase_success=args.require_phase_success,
         min_phase_success_rate=args.min_phase_success_rate,
         phase_eval_interval_steps=args.phase_eval_interval_steps,
+        cbp_hidden_sizes=args.cbp_hidden_sizes,
+        cbp_replacement_rate=args.cbp_replacement_rate,
+        cbp_maturity_threshold=args.cbp_maturity_threshold,
+        cbp_retention_mode=args.cbp_retention_mode,
+        cbp_retention_slots=args.cbp_retention_slots,
+        cbp_trunk_step_scale=args.cbp_trunk_step_scale,
+        cbp_trunk_freeze_after=args.cbp_trunk_freeze_after,
     )
 
 

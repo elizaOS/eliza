@@ -17,6 +17,17 @@ REPORT = Path(
     os.environ.get("AOSP_LINUX_PREFLIGHT_REPORT", ROOT / "build/reports/aosp_linux_preflight.json")
 )
 CLAIM_BOUNDARY = "host_preflight_only_not_aosp_build_boot_cuttlefish_or_e1_chip_hardware_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "aosp_build_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "cuttlefish_boot_claim_allowed": False,
+    "e1_chip_hardware_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 DEFAULT_AOSP_DIRS = (Path("/home/shaw/aosp"),)
 TOOL_DEFAULT_PATHS = {
     "renode": (ROOT / "tools/bin/renode", ROOT / "external/renode_1.16.1-dotnet_portable/renode"),
@@ -346,6 +357,7 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
         "generated_utc": utc_now(),
         "status": "blocked" if blockers else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "aosp_dir": str(aosp_dir) if aosp_dir else "",
         "aosp_dir_source": aosp_dir_source,
         "host": {

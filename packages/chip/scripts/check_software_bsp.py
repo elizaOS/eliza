@@ -33,6 +33,18 @@ AOSP_REFERENCE_ONLY_PATHS = [
     "docs/evidence/android/renode_e1_soc_smoke.log",
 ]
 CLAIM_BOUNDARY = "scaffold_and_evidence_inventory_only_not_linux_or_aosp_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_bsp_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 DEFAULT_EVIDENCE_METADATA = ["EXTERNAL_TREE=", "COMMAND=", "START_UTC=", "END_UTC=", "RESULT="]
 ANDROID_COMPAT_METADATA = [
     "EXTERNAL_TREE=",
@@ -921,6 +933,7 @@ def build_scaffold_report(
         "schema": "eliza.software_bsp.v1",
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "generated_utc": datetime.now(UTC).isoformat(),
         "target": target,
         "scaffold_only": scaffold_only,

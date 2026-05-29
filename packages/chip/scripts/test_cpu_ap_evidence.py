@@ -118,6 +118,13 @@ def test_evidence_manifest_blocks_phone_class_claims() -> None:
 
 def test_selected_manifest_keeps_single_rocket_as_bringup_only() -> None:
     manifest = json.loads(SELECTED_MANIFEST.read_text())
+    if manifest["status"] != "linux_complete":
+        raise AssertionError("selected Rocket manifest must record generated Linux completion")
+    policy = manifest["claim_policy"]
+    if policy["linux_capable_cpu_claim"] is not True:
+        raise AssertionError("generated single-hart Rocket Linux claim must be enabled")
+    if policy["platform_contract_has_cpu_may_flip_to_true"] is not False:
+        raise AssertionError("e1_chip platform-contract CPU flag must remain blocked")
     selected = manifest["selected_path"]
     if selected["claim_level"] != "initial_linux_bringup_only":
         raise AssertionError("single Rocket target must remain bring-up only")
@@ -146,6 +153,15 @@ def test_completion_gate_blocked_report_names_cpu_ap_evidence_not_qemu_virt() ->
         raise AssertionError("completion gate blocked report must stay blocked")
     if "qemu_virt_linux_boot_is_reference_only" not in report["claim_boundary"]:
         raise AssertionError("completion gate must keep QEMU virt outside CPU/AP completion")
+    for key in (
+        "phone_2028_ap_claim_allowed",
+        "release_claim_allowed",
+        "linux_capable_cpu_claim_allowed",
+        "privileged_boot_claim_allowed",
+        "generated_cpu_ap_completion_claim_allowed",
+    ):
+        if report.get(key) is not False:
+            raise AssertionError(f"{key} must be false while CPU/AP completion is blocked")
     if report["blocker_dependency_counts"]["live_device_validation"] != 1:
         raise AssertionError("missing CPU/AP transcript must be live validation")
     if "QEMU virt Linux boot evidence does not satisfy" not in report["next_step"]:
@@ -1204,6 +1220,17 @@ def test_opensbi_capture_failure_writes_precise_blocker_report() -> None:
     assert_contains("\n".join(report["blockers"]), "intake refused")
     if report["evidence_log_rewritten"]:
         raise AssertionError("blocked OpenSBI report must not claim evidence rewrite")
+    for flag in (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "opensbi_handoff_claim_allowed",
+        "linux_boot_claim_allowed",
+        "android_boot_claim_allowed",
+        "generated_ap_boot_claim_allowed",
+        "privileged_boot_claim_allowed",
+    ):
+        if report.get(flag) is not False:
+            raise AssertionError(f"{flag} must be false in blocked OpenSBI report")
 
 
 def test_dts_audit_separates_ap_boot_from_e1_peripherals() -> None:
@@ -1489,7 +1516,8 @@ def test_scaffold_check_lists_new_missing_evidence_paths() -> None:
 
 def test_payload_path_uses_cpu_ap_manifest_transcripts_only() -> None:
     env = os.environ.copy()
-    env["CHIPYARD_PAYLOAD_PATH_REPORT"] = "benchmarks/results/test-temp/chipyard_payload_path.json"
+    report_rel = "benchmarks/results/test-temp/chipyard_payload_path.json"
+    env["CHIPYARD_PAYLOAD_PATH_REPORT"] = report_rel
     result = subprocess.run(
         [sys.executable, "scripts/check_chipyard_payload_path.py"],
         cwd=ROOT,
@@ -1499,6 +1527,18 @@ def test_payload_path_uses_cpu_ap_manifest_transcripts_only() -> None:
     )
     if result.returncode not in (0, 2):
         raise AssertionError(result.stdout + result.stderr)
+    report = json.loads((ROOT / report_rel).read_text(encoding="utf-8"))
+    for flag in (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "rtl_boot_claim_allowed",
+        "linux_boot_claim_allowed",
+        "android_boot_claim_allowed",
+        "silicon_claim_allowed",
+        "generated_ap_completion_claim_allowed",
+    ):
+        if report.get(flag) is not False:
+            raise AssertionError(f"{flag} must be false in Chipyard payload path report")
     if "STATUS: PASS chipyard.payload_path" in result.stdout:
         return
     assert_contains(result.stdout, "STATUS: BLOCKED chipyard.payload_path")

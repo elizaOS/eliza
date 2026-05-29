@@ -76,9 +76,26 @@ python3 scripts/check_e1x_repair_rom_cocotb.py
 ```
 
 Run the aggregate E1X evidence-bundle gate, which checks the current benchmark,
-graph-mapper, kernel-codegen, core/PE cocotb, repair-ROM RTL, boot-repair
-firmware, tile, DFT cocotb, fabric, formal, and RTL-contract reports as one
-top-level architecture-simulation evidence bundle.
+yield/repair margin, graph-mapper, kernel-codegen, model-load stream,
+tensor-numerics, tensor cycle-executor, sampled tensor fabric-executor,
+sampled tensor output-checksum, bounded reduction-merge RTL,
+full-output coverage-gap, execution coverage ladder, full-output workplan,
+vector-kernel template, looped vector-kernel skeleton,
+per-layer vector-kernel codegen,
+sampled vector-kernel executor,
+vector-kernel window executor,
+vector-window fabric checksum,
+window-shard linkage,
+window-repair linkage,
+window route validation,
+window repair-ROM linkage,
+window execution-trace linkage,
+fabric-reduction accounting, core/PE cocotb, repair-ROM RTL,
+boot-repair firmware, repair fuse/SRAM capacity, repair fuse-reader RTL, tile,
+DFT cocotb, DFT strategy, legacy/repair fabric, production credit-router,
+parameterized mesh-fabric, mesh route-discipline/liveness evidence,
+power/thermal planning, formal, and RTL-contract reports as one top-level
+architecture-simulation evidence bundle.
 It also verifies that each required report declares evidence paths and that
 those files, including archived cocotb result XMLs, are present. Run it with:
 
@@ -86,11 +103,242 @@ those files, including archived cocotb result XMLs, are present. Run it with:
 python3 scripts/check_e1x_evidence_bundle.py
 ```
 
+Run the repair fuse/SRAM capacity gate, which sizes the production repair
+fuse/ROM window and dedicated repair SRAM against the generated real-graph
+normal and high-failure repair images, with:
+
+```sh
+python3 scripts/check_e1x_repair_capacity.py
+```
+
+Run the repair fuse-reader gate, which verifies the RTL controller that streams
+a persistent OTP/fuse macro read port into the existing 64-bit repair-ROM loader
+valid/ready contract against the generated normal and high-failure repair
+images, with:
+
+```sh
+python3 scripts/check_e1x_repair_fuse_reader.py
+```
+
+Run the yield/repair-margin gate, which independently validates the real-graph
+normal and high-failure defect maps against their repair manifests, spare
+budget, and sampled repaired routes, with:
+
+```sh
+python3 scripts/check_e1x_yield_repair_margin.py
+```
+
+Run the tensor-numerics gate, which independently recomputes every sampled W4A8
+dot product in the real-graph microkernel proof and checks schedule/placement
+alignment, with:
+
+```sh
+python3 scripts/check_e1x_tensor_numerics.py
+```
+
+Run the tensor cycle-executor gate, which replays every sampled W4A8 proof row
+as scalar RV64IM add/mul/shift instruction streams and ties the result to the
+PE-core generated W4A8 cocotb sample, with:
+
+```sh
+python3 scripts/check_e1x_tensor_cycle_executor.py
+```
+
+Run the sampled tensor fabric-executor gate, which takes the scalar row
+partials from every proof layer, merges them with the same configured-group
+signed accumulation and saturation semantics covered by the RTL reduction merge
+primitive, and links the sampled execution path to the 24-color tensor schedule,
+with:
+
+```sh
+python3 scripts/check_e1x_tensor_fabric_executor.py
+```
+
+Run the sampled tensor output-checksum gate, which recomputes the post-W4A8
+requantized sampled output rows for every proof layer and links those sampled
+outputs to the normal/high execution trace checksum sidecars, with:
+
+```sh
+python3 scripts/check_e1x_tensor_output_checksum.py
+```
+
+Run the full-output coverage-gap gate, which measures sampled tensor output
+evidence against every scheduled real-graph output row and MAC, with:
+
+```sh
+python3 scripts/check_e1x_full_output_coverage.py
+```
+
+Run the execution coverage-ladder gate, which keeps real sampled model-output
+coverage separate from deterministic vector-window fabric coverage while
+quantifying the remaining full-output gap, with:
+
+```sh
+python3 scripts/check_e1x_execution_coverage_ladder.py
+```
+
+Run the full-output workplan gate, which converts the tensor schedule into a
+deterministic compact plan covering every output row, MAC, packed vector-word
+operation, K wave, core wave, and routing color without claiming execution, with:
+
+```sh
+python3 scripts/check_e1x_full_output_workplan.py
+```
+
+Run the vector-kernel template gate, which emits a concrete RV64IM unrolled W4A8
+program template for one packed int4 vector word and scales it against the
+full-output workplan without claiming looped per-layer execution, with:
+
+```sh
+python3 scripts/check_e1x_vector_kernel_template.py
+```
+
+Run the looped vector-kernel skeleton gate, which emits concrete RV64IM branch
+and pointer-update control words for iterating output rows and packed vector
+words, then scales that loop-control overhead against the full-output workplan,
+with:
+
+```sh
+python3 scripts/check_e1x_looped_vector_kernel_skeleton.py
+```
+
+Run the per-layer vector-kernel codegen gate, which combines the full-output
+workplan, vector-word template, and loop skeleton into deterministic per-layer
+codegen accounting without claiming execution of those generated rows, with:
+
+```sh
+python3 scripts/check_e1x_per_layer_vector_codegen.py
+```
+
+Run the sampled vector-kernel executor gate, which replays the proof rows as
+packed int4 vector-word operations linked to the per-layer codegen artifact and
+PE-core RTL cocotb evidence, with:
+
+```sh
+python3 scripts/check_e1x_sampled_vector_kernel_executor.py
+```
+
+Run the vector-kernel window executor gate, which expands packed W4A8 vector
+execution to a deterministic 64-row window per proof layer while preserving the
+full-output execution blocker, with:
+
+```sh
+python3 scripts/check_e1x_vector_kernel_window_executor.py
+```
+
+Run the vector-window fabric-checksum gate, which routes and reduces the
+64-row-per-layer vector execution window by scheduled routing color and links it
+to the RTL reduction-merge evidence, with:
+
+```sh
+python3 scripts/check_e1x_vector_window_fabric_checksum.py
+```
+
+Run the window-shard linkage gate, which maps the deterministic vector-window
+execution rows onto the real placed model's loaded local-SRAM shard ranges and
+loader-word accounting, with:
+
+```sh
+python3 scripts/check_e1x_window_shard_linkage.py
+```
+
+Run the window-repair linkage gate, which maps the vector-window touched logical
+cores through the normal and high-failure repair manifests and verifies their
+post-repair physical targets are usable, with:
+
+```sh
+python3 scripts/check_e1x_window_repair_linkage.py
+```
+
+Run the window route-validation gate, which recomputes repaired physical routes
+for adjacent logical neighbor pairs inside the executed vector-window touched
+core set under normal and high-failure defect maps, with:
+
+```sh
+python3 scripts/check_e1x_window_route_validation.py
+```
+
+Run the window repair-ROM linkage gate, which decodes the generated normal and
+high-failure repair ROM images and verifies they program the remap words needed
+by the executed vector-window touched cores, with:
+
+```sh
+python3 scripts/check_e1x_window_repair_rom_linkage.py
+```
+
+Run the window execution-trace linkage gate, which ties the normal/high
+real-graph execution traces to the repair ROM and window route evidence and
+checks the high-failure slowdown path, with:
+
+```sh
+python3 scripts/check_e1x_window_execution_trace_linkage.py
+```
+
+Run the fabric-reduction gate, which recomputes scheduled reduction and
+activation wavelets by routing color, checks fabric color timing linkage, and
+ties the accounting to mesh delivery plus bounded RTL merge-primitive evidence
+without claiming full vectorized tensor fabric execution, with:
+
+```sh
+python3 scripts/check_e1x_fabric_reduction.py
+```
+
+Run the reduction-merge RTL gate, which verifies the bounded merge primitive
+for one configured reduction group at a time, including signed partial sums,
+valid/ready backpressure, tag mismatch accounting, config rejection, and int32
+saturation, with:
+
+```sh
+python3 scripts/check_e1x_reduction_merge_cocotb.py
+```
+
+Run the full model-load stream gate, which accounts for every placed real-graph
+weight shard as local-SRAM loader transactions, checks all shards fit the
+placement SRAM budget, and links the full placement stream to the generated
+shard-loader cocotb sample, with:
+
+```sh
+python3 scripts/check_e1x_model_load_stream.py
+```
+
+Run the power/thermal planning gate, which estimates dense-peak and real-graph
+schedule power against an explicit wafer-scale liquid-cooling envelope without
+claiming package or silicon signoff, with:
+
+```sh
+python3 scripts/check_e1x_power_thermal.py
+```
+
+Run the DFT strategy gate, which emits a structured report tying the SECDED and
+March C- cocotb evidence to the fail-closed foundry scan/ATPG/silicon boundary,
+with:
+
+```sh
+python3 scripts/check_e1x_dft_strategy.py
+```
+
 Run the fabric simulation gate, including the production credit-flow-controlled
 router and two-router lossless-chain proof, with:
 
 ```sh
 python3 scripts/check_e1x_fabric_cocotb.py
+```
+
+Run the production mesh fabric gate, which instantiates the credit router across
+a parameterized tile array with real `e1x_pe_core` nodes and checks multi-hop XY
+delivery, with:
+
+```sh
+python3 scripts/check_e1x_mesh_fabric_cocotb.py
+```
+
+Run the mesh route-discipline/liveness evidence gate, which ties strict XY
+route-discipline markers, production mesh/credit-router cocotb evidence, and
+local credit-router formal safety evidence while preserving the open full
+network-level formal liveness blocker, with:
+
+```sh
+python3 scripts/check_e1x_mesh_liveness_evidence.py
 ```
 
 Run the E1X formal safety gate, including the production credit router,
@@ -179,7 +427,17 @@ python3 scripts/check_e1x_formal.py
   independent multi-color flows, and a real PE core launching a wavelet routed
   across the mesh. This closes the integration gap between the production credit
   router, the real PE core, and the wafer mesh; full-resolution sizing and a
-  formal network-level liveness proof remain open (see Completion Gates).
+  formal network-level liveness proof remain open (see Completion Gates). The
+  `e1x-mesh-liveness-evidence` gate aggregates the XY route-discipline markers,
+  local credit-router formal safety checks, and 4x4 mesh cocotb evidence without
+  claiming a full network liveness proof.
+- Bounded reduction merge RTL: `rtl/e1x/e1x_reduction_merge.sv` accumulates one
+  configured tensor reduction group at a time from signed 32-bit fabric
+  partials into a 64-bit accumulator, emits a saturated signed 32-bit result,
+  and exposes valid/ready backpressure, tag mismatch, count, and overflow
+  status. The `e1x-reduction-merge-cocotb` gate covers signed sums,
+  backpressured output hold, wrong-group filtering, positive/negative
+  saturation, and zero-length config rejection.
 - Repair ROM RTL: `rtl/e1x/e1x_repair_rom_loader.sv` consumes the 64-bit image
   format and emits decoded remap and route records. `rtl/e1x/e1x_repair_state.sv`
   stores those records in bounded remap/route memories and exposes lookup ports
@@ -230,8 +488,9 @@ python3 scripts/check_e1x_formal.py
   SRAM words, while `rtl/e1x/e1x_mbist.sv` provides the March C- local-SRAM
   manufacturing-test sequencer with pass/fail and failing-address/bit evidence.
   `scripts/check_e1x_dft_cocotb.py` proves the ECC and MBIST blocks in cocotb,
-  and `scripts/check_e1x_dft_strategy.py` keeps the scan/DFT strategy document
-  coupled to those RTL artifacts.
+  and `scripts/check_e1x_dft_strategy.py` emits a structured report that keeps
+  the scan/DFT strategy document coupled to those RTL artifacts and the
+  fail-closed foundry scan/ATPG/silicon boundary.
 - Model-run flow: a deterministic W4A8 static graph execution model reports
   load cycles, prefill cycles, decode cycles, activation wavelets, repaired-hop
   penalty, decode tokens/s, and a repeatable output checksum under the
@@ -293,10 +552,10 @@ python3 scripts/check_e1x_formal.py
 
 This is architecture-simulation evidence. It demonstrates SRAM sizing, model
 placement, deterministic model execution, defect-map artifact generation,
-repair-manifest handoff, spare remapping, and repaired route validation at
-scale. It does not claim RTL completion, PDK signoff, scan/ATPG coverage,
-physical wafer sort, package feasibility, measured silicon benchmark evidence,
-or a production compiler for arbitrary LLM graphs.
+repair-manifest handoff, spare remapping, repaired route validation, and
+modeled yield/repair margin at scale. It does not claim RTL completion, PDK
+signoff, scan/ATPG coverage, physical wafer sort, package feasibility, measured
+silicon benchmark evidence, or a production compiler for arbitrary LLM graphs.
 
 ## Completion Gates Still Missing
 
@@ -308,8 +567,7 @@ or a production compiler for arbitrary LLM graphs.
   `e1x-tile-cocotb` gate boots a program on the integrated core (including an
   M-extension MUL the tiny-core cannot decode) and round-trips a fabric wavelet
   through the router Local port.
-- Network-level deadlock/liveness *formal* proof and full-resolution (512x342)
-  route-table SRAM/fuse sizing for the production mesh. A parameterized RxC
+- Network-level deadlock/liveness *formal* proof for the production mesh. A parameterized RxC
   (default 4x4) mesh fabric top (`rtl/e1x/e1x_mesh_fabric.sv`) now instantiates
   the production `e1x_credit_router` across a tile array with real `e1x_pe_core`
   compute nodes, inter-tile credit-returned links, and boot-time route-table
@@ -317,27 +575,109 @@ or a production compiler for arbitrary LLM graphs.
   delivery (up to six router hops corner-to-corner), X-then-Y turns, independent
   multi-color flows, and a real PE core launching a wavelet routed across the
   mesh. XY dimension-order routing is acyclic in the channel-dependency graph
-  (deadlock-free by construction); a full-mesh formal liveness proof and the
-  full-wafer route-table SRAM/fuse sizing remain open.
+  (deadlock-free by construction). The `e1x-mesh-liveness-evidence` gate now
+  checks those route-discipline markers against the mesh RTL, the credit-router
+  congestion/drop boundary, the expected 4x4 mesh cocotb tests, and the local
+  credit-router formal safety harness; it deliberately records
+  `full_formal_network_liveness_proof_missing` as the residual blocker. The
+  `e1x-repair-capacity` gate now sizes the full-wafer repair fuse/ROM window and
+  dedicated remap/route SRAM against the generated real-graph normal and
+  high-failure repair images; a full-mesh formal liveness proof remains open.
 - Foundry scan-chain insertion, ATPG coverage, at-speed test, foundry SRAM macro
   MBIST collars, and measured silicon DFT evidence. The local SRAM ECC/MBIST
   RTL units and DFT strategy gate are present, but foundry-flow DFT remains
   outside this package.
-- Silicon fuse burning and the OTP/fuse read port for repair programming. The
-  boot-time repair-route programming logic is implemented in `fw/e1x/` and
+- Silicon fuse burning and foundry OTP macro evidence for repair programming.
+  The boot-time repair-route programming logic is implemented in `fw/e1x/` and
   verified in simulation against the real generated `eliza.e1x.repair_rom.v1`
   images for the scaled high-failure handoff plus the real-graph normal and
-  high-failure handoffs. The native harness streams every remap/route word
-  through the MMIO programmer protocol and reconstructs the route table for each
-  image, but the fuse window and OTP read path are modeled, not silicon.
+  high-failure handoffs. `rtl/e1x/e1x_repair_fuse_reader.sv` now provides the
+  synthesizable controller contract from a persistent 64-bit OTP/fuse read port
+  into the repair-ROM loader valid/ready stream, and
+  `e1x-repair-fuse-reader` gates it against all generated repair images plus
+  Verilator lint. Fuse burning, foundry OTP macro implementation, wafer sort,
+  and silicon readback remain open.
 - Cycle-accurate full tensor-kernel backend for the placed graph: vectorized
   int4/int8 MAC loops in PE instruction streams, accumulation layout across
   cores, fabric reduction/merge scheduling, and full-output numerical proof. The
   architecture-level placement/sharding/capacity mapping is closed by
   `compiler/runtime/e1x_graph_mapper.py`; dispatch/control instruction streams,
   deterministic scalar W4A8 microkernel semantics, and row/K-wave tensor
-  scheduling plus fabric color-pressure/timing and schedule-derived architecture
-  cycle estimates are checked by `compiler/runtime/e1x_kernel_codegen.py`; the
-  cycle-accurate full tensor executor remains.
-- Formal, full-wafer RTL, PD, package, thermal, and power evidence.
+  scheduling plus fabric color-pressure/timing and schedule-derived
+  architecture cycle estimates are checked by `compiler/runtime/e1x_kernel_codegen.py`.
+  The `e1x-model-load-stream` gate now expands the full 283-layer placement into
+  151367 local-SRAM shard-load records and 1627034880 loader word transactions,
+  validating loader-capacity fit, the aligned 4 KiB/core runtime reserve policy,
+  and row-padding overhead against the generated local-SRAM shard-loader cocotb
+  sample.
+  The `e1x-tensor-numerics` gate independently recomputes all sampled W4A8 MACs
+  across the 283 placed layers and verifies proof/schedule/placement alignment;
+  the `e1x-tensor-cycle-executor` gate now replays all 1132 sampled rows and
+  26180 sampled MACs as scalar RV64IM add/mul/shift instruction streams with
+  cycle accounting, linked to the PE-core generated W4A8 cocotb test. The
+  `e1x-tensor-fabric-executor` gate now feeds those 1132 scalar row partials
+  across 283 proof-layer merge groups, checks 1415 sampled merge cycles and
+  109531 total sampled scalar-plus-merge cycles, and links that path to the
+  24-color tensor schedule. The `e1x-tensor-output-checksum` gate now recomputes
+  the post-requantized sampled output rows for all 283 proof layers and records
+  sampled output checksum 14414877542268347137 while also checking that the
+  normal/high execution trace sidecars carry positive, route-colored scenario
+  checksums. The `e1x-full-output-coverage` gate now quantifies that this is
+  still 1132 sampled rows out of 2608640 scheduled output rows and 26180 sampled
+  MACs out of 13015864320 full graph MACs, preserving the full-output blocker
+  as measured evidence. The `e1x-execution-coverage-ladder` gate keeps that real
+  sampled-output lane separate from the deterministic vector-window fabric lane,
+  which now covers 18112 rows and 418880 lane MACs, a 16x row/MAC gain over the
+  real sampled output lane while still leaving 2590528 rows unexecuted by the
+  deterministic window. The `e1x-full-output-workplan` gate now hashes a compact
+  full-output workplan covering all 2608640 rows, 13015864320 MACs,
+  1627345920 packed vector-word operations, 4187241 scheduled core waves, 5481
+  K waves, and all 24 routing colors; it still does not execute those rows. The
+  `e1x-vector-kernel-template` gate now emits a concrete 54-word RV64IM unrolled
+  W4A8 template for one packed int4 vector word and scales that to
+  87876679680 template instruction instances over the full-output workplan; the
+  `e1x-looped-vector-kernel-skeleton` gate adds an 11-word RV64IM branch/control
+  skeleton for row/vector iteration, scaling to 6517209600 loop-control
+  instructions and 94393889280 combined template-plus-loop instruction
+  instances. The `e1x-per-layer-vector-codegen` gate combines that template and
+  loop skeleton with all 283 workplan layers, preserving the same
+  94393889280 estimated generated instructions. The
+  `e1x-sampled-vector-kernel-executor` gate now executes the sampled proof rows
+  as 3556 packed int4 vector-word operations across all 283 proof layers and
+  verifies 26180 lane MACs against the proof accumulators/requantized outputs;
+  the `e1x-vector-kernel-window-executor` gate expands deterministic packed
+  vector execution to 18112 rows and 56896 vector-word operations across the
+  same 283 layers. The `e1x-vector-window-fabric-checksum` gate now routes that
+  expanded window across all 24 routing colors, merges 283 layer groups with
+  RTL-reduction-equivalent saturation semantics, and records routed checksum
+  15818110737476397592. The `e1x-window-shard-linkage` gate maps those executed
+  rows onto 1169 real loaded local-SRAM shard records and 11060496 loader words,
+  proving the window is inside the resident placement/load stream without
+  claiming the full weight tensors were executed. The
+  `e1x-window-repair-linkage` gate maps the same 1169 touched logical cores
+  through normal/high repair manifests: 2 window cores remap under normal defects
+  and 24 remap under high failure, with all touched cores landing on usable
+  physical targets. The `e1x-window-route-validation` gate then recomputes 963
+  repaired physical neighbor routes inside that touched-core set; high-failure
+  routes accumulate 6571 extra hops versus 185 for normal defects while avoiding
+  blocked cores and links. The `e1x-window-repair-rom-linkage` gate verifies the
+  generated repair ROM payloads contain the remap words needed by that window:
+  2 under normal defects and 24 under high failure, tied to RTL repair-ROM cocotb
+  and boot repair firmware evidence. The `e1x-window-execution-trace-linkage`
+  gate ties that repair evidence to the normal/high real-graph execution traces:
+  high failure runs 63132355414 cycles versus 47501642583 normal cycles, with a
+  larger repair hop penalty and distinct output checksum. The missing piece is
+  executing all generated rows with real model weights through the vectorized
+  tensor fabric and producing a full-output checksum. The
+  bounded `e1x-reduction-merge-cocotb` gate verifies a single-group RTL
+  reduction primitive for signed partial sums, backpressure, mismatch
+  accounting, and saturation. The `e1x-fabric-reduction` gate now independently
+  recomputes 2608640 scheduled reduction wavelets, 270586961 total fabric
+  wavelets, all 24 routing-color aggregates, and the per-color fabric timing
+  links against mesh delivery plus bounded reduction-merge evidence. The
+  vectorized full tensor fabric executor, full-wafer reduction scheduler, and
+  full-output numerical proof remain open.
+- Formal, full-wafer RTL, PD, package thermal signoff, calibrated power
+  extraction, and measured silicon power evidence. The `e1x-power-thermal` gate
+  is planning-grade arithmetic only.
 - Measured benchmark evidence against E1 on FPGA, board, or silicon.

@@ -22,8 +22,24 @@ REQUIRED_CONTRACTS = frozenset(
     }
 )
 REQUIRED_BOUNDARY_PHRASES = (
+    "SoC fabric",
     "no coherent DMA",
+    "IOMMU",
+    "cache",
+    "Linux dmaengine driver",
+    "throughput",
     "production memory hierarchy",
+)
+FALSE_CLAIM_FLAGS = (
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "production_memory_system_claim_allowed",
+    "soc_fabric_claim_allowed",
+    "coherent_dma_claim_allowed",
+    "cache_coherency_claim_allowed",
+    "iommu_claim_allowed",
+    "linux_dmaengine_driver_claim_allowed",
+    "throughput_claim_allowed",
 )
 
 
@@ -55,6 +71,10 @@ def validate_coverage(payload: dict[str, object]) -> list[str]:
     missing = sorted(REQUIRED_CONTRACTS - covered)
     if missing:
         errors.append(f"missing required long-transfer contracts: {', '.join(missing)}")
+
+    for flag in FALSE_CLAIM_FLAGS:
+        if payload.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
 
     boundary = payload.get("boundary")
     if not isinstance(boundary, str):

@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cocotb
@@ -20,6 +21,19 @@ UNMAPPED_READ_VALUE = 0xDEAD_BEEF
 MAX_HANDSHAKE_CYCLES = 32
 MAX_RESPONSE_CYCLES = 64
 _COVERED_CONTRACTS: set[str] = set()
+_FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "application_cpu_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "mmu_claim_allowed": False,
+    "cache_claim_allowed": False,
+    "coherency_claim_allowed": False,
+    "iommu_claim_allowed": False,
+    "production_memory_system_claim_allowed": False,
+    "full_soc_routing_claim_allowed": False,
+}
 
 
 async def start_contract_test(dut):
@@ -305,9 +319,12 @@ def write_coverage_artifact(extra):
     )
     coverage = {
         "schema": "e1-chip.cpu_mem_intc_cocotb_coverage.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": "directed_cpu_mem_intc_contract_only_not_system_or_release_evidence",
         "source": "verify/cocotb/test_cpu_mem_intc_contract.py",
         "covered_contracts": sorted(_COVERED_CONTRACTS),
-        "boundary": "Directed AXI-Lite memory and interrupt-controller contract checks around the tiny CPU harness only; no application-class CPU, MMU, cache, Linux, or Android boot coverage.",
+        "boundary": "Directed AXI-Lite scratch-DRAM, interrupt-controller, DMA/NPU/display MMIO, and tiny CPU harness contract checks only; no phone, release, application-class CPU, MMU, cache, coherency, IOMMU, production memory system, full SoC routing, Linux boot, or Android boot coverage.",
+        **_FALSE_CLAIM_FLAGS,
     }
     out = REPO_ROOT / "build/reports/cpu_mem_intc_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)

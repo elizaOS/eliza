@@ -201,13 +201,14 @@ def selected_manifest_is_bringup_only(selected: dict[str, Any], platform: dict[s
     selected_path = mapping(selected.get("selected_path"))
     claim_policy = mapping(selected.get("claim_policy"))
     phone_boundary = mapping(selected.get("phone_2028_target_boundary"))
+    status = selected.get("status")
     return (
-        selected.get("status") == "selected_not_generated"
+        status in {"selected_not_generated", "linux_complete"}
         and selected_path.get("core") == "Rocket"
         and selected_path.get("isa") == "RV64GC"
         and selected_path.get("harts") == 1
         and selected_path.get("claim_level") == "initial_linux_bringup_only"
-        and claim_policy.get("linux_capable_cpu_claim") is False
+        and claim_policy.get("linux_capable_cpu_claim") is (status == "linux_complete")
         and claim_policy.get("platform_contract_has_cpu_may_flip_to_true") is False
         and platform.get("e1_chip", {}).get("has_cpu") is False
         and phone_boundary.get("status") == "blocked_not_selected_for_product_claims"

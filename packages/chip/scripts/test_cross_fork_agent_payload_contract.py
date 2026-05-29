@@ -18,6 +18,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_cross_fork_agent_payload_contract as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -180,6 +186,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
             with PatchStack(patches):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("android_riscv64_bun_payload_is_url_only", codes)
         self.assertIn("linux_rv64_agent_install_is_placeholder", codes)
@@ -241,7 +248,38 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_false_claim_flags(self, report)
+
+    def test_linux_chip_boot_manifest_supplies_agent_live_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches, os_rv64 = self._patch_tree(Path(tmpdir))
+            (os_rv64 / "manifest.json.template").unlink()
+            chip_manifest = os_rv64 / "chip-boot-manifest.json"
+            write(
+                chip_manifest,
+                json.dumps(
+                    {
+                        "validation": {
+                            "requiredEvidence": ["generated-eliza-ap-boot", "elizaos-agent-live"],
+                            "evidence": [{"id": "elizaos-agent-live"}],
+                        }
+                    }
+                ),
+            )
+            with PatchStack(
+                [
+                    *patches,
+                    mock.patch.object(
+                        gate,
+                        "LINUX_MANIFEST_CANDIDATES",
+                        (os_rv64 / "manifest.json", os_rv64 / "manifest.json.template", chip_manifest),
+                    ),
+                ]
+            ):
+                path, evidence_ids = gate.load_linux_manifest_evidence_ids()
+
+        self.assertEqual(path, chip_manifest)
+        self.assertIn("elizaos-agent-live", evidence_ids)
 
     def test_bun_riscv64_toolchain_blocks_host_ld_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -260,6 +298,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
                 )
                 report = gate.run_check(Namespace())
         codes = {finding["code"] for finding in report["findings"]}
+        assert_false_claim_flags(self, report)
         self.assertIn("bun_riscv64_toolchain_can_use_host_ld", codes)
 
 

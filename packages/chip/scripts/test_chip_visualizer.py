@@ -214,19 +214,15 @@ def test_make_tile_pyramid_splits_rendered_image() -> None:
 
 
 def test_summarize_metrics_records_qor_and_violations() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        metrics = Path(tmp) / "metrics.json"
-        metrics.write_text(
-            """{
-              "design__instance__utilization": 0.72,
-              "route__wirelength": 12345,
-              "route__antenna_violation__count": 2,
-              "timing__hold__wns": -0.01,
-              "klayout__drc_error__count": 0
-            }"""
-        )
+    metrics = {
+        "design__instance__utilization": 0.72,
+        "route__wirelength": 12345,
+        "route__antenna_violation__count": 2,
+        "timing__hold__wns": -0.01,
+        "klayout__drc_error__count": 0,
+    }
 
-        summary = build_chip_visualizer.summarize_metrics(metrics)
+    summary = build_chip_visualizer.summarize_metrics(metrics, ["run/final/metrics.json"])
 
     assert summary["available"] is True
     assert {item["key"] for item in summary["summary"]} >= {
@@ -239,6 +235,24 @@ def test_summarize_metrics_records_qor_and_violations() -> None:
     }
 
 
+def test_run_metrics_aggregate_uses_selected_run_step_metrics() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp) / "RUN_sample"
+        early = run / "38-openroad-globalrouting"
+        late = run / "46-openroad-detailedrouting"
+        early.mkdir(parents=True)
+        late.mkdir(parents=True)
+        (early / "or_metrics_out.json").write_text('{"route__antenna_violation__count": 5, "route__wirelength": 10}')
+        (late / "or_metrics_out.json").write_text('{"route__wirelength": 20, "route__drc_errors": 0}')
+
+        metrics, sources = build_chip_visualizer.load_run_metrics(run)
+
+    assert metrics["route__antenna_violation__count"] == 5
+    assert metrics["route__wirelength"] == 20
+    assert metrics["route__drc_errors"] == 0
+    assert sources[-1].endswith("46-openroad-detailedrouting/or_metrics_out.json")
+
+
 def main() -> int:
     test_build_payload_parses_full_viewer_contract()
     test_choose_def_prefers_full_soc_before_newer_block_def()
@@ -247,6 +261,7 @@ def main() -> int:
     test_tiled_overlays_move_def_geometry_out_of_main_payload()
     test_make_tile_pyramid_splits_rendered_image()
     test_summarize_metrics_records_qor_and_violations()
+    test_run_metrics_aggregate_uses_selected_run_step_metrics()
     print("chip visualizer tests passed")
     return 0
 

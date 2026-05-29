@@ -99,6 +99,7 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "schema": "eliza.gate_status.v1",
                 "gate": "display-scanout-check",
                 "status": status,
+                "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
                 "blocker_id": blocker_id,
                 "blocker_reason": blocker_reason,
                 "evidence_paths": [SCANOUT_RTL, AXI4_PKG, TB, TEST],
@@ -109,6 +110,12 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "panel_bringup_claim_allowed": False,
                 "dsi_phy_claim_allowed": False,
                 "drm_kms_claim_allowed": False,
+                "dts_binding_claim_allowed": False,
+                "panel_dcs_init_claim_allowed": False,
+                "async_pixel_clock_cdc_claim_allowed": False,
+                "hil_bandwidth_trace_claim_allowed": False,
+                "production_framebuffer_claim_allowed": False,
+                "e1_soc_top_replacement_claim_allowed": False,
                 "claim_boundary": (
                     "Proves the buildable display scanout subset: a real AXI4 "
                     "read master (INCR bursts, QoS=DISPLAY_RT, multiple "
@@ -120,14 +127,24 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                     "boundary, verified under Verilator + cocotb. Does NOT "
                     "cover the DSI analog PHY, D-PHY lane serializers, panel "
                     "DCS init, async pixel-clock CDC, or DRM/KMS/compositor "
-                    "software -- those are physical/analog dependencies and "
-                    "SoC-fabric/DTS follow-ons."
+                    "software. It also does not prove the Linux DTS binding is "
+                    "runtime-consumed, hardware-in-loop scanout bandwidth, a "
+                    "production framebuffer allocation path, or replacement of "
+                    "the legacy e1_soc_top SRAM-backed display path -- those "
+                    "are physical/analog, software, and SoC-top follow-ons."
                 ),
                 "physical_dependency": (
                     "DSI analog PHY + D-PHY lane serializers + panel DCS init "
                     "are physical/analog and out of RTL scope; modelled at the "
                     "DPI/DSI command+pixel boundary only."
                 ),
+                "remaining_product_dependencies": [
+                    "Linux DTS/simple-framebuffer binding consumed by a driver",
+                    "panel DCS init command FIFO at the DSI-host boundary",
+                    "async pixel-clock CDC closure",
+                    "e1_soc_top legacy SRAM-backed display-path replacement or formal deprecation",
+                    "hardware-in-loop or cycle-accurate scanout-bandwidth trace evidence",
+                ],
                 "required_tests": list(REQUIRED_TESTS),
                 "detail": detail,
             },

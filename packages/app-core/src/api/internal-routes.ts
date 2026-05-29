@@ -121,7 +121,10 @@ function writePersistedDeviceSecret(filePath: string, secret: string): void {
 export function getDeviceSecret(): string {
   if (cachedDeviceSecret === null) {
     const fromEnv = process.env.ELIZA_DEVICE_SECRET;
-    if (typeof fromEnv === "string" && fromEnv.length >= MIN_DEVICE_SECRET_LENGTH) {
+    if (
+      typeof fromEnv === "string" &&
+      fromEnv.length >= MIN_DEVICE_SECRET_LENGTH
+    ) {
       cachedDeviceSecret = fromEnv;
     } else {
       const secretPath = getDeviceSecretPath();

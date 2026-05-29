@@ -1,7 +1,7 @@
 {
   "schema": "robot-task-feasibility-v1",
   "profile_id": "hiwonder-ainex",
-  "controller": "bezier_gait_for_hiwonder_locomotion_else_deterministic_smoke",
+  "controller": "hiwonder_closed_loop_progress_settle_plus_existing_primitives",
   "max_steps": 500,
   "tasks": [
     {
@@ -1486,6 +1486,73 @@
               "hold_s"
             ],
             "candidate_score": -2.4879493105216794
+          },
+          {
+            "controller": "hiwonder_closed_loop_progress_settle",
+            "action_scale": 0.4034294095831785,
+            "controller_params": {
+              "drive": {
+                "scale": 0.4034294095831785,
+                "hz": 1.9855734322995764,
+                "phase0": 1.6844958278078308,
+                "hip_bias": 0.28770228475844883,
+                "hip_amp": 0.2412191794545148,
+                "knee_bias": 0.07058999827144093,
+                "knee_amp": 0.28693207311954694,
+                "knee_phase": 1.4589047174050291,
+                "ank_bias": 0.2105912950140183,
+                "ank_amp": 0.3849445885113766,
+                "ank_phase": 0.38509251894537644,
+                "roll_bias": -0.2142212852219753,
+                "roll_amp": 0.5051988821589164,
+                "ank_roll_amp": 0.22919304073908292,
+                "roll_phase": 0.04278032216174843,
+                "ank_roll_phase_delta": 0.5677232568921792,
+                "yaw_amp": 0.0,
+                "yaw_phase": 0.0
+              },
+              "min_drive_steps": 80,
+              "progress_start_fraction": 0.88,
+              "settle_blend_steps": 45,
+              "pitch_gain": 0.55,
+              "roll_gain": 0.45,
+              "yaw_gain": 0.25,
+              "tilt_damping_start_rad": 0.22,
+              "tilt_damping_full_rad": 0.45
+            },
+            "success": false,
+            "failed": true,
+            "terminated": true,
+            "termination_reason": "fall",
+            "steps": 65,
+            "final_torso_z_m": 0.23818631047496905,
+            "final_tracked_z_m": 0.23834792584503575,
+            "final_delta_x_m": -0.04433782814990718,
+            "max_delta_x_m": 0.01861520684349607,
+            "final_delta_y_m": 0.13729883002894344,
+            "max_delta_y_m": 0.13729883002894344,
+            "final_delta_yaw_rad": 0.09656784152435456,
+            "max_delta_yaw_rad": 0.1799403608502972,
+            "max_abs_imu_roll_rad": 0.6280687064529601,
+            "max_abs_imu_pitch_rad": 0.14980844331508522,
+            "max_success_window_s": 0.0,
+            "tracked_body": {
+              "name": "body_link",
+              "height_present": true,
+              "delta_x_present": true,
+              "delta_y_present": true,
+              "delta_z_present": true,
+              "delta_x_source": "tracked_body",
+              "delta_y_source": "tracked_body",
+              "height_source": "tracked_body"
+            },
+            "progress_ratio": 0.06205068947832024,
+            "unmet_success_predicates": [
+              "delta_x_m_min",
+              "no_fall",
+              "hold_s"
+            ],
+            "candidate_score": -2.4879493105216794
           }
         ],
         "passive_baseline": {
@@ -1932,6 +1999,73 @@
             "hold_switch_step": 224,
             "hold_mode": "freeze",
             "hold_blend_steps": 0
+          },
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 65,
+          "final_torso_z_m": 0.23818631047496905,
+          "final_tracked_z_m": 0.23834792584503575,
+          "final_delta_x_m": -0.04433782814990718,
+          "max_delta_x_m": 0.01861520684349607,
+          "final_delta_y_m": 0.13729883002894344,
+          "max_delta_y_m": 0.13729883002894344,
+          "final_delta_yaw_rad": 0.09656784152435456,
+          "max_delta_yaw_rad": 0.1799403608502972,
+          "max_abs_imu_roll_rad": 0.6280687064529601,
+          "max_abs_imu_pitch_rad": 0.14980844331508522,
+          "max_success_window_s": 0.0,
+          "tracked_body": {
+            "name": "body_link",
+            "height_present": true,
+            "delta_x_present": true,
+            "delta_y_present": true,
+            "delta_z_present": true,
+            "delta_x_source": "tracked_body",
+            "delta_y_source": "tracked_body",
+            "height_source": "tracked_body"
+          },
+          "progress_ratio": 0.06205068947832024,
+          "unmet_success_predicates": [
+            "delta_x_m_min",
+            "no_fall",
+            "hold_s"
+          ],
+          "candidate_score": -2.4879493105216794
+        },
+        {
+          "controller": "hiwonder_closed_loop_progress_settle",
+          "action_scale": 0.4034294095831785,
+          "controller_params": {
+            "drive": {
+              "scale": 0.4034294095831785,
+              "hz": 1.9855734322995764,
+              "phase0": 1.6844958278078308,
+              "hip_bias": 0.28770228475844883,
+              "hip_amp": 0.2412191794545148,
+              "knee_bias": 0.07058999827144093,
+              "knee_amp": 0.28693207311954694,
+              "knee_phase": 1.4589047174050291,
+              "ank_bias": 0.2105912950140183,
+              "ank_amp": 0.3849445885113766,
+              "ank_phase": 0.38509251894537644,
+              "roll_bias": -0.2142212852219753,
+              "roll_amp": 0.5051988821589164,
+              "ank_roll_amp": 0.22919304073908292,
+              "roll_phase": 0.04278032216174843,
+              "ank_roll_phase_delta": 0.5677232568921792,
+              "yaw_amp": 0.0,
+              "yaw_phase": 0.0
+            },
+            "min_drive_steps": 80,
+            "progress_start_fraction": 0.88,
+            "settle_blend_steps": 45,
+            "pitch_gain": 0.55,
+            "roll_gain": 0.45,
+            "yaw_gain": 0.25,
+            "tilt_damping_start_rad": 0.22,
+            "tilt_damping_full_rad": 0.45
           },
           "success": false,
           "failed": true,
@@ -2641,6 +2775,73 @@
               "hold_s"
             ],
             "candidate_score": -2.519378679271001
+          },
+          {
+            "controller": "hiwonder_closed_loop_progress_settle",
+            "action_scale": 0.4034294095831785,
+            "controller_params": {
+              "drive": {
+                "scale": 0.4034294095831785,
+                "hz": 1.9855734322995764,
+                "phase0": 1.6844958278078308,
+                "hip_bias": 0.28770228475844883,
+                "hip_amp": 0.2412191794545148,
+                "knee_bias": 0.07058999827144093,
+                "knee_amp": 0.28693207311954694,
+                "knee_phase": 1.4589047174050291,
+                "ank_bias": 0.2105912950140183,
+                "ank_amp": 0.3849445885113766,
+                "ank_phase": 0.38509251894537644,
+                "roll_bias": -0.2142212852219753,
+                "roll_amp": 0.5051988821589164,
+                "ank_roll_amp": 0.22919304073908292,
+                "roll_phase": 0.04278032216174843,
+                "ank_roll_phase_delta": 0.5677232568921792,
+                "yaw_amp": 0.0,
+                "yaw_phase": 0.0
+              },
+              "min_drive_steps": 80,
+              "progress_start_fraction": 0.88,
+              "settle_blend_steps": 45,
+              "pitch_gain": 0.55,
+              "roll_gain": 0.45,
+              "yaw_gain": 0.25,
+              "tilt_damping_start_rad": 0.22,
+              "tilt_damping_full_rad": 0.45
+            },
+            "success": false,
+            "failed": true,
+            "terminated": true,
+            "termination_reason": "fall",
+            "steps": 32,
+            "final_torso_z_m": 0.20819861983049961,
+            "final_tracked_z_m": 0.20912410344044663,
+            "final_delta_x_m": 0.1693101534592833,
+            "max_delta_x_m": 0.1693101534592833,
+            "final_delta_y_m": -0.03549726112421462,
+            "max_delta_y_m": 0.010321209895596309,
+            "final_delta_yaw_rad": 0.3862853350929353,
+            "max_delta_yaw_rad": 0.3862853350929353,
+            "max_abs_imu_roll_rad": 0.5049125061019392,
+            "max_abs_imu_pitch_rad": 0.6394175984028359,
+            "max_success_window_s": 0.0,
+            "tracked_body": {
+              "name": "body_link",
+              "height_present": true,
+              "delta_x_present": true,
+              "delta_y_present": true,
+              "delta_z_present": true,
+              "delta_x_source": "tracked_body",
+              "delta_y_source": "tracked_body",
+              "height_source": "tracked_body"
+            },
+            "progress_ratio": 0.03062132072899863,
+            "unmet_success_predicates": [
+              "delta_x_m_max",
+              "no_fall",
+              "hold_s"
+            ],
+            "candidate_score": -2.519378679271001
           }
         ],
         "passive_baseline": {
@@ -3086,6 +3287,73 @@
             "hold_switch_step": 224,
             "hold_mode": "freeze",
             "hold_blend_steps": 0
+          },
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 32,
+          "final_torso_z_m": 0.20819861983049961,
+          "final_tracked_z_m": 0.20912410344044663,
+          "final_delta_x_m": 0.1693101534592833,
+          "max_delta_x_m": 0.1693101534592833,
+          "final_delta_y_m": -0.03549726112421462,
+          "max_delta_y_m": 0.010321209895596309,
+          "final_delta_yaw_rad": 0.3862853350929353,
+          "max_delta_yaw_rad": 0.3862853350929353,
+          "max_abs_imu_roll_rad": 0.5049125061019392,
+          "max_abs_imu_pitch_rad": 0.6394175984028359,
+          "max_success_window_s": 0.0,
+          "tracked_body": {
+            "name": "body_link",
+            "height_present": true,
+            "delta_x_present": true,
+            "delta_y_present": true,
+            "delta_z_present": true,
+            "delta_x_source": "tracked_body",
+            "delta_y_source": "tracked_body",
+            "height_source": "tracked_body"
+          },
+          "progress_ratio": 0.03062132072899863,
+          "unmet_success_predicates": [
+            "delta_x_m_max",
+            "no_fall",
+            "hold_s"
+          ],
+          "candidate_score": -2.519378679271001
+        },
+        {
+          "controller": "hiwonder_closed_loop_progress_settle",
+          "action_scale": 0.4034294095831785,
+          "controller_params": {
+            "drive": {
+              "scale": 0.4034294095831785,
+              "hz": 1.9855734322995764,
+              "phase0": 1.6844958278078308,
+              "hip_bias": 0.28770228475844883,
+              "hip_amp": 0.2412191794545148,
+              "knee_bias": 0.07058999827144093,
+              "knee_amp": 0.28693207311954694,
+              "knee_phase": 1.4589047174050291,
+              "ank_bias": 0.2105912950140183,
+              "ank_amp": 0.3849445885113766,
+              "ank_phase": 0.38509251894537644,
+              "roll_bias": -0.2142212852219753,
+              "roll_amp": 0.5051988821589164,
+              "ank_roll_amp": 0.22919304073908292,
+              "roll_phase": 0.04278032216174843,
+              "ank_roll_phase_delta": 0.5677232568921792,
+              "yaw_amp": 0.0,
+              "yaw_phase": 0.0
+            },
+            "min_drive_steps": 80,
+            "progress_start_fraction": 0.88,
+            "settle_blend_steps": 45,
+            "pitch_gain": 0.55,
+            "roll_gain": 0.45,
+            "yaw_gain": 0.25,
+            "tilt_damping_start_rad": 0.22,
+            "tilt_damping_full_rad": 0.45
           },
           "success": false,
           "failed": true,
@@ -3595,6 +3863,56 @@
               "hold_s"
             ],
             "candidate_score": -2.3299840646375403
+          },
+          {
+            "controller": "hiwonder_closed_loop_progress_settle",
+            "action_scale": 1.0,
+            "controller_params": {
+              "drive": {},
+              "min_drive_steps": 12,
+              "progress_start_fraction": 0.75,
+              "settle_blend_steps": 12,
+              "pitch_gain": 0.55,
+              "roll_gain": 0.45,
+              "yaw_gain": 0.25,
+              "tilt_damping_start_rad": 0.22,
+              "tilt_damping_full_rad": 0.45
+            },
+            "success": false,
+            "failed": true,
+            "terminated": true,
+            "termination_reason": "fall",
+            "steps": 30,
+            "final_torso_z_m": 0.21272400407020425,
+            "final_tracked_z_m": 0.2135131122660045,
+            "final_delta_x_m": 0.0020709140958443217,
+            "max_delta_x_m": 0.0021331850992707974,
+            "final_delta_y_m": 0.16789201531459472,
+            "max_delta_y_m": 0.16789201531459472,
+            "final_delta_yaw_rad": -0.010271394763991873,
+            "max_delta_yaw_rad": -3.25588647045093e-05,
+            "max_abs_imu_roll_rad": 0.6391937135905419,
+            "max_abs_imu_pitch_rad": 0.007258527027904412,
+            "max_success_window_s": 0.0,
+            "tracked_body": {
+              "name": "body_link",
+              "height_present": true,
+              "delta_x_present": true,
+              "delta_y_present": true,
+              "delta_z_present": true,
+              "delta_x_source": "tracked_body",
+              "delta_y_source": "tracked_body",
+              "height_source": "tracked_body"
+            },
+            "progress_ratio": 0.8394600765729735,
+            "unmet_success_predicates": [
+              "delta_y_m_min",
+              "no_fall",
+              "min_alternating_foot_contacts",
+              "max_self_collision_count",
+              "hold_s"
+            ],
+            "candidate_score": -2.4105399234270264
           }
         ],
         "passive_baseline": {
@@ -3875,6 +4193,56 @@
             "hold_s"
           ],
           "candidate_score": -2.3299840646375403
+        },
+        {
+          "controller": "hiwonder_closed_loop_progress_settle",
+          "action_scale": 1.0,
+          "controller_params": {
+            "drive": {},
+            "min_drive_steps": 12,
+            "progress_start_fraction": 0.75,
+            "settle_blend_steps": 12,
+            "pitch_gain": 0.55,
+            "roll_gain": 0.45,
+            "yaw_gain": 0.25,
+            "tilt_damping_start_rad": 0.22,
+            "tilt_damping_full_rad": 0.45
+          },
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 30,
+          "final_torso_z_m": 0.21272400407020425,
+          "final_tracked_z_m": 0.2135131122660045,
+          "final_delta_x_m": 0.0020709140958443217,
+          "max_delta_x_m": 0.0021331850992707974,
+          "final_delta_y_m": 0.16789201531459472,
+          "max_delta_y_m": 0.16789201531459472,
+          "final_delta_yaw_rad": -0.010271394763991873,
+          "max_delta_yaw_rad": -3.25588647045093e-05,
+          "max_abs_imu_roll_rad": 0.6391937135905419,
+          "max_abs_imu_pitch_rad": 0.007258527027904412,
+          "max_success_window_s": 0.0,
+          "tracked_body": {
+            "name": "body_link",
+            "height_present": true,
+            "delta_x_present": true,
+            "delta_y_present": true,
+            "delta_z_present": true,
+            "delta_x_source": "tracked_body",
+            "delta_y_source": "tracked_body",
+            "height_source": "tracked_body"
+          },
+          "progress_ratio": 0.8394600765729735,
+          "unmet_success_predicates": [
+            "delta_y_m_min",
+            "no_fall",
+            "min_alternating_foot_contacts",
+            "max_self_collision_count",
+            "hold_s"
+          ],
+          "candidate_score": -2.4105399234270264
         }
       ],
       "passive_baseline": {
@@ -4350,6 +4718,56 @@
               "hold_s"
             ],
             "candidate_score": -1.8417837415721516
+          },
+          {
+            "controller": "hiwonder_closed_loop_progress_settle",
+            "action_scale": 1.0,
+            "controller_params": {
+              "drive": {},
+              "min_drive_steps": 12,
+              "progress_start_fraction": 0.75,
+              "settle_blend_steps": 12,
+              "pitch_gain": 0.55,
+              "roll_gain": 0.45,
+              "yaw_gain": 0.25,
+              "tilt_damping_start_rad": 0.22,
+              "tilt_damping_full_rad": 0.45
+            },
+            "success": false,
+            "failed": true,
+            "terminated": true,
+            "termination_reason": "fall",
+            "steps": 30,
+            "final_torso_z_m": 0.21271865321983152,
+            "final_tracked_z_m": 0.21350980958425542,
+            "final_delta_x_m": 0.0020707977214025394,
+            "max_delta_x_m": 0.002132334957868814,
+            "final_delta_y_m": -0.16790634099962395,
+            "max_delta_y_m": -0.0009138749391558343,
+            "final_delta_yaw_rad": 0.010329991231716603,
+            "max_delta_yaw_rad": 0.010329991231716603,
+            "max_abs_imu_roll_rad": 0.6380713101260705,
+            "max_abs_imu_pitch_rad": 0.007184616553503317,
+            "max_success_window_s": 0.0,
+            "tracked_body": {
+              "name": "body_link",
+              "height_present": true,
+              "delta_x_present": true,
+              "delta_y_present": true,
+              "delta_z_present": true,
+              "delta_x_source": "tracked_body",
+              "delta_y_source": "tracked_body",
+              "height_source": "tracked_body"
+            },
+            "progress_ratio": 0.8395317049981197,
+            "unmet_success_predicates": [
+              "delta_y_m_max",
+              "no_fall",
+              "min_alternating_foot_contacts",
+              "max_self_collision_count",
+              "hold_s"
+            ],
+            "candidate_score": -2.4104682950018805
           }
         ],
         "passive_baseline": {
@@ -4630,6 +5048,56 @@
             "hold_s"
           ],
           "candidate_score": -1.8417837415721516
+        },
+        {
+          "controller": "hiwonder_closed_loop_progress_settle",
+          "action_scale": 1.0,
+          "controller_params": {
+            "drive": {},
+            "min_drive_steps": 12,
+            "progress_start_fraction": 0.75,
+            "settle_blend_steps": 12,
+            "pitch_gain": 0.55,
+            "roll_gain": 0.45,
+            "yaw_gain": 0.25,
+            "tilt_damping_start_rad": 0.22,
+            "tilt_damping_full_rad": 0.45
+          },
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 30,
+          "final_torso_z_m": 0.21271865321983152,
+          "final_tracked_z_m": 0.21350980958425542,
+          "final_delta_x_m": 0.0020707977214025394,
+          "max_delta_x_m": 0.002132334957868814,
+          "final_delta_y_m": -0.16790634099962395,
+          "max_delta_y_m": -0.0009138749391558343,
+          "final_delta_yaw_rad": 0.010329991231716603,
+          "max_delta_yaw_rad": 0.010329991231716603,
+          "max_abs_imu_roll_rad": 0.6380713101260705,
+          "max_abs_imu_pitch_rad": 0.007184616553503317,
+          "max_success_window_s": 0.0,
+          "tracked_body": {
+            "name": "body_link",
+            "height_present": true,
+            "delta_x_present": true,
+            "delta_y_present": true,
+            "delta_z_present": true,
+            "delta_x_source": "tracked_body",
+            "delta_y_source": "tracked_body",
+            "height_source": "tracked_body"
+          },
+          "progress_ratio": 0.8395317049981197,
+          "unmet_success_predicates": [
+            "delta_y_m_max",
+            "no_fall",
+            "min_alternating_foot_contacts",
+            "max_self_collision_count",
+            "hold_s"
+          ],
+          "candidate_score": -2.4104682950018805
         }
       ],
       "passive_baseline": {

@@ -6,11 +6,24 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = ROOT / "docs/project/prototype-status-dashboard.md"
 REPORT = ROOT / "build/reports/prototype_status_dashboard.json"
+CLAIM_BOUNDARY = "dashboard_consistency_only_not_boot_runtime_or_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "runtime_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 VOLATILE_BUILD_OUTPUT_SUBSYSTEMS = {
     "synthesis",
     "cocotb",
@@ -26,15 +39,21 @@ VOLATILE_BUILD_OUTPUT_SUBSYSTEMS = {
 
 def write_report(status: str, findings: list[dict[str, str]]) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload = report_payload(status, findings)
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def report_payload(status: str, findings: list[dict[str, str]]) -> dict:
+    return {
         "schema": "eliza.prototype_status_dashboard.v1",
         "status": status,
-        "claim_boundary": "dashboard_consistency_only_not_boot_runtime_or_release_evidence",
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "summary": {"findings": len(findings)},
         "findings": findings,
         "evidence": {"dashboard": str(DASHBOARD.relative_to(ROOT))},
     }
-    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def blocker(code: str, message: str, evidence: str, next_step: str) -> dict[str, str]:

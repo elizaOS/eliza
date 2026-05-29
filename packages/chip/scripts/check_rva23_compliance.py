@@ -35,6 +35,7 @@ import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -99,6 +100,7 @@ def write_report() -> None:
         status = "pass"
     payload = {
         "schema": "eliza.rva23_compliance.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": status,
         "claim_boundary": "toolchain_profile_contract_only_not_linux_or_aosp_boot_evidence",
         "summary": {

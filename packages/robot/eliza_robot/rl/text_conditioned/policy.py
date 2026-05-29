@@ -360,14 +360,23 @@ class _AlbertaStreamingModelAdapter:
     """
 
     def __init__(self, ckpt_dir: Path) -> None:
+        raw = json.loads((ckpt_dir / "manifest.json").read_text())
+        c = raw["controller"]
+        controller_type = c.get("type", raw.get("controller_type", "linear_stream_ac_v1"))
+        if controller_type in {"linear", "linear_stream_ac_v1"}:
+            self._controller = self._load_linear_controller(raw, c, ckpt_dir)
+        elif controller_type in {"cbp", "cbp_stream_ac_v1"}:
+            self._controller = self._load_cbp_controller(raw, c, ckpt_dir)
+        else:
+            raise ValueError(f"unsupported Alberta controller type: {controller_type}")
+
+    def _load_linear_controller(self, raw: dict, c: dict, ckpt_dir: Path):
         from eliza_robot.rl.alberta.agent import (
             AlbertaContinualController,
             AlbertaControllerConfig,
         )
         from eliza_robot.rl.alberta.features import FeatureConfig
 
-        raw = json.loads((ckpt_dir / "manifest.json").read_text())
-        c = raw["controller"]
         f = c["features"]
         feature_cfg = FeatureConfig(
             mode=f["mode"],
@@ -403,6 +412,61 @@ class _AlbertaStreamingModelAdapter:
         self._controller = AlbertaContinualController(controller_cfg)
         snap = dict(np.load(ckpt_dir / raw["ckpt"]))
         self._controller.load_state_dict(snap)
+        return self._controller
+
+    def _load_cbp_controller(self, raw: dict, c: dict, ckpt_dir: Path):
+        from alberta_framework.core.continual_backprop import ContinualBackpropConfig
+
+        from eliza_robot.rl.alberta.cbp_agent import (
+            AlbertaCBPController,
+            CBPControllerConfig,
+            RetentionConfig,
+        )
+        from eliza_robot.rl.alberta.checkpoint import load_state_npz
+
+        cbp = c.get("cbp", {})
+        retention = c.get("retention", {})
+        controller_cfg = CBPControllerConfig(
+            obs_dim=int(raw["obs_dim"]),
+            action_dim=int(raw["action_dim"]),
+            hidden_sizes=tuple(int(size) for size in c["hidden_sizes"]),
+            gamma=float(c["gamma"]),
+            actor_step_size=float(c["actor_step_size"]),
+            critic_step_size=float(c["critic_step_size"]),
+            actor_lamda=float(c["actor_lamda"]),
+            critic_lamda=float(c["critic_lamda"]),
+            log_sigma_init=float(c["log_sigma_init"]),
+            log_sigma_min=float(c["log_sigma_min"]),
+            log_sigma_max=float(c["log_sigma_max"]),
+            learn_log_sigma=bool(c.get("learn_log_sigma", False)),
+            action_low=float(c["action_low"]),
+            action_high=float(c["action_high"]),
+            obgd_kappa=c["obgd_kappa"],
+            sparsity=float(c["sparsity"]),
+            leaky_relu_slope=float(c["leaky_relu_slope"]),
+            use_layer_norm=bool(c["use_layer_norm"]),
+            normalize=bool(c["normalize"]),
+            normalizer_decay=float(c["normalizer_decay"]),
+            cbp=ContinualBackpropConfig(
+                enabled=bool(cbp.get("enabled", True)),
+                decay_rate=float(cbp.get("decay_rate", 0.99)),
+                replacement_rate=float(cbp.get("replacement_rate", 1e-4)),
+                maturity_threshold=int(cbp.get("maturity_threshold", 100)),
+            ),
+            retention=RetentionConfig(
+                mode=retention.get("mode", "none"),
+                n_slots=int(retention.get("n_slots", 1)),
+                embed_dim=int(retention.get("embed_dim", raw.get("text_dim", 0))),
+                trunk_step_scale=float(retention.get("trunk_step_scale", 1.0)),
+                trunk_freeze_after=int(retention.get("trunk_freeze_after", 0)),
+                proto_seed=int(retention.get("proto_seed", c.get("seed", 12345))),
+            ),
+            seed=int(c["seed"]),
+        )
+        controller = AlbertaCBPController(controller_cfg)
+        snap = load_state_npz(ckpt_dir / raw["ckpt"])
+        controller.load_state_dict(snap)
+        return controller
 
     def predict(self, obs, deterministic: bool = True):
         obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)

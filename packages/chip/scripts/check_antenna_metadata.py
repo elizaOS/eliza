@@ -43,6 +43,7 @@ def write_report(
     missing: dict[str, list[str]] | None = None,
     blocker_categories: dict[str, int] | None = None,
     release_blocked: bool | None = None,
+    missing_top_cell: bool = False,
 ) -> None:
     evidence = ""
     if report_path is not None:
@@ -72,6 +73,8 @@ def write_report(
             "blockers": len(findings) if status == "blocked" else 0,
             "failures": len(findings) if status == "fail" else 0,
             "source_report_present": report_path is not None and report_path.is_file(),
+            "source_report_missing_e1_chip_top": missing_top_cell,
+            "missing_e1_chip_top_report_count": 1 if missing_top_cell else 0,
             "missing_pin_count": sum(len(pins) for pins in missing.values()),
             "missing_input_gate_metadata_count": len(missing.get("input", [])),
             "missing_output_diffusion_metadata_count": len(missing.get("output", [])),
@@ -92,7 +95,12 @@ def write_report(
                 "severity": "blocker" if status == "blocked" else "error",
                 "message": finding,
                 "evidence": evidence,
-                "next_step": "Instantiate release IO/pad cells and archive padframe-inclusive antenna evidence.",
+                "next_step": (
+                    "Regenerate the OpenLane antenna metadata report for e1_chip_top, "
+                    "then instantiate release IO/pad cells and archive padframe-inclusive antenna evidence."
+                    if missing_top_cell
+                    else "Instantiate release IO/pad cells and archive padframe-inclusive antenna evidence."
+                ),
             }
             for index, finding in enumerate(findings, start=1)
         ],
@@ -191,6 +199,7 @@ def main() -> int:
             args.release,
             blocker_categories={"missing_e1_chip_top_antenna_metadata_report": 1},
             release_blocked=padframe_release_blocked(),
+            missing_top_cell=True,
         )
         print(f"STATUS: BLOCKED {finding}")
         return BLOCKED_EXIT

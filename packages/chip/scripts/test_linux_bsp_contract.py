@@ -125,6 +125,20 @@ class LinuxBspContractTests(unittest.TestCase):
             with PatchStack(patches):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "linux_boot_claim_allowed",
+            "android_bsp_claim_allowed",
+            "display_driver_claim_allowed",
+            "drm_kms_claim_allowed",
+            "display_runtime_binding_claim_allowed",
+            "simple_framebuffer_runtime_claim_allowed",
+            "panel_dcs_init_claim_allowed",
+            "dsi_host_claim_allowed",
+        ):
+            self.assertIs(report.get(key), False)
+        self.assertIn("generated_utc", report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("linux_kernel_fragment_has_stale_openphone_contract", codes)
         self.assertIn("linux_kernel_fragment_missing_eliza_base_symbols", codes)
@@ -176,6 +190,20 @@ class LinuxBspContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertIn("generated_utc", report)
+        for key in (
+            "phone_claim_allowed",
+            "release_claim_allowed",
+            "linux_boot_claim_allowed",
+            "android_bsp_claim_allowed",
+            "display_driver_claim_allowed",
+            "drm_kms_claim_allowed",
+            "display_runtime_binding_claim_allowed",
+            "simple_framebuffer_runtime_claim_allowed",
+            "panel_dcs_init_claim_allowed",
+            "dsi_host_claim_allowed",
+        ):
+            self.assertIs(report.get(key), False)
 
 
 class PatchStack:

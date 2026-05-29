@@ -23,6 +23,17 @@ REPORT = ROOT / "build/reports/chip-os-gap-keyword-inventory.json"
 
 SCHEMA = "eliza.chip_os_gap_keyword_inventory.v1"
 CLAIM_BOUNDARY = "source_keyword_inventory_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 DEFAULT_SCAN_ROOTS = (
     "packages/chip/rtl",
@@ -72,6 +83,7 @@ EXCLUDED_PATH_PARTS = {
     "docs/evidence",
     "docs/archive",
     "docs/reports",
+    "docs/spec-db/traceability",
     "app/src/main/assets",
 }
 EXCLUDED_FILENAMES = {
@@ -79,6 +91,17 @@ EXCLUDED_FILENAMES = {
     "check_chip_os_gap_keyword_inventory.py",
     "test_chip_os_gap_keyword_inventory.py",
 }
+CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
+    re.compile(
+        r"^packages/chip/(docs|verify)/.*"
+        r"("
+        r"gap|gaps|audit|blocker|work[-_]order|inventory|"
+        r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
+        r"status[-_]dashboard|workstreams"
+        r").*\.(json|md|yaml|yml)$",
+        re.I,
+    ),
+)
 TEST_FILE_PATTERNS = (
     re.compile(r"(^|/)test_[^/]+\.(c|cc|cpp|h|java|kt|py|rs|ts|tsx)$"),
     re.compile(r"(^|/)[^/]+_test\.(c|cc|cpp|h|java|kt|rs|ts|tsx)$"),
@@ -91,14 +114,20 @@ BENIGN_LINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
-    re.compile(r"^packages/chip/scripts/(check|product_check)[^/]*\.py$"),
+    re.compile(r"^packages/chip/scripts/(?:.*/)?(?:check|capture)_[^/]*\.py$"),
+    re.compile(r"^packages/chip/scripts/(?:aggregate_tapeout_readiness|product_check)\.py$"),
+    re.compile(r"^packages/chip/scripts/run_[^/]+\.sh$"),
+    re.compile(r"^packages/chip/sw/check_[^/]+\.py$"),
     re.compile(r"^packages/chip/verify/check_[^/]+\.py$"),
+    re.compile(r"^packages/os/linux/elizaos/scripts/(?:check|capture)[^/]*\.py$"),
 )
 CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"("
     r"raise SystemExit|errors\.append|blockers\.append|findings\.append|"
     r"closure_evidence=|description=|next_step|next_command|message|evidence|"
-    r"CLAIM_BOUNDARY|claim_boundary|re\.compile|AllowedFinding|print\(|help="
+    r"CLAIM_BOUNDARY|claim_boundary|re\.compile|AllowedFinding|print\(|help=|"
+    r"TEMPLATE_|template|sentinel|manifest|classification policy|"
+    r"for placeholder, replacement in|text\.replace\(placeholder, replacement\)"
     r")"
 )
 TEXT_SUFFIXES = {
@@ -227,6 +256,8 @@ def is_excluded(path: Path) -> bool:
     relative = rel(path)
     if path.name in EXCLUDED_FILENAMES:
         return True
+    if any(pattern.search(relative) for pattern in CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS):
+        return True
     if any(pattern.search(relative) for pattern in TEST_FILE_PATTERNS):
         return True
     if any(part in EXCLUDED_DIRS for part in path.parts):
@@ -325,6 +356,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
         "schema": SCHEMA,
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "generated_utc": utc_now(),
         "summary": {
             "scan_roots": len(roots),

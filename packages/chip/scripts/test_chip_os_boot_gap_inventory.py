@@ -12,6 +12,12 @@ from pathlib import Path
 import check_chip_os_boot_gap_inventory as inv
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], inv.CLAIM_BOUNDARY)
+    for key, expected in inv.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write_json(path: Path, data: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data) + "\n", encoding="utf-8")
@@ -75,6 +81,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["nonpassing_aggregate_gates"], 2)
         self.assertEqual(report["summary"]["blocked_aggregate_gates"], 1)
         self.assertEqual(report["summary"]["failed_aggregate_gates"], 1)
@@ -101,6 +108,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 2)
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(len(report["sources"]["missing"]), 2)
         self.assertEqual(report["summary"]["uncovered_nonpassing_gates"], 0)
 
@@ -227,6 +235,29 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             report["detailed_blocker_codes"],
         )
 
+    def test_local_host_non_release_status_is_not_a_boot_gap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            write_json(aggregate, {"gates": []})
+            write_json(
+                report_dir / "local-host-coremark-probe.json",
+                {
+                    "status": "local_host_evidence_not_release",
+                    "summary": {"passed_count": 1},
+                },
+            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
+            report, exit_code = inv.build_inventory(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 0)
+        self.assertNotIn(
+            "unstructured_nonpass_report_local_host_coremark_probe",
+            report["detailed_blocker_codes"],
+        )
+
     def test_legacy_gate_status_report_is_structured_closure_row(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -253,6 +284,31 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             "gate_status_board_fabrication_release_fail",
             report["detailed_blocker_codes"],
         )
+
+    def test_generic_blocker_id_report_is_structured_closure_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            write_json(aggregate, {"gates": []})
+            write_json(
+                report_dir / "soc_cross_domain_integration.json",
+                {
+                    "schema": "eliza.soc_cross_domain_integration.v1",
+                    "gate": "soc-integration-check",
+                    "status": "FAIL",
+                    "blocker_id": "soc_integration_lint_failed",
+                    "blocker_reason": "verilator lint did not pass",
+                    "evidence_paths": ["rtl/top/e1_soc_integrated.sv"],
+                    "subsystem": "interconnect",
+                },
+            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
+            report, exit_code = inv.build_inventory(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 0)
+        self.assertIn("soc_integration_lint_failed", report["detailed_blocker_codes"])
 
     def test_structured_blockers_and_failures_become_stable_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

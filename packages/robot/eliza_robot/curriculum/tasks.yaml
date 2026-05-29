@@ -115,10 +115,17 @@ tasks:
     description: "Walk in the +x body direction without falling."
     reward:
       target_velocity_x_m_s: 0.10
-      velocity_track_weight: 8.0
+      velocity_track_weight: 6.0
       movement_progress_weight: 4.0
-      upright_weight: 1.5
-      gait_phase_weight: 0.5
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
       action_rate_weight: -0.01
     success:
       torso_z_min_ratio: 0.75
@@ -144,9 +151,17 @@ tasks:
     description: "Walk in the -x body direction without falling."
     reward:
       target_velocity_x_m_s: -0.08
-      velocity_track_weight: 8.0
+      velocity_track_weight: 6.0
       movement_progress_weight: 4.0
-      upright_weight: 1.5
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
       action_rate_weight: -0.01
     success:
       torso_z_min_ratio: 0.75
@@ -171,9 +186,17 @@ tasks:
     description: "Translate in the +y body direction (robot's left)."
     reward:
       target_velocity_y_m_s: 0.06
-      velocity_track_weight: 8.0
+      velocity_track_weight: 6.0
       movement_progress_weight: 4.0
-      upright_weight: 1.5
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
     success:
       torso_z_min_ratio: 0.75
       delta_y_m_min: 0.20
@@ -197,9 +220,17 @@ tasks:
     description: "Translate in the -y body direction (robot's right)."
     reward:
       target_velocity_y_m_s: -0.06
-      velocity_track_weight: 8.0
+      velocity_track_weight: 6.0
       movement_progress_weight: 4.0
-      upright_weight: 1.5
+      upright_weight: 1.0
+      height_track_weight: 0.5
+      gait_phase_weight: 1.0
+      stance_contact_weight: 1.0
+      foot_clearance_weight: 1.0
+      alternating_contact_weight: 4.0
+      locomotion_no_progress_penalty: 5.0
+      no_support_weight: 3.0
+      double_support_weight: 2.0
     success:
       torso_z_min_ratio: 0.75
       delta_y_m_max: -0.20

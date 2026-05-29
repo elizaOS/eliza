@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "e230cdb52040ca1d14e8ec15ade7e4780aec6a01545aa5bcc452426e6ef7b71a",
+  "local_discrete_step_sha256": "144aedfdd3e9f91b265f50d73b0a9edf3d8042578de9dc6a924dc361ddf83216",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

@@ -15,6 +15,7 @@ import re
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,16 @@ REPORT = ROOT / "build/reports/android_evidence_capture_contract.json"
 SCHEMA = "eliza.android_evidence_capture_contract.v1"
 CLAIM_BOUNDARY = "static_android_evidence_capture_contract_only_not_runtime_evidence"
 LAUNCHER_EVIDENCE = "docs/evidence/android/eliza_launcher_runtime_evidence.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 
 
 EXPECTED_AGENT_PACKAGE = "ai.elizaos.app"
@@ -297,6 +308,8 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

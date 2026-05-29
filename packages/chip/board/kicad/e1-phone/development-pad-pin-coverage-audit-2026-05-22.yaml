@@ -49,8 +49,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_pack_signal_contract_pending_supplier_pin_order
   expected_pin_count: 4
   electrical_pad_count: 4
-  missing_expected_pads: &id005 []
-  extra_footprint_pads: &id006 []
+  missing_expected_pads: &id006 []
+  extra_footprint_pads: &id007 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -63,8 +63,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: signal_set_only_pending_signed_fpc_order
   expected_pin_count: 24
   electrical_pad_count: 24
-  missing_expected_pads: &id007 []
-  extra_footprint_pads: &id008 []
+  missing_expected_pads: &id008 []
+  extra_footprint_pads: &id009 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -77,8 +77,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: signal_set_only_pending_signed_fpc_order
   expected_pin_count: 30
   electrical_pad_count: 30
-  missing_expected_pads: &id009 []
-  extra_footprint_pads: &id010 []
+  missing_expected_pads: &id010 []
+  extra_footprint_pads: &id011 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -91,8 +91,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: signal_set_only_pending_signed_fpc_order
   expected_pin_count: 40
   electrical_pad_count: 40
-  missing_expected_pads: &id011 []
-  extra_footprint_pads: &id012 []
+  missing_expected_pads: &id012 []
+  extra_footprint_pads: &id013 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -105,8 +105,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
   expected_pin_count: 12
   electrical_pad_count: 12
-  missing_expected_pads: &id013 []
-  extra_footprint_pads: &id014 []
+  missing_expected_pads: &id014 []
+  extra_footprint_pads: &id015 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -119,8 +119,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_haptic_signal_contract_pending_selected_driver_pinout
   expected_pin_count: 9
   electrical_pad_count: 9
-  missing_expected_pads: &id015 []
-  extra_footprint_pads: &id016 []
+  missing_expected_pads: &id017 []
+  extra_footprint_pads: &id018 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -133,8 +133,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_nfc_signal_contract_pending_selected_controller_pinout
   expected_pin_count: 32
   electrical_pad_count: 32
-  missing_expected_pads: &id017 []
-  extra_footprint_pads: &id018 []
+  missing_expected_pads: &id019 []
+  extra_footprint_pads: &id020 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -147,8 +147,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_nfc_loop_match_contract_pending_antenna_tuning
   expected_pin_count: 5
   electrical_pad_count: 5
-  missing_expected_pads: &id019 []
-  extra_footprint_pads: &id020 []
+  missing_expected_pads: &id021 []
+  extra_footprint_pads: &id022 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -161,8 +161,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_pin_table_pending_final_regional_sku_pack
   expected_pin_count: 204
   electrical_pad_count: 204
-  missing_expected_pads: &id021 []
-  extra_footprint_pads: &id022 []
+  missing_expected_pads: &id023 []
+  extra_footprint_pads: &id024 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -175,8 +175,8 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_sensor_hub_signal_contract_pending_selected_sensor_pinout
   expected_pin_count: 24
   electrical_pad_count: 24
-  missing_expected_pads: &id023 []
-  extra_footprint_pads: &id024 []
+  missing_expected_pads: &id025 []
+  extra_footprint_pads: &id026 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
@@ -189,11 +189,72 @@ pending_supplier_pad_map_or_order_records:
   coverage: exact_public_usim_signal_contract_pending_selected_levelshift_pinout
   expected_pin_count: 10
   electrical_pad_count: 10
-  missing_expected_pads: &id025 []
-  extra_footprint_pads: &id026 []
+  missing_expected_pads: &id028 []
+  extra_footprint_pads: &id029 []
   land_pattern_basis: ''
   local_terminal_contract_source: captured_public_pinout_expected_pins
   step_binding_status: development_envelope_step_bound
+  release_allowed: false
+public_candidate_package_conflict_count: 3
+public_candidate_package_conflict_records:
+- footprint: BACKLIGHT_BIAS_POWER_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/BACKLIGHT_BIAS_POWER_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/backlight-bias-qfn24-pinout.yaml
+  coverage: exact_public_backlight_bias_signal_contract_pending_selected_driver_pinout
+  electrical_pad_count: 24
+  manifest_pin_count: 24
+  status: public_candidate_package_conflicts_with_development_placeholder
+  current_placeholder_package: generic_qfn24_support_pattern
+  public_candidate_package: TI_LM3697_DSBGA12_or_equivalent_phone_backlight_driver
+  conflict_reason: Supplier research found realistic phone backlight-driver candidates
+    such as TI LM3697 in DSBGA12; the current QFN24 placeholder is not a selected
+    package and cannot be promoted.
+  source_urls: &id005
+  - https://www.ti.com/product/LM3697/part-details/LM3697YFQR
+  - https://www.sg-micro.com/product/SGM37603
+  required_resolution: Select exact backlight/bias driver MPN, import its official
+    land pattern and package model, then replace BACKLIGHT_BIAS_POWER_DEV.
+  release_allowed: false
+- footprint: FUEL_GAUGE_WLCSP_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/FUEL_GAUGE_WLCSP_DEV.kicad_mod
+  footprint_status: generic_wlp_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml
+  coverage: exact_public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
+  electrical_pad_count: 12
+  manifest_pin_count: 12
+  status: public_candidate_package_not_bound_to_development_placeholder
+  current_placeholder_package: generic_wlcsp12_support_pattern
+  public_candidate_package: MAX17055_or_BQ27426_class_single_cell_fuel_gauge
+  conflict_reason: The WLCSP12 placeholder is not tied to an exact selected gauge;
+    public fuel-gauge candidates include packages with different ball counts such
+    as BQ27426 DSBGA9.
+  source_urls: &id016
+  - https://www.analog.com/en/products/max17055.html
+  - https://www.ti.com/product/BQ27426
+  - https://www.ti.com/lit/ds/symlink/bq27426.pdf
+  required_resolution: Select exact fuel-gauge MPN, capture official package drawing
+    and pinout, then regenerate the land pattern and STEP binding.
+  release_allowed: false
+- footprint: SENSOR_HUB_QFN_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SENSOR_HUB_QFN_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/sensor-hub-qfn24-pinout.yaml
+  coverage: exact_public_sensor_hub_signal_contract_pending_selected_sensor_pinout
+  electrical_pad_count: 24
+  manifest_pin_count: 24
+  status: public_candidate_package_conflicts_with_development_placeholder
+  current_placeholder_package: generic_qfn24_support_pattern
+  public_candidate_package: Bosch_BMI270_or_ST_LSM6DSO32_LGA14_IMU_class
+  conflict_reason: Supplier research found realistic sensor/IMU candidates in LGA14-class
+    packages; no selected QFN24 sensor hub has been identified.
+  source_urls: &id027
+  - https://www.bosch-sensortec.com/products/motion-sensors/imus/bmi270/
+  - https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf
+  - https://www.st.com/en/product/lsm6dso32
+  - https://www.st.com/resource/en/datasheet/lsm6dso32.pdf
+  required_resolution: Select exact sensor hub/IMU MPN and replace SENSOR_HUB_QFN_DEV
+    with the official land pattern, pinout, and STEP model.
   release_allowed: false
 pinout_bound_footprint_count: 21
 all_pinout_bound_footprints_have_terminal_contract: true
@@ -323,6 +384,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: AUDIO_CODEC_QFN48_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/AUDIO_CODEC_QFN48_DEV.kicad_mod
   footprint_status: generic_qfn_support_development_pattern
@@ -406,6 +470,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: BACKLIGHT_BIAS_POWER_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/BACKLIGHT_BIAS_POWER_DEV.kicad_mod
   footprint_status: generic_qfn_support_development_pattern
@@ -465,6 +532,18 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: true
+  package_conflict_status: public_candidate_package_conflicts_with_development_placeholder
+  package_conflict_detail:
+    status: public_candidate_package_conflicts_with_development_placeholder
+    current_placeholder_package: generic_qfn24_support_pattern
+    public_candidate_package: TI_LM3697_DSBGA12_or_equivalent_phone_backlight_driver
+    conflict_reason: Supplier research found realistic phone backlight-driver candidates
+      such as TI LM3697 in DSBGA12; the current QFN24 placeholder is not a selected
+      package and cannot be promoted.
+    source_urls: *id005
+    required_resolution: Select exact backlight/bias driver MPN, import its official
+      land pattern and package model, then replace BACKLIGHT_BIAS_POWER_DEV.
 - footprint: BATTERY_4P_1P00_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/BATTERY_4P_1P00_DEV.kicad_mod
   footprint_status: development_pattern_generated
@@ -489,8 +568,8 @@ records:
   expected_pin_count: 4
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id005
-  extra_footprint_pads: *id006
+  missing_expected_pads: *id006
+  extra_footprint_pads: *id007
   pinout_signal_group_count: 11
   land_pattern_basis: ''
   local_terminal_contract:
@@ -502,6 +581,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: C0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/C0402_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -537,6 +619,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: CAMERA_24P_0P50_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_24P_0P50_DEV.kicad_mod
   footprint_status: development_pattern_generated
@@ -561,8 +646,8 @@ records:
   expected_pin_count: 24
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id007
-  extra_footprint_pads: *id008
+  missing_expected_pads: *id008
+  extra_footprint_pads: *id009
   pinout_signal_group_count: 24
   land_pattern_basis: ''
   local_terminal_contract:
@@ -594,6 +679,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: CAMERA_30P_0P50_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_30P_0P50_DEV.kicad_mod
   footprint_status: development_pattern_generated
@@ -618,8 +706,8 @@ records:
   expected_pin_count: 30
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id009
-  extra_footprint_pads: *id010
+  missing_expected_pads: *id010
+  extra_footprint_pads: *id011
   pinout_signal_group_count: 18
   land_pattern_basis: ''
   local_terminal_contract:
@@ -657,6 +745,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: DISPLAY_40P_0P30_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/DISPLAY_40P_0P30_DEV.kicad_mod
   footprint_status: development_pattern_generated
@@ -681,8 +772,8 @@ records:
   expected_pin_count: 40
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id011
-  extra_footprint_pads: *id012
+  missing_expected_pads: *id012
+  extra_footprint_pads: *id013
   pinout_signal_group_count: 29
   land_pattern_basis: ''
   local_terminal_contract:
@@ -730,6 +821,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: ESD_ARRAY_6CH_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/ESD_ARRAY_6CH_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -770,6 +864,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: ESIM_LGA_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/ESIM_LGA_DEV.kicad_mod
   footprint_status: public_mff2_esim_development_pattern_generated
@@ -813,6 +910,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: FIDUCIAL_1MM_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/FIDUCIAL_1MM_DEV.kicad_mod
   footprint_status: standard_global_fiducial_development_pattern
@@ -847,6 +947,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: FUEL_GAUGE_WLCSP_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/FUEL_GAUGE_WLCSP_DEV.kicad_mod
   footprint_status: generic_wlp_support_development_pattern
@@ -871,8 +974,8 @@ records:
   expected_pin_count: 12
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id013
-  extra_footprint_pads: *id014
+  missing_expected_pads: *id014
+  extra_footprint_pads: *id015
   pinout_signal_group_count: 6
   land_pattern_basis: ''
   local_terminal_contract:
@@ -892,6 +995,18 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: true
+  package_conflict_status: public_candidate_package_not_bound_to_development_placeholder
+  package_conflict_detail:
+    status: public_candidate_package_not_bound_to_development_placeholder
+    current_placeholder_package: generic_wlcsp12_support_pattern
+    public_candidate_package: MAX17055_or_BQ27426_class_single_cell_fuel_gauge
+    conflict_reason: The WLCSP12 placeholder is not tied to an exact selected gauge;
+      public fuel-gauge candidates include packages with different ball counts such
+      as BQ27426 DSBGA9.
+    source_urls: *id016
+    required_resolution: Select exact fuel-gauge MPN, capture official package drawing
+      and pinout, then regenerate the land pattern and STEP binding.
 - footprint: GCT_USB4105_GF_A_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/GCT_USB4105_GF_A_DEV.kicad_mod
   footprint_status: public_pinout_development_pattern_generated
@@ -953,6 +1068,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: HAPTIC_DRIVER_WLCSP_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/HAPTIC_DRIVER_WLCSP_DEV.kicad_mod
   footprint_status: generic_wlp_support_development_pattern
@@ -977,8 +1095,8 @@ records:
   expected_pin_count: 9
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id015
-  extra_footprint_pads: *id016
+  missing_expected_pads: *id017
+  extra_footprint_pads: *id018
   pinout_signal_group_count: 4
   land_pattern_basis: ''
   local_terminal_contract:
@@ -995,6 +1113,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: HIROSE_DF40_80P_0P4_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/HIROSE_DF40_80P_0P4_DEV.kicad_mod
   footprint_status: development_pattern_generated
@@ -1108,6 +1229,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: L0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/L0402_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -1143,6 +1267,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: MOUNTING_HOLE_1P2_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/MOUNTING_HOLE_1P2_DEV.kicad_mod
   footprint_status: mechanical_np_thru_hole_development_pattern
@@ -1194,6 +1321,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: MURATA_TYPE_2EA_GEOMETRY_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/MURATA_TYPE_2EA_GEOMETRY_DEV.kicad_mod
   footprint_status: public_terminal_table_and_dxf_land_pattern_development
@@ -1426,6 +1556,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: NFC_CONTROLLER_QFN_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/NFC_CONTROLLER_QFN_DEV.kicad_mod
   footprint_status: generic_qfn_support_development_pattern
@@ -1452,8 +1585,8 @@ records:
   expected_pin_count: 32
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id017
-  extra_footprint_pads: *id018
+  missing_expected_pads: *id019
+  extra_footprint_pads: *id020
   pinout_signal_group_count: 9
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1493,6 +1626,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: NFC_LOOP_MATCH_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/NFC_LOOP_MATCH_DEV.kicad_mod
   footprint_status: generic_rf_pi_match_development_pattern
@@ -1517,8 +1653,8 @@ records:
   expected_pin_count: 5
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id019
-  extra_footprint_pads: *id020
+  missing_expected_pads: *id021
+  extra_footprint_pads: *id022
   pinout_signal_group_count: 3
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1531,6 +1667,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: PANASONIC_EVQ_P7_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/PANASONIC_EVQ_P7_DEV.kicad_mod
   footprint_status: public_pinout_development_pattern_generated
@@ -1568,6 +1707,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: PI_MATCH_0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/PI_MATCH_0402_DEV.kicad_mod
   footprint_status: generic_rf_pi_match_development_pattern
@@ -1606,6 +1748,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: QUECTEL_RG255C_GEOMETRY_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/QUECTEL_RG255C_GEOMETRY_DEV.kicad_mod
   footprint_status: public_pinout_development_pattern_pending_land_pattern
@@ -1630,8 +1775,8 @@ records:
   expected_pin_count: 204
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id021
-  extra_footprint_pads: *id022
+  missing_expected_pads: *id023
+  extra_footprint_pads: *id024
   pinout_signal_group_count: 55
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1843,6 +1988,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: R0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/R0402_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -1878,6 +2026,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: RC_ARRAY_4CH_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/RC_ARRAY_4CH_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -1920,6 +2071,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: SENSOR_HUB_QFN_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SENSOR_HUB_QFN_DEV.kicad_mod
   footprint_status: generic_qfn_support_development_pattern
@@ -1946,8 +2100,8 @@ records:
   expected_pin_count: 24
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id023
-  extra_footprint_pads: *id024
+  missing_expected_pads: *id025
+  extra_footprint_pads: *id026
   pinout_signal_group_count: 9
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1979,6 +2133,17 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: true
+  package_conflict_status: public_candidate_package_conflicts_with_development_placeholder
+  package_conflict_detail:
+    status: public_candidate_package_conflicts_with_development_placeholder
+    current_placeholder_package: generic_qfn24_support_pattern
+    public_candidate_package: Bosch_BMI270_or_ST_LSM6DSO32_LGA14_IMU_class
+    conflict_reason: Supplier research found realistic sensor/IMU candidates in LGA14-class
+      packages; no selected QFN24 sensor hub has been identified.
+    source_urls: *id027
+    required_resolution: Select exact sensor hub/IMU MPN and replace SENSOR_HUB_QFN_DEV
+      with the official land pattern, pinout, and STEP model.
 - footprint: SHUNT_1206_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SHUNT_1206_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -2014,6 +2179,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: SODIMM_260P_0P5_COMPUTE_SOM_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SODIMM_260P_0P5_COMPUTE_SOM_DEV.kicad_mod
   footprint_status: development_pattern_generated
@@ -2307,6 +2475,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: TESTPOINT_1MM_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/TESTPOINT_1MM_DEV.kicad_mod
   footprint_status: off_the_shelf_test_pad_development_pattern
@@ -2341,6 +2512,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: TI_TPS65987_RSH_56QFN_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/TI_TPS65987_RSH_56QFN_DEV.kicad_mod
   footprint_status: public_pinout_development_pattern_generated
@@ -2433,6 +2607,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: TVS_DIODE_2P_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/TVS_DIODE_2P_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -2468,6 +2645,9 @@ records:
   support_pattern_has_explicit_provenance: true
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 - footprint: USIM_ESD_LEVELSHIFT_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/USIM_ESD_LEVELSHIFT_DEV.kicad_mod
   footprint_status: generic_off_the_shelf_development_pattern
@@ -2492,8 +2672,8 @@ records:
   expected_pin_count: 10
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: *id025
-  extra_footprint_pads: *id026
+  missing_expected_pads: *id028
+  extra_footprint_pads: *id029
   pinout_signal_group_count: 7
   land_pattern_basis: ''
   local_terminal_contract:
@@ -2511,6 +2691,9 @@ records:
   support_pattern_has_explicit_provenance: false
   step_binding_status: development_envelope_step_bound
   release_allowed: false
+  package_conflict: false
+  package_conflict_status: ''
+  package_conflict_detail: {}
 release_blockers_preserved:
 - display/camera exact FPC ordering still requires signed module drawings
 - Murata Type 2EA public table/DXF and Quectel public pin table still require supplier/CM

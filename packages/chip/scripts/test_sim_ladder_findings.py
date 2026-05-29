@@ -49,6 +49,17 @@ def test_all_pass_has_no_findings() -> None:
     print("PASS sim ladder pass has no findings")
 
 
+def test_false_claim_flags_are_declared() -> None:
+    for key, expected in run_sim_ladder.FALSE_CLAIM_FLAGS.items():
+        if expected is not False:
+            raise AssertionError(f"{key} should be a false claim flag")
+    if run_sim_ladder.CLAIM_BOUNDARY != (
+        "local_rtl_simulation_ladder_only_not_linux_or_android_chip_boot_evidence"
+    ):
+        raise AssertionError(run_sim_ladder.CLAIM_BOUNDARY)
+    print("PASS sim ladder declares false claim flags")
+
+
 def test_provenance_safe_value_sanitizes_host_local_paths() -> None:
     raw = {
         "log_tail": [
@@ -105,6 +116,7 @@ def subprocess_result(*, stdout: str, returncode: int):
 def main() -> None:
     test_failed_step_emits_finding_and_missing_artifact()
     test_all_pass_has_no_findings()
+    test_false_claim_flags_are_declared()
     test_provenance_safe_value_sanitizes_host_local_paths()
     test_passing_step_drops_log_tail()
 

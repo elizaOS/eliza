@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "dc0049c39964639997b8e4464dbaa323c84f176367ab1b384ff5730a82e7c8a3",
+  "local_discrete_step_sha256": "a9ebf78155e2bfa43adb35785ca09b61048d9ee7f6b3ee4633645c60d1687850",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

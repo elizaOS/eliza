@@ -7073,5 +7073,22 @@ release_allowed: false
 claim_boundary: Local routed-output candidate only. Not approved release evidence; requires real DRC/ERC/SI/PI/RF/fabricator/supplier
   review.
 candidate_children:
-- candidate-placeholder.txt
+- board/kicad/e1-phone/production/first-article/candidate-placeholder.txt
+child_artifact_inventory:
+- path: board/kicad/e1-phone/production/first-article/candidate-placeholder.txt
+  name: candidate-placeholder.txt
+  size_bytes: 86
+  sha256: 0491870d5cf4361fa78f4a61516527ead580b1f27f7ebb0710f35b17952533cc
+  candidate_placeholder: true
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+child_artifact_count: 1
+candidate_placeholder_child_count: 1
+candidate_placeholder_child_paths:
+- board/kicad/e1-phone/production/first-article/candidate-placeholder.txt
+candidate_manifest_child_artifact_count: 0
+candidate_manifest_child_artifact_paths: []
+untracked_non_manifest_child_count: 0
+release_child_count: 0
+all_non_manifest_children_classified: true
 release_children_complete: false

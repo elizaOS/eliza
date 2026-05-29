@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,21 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_software_bsp  # noqa: E402
 
 OUT = ROOT / "build/reports/software_bsp_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "external_buildroot_claim_allowed": False,
+    "external_linux_kernel_claim_allowed": False,
+    "opensbi_handoff_claim_allowed": False,
+    "uboot_boot_chain_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "android_compatibility_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "nnapi_acceleration_claim_allowed": False,
+    "product_bsp_release_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 EVIDENCE_MANIFEST = ROOT / "docs/evidence/software-bsp-evidence-manifest.json"
 LOG_MANIFEST = ROOT / "docs/android/bsp-log-evidence-manifest.json"
 ARTIFACT_MANIFEST = ROOT / "docs/android/bsp-artifact-manifest.json"
@@ -366,6 +382,8 @@ def build_report() -> dict[str, Any]:
             "not alternate U-Boot boot-chain evidence, not Android compatibility evidence, "
             "not CTS/VTS evidence, not NNAPI acceleration evidence, and not a product BSP release claim."
         ),
+        **FALSE_CLAIM_FLAGS,
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "current_scaffolds": {
             "software_bsp_checker": rel(SOFTWARE_BSP_CHECKER),
             "scaffold_checker": rel(SCaffold_CHECKER),
@@ -423,6 +441,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not a product BSP release claim",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

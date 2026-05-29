@@ -7389,7 +7389,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_USB_C.local-envelope.step
-  local_discrete_step_sha256: d9ff07976741e9e023951ea29e090f267f3de01764e788fbcde32415e4f4fcf1
+  local_discrete_step_sha256: d22234f60fe3289cc571c985c873fd8dfaa5f191397eb5e20e03ca3487135979
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -7476,7 +7476,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/SW_POWER_VOL.local-envelope.step
-  local_discrete_step_sha256: 3926d7bddd9b493d089d8e2cd4410c5b697d5517e169efbc242b2e7688d84c8a
+  local_discrete_step_sha256: 6151df7fe93852e509adddcefe5855356a6b99afcc824794db337f73b8c833ec
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -7779,7 +7779,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-envelope.step
-  local_discrete_step_sha256: 0dd29fa0ddfd7262c95982d23de1fc777ad6dbce1a3161f1c95f2bfb364189b3
+  local_discrete_step_sha256: a7d6265a517f5a54b577db28a7b6f71c85b086569de34f07c7b183991a6e9c33
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -7986,7 +7986,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_REAR_CAMERA.local-envelope.step
-  local_discrete_step_sha256: 933a399996acdc065fb24326130b25d1f018d8efd072941fb4b44032afcaf4ff
+  local_discrete_step_sha256: b1a1d621afe83f34642ad5172fb18feb9a3c93634ace7ad27b63111875d91dc5
   local_discrete_step_bytes: 15490
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -8229,7 +8229,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_FRONT_CAMERA.local-envelope.step
-  local_discrete_step_sha256: cd5f0aab7418e10fe6b04f18c08f1659f84c02a975a82fd848fb4073717ef493
+  local_discrete_step_sha256: 6b0b0f94e2f1dbf7c6a04639bcfc9596c614dd3d4a8d8b9e09ffb02a12107717
   local_discrete_step_bytes: 15490
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -9516,7 +9516,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CELL.local-envelope.step
-  local_discrete_step_sha256: 3af00a7a25b30917f5abcab8801b7791503ff2b073e7163c58342b851fe525dc
+  local_discrete_step_sha256: 0116ec3818891092c96c5db9aa42c09780196fb56d784890d17249b8cfd8283a
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -10773,7 +10773,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_WIFI_BT.local-envelope.step
-  local_discrete_step_sha256: 3ca8d41dc17cadbf35c6109fffee2f8610c7ce01daa32678d91e6436fdb60ee4
+  local_discrete_step_sha256: fdf242490456e27c591b11a632dcf5dd7580b90ca9072fc7a8921cb78c7dedfb
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -11322,7 +11322,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-envelope.step
-  local_discrete_step_sha256: faba09681f2b698ffb9305798a832b98285a6c15f55a9f7d03620530cbad9f48
+  local_discrete_step_sha256: 9b6348808d0c814c3f4e2a50d5b6b5041a3a62bb40be6186792a3d84933267fa
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -11739,7 +11739,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_USB_PD.local-envelope.step
-  local_discrete_step_sha256: ab7184e593cc1a7248675697e9323dd7a1d70de3a41bb1a1392660d896d2b7b3
+  local_discrete_step_sha256: ffe2de5d43a0eb645915913e9fa1ffc5708769b7d82f79fe69cbfb396337e8f8
   local_discrete_step_bytes: 15538
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -11826,7 +11826,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_BATTERY.local-envelope.step
-  local_discrete_step_sha256: 1e963651f974052350aad3a4775d40bae73d4bf754ea36c498adf643c34179cb
+  local_discrete_step_sha256: 68a9a03a4a4afcd7bd461a658d8586f1b46c640eb8a8363839baca3f2513ba5b
   local_discrete_step_bytes: 15486
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -13449,7 +13449,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step
-  local_discrete_step_sha256: 40615872d62733fcc327024bbe6e05c78aa67c6261f000bd9be7da14bbf468cd
+  local_discrete_step_sha256: a60da82f0d826c76624c26215528330bc4fe9be5952073a641954bbb40cb48f5
   local_discrete_step_bytes: 15516
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -13807,7 +13807,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-envelope.step
-  local_discrete_step_sha256: 2db7955ead131b30ceb64347a7d37618767474f7a606cca527bfde8a065610d3
+  local_discrete_step_sha256: f586f379155837695d7307f013d19d892ec0586c04c708658e9d75969e64bd99
   local_discrete_step_bytes: 15538
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -14350,7 +14350,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-envelope.step
-  local_discrete_step_sha256: 3e23ac7aaf9afaa85fa02106d2dd194ba3048b855057f88a8d3a1066882464c6
+  local_discrete_step_sha256: 474d4298ccfa67c514dec604ffda8648a02f85c1b4ccf6c8333dde71f6f8d0fe
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -14893,7 +14893,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_BOTTOM.local-envelope.step
-  local_discrete_step_sha256: 17647c2b83d76640e7597bc985d4bcb601c4e1d4cfe166392a6dc374239a5dfb
+  local_discrete_step_sha256: 6e16415df13c5f5c3a0f900a344b43bc772c3c47c4bb571467833dbc0bde8b01
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -14992,7 +14992,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step
-  local_discrete_step_sha256: dc0049c39964639997b8e4464dbaa323c84f176367ab1b384ff5730a82e7c8a3
+  local_discrete_step_sha256: a9ebf78155e2bfa43adb35785ca09b61048d9ee7f6b3ee4633645c60d1687850
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15091,7 +15091,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CC_ESD.local-envelope.step
-  local_discrete_step_sha256: b1e98a28d2bc3bf6f98b2b675603ebbe31ad9093cc0156fa1971a4151bade3e9
+  local_discrete_step_sha256: 1210acf242477156ed246306e53f2c9db1f89d28f8325ab604b474ca821502a2
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15166,7 +15166,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-envelope.step
-  local_discrete_step_sha256: 44fe4eeb1d794ec938ebc41e2fe1a2a449235f1c551a7ffad89bd558762f65f5
+  local_discrete_step_sha256: 338c7079e11fae4315994012d975e098f07b5016bb3d8c3710be63a4f592f352
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15235,7 +15235,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_VBUS.local-envelope.step
-  local_discrete_step_sha256: dc5b2e32aafee0a7bd8eb671b125543bf40cd38ed6ec6e0cae93d82a82ccf8bf
+  local_discrete_step_sha256: 25a8266269e53de64f4bea518bc4c6d9f468f4b9e5a281f6879b168137e6fa93
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15304,7 +15304,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC1.local-envelope.step
-  local_discrete_step_sha256: 626df3ef74e3e198384cd8a47f8db12d35378dbe9a1a2d6151110e11203dbb3b
+  local_discrete_step_sha256: 65781af45b19b46ff3baa0f15a0bc6e1492326a64a03dad3a906a414c3656cc2
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15373,7 +15373,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_CC2.local-envelope.step
-  local_discrete_step_sha256: a320ddced7572c17044e8a74aaec5d0af7b6f6222f1a6c272ad31c82d24a2771
+  local_discrete_step_sha256: b0cf7bae760190680a130b773713f3e8101accba2589f46951fc4c66531efb8d
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15442,7 +15442,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DP.local-envelope.step
-  local_discrete_step_sha256: 46b3032e763251af7b0fc50ea8f22b4d77ffb3e555762db82481f1a1b4e5953f
+  local_discrete_step_sha256: 306f833485fe0a9f99ea72633907a28f2939c6ab81cbd1fd16c8773e24d352bc
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15511,7 +15511,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/USBTP_DN.local-envelope.step
-  local_discrete_step_sha256: 241e1674d071c1b3c8de9e75e34efe859a418cbe65e95aa36ee99f3736764679
+  local_discrete_step_sha256: f591fc7aba5f5efe118834c32b1f872d41522f33f5dea6a38e101e8d0f970987
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15610,7 +15610,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-envelope.step
-  local_discrete_step_sha256: c91decdfaffe359bdbb1e475923d93c6efb0bd1610a2e8eabfc6f26363d96730
+  local_discrete_step_sha256: aaf5d8e0b3eebc4f0df0d602e1704021a25f4812c784bb5c01797a7fd0a93384
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15721,7 +15721,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_1.local-envelope.step
-  local_discrete_step_sha256: 1f42a7a67df09089f07f691b50e1f93a227a27799d9f1102b48424f564d11947
+  local_discrete_step_sha256: 3627cbf2078db30b843d0ec643e16be329f505d5e2bf95b7914f36eff2904f21
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15832,7 +15832,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_2.local-envelope.step
-  local_discrete_step_sha256: ad430a9f441867b763e89b6840626249f40071ccee46424bcd9fceb4aee630b6
+  local_discrete_step_sha256: 2f0c460aba4fde9ab7562f6422426843f3403adfc13366a5fb66948d493d0650
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -15943,7 +15943,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RC_3.local-envelope.step
-  local_discrete_step_sha256: fefc37565d038571fa4cc51061b46c6035e4cc89ff9552893b53a7dc3891f031
+  local_discrete_step_sha256: 4a9f57bda1aa4c06c667bc29a899961626dc4f3486f18bb3ee64a9aee6faf9e2
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16042,7 +16042,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_DSI_ESD.local-envelope.step
-  local_discrete_step_sha256: 28246c4d45b55e5280c28eaaa984a426add365653f5892e59170e65a8de2a85c
+  local_discrete_step_sha256: b4b27346a32a267c6851f068a1f732ff0466ff642355e9741778a10b889358f4
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16141,7 +16141,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_TOUCH_ESD.local-envelope.step
-  local_discrete_step_sha256: b421e08938e68c7a2d9582571914275cb1e1aff531fddc402fdbb36fd591ee60
+  local_discrete_step_sha256: 47e9b39b13ff44e75a817dba9a3b0e192b8e82e81c87c60db4ee8ae5f99cb484
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16355,7 +16355,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_DISP_BIAS.local-envelope.step
-  local_discrete_step_sha256: 789674aeec97e32a7ba22be96250cfa55a3d81d7064ba407a3fa89d503651c74
+  local_discrete_step_sha256: 1d05570699a621068b032c02cf34f836ed39b22b2336aa8d9d3b1067928cbd6d
   local_discrete_step_bytes: 15486
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16454,7 +16454,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM0_ESD.local-envelope.step
-  local_discrete_step_sha256: 6f4b4a99923f31dead118a0d218598d88801262fe486448e5fc7e08f23896bc2
+  local_discrete_step_sha256: d40cf15cf3757aaa52259fcdddcc98cd88dd4a743b8d7a81f3454a603e1876f8
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16553,7 +16553,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_CAM1_ESD.local-envelope.step
-  local_discrete_step_sha256: 7222d06e8eb90d2adc209b797ae8808f34890d0d09086015c05df9ee4b9593e1
+  local_discrete_step_sha256: 5549c55daa60cdf8e2a7c9d9ab725113ab9a2554df94dd0da8c5f331a84ca2ce
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16664,7 +16664,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_CAM_PWR.local-envelope.step
-  local_discrete_step_sha256: ba9a934a079bd9c39681b251179f064f8569123cce9316707bace721d04e3e4b
+  local_discrete_step_sha256: 0a39d24cd4abba63a0fc1f49ad01d2ede12e8eb85f30a73121bd4b5a31da60da
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16739,7 +16739,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_CAM_I2C.local-envelope.step
-  local_discrete_step_sha256: c1738fd5cb5a4943110ee64b4f9d09a9c9d96d315b6dc3424f5dde1f80862492
+  local_discrete_step_sha256: 07090d7a84fb79f023f3c4c6f7942b988dd0a8747773aa2a3ef90b28cdc48b4c
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16814,7 +16814,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AUDIO.local-envelope.step
-  local_discrete_step_sha256: 527a16fbf1dbe1616cd5c226f64e0f305adb0aafbeda19273e010eb37acfb798
+  local_discrete_step_sha256: 0572d992d5c1049e0ded581792a11f89428339fd77cad913656ce01f4cd5f448
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16889,7 +16889,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AMP.local-envelope.step
-  local_discrete_step_sha256: b4178096af9556ab1bbdcbfea4b8cd8d8accdcff1a0887d1ef16e0b2ea7cf9eb
+  local_discrete_step_sha256: 6c038db958daae6da8d3a470f9b2207da98110f43ce132759fa23c3c16c2c340
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -16964,7 +16964,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_DIG.local-envelope.step
-  local_discrete_step_sha256: f54031ef7537f981a76ecda98348a3df5e3bfd9171f95398cacfbb0b506969dc
+  local_discrete_step_sha256: 202bf118232ae0410e3102861ba10aab943a27eb6edc55c71e1e8df05b421c62
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17039,7 +17039,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_AUDIO_CTL.local-envelope.step
-  local_discrete_step_sha256: b1b8e3fa31ce6ec39bba48c38f0ef43c16e98d514811639dcee007e01f0d6e10
+  local_discrete_step_sha256: dfb1b9a82c08a5cc2fd270a71e59ae7d84664d1e2377a4e64da54c393d63dcb9
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17138,7 +17138,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_MIC.local-envelope.step
-  local_discrete_step_sha256: 37140d798102e8ef78d9beff2d4a249f8061cb235b89f757e27206b3068a71f3
+  local_discrete_step_sha256: 25abcb78db6bfc8ce399c34b011897fb0da73a521c5b9236bdb734e9c6223651
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17213,7 +17213,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_SPK.local-envelope.step
-  local_discrete_step_sha256: f031c6aea7e778355d61012ae65ec77feb4620af8ecc3460544c9e46db593947
+  local_discrete_step_sha256: 9315a4d6727f2d195796430814fc5ae9b7600a6838d65953641157eb514aa749
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17330,7 +17330,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-envelope.step
-  local_discrete_step_sha256: ef3fdfaf0c1e99799c300228ab9d28c89b66e246e23d232befbb39bdc3f3b25c
+  local_discrete_step_sha256: fec35eaccf05b4f64854e4d8cc4f8f3aa51337010d218f03cf8d69bd4f9eb153
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17405,7 +17405,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_USBPD.local-envelope.step
-  local_discrete_step_sha256: 8b98160101de01f59366ea72178fb4b45b3caa1954982ddc753e911ad47fff30
+  local_discrete_step_sha256: 3a0448f2d6d914d42c71c93dfa6dc935220193e13a697e92ac81ea3b99e1baf7
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17480,7 +17480,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FL_CHG_IN.local-envelope.step
-  local_discrete_step_sha256: 95877005a84f7b107f87a98292aeef382967b37383178e255dca589f57a9fc33
+  local_discrete_step_sha256: 80ec77bdc50584eefbeb1df9970e5bedfa7acdbf3bbb303e315d4c1c5d8352b9
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17555,7 +17555,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_BAT_SENSE.local-envelope.step
-  local_discrete_step_sha256: 60c6808663cc2962a84583cba3073e85b6ff57f738ed449d474cbc865377258c
+  local_discrete_step_sha256: 501de6703526df249904b8f2d88d398176c927076bc71d0f1558e696c2613d79
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17690,7 +17690,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step
-  local_discrete_step_sha256: ad64d5de0cbb7c4e612583ba235d43cadad476e2e42fc6c331368aa7b6544e95
+  local_discrete_step_sha256: 57631d29b0dc5fbd531c99f61da7d05f311af7500bc0fde7253295865b796a24
   local_discrete_step_bytes: 15546
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17765,7 +17765,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_PMIC_CTL.local-envelope.step
-  local_discrete_step_sha256: eff032dfa495b56fb11036085af8aece7869c982a3abd59ef3261acd7b841db5
+  local_discrete_step_sha256: d492a6a8c8eaca6938e7074ef258d7151db8cefcdefce3f4869d49deafb9d5f4
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17840,7 +17840,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_PMIC_IN.local-envelope.step
-  local_discrete_step_sha256: 3c63c52156c1dfc2d31eb0c46c6033ebdacf906397e3a618c26e667fe7cbec09
+  local_discrete_step_sha256: 1bb62b7a5cbce20b5e95c2c47bddff4f8d8e205df55b3964edda609918cb0c3c
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17915,7 +17915,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AP_RAILS.local-envelope.step
-  local_discrete_step_sha256: 0493d8b2cacc0735e063fbc7641d771d8193ae4110344682dd3ebecfb2c4c52b
+  local_discrete_step_sha256: 4a8fc6ed453fa31a7ed54d9f934560c2b74ccab957244208deb6fddcef559019
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -17990,7 +17990,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_RF_RAILS.local-envelope.step
-  local_discrete_step_sha256: 2f7a10f2b6230e460648d1dfbddbd9f80c1242de7ff81b5a79c92b6d6b060d45
+  local_discrete_step_sha256: cd9bce776a9e746dd655e3bb4cd1a978fd0b94d0d5c47290afcb13738c018657
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18065,7 +18065,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_CAM_RAILS.local-envelope.step
-  local_discrete_step_sha256: 2cc33ff2f975797e3e83b6c856f324c129710f3cc1a1e43e2008e54a385b329f
+  local_discrete_step_sha256: c1d073ae4822bc0e1f3c426e0405e2f68f9fe6e7ed042a3043d009f92d1dbbd0
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18140,7 +18140,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_DISP_RAILS.local-envelope.step
-  local_discrete_step_sha256: 5ef4a9de891a2c229d520b11009d22ed1124042bfb44ecfca89a7a5e90370a27
+  local_discrete_step_sha256: 6ab65ba5df64937f073ba362c7bd87cd8e0240b0d66579ba637e82819cd10a33
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18215,7 +18215,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_AON.local-envelope.step
-  local_discrete_step_sha256: 1f2ab8eccb655b5a8b52c6a8a0867a6a515fb0429be7ef2bef7fa1b1de1453dd
+  local_discrete_step_sha256: 2fae194ae827c21c7bcc2561c524ca6c0e741970d14418a557bcf3301d885643
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18290,7 +18290,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RS_PWR.local-envelope.step
-  local_discrete_step_sha256: 58a9bf5f724cdfa9614478a394a90c1a70eacff5af7dc761491c1add534e661d
+  local_discrete_step_sha256: 47893033c24d6658862d4ca6a954ef67e66c2260d0bda9023472ea15383428f1
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18365,7 +18365,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/C_SOC_CORE.local-envelope.step
-  local_discrete_step_sha256: 0a597d88b7fffdcbdbe0225cb885ba7c07f9ec9db70d4818d69d5bbce09ee346
+  local_discrete_step_sha256: 565505da9f0a5757db566236f95d27fcbd96a69e25b00317a16d217271b60391
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18440,7 +18440,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DIFF.local-envelope.step
-  local_discrete_step_sha256: b05a1e5e8e178d8dbdda4d73e4fa70563361525cdefacdd888d1a5c574ce32fc
+  local_discrete_step_sha256: f4e4c843a6a1d7afb3fba7bb19c657e3a45c66e4a0ca5307f0a0defa45b6389f
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18515,7 +18515,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step
-  local_discrete_step_sha256: 660a0edc86f8412504bd8597339e9180ac0c4b04f35dfd8e29cb7bc28ca2ce0a
+  local_discrete_step_sha256: 30a1014a3a56198ffe44959a8ed9f537a9d0d6265624ffb768eb1903d37e273d
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18590,7 +18590,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_LPDDR_DQ.local-envelope.step
-  local_discrete_step_sha256: 8dfed681cfb774c90cfc0887e84678ca343da1cf2cf5203d19e3514c95ca8537
+  local_discrete_step_sha256: c58399c887ea097790996bb4a5d2293bbb094faaf39a5e00fd62491a3a425cee
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18689,7 +18689,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RN_UFS.local-envelope.step
-  local_discrete_step_sha256: e731f784d21543186f7bd614381536ebada9dd109dd895bc718d6beb3f23e97e
+  local_discrete_step_sha256: 578220f675c24b26c4fb1e3c7d2a2b8b8abae25d3ad9504acb12dd3d5c3b36ef
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18764,7 +18764,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/J_DEBUG.local-envelope.step
-  local_discrete_step_sha256: 70487a553df1918aaba9a06723f57522e44a5b1abcd0b11aac9e3d4d9a1a5942
+  local_discrete_step_sha256: aec3fdce951095ac7af6c712baed05962bb27f62fa884fbf044f793f00a6086e
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -18887,7 +18887,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/D_USIM.local-envelope.step
-  local_discrete_step_sha256: 79d4f2f0ff5926723b5d0b20fb4b0775fccb262921cc2e3ca1529b9ffda94979
+  local_discrete_step_sha256: 9a70c6d309b7da037221325871f9b729781cd8c62a7d353e6c70daae4b7a753a
   local_discrete_step_bytes: 15572
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19005,7 +19005,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step
-  local_discrete_step_sha256: 91802c3f4d88bb9d4af48dec48d02a558fd70ab7d3ce2fa99f7e003960d14a0a
+  local_discrete_step_sha256: f674837dbc50b1a96d27808dc23625505be9acfb2c9d79484405818752f22ea0
   local_discrete_step_bytes: 15512
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19080,7 +19080,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_GNSS_RF.local-envelope.step
-  local_discrete_step_sha256: 2c5c4236371d13d79b0bc969ba18c4a0c9038c57212be1916efe3688971b227e
+  local_discrete_step_sha256: 5726311b89110984e5c7b0a67482ff088958911412a13324ae21f9d54df91883
   local_discrete_step_bytes: 15598
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19342,7 +19342,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_NFC.local-envelope.step
-  local_discrete_step_sha256: 8ecddfee4a93ad19ca19cb6169233231aefcd0dc3934757b0aafa0b65cd71e94
+  local_discrete_step_sha256: 21897d4d54fd2d7b0cbf1798f2474ab080eb4df782e0b8126380029cb239b78d
   local_discrete_step_bytes: 15538
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19435,7 +19435,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_NFC.local-envelope.step
-  local_discrete_step_sha256: e230cdb52040ca1d14e8ec15ade7e4780aec6a01545aa5bcc452426e6ef7b71a
+  local_discrete_step_sha256: 144aedfdd3e9f91b265f50d73b0a9edf3d8042578de9dc6a924dc361ddf83216
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19649,7 +19649,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/U_SENS.local-envelope.step
-  local_discrete_step_sha256: 35bd52edab0e191139d906b318f0df4cb6632caf29d8b449d32c9bec8714eeb2
+  local_discrete_step_sha256: 9d8140aa4a74ba3a8e63c4e3641cf74771e159a9656e9a27e81aba9a28e9394e
   local_discrete_step_bytes: 15486
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19742,7 +19742,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_MAIN.local-envelope.step
-  local_discrete_step_sha256: 954858e4a1b5882885e9edcdc505339102a6d4f821e22825f618bd9ec8593bb6
+  local_discrete_step_sha256: 9e9acff2309056b5079ef8bcad6c07fc04999681f9e15eeecd23a606ae97ae14
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19811,7 +19811,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_MAIN.local-envelope.step
-  local_discrete_step_sha256: 2d1875554fa4553a30cc9fbb1c6e989b2ecef508236c2a05cfeb61478e2f6c9d
+  local_discrete_step_sha256: 87c479d8bc7b93dbf2bc046b54a27724647ba99502184de8a759dc767626c422
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19904,7 +19904,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_CELL_DIV.local-envelope.step
-  local_discrete_step_sha256: 2591dcd3686530151373c80f585512107d0a6dd41b33fc2127149bc948d10602
+  local_discrete_step_sha256: b5f81f04368e877912a15849f6668b7f7f2abfa8d322c29629ab2ad2c24a1362
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -19973,7 +19973,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_CELL_DIV.local-envelope.step
-  local_discrete_step_sha256: 2b9963c4633d75c159650adfcc0cda0f3153769510b8982c636145df6622f432
+  local_discrete_step_sha256: 83263395a64c500a489eaeb0ba62cbb467eaee288097975349ed463c72cf840e
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20066,7 +20066,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_GNSS.local-envelope.step
-  local_discrete_step_sha256: b11004e9f8879f641f3fd492e4897db6f6318694d84d3f65b34e46db3ae7c736
+  local_discrete_step_sha256: fe8b1f887e6a22e604d2f444551dffaf633a0f42d28b29234c23fc34a97c6fef
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20135,7 +20135,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_GNSS.local-envelope.step
-  local_discrete_step_sha256: c91aa379f7a9a2e42c7f5a971bf46f00d789805aeb59cdea812dada653646ca8
+  local_discrete_step_sha256: c982766c00bb9021728285ac39b2e887d7963f0215a0a658fd19471e214eb1e3
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20228,7 +20228,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI0.local-envelope.step
-  local_discrete_step_sha256: e52f5e10b13904d900dca70c322885ac21a66535028031ee9cbdaa68f5ed3f5a
+  local_discrete_step_sha256: c69ef477d36cf9d37193e9cbe0b23bb390cf4db5dbc59ea012b95985a4493697
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20297,7 +20297,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI0.local-envelope.step
-  local_discrete_step_sha256: 07cfa3eedf42d04739b210a408cc9c73f89d7caecd9167a08e05042adccf0458
+  local_discrete_step_sha256: b6620c2ea26cf39931bc9fd0b632776d7619f95381c12bd75eda93b6cb8c3998
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20390,7 +20390,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MN_WIFI1.local-envelope.step
-  local_discrete_step_sha256: 8c9ca85f36d0829d57d33fcee9ee6296673be252b7e85701249affe672b9bfa5
+  local_discrete_step_sha256: ecfa1d7a39f077de12754880067c9b470ede55275ec13ab35511655ee819943e
   local_discrete_step_bytes: 15576
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20459,7 +20459,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/RFTP_WIFI1.local-envelope.step
-  local_discrete_step_sha256: 0929e7b60c156bf58ef54a1359906ff815f44b130ef53a0381f148ff3c3ddd88
+  local_discrete_step_sha256: b7d5812469fbf8028d5b6655652b0339efb62c95520ec096b52d25b459a20f60
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20528,7 +20528,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBUS.local-envelope.step
-  local_discrete_step_sha256: 4b94e158405894b950d9eacda3558a063adc9931035de606b47fc81ffb8f2878
+  local_discrete_step_sha256: e2ba2bffd46a9a5274405124de3c9301b43dd2a133dca00704c635ffe16e7f92
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20597,7 +20597,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-envelope.step
-  local_discrete_step_sha256: 0ef38c0cbe0c68e0ed4b6ef9c6d475d0bdf2b732729135e8d87b64f8094bf3e8
+  local_discrete_step_sha256: 4d481f6a754621739002031c961342400c06132dffbcbe1c25eb5ebf036f5021
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20666,7 +20666,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_SYS.local-envelope.step
-  local_discrete_step_sha256: 9bb7e8cf946783d1084a8f972dcf2368d5309a2656f58be47a6c1324510b3724
+  local_discrete_step_sha256: d9f9d416a68235fdc839b35986d07b710cf0fb97a83fbc9a178df042f57b8e4c
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20735,7 +20735,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_AON_1V8.local-envelope.step
-  local_discrete_step_sha256: 9e9787bb354b7ea44be1e50b2424d664e5d94a708918f961d11606292e131b52
+  local_discrete_step_sha256: 1bbfd25db2355a1f40e40ca06cdd9ed56fc98d482ce39b7c608c1567d667788c
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20804,7 +20804,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_IO_1V8.local-envelope.step
-  local_discrete_step_sha256: 32343cd58c33c33a202261f82f04ccc347ceb2a69b277965e8d47692f96f8743
+  local_discrete_step_sha256: 3de87fa14d4d3d42f6ba3777f66c7b69c0d3544961172395138ed208250f4806
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20873,7 +20873,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_RF_VBAT.local-envelope.step
-  local_discrete_step_sha256: 98d6c3622c07882a71ebb79443ef62a64bcabfdc761c7cb6da6c33d939c0ca61
+  local_discrete_step_sha256: 98f1faddb6639ecdc28bc74d772191dd9a7e5d3de3b1c79eac4add98594a444c
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -20942,7 +20942,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_CAM_AVDD_2V8.local-envelope.step
-  local_discrete_step_sha256: e9e07e12e968cd69de28275e152d75d3af17f20ddc2aded6daffe5bf22c410f5
+  local_discrete_step_sha256: b1f0751aa85c8574da9217ee6d34aa1972c2bc6758bfba07a60a50c4c5d51d33
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21011,7 +21011,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-envelope.step
-  local_discrete_step_sha256: a5fce1f4de0ad8858cb1ea1431128f826681aff859b5c79a29f78e669ae48e46
+  local_discrete_step_sha256: 94f30cf84a7cc5c0657bae0fda73e212a67abbc45daa98fbe6641aa3a395e6b7
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21080,7 +21080,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TL.local-envelope.step
-  local_discrete_step_sha256: 62dbde902c7087439c8c4eb839d57967cb344aba072dd3f69d5224361ad25129
+  local_discrete_step_sha256: 50d60468e97b85cf889f8fb56183669f3fa28a5d04e7bf6a57fe5dab99cbfc7b
   local_discrete_step_bytes: 15628
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21149,7 +21149,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_TR.local-envelope.step
-  local_discrete_step_sha256: 09b495af53bdb7c543bef7e833cfbf2d978bf82d594fe411098d444e34a30a9c
+  local_discrete_step_sha256: ed4697dfc83a2427312a966b639f982331b857cae019b5569207c1f5530e2cc3
   local_discrete_step_bytes: 15628
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21218,7 +21218,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/FID_BR.local-envelope.step
-  local_discrete_step_sha256: 5a93c950b0097aa4aa006f697da7ea8a5a3b4bdc31597287e141e20cac72d277
+  local_discrete_step_sha256: b089ea80ccde4c23de76fe689473c595c11cb791c95fed0285db850bed3f71fc
   local_discrete_step_bytes: 15628
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21304,7 +21304,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TL.local-envelope.step
-  local_discrete_step_sha256: 7c5141c52e2da4c3e007f349d79d05f6991a83ba51536dccfe27093aec9b3447
+  local_discrete_step_sha256: e238350202262682679744ab2a73b197792e488878af4e719ad3cd2c99dc6230
   local_discrete_step_bytes: 15636
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21386,7 +21386,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_TR.local-envelope.step
-  local_discrete_step_sha256: 72aed933aef0d8a29956115a5f44e092bc13966cac0f83ddf474ef0b4a1c0d15
+  local_discrete_step_sha256: 25205634863534b2626d8b7da9f48949680fbe640b3ca3c03e0078490175fb62
   local_discrete_step_bytes: 15638
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21468,7 +21468,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BL.local-envelope.step
-  local_discrete_step_sha256: 9f39f2d0b792dd7300d4e7581190197ed09d2787bf5312e419a2001bc8da8703
+  local_discrete_step_sha256: 7efedbae8b64a4dd70f9ad7bf5922433e84bccdde6686c685b299c696c439bc3
   local_discrete_step_bytes: 15638
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass
@@ -21550,7 +21550,7 @@ models:
   pad_audit_record_source: board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
   release_credit: false
   local_discrete_step_file: board/kicad/e1-phone/production/step/component-models/MH_BR.local-envelope.step
-  local_discrete_step_sha256: 45be1c67fa70918fe96083bda3d53efac5dc15d55cae34253d20297a2a0d9e5a
+  local_discrete_step_sha256: 2c6b1493d5acd8351bca61eb4ca145b12c5cac5e44bb1c495293413680730f82
   local_discrete_step_bytes: 15638
   local_discrete_step_status: local_development_envelope_not_supplier_model
   local_discrete_step_import_status: pass

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,19 @@ CALIBRATION_TEST = ROOT / "scripts/test_benchmark_calibration.py"
 PARSER_TEST = ROOT / "scripts/test_benchmark_parsers.py"
 MAKEFILE = ROOT / "Makefile"
 OUT = ROOT / "build/reports/benchmark_efficiency_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "calibrated_target_benchmark_claim_allowed": False,
+    "prototype_silicon_claim_allowed": False,
+    "complete_phone_claim_allowed": False,
+    "measured_tops_w_claim_allowed": False,
+    "measured_joules_per_inference_claim_allowed": False,
+    "commercial_phone_comparison_claim_allowed": False,
+    "release_efficiency_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 REQUIRED_REAL_BENCHMARKS = {
     "coremark",
@@ -289,6 +303,7 @@ def build_report() -> dict[str, Any]:
     findings = structured_findings(blocked_until_real_evidence, checks)
     return {
         "schema": "eliza.benchmark_efficiency_scope.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": "benchmark_efficiency_scope_release_blocked",
         "claim_boundary": (
             "Benchmark efficiency scope audit only; not calibrated target benchmark evidence, "
@@ -296,6 +311,7 @@ def build_report() -> dict[str, Any]:
             "evidence, not measured joules-per-inference evidence, not commercial phone "
             "comparison evidence, and not a release efficiency claim."
         ),
+        **FALSE_CLAIM_FLAGS,
         "current_scaffolds": {
             "benchmark_plan": rel(BENCHMARK_PLAN),
             "report_schema": rel(REPORT_SCHEMA),
@@ -334,6 +350,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not a release efficiency claim",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

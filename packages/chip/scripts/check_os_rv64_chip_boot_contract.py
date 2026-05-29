@@ -42,6 +42,15 @@ TUI_SMOKE_SCRIPT = VARIANT / "config/includes.chroot/usr/lib/elizaos/run-termina
 REPORT = ROOT / "build/reports/os_rv64_chip_boot_contract.json"
 SCHEMA = "eliza.os_rv64_chip_boot_contract.v1"
 CLAIM_BOUNDARY = "chip_objective_gate_no_qemu_virt_or_first_boot_marker_substitution"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "physical_board_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 CAPTURE_SCRIPT = "packages/os/linux/elizaos/scripts/capture-chip-boot-evidence.py"
 CAPTURE_TRANSCRIPT_PLACEHOLDER = "/path/to/generated-ap-serial.log"
 AGENT_TRANSCRIPT_PLACEHOLDER = "/path/to/agent-health.log"
@@ -856,6 +865,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
 def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    dependency_counts = {"live_device_validation": len(blockers)} if blockers else {}
     command_plan = next_command_plan(findings)
     return {
         "schema": SCHEMA,
@@ -864,11 +874,14 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
             "+00:00", "Z"
         ),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "blockers": len(blockers),
             "findings": len(findings),
+            "blocker_dependency_counts": dependency_counts,
             "next_command_count": len(command_plan),
         },
+        "blocker_dependency_counts": dependency_counts,
         "findings": [asdict(finding) for finding in findings],
         "next_command_plan": command_plan,
         "evidence": evidence,

@@ -36,6 +36,16 @@ REPORT = ROOT / "build/reports/linux_firmware_boot_chain_contract.json"
 
 SCHEMA = "eliza.linux_firmware_boot_chain_contract.v1"
 CLAIM_BOUNDARY = "static_firmware_boot_chain_contract_only_not_external_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "external_boot_claim_allowed": False,
+    "firmware_handoff_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 TARGETS = ("buildroot", "opensbi", "u-boot")
 SELECTED_RISCV64_FIRMWARE_CHAIN = "EDK2/OpenSBI -> GRUB EFI -> Linux"
 SELECTED_RISCV64_BOOTLOADER_PACKAGES = {"grub-efi-riscv64", "grub-efi-riscv64-bin"}
@@ -546,6 +556,7 @@ def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "blockers": len(blockers),
             "findings": len(findings),

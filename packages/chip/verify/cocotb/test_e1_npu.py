@@ -38,6 +38,17 @@ NPU_OPCODES = (
     E1NpuRuntime.OP_EXP2_NEG_Q0_8,
 )
 AXI_RESP_BINS = ("OKAY", "SLVERR", "DECERR")
+NPU_FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_accelerator_claim_allowed": False,
+    "nnapi_claim_allowed": False,
+    "performance_claim_allowed": False,
+    "android_driver_claim_allowed": False,
+    "power_claim_allowed": False,
+    "thermal_claim_allowed": False,
+    "dma_backed_tensor_execution_claim_allowed": False,
+}
 
 
 async def poll_done(dut, cycles=32):
@@ -771,6 +782,7 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
         "claim_boundary": "Local NPU cocotb runtime ABI coverage only; not NNAPI, phone-class throughput, power, thermal, Android driver, or release evidence.",
         "source": "verify/cocotb/test_e1_npu.py",
         "runtime_contract": "compiler/runtime/e1_npu_runtime.py",
+        **NPU_FALSE_CLAIM_FLAGS,
         "covered_opcodes": sorted(covered_opcodes),
         "covered_opcode_names": [case[0] for case in scalar_cases]
         + ["gemm_s8", "gemm_s4", "vrelu_s8"],

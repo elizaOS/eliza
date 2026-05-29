@@ -27,6 +27,22 @@ def assert_contains(text: str, expected: str) -> None:
         raise AssertionError(f"missing {expected!r} in output:\n{text}")
 
 
+def assert_false_claim_flags(data: dict) -> None:
+    for key in (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "e1_chip_hardware_claim_allowed",
+        "cdd_compliance_claim_allowed",
+        "gms_claim_allowed",
+        "cts_vts_claim_allowed",
+        "full_android_compatibility_claim_allowed",
+        "hardware_boot_claim_allowed",
+        "production_readiness_claim_allowed",
+    ):
+        if data.get(key) is not False:
+            raise AssertionError(f"android sim report {key} must be false: {data.get(key)!r}")
+
+
 def run(
     command: list[str], env_overrides: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -71,6 +87,7 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
         raise AssertionError("android sim report must be blocked without AOSP_DIR")
     if "not e1-chip hardware ABI proof" not in data.get("claim_boundary", ""):
         raise AssertionError("android sim report must keep the e1-chip ABI boundary explicit")
+    assert_false_claim_flags(data)
     missing_requirements = data.get("host_requirements", {}).get("missing", [])
     if not any("AOSP_DIR is not set" in item for item in missing_requirements):
         raise AssertionError(

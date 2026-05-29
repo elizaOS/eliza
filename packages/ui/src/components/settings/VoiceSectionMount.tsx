@@ -16,13 +16,13 @@ import * as React from "react";
 import { client } from "../../api/client";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
 import {
-  type VoiceContinuousMode,
   VOICE_CONTINUOUS_MODES,
+  type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
 import {
   DEFAULT_VOICE_SECTION_PREFS,
-  VoiceSection,
   type VoiceLocalCloudStrategy,
+  VoiceSection,
   type VoiceSectionPrefs,
 } from "./VoiceSection";
 
@@ -37,13 +37,15 @@ function isContinuousMode(value: unknown): value is VoiceContinuousMode {
   );
 }
 
-function isLocalCloudStrategy(value: unknown): value is VoiceLocalCloudStrategy {
-  return (
-    value === "auto" || value === "force-local" || value === "force-cloud"
-  );
+function isLocalCloudStrategy(
+  value: unknown,
+): value is VoiceLocalCloudStrategy {
+  return value === "auto" || value === "force-local" || value === "force-cloud";
 }
 
-function readStoredVoicePrefs(config: Record<string, unknown>): VoiceSectionPrefs {
+function readStoredVoicePrefs(
+  config: Record<string, unknown>,
+): VoiceSectionPrefs {
   const messages = (config.messages ?? {}) as Record<string, unknown>;
   const stored = (messages[VOICE_PREFS_CONFIG_KEY] ?? {}) as Record<
     string,
@@ -84,23 +86,26 @@ export function VoiceSectionMount(): React.ReactElement {
     };
   }, []);
 
-  const handlePrefsChange = React.useCallback(async (next: VoiceSectionPrefs) => {
-    setPrefs(next);
-    setPersistError(null);
-    try {
-      const config = await client.getConfig();
-      const messages = (config.messages ?? {}) as Record<string, unknown>;
-      await client.updateConfig({
-        messages: { ...messages, [VOICE_PREFS_CONFIG_KEY]: next },
-      });
-    } catch (error) {
-      setPersistError(
-        error instanceof Error
-          ? error.message
-          : "Failed to save voice settings.",
-      );
-    }
-  }, []);
+  const handlePrefsChange = React.useCallback(
+    async (next: VoiceSectionPrefs) => {
+      setPrefs(next);
+      setPersistError(null);
+      try {
+        const config = await client.getConfig();
+        const messages = (config.messages ?? {}) as Record<string, unknown>;
+        await client.updateConfig({
+          messages: { ...messages, [VOICE_PREFS_CONFIG_KEY]: next },
+        });
+      } catch (error) {
+        setPersistError(
+          error instanceof Error
+            ? error.message
+            : "Failed to save voice settings.",
+        );
+      }
+    },
+    [],
+  );
 
   return (
     <>

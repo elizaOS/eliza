@@ -18,6 +18,7 @@ CONFIGS = [
 ]
 OPENLANE_IMAGE = "ghcr.io/efabless/openlane2:2.4.0.dev1"
 OPENLANE_IMAGE_DIGEST = "sha256:bcaabac3b114dfb9e739af9f16b53a79ce1b744bcdb3ad4fc476c961581fe5d5"
+OPENLANE2_BIN = ROOT / "external/openlane2/.venv/bin/openlane"
 REQUIRED_KEYS = {
     "DESIGN_NAME",
     "VERILOG_FILES",
@@ -160,6 +161,8 @@ def shell_join(args: list[str]) -> str:
 
 def openlane_command(config_path: Path) -> tuple[str, list[str]]:
     rel_config = str(config_path.relative_to(ROOT))
+    if OPENLANE2_BIN.is_file():
+        return "openlane2", [str(OPENLANE2_BIN), rel_config]
     if shutil.which("openlane"):
         return "openlane", ["openlane", rel_config]
     if shutil.which("flow.tcl") and config_path.name == "config.json":

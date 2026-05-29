@@ -82,6 +82,25 @@ Trained failure rate: `0.0`
 Trained yaw drift rad: `0.17410843586368616`
 Promotion blocker: `phase_success_rate_below_threshold`
 
+## Local Prior Residual Probes
+
+| source | ctrl | scale | mode | walking | learned motion | reward delta | tracked dx m | failure rate | failed gates | prior max | residual pre/post | residual guard | residual scale | contacts | verdict |
+|---|---|---:|---|---|---|---:|---:|---:|---|---:|---:|---:|---:|---|---|
+| `local_learning_probe_hiwonder_sine_prior_residual_scale025_6k` | `linear` | 0.200 | `missing` | `False` | `False` | 625.3 | 0.007 | 0.00 | `tracked_delta_x_forward, min_swing_foot_clearance_m, hold_s` | 0.000 | 0.000 / 0.000 | 0.000 | 0.000 | `4.0` | `partial_stepping_below_distance_after_scale030_8k` |
+| `local_learning_probe_hiwonder_sine_prior_scale0699_residual015_6k` | `linear` | 0.699 | `missing` | `False` | `False` | -360.8 | 0.148 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, max_foot_slip_m_s, max_self_collision_count, no_fall, hold_s` | 0.000 | 0.000 / 0.000 | 0.000 | 0.000 | `4.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_sine_prior_only_diagnostic` | `linear` | 0.200 | `missing` | `False` | `False` | 0.0 | 0.137 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, no_fall, hold_s` | 0.585 | 0.000 / 0.000 | 0.000 | 0.000 | `3.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_sine_prior_progress_coupled_scale025_3k` | `linear` | 0.200 | `missing` | `False` | `False` | -396.8 | -0.001 | 0.00 | `tracked_delta_x_forward, yaw_drift_bound, hold_s` | 0.576 | 0.400 / 0.065 | 0.163 | 0.250 | `6.0` | `no_forward_motion_after_progress_8k` |
+| `local_learning_probe_hiwonder_stride_mod_3k` | `linear` | 0.200 | `hiwonder_stride_mod` | `False` | `False` | -11.4 | 0.136 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, no_fall, hold_s` | 0.669 | 0.027 / 0.003 | 0.227 | 1.000 | `3.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_stride_mod_scale1_3k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 76.1 | 0.166 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, max_foot_slip_m_s, max_self_collision_count, no_fall, hold_s` | 0.681 | 0.050 / 0.047 | 0.935 | 1.000 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_stride_mod_cbp_scale1_5k` | `cbp` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -84.4 | 0.169 | 1.00 | `tracked_delta_x_forward, max_self_collision_count, no_fall, hold_s, min_alternating_foot_contacts` | 0.646 | 0.034 / 0.031 | 0.910 | 1.000 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_stride_mod_named_scale1_5k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 53.8 | 0.166 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, max_foot_slip_m_s, max_self_collision_count, no_fall, hold_s` | 0.662 | 0.018 / 0.016 | 0.908 | 1.000 | `4.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_stride_mod_named_scale0815_5k` | `linear` | 0.815 | `hiwonder_stride_mod` | `False` | `False` | 7.4 | 0.163 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, max_foot_slip_m_s, max_self_collision_count, no_fall, hold_s` | 0.665 | 0.041 / 0.039 | 0.929 | 1.000 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_collision_safe_stride_mod_scale1_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 3.3 | 0.246 | 1.00 | `tracked_delta_x_forward, no_fall, hold_s, min_alternating_foot_contacts` | 0.708 | 0.029 / 0.025 | 0.906 | 1.000 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_scale1_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -994.5 | 0.166 | 1.00 | `tracked_delta_x_forward, max_self_collision_count, no_fall, hold_s, min_alternating_foot_contacts` | 0.583 | 0.025 / 0.024 | 0.955 | 1.000 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -4.5 | 0.296 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, no_fall, hold_s, min_alternating_foot_contacts` | 0.670 | 0.024 / 0.022 | 0.933 | 0.250 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_yaw055_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 4.4 | 0.301 | 1.00 | `yaw_drift_bound, no_fall, hold_s, min_alternating_foot_contacts` | 0.673 | 0.021 / 0.019 | 0.939 | 0.250 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_pitch3_yaw075_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 167.5 | 0.118 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, max_self_collision_count, no_fall, hold_s` | 0.578 | 0.026 / 0.023 | 0.897 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
+
 ## Open-loop Task Feasibility
 
 Feasibility ok: `False`
@@ -92,7 +111,7 @@ Profile: `hiwonder-ainex`
 | `walk_forward` | `deterministic_smoke` | 0.144 | `bezier_profile` | 0.54 | 0.162 | -0.001 | 0.00 | `fall` | `torso_z_min_ratio, delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
 | `walk_backward` | `deterministic_smoke` | 0.001 | `motion_clip` | 0.23 | -0.046 | 0.000 | 0.00 | `fall` | `delta_x_m_max, no_fall, min_alternating_foot_contacts, min_swing_foot_clearance_m, hold_s` |
 | `sidestep_left` | `deterministic_smoke` | 0.002 | `deterministic_wide` | 0.84 | 0.002 | 0.168 | 0.00 | `fall` | `delta_y_m_min, no_fall, min_alternating_foot_contacts, max_self_collision_count, hold_s` |
-| `sidestep_right` | `deterministic_smoke` | 0.003 | `deterministic_wide` | 0.84 | 0.002 | -0.168 | 0.00 | `fall` | `delta_y_m_max, no_fall, min_alternating_foot_contacts, max_self_collision_count, hold_s` |
+| `sidestep_right` | `deterministic_smoke` | 0.003 | `hiwonder_closed_loop_progress_settle` | 0.84 | 0.002 | -0.168 | 0.00 | `fall` | `delta_y_m_max, no_fall, min_alternating_foot_contacts, max_self_collision_count, hold_s` |
 
 ## Open-loop Gait Search
 
@@ -138,7 +157,7 @@ Transition refinement:
 - best success-window controller: `transition_local_random_sine_013_045_000`
 - best success window s: `0.0`
 - best success-window dx m: `0.21941821561754388`
-- best success-window failure: `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s`
+- best success-window failure: `torso_z_min_ratio, delta_x_m_min, no_fall, min_alternating_foot_contacts, max_foot_slip_m_s, hold_s`
 Feedback refinement:
 - base controller: `local_random_sine_013_045`
 - candidates: `501`
@@ -149,18 +168,38 @@ Feedback refinement:
 - best success-window controller: `feedback_local_random_sine_013_045_093`
 - best success window s: `0.0`
 - best success-window dx m: `0.28196318150394`
-- best success-window failure: `delta_x_m_min, no_fall, hold_s`
+- best success-window failure: `torso_z_min_ratio, delta_x_m_min, no_fall, max_foot_slip_m_s, hold_s`
 Hybrid recovery refinement:
 - base controller: `feedback_local_random_sine_013_045_093`
-- candidates: `160`
+- candidates: `1004`
+- successes: `0`
+- primary gap: `stability`
+- forward-displacement candidates: `3`
+- forward + no-fall + straight candidates: `0`
+- best success-window controller: `hybrid_feedback_local_random_sine_013_045_093_1000`
+- best success window s: `0.0`
+- best success-window dx m: `0.3382670640894683`
+- best success-window failure: `torso_z_min_ratio, no_fall, max_foot_slip_m_s, hold_s`
+- best physical-gates controller: `hybrid_feedback_local_random_sine_013_045_093_1003`
+- best physical-gates dx m: `0.08117556345991897`
+- best physical-gates torso z m: `0.23790313472898644`
+- best physical-gates max foot slip m/s: `0.2888130247592926`
+- best physical-gates failure: `delta_x_m_min, hold_s`
+Stable bridge refinement:
+- base controller: `hybrid_feedback_local_random_sine_013_045_093_1003`
+- candidates: `168`
 - successes: `0`
 - primary gap: `forward_displacement`
 - forward-displacement candidates: `0`
 - forward + no-fall + straight candidates: `0`
-- best success-window controller: `hybrid_feedback_local_random_sine_013_045_093_004`
-- best success window s: `0.0`
-- best success-window dx m: `0.2878859722586517`
-- best success-window failure: `delta_x_m_min, no_fall, hold_s`
+- best stable-bridge controller: `stable_bridge_hybrid_feedback_local_random_sine_013_045_093_1003_044`
+- best stable-bridge dx m: `0.2293022035504783`
+- best stable-bridge torso z m: `0.19238435490258857`
+- best stable-bridge max foot slip m/s: `0.33737313747406006`
+- best stable-bridge failure: `delta_x_m_min, no_fall, hold_s`
+- best physical-gates controller: `stable_bridge_hybrid_feedback_local_random_sine_013_045_093_1003_014`
+- best physical-gates dx m: `0.08117556345991897`
+- best physical-gates failure: `delta_x_m_min, hold_s`
 
 ## HiWonder Near-gait Visual Evidence
 
@@ -203,10 +242,10 @@ Passive-success profiles: `0`
 | profile | active success | passive success | selected dx m | passive dx m | most-forward controller | most-forward dx m | most-forward failure |
 |---|---|---|---:|---:|---|---:|---|
 | `hiwonder-ainex` | `False` | `False` | 0.144 | 0.001 | `bezier_profile` | 0.162 | `torso_z_min_ratio, delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
-| `unitree-g1` | `False` | `False` | -0.534 | -0.000 | `deterministic_smoke` | -0.534 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
-| `unitree-h1` | `False` | `False` | -0.252 | -0.315 | `deterministic_smoke` | -0.252 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
-| `unitree-r1` | `False` | `False` | 0.324 | 0.444 | `deterministic_smoke` | 0.324 | `no_fall, hold_s` |
-| `asimov-1` | `False` | `False` | -0.300 | -0.376 | `deterministic_smoke` | -0.300 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
+| `unitree-g1` | `False` | `False` | -0.534 | -0.000 | `deterministic_smoke` | -0.534 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, min_swing_foot_clearance_m, hold_s` |
+| `unitree-h1` | `False` | `False` | -0.252 | -0.315 | `deterministic_smoke` | -0.252 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, min_swing_foot_clearance_m, hold_s` |
+| `unitree-r1` | `False` | `False` | 0.412 | 0.444 | `unitree_r1_stance_gait_seeded_1` | 0.825 | `no_fall, min_swing_foot_clearance_m, max_foot_slip_m_s, hold_s` |
+| `asimov-1` | `False` | `False` | -0.300 | -0.376 | `deterministic_smoke` | -0.300 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, max_self_collision_count, hold_s` |
 
 ## Obstacle Course
 
@@ -222,6 +261,8 @@ Fresh smoke passive baseline is a control: `True`
 Fresh smoke trace rollouts ok: `True`
 Fresh smoke trace consistency: `True`
 Fresh smoke has successful final clear trace: `True`
+Fresh smoke Alberta final clear rate: `0.6666666666666666`
+Fresh smoke Alberta majority final clear: `True`
 Fresh smoke demo frames: `6`
 Fresh smoke demo video bytes json/file: `151820` / `151820`
 Fresh smoke demo video: `/home/shaw/milady/eliza/packages/robot/evidence/obstacle_motion_trajectory_audit_smoke/obstacle_course_demo.mp4`
@@ -251,10 +292,10 @@ Fresh smoke motion summary:
 
 Fresh smoke trajectory samples:
 
-| learner | steps | start x | final x | max x | progress m | reached obstacle x | cleared obstacle centerline | passed obstacle | collision | min clearance m |
-|---|---:|---:|---:|---:|---:|---|---|---|---|---:|
-| `alberta` | 60 | -1.187 | 1.099 | 1.099 | 2.287 | `True` | `True` | `True` | `False` | 0.039 |
-| `ppo` | 81 | -1.192 | -0.299 | -0.299 | 0.893 | `False` | `False` | `False` | `False` | 0.058 |
+| learner | steps | start x | final x | max x | progress m | reached obstacle x | cleared obstacle centerline | passed obstacle | collision | min clearance summary/steps m | clearance match | band samples | max abs y in band m |
+|---|---:|---:|---:|---:|---:|---|---|---|---|---:|---|---:|---:|
+| `alberta` | 60 | -1.187 | 1.099 | 1.099 | 2.287 | `True` | `True` | `True` | `False` | 0.039 / 0.039 | `True` | 13 | 0.404 |
+| `ppo` | 81 | -1.192 | -0.299 | -0.299 | 0.893 | `False` | `False` | `False` | `False` | 0.058 / 0.058 | `True` | 0 | 0.000 |
 
 ## Conclusion
 

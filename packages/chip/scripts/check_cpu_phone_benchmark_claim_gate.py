@@ -15,6 +15,7 @@ import importlib.util
 import json
 import math
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +78,7 @@ REQUIRED_BENCHMARKS = tuple(SIDE_RESULT_SPECS) + tuple(sorted(REQUIRED_REPORT_BE
 REQUIRED_CLAIM_LEVELS = {"L5_PROTOTYPE_SILICON", "L6_COMPLETE_PHONE"}
 REQUIRED_SIDE_SCHEMA = "eliza.cpu_benchmark_result.v1"
 REQUIRED_SIDE_PROVENANCE = {"measured", "target-measured", "silicon-measured"}
-REQUIRED_BLOCKED_SIDE_PROVENANCE = "blocked_placeholder"
+REQUIRED_BLOCKED_SIDE_PROVENANCE = "blocked_missing_target_evidence"
 REQUIRED_TARGET_RUNNERS = {"prototype", "silicon", "phone"}
 REQUIRED_SIDE_METRICS = {
     "spec_cpu2017": {
@@ -1154,6 +1155,7 @@ def build_l5_l6_report(
     claim_allowed = not blocked
     return {
         "schema": "eliza.cpu_phone_l5_l6_benchmark_report.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": "pass" if claim_allowed else "blocked",
         "claim_allowed": claim_allowed,
         "phone_claim_allowed": claim_allowed,
@@ -1339,6 +1341,7 @@ def build_report(report_path: Path) -> dict[str, Any]:
     claim_allowed = status == "pass"
     return {
         "schema": "eliza.cpu_phone_benchmark_claim_gate.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": status,
         "claim_allowed": claim_allowed,
         "phone_claim_allowed": claim_allowed,

@@ -37,8 +37,19 @@ SURVEY_ONLY_REPORT_NAMES = {
 
 SCHEMA = "eliza.chip_os_boot_gap_inventory.v1"
 CLAIM_BOUNDARY = "inventory_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 NONPASS = {"BLOCKED", "FAIL"}
-PASS_STATUSES = {"pass", "passed", "ok"}
+PASS_STATUSES = {"pass", "passed", "ok", "local_host_evidence_not_release"}
 STRUCTURED_DETAIL_KEYS = (
     "findings",
     "blockers",
@@ -78,6 +89,8 @@ def status_is_nonpass(value: object) -> bool:
 
 
 def has_structured_detail_rows(data: dict[str, Any]) -> bool:
+    if isinstance(data.get("blocker_id"), str) and isinstance(data.get("blocker_reason"), str):
+        return True
     for key in STRUCTURED_DETAIL_KEYS:
         values = data.get(key)
         if isinstance(values, list) and values:
@@ -319,6 +332,32 @@ def gate_status_entry(source: Path, data: dict[str, Any]) -> dict[str, Any] | No
     }
 
 
+def blocker_id_entry(source: Path, data: dict[str, Any]) -> dict[str, Any] | None:
+    if not status_is_nonpass(data.get("status")):
+        return None
+    blocker_id = data.get("blocker_id")
+    blocker_reason = data.get("blocker_reason")
+    if not isinstance(blocker_id, str) or not blocker_id:
+        return None
+    if not isinstance(blocker_reason, str) or not blocker_reason:
+        return None
+    return {
+        "source_report": rel(source),
+        "kind": "blocker_id",
+        "code": code_from_text(blocker_id, "blocker_id"),
+        "severity": "blocker",
+        "message": blocker_reason,
+        "evidence": {
+            "gate": data.get("gate"),
+            "status": data.get("status"),
+            "evidence_paths": data.get("evidence_paths"),
+            "subsystem": data.get("subsystem"),
+        },
+        "next_step": data.get("next_step")
+        or "Resolve the named blocker and regenerate the detailed gate report.",
+    }
+
+
 def unstructured_nonpass_entry(source: Path, data: dict[str, Any]) -> dict[str, Any]:
     return {
         "source_report": rel(source),
@@ -398,6 +437,10 @@ def collect_report_entries(source: Path, data: dict[str, Any]) -> list[dict[str,
                     if entry:
                         entries.append(entry)
     if not entries and status_is_nonpass(data.get("status")):
+        blocker_entry = blocker_id_entry(source, data)
+        if blocker_entry:
+            entries.append(blocker_entry)
+            return entries
         gate_entry = gate_status_entry(source, data)
         if gate_entry:
             entries.append(gate_entry)
@@ -434,6 +477,7 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "schema": SCHEMA,
             "status": "blocked",
             "claim_boundary": CLAIM_BOUNDARY,
+            **FALSE_CLAIM_FLAGS,
             "summary": {
                 "nonpassing_aggregate_gates": 0,
                 "blocked_aggregate_gates": 0,
@@ -584,6 +628,7 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "schema": SCHEMA,
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "nonpassing_aggregate_gates": len(gates),
             "blocked_aggregate_gates": len(blocked_gates),

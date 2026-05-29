@@ -18,6 +18,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_linux_firmware_boot_chain_contract as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -195,6 +201,7 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
             report = gate.run_check(Namespace())
 
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("buildroot_external_evidence_missing", codes)
         self.assertIn("opensbi_external_evidence_missing", codes)
@@ -268,7 +275,7 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_false_claim_flags(self, report)
         self.assertEqual(
             report["blocker_dependency_counts"],
             {

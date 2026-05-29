@@ -13,6 +13,12 @@ from pathlib import Path
 import check_chip_os_objective_evidence_matrix as matrix
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], matrix.CLAIM_BOUNDARY)
+    for key, expected in matrix.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write_json(path: Path, data: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data) + "\n", encoding="utf-8")
@@ -23,6 +29,7 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             report = matrix.build_matrix(Path(tmp))
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["missing"], len(matrix.REQUIREMENTS))
 
     def test_pass_reports_prove_runtime_and_keep_static_contract_weak(self) -> None:
@@ -41,6 +48,7 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
                 write_json(report_dir / req.required_report, data)
             report = matrix.build_matrix(report_dir)
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         expected_weak = sum(1 for req in matrix.REQUIREMENTS if req.static_only)
         self.assertEqual(report["summary"]["proven"], len(matrix.REQUIREMENTS) - expected_weak)
         self.assertEqual(report["summary"]["weak_static_only"], expected_weak)

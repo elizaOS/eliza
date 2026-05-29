@@ -715,6 +715,58 @@ def blocked_metadata(artifact_id: str, source_requirement_id: str, path: Path) -
     }
 
 
+def directory_child_inventory(path: Path, manifest_path: Path, artifact_paths: set[str]) -> dict[str, Any]:
+    records: list[dict[str, Any]] = []
+    for child in sorted(path.rglob("*")):
+        if not child.is_file() or child == manifest_path:
+            continue
+        rel_child = chip_rel(child)
+        records.append(
+            {
+                "path": rel_child,
+                "name": child.name,
+                "size_bytes": child.stat().st_size,
+                "sha256": sha256(child),
+                "candidate_placeholder": child.name == "candidate-placeholder.txt",
+                "covered_by_candidate_manifest_artifact": rel_child in artifact_paths,
+                "release_credit": False,
+            }
+        )
+    placeholder_paths = [record["path"] for record in records if record["candidate_placeholder"]]
+    manifest_child_paths = [
+        record["path"] for record in records if record["covered_by_candidate_manifest_artifact"]
+    ]
+    return {
+        "child_artifact_inventory": records,
+        "child_artifact_count": len(records),
+        "candidate_placeholder_child_count": len(placeholder_paths),
+        "candidate_placeholder_child_paths": placeholder_paths,
+        "candidate_manifest_child_artifact_count": len(manifest_child_paths),
+        "candidate_manifest_child_artifact_paths": manifest_child_paths,
+        "untracked_non_manifest_child_count": sum(
+            1
+            for record in records
+            if not record["candidate_placeholder"]
+            and not record["covered_by_candidate_manifest_artifact"]
+        ),
+        "release_child_count": 0,
+        "all_non_manifest_children_classified": all(
+            record["candidate_placeholder"] or record["covered_by_candidate_manifest_artifact"]
+            for record in records
+        ),
+    }
+
+
+def refresh_dir_manifest(path: Path, artifact_paths: set[str]) -> None:
+    manifest_path = path / "release-manifest.yaml"
+    manifest = load_yaml_if_present(manifest_path)
+    if not manifest:
+        return
+    manifest.update(directory_child_inventory(path, manifest_path, artifact_paths))
+    manifest["release_children_complete"] = False
+    write_yaml(manifest_path, manifest)
+
+
 def write_dir_manifest(path: Path, artifact_id: str, source_requirement_id: str) -> dict[str, Any]:
     path.mkdir(parents=True, exist_ok=True)
     child = path / "candidate-placeholder.txt"
@@ -724,7 +776,8 @@ def write_dir_manifest(path: Path, artifact_id: str, source_requirement_id: str)
     )
     manifest = blocked_metadata(artifact_id, source_requirement_id, child)
     manifest["artifact_id"] = artifact_id
-    manifest["candidate_children"] = [child.name]
+    manifest["candidate_children"] = [chip_rel(child)]
+    manifest.update(directory_child_inventory(path, path / "release-manifest.yaml", set()))
     manifest["release_children_complete"] = False
     write_yaml(path / "release-manifest.yaml", manifest)
     return {
@@ -2290,6 +2343,14 @@ def generate() -> dict[str, Any]:
             "rf_conducted_cellular_wifi_bt_candidate",
         ),
         (
+            "board/kicad/e1-phone/production/reports/rf/cellular-conducted.json",
+            "rf_cellular_conducted_candidate",
+        ),
+        (
+            "board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json",
+            "rf_wifi_bt_conducted_candidate",
+        ),
+        (
             "board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json",
             "side_key_force_travel_wake_log_candidate",
         ),
@@ -2328,6 +2389,10 @@ def generate() -> dict[str, Any]:
         (
             "board/kicad/e1-phone/production/reports/power-thermal/load-step.json",
             "power_thermal_load_step_candidate",
+        ),
+        (
+            "board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json",
+            "power_thermal_rail_efficiency_soak_candidate",
         ),
         (
             "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json",
@@ -2393,6 +2458,23 @@ def generate() -> dict[str, Any]:
             ],
         )
     )
+
+    directory_manifest_paths = [
+        ROOT / "board/kicad/e1-phone/production/fab-quote",
+        ROOT / "board/kicad/e1-phone/production/first-article",
+        ROOT / "board/kicad/e1-phone/production/reports/si-pi",
+        ROOT / "board/kicad/e1-phone/production/reports/rf",
+        ROOT / "board/kicad/e1-phone/production/reports/power-thermal",
+    ]
+    artifact_paths = {
+        str(value)
+        for artifact in artifacts
+        if isinstance(artifact, dict)
+        for value in (artifact.get("path"), artifact.get("metadata"))
+        if value
+    }
+    for directory in directory_manifest_paths:
+        refresh_dir_manifest(directory, artifact_paths)
 
     manifest = {
         "schema": "eliza.e1_phone_routed_output_candidate_manifest.v1",

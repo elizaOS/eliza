@@ -7,6 +7,8 @@ import scripts.validate_task_feasibility as feasibility
 from scripts.validate_task_feasibility import (
     _HIWONDER_FORWARD_SINE_PARAMS,
     _candidate_score,
+    _locomotion_progress_fraction,
+    _make_hiwonder_locomotion_progress_settle_action,
     _make_sinusoidal_action,
     _make_switched_deterministic_action,
     _make_zero_action,
@@ -288,8 +290,53 @@ def test_zero_action_factory_returns_stable_shape() -> None:
     assert action_for_step(20).shape == (3,)
 
 
+def test_sinusoidal_action_supports_unitree_joint_names() -> None:
+    class _ActionSpace:
+        shape = (4,)
+
+    class _Config:
+        control_dt_s = 0.02
+
+    class _Joint:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class _Env:
+        action_space = _ActionSpace()
+        config = _Config()
+        _action_joints = (
+            _Joint("left_hip_pitch_joint"),
+            _Joint("right_hip_pitch_joint"),
+            _Joint("left_ankle_pitch_joint"),
+            _Joint("right_ankle_pitch_joint"),
+        )
+
+    params = {
+        "hz": 0.5,
+        "phase0": np.pi / 2.0,
+        "hip_bias": 0.1,
+        "hip_amp": 0.2,
+        "knee_bias": 0.0,
+        "knee_amp": 0.0,
+        "knee_phase": 0.0,
+        "ank_bias": 0.3,
+        "ank_amp": 0.4,
+        "ank_phase": 0.0,
+        "roll_bias": 0.0,
+        "roll_amp": 0.0,
+        "ank_roll_amp": 0.0,
+        "roll_phase": 0.0,
+    }
+
+    action = _make_sinusoidal_action(_Env(), "walk_forward", params=params)(0)  # type: ignore[arg-type]
+
+    assert action is not None
+    assert action.tolist() == pytest.approx([0.3, -0.1, 0.7, -0.1])
+
+
 def test_hiwonder_locomotion_specs_include_sine_and_settle_primitives() -> None:
     forward = {spec.name for spec in _primitive_specs("hiwonder-ainex", "walk_forward")}
+    backward = {spec.name for spec in _primitive_specs("hiwonder-ainex", "walk_backward")}
     sidestep = {spec.name for spec in _primitive_specs("hiwonder-ainex", "sidestep_left")}
     stand_up = {spec.name for spec in _primitive_specs("hiwonder-ainex", "stand_up")}
 
@@ -305,6 +352,44 @@ def test_hiwonder_locomotion_specs_include_sine_and_settle_primitives() -> None:
     assert seeded["sinusoidal_seeded_3"].params is not None
     assert "switched_deterministic_freeze" in sidestep
     assert "switched_deterministic_damped" in sidestep
+    assert "hiwonder_closed_loop_progress_settle" in forward
+    assert "hiwonder_closed_loop_progress_settle" in backward
+    assert "hiwonder_closed_loop_progress_settle" in sidestep
+
+
+def test_unitree_r1_locomotion_specs_include_seeded_sine_frontiers() -> None:
+    forward = {spec.name: spec for spec in _primitive_specs("unitree-r1", "walk_forward")}
+
+    assert "unitree_r1_sinusoidal_seeded_0" in forward
+    assert "unitree_r1_sinusoidal_seeded_1" in forward
+    assert "unitree_r1_stance_gait_seeded_0" in forward
+    assert "unitree_r1_stance_gait_seeded_1" in forward
+    assert forward["unitree_r1_sinusoidal_seeded_0"].params is not None
+    assert forward["unitree_r1_sinusoidal_seeded_0"].action_scale == pytest.approx(
+        0.11256610072362042
+    )
+    assert forward["unitree_r1_stance_gait_seeded_0"].action_scale == pytest.approx(1.0)
+
+
+def test_locomotion_progress_fraction_uses_tracked_directional_progress() -> None:
+    assert _locomotion_progress_fraction(
+        "walk_forward",
+        {"delta_x_m_min": 0.30},
+        tracked_delta_x=0.27,
+        tracked_delta_y=9.0,
+    ) == pytest.approx(0.9)
+    assert _locomotion_progress_fraction(
+        "walk_backward",
+        {"delta_x_m_max": -0.20},
+        tracked_delta_x=-0.18,
+        tracked_delta_y=9.0,
+    ) == pytest.approx(0.9)
+    assert _locomotion_progress_fraction(
+        "sidestep_right",
+        {"delta_y_m_max": -0.20},
+        tracked_delta_x=9.0,
+        tracked_delta_y=-0.18,
+    ) == pytest.approx(0.9)
 
 
 def test_hiwonder_stand_up_pitch_feedback_reaches_goal_and_holds() -> None:
@@ -375,6 +460,78 @@ def test_sinusoidal_action_freezes_after_hold_switch() -> None:
     assert second_hold is not None
     assert first_hold.tolist() == pytest.approx(pre_hold.tolist())
     assert second_hold.tolist() == pytest.approx(first_hold.tolist())
+
+
+def test_closed_loop_progress_settle_uses_tracked_progress_and_damps_drive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Joint:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class _ActionSpace:
+        shape = (4,)
+
+    class _Config:
+        control_dt_s = 0.02
+        action_scale = 1.0
+
+    class _Data:
+        qpos = np.array([0.20, -0.20, 0.10, -0.10], dtype=np.float32)
+
+    class _Env:
+        action_space = _ActionSpace()
+        config = _Config()
+        _action_joints = [
+            _Joint("l_hip_pitch"),
+            _Joint("r_hip_pitch"),
+            _Joint("l_ank_roll"),
+            _Joint("r_ank_roll"),
+        ]
+        _data = _Data()
+        _joint_qpos_idx = [0, 1, 2, 3]
+        _home_pose = np.zeros(4, dtype=np.float32)
+        _episode_start_tracked_x = 0.0
+        _episode_start_tracked_y = 0.0
+        _episode_start_yaw = 0.0
+        _last_foot_telemetry = np.array([1.0, 1.0, 0.0, 0.0], dtype=np.float32)
+        tracked_x = 0.0
+
+        def _root_pose_summary(self):
+            return {"x": 9.0, "y": 0.0, "yaw": 0.10, "roll": 0.10, "pitch": 0.20}
+
+        def _tracked_pose_summary(self, _pose):
+            return {"x": self.tracked_x, "y": 0.0, "z": 0.25}
+
+    def _drive(_env, _task_id: str, *, params: dict):
+        return lambda _step: np.ones(4, dtype=np.float32)
+
+    monkeypatch.setattr(feasibility, "_make_sinusoidal_action", _drive)
+    env = _Env()
+    action_for_step = _make_hiwonder_locomotion_progress_settle_action(  # type: ignore[arg-type]
+        env,
+        "walk_forward",
+        params={
+            "drive": {},
+            "min_drive_steps": 1,
+            "progress_start_fraction": 0.88,
+            "settle_blend_steps": 2,
+            "pitch_gain": 0.5,
+            "roll_gain": 0.5,
+            "yaw_gain": 0.0,
+        },
+    )
+
+    root_only_progress = action_for_step(1)
+    env.tracked_x = 0.27
+    settling = action_for_step(2)
+
+    assert root_only_progress is not None
+    assert settling is not None
+    assert root_only_progress.tolist() == [1.0, 1.0, 1.0, 1.0]
+    assert np.max(np.abs(settling)) < 1.0
+    assert settling.tolist() != pytest.approx(root_only_progress.tolist())
+    assert settling[0] > settling[1]
 
 
 def test_switched_deterministic_action_can_freeze_last_active_step(

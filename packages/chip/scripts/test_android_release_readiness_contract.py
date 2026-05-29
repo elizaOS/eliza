@@ -20,6 +20,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_android_release_readiness_contract as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -323,6 +329,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             with PatchStack(patches):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["blockers"], len(report["blockers"]))
         self.assertGreater(report["blocker_dependency_counts"]["repo_artifact_generation"], 0)
         codes = {finding["code"] for finding in report["findings"]}
@@ -689,7 +696,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                     report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_false_claim_flags(self, report)
         self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
     def test_staged_chip_archive_integrity_suppresses_stale_product_out_blocker(self) -> None:
@@ -750,6 +757,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertNotIn("android_chip_riscv64_aosp_artifacts_incomplete", codes)
         self.assertTrue(report["evidence"]["chip_riscv64_archive_staged_with_integrity"])
         self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
 
     def test_partial_aosp_chip_source_artifacts_are_explicit_repo_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -829,7 +837,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             inventory["latestBuildAttempt"]["generationCommands"]["imageOnlyResumeFromCurrentTree"],
         )
 
-    def test_missing_android_archive_source_members_are_external_dependency(self) -> None:
+    def test_missing_android_archive_source_members_are_repo_generation_dependency(self) -> None:
         inventory = {
             "records": [
                 {
@@ -843,7 +851,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
 
         self.assertEqual(
             gate.android_archive_source_dependency(inventory),
-            "actionable_external_dependency",
+            "repo_artifact_generation",
         )
 
     def test_complete_android_archive_source_members_remain_repo_generation(self) -> None:
@@ -1293,6 +1301,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 gate.INSTALLER.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertIn(
             "android_release_manifest_launcher_package_mismatch",
             {finding["code"] for finding in report["findings"]},

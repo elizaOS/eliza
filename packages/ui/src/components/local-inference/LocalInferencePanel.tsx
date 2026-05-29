@@ -606,11 +606,7 @@ function VoiceModelUpdatesSection() {
       } catch (err) {
         if (previous) setPreferences(previous);
         const message = err instanceof Error ? err.message : String(err);
-        setActionNotice(
-          `Could not save preference: ${message}`,
-          "error",
-          4000,
-        );
+        setActionNotice(`Could not save preference: ${message}`, "error", 4000);
       }
     },
     [setActionNotice],

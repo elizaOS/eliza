@@ -12,6 +12,12 @@ from unittest import mock
 import check_chip_os_environment_preflight as preflight
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], preflight.CLAIM_BOUNDARY)
+    for key, expected in preflight.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 class ChipOsEnvironmentPreflightTests(unittest.TestCase):
     def test_missing_tool_env_and_path_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -25,6 +31,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                 report = preflight.build_report(env={}, which=lambda _name: None)
 
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("missing_tool_qemu_system_riscv64", codes)
         self.assertIn("missing_env_aosp_dir", codes)
@@ -48,6 +55,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                 report = preflight.build_report(env=env, which=lambda name: f"/bin/{name}")
 
         self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["findings"], 0)
 
     def test_missing_aosp_smoke_envs_include_capture_hints(self) -> None:

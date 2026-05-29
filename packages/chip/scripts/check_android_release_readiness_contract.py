@@ -39,6 +39,17 @@ ANDROID_APK_PAYLOAD_REPORT = ROOT / "build/reports/android_system_apk_payload.js
 REPORT = ROOT / "build/reports/android_release_readiness_contract.json"
 SCHEMA = "eliza.android_release_readiness_contract.v1"
 CLAIM_BOUNDARY = "static_android_release_contract_only_not_runtime_flash_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "runtime_flash_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 AOSP_WORKSPACE = Path("/home/shaw/aosp")
 AOSP_PRODUCT_OUT = AOSP_WORKSPACE / "out/target/product/eliza_ai_soc"
 AOSP_BUILD_REPORT = AOSP_WORKSPACE / "eliza-build-report.json"
@@ -1464,7 +1475,7 @@ def android_archive_source_dependency(source_inventory: dict[str, Any]) -> str:
         if not isinstance(record, dict):
             continue
         if record.get("readyToArchive") is False:
-            return "actionable_external_dependency"
+            return "repo_artifact_generation"
     return "repo_artifact_generation"
 
 
@@ -2276,6 +2287,7 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
         "generated_utc": generated_utc(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "blockers": len(blockers),
             "findings": len(findings),

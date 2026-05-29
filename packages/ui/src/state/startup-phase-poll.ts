@@ -6,6 +6,7 @@
  * or an appropriate error/auth event.
  */
 
+import { logger } from "@elizaos/core";
 import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";

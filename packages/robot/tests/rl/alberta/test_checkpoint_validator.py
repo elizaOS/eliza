@@ -10,6 +10,12 @@ import numpy as np
 from eliza_robot.curriculum.loader import load_curriculum
 from eliza_robot.profiles.schema import load_profile
 from eliza_robot.rl.alberta.agent import AlbertaContinualController, AlbertaControllerConfig
+from eliza_robot.rl.alberta.cbp_agent import (
+    AlbertaCBPController,
+    CBPControllerConfig,
+    RetentionConfig,
+)
+from eliza_robot.rl.alberta.checkpoint import save_state_npz
 from eliza_robot.rl.alberta.features import FeatureConfig
 from scripts.validate_alberta_robot_checkpoint import validate_alberta_robot_checkpoint
 
@@ -282,6 +288,71 @@ def _write_alberta_checkpoint(
     (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
+def _rewrite_checkpoint_as_cbp(path: Path) -> None:
+    manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    controller_cfg = CBPControllerConfig(
+        obs_dim=int(manifest["obs_dim"]),
+        action_dim=int(manifest["action_dim"]),
+        hidden_sizes=(8,),
+        gamma=0.5,
+        actor_step_size=1e-3,
+        critic_step_size=2e-3,
+        log_sigma_init=-1.0,
+        normalize=False,
+        obgd_kappa=2.0,
+        retention=RetentionConfig(
+            mode="multihead",
+            n_slots=4,
+            embed_dim=int(manifest["pca_dim"]),
+            trunk_step_scale=0.5,
+            proto_seed=123,
+        ),
+        seed=0,
+    )
+    controller = AlbertaCBPController(controller_cfg)
+    save_state_npz(path / "alberta_policy.npz", controller.state_dict())
+    manifest["controller_type"] = "cbp"
+    manifest["controller"] = {
+        "type": "cbp_stream_ac_v1",
+        "obs_dim": controller_cfg.obs_dim,
+        "action_dim": controller_cfg.action_dim,
+        "hidden_sizes": list(controller_cfg.hidden_sizes),
+        "gamma": controller_cfg.gamma,
+        "actor_step_size": controller_cfg.actor_step_size,
+        "critic_step_size": controller_cfg.critic_step_size,
+        "actor_lamda": controller_cfg.actor_lamda,
+        "critic_lamda": controller_cfg.critic_lamda,
+        "log_sigma_init": controller_cfg.log_sigma_init,
+        "log_sigma_min": controller_cfg.log_sigma_min,
+        "log_sigma_max": controller_cfg.log_sigma_max,
+        "learn_log_sigma": controller_cfg.learn_log_sigma,
+        "action_low": controller_cfg.action_low,
+        "action_high": controller_cfg.action_high,
+        "obgd_kappa": controller_cfg.obgd_kappa,
+        "sparsity": controller_cfg.sparsity,
+        "leaky_relu_slope": controller_cfg.leaky_relu_slope,
+        "use_layer_norm": controller_cfg.use_layer_norm,
+        "normalize": controller_cfg.normalize,
+        "normalizer_decay": controller_cfg.normalizer_decay,
+        "seed": controller_cfg.seed,
+        "cbp": {
+            "enabled": controller_cfg.cbp.enabled,
+            "decay_rate": controller_cfg.cbp.decay_rate,
+            "replacement_rate": controller_cfg.cbp.replacement_rate,
+            "maturity_threshold": controller_cfg.cbp.maturity_threshold,
+        },
+        "retention": {
+            "mode": controller_cfg.retention.mode,
+            "n_slots": controller_cfg.retention.n_slots,
+            "embed_dim": controller_cfg.retention.embed_dim,
+            "trunk_step_scale": controller_cfg.retention.trunk_step_scale,
+            "trunk_freeze_after": controller_cfg.retention.trunk_freeze_after,
+            "proto_seed": controller_cfg.retention.proto_seed,
+        },
+    }
+    (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
 def test_alberta_checkpoint_validator_accepts_complete_checkpoint(tmp_path: Path) -> None:
     _write_alberta_checkpoint(tmp_path)
 
@@ -296,6 +367,26 @@ def test_alberta_checkpoint_validator_accepts_complete_checkpoint(tmp_path: Path
 
     assert report["ok"] is True
     assert all(report["checks"].values())
+    assert report["inference_report"]["ok"] is True
+
+
+def test_alberta_checkpoint_validator_accepts_cbp_checkpoint_with_inference(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    _rewrite_checkpoint_as_cbp(tmp_path)
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        profile_id="hiwonder-ainex",
+        required_tasks=["stand_up"],
+        min_steps=10,
+        require_domain_rand=True,
+        require_inference=True,
+    )
+
+    assert report["ok"] is True
+    assert report["checks"]["controller"] is True
     assert report["inference_report"]["ok"] is True
 
 

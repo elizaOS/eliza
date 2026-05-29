@@ -20,6 +20,11 @@ if str(ROOT / "scripts") not in sys.path:
 import check_android_system_apk_payload as gate  # noqa: E402
 
 
+def assert_no_runtime_or_release_claims(report: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
+
+
 def make_apk(path: Path, entries: list[str]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as zf:
@@ -142,6 +147,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         self.assertTrue(
             any("ELIZA_BUN_RISCV64_FILE" in finding["next_step"] for finding in report["findings"])
         )
+        assert_no_runtime_or_release_claims(report)
 
     def test_complete_static_payload_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -152,6 +158,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertTrue(report["evidence"]["has_llama_kernel_diagnostic"])
+        assert_no_runtime_or_release_claims(report)
 
     def test_stale_aosp_build_provenance_apk_name_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -165,6 +172,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("aosp_build_provenance_apk_name_mismatch", codes)
+        assert_no_runtime_or_release_claims(report)
 
     def test_duplicate_aosp_provenance_entry_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

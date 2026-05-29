@@ -30,6 +30,16 @@ ELIZA_ROOT = ROOT.parents[1]
 REPORT = ROOT / "build/reports/android_app_runtime_contract.json"
 SCHEMA = "eliza.android_app_runtime_contract.v1"
 CLAIM_BOUNDARY = "static_app_runtime_contract_only_not_android_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 
 
 def package_name_to_path(package_name: str) -> Path:
@@ -552,6 +562,7 @@ def report_payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[st
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
         "generated_utc": utc_now(),
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "blockers": len(blockers),
             "findings": len(findings),

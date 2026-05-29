@@ -293,6 +293,11 @@ def _phase_physical_contract(
 def _controller_contract(value: Any, *, pca_dim: int) -> bool:
     if not isinstance(value, dict):
         return False
+    controller_type = value.get("type", "linear_stream_ac_v1")
+    if controller_type == "cbp_stream_ac_v1":
+        return _cbp_controller_contract(value, pca_dim=pca_dim)
+    if controller_type not in {"linear_stream_ac_v1", "linear"}:
+        return False
     features = value.get("features")
     if not isinstance(features, dict):
         return False
@@ -324,6 +329,64 @@ def _controller_contract(value: Any, *, pca_dim: int) -> bool:
             and int(features.get("n_prototypes")) > 0
             and int(features.get("proprio_random_dim")) > 0
             and int(features.get("random_dim", 1)) > 0
+        )
+    except Exception:
+        return False
+
+
+def _cbp_controller_contract(value: dict, *, pca_dim: int) -> bool:
+    required_scalars = (
+        "gamma",
+        "actor_step_size",
+        "critic_step_size",
+        "actor_lamda",
+        "critic_lamda",
+        "log_sigma_init",
+        "log_sigma_min",
+        "log_sigma_max",
+        "action_low",
+        "action_high",
+        "obgd_kappa",
+        "sparsity",
+        "leaky_relu_slope",
+        "normalizer_decay",
+    )
+    if not all(_finite_number(value.get(key)) for key in required_scalars):
+        return False
+    for key in ("normalize", "learn_log_sigma", "use_layer_norm"):
+        if not isinstance(value.get(key), bool):
+            return False
+    hidden_sizes = value.get("hidden_sizes")
+    if not isinstance(hidden_sizes, list) or not hidden_sizes:
+        return False
+    try:
+        if not all(int(size) > 0 for size in hidden_sizes):
+            return False
+    except Exception:
+        return False
+    cbp = value.get("cbp")
+    retention = value.get("retention")
+    if not isinstance(cbp, dict) or not isinstance(retention, dict):
+        return False
+    if not isinstance(cbp.get("enabled"), bool):
+        return False
+    if not all(
+        _finite_number(cbp.get(key))
+        for key in ("decay_rate", "replacement_rate", "maturity_threshold")
+    ):
+        return False
+    if retention.get("mode") not in {"none", "multihead"}:
+        return False
+    if not all(
+        _finite_number(retention.get(key))
+        for key in ("n_slots", "embed_dim", "trunk_step_scale", "trunk_freeze_after", "proto_seed")
+    ):
+        return False
+    try:
+        return (
+            int(retention.get("n_slots")) >= 1
+            and int(retention.get("embed_dim")) in {0, int(pca_dim)}
+            and int(retention.get("trunk_freeze_after")) >= 0
         )
     except Exception:
         return False

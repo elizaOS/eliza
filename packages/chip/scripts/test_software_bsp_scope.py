@@ -23,6 +23,12 @@ def expect_error(report: dict, token: str) -> None:
         raise AssertionError(f"expected {token!r} in {errors}")
 
 
+def assert_false_claim_flags(report: dict) -> None:
+    for key, expected in check_software_bsp_scope.FALSE_CLAIM_FLAGS.items():
+        if report.get(key) is not expected:
+            raise AssertionError(f"{key} must be {expected!r}: {report.get(key)!r}")
+
+
 def test_valid_report_passes() -> None:
     report = check_software_bsp_scope.build_report()
     errors = check_software_bsp_scope.validate_report(report)
@@ -31,6 +37,7 @@ def test_valid_report_passes() -> None:
     targets = {target.get("target") for target in report["targets"]}
     if "u-boot" in targets:
         raise AssertionError(f"selected software BSP scope must not require alternate U-Boot target: {targets}")
+    assert_false_claim_flags(report)
     print("PASS valid software BSP scope report")
 
 
@@ -45,6 +52,9 @@ def test_release_claim_flip_fails() -> None:
     report = check_software_bsp_scope.build_report()
     report["summary"]["release_claim_allowed"] = True
     expect_error(report, "release_claim_allowed")
+    report = check_software_bsp_scope.build_report()
+    report["android_boot_claim_allowed"] = True
+    expect_error(report, "android_boot_claim_allowed")
     print("PASS release-claim flip rejected")
 
 

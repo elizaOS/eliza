@@ -19,6 +19,17 @@ _DMA_COVER = CoverPointSet("dma")
 _DMA_COVER.declare("axi_resp", "bresp", AXI_RESP_BINS)
 _DMA_COVER.declare("axi_resp", "rresp", AXI_RESP_BINS)
 _DMA_COVER.declare("irq_vector", "dma_irq", DMA_IRQ_BINS)
+_FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_memory_system_claim_allowed": False,
+    "soc_fabric_claim_allowed": False,
+    "coherent_dma_claim_allowed": False,
+    "cache_coherency_claim_allowed": False,
+    "iommu_claim_allowed": False,
+    "linux_dmaengine_driver_claim_allowed": False,
+    "throughput_claim_allowed": False,
+}
 
 
 async def randomized_axil_memory(dut, mem, rng, error_addresses=frozenset()):
@@ -109,7 +120,8 @@ def write_coverage_artifact(extra):
         "source": "verify/cocotb/test_e1_dma.py",
         "covered_contracts": sorted(covered),
         "status_bits": ["busy", "done", "error"],
-        "boundary": "Directed e1_dma byte-copy, strobe, interrupt, and AXI-Lite response checks only; no coherent DMA, IOMMU, cache, or OS driver coverage.",
+        "boundary": "Directed e1_dma byte-copy, strobe, interrupt, and AXI-Lite response checks only; no SoC fabric, no coherent DMA, no IOMMU, no cache, no Linux dmaengine driver, no throughput, or production memory hierarchy coverage.",
+        **_FALSE_CLAIM_FLAGS,
     }
     out = REPO_ROOT / "build/reports/dma_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)

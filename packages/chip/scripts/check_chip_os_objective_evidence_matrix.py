@@ -21,6 +21,17 @@ REPORT = REPORT_DIR / "chip-os-objective-evidence-matrix.json"
 
 SCHEMA = "eliza.chip_os_objective_evidence_matrix.v1"
 CLAIM_BOUNDARY = "objective_evidence_matrix_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 PROVEN = "proven"
 BLOCKED = "blocked"
@@ -524,6 +535,7 @@ def build_matrix(report_dir: Path) -> dict[str, Any]:
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "requirements": len(rows),
             "proven": counts.get(PROVEN, 0),

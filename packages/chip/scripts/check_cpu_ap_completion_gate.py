@@ -142,6 +142,11 @@ def blocked_report(
         "claim_boundary": (
             "qemu_virt_linux_boot_is_reference_only_not_generated_eliza_cpu_ap_completion"
         ),
+        "phone_2028_ap_claim_allowed": False,
+        "release_claim_allowed": False,
+        "linux_capable_cpu_claim_allowed": False,
+        "privileged_boot_claim_allowed": False,
+        "generated_cpu_ap_completion_claim_allowed": False,
         "generated_detail": generated_detail,
         "findings": findings,
         "summary": {
@@ -186,6 +191,11 @@ def main() -> int:
                     "status": "fail",
                     "generated_utc": utc_now(),
                     "claim_boundary": "claimed_generated_cpu_ap_completion_requires_artifacts_and_evidence",
+                    "phone_2028_ap_claim_allowed": False,
+                    "release_claim_allowed": False,
+                    "linux_capable_cpu_claim_allowed": False,
+                    "privileged_boot_claim_allowed": False,
+                    "generated_cpu_ap_completion_claim_allowed": False,
                     "summary": {"failures": 1},
                     "next_step": "Run scripts/check_cpu_ap_evidence.py --require-evidence and repair the failing CPU/AP artifact or transcript.",
                 }
@@ -200,6 +210,11 @@ def main() -> int:
                 "status": "pass",
                 "generated_utc": utc_now(),
                 "claim_boundary": "generated_rocket_rv64gc_ap_artifacts_and_boot_evidence_present",
+                "phone_2028_ap_claim_allowed": False,
+                "release_claim_allowed": False,
+                "linux_capable_cpu_claim_allowed": True,
+                "privileged_boot_claim_allowed": True,
+                "generated_cpu_ap_completion_claim_allowed": True,
                 "summary": {"blockers": 0, "failures": 0},
                 "next_step": "none",
             }

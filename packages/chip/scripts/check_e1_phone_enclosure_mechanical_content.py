@@ -25,6 +25,12 @@ CAD_CONNECTION_COVERAGE = MECH_REVIEW / "cad-connection-coverage.json"
 SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL = (
     MECH_REVIEW / "supplier-step-surrogate-intake-detail.json"
 )
+PUBLIC_CAD_SOURCE_INTAKE = (
+    ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+)
+PUBLIC_BOM_MARKET_COST_BANDS = (
+    MECH_REVIEW / "bom-public-market-cost-bands-2026-05-28.yaml"
+)
 ROUTED_CLEARANCE_EXECUTION = ROOT / "board/kicad/e1-phone/routed-clearance-release-execution.yaml"
 COMPONENT_MODEL_DIR_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
@@ -1153,6 +1159,8 @@ def main() -> int:
         step_validation = load_json_mapping(STEP_VALIDATION)
         full_cad_boolean = load_json_mapping(FULL_CAD_BOOLEAN)
         supplier_surrogate_detail = load_json_mapping(SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL)
+        public_cad_intake = load_yaml_mapping(PUBLIC_CAD_SOURCE_INTAKE)
+        public_bom_cost_bands = load_yaml_mapping(PUBLIC_BOM_MARKET_COST_BANDS)
         routed_clearance_execution = load_yaml_mapping(ROUTED_CLEARANCE_EXECUTION)
         connection_coverage = load_json_mapping(CAD_CONNECTION_COVERAGE)
         component_model_manifest = load_yaml_mapping(COMPONENT_MODEL_DIR_MANIFEST)
@@ -1620,6 +1628,64 @@ def main() -> int:
             raise ValueError(
                 "mechanical inventory component model records are missing local STEP detail"
             )
+        public_sourcing_intake = mechanical.get("public_sourcing_intake_ready", {})
+        if not isinstance(public_sourcing_intake, dict):
+            raise ValueError("mechanical inventory public_sourcing_intake_ready must be a mapping")
+        public_cad_records = public_cad_intake.get("records", [])
+        public_bom_records = public_bom_cost_bands.get("records", [])
+        if not isinstance(public_cad_records, list) or not isinstance(public_bom_records, list):
+            raise ValueError("public CAD/BOM intake records must be lists")
+        public_cad_summary = public_cad_intake.get("summary", {})
+        public_bom_summary = public_bom_cost_bands.get("summary", {})
+        if not isinstance(public_cad_summary, dict) or not isinstance(public_bom_summary, dict):
+            raise ValueError("public CAD/BOM intake summaries must be mappings")
+        expected_public_sourcing_intake = {
+            "ready": True,
+            "scope": "public_cad_and_market_cost_intake_not_release_evidence",
+            "public_cad_source_intake": rel(PUBLIC_CAD_SOURCE_INTAKE),
+            "public_market_bom_cost_bands": rel(PUBLIC_BOM_MARKET_COST_BANDS),
+            "public_cad_source_record_count": len(public_cad_records),
+            "public_cad_source_step_or_3d_observed_count": int(
+                public_cad_summary.get("public_step_or_3d_observed_count") or 0
+            ),
+            "public_cad_source_footprint_or_eda_observed_count": int(
+                public_cad_summary.get("public_footprint_or_eda_observed_count") or 0
+            ),
+            "public_cad_source_local_downloaded_hashed_count": int(
+                public_cad_summary.get("local_downloaded_hashed_count") or 0
+            ),
+            "public_cad_source_release_credit_record_count": int(
+                public_cad_summary.get("release_credit_record_count") or 0
+            ),
+            "public_market_bom_cost_category_count": len(public_bom_records),
+            "public_market_bom_cost_volume_count": int(
+                public_bom_summary.get("volume_count") or 0
+            ),
+            "public_market_bom_cost_avl_quote_count": int(
+                public_bom_summary.get("avl_quote_count") or 0
+            ),
+            "public_market_bom_cost_signed_supplier_quote_count": int(
+                public_bom_summary.get("signed_supplier_quote_count") or 0
+            ),
+            "public_market_bom_cost_subtotal_researched_categories_usd": (
+                public_bom_cost_bands.get("subtotal_researched_categories_usd", {})
+            ),
+            "release_credit": False,
+            "release_allowed": False,
+        }
+        for key, expected in expected_public_sourcing_intake.items():
+            if public_sourcing_intake.get(key) != expected:
+                raise ValueError(f"mechanical inventory public sourcing intake stale: {key}")
+        if public_cad_intake.get("release_credit") is not False:
+            raise ValueError("public CAD source intake cannot grant release credit")
+        if public_cad_intake.get("release_allowed") is not False:
+            raise ValueError("public CAD source intake cannot allow release")
+        if public_bom_summary.get("release_credit") is not False:
+            raise ValueError("public market BOM cost bands cannot grant release credit")
+        if int(public_bom_summary.get("avl_quote_count") or 0) != 0:
+            raise ValueError("public market BOM cost bands cannot contain AVL quotes")
+        if int(public_bom_summary.get("signed_supplier_quote_count") or 0) != 0:
+            raise ValueError("public market BOM cost bands cannot contain signed supplier quotes")
         supplier_families = burndown.get("required_supplier_geometry_inputs")
         if not isinstance(supplier_families, list):
             raise ValueError("required_supplier_geometry_inputs must be a list")
@@ -2401,6 +2467,20 @@ def main() -> int:
             "python3 scripts/check_e1_phone_supplier_return_content.py",
             "python3 scripts/check_e1_phone_routed_output_content.py",
         ]
+        source_inputs = [
+            rel(BURNDOWN),
+            rel(MECH_INVENTORY),
+            rel(PUBLIC_CAD_SOURCE_INTAKE),
+            rel(PUBLIC_BOM_MARKET_COST_BANDS),
+            rel(BOARD_STEP),
+            rel(ROUTED_CLEARANCE),
+            rel(CAD_CONNECTION_COVERAGE),
+            rel(STEP_VALIDATION),
+            rel(FULL_CAD_BOOLEAN),
+            rel(SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL),
+            rel(ROUTED_CLEARANCE_EXECUTION),
+            rel(COMPONENT_MODEL_DIR_MANIFEST),
+        ]
         blocked_evidence_inventory = [
             *release_generation_plan,
             routed_step_generation_plan,
@@ -2416,6 +2496,7 @@ def main() -> int:
                 "findings": findings,
                 "blocked_evidence_inventory": blocked_evidence_inventory,
                 "blocker_dependency_counts": blocker_dependency_counts,
+                "source_inputs": source_inputs,
                 "next_command_by_dependency": {
                     "actionable_external_dependency": validation_commands,
                     **(
@@ -2499,6 +2580,7 @@ def main() -> int:
                         ),
                     },
                 },
+                "public_sourcing_intake_context": public_sourcing_intake,
                 "missing_release_evidence_blockers": release_evidence_blockers,
                 "supplier_family_blockers": supplier_blocker_inventory,
                 "physical_interface_blockers": physical_interface_blocker_inventory_rows,

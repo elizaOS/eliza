@@ -14,6 +14,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/e1x/e1x_tiny_core_contract.sv \
 	$(REPO)/rtl/e1x/e1x_pe_core.sv \
 	$(REPO)/rtl/e1x/e1x_credit_router.sv \
+	$(REPO)/rtl/e1x/e1x_reduction_merge.sv \
 	$(REPO)/rtl/e1x/e1x_tile.sv \
 	$(REPO)/rtl/e1x/e1x_pe_tile.sv \
 	$(REPO)/rtl/e1x/e1x_mesh_fabric.sv \
@@ -36,7 +37,8 @@ VERILOG_SOURCES := \
 	$(PWD)/e1x_tiny_core_tb.sv \
 	$(PWD)/e1x_tile_tb.sv \
 	$(PWD)/e1x_pe_tile_tb.sv \
-	$(PWD)/e1x_mesh_fabric_4x4_tb.sv
+	$(PWD)/e1x_mesh_fabric_4x4_tb.sv \
+	$(PWD)/e1x_reduction_merge_tb.sv
 
 TOPLEVEL ?= e1x_mesh_router_tb
 MODULE   ?= test_e1x_mesh_router

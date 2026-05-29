@@ -37,6 +37,18 @@ LIVE_CAPTURE_CONTRACT_MANIFEST = (
 )
 SCHEMA = "eliza.phone_runtime_readiness_contract.v1"
 CLAIM_BOUNDARY = "static_phone_runtime_readiness_contract_only_not_runtime_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "runtime_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 ANDROID_PAYLOAD_PACKAGE_SENTINEL = "$ANDROID_PAYLOAD_PACKAGE"
 CHIP_ANDROID_ADB_HOSTPORT_SENTINEL = "$CHIP_ANDROID_ADB_HOSTPORT"
 PHONE_RUNTIME_VALIDATION_COMMAND = (
@@ -1139,6 +1151,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
         "generated_utc": utc_now(),
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "failures": len(failures),
             "blockers": len(blockers),

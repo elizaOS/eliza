@@ -169,6 +169,7 @@ def render_candidate(
     terminated = False
     truncated = False
     hybrid_start_pose: np.ndarray | None = None
+    hybrid_switch_step: int | None = None
     out_dir.mkdir(parents=True, exist_ok=True)
     video_path = out_dir / f"{controller}.mp4"
     contact_sheet_path = out_dir / f"{controller}_contact.jpg"
@@ -188,9 +189,32 @@ def render_candidate(
                 if isinstance(candidate_params, dict)
                 else None
             )
+            if isinstance(hybrid_recovery, dict) and hybrid_switch_step is None:
+                tracked_dx = last_info.get("tracked_delta_x")
+                try:
+                    tracked_dx_f = float(tracked_dx)
+                except (TypeError, ValueError):
+                    tracked_dx_f = float("nan")
+                if (
+                    (
+                        "switch_step" in hybrid_recovery
+                        and step >= int(hybrid_recovery["switch_step"])
+                    )
+                    or (
+                        "switch_dx" in hybrid_recovery
+                        and np.isfinite(tracked_dx_f)
+                        and tracked_dx_f >= float(hybrid_recovery["switch_dx"])
+                    )
+                    or (
+                        "max_switch_step" in hybrid_recovery
+                        and step >= int(hybrid_recovery["max_switch_step"])
+                    )
+                ):
+                    hybrid_switch_step = step
             if (
                 isinstance(hybrid_recovery, dict)
-                and step >= int(hybrid_recovery["switch_step"])
+                and hybrid_switch_step is not None
+                and step >= hybrid_switch_step
             ):
                 if hybrid_start_pose is None:
                     hybrid_start_pose = np.array(
@@ -203,6 +227,7 @@ def render_candidate(
                 action = _hybrid_recovery_action(
                     env,
                     step=step,
+                    switch_step=hybrid_switch_step,
                     start_pose=hybrid_start_pose,
                     recovery=hybrid_recovery,
                 )

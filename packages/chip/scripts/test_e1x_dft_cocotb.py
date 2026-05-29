@@ -35,3 +35,11 @@ def test_e1x_dft_strategy_doc_complete() -> None:
         stdout=subprocess.PIPE,
     )
     assert "PASS: e1x-dft strategy doc" in result.stdout
+    report = json.loads((ROOT / "build/reports/e1x_dft_strategy.json").read_text())
+    assert report["schema"] == "eliza.gate_status.v1"
+    assert report["gate"] == "e1x-dft-strategy"
+    assert report["status"] == "PASS"
+    assert report["summary"]["failing_check_count"] == 0
+    assert report["summary"]["required_section_count"] == 7
+    assert report["summary"]["required_phrase_count"] == 6
+    assert report["summary"]["blocked_marker_count"] >= 1

@@ -539,6 +539,8 @@ def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
     assert present["checks"]["demo_video"] is True
     assert present["checks"]["obstacle_trace_rollouts"] is True
     assert present["obstacle_trace_rollouts"]["alberta_successful_final_clear"] is True
+    assert present["obstacle_trace_rollouts"]["alberta_majority_final_clear"] is True
+    assert present["obstacle_trace_rollouts"]["alberta_successful_final_clear_rate"] == 1.0
     assert present["obstacle_trace_rollouts"]["alberta_final_clear_advantage"] is True
     assert (
         present["obstacle_trace_rollouts"]["by_learner"]["alberta"][
@@ -625,11 +627,78 @@ def test_obstacle_validator_rejects_trace_metrics_not_backed_by_steps(tmp_path):
     assert validation["checks"]["obstacle_trace_rollouts"] is False
     assert validation["obstacle_trace_rollouts"]["all_trace_summaries_consistent"] is False
     assert validation["obstacle_trace_rollouts"]["alberta_successful_final_clear"] is False
+    assert validation["obstacle_trace_rollouts"]["alberta_majority_final_clear"] is False
     assert validation["obstacle_trace_rollouts"]["alberta_final_clear_advantage"] is False
     assert (
         validation["obstacle_trace_rollouts"]["any_required_learner_successful_final_clear"]
         is False
     )
+
+
+def test_obstacle_validator_rejects_clearance_summary_not_backed_by_steps(tmp_path):
+    (tmp_path / "continual_benchmark.md").write_text("# report\n", encoding="utf-8")
+    (tmp_path / "continual_benchmark.png").write_bytes(b"png")
+    summary = {
+        learner: {
+            metric: {"mean": 1.0, "std": 0.0}
+            for metric in ("acc", "bwt", "forgetting", "fwt")
+        }
+        for learner in ("alberta", "ppo")
+    }
+    matrix = [[1.0, 0.0], [1.0, 1.0]]
+    baseline = [0.0, 0.0]
+    fake_trace = _trajectory_trace()
+    fake_trace["steps"][-1]["obstacle_clearance_m"] = -0.03
+    fake_trace["steps"][-1]["collision"] = False
+    fake_trace["summary"]["min_obstacle_clearance_m"] = 0.05
+    fake_trajectory_matrix = [[fake_trace for _ in range(2)] for _ in range(2)]
+    (tmp_path / "continual_benchmark.json").write_text(
+        json.dumps(
+            {
+                "config": {
+                    "env_kind": "obstacle_course",
+                    "n_tasks": 2,
+                    "seeds": 1,
+                    "steps_per_task": 8,
+                },
+                "summary": summary,
+                "motion": _motion_summary(),
+                "results": [
+                    {
+                        "name": "alberta",
+                        "seed": 1000,
+                        "matrix": matrix,
+                        "baseline": baseline,
+                        "motion_baseline": _motion_baseline(),
+                        "motion_matrix": _motion_matrix(),
+                        "trajectory_matrix": fake_trajectory_matrix,
+                    },
+                    {
+                        "name": "ppo",
+                        "seed": 1000,
+                        "matrix": matrix,
+                        "baseline": baseline,
+                        "motion_baseline": _motion_baseline(),
+                        "motion_matrix": _motion_matrix(),
+                        "trajectory_matrix": fake_trajectory_matrix,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    validation = validate_alberta_benchmark_artifacts(
+        tmp_path,
+        expected_env="obstacle_course",
+        min_seeds=1,
+        min_steps_per_task=8,
+        min_tasks=2,
+    )
+
+    assert validation["ok"] is False
+    assert validation["checks"]["obstacle_trace_rollouts"] is False
+    assert validation["obstacle_trace_rollouts"]["all_trace_summaries_consistent"] is False
 
 
 def test_obstacle_validator_rejects_passive_baseline_that_already_solves_course(tmp_path):

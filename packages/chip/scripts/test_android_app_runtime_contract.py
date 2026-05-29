@@ -24,6 +24,11 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+def assert_no_boot_or_release_claims(payload: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert payload[flag] is False, f"{flag} must remain false"
+
+
 def make_apk(path: Path, entries: list[str]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
@@ -157,6 +162,7 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
         self.assertIn("android_service_identity_mismatch", codes)
         self.assertIn("android_agent_service_not_exported_for_adb_smoke", codes)
         self.assertIn("android_agent_health_contract_mismatch", codes)
+        assert_no_boot_or_release_claims(payload)
 
     def test_aligned_static_contract_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -209,6 +215,7 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
         self.assertEqual(payload["status"], "pass")
         self.assertEqual(payload["findings"], [])
         self.assertEqual(payload["claim_boundary"], gate.CLAIM_BOUNDARY)
+        assert_no_boot_or_release_claims(payload)
 
 
 class contextlib_stack:

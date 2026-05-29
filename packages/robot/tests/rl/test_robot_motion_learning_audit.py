@@ -418,6 +418,46 @@ def test_local_learning_probe_summary_loads_training_manifest(tmp_path: Path) ->
     assert summary["verdict"] == "not_walking_after_progress_8k"
 
 
+def test_local_learning_probe_summary_loads_direct_training_manifest(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "manifest.json").write_text(
+        """
+        {
+          "profile_id": "hiwonder-ainex",
+          "phase_promotion": {
+            "phases": [
+              {
+                "learning_return_delta": 12.0,
+                "learning_delta_x_m": -0.02,
+                "failure_rate": 0.0,
+                "mean_final_tracked_delta_x_m": 0.01,
+                "mean_final_delta_yaw_rad": 0.02,
+                "tracked_body_name": "body_link",
+                "physical_checks": {
+                  "no_fall": true,
+                  "tracked_delta_x_forward": false,
+                  "yaw_drift_bound": true,
+                  "min_alternating_foot_contacts": true
+                },
+                "promotion_passed": false,
+                "blocker": "phase_success_rate_below_threshold"
+              }
+            ]
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    summary = _local_learning_probe_from_dir(tmp_path)
+
+    assert summary["source"].endswith("manifest.json")
+    assert summary["walking_success"] is False
+    assert summary["trained_has_no_forward_motion"] is True
+    assert summary["promotion_blocker"] == "phase_success_rate_below_threshold"
+
+
 def test_local_learning_probe_summary_rejects_stable_standstill_manifest(
     tmp_path: Path,
 ) -> None:
@@ -765,6 +805,8 @@ def test_fresh_obstacle_smoke_summary_surfaces_demo_and_trace_facts(
             "all_trace_summaries_consistent": True,
             "any_required_learner_successful_final_clear": True,
             "alberta_successful_final_clear": True,
+            "alberta_successful_final_clear_rate": 1.0,
+            "alberta_majority_final_clear": True,
             "alberta_final_clear_advantage": True,
         },
         "demo": {

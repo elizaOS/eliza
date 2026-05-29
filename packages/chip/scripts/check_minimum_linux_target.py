@@ -15,6 +15,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs/project/minimum-linux-npu-target.md"
 REPORT = ROOT / "build/reports/minimum-linux-kernel-target.json"
+CLAIM_BOUNDARY = "minimum target gate only; not generated-AP boot evidence by itself"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "generated_ap_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 LINUX_DTS = ROOT / "sw/linux/dts/eliza-e1.dts"
 LINUX_EXTERNAL_STATUS = ROOT / "build/reports/linux-external-bsp-status.json"
 
@@ -204,7 +213,8 @@ def collect() -> dict[str, Any]:
         "schema": "eliza.minimum_linux_kernel_target.v1",
         "generated_utc": utc_now(),
         "status": "fail" if errors else ("blocked" if blockers else "pass"),
-        "claim_boundary": "minimum target gate only; not generated-AP boot evidence by itself",
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "checklist": rel(DOC),
         "local_artifacts": artifacts,
         "dts_checks": dts_checks,

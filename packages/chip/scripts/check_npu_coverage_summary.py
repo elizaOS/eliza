@@ -71,6 +71,17 @@ CLAIM_BOUNDARY = {
     "phone_class_tops": False,
     "hardware_benchmark": False,
 }
+RAW_FALSE_CLAIM_FLAGS = (
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "production_accelerator_claim_allowed",
+    "nnapi_claim_allowed",
+    "performance_claim_allowed",
+    "android_driver_claim_allowed",
+    "power_claim_allowed",
+    "thermal_claim_allowed",
+    "dma_backed_tensor_execution_claim_allowed",
+)
 
 
 def utc_now() -> str:
@@ -183,6 +194,9 @@ def build_summary(
         },
         "precision_modes": runtime.precision_matrix(),
         "descriptor_fail_closed_paths": cocotb.get("descriptor_queue", {}),
+        "raw_cocotb_claim_flags": {
+            claim: cocotb.get(claim) for claim in RAW_FALSE_CLAIM_FLAGS
+        },
         "counters": {
             "required": [
                 "unsupported_ops",
@@ -245,6 +259,11 @@ def validate_summary(summary: dict[str, Any]) -> list[str]:
     ):
         if boundary.get(claim) is not False:
             errors.append(f"claim_boundary.{claim} must be false")
+
+    raw_flags = summary.get("raw_cocotb_claim_flags", {})
+    for claim in RAW_FALSE_CLAIM_FLAGS:
+        if raw_flags.get(claim) is not False:
+            errors.append(f"raw_cocotb_claim_flags.{claim} must be false")
 
     opcodes = summary.get("opcodes", {})
     if opcodes.get("all_required_covered") is not True:

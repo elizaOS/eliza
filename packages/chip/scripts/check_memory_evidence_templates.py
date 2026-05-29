@@ -96,6 +96,15 @@ DRAMSIM_WORKLOADS = {
     "pointer_chase",
 }
 DRAMSIM_CLAIM_BOUNDARY_TOKENS = ("simulator", "not", "phone")
+DRAMSIM_FALSE_CLAIM_FLAGS = (
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "linux_memory_claim_allowed",
+    "memory_bandwidth_claim_allowed",
+    "lpddr_phy_claim_allowed",
+    "silicon_capacity_claim_allowed",
+    "uma_claim_allowed",
+)
 
 
 def load_json(path: Path) -> Any:
@@ -617,19 +626,14 @@ def validate_dramsim_report(
         f"{report_path}: captured_utc must be timezone-aware",
         errors,
     )
-    require(
-        data.get("phone_claim_allowed") is False,
-        f"{report_path}: phone_claim_allowed must be false",
-        errors,
-    )
-    require(
-        data.get("release_claim_allowed") is False,
-        f"{report_path}: release_claim_allowed must be false",
-        errors,
-    )
+    for flag in DRAMSIM_FALSE_CLAIM_FLAGS:
+        require(data.get(flag) is False, f"{report_path}: {flag} must be false", errors)
     boundary = str(data.get("claim_boundary", "")).lower()
     require(
-        "not physical" in boundary and "phone" in boundary,
+        "not physical" in boundary
+        and "phone" in boundary
+        and "bandwidth" in boundary
+        and "silicon" in boundary,
         f"{report_path}: claim_boundary must block phone promotion",
         errors,
     )

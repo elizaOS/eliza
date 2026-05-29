@@ -141,6 +141,92 @@ _HIWONDER_FORWARD_SINE_PARAMS: tuple[dict[str, Any], ...] = (
     },
 )
 
+_UNITREE_R1_FORWARD_SINE_PARAMS: tuple[dict[str, Any], ...] = (
+    {
+        "scale": 0.11256610072362042,
+        "hz": 0.45499920865500043,
+        "phase0": -0.1714404938301346,
+        "hip_bias": -0.2567093668405783,
+        "hip_amp": 0.6261870442717705,
+        "knee_bias": 0.35951148084382206,
+        "knee_amp": 0.4234662888126237,
+        "knee_phase": -1.8153392697675157,
+        "ank_bias": -0.01790194910718612,
+        "ank_amp": 0.07487754456664701,
+        "ank_phase": -0.2833332532656203,
+        "roll_bias": -0.14219957422307716,
+        "roll_amp": 0.40058191582434266,
+        "ank_roll_amp": 0.017935845767314353,
+        "roll_phase": -2.5062774146551683,
+        "ank_roll_phase_delta": 0.06917828308038487,
+        "yaw_amp": 0.0,
+        "yaw_phase": -0.13976425049595953,
+    },
+    {
+        "scale": 0.05764458175381873,
+        "hz": 2.485147895750645,
+        "phase0": 1.9783615521809894,
+        "hip_bias": -0.01458320979572475,
+        "hip_amp": 0.4444611344930725,
+        "knee_bias": 0.19130102338471983,
+        "knee_amp": 0.42212358312538917,
+        "knee_phase": -2.3888768288921907,
+        "ank_bias": 0.20105623299864223,
+        "ank_amp": 0.02726228175493999,
+        "ank_phase": 0.13707383184259037,
+        "roll_bias": -0.21815966910345874,
+        "roll_amp": 0.49268140313934566,
+        "ank_roll_amp": 0.12712755004357743,
+        "roll_phase": 1.334127992509198,
+        "ank_roll_phase_delta": 1.320555161347066,
+        "yaw_amp": 0.0,
+        "yaw_phase": -0.8250734577859391,
+    },
+)
+
+_UNITREE_R1_STANCE_GAIT_PARAMS: tuple[dict[str, Any], ...] = (
+    {
+        "scale": 1.0,
+        "hip_bias": -0.2475470492797372,
+        "knee_bias": 0.520553000357292,
+        "ank_bias": -0.33685481798207323,
+        "hz": 1.9642740613643404,
+        "phase0": 3.005265983416357,
+        "hip_amp": 0.17128858153185186,
+        "knee_amp": 0.038369195844245974,
+        "knee_phase": 1.1941125238448276,
+        "ank_amp": 0.12321146083232079,
+        "ank_phase": 2.9230443051456527,
+        "roll_bias": 0.11929154689788765,
+        "roll_amp": 0.08899617903874857,
+        "ank_roll_amp": 0.25603436201924384,
+        "roll_phase": 1.6054348326319978,
+        "ank_roll_phase_delta": -0.879347402604539,
+        "yaw_amp": 0.025170662632861607,
+        "yaw_phase": 2.2246878043029827,
+    },
+    {
+        "scale": 0.80506,
+        "hz": 1.34058,
+        "phase0": 2.5247,
+        "hip_bias": -0.20118,
+        "hip_amp": 0.16202,
+        "knee_bias": 0.65414,
+        "knee_amp": 0.00679,
+        "knee_phase": 0.66031,
+        "ank_bias": -0.34165,
+        "ank_amp": 0.04318,
+        "ank_phase": 2.93132,
+        "roll_bias": 0.1309,
+        "roll_amp": 0.03928,
+        "ank_roll_amp": 0.04773,
+        "roll_phase": 2.1146,
+        "ank_roll_phase_delta": -1.25268,
+        "yaw_amp": 0.025170662632861607,
+        "yaw_phase": 2.2246878043029827,
+    },
+)
+
 
 @dataclass(frozen=True)
 class _PrimitiveSpec:
@@ -732,6 +818,74 @@ def _controller_command(task_id: str) -> tuple[float, float, float] | None:
     return None
 
 
+def _locomotion_progress_fraction(
+    task_id: str,
+    success: dict,
+    *,
+    tracked_delta_x: float | None,
+    tracked_delta_y: float | None,
+) -> float:
+    if task_id in {"walk_forward", "walk_backward"}:
+        delta = tracked_delta_x
+        min_key = "delta_x_m_min"
+        max_key = "delta_x_m_max"
+    elif task_id in {"sidestep_left", "sidestep_right"}:
+        delta = tracked_delta_y
+        min_key = "delta_y_m_min"
+        max_key = "delta_y_m_max"
+    else:
+        return 0.0
+    if delta is None:
+        return 0.0
+    if min_key in success:
+        target = float(success[min_key])
+        return float(delta / target) if target > 0.0 else 0.0
+    if max_key in success:
+        target = abs(float(success[max_key]))
+        return float(abs(min(0.0, delta)) / target) if target > 0.0 else 0.0
+    return 0.0
+
+
+def _joint_pose_action(env: TextConditionedProfileEnv) -> np.ndarray:
+    joint_pose = np.array(
+        [env._data.qpos[qpos_idx] for qpos_idx in env._joint_qpos_idx],  # noqa: SLF001
+        dtype=np.float32,
+    )
+    action_scale = max(float(env.config.action_scale), 1e-6)
+    return np.clip(
+        (joint_pose - env._home_pose.astype(np.float32)) / action_scale,  # noqa: SLF001
+        -1.0,
+        1.0,
+    ).astype(np.float32)
+
+
+def _balance_correction_action(
+    env: TextConditionedProfileEnv,
+    *,
+    roll: float,
+    pitch: float,
+    yaw: float,
+    pitch_gain: float,
+    roll_gain: float,
+    yaw_gain: float,
+) -> np.ndarray:
+    correction = np.zeros(env.action_space.shape, dtype=np.float32)
+    for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+        name = joint.name.lower()
+        side = 1.0 if name.startswith(("l_", "left_")) else -1.0
+        if "hip_pitch" in name:
+            correction[idx] += side * pitch_gain * pitch
+        elif "ank_pitch" in name or "ankle_pitch" in name:
+            correction[idx] -= side * pitch_gain * pitch
+        elif "hip_roll" in name:
+            correction[idx] += side * roll_gain * roll
+        elif "ank_roll" in name or "ankle_roll" in name:
+            correction[idx] -= side * roll_gain * roll
+        elif "hip_yaw" in name:
+            correction[idx] -= side * yaw_gain * yaw
+    return np.clip(correction, -1.0, 1.0).astype(np.float32)
+
+
 def _target_pose_to_env_action(
     env: TextConditionedProfileEnv,
     target_by_name: dict[str, float],
@@ -841,10 +995,10 @@ def _make_stand_up_pitch_feedback_action(
         correction = pitch_gain * pitch
         for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
             name = joint.name.lower()
-            side = 1.0 if name.startswith("l_") else -1.0
+            side = 1.0 if name.startswith(("l_", "left_")) else -1.0
             if "hip_pitch" in name:
                 target[idx] += side * correction
-            elif "ank_pitch" in name:
+            elif "ank_pitch" in name or "ankle_pitch" in name:
                 target[idx] -= side * correction
         target = np.clip(target, env._lower, env._upper)  # noqa: SLF001
         return np.clip((target - home_pose) / action_scale, -1.0, 1.0).astype(
@@ -969,26 +1123,28 @@ def _make_sinusoidal_action(
             params.get("phase0", 0.0)
         )
         direction = -1.0 if task_id == "walk_backward" else 1.0
+        hip_bias = float(params.get("hip_bias", params.get("hip", 0.0)))
+        knee_bias = float(params.get("knee_bias", params.get("knee", 0.0)))
+        ank_bias = float(params.get("ank_bias", params.get("ank", 0.0)))
         action = np.zeros(env.action_space.shape, dtype=np.float32)
         for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
             name = joint.name.lower()
-            side = 1.0 if name.startswith("l_") else -1.0
+            side = 1.0 if name.startswith(("l_", "left_")) else -1.0
             value = 0.0
             if "hip_pitch" in name:
                 value = direction * (
-                    float(params["hip_bias"])
-                    + side * float(params["hip_amp"]) * np.sin(phase)
+                    hip_bias + side * float(params["hip_amp"]) * np.sin(phase)
                 )
             elif "knee" in name:
                 value = (
-                    float(params["knee_bias"])
+                    knee_bias
                     + side
                     * float(params["knee_amp"])
                     * np.sin(phase + float(params["knee_phase"]))
                 )
-            elif "ank_pitch" in name:
+            elif "ank_pitch" in name or "ankle_pitch" in name:
                 value = direction * (
-                    float(params["ank_bias"])
+                    ank_bias
                     + side
                     * float(params["ank_amp"])
                     * np.sin(phase + float(params["ank_phase"]))
@@ -1000,7 +1156,7 @@ def _make_sinusoidal_action(
                     * float(params["roll_amp"])
                     * np.sin(phase + float(params["roll_phase"]))
                 )
-            elif "ank_roll" in name:
+            elif "ank_roll" in name or "ankle_roll" in name:
                 value = (
                     -side * float(params["roll_bias"])
                     + side
@@ -1068,6 +1224,97 @@ def _make_switched_deterministic_action(
     return _action
 
 
+def _make_hiwonder_locomotion_progress_settle_action(
+    env: TextConditionedProfileEnv,
+    task_id: str,
+    *,
+    params: dict[str, Any],
+) -> Callable[[int], np.ndarray | None]:
+    if task_id in {"walk_forward", "walk_backward"}:
+        drive_action = _make_sinusoidal_action(env, task_id, params=params["drive"])
+    elif task_id in {"sidestep_left", "sidestep_right"}:
+        drive_action = _make_deterministic_action(env, task_id)
+    else:
+        return lambda _step: None
+
+    task = load_curriculum().by_id(task_id)
+    settle_started_step: int | None = None
+    snapshot_action: np.ndarray | None = None
+    blend_steps = max(1, int(params.get("settle_blend_steps", 45)))
+    min_drive_steps = int(params.get("min_drive_steps", 80))
+    progress_start_fraction = float(params.get("progress_start_fraction", 0.88))
+    pitch_gain = float(params.get("pitch_gain", 0.55))
+    roll_gain = float(params.get("roll_gain", 0.45))
+    yaw_gain = float(params.get("yaw_gain", 0.25))
+    tilt_damping_start_rad = float(params.get("tilt_damping_start_rad", 0.22))
+    tilt_damping_full_rad = float(params.get("tilt_damping_full_rad", 0.45))
+
+    def _action(step: int) -> np.ndarray | None:
+        nonlocal settle_started_step, snapshot_action
+        drive = drive_action(step)
+        if drive is None:
+            return None
+        pose = env._root_pose_summary()  # noqa: SLF001
+        tracked = env._tracked_pose_summary(pose)  # noqa: SLF001
+        tracked_delta_x = float(tracked["x"] - env._episode_start_tracked_x)  # noqa: SLF001
+        tracked_delta_y = float(tracked["y"] - env._episode_start_tracked_y)  # noqa: SLF001
+        progress_fraction = _locomotion_progress_fraction(
+            task_id,
+            task.success,
+            tracked_delta_x=tracked_delta_x,
+            tracked_delta_y=tracked_delta_y,
+        )
+        if (
+            settle_started_step is None
+            and step >= min_drive_steps
+            and progress_fraction >= progress_start_fraction
+        ):
+            settle_started_step = step
+            snapshot_action = _joint_pose_action(env)
+
+        if settle_started_step is None:
+            return np.clip(drive, -1.0, 1.0).astype(np.float32)
+
+        settle_steps = max(0, step - settle_started_step + 1)
+        alpha = min(1.0, float(settle_steps) / float(blend_steps))
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        roll = float(pose.get("roll", 0.0))
+        pitch = float(pose.get("pitch", 0.0))
+        yaw = _wrap_pi(float(pose.get("yaw", 0.0)) - env._episode_start_yaw)  # noqa: SLF001
+        tilt = max(abs(roll), abs(pitch))
+        if tilt > tilt_damping_start_rad:
+            denom = max(tilt_damping_full_rad - tilt_damping_start_rad, 1e-6)
+            alpha = max(alpha, min(1.0, (tilt - tilt_damping_start_rad) / denom))
+        foot_telemetry = np.asarray(env._last_foot_telemetry, dtype=np.float32)  # noqa: SLF001
+        left_contact = bool(foot_telemetry.size > 0 and foot_telemetry[0] > 0.5)
+        right_contact = bool(foot_telemetry.size > 1 and foot_telemetry[1] > 0.5)
+        if left_contact and right_contact:
+            neutral_fraction = alpha
+        elif left_contact or right_contact:
+            neutral_fraction = 0.35 * alpha
+        else:
+            neutral_fraction = 0.10 * alpha
+        hold = (
+            snapshot_action
+            if snapshot_action is not None
+            else np.zeros(env.action_space.shape, dtype=np.float32)
+        )
+        correction = _balance_correction_action(
+            env,
+            roll=roll,
+            pitch=pitch,
+            yaw=yaw,
+            pitch_gain=pitch_gain,
+            roll_gain=roll_gain,
+            yaw_gain=yaw_gain,
+        )
+        settle = (1.0 - neutral_fraction) * hold + correction
+        action = (1.0 - alpha) * drive + alpha * settle
+        return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+    return _action
+
+
 def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
     specs = [
         _PrimitiveSpec("deterministic_smoke", 0.3, _make_deterministic_action),
@@ -1128,6 +1375,28 @@ def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
                         dict(params),
                     )
                 )
+            settle_params = {
+                "drive": dict(_HIWONDER_FORWARD_SINE_PARAMS[1]),
+                "min_drive_steps": 80,
+                "progress_start_fraction": 0.88,
+                "settle_blend_steps": 45,
+                "pitch_gain": 0.55,
+                "roll_gain": 0.45,
+                "yaw_gain": 0.25,
+                "tilt_damping_start_rad": 0.22,
+                "tilt_damping_full_rad": 0.45,
+            }
+            specs.append(
+                _PrimitiveSpec(
+                    "hiwonder_closed_loop_progress_settle",
+                    float(settle_params["drive"]["scale"]),
+                    partial(
+                        _make_hiwonder_locomotion_progress_settle_action,
+                        params=settle_params,
+                    ),
+                    dict(settle_params),
+                )
+            )
         if task_id in {"sidestep_left", "sidestep_right"}:
             specs.extend(
                 [
@@ -1151,6 +1420,47 @@ def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
                         ),
                     ),
                 ]
+            )
+            settle_params = {
+                "drive": {},
+                "min_drive_steps": 12,
+                "progress_start_fraction": 0.75,
+                "settle_blend_steps": 12,
+                "pitch_gain": 0.55,
+                "roll_gain": 0.45,
+                "yaw_gain": 0.25,
+                "tilt_damping_start_rad": 0.22,
+                "tilt_damping_full_rad": 0.45,
+            }
+            specs.append(
+                _PrimitiveSpec(
+                    "hiwonder_closed_loop_progress_settle",
+                    1.0,
+                    partial(
+                        _make_hiwonder_locomotion_progress_settle_action,
+                        params=settle_params,
+                    ),
+                    dict(settle_params),
+                )
+            )
+    if profile_id == "unitree-r1" and task_id in {"walk_forward", "walk_backward"}:
+        for idx, params in enumerate(_UNITREE_R1_FORWARD_SINE_PARAMS):
+            specs.append(
+                _PrimitiveSpec(
+                    f"unitree_r1_sinusoidal_seeded_{idx}",
+                    float(params["scale"]),
+                    partial(_make_sinusoidal_action, params=params),
+                    dict(params),
+                )
+            )
+        for idx, params in enumerate(_UNITREE_R1_STANCE_GAIT_PARAMS):
+            specs.append(
+                _PrimitiveSpec(
+                    f"unitree_r1_stance_gait_seeded_{idx}",
+                    float(params["scale"]),
+                    partial(_make_sinusoidal_action, params=params),
+                    dict(params),
+                )
             )
     return specs
 
@@ -1529,7 +1839,7 @@ def validate(profile: str, tasks: tuple[str, ...], *, max_steps: int) -> dict:
     return {
         "schema": "robot-task-feasibility-v1",
         "profile_id": profile,
-        "controller": "bezier_gait_for_hiwonder_locomotion_else_deterministic_smoke",
+        "controller": "hiwonder_closed_loop_progress_settle_plus_existing_primitives",
         "max_steps": max_steps,
         "tasks": rows,
         "n_tasks": len(rows),

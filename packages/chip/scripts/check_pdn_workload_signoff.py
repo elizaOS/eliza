@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -35,9 +36,70 @@ SCHEMA = "eliza.pdn_workload_signoff.v1"
 CLAIM_BOUNDARY = "pdn_workload_signoff_validation_only_not_release_evidence"
 
 
+def blocker_bucket(finding: str) -> str:
+    lowered = finding.lower()
+    if "commercial" in lowered or "voltus" in lowered or "redhawk" in lowered:
+        return "commercial_ir_em_signoff"
+    if "workload vectors" in lowered or "vcd" in lowered:
+        return "workload_activity_vectors"
+    if "spef" in lowered or "parasitic" in lowered or "corner" in lowered:
+        return "multi_corner_extraction"
+    if "package model" in lowered or "bond-wire" in lowered or "bga" in lowered:
+        return "package_pdn_model"
+    if "impedance" in lowered or "z(f)" in lowered:
+        return "pdn_impedance_profile"
+    if "open-flow waiver" in lowered:
+        return "open_flow_waiver_artifacts"
+    return "pdn_signoff_evidence"
+
+
+def next_step_for_bucket(bucket: str) -> str:
+    steps = {
+        "commercial_ir_em_signoff": (
+            "Procure or archive commercial Voltus/RedHawk/PrimePower IR/EM reports, "
+            "tool run manifests, and signed signoff metadata."
+        ),
+        "workload_activity_vectors": (
+            "Generate rail-granular workload VCDs for CPU burst, NPU saturation, token loop, "
+            "idle, and display-refresh scenarios."
+        ),
+        "multi_corner_extraction": (
+            "Produce signoff-corner SPEF/parasitic evidence for every required corner run."
+        ),
+        "package_pdn_model": (
+            "Archive the package/bond-wire/BGA PDN model and fold it into the IR-drop loop."
+        ),
+        "pdn_impedance_profile": "Generate and archive the PDN impedance Z(f) profile.",
+        "open_flow_waiver_artifacts": (
+            "Complete the open-flow waiver path with required artifacts and the recorded margin factor."
+        ),
+        "pdn_signoff_evidence": "Archive the named PDN signoff evidence and rerun the checker.",
+    }
+    return steps[bucket]
+
+
+def release_unblock_action_inventory(findings: list[str]) -> list[dict[str, object]]:
+    buckets: dict[str, list[str]] = {}
+    for finding in findings:
+        buckets.setdefault(blocker_bucket(finding), []).append(finding)
+    return [
+        {
+            "bucket": bucket,
+            "count": len(items),
+            "sample_blockers": items[:4],
+            "next_step": next_step_for_bucket(bucket),
+            "validation_command": "python3 scripts/check_pdn_workload_signoff.py",
+            "release_credit": False,
+        }
+        for bucket, items in sorted(buckets.items(), key=lambda item: (-len(item[1]), item[0]))
+    ]
+
+
 def write_report(status: str, findings: list[str], allow_blocked: bool) -> None:
+    actions = release_unblock_action_inventory(findings) if status == "blocked" else []
     payload = {
         "schema": SCHEMA,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
         "mode": "allow_blocked" if allow_blocked else "strict",
@@ -46,17 +108,30 @@ def write_report(status: str, findings: list[str], allow_blocked: bool) -> None:
             "release_ready": status == "pass",
             "blockers": len(findings) if status == "blocked" else 0,
             "failures": len(findings) if status == "fail" else 0,
+            "action_buckets": {row["bucket"]: row["count"] for row in actions},
         },
+        "blocker_dependency_counts": {
+            "actionable_external_dependency": len(findings) if status == "blocked" else 0,
+            "repo_artifact_generation": 0,
+            "live_device_validation": 0,
+        },
+        "next_command_by_dependency": {
+            "actionable_external_dependency": [
+                "python3 scripts/check_pdn_workload_signoff.py",
+                "python3 scripts/check_pdn_workload_signoff.py --allow-blocked",
+            ]
+        }
+        if status == "blocked"
+        else {},
+        "release_unblock_action_inventory": actions,
         "findings": [
             {
                 "code": f"pdn_workload_signoff_{status}_{index}",
                 "severity": "blocker" if status == "blocked" else "error",
                 "message": finding,
                 "evidence": GATE_FILE.relative_to(ROOT).as_posix(),
-                "next_step": (
-                    "Archive commercial Voltus/RedHawk signoff or complete the "
-                    "open-flow waiver path with all workload and margin evidence."
-                ),
+                "bucket": blocker_bucket(finding),
+                "next_step": next_step_for_bucket(blocker_bucket(finding)),
             }
             for index, finding in enumerate(findings, start=1)
         ],

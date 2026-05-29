@@ -275,7 +275,7 @@ def main() -> int:
             "Architecture-level placement/sharding/capacity compiler: it maps a "
             "real quantized transformer manifest to concrete logical-mesh "
             "coordinates, shards every weight matrix by output rows against the "
-            "45 KiB usable per-core SRAM budget, assigns one static fabric "
+            "44 KiB usable per-core SRAM budget, assigns one static fabric "
             "routing color per layer within E1X_ROUTING_COLORS, checks aggregate "
             "and per-core SRAM fit, and feeds the wafer model's accounting. It is "
             "NOT a kernel-generating backend: no per-core instruction streams, "

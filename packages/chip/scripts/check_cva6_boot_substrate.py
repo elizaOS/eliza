@@ -44,6 +44,19 @@ RESULTS_XML = COCOTB_DIR / "results.xml"
 REPORT = ROOT / "build/reports/cva6_boot_substrate.json"
 GATE = "cva6_boot_substrate"
 SUBSYSTEM = "cpu_ap"
+CLAIM_BOUNDARY = (
+    "cva6_bare_metal_dram_execution_evidence_only_not_opensbi_linux_"
+    "android_phone_release_or_silicon_boot_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "opensbi_boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "userland_boot_claim_allowed": False,
+}
 
 
 def _now() -> str:
@@ -67,6 +80,8 @@ def _write(
         "evidence_paths": evidence,
         "as_of": _now(),
         "subsystem": SUBSYSTEM,
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
     if extra:
         payload["detail"] = extra

@@ -9,6 +9,8 @@ REPO_DIR="$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)"
 PDK_ROOT_HOST="${PDK_ROOT:-$REPO_DIR/external/pdks}"
 LOCK_DIR="${OPENLANE_LOCK_DIR:-$REPO_DIR/.openlane-run.lock}"
 DOCKER_CID_FILE="$LOCK_DIR/docker.cid"
+OPENLANE_BIN="${OPENLANE_BIN:-$REPO_DIR/external/openlane2/.venv/bin/openlane}"
+OPENLANE_RUNNER="${OPENLANE_RUNNER:-native}"
 
 usage() {
     cat <<'EOF'
@@ -199,7 +201,14 @@ run_docker_and_diagnose() {
     return "$status"
 }
 
-if command -v openlane >/dev/null 2>&1; then
+if [ "$OPENLANE_RUNNER" = "docker" ]; then
+    pdk_root_container="/work/external/pdks"
+    echo "OpenLane wrapper command: docker run ... $IMAGE openlane --pdk-root $pdk_root_container $CONFIG"
+    run_docker_and_diagnose
+elif [ -x "$OPENLANE_BIN" ]; then
+    echo "OpenLane wrapper command: $OPENLANE_BIN $CONFIG"
+    run_and_diagnose "$OPENLANE_BIN" "$CONFIG"
+elif command -v openlane >/dev/null 2>&1; then
     echo "OpenLane wrapper command: openlane $CONFIG"
     run_and_diagnose openlane "$CONFIG"
 elif command -v flow.tcl >/dev/null 2>&1; then

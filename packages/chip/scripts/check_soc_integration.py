@@ -20,17 +20,20 @@ behavior mirrors the existing fail-closed evidence-gate pattern under
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "docs/evidence/integration"
 RESULTS_DIR = ROOT / "verify/cocotb/results"
 BUILD_DIR = ROOT / "build/reports/cocotb"
+REPORT = ROOT / "build/reports/soc_cross_domain_integration.json"
 
 EXPECTED_BOOT_TESTS = (
     "reset_clears_bus_and_bootrom_magic",
@@ -69,6 +72,62 @@ VALID_EDGE_STATUSES = {
     "TIED_OFF",
     "BLOCKED",
 }
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def write_report(status: str, blocker_id: str | None, blocker_reason: str | None) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(
+        json.dumps(
+            {
+                "schema": "eliza.soc_cross_domain_integration.v1",
+                "gate": "soc-integration-check",
+                "status": status,
+                "blocker_id": blocker_id,
+                "blocker_reason": blocker_reason,
+                "generated_utc": utc_now(),
+                "subsystem": "interconnect",
+                "evidence_paths": [
+                    "rtl/top/e1_soc_integrated.sv",
+                    "rtl/interconnect/axi4/e1_axi4_interconnect.sv",
+                    "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
+                    "rtl/cache/slc/e1_slc.sv",
+                    "rtl/iommu/e1_riscv_iommu.sv",
+                    "docs/evidence/integration/cross-domain-interfaces.yaml",
+                    "verify/cocotb/integration/test_cross_domain_interfaces.py",
+                    "verify/cocotb/integration/test_soc_boot_smoke.py",
+                ],
+                "phone_claim_allowed": False,
+                "release_claim_allowed": False,
+                "production_fabric_claim_allowed": False,
+                "full_soc_routing_claim_allowed": False,
+                "coherency_claim_allowed": False,
+                "iommu_claim_allowed": False,
+                "qos_claim_allowed": False,
+                "linux_boot_claim_allowed": False,
+                "production_cpu_claim_allowed": False,
+                "claim_boundary": (
+                    "Validates that the e1_soc_integrated cross-domain scaffold "
+                    "lints, has the expected boot-smoke and cross-domain cocotb "
+                    "result XMLs, and that documented cross-domain edges use known "
+                    "WIRED/BLOCKED/TIED_OFF statuses. This is local scaffold "
+                    "integration evidence only; it is not production SoC routing, "
+                    "complete arbitration/order proof, coherency, IOMMU/SMMU, QoS, "
+                    "Linux boot, production CPU, LPDDR PHY, phone, or release evidence."
+                ),
+                "expected_boot_tests": list(EXPECTED_BOOT_TESTS),
+                "expected_cross_domain_tests": list(EXPECTED_CROSS_TESTS),
+                "valid_edge_statuses": sorted(VALID_EDGE_STATUSES),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def block(reason: str) -> int:
@@ -140,6 +199,11 @@ def verilator_lint() -> int:
         "rtl/npu/e1_npu.sv",
         "rtl/display/e1_display.sv",
         "rtl/display/e1_display_scanout.sv",
+        "rtl/power/droop_sensor.sv",
+        "rtl/power/clock_stretcher.sv",
+        "rtl/power/avfs_ctrl.sv",
+        "rtl/power/dldo.sv",
+        "rtl/top/e1_power_datapath.sv",
         "rtl/top/adapters/e1_slc_to_chi_line_shim.sv",
         "rtl/top/adapters/e1_axi4_width_converter.sv",
         "rtl/peripherals/e1_mmio_decode.sv",
@@ -326,6 +390,11 @@ def check_edges_doc() -> int:
 def main() -> int:
     rc = verilator_lint()
     if rc != 0:
+        write_report(
+            "BLOCKED" if rc == 2 else "FAIL",
+            "soc_integration_lint_blocked" if rc == 2 else "soc_integration_lint_failed",
+            "verilator lint did not pass",
+        )
         return rc
     rc = check_cocotb_results(
         "boot-smoke",
@@ -333,6 +402,11 @@ def main() -> int:
         EXPECTED_BOOT_TESTS,
     )
     if rc != 0:
+        write_report(
+            "BLOCKED" if rc == 2 else "FAIL",
+            "soc_integration_boot_smoke_blocked" if rc == 2 else "soc_integration_boot_smoke_failed",
+            "boot-smoke cocotb result did not pass",
+        )
         return rc
     rc = check_cocotb_results(
         "cross-domain",
@@ -340,10 +414,21 @@ def main() -> int:
         EXPECTED_CROSS_TESTS,
     )
     if rc != 0:
+        write_report(
+            "BLOCKED" if rc == 2 else "FAIL",
+            "soc_integration_cross_domain_blocked" if rc == 2 else "soc_integration_cross_domain_failed",
+            "cross-domain cocotb result did not pass",
+        )
         return rc
     rc = check_edges_doc()
     if rc != 0:
+        write_report(
+            "FAIL",
+            "soc_integration_edge_contract_failed",
+            "cross-domain edge contract did not pass",
+        )
         return rc
+    write_report("PASS", None, None)
     print("OK: soc-integration gate passes (lint + boot-smoke + cross-domain + edges).")
     return 0
 

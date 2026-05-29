@@ -1024,5 +1024,6 @@
   },
   "trapped_parts": [],
   "device_assemblable": true,
-  "runtime_s": 23.54
+  "runtime_s": 0.0,
+  "runtime_s_note": "wall-clock runtime omitted from committed evidence for deterministic reruns"
 }

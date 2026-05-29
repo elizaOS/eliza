@@ -9,6 +9,12 @@ import unittest
 import check_chip_os_identity_contract as ident
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], ident.CLAIM_BOUNDARY)
+    for key, expected in ident.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 class ChipOsIdentityContractTests(unittest.TestCase):
     def test_endpoint_literals_extracts_health_and_self_status(self) -> None:
         text = 'curl http://127.0.0.1:31337/api/health && curl "/api/agent/self-status"'
@@ -52,6 +58,8 @@ class ChipOsIdentityContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(report["status"], "pass")
+        self.assertRegex(str(report["generated_utc"]), r"^\d{4}-\d{2}-\d{2}T")
+        assert_false_claim_flags(self, report)
         self.assertEqual(
             report["summary"]["packages_observed"],
             ["ai.elizaos.app", "app.eliza", "com.elizaos.agent"],

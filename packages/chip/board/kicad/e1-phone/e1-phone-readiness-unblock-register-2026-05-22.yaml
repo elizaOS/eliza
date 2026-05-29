@@ -10,6 +10,8 @@ source_artifacts:
 - board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
 - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
 - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
+- board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
+- mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
 summary:
   objective_status: blocked_objective_not_complete
   blocker_count: 5
@@ -18,7 +20,7 @@ summary:
   artifact_presence_complete_blocker_count: 4
   acceptance_artifact_count: 174
   missing_acceptance_artifact_count: 0
-  non_release_acceptance_artifact_count: 147
+  non_release_acceptance_artifact_count: 144
   production_presence_release_output_count: 0
   production_presence_blocked_candidate_output_file_count: 47
   production_presence_has_blocked_candidate_outputs: true
@@ -132,6 +134,34 @@ summary:
     usb_pd_controller: 1
     wifi_bluetooth: 5
   local_component_model_directory_release_allowed: false
+  public_sourcing_intake_ready: true
+  public_cad_source_record_count: 7
+  public_cad_source_step_or_3d_observed_count: 5
+  public_cad_source_footprint_or_eda_observed_count: 7
+  public_cad_source_local_downloaded_hashed_count: 0
+  public_cad_source_release_credit_record_count: 0
+  public_market_bom_cost_category_count: 11
+  public_market_bom_cost_volume_count: 5
+  public_market_bom_cost_avl_quote_count: 0
+  public_market_bom_cost_signed_supplier_quote_count: 0
+  public_sourcing_release_credit: false
+  public_sourcing_release_allowed: false
+public_sourcing_intake_context:
+  scope: public_cad_and_market_cost_intake_not_release_evidence
+  source_artifacts:
+  - board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
+  - mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
+  public_cad_source_record_count: 7
+  public_cad_source_step_or_3d_observed_count: 5
+  public_cad_source_footprint_or_eda_observed_count: 7
+  public_cad_source_local_downloaded_hashed_count: 0
+  public_cad_source_release_credit_record_count: 0
+  public_market_bom_cost_category_count: 11
+  public_market_bom_cost_volume_count: 5
+  public_market_bom_cost_avl_quote_count: 0
+  public_market_bom_cost_signed_supplier_quote_count: 0
+  public_sourcing_release_credit: false
+  public_sourcing_release_allowed: false
 blockers:
 - id: supplier_return_packs
   domain: supplier
@@ -1188,13 +1218,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/radio-module-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1217,20 +1240,6 @@ blockers:
     - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/rf/cellular-conducted.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - local candidate artifact only
-    - not_approved
-    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/route-feasibility-density.yaml:
     - blocked_candidate_not_approved
@@ -1342,7 +1351,7 @@ blockers:
     board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
-  non_release_acceptance_artifact_count: 47
+  non_release_acceptance_artifact_count: 44
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Generate production/factory outputs from routed board package

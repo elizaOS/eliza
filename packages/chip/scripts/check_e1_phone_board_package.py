@@ -15031,6 +15031,12 @@ def check_release_evidence_manufacturing_candidate_propagation() -> None:
     unblock = load_yaml(
         ROOT / "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml"
     )
+    public_cad_intake = load_yaml(
+        ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+    )
+    public_bom_cost = load_yaml(
+        ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
+    )
 
     manufacturing_state = manufacturing["board_state_detected"]
     expected = {
@@ -15103,6 +15109,48 @@ def check_release_evidence_manufacturing_candidate_propagation() -> None:
         raise SystemExit("unblock register blocked candidate count stale")
     if unblock_summary["production_presence_has_blocked_candidate_outputs"] is not True:
         raise SystemExit("unblock register must show blocked candidate outputs")
+
+    public_cad_summary = public_cad_intake["summary"]
+    public_bom_summary = public_bom_cost["summary"]
+    expected_public_sourcing = {
+        "public_sourcing_intake_ready": True,
+        "public_cad_source_record_count": int(public_cad_summary.get("record_count") or 0),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_cad_summary.get("public_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_cad_summary.get("public_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_cad_summary.get("local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_release_credit_record_count": int(
+            public_cad_summary.get("release_credit_record_count") or 0
+        ),
+        "public_market_bom_cost_category_count": int(
+            public_bom_summary.get("category_count") or 0
+        ),
+        "public_market_bom_cost_volume_count": int(public_bom_summary.get("volume_count") or 0),
+        "public_market_bom_cost_avl_quote_count": int(
+            public_bom_summary.get("avl_quote_count") or 0
+        ),
+        "public_market_bom_cost_signed_supplier_quote_count": int(
+            public_bom_summary.get("signed_supplier_quote_count") or 0
+        ),
+        "public_sourcing_release_credit": False,
+        "public_sourcing_release_allowed": False,
+    }
+    for report_name, summary in (
+        ("release content", content_summary),
+        ("unblock register", unblock_summary),
+    ):
+        for key, expected_value in expected_public_sourcing.items():
+            if summary.get(key) != expected_value:
+                raise SystemExit(f"{report_name} public sourcing summary stale: {key}")
+    if content["content_acceptance_policy"].get(
+        "public_cad_and_market_bom_intake_is_release_evidence"
+    ) is not False:
+        raise SystemExit("release content must reject public CAD/BOM intake as release evidence")
 
     print(
         "release evidence manufacturing candidate propagation ok: "
@@ -15208,6 +15256,8 @@ def check_development_pattern_pinout_step_coverage() -> None:
     component_manifest_path = ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
     pad_audit_path = ROOT / "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml"
     traceability_path = ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
+    public_cad_intake_path = ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+    public_bom_cost_path = ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
 
     for path in [
         board_path,
@@ -15217,6 +15267,8 @@ def check_development_pattern_pinout_step_coverage() -> None:
         component_manifest_path,
         pad_audit_path,
         traceability_path,
+        public_cad_intake_path,
+        public_bom_cost_path,
     ]:
         require_path(path)
 
@@ -15227,9 +15279,132 @@ def check_development_pattern_pinout_step_coverage() -> None:
     component_manifest = load_yaml(component_manifest_path)
     pad_audit = load_yaml(pad_audit_path)
     traceability = load_yaml(traceability_path)
+    public_cad_intake = load_yaml(public_cad_intake_path)
+    public_bom_cost = load_yaml(public_bom_cost_path)
     trace_summary = traceability.get("summary", {})
     if not isinstance(trace_summary, dict):
         raise SystemExit("KiCad/CAD traceability summary missing")
+    if public_cad_intake.get("schema") != "eliza.e1_phone_public_cad_source_intake.v1":
+        raise SystemExit("public CAD source intake schema stale")
+    if public_cad_intake.get("release_credit") is not False or public_cad_intake.get("release_allowed") is not False:
+        raise SystemExit("public CAD source intake must remain non-release evidence")
+    public_cad_records = public_cad_intake.get("records", [])
+    if not isinstance(public_cad_records, list) or not public_cad_records:
+        raise SystemExit("public CAD source intake records missing")
+    public_cad_summary = public_cad_intake.get("summary", {})
+    if not isinstance(public_cad_summary, dict):
+        raise SystemExit("public CAD source intake summary missing")
+    if int(public_cad_summary.get("record_count") or 0) != len(public_cad_records):
+        raise SystemExit("public CAD source intake record count stale")
+    if int(public_cad_summary.get("release_credit_record_count") or 0) != sum(
+        1 for record in public_cad_records if isinstance(record, dict) and record.get("release_credit") is True
+    ):
+        raise SystemExit("public CAD source intake release-credit count stale")
+    if int(public_cad_summary.get("release_credit_record_count") or 0) != 0:
+        raise SystemExit("public CAD source intake may not grant release credit")
+    if int(public_cad_summary.get("local_downloaded_hashed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and record.get("local_download_status") == "downloaded_and_hashed"
+    ):
+        raise SystemExit("public CAD source intake local download count stale")
+    if int(public_cad_summary.get("public_step_or_3d_observed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and "observed" in str(record.get("public_step_or_3d_status") or "")
+    ):
+        raise SystemExit("public CAD source intake STEP/3D observed count stale")
+    if int(public_cad_summary.get("public_footprint_or_eda_observed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and (
+            "observed" in str(record.get("public_footprint_status") or "")
+            or "candidate" in str(record.get("public_footprint_status") or "")
+        )
+    ):
+        raise SystemExit("public CAD source intake footprint/EDA observed count stale")
+    if int(public_cad_summary.get("manufacturer_step_link_observed_count") or 0) != sum(
+        1
+        for record in public_cad_records
+        if isinstance(record, dict)
+        and "manufacturer_step" in str(record.get("public_step_or_3d_status") or "")
+    ):
+        raise SystemExit("public CAD source intake manufacturer STEP count stale")
+    for record in public_cad_records:
+        if not isinstance(record, dict):
+            raise SystemExit("public CAD source intake record must be a mapping")
+        for key in [
+            "id",
+            "category",
+            "exact_mpn",
+            "manufacturer",
+            "official_or_authorized_sources",
+            "public_step_or_3d_status",
+            "public_footprint_status",
+            "local_download_status",
+            "release_credit",
+            "required_next_actions",
+        ]:
+            if key not in record:
+                raise SystemExit(f"public CAD source intake record missing {key}")
+        if record.get("release_credit") is not False:
+            raise SystemExit(f"public CAD source intake record grants release credit: {record['id']}")
+        if not isinstance(record.get("official_or_authorized_sources"), list) or not record.get("official_or_authorized_sources"):
+            raise SystemExit(f"public CAD source intake record lacks sources: {record['id']}")
+        if not isinstance(record.get("required_next_actions"), list) or not record.get("required_next_actions"):
+            raise SystemExit(f"public CAD source intake record lacks next actions: {record['id']}")
+    if public_bom_cost.get("schema") != "eliza.e1_phone_public_market_bom_cost_bands.v1":
+        raise SystemExit("public market BOM cost band schema stale")
+    if public_bom_cost.get("status") != "public_market_cost_bands_not_avl_quote":
+        raise SystemExit("public market BOM cost bands must remain non-AVL")
+    public_bom_summary = public_bom_cost.get("summary", {})
+    public_bom_records = public_bom_cost.get("records", [])
+    if not isinstance(public_bom_summary, dict) or not isinstance(public_bom_records, list):
+        raise SystemExit("public market BOM cost band summary/records missing")
+    if int(public_bom_summary.get("category_count") or 0) != len(public_bom_records):
+        raise SystemExit("public market BOM cost category count stale")
+    if public_bom_summary.get("release_credit") is not False:
+        raise SystemExit("public market BOM cost bands may not grant release credit")
+    if int(public_bom_summary.get("avl_quote_count") or 0) != 0:
+        raise SystemExit("public market BOM cost bands may not count AVL quotes")
+    if int(public_bom_summary.get("signed_supplier_quote_count") or 0) != 0:
+        raise SystemExit("public market BOM cost bands may not count signed supplier quotes")
+    expected_volumes = [100, 1000, 10000, 100000, 1000000]
+    if public_bom_cost.get("volume_columns") != expected_volumes:
+        raise SystemExit("public market BOM cost volume columns stale")
+    if int(public_bom_summary.get("volume_count") or 0) != len(expected_volumes):
+        raise SystemExit("public market BOM cost volume count stale")
+    subtotal = public_bom_cost.get("subtotal_researched_categories_usd", {})
+    discount = public_bom_cost.get("discount_vs_100_unit_baseline_pct", {})
+    if not isinstance(subtotal, dict) or not isinstance(discount, dict):
+        raise SystemExit("public market BOM cost subtotal/discount mappings missing")
+    for volume in expected_volumes:
+        if volume not in subtotal or volume not in discount:
+            raise SystemExit(f"public market BOM cost missing volume rollup: {volume}")
+    for record in public_bom_records:
+        if not isinstance(record, dict):
+            raise SystemExit("public market BOM cost record must be a mapping")
+        for key in [
+            "category",
+            "supplier_examples",
+            "public_evidence_summary",
+            "cost_band_usd",
+            "release_caveat",
+        ]:
+            if key not in record:
+                raise SystemExit(f"public market BOM cost record missing {key}")
+        cost_band = record.get("cost_band_usd")
+        if not isinstance(cost_band, dict):
+            raise SystemExit(f"public market BOM cost record lacks cost bands: {record['category']}")
+        for volume in expected_volumes:
+            band = cost_band.get(volume)
+            if not isinstance(band, list) or len(band) != 2 or float(band[0]) > float(band[1]):
+                raise SystemExit(
+                    f"public market BOM cost invalid band for {record['category']} @ {volume}"
+                )
 
     footprint_refs = re.findall(r'\(footprint "([^"]+)"', board_text)
     routed_footprint_refs = re.findall(r'\(footprint "([^"]+)"', routed_board_text)
@@ -15319,6 +15494,30 @@ def check_development_pattern_pinout_step_coverage() -> None:
         pending_pad_records
     ):
         raise SystemExit("development pad/pin audit pending supplier count stale")
+    package_conflict_records = pad_audit.get("public_candidate_package_conflict_records", [])
+    if not isinstance(package_conflict_records, list):
+        raise SystemExit("development pad/pin audit package conflict records missing")
+    expected_package_conflict_records = [
+        {
+            "footprint": record["footprint"],
+            "footprint_file": record["footprint_file"],
+            "footprint_status": record["footprint_status"],
+            "pinout_file": record["pinout_file"],
+            "coverage": record["coverage"],
+            "electrical_pad_count": record["electrical_pad_count"],
+            "manifest_pin_count": record["manifest_pin_count"],
+            **record["package_conflict_detail"],
+            "release_allowed": record["release_allowed"],
+        }
+        for record in pad_records
+        if record.get("package_conflict")
+    ]
+    if package_conflict_records != expected_package_conflict_records:
+        raise SystemExit("development pad/pin audit package conflict records stale")
+    if int(pad_audit.get("public_candidate_package_conflict_count") or 0) != len(
+        package_conflict_records
+    ):
+        raise SystemExit("development pad/pin audit package conflict count stale")
 
     total_pad_visual_count = 0
     pinout_bound_model_count = 0
@@ -16208,6 +16407,15 @@ def check_kicad_cad_stub_audit() -> None:
     component_manifest = load_yaml(
         ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
     )
+    mechanical_inventory = load_yaml(
+        ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
+    )
+    public_cad_intake = load_yaml(
+        ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+    )
+    public_bom_cost = load_yaml(
+        ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
+    )
     step_intake = load_yaml(
         ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
     )
@@ -16310,6 +16518,60 @@ def check_kicad_cad_stub_audit() -> None:
     for key, expected in expected_live_state.items():
         if state[key] != expected:
             raise SystemExit(f"KiCad/CAD stub audit live state stale: {key}")
+
+    public_sourcing = mechanical_inventory.get("public_sourcing_intake_ready", {})
+    public_cad_summary = public_cad_intake.get("summary", {})
+    public_bom_summary = public_bom_cost.get("summary", {})
+    if not isinstance(public_sourcing, dict):
+        raise SystemExit("KiCad/CAD stub audit missing mechanical public sourcing context")
+    if not isinstance(public_cad_summary, dict) or not isinstance(public_bom_summary, dict):
+        raise SystemExit("KiCad/CAD stub audit public sourcing summaries missing")
+    expected_public_sourcing_state = {
+        "public_sourcing_intake_ready": public_sourcing.get("ready") is True,
+        "public_sourcing_intake_scope": public_sourcing.get("scope"),
+        "public_cad_source_record_count": int(
+            public_sourcing.get("public_cad_source_record_count") or 0
+        ),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_sourcing.get("public_cad_source_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_sourcing.get("public_cad_source_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_sourcing.get("public_cad_source_local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_release_credit_record_count": int(
+            public_sourcing.get("public_cad_source_release_credit_record_count") or 0
+        ),
+        "public_market_bom_cost_category_count": int(
+            public_sourcing.get("public_market_bom_cost_category_count") or 0
+        ),
+        "public_market_bom_cost_volume_count": int(
+            public_sourcing.get("public_market_bom_cost_volume_count") or 0
+        ),
+        "public_market_bom_cost_avl_quote_count": int(
+            public_sourcing.get("public_market_bom_cost_avl_quote_count") or 0
+        ),
+        "public_market_bom_cost_signed_supplier_quote_count": int(
+            public_sourcing.get("public_market_bom_cost_signed_supplier_quote_count") or 0
+        ),
+        "public_sourcing_intake_release_credit": public_sourcing.get("release_credit") is True,
+        "public_sourcing_intake_release_allowed": public_sourcing.get("release_allowed") is True,
+    }
+    for key, expected in expected_public_sourcing_state.items():
+        if state[key] != expected:
+            raise SystemExit(f"KiCad/CAD stub audit public sourcing state stale: {key}")
+    if state["public_cad_source_record_count"] != int(public_cad_summary.get("record_count") or 0):
+        raise SystemExit("KiCad/CAD stub audit public CAD record count stale")
+    if state["public_market_bom_cost_category_count"] != int(
+        public_bom_summary.get("category_count") or 0
+    ):
+        raise SystemExit("KiCad/CAD stub audit public BOM category count stale")
+    if state["public_sourcing_intake_release_credit"] is not False:
+        raise SystemExit("KiCad/CAD stub audit cannot grant public sourcing release credit")
+    if state["public_sourcing_intake_release_allowed"] is not False:
+        raise SystemExit("KiCad/CAD stub audit cannot allow public sourcing release")
 
     assembly_terminal_count = sum(
         1 for part in assembly if part.get("role") == "connection terminal"

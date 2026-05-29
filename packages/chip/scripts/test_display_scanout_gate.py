@@ -29,11 +29,19 @@ def main() -> int:
         '"panel_bringup_claim_allowed": False',
         '"dsi_phy_claim_allowed": False',
         '"drm_kms_claim_allowed": False',
+        '"dts_binding_claim_allowed": False',
+        '"panel_dcs_init_claim_allowed": False',
+        '"async_pixel_clock_cdc_claim_allowed": False',
+        '"hil_bandwidth_trace_claim_allowed": False',
+        '"production_framebuffer_claim_allowed": False',
+        '"e1_soc_top_replacement_claim_allowed": False',
         "Does NOT",
         "cover the DSI analog PHY",
         "panel DCS init",
         "async pixel-clock CDC",
         "DRM/KMS/compositor",
+        "legacy e1_soc_top SRAM-backed display path",
+        "remaining_product_dependencies",
     ):
         if token not in checker:
             errors.append(f"display scanout checker missing token: {token}")

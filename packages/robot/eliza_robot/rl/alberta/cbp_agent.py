@@ -418,11 +418,19 @@ class _CBPStreamAC:
 
         for li in range(len(weights)):
             contribution = jnp.abs(acts[li]) * out_norms[li]
-            u = decay * util[li] + (1.0 - decay) * contribution
-            a = age[li] + 1
+            u = jnp.where(
+                active,
+                decay * util[li] + (1.0 - decay) * contribution,
+                util[li],
+            )
+            a = jnp.where(active, age[li] + 1, age[li])
 
             # schedule: accumulate fractional replacement budget
-            acc = accum[li] + cbp.replacement_rate * u.shape[0]
+            acc = jnp.where(
+                active,
+                accum[li] + cbp.replacement_rate * u.shape[0],
+                accum[li],
+            )
             do_replace = jnp.logical_and(jnp.logical_and(jnp.asarray(cbp.enabled), active), acc >= 1.0)
             new_accum = new_accum.at[li].set(jnp.where(do_replace, acc - 1.0, acc))
 
@@ -494,8 +502,14 @@ class _CBPStreamAC:
         next_obs: jnp.ndarray,
         discount: jnp.ndarray,
         slot_next: jnp.ndarray,
+        actor_update_scale: jnp.ndarray,
     ) -> tuple:
         cfg = self._cfg
+        actor_update_scale = jnp.clip(
+            jnp.asarray(actor_update_scale, dtype=jnp.float32),
+            0.0,
+            1.0,
+        )
         prev_obs = state.last_obs
         action = state.last_action
         slot_prev = state.last_slot
@@ -512,13 +526,29 @@ class _CBPStreamAC:
         critic_grad = jax.grad(self._value)(c_params, prev_obs, slot_prev)
         if not cfg.learn_log_sigma:
             actor_grad = (*actor_grad[:4], jnp.zeros_like(actor_grad[4]))
+        actor_grad = jax.tree.map(
+            lambda g: actor_update_scale * g,
+            actor_grad,
+        )
 
         actor_decay = discount * cfg.actor_lamda
         critic_decay = discount * cfg.critic_lamda
-        a_trace = jax.tree.map(lambda e, g: actor_decay * e + g, state.a_trace, actor_grad)
+        actor_active = actor_update_scale > 0.0
+        a_trace_candidate = jax.tree.map(
+            lambda e, g: actor_decay * e + g,
+            state.a_trace,
+            actor_grad,
+        )
+        a_trace = jax.tree.map(
+            lambda t: jnp.where(actor_active, t, jnp.zeros_like(t)),
+            a_trace_candidate,
+        )
         c_trace = jax.tree.map(lambda e, g: critic_decay * e + g, state.c_trace, critic_grad)
 
-        a_steps = jax.tree.map(lambda tr: cfg.actor_step_size * td_error * tr, a_trace)
+        a_steps = jax.tree.map(
+            lambda tr: actor_update_scale * cfg.actor_step_size * td_error * tr,
+            a_trace,
+        )
         c_steps = jax.tree.map(lambda tr: cfg.critic_step_size * td_error * tr, c_trace)
         # Stabilize the shared trunk (the only cross-task forgetting channel).
         a_steps = self._scale_trunk(a_steps, state.step_count)
@@ -550,11 +580,20 @@ class _CBPStreamAC:
             cbp_active = state.step_count < self._freeze_after
         else:
             cbp_active = jnp.asarray(True)
+        actor_cbp_active = jnp.logical_and(cbp_active, actor_active)
         _, a_acts = _trunk_forward(a_w, a_b, prev_obs, cfg.leaky_relu_slope, cfg.use_layer_norm)
         _, c_acts = _trunk_forward(c_w, c_b, prev_obs, cfg.leaky_relu_slope, cfg.use_layer_norm)
         key = state.rng_key
         (a_w, a_b, mean_w, a_util, a_age, a_accum, key, a_repl) = self._cbp_step(
-            a_w, a_b, mean_w, a_acts, state.a_util, state.a_age, state.a_accum, key, cbp_active
+            a_w,
+            a_b,
+            mean_w,
+            a_acts,
+            state.a_util,
+            state.a_age,
+            state.a_accum,
+            key,
+            actor_cbp_active,
         )
         (c_w, c_b, critic_w, c_util, c_age, c_accum, key, c_repl) = self._cbp_step(
             c_w, c_b, critic_w, c_acts, state.c_util, state.c_age, state.c_accum, key, cbp_active
@@ -622,6 +661,7 @@ class AlbertaCBPController:
             self._proto = rng.standard_normal((self._n_slots, self._embed_dim)).astype(np.float32)
         else:
             self._proto = None
+        self._actor_update_scale = 1.0
 
     def slot_of(self, observation: np.ndarray) -> int:
         """Route a raw observation to its head slot via nearest prototype."""
@@ -640,6 +680,21 @@ class AlbertaCBPController:
             else:
                 obs = self._normalizer.normalize_only(self._norm_state, obs)
         return obs
+
+    def set_actor_update_scale(self, scale: float) -> None:
+        """Scale actor learning when actions have reduced authority.
+
+        Prior-assisted locomotion can temporarily set the residual action scale
+        to zero. In that state the actor's sampled actions are non-causal, so
+        policy-gradient updates would only train arbitrary residuals that later
+        destabilize the prior when residual authority is admitted.
+        """
+        previous = self._actor_update_scale
+        self._actor_update_scale = float(np.clip(scale, 0.0, 1.0))
+        if previous <= 0.0 < self._actor_update_scale:
+            self._state = self._state.replace(
+                a_trace=jax.tree.map(jnp.zeros_like, self._state.a_trace),
+            )
 
     def start(self, observation: np.ndarray) -> np.ndarray:
         slot = jnp.asarray(self.slot_of(observation), dtype=jnp.int32)
@@ -664,6 +719,7 @@ class AlbertaCBPController:
             x,
             jnp.asarray(discount, dtype=jnp.float32),
             slot,
+            jnp.asarray(self._actor_update_scale, dtype=jnp.float32),
         )
         self._steps += 1
         return np.asarray(action, dtype=np.float32)

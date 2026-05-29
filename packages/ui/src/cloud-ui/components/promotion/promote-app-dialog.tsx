@@ -812,8 +812,8 @@ export function PromoteAppDialog({
 
                 <div className="border-t border-white/5 pt-4">
                   <p className="text-xs text-neutral-500">
-                    Credits are charged based on the work actually performed. The
-                    exact amount used is shown after the promotion launches.
+                    Credits are charged based on the work actually performed.
+                    The exact amount used is shown after the promotion launches.
                   </p>
                 </div>
               </div>

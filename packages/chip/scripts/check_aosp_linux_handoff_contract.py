@@ -10,6 +10,7 @@ placeholder QEMU/Renode stages as BLOCKED for the objective.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import sys
@@ -28,6 +29,16 @@ REPORT = ROOT / "build/reports/aosp_linux_handoff_contract.json"
 
 SCHEMA = "eliza.aosp_linux_handoff_contract.v1"
 CLAIM_BOUNDARY = "static_aosp_linux_handoff_contract_only_not_aosp_runtime_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "e1_hardware_abi_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+}
 REQUIRED_HANDOFF_COMMANDS = (
     "scripts/check_aosp_linux_preflight.py --write-report",
     "scripts/run_aosp_linux_handoff.sh --build-only",
@@ -243,6 +254,10 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

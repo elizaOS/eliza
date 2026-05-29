@@ -12,6 +12,14 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/mvp_simulator.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "fabrication_claim_allowed": False,
+    "phone_performance_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 TIMEOUT_WRAPPER = [sys.executable, "scripts/run_with_timeout.py"]
 DEFAULT_TIMEOUT_SECONDS = 300
 CHIPYARD_OUT = ROOT / "build/chipyard/eliza_rocket"
@@ -555,6 +563,7 @@ def main() -> int:
         ),
         "qemu_virt_reference_only": True,
         "renode_reference_only": True,
+        **FALSE_CLAIM_FLAGS,
         "blockers_to_on_chip_os_boot": on_chip_blockers,
         "blockers_to_minimum_linux_npu_target": minimum_target_blockers,
         "remaining_blockers": blocked_items(results),

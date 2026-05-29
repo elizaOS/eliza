@@ -322,7 +322,11 @@ def _local_learning_probe_from_dir(probe_dir: Path) -> dict[str, Any]:
             "source": str(probe_dir / "learning_probe_summary.json"),
             **_local_learning_probe_summary(summary),
         }
-    manifest = _load(probe_dir / "checkpoint" / "manifest.json")
+    manifest_path = probe_dir / "checkpoint" / "manifest.json"
+    manifest = _load(manifest_path)
+    if not manifest:
+        manifest_path = probe_dir / "manifest.json"
+        manifest = _load(manifest_path)
     phases = (
         manifest.get("phase_promotion", {}).get("phases")
         if isinstance(manifest.get("phase_promotion"), dict)
@@ -443,9 +447,15 @@ def _local_learning_probe_from_dir(probe_dir: Path) -> dict[str, Any]:
         and physical_checks.get("no_fall") is not True
     )
     return {
-        "source": str(probe_dir / "checkpoint" / "manifest.json"),
+        "source": str(manifest_path),
         "ok": walking_success,
         "profile_id": profile_id,
+        "controller_type": manifest.get("controller_type"),
+        "action_scale": _float_or_none(manifest.get("action_scale")),
+        "locomotion_prior_residual_mode": manifest.get("locomotion_prior_residual_mode"),
+        "locomotion_prior_residual_scale": _float_or_none(
+            manifest.get("locomotion_prior_residual_scale")
+        ),
         "expected_tracked_body_name": expected_tracked_body,
         "tracked_body_name": tracked_body_name,
         "stale_tracked_body": stale_tracked_body,
@@ -465,6 +475,7 @@ def _local_learning_probe_from_dir(probe_dir: Path) -> dict[str, Any]:
         "movement_summary_trained": movement_summary,
         "reward_term_summary_trained": reward_term_summary,
         "action_summary_trained": action_summary,
+        "physical_checks_trained": physical_checks,
         "promotion_passed": phase.get("promotion_passed"),
         "promotion_blocker": phase.get("promotion_blocker") or phase.get("blocker"),
         "promotion_reasons": phase.get("promotion_reasons")
@@ -768,7 +779,34 @@ def _trace_sample_summary(trace: dict[str, Any]) -> dict[str, Any]:
         if isinstance(step.get("y"), int | float)
     ]
     obstacle_x = obstacle.get("x")
+    obstacle_y = obstacle.get("y")
     obstacle_radius = float(obstacle.get("radius") or 0.0)
+    step_clearances = [
+        float(step["obstacle_clearance_m"])
+        for step in numeric_steps
+        if isinstance(step.get("obstacle_clearance_m"), int | float)
+        and not isinstance(step.get("obstacle_clearance_m"), bool)
+    ]
+    min_clearance_from_steps = min(step_clearances) if step_clearances else None
+    summary_min_clearance = summary.get("min_obstacle_clearance_m")
+    clearance_summary_matches_steps = (
+        isinstance(summary_min_clearance, int | float)
+        and min_clearance_from_steps is not None
+        and abs(float(summary_min_clearance) - min_clearance_from_steps) <= 1e-5
+    )
+    obstacle_band_ys = [
+        float(step["y"])
+        for step in numeric_steps
+        if isinstance(obstacle_x, int | float)
+        and isinstance(step.get("x"), int | float)
+        and isinstance(step.get("y"), int | float)
+        and abs(float(step["x"]) - float(obstacle_x)) <= obstacle_radius
+    ]
+    max_abs_y_in_obstacle_band = (
+        max(abs(float(y) - float(obstacle_y or 0.0)) for y in obstacle_band_ys)
+        if obstacle_band_ys
+        else None
+    )
     reached_obstacle_x = (
         isinstance(obstacle_x, int | float) and bool(xs) and max(xs) >= float(obstacle_x)
     )
@@ -804,6 +842,10 @@ def _trace_sample_summary(trace: dict[str, Any]) -> dict[str, Any]:
         "summary_passed_obstacle_rate": summary.get("passed_obstacle_rate"),
         "summary_mean_forward_progress_m": summary.get("mean_forward_progress_m"),
         "summary_min_obstacle_clearance_m": summary.get("min_obstacle_clearance_m"),
+        "min_obstacle_clearance_from_steps_m": min_clearance_from_steps,
+        "clearance_summary_matches_steps": clearance_summary_matches_steps,
+        "obstacle_band_sample_count": len(obstacle_band_ys),
+        "max_abs_y_in_obstacle_band_m": max_abs_y_in_obstacle_band,
     }
 
 
@@ -925,6 +967,10 @@ def _fresh_obstacle_smoke_summary(
             "alberta_successful_final_clear"
         )
         is True,
+        "alberta_majority_final_clear": obstacle_trace_rollouts.get(
+            "alberta_majority_final_clear"
+        )
+        is True,
         "alberta_final_clear_advantage": obstacle_trace_rollouts.get(
             "alberta_final_clear_advantage"
         )
@@ -968,6 +1014,7 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
     video = report["robot_video_physical_review"]
     learned = report["learned_policy_curriculum_eval"]
     local_probe = report["local_learning_probe"]
+    prior_residual_probes = report.get("local_prior_residual_probes") or []
     feasibility = report["task_feasibility"]
     open_loop = report["open_loop_gait_search"]
     random_sine = report["hiwonder_random_sine_gait_search"]
@@ -1057,6 +1104,72 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"Trained failure rate: `{local_probe.get('trained_failure_rate')}`",
         f"Trained yaw drift rad: `{local_probe.get('trained_mean_final_delta_yaw_rad')}`",
         f"Promotion blocker: `{local_probe.get('promotion_blocker') or 'missing'}`",
+        "",
+        "## Local Prior Residual Probes",
+        "",
+        "| source | ctrl | scale | mode | walking | learned motion | reward delta | tracked dx m | failure rate | failed gates | prior max | residual pre/post | residual guard | residual scale | contacts | verdict |",
+        "|---|---|---:|---|---|---|---:|---:|---:|---|---:|---:|---:|---:|---|---|",
+    ]
+    for row in prior_residual_probes:
+        movement = (
+            row.get("movement_summary_trained")
+            if isinstance(row.get("movement_summary_trained"), dict)
+            else {}
+        )
+        contacts = movement.get("foot_contact_switches")
+        contacts_final = (
+            contacts.get("final")
+            if isinstance(contacts, dict)
+            else None
+        )
+        actions = (
+            row.get("action_summary_trained")
+            if isinstance(row.get("action_summary_trained"), dict)
+            else {}
+        )
+
+        def _action_mean(name: str, action_summary: dict[str, Any] = actions) -> float:
+            series = action_summary.get(name)
+            if not isinstance(series, dict):
+                return 0.0
+            try:
+                return float(series.get("mean") or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        checks = row.get("physical_checks_trained")
+        failed_gates = (
+            [
+                str(name)
+                for name, ok in checks.items()
+                if ok is not True
+            ]
+            if isinstance(checks, dict)
+            else []
+        )
+
+        lines.append(
+            f"| `{Path(str(row.get('source') or 'missing')).parent.name}` | "
+            f"`{row.get('controller_type') or 'missing'}` | "
+            f"{float(row.get('action_scale') or 0.0):.3f} | "
+            f"`{row.get('locomotion_prior_residual_mode') or 'missing'}` | "
+            f"`{row.get('walking_success')}` | "
+            f"`{row.get('learned_motion_signal_present')}` | "
+            f"{float(row.get('reward_delta_trained_minus_zero') or 0.0):.1f} | "
+            f"{float(row.get('trained_mean_final_tracked_delta_x_m') or 0.0):.3f} | "
+            f"{float(row.get('trained_failure_rate') or 0.0):.2f} | "
+            f"`{', '.join(failed_gates) or 'none'}` | "
+            f"{_action_mean('locomotion_prior_max_abs'):.3f} | "
+            f"{_action_mean('locomotion_prior_residual_pre_guard_max_abs'):.3f} / "
+            f"{_action_mean('locomotion_prior_residual_max_abs'):.3f} | "
+            f"{_action_mean('locomotion_prior_residual_stability_scale'):.3f} | "
+            f"{_action_mean('locomotion_prior_residual_scale'):.3f} | "
+            f"`{contacts_final}` | "
+            f"`{row.get('verdict') or 'missing'}` |"
+        )
+    if not prior_residual_probes:
+        lines.append("| `none` | `missing` | 0.000 | `missing` | `False` | `False` | 0.0 | 0.000 | 0.00 | `missing` | 0.000 | 0.000 / 0.000 | 0.000 | 0.000 | `None` | `missing` |")
+    lines += [
         "",
         "## Open-loop Task Feasibility",
         "",
@@ -1219,6 +1332,31 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         if isinstance(hybrid_refinement.get("best_by_success_window"), dict)
         else {}
     )
+    best_hybrid_physical = (
+        hybrid_refinement.get("best_by_physical_gates")
+        if isinstance(hybrid_refinement.get("best_by_physical_gates"), dict)
+        else {}
+    )
+    stable_bridge_refinement = (
+        random_sine.get("stable_bridge_refinement")
+        if isinstance(random_sine.get("stable_bridge_refinement"), dict)
+        else {}
+    )
+    stable_bridge_frontier = (
+        stable_bridge_refinement.get("failure_frontier")
+        if isinstance(stable_bridge_refinement.get("failure_frontier"), dict)
+        else {}
+    )
+    best_stable_bridge = (
+        stable_bridge_refinement.get("best_by_stable_bridge")
+        if isinstance(stable_bridge_refinement.get("best_by_stable_bridge"), dict)
+        else {}
+    )
+    best_stable_bridge_physical = (
+        stable_bridge_refinement.get("best_by_physical_gates")
+        if isinstance(stable_bridge_refinement.get("best_by_physical_gates"), dict)
+        else {}
+    )
     lines += [
         "Local refinement:",
         f"- base controller: `{local_refinement.get('base_controller') or 'missing'}`",
@@ -1260,6 +1398,26 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- best success window s: `{best_hybrid.get('max_success_window_s')}`",
         f"- best success-window dx m: `{best_hybrid.get('final_delta_x_m')}`",
         f"- best success-window failure: `{', '.join(best_hybrid.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_hybrid.get('termination_reason') or 'none'}`",
+        f"- best physical-gates controller: `{best_hybrid_physical.get('controller') or 'missing'}`",
+        f"- best physical-gates dx m: `{best_hybrid_physical.get('final_delta_x_m')}`",
+        f"- best physical-gates torso z m: `{best_hybrid_physical.get('final_torso_z_m')}`",
+        f"- best physical-gates max foot slip m/s: `{best_hybrid_physical.get('max_foot_slip_m_s')}`",
+        f"- best physical-gates failure: `{', '.join(best_hybrid_physical.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_hybrid_physical.get('termination_reason') or 'none'}`",
+        "Stable bridge refinement:",
+        f"- base controller: `{stable_bridge_refinement.get('base_controller') or 'missing'}`",
+        f"- candidates: `{stable_bridge_refinement.get('n_candidates')}`",
+        f"- successes: `{stable_bridge_refinement.get('n_success')}`",
+        f"- primary gap: `{stable_bridge_frontier.get('primary_gap') or 'missing'}`",
+        f"- forward-displacement candidates: `{stable_bridge_frontier.get('n_forward_displacement_candidates')}`",
+        f"- forward + no-fall + straight candidates: `{stable_bridge_frontier.get('n_forward_no_fall_straight_candidates')}`",
+        f"- best stable-bridge controller: `{best_stable_bridge.get('controller') or 'missing'}`",
+        f"- best stable-bridge dx m: `{best_stable_bridge.get('final_delta_x_m')}`",
+        f"- best stable-bridge torso z m: `{best_stable_bridge.get('final_torso_z_m')}`",
+        f"- best stable-bridge max foot slip m/s: `{best_stable_bridge.get('max_foot_slip_m_s')}`",
+        f"- best stable-bridge failure: `{', '.join(best_stable_bridge.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_stable_bridge.get('termination_reason') or 'none'}`",
+        f"- best physical-gates controller: `{best_stable_bridge_physical.get('controller') or 'missing'}`",
+        f"- best physical-gates dx m: `{best_stable_bridge_physical.get('final_delta_x_m')}`",
+        f"- best physical-gates failure: `{', '.join(best_stable_bridge_physical.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_stable_bridge_physical.get('termination_reason') or 'none'}`",
     ]
     lines += [
         "",
@@ -1332,6 +1490,8 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"Fresh smoke trace rollouts ok: `{smoke.get('obstacle_trace_rollouts', {}).get('ok')}`",
         f"Fresh smoke trace consistency: `{smoke.get('obstacle_trace_rollouts', {}).get('all_trace_summaries_consistent')}`",
         f"Fresh smoke has successful final clear trace: `{smoke.get('obstacle_trace_rollouts', {}).get('any_required_learner_successful_final_clear')}`",
+        f"Fresh smoke Alberta final clear rate: `{smoke.get('obstacle_trace_rollouts', {}).get('alberta_successful_final_clear_rate')}`",
+        f"Fresh smoke Alberta majority final clear: `{smoke.get('obstacle_trace_rollouts', {}).get('alberta_majority_final_clear')}`",
         f"Fresh smoke demo frames: `{smoke.get('demo', {}).get('frames')}`",
         f"Fresh smoke demo video bytes json/file: `{smoke.get('demo', {}).get('video_bytes_json')}` / `{smoke.get('demo', {}).get('video_bytes_file')}`",
         f"Fresh smoke demo video: `{smoke.get('demo', {}).get('video')}`",
@@ -1344,8 +1504,8 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         "",
         "Fresh smoke trajectory samples:",
         "",
-        "| learner | steps | start x | final x | max x | progress m | reached obstacle x | cleared obstacle centerline | passed obstacle | collision | min clearance m |",
-        "|---|---:|---:|---:|---:|---:|---|---|---|---|---:|",
+        "| learner | steps | start x | final x | max x | progress m | reached obstacle x | cleared obstacle centerline | passed obstacle | collision | min clearance summary/steps m | clearance match | band samples | max abs y in band m |",
+        "|---|---:|---:|---:|---:|---:|---|---|---|---|---:|---|---:|---:|",
     ]
     for learner, sample in (smoke.get("trajectory_samples") or {}).items():
         if not isinstance(sample, dict):
@@ -1360,7 +1520,11 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
             f"`{sample.get('cleared_obstacle_centerline')}` | "
             f"`{sample.get('passed_obstacle_ever')}` | "
             f"`{sample.get('collision_ever')}` | "
-            f"{float(sample.get('summary_min_obstacle_clearance_m') or 0.0):.3f} |"
+            f"{float(sample.get('summary_min_obstacle_clearance_m') or 0.0):.3f} / "
+            f"{float(sample.get('min_obstacle_clearance_from_steps_m') or 0.0):.3f} | "
+            f"`{sample.get('clearance_summary_matches_steps')}` | "
+            f"{int(sample.get('obstacle_band_sample_count') or 0)} | "
+            f"{float(sample.get('max_abs_y_in_obstacle_band_m') or 0.0):.3f} |"
         )
     lines += [
         "",
@@ -1382,6 +1546,7 @@ def audit(
     run_root: Path,
     fresh_obstacle_dir: Path,
     local_probe_dir: Path,
+    local_prior_residual_probe_dirs: tuple[Path, ...],
     task_feasibility_path: Path,
     open_loop_search_path: Path,
     random_sine_search_path: Path,
@@ -1422,6 +1587,11 @@ def audit(
     )
     smoke_bundle = _load(fresh_obstacle_dir / "continual_benchmark.json")
     local_probe = _local_learning_probe_from_dir(local_probe_dir)
+    local_prior_residual_probes = [
+        _local_learning_probe_from_dir(path)
+        for path in local_prior_residual_probe_dirs
+        if path.exists()
+    ]
     task_feasibility = _task_feasibility_summary(_load(task_feasibility_path))
     open_loop_search = _load(open_loop_search_path)
     random_sine_search = _load(random_sine_search_path)
@@ -1466,6 +1636,7 @@ def audit(
             "probe": local_probe.get("source") or str(local_probe_dir),
             **local_probe,
         },
+        "local_prior_residual_probes": local_prior_residual_probes,
         "task_feasibility": {
             **task_feasibility,
             "report": str(task_feasibility_path),
@@ -1500,6 +1671,9 @@ def audit(
             "feedback_refinement": random_sine_search.get("feedback_refinement"),
             "hybrid_recovery_refinement": random_sine_search.get(
                 "hybrid_recovery_refinement"
+            ),
+            "stable_bridge_refinement": random_sine_search.get(
+                "stable_bridge_refinement"
             ),
         },
         "hiwonder_stabilized_gait_search": {
@@ -1559,6 +1733,43 @@ def main(argv: list[str] | None = None) -> int:
         / "local_learning_probe_hiwonder_walk_progress_reward_balanced_scale015_fall100_8k",
     )
     parser.add_argument(
+        "--local-prior-residual-probe-dir",
+        type=Path,
+        action="append",
+        default=[
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_sine_prior_residual_scale025_6k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_sine_prior_scale0699_residual015_6k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_sine_prior_only_diagnostic",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_sine_prior_progress_coupled_scale025_3k",
+            ROOT / "evidence" / "local_learning_probe_hiwonder_stride_mod_3k",
+            ROOT / "evidence" / "local_learning_probe_hiwonder_stride_mod_scale1_3k",
+            ROOT / "evidence" / "local_learning_probe_hiwonder_stride_mod_cbp_scale1_5k",
+            ROOT / "evidence" / "local_learning_probe_hiwonder_stride_mod_named_scale1_5k",
+            ROOT / "evidence" / "local_learning_probe_hiwonder_stride_mod_named_scale0815_5k",
+            ROOT / "evidence" / "local_learning_probe_hiwonder_collision_safe_stride_mod_scale1_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_scale1_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_yaw055_8k",
+            ROOT
+            / "evidence"
+            / "local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_pitch3_yaw075_8k",
+        ],
+    )
+    parser.add_argument(
         "--task-feasibility-path",
         type=Path,
         default=DEFAULT_TASK_FEASIBILITY_PATH,
@@ -1608,6 +1819,7 @@ def main(argv: list[str] | None = None) -> int:
         run_root=args.run_root,
         fresh_obstacle_dir=args.fresh_obstacle_dir,
         local_probe_dir=args.local_probe_dir,
+        local_prior_residual_probe_dirs=tuple(args.local_prior_residual_probe_dir),
         task_feasibility_path=args.task_feasibility_path,
         open_loop_search_path=args.open_loop_search_path,
         random_sine_search_path=args.random_sine_search_path,

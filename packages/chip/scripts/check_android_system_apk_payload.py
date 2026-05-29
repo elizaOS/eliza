@@ -59,6 +59,16 @@ REPORT = ROOT / "build/reports/android_system_apk_payload.json"
 
 SCHEMA = "eliza.android_system_apk_payload.v1"
 CLAIM_BOUNDARY = "staged_aosp_apk_payload_static_check_only_not_runtime_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "apk_install_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 AOSP_PROVENANCE_SCHEMA = "eliza.aosp_build_provenance.v1"
 RUNTIME_PROVENANCE_SCHEMA = "eliza.android_agent_runtime_provenance.v1"
 AOSP_PROVENANCE_CLAIM_BOUNDARY = (
@@ -632,6 +642,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

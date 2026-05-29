@@ -14,6 +14,15 @@ LINUX_DRIVER_HEADERS = (
     ROOT / "sw/linux/drivers/eliza/e1_platform_contract.h",
 )
 REPORT = ROOT / "build/reports/platform_contract.json"
+CLAIM_BOUNDARY = "static_platform_contract_consistency_only_not_linux_or_aosp_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 REGION_RTL_NAMES = {
@@ -483,6 +492,12 @@ def code_from_text(text: str) -> str:
 
 
 def write_report(errors: list[str]) -> None:
+    report = report_payload(errors)
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def report_payload(errors: list[str]) -> dict[str, object]:
     findings = [
         {
             "code": code_from_text(error),
@@ -497,12 +512,12 @@ def write_report(errors: list[str]) -> None:
         "schema": "eliza.platform_contract.v1",
         "status": "fail" if errors else "pass",
         "generated_utc": datetime.now(UTC).isoformat(),
-        "claim_boundary": "static_platform_contract_consistency_only_not_linux_or_aosp_boot_evidence",
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"findings": len(findings)},
         "findings": findings,
     }
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return report
 
 
 def main() -> int:

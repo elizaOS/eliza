@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -120,6 +121,7 @@ def write_report(failures: list[str], manifest_count: int) -> None:
     ]
     report = {
         "schema": "eliza.pd_evidence_gates.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": "fail" if failures else "pass",
         "claim_boundary": "pd_evidence_schema_check_only_not_physical_signoff_evidence",
         "summary": {"manifests": manifest_count, "findings": len(findings)},

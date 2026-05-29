@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -22,6 +23,15 @@ REPORT = ROOT / "build/reports/chip-os-identity-contract.json"
 
 SCHEMA = "eliza.chip_os_identity_contract.v1"
 CLAIM_BOUNDARY = "static_identity_contract_only_not_android_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def package_name_to_path(package_name: str) -> Path:
@@ -505,8 +515,10 @@ def build_report() -> dict[str, Any]:
 def report_payload(findings: list[dict[str, Any]], evidence: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": "blocked" if findings else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "findings": len(findings),
             "packages_observed": sorted(

@@ -32,6 +32,15 @@ REPORT_PATH = CHIP_ROOT / "build/reports/gate-bootrom-sim-transcript-check.json"
 
 GATE = "boot.bootrom_sim_transcript"
 BLOCKER_ID = "bootrom_sim_transcript_missing_or_missing_markers"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "provisioned_root_claim_allowed": False,
+    "signed_image_handoff_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_secure_boot_claim_allowed": False,
+}
 
 # (marker id, required substring(s) — all must be present on a single line).
 REQUIRED_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -62,7 +71,14 @@ def blocked(reason: str) -> int:
             "blocker_reason": reason,
             "evidence_paths": [],
             "as_of": now_iso(),
+            "generated_utc": now_iso(),
             "subsystem": "security",
+            **FALSE_CLAIM_FLAGS,
+            "claim_boundary": (
+                "Blocked boot ROM simulator transcript report only; no phone, "
+                "release, provisioned-root, signed-image handoff, Linux/Android "
+                "boot, or silicon secure-boot claim."
+            ),
         }
     )
     print(f"BLOCKED: {reason}", file=sys.stderr)
@@ -120,15 +136,18 @@ def main() -> int:
             RUNNER.relative_to(CHIP_ROOT).as_posix(),
         ],
         "as_of": now_iso(),
+        "generated_utc": now_iso(),
         "subsystem": "security",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Development simulator (qemu-system-riscv64) trace of the real "
             "rv64imac secure-boot mask ROM image. Proves the reset vector "
             "executes the ROM, mtvec is programmed, the C verifier entrypoint "
             "runs, and with no provisioned OTP root hash and no signed image "
             "the boot fails closed in the WFI trap. This is NOT a silicon "
-            "secure-boot attestation; the OTP/PUF root and the signed image "
-            "window are physical/provisioning dependencies."
+            "secure-boot attestation and is not a phone, release, provisioned-root, "
+            "signed-image handoff, Linux boot, or Android boot claim; the OTP/PUF "
+            "root and the signed image window are physical/provisioning dependencies."
         ),
         "summary": {
             "check_count": len(checks),

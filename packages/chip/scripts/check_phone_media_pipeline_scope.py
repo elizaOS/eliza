@@ -16,6 +16,17 @@ REAL_WORLD_GAPS = ROOT / "docs/manufacturing/real-world-verification-gaps.yaml"
 DISPLAY_RTL = ROOT / "rtl/display/e1_display.sv"
 DISPLAY_TEST = ROOT / "verify/cocotb/test_e1_display.py"
 OUT = ROOT / "build/reports/phone_media_pipeline_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "graphics_runtime_claim_allowed": False,
+    "camera_runtime_claim_allowed": False,
+    "android_hwc_claim_allowed": False,
+    "camera_hal_claim_allowed": False,
+    "image_quality_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -207,6 +218,7 @@ def build_report() -> dict[str, Any]:
             "Android HWC, DSI/CSI PHY, camera sensor, ISP tuning, HAL, image quality, "
             "or phone-class graphics/camera evidence."
         ),
+        **FALSE_CLAIM_FLAGS,
         "display_scaffold": {
             "rtl": rel(DISPLAY_RTL),
             "cocotb": rel(DISPLAY_TEST),
@@ -249,6 +261,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     boundary = str(data.get("claim_boundary", ""))
     for token in ("not GPU", "DRM/KMS", "Android HWC", "DSI/CSI PHY", "camera sensor"):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

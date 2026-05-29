@@ -630,4 +630,3 @@ function VaultBody({
     </>
   );
 }
-

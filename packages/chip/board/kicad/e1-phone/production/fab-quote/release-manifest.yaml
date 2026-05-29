@@ -7073,5 +7073,50 @@ release_allowed: false
 claim_boundary: Local routed-output candidate only. Not approved release evidence; requires real DRC/ERC/SI/PI/RF/fabricator/supplier
   review.
 candidate_children:
-- candidate-placeholder.txt
+- board/kicad/e1-phone/production/fab-quote/candidate-placeholder.txt
+child_artifact_inventory:
+- path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+  name: assembler-commercial-quote.pdf
+  size_bytes: 286
+  sha256: ce822be94de8b490c3d9780143db3d470b89381a66a3bd3ecb07b318e6aca5ed
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf.metadata.yaml
+  name: assembler-commercial-quote.pdf.metadata.yaml
+  size_bytes: 42422
+  sha256: f358e86d1ec9c74ec9327ec9c4ea95a1cca618eb38659a47a8ec1cfe78b7f687
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/candidate-placeholder.txt
+  name: candidate-placeholder.txt
+  size_bytes: 86
+  sha256: 0491870d5cf4361fa78f4a61516527ead580b1f27f7ebb0710f35b17952533cc
+  candidate_placeholder: true
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+  name: fabricator-commercial-quote.pdf
+  size_bytes: 287
+  sha256: d3f79c5785ce051162f499ca3fdf00fc0105a0b12f48d1f5d61a0a6da1550c4d
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+- path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf.metadata.yaml
+  name: fabricator-commercial-quote.pdf.metadata.yaml
+  size_bytes: 42425
+  sha256: de9017e68f032778ec9aaa46af388212942b449369de3733da8430e2e47e1ac9
+  candidate_placeholder: false
+  covered_by_candidate_manifest_artifact: false
+  release_credit: false
+child_artifact_count: 5
+candidate_placeholder_child_count: 1
+candidate_placeholder_child_paths:
+- board/kicad/e1-phone/production/fab-quote/candidate-placeholder.txt
+candidate_manifest_child_artifact_count: 0
+candidate_manifest_child_artifact_paths: []
+untracked_non_manifest_child_count: 4
+release_child_count: 0
+all_non_manifest_children_classified: false
 release_children_complete: false

@@ -100,6 +100,19 @@ SCHEMA = "eliza.android_system_bridge_contract.v1"
 CLAIM_BOUNDARY = "system_bridge_static_contract_and_runtime_evidence_not_full_launcher_claim"
 RUNTIME_SCHEMA = "eliza.android_system_bridge_runtime_evidence.v1"
 RUNTIME_CLAIM_BOUNDARY = "booted_android_system_bridge_runtime_evidence_only"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "full_launcher_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
+RUNTIME_CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py"
+DEFAULT_RUNTIME_OUTPUT = "packages/chip/docs/evidence/android/system_bridge_runtime_evidence.json"
+RECHECK_COMMAND = "python3 packages/chip/scripts/check_android_system_bridge_contract.py --json-only"
 BRIDGE_PACKAGE = "ai.elizaos.system.bridge"
 EXPECTED_BRIDGE_MODULES = {
     "ElizaSystemBridge",
@@ -275,6 +288,64 @@ def add_if(
 ) -> None:
     if condition:
         findings.append(Finding(code, "blocker", message, evidence, next_step))
+
+
+def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
+    """Return concrete capture batches while keeping runtime proof fail-closed."""
+
+    if not findings:
+        return []
+    codes = {finding.code for finding in findings}
+    plan: list[dict[str, object]] = []
+    if any(code.startswith("system_bridge_runtime") for code in codes):
+        plan.append(
+            {
+                "id": "capture_android_system_bridge_runtime_evidence",
+                "scope": "host_adb",
+                "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
+                "commands": [
+                    "adb devices",
+                    (
+                        f"{RUNTIME_CAPTURE_SCRIPT} "
+                        f"--launcher-package {APP_PACKAGE} "
+                        f"--output {DEFAULT_RUNTIME_OUTPUT}"
+                    ),
+                    RECHECK_COMMAND,
+                ],
+                "requires": [
+                    "exactly one booted Android target or explicit adb serial",
+                    "sys.boot_completed=1",
+                    "installed privileged system bridge app and launcher package",
+                    "bridge service/log markers and live-state UI consumption",
+                ],
+            }
+        )
+    if any(
+        code
+        in {
+            "chip_local_manifest_image_prebuilts_not_materialized",
+            "chip_local_manifest_does_not_project_system_ui",
+            "chip_local_manifest_missing_system_bridge_service",
+            "system_bridge_not_in_eliza_product_packages",
+            "system_bridge_privapp_allowlist_missing",
+            "system_bridge_privapp_permissions_not_granted",
+        }
+        for code in codes
+    ):
+        plan.append(
+            {
+                "id": "rebuild_android_product_after_bridge_packaging_fix",
+                "scope": "host_aosp",
+                "claim_boundary": "operator_build_commands_only_not_runtime_evidence",
+                "commands": [
+                    "source build/envsetup.sh && lunch eliza_openagent_ai_soc_phone-trunk_staging-userdebug",
+                    "m ElizaSystemBridge privapp-permissions-ai.elizaos.system.bridge.xml",
+                    RECHECK_COMMAND,
+                ],
+                "requires": ["AOSP checkout with the chip local manifest synced"],
+            }
+        )
+    return plan
 
 
 def run_check(args: argparse.Namespace) -> dict[str, object]:
@@ -641,13 +712,27 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
 def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    dependency_counts: dict[str, int] = {}
+    for finding in blockers:
+        dependency_counts[finding.blocker_dependency] = (
+            dependency_counts.get(finding.blocker_dependency, 0) + 1
+        )
+    command_plan = next_command_plan(findings)
     return {
         "schema": SCHEMA,
         "generated_utc": utc_now(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        **FALSE_CLAIM_FLAGS,
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": dependency_counts,
+            "next_command_batch_count": len(command_plan),
+        },
+        "blocker_dependency_counts": dependency_counts,
         "findings": [asdict(finding) for finding in findings],
+        "next_command_plan": command_plan,
         "evidence": evidence,
     }
 

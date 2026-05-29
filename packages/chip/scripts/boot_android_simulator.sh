@@ -209,15 +209,25 @@ run_renode = sys.argv[5] == "1"
 aosp_dir_text = sys.argv[6]
 aosp_dir = Path(aosp_dir_text).expanduser().resolve() if aosp_dir_text else None
 missing = []
+
+def display(path: Path) -> str:
+    text = str(path)
+    if aosp_dir is not None:
+        try:
+            return "AOSP_DIR/" + path.relative_to(aosp_dir).as_posix()
+        except ValueError:
+            pass
+    return text
+
 if host_os != "Linux":
     missing.append("Linux host required for local Android virtual-device launches")
 if aosp_dir is None:
     missing.append("AOSP_DIR is not set")
 else:
     if not (aosp_dir / "build/envsetup.sh").is_file():
-        missing.append(f"{aosp_dir}/build/envsetup.sh is missing")
+        missing.append(f"{display(aosp_dir / 'build/envsetup.sh')} is missing")
     if not (aosp_dir / "device").is_dir():
-        missing.append(f"{aosp_dir}/device is missing")
+        missing.append(f"{display(aosp_dir / 'device')} is missing")
 kvm = Path("/dev/kvm")
 if not kvm.exists():
     missing.append("/dev/kvm is missing")
@@ -256,13 +266,13 @@ else:
         )
     except (OSError, subprocess.SubprocessError):
         if not has_existing_checkout:
-            missing.append(f"repo launcher at {repo_path} could not run --version")
+            missing.append("repo launcher on PATH could not run --version")
     else:
         if repo_version.returncode != 0:
             if not has_existing_checkout:
-                missing.append(f"repo launcher at {repo_path} failed --version")
+                missing.append("repo launcher on PATH failed --version")
         elif "<repo not installed>" in repo_version.stdout and not has_existing_checkout:
-            missing.append(f"repo launcher found at {repo_path}, but repo is not installed")
+            missing.append("repo launcher found on PATH, but repo is not installed")
 if run_cuttlefish and shutil.which("adb") is None:
     missing.append("adb not found on PATH")
 if run_qemu and shutil.which("qemu-system-riscv64") is None:
@@ -319,6 +329,7 @@ write_report() {
 	cat > "$tmp" <<EOF
 {
   "schema": "eliza.android_sim_boot.v1",
+  "generated_utc": "$(date -u +%FT%TZ)",
   "status": $(json_escape "$status"),
   "reason": $(json_escape "$reason"),
   "next_step": $(json_escape "$next"),
@@ -339,6 +350,15 @@ write_report() {
   "findings": $findings,
   "linux_requirements": $linux_requirements,
   "handoff_commands": $handoff_commands,
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "e1_chip_hardware_claim_allowed": false,
+  "cdd_compliance_claim_allowed": false,
+  "gms_claim_allowed": false,
+  "cts_vts_claim_allowed": false,
+  "full_android_compatibility_claim_allowed": false,
+  "hardware_boot_claim_allowed": false,
+  "production_readiness_claim_allowed": false,
   "claim_boundary": "Android virtual-device evidence is software/reference evidence only; it is not e1-chip hardware ABI proof, CDD compliance, GMS certification, or a full Android compatibility claim."
 }
 EOF

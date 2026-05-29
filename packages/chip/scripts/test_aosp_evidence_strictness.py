@@ -42,9 +42,9 @@ def test_checker_rejects_virtual_smoke_manifest_without_schema_metadata() -> Non
             "AOSP virtual smoke spec for docs/evidence/android/qemu_riscv64_smoke.log "
             "must require SCHEMA=docs/android/boot-transcript.schema.json"
         )
-        if result.returncode != 2 or expected not in result.stdout:
+        if result.returncode != 1 or expected not in result.stdout:
             raise AssertionError(
-                "expected checker to block on unsafe virtual-smoke manifest\n"
+                "expected checker to fail on unsafe virtual-smoke manifest\n"
                 f"returncode={result.returncode}\n{result.stdout}"
             )
     finally:

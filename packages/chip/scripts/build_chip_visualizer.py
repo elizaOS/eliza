@@ -525,12 +525,34 @@ def load_json_object(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def choose_metrics(def_path: Path, design: str) -> Path | None:
+def step_sort_key(path: Path) -> tuple[int, str]:
+    match = re.match(r"^(\d+)-", path.parent.name)
+    return (int(match.group(1)) if match else -1, str(path))
+
+
+def load_run_metrics(run: Path) -> tuple[dict[str, Any], list[str]]:
+    final_metrics = run / "final" / "metrics.json"
+    if final_metrics.is_file():
+        payload = load_json_object(final_metrics)
+        return (payload or {}, [rel(final_metrics)])
+
+    merged: dict[str, Any] = {}
+    sources: list[str] = []
+    for path in sorted(run.glob("**/or_metrics_out.json"), key=step_sort_key):
+        payload = load_json_object(path)
+        if payload is None:
+            continue
+        merged.update(payload)
+        sources.append(rel(path))
+    return merged, sources
+
+
+def choose_metrics(def_path: Path, design: str) -> tuple[dict[str, Any], list[str]]:
     run = run_dir_for(def_path)
     if run is not None:
-        metrics = run / "final" / "metrics.json"
-        if metrics.is_file():
-            return metrics
+        metrics, sources = load_run_metrics(run)
+        if metrics:
+            return metrics, sources
     candidates = []
     for path in (ROOT / "pd" / "openlane" / "runs").glob("RUN_*/final/metrics.json"):
         payload = load_json_object(path)
@@ -541,15 +563,15 @@ def choose_metrics(def_path: Path, design: str) -> Path | None:
             candidates.append(path)
         elif design != "e1_chip_top":
             candidates.append(path)
-    return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
+    if not candidates:
+        return {}, []
+    path = max(candidates, key=lambda candidate: candidate.stat().st_mtime)
+    return load_json_object(path) or {}, [rel(path)]
 
 
-def summarize_metrics(metrics_path: Path | None) -> dict[str, Any]:
-    if metrics_path is None:
-        return {"available": False, "reason": "no final OpenLane metrics.json found"}
-    metrics = load_json_object(metrics_path)
-    if metrics is None:
-        return {"available": False, "source": rel(metrics_path), "reason": "metrics.json is not a JSON object"}
+def summarize_metrics(metrics: dict[str, Any], sources: list[str]) -> dict[str, Any]:
+    if not metrics:
+        return {"available": False, "reason": "no matching OpenLane metrics found for the selected DEF run"}
     selected = [
         {"key": key, "label": label, "value": metrics[key]}
         for key, label in METRIC_KEYS.items()
@@ -567,7 +589,8 @@ def summarize_metrics(metrics_path: Path | None) -> dict[str, Any]:
     ]
     return {
         "available": True,
-        "source": rel(metrics_path),
+        "source": sources[-1] if sources else None,
+        "sources": sources,
         "summary": selected,
         "violations": violations,
     }
@@ -605,10 +628,11 @@ def collect_analysis(def_path: Path, design: str) -> dict[str, Any]:
         for name, path in ANALYSIS_REPORTS
         if (report := summarize_report(name, path)) is not None
     ]
+    metrics, metric_sources = choose_metrics(def_path, design)
     return {
         "schema": "eliza.chip_visualizer.analysis.v1",
         "claim_boundary": "viewer_analysis_context_only_not_release_or_tapeout_evidence",
-        "openlane_metrics": summarize_metrics(choose_metrics(def_path, design)),
+        "openlane_metrics": summarize_metrics(metrics, metric_sources),
         "reports": reports,
     }
 

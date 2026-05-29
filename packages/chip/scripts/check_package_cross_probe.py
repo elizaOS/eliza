@@ -516,6 +516,20 @@ def write_report(status: str, mode: str, failures: list[str], blockers: list[str
         },
         "failures": failures,
         "blockers": blockers,
+        "blocker_dependency_counts": {
+            "actionable_external_dependency": len(blockers) if status == "blocked" else 0,
+            "repo_artifact_generation": 0,
+            "live_device_validation": 0,
+        },
+        "next_command_by_dependency": {
+            "actionable_external_dependency": [
+                "python3 scripts/check_package_cross_probe.py --release",
+                "python3 scripts/check_manufacturing_artifacts.py --release",
+                "python3 scripts/check_padframe_contract.py",
+            ]
+        }
+        if status == "blocked" and blockers
+        else {},
         "blocker_class_counts": class_counts,
         "present_local_planning_evidence": local_evidence,
         "release_credit_false_artifacts": release_credit_false,

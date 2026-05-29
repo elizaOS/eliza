@@ -52,6 +52,11 @@ REQUIRED_FIELDS = (
 
 TARGET_TOPOLOGY = "1_ultra_3_premium_4_pro"
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+CLAIM_BOUNDARY = "core_selection_inventory_only_not_rv64_linux_or_aosp_boot_evidence"
+
+
+def utc_now() -> str:
+    return _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def discover_manifests() -> list[Path]:
@@ -135,9 +140,12 @@ def collect(manifests: Iterable[tuple[Path, dict]]) -> dict[str, list[tuple[str,
 
 def write_evidence(grouped: dict[str, list[tuple[str, dict, bool]]], errors: list[str]) -> None:
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+    generated_utc = utc_now()
     summary = {
         "schema": "eliza.cpu_ap_core_selection_evidence.v1",
-        "generated_at": _dt.datetime.now(_dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "generated_utc": generated_utc,
+        "generated_at": generated_utc,
+        "claim_boundary": CLAIM_BOUNDARY,
         "manifest_dir": str(MANIFEST_DIR.relative_to(ROOT)),
         "target_topology": TARGET_TOPOLOGY,
         "roles": {
@@ -197,7 +205,8 @@ def build_report(
     return {
         "schema": "eliza.cpu_ap_core_selection_report.v1",
         "status": status,
-        "claim_boundary": "core_selection_inventory_only_not_rv64_linux_or_aosp_boot_evidence",
+        "generated_utc": utc_now(),
+        "claim_boundary": CLAIM_BOUNDARY,
         "summary": {
             "findings": len(findings),
             "manifest_errors": len(errors),

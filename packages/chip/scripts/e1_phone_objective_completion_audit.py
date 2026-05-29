@@ -78,11 +78,17 @@ def main() -> int:
     pad_pin_audit = load_yaml(
         BOARD_ROOT / "development-pad-pin-coverage-audit-2026-05-22.yaml"
     )
+    public_cad_intake = load_yaml(
+        BOARD_ROOT / "public-cad-source-intake-2026-05-28.yaml"
+    )
     mechanical_burndown = load_yaml(
         BOARD_ROOT / "enclosure-mechanical-release-burndown-2026-05-22.yaml"
     )
     mechanical_inventory = load_yaml(
         CHIP_ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
+    )
+    public_bom_cost_bands = load_yaml(
+        CHIP_ROOT / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
     )
     bench_templates = load_yaml(
         BOARD_ROOT / "production/test/bench-first-article-template-manifest-2026-05-22.yaml"
@@ -127,6 +133,15 @@ def main() -> int:
     pending_pad_records = pad_pin_audit.get("pending_supplier_pad_map_or_order_records", [])
     if not isinstance(pending_pad_records, list):
         pending_pad_records = []
+    package_conflict_records = pad_pin_audit.get("public_candidate_package_conflict_records", [])
+    if not isinstance(package_conflict_records, list):
+        package_conflict_records = []
+    public_cad_records = public_cad_intake.get("records", [])
+    if not isinstance(public_cad_records, list):
+        public_cad_records = []
+    public_bom_records = public_bom_cost_bands.get("records", [])
+    if not isinstance(public_bom_records, list):
+        public_bom_records = []
     captured_pinout_files = sorted(
         {
             str(record.get("pinout_file"))
@@ -223,6 +238,49 @@ def main() -> int:
         ),
         "pinout_pending_supplier_pad_map_or_order_record_count": len(pending_pad_records),
         "pinout_pending_supplier_pad_map_or_order_records": pending_pad_records,
+        "pinout_public_candidate_package_conflict_count": int(
+            pad_pin_audit.get("public_candidate_package_conflict_count") or 0
+        ),
+        "pinout_public_candidate_package_conflict_record_count": len(package_conflict_records),
+        "pinout_public_candidate_package_conflict_records": package_conflict_records,
+        "public_cad_source_intake_status": public_cad_intake.get("status", ""),
+        "public_cad_source_release_credit": public_cad_intake.get("release_credit") is True,
+        "public_cad_source_release_allowed": public_cad_intake.get("release_allowed") is True,
+        "public_cad_source_record_count": len(public_cad_records),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_cad_intake.get("summary", {}).get("public_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_cad_intake.get("summary", {}).get("public_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_cad_intake.get("summary", {}).get("local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_externally_blocked_record_count": int(
+            public_cad_intake.get("summary", {}).get("externally_blocked_record_count") or 0
+        ),
+        "public_cad_source_records": public_cad_records,
+        "public_bom_market_cost_status": public_bom_cost_bands.get("status", ""),
+        "public_bom_market_cost_category_count": len(public_bom_records),
+        "public_bom_market_cost_release_credit": public_bom_cost_bands.get("summary", {}).get(
+            "release_credit"
+        )
+        is True,
+        "public_bom_market_cost_avl_quote_count": int(
+            public_bom_cost_bands.get("summary", {}).get("avl_quote_count") or 0
+        ),
+        "public_bom_market_cost_signed_supplier_quote_count": int(
+            public_bom_cost_bands.get("summary", {}).get("signed_supplier_quote_count") or 0
+        ),
+        "public_bom_market_cost_volume_count": int(
+            public_bom_cost_bands.get("summary", {}).get("volume_count") or 0
+        ),
+        "public_bom_market_cost_subtotal_researched_categories_usd": (
+            public_bom_cost_bands.get("subtotal_researched_categories_usd", {})
+        ),
+        "public_bom_market_cost_discount_vs_100_unit_baseline_pct": (
+            public_bom_cost_bands.get("discount_vs_100_unit_baseline_pct", {})
+        ),
         "pinout_all_bound_footprints_have_terminal_contract": pad_pin_audit.get(
             "all_pinout_bound_footprints_have_terminal_contract"
         ) is True,
@@ -638,8 +696,10 @@ def main() -> int:
             "board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml",
             "board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml",
             "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml",
+            "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml",
             "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
             "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",
+            "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml",
             "board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml",
         ],
         "summary": {

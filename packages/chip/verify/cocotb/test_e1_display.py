@@ -1,5 +1,6 @@
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cocotb
@@ -27,6 +28,17 @@ DISPLAY_MMIO_REGIONS = (
 )
 _DISPLAY_COVER = CoverPointSet("display")
 _DISPLAY_COVER.declare("mmio_region", "register", DISPLAY_MMIO_REGIONS)
+_FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "production_framebuffer_claim_allowed": False,
+    "linux_display_driver_claim_allowed": False,
+    "drm_kms_claim_allowed": False,
+    "panel_bringup_claim_allowed": False,
+    "dsi_phy_claim_allowed": False,
+    "display_phy_claim_allowed": False,
+    "compositor_claim_allowed": False,
+}
 
 
 def _classify_display_reg(addr: int) -> str:
@@ -71,10 +83,13 @@ async def advance(dut, cycles):
 def write_coverage_artifact(extra):
     coverage = {
         "schema": "e1-chip.display_cocotb_coverage.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": "directed_display_cocotb_coverage_only_not_system_or_release_evidence",
         "source": "verify/cocotb/test_e1_display.py",
         "covered_contracts": sorted(extra),
         "pixel_format": "XR24 only",
-        "boundary": "Directed e1_display MMIO, XR24 scanout, underflow, and timing checks only; no DRM/KMS, HDMI/MIPI, compositor, or display PHY coverage.",
+        "boundary": "Directed e1_display MMIO, XR24 scanout, underflow, and timing checks only; no DRM/KMS, production framebuffer, Linux display driver, HDMI/MIPI, panel bring-up, DSI PHY, compositor, or display PHY coverage.",
+        **_FALSE_CLAIM_FLAGS,
     }
     out = REPO_ROOT / "build/reports/display_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)

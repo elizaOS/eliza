@@ -36,6 +36,8 @@ class NpuCoverageSummaryTests(unittest.TestCase):
         self.assertFalse(summary["production_accelerator_claim_allowed"])
         self.assertFalse(summary["nnapi_claim_allowed"])
         self.assertFalse(summary["performance_claim_allowed"])
+        for claim in self.gate.RAW_FALSE_CLAIM_FLAGS:
+            self.assertIs(summary["raw_cocotb_claim_flags"][claim], False)
         self.assertIn(
             "DMA-backed tensor execution readiness.",
             summary["claim_boundary"]["blocked_claims"],
@@ -77,6 +79,7 @@ class NpuCoverageSummaryTests(unittest.TestCase):
                         "perf_counters": [],
                         "status_bits": [],
                         "gemm_shapes": [],
+                        **{claim: False for claim in self.gate.RAW_FALSE_CLAIM_FLAGS},
                     }
                 )
                 + "\n",
@@ -86,6 +89,26 @@ class NpuCoverageSummaryTests(unittest.TestCase):
         self.assertEqual(summary["status"], "fail")
         self.assertIn("not all runtime contract opcodes are covered", summary["validation_errors"])
         self.assertIn("GEMM_S4 shape coverage is missing", summary["validation_errors"])
+
+    def test_raw_cocotb_false_claim_drift_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            coverage = Path(tmpdir) / "coverage.json"
+            data = json.loads(self.gate.DEFAULT_COCOTB_COVERAGE.read_text(encoding="utf-8"))
+            data["release_claim_allowed"] = True
+            data.pop("nnapi_claim_allowed", None)
+            coverage.write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+            summary = self.gate.build_summary(coverage)
+
+        self.assertEqual(summary["status"], "fail")
+        self.assertIn(
+            "raw_cocotb_claim_flags.release_claim_allowed must be false",
+            summary["validation_errors"],
+        )
+        self.assertIn(
+            "raw_cocotb_claim_flags.nnapi_claim_allowed must be false",
+            summary["validation_errors"],
+        )
 
     def test_missing_results_xml_fails_directed_test_bins(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

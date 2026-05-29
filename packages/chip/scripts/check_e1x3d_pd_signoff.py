@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Validate a completed OpenLane2 PD run of the single-tier E1X3D tile.
+"""Validate a completed OpenLane2 PD run of the single-tier E1X3D logic block.
 
 This gate consumes the sky130 OpenLane2 run produced by
-``pd/openlane/config.e1x3d-tile.sky130.json`` (design ``e1x3d_tile``). That run
-is a planar, single-tier physical-design proxy of one E1X3D wafer-mesh tile: it
-is real RTL-to-GDS evidence for that tile on an open PDK, but it is NOT the 3D
-stack signoff. Full 3D DRC/LVS, electrothermal, and SI/PI signoff remain BLOCKED
-with no open-source path (commercial-only) and are owned by ``e1x3d-signoff``.
+``pd/openlane/config.e1x3d-router.sky130.json`` (design ``e1x3d_router7``). A
+completed ``e1x3d_tile`` run is also accepted when the hard SRAM macro path is
+available. These runs are planar, single-tier physical-design proxies for the
+E1X3D wafer-mesh logic tier: they are real RTL-to-GDS evidence on an open PDK,
+but they are NOT the 3D stack signoff. Full 3D DRC/LVS, electrothermal, and
+SI/PI signoff remain BLOCKED with no open-source path (commercial-only) and are
+owned by ``e1x3d-signoff``.
 
-The gate PASSes only when the latest completed ``e1x3d_tile`` run has clean
+The gate PASSes only when the latest completed accepted design run has clean
 sky130 signoff metrics in ``final/metrics.json`` and emits the layout database
 (GDS + DEF) and the gate-level netlist. It fails closed (BLOCKED) when no
-completed ``e1x3d_tile`` run exists yet, naming the proving command.
+completed accepted run exists yet, naming the proving command.
 """
 
 from __future__ import annotations
@@ -90,10 +92,10 @@ REQUIRED_OUTPUTS = {
 }
 
 CLAIM_BOUNDARY = (
-    "E1X3D single-tier tile sky130 OpenLane2 physical-design signoff only: validates "
+    "E1X3D single-tier logic-tier sky130 OpenLane2 physical-design signoff only: validates "
     "magic+klayout+detailed-route DRC, LVS, antenna (repo accepted bound = 0), and "
-    "setup/hold/slew timing closure plus GDS+DEF+gate-netlist emission for one planar "
-    "tile slice of the wafer mesh. NOT the 3D stack signoff: 3D DRC/LVS, electrothermal, "
+    "setup/hold/slew timing closure plus GDS+DEF+gate-netlist emission for one accepted "
+    "planar logic-tier slice of the wafer mesh. NOT the 3D stack signoff: 3D DRC/LVS, electrothermal, "
     "and SI/PI remain BLOCKED with no open-source path (owned by e1x3d-signoff)."
 )
 
@@ -158,7 +160,9 @@ def check_zero(metrics: dict[str, object], spec: dict[str, str], failures: list[
     for key, label in spec.items():
         value = numeric(metrics, key, label, failures)
         if value is not None and value != 0:
-            failures.append(f"{label} must be 0 for E1X3D tile PD signoff; got {value:g} ({key})")
+            failures.append(
+                f"{label} must be 0 for E1X3D logic-tier PD signoff; got {value:g} ({key})"
+            )
 
 
 def check_wns(metrics: dict[str, object], failures: list[str]) -> None:
@@ -166,7 +170,7 @@ def check_wns(metrics: dict[str, object], failures: list[str]) -> None:
         value = numeric(metrics, key, label, failures)
         if value is not None and value < 0:
             failures.append(
-                f"{label} is negative (timing not met) for E1X3D tile PD signoff; "
+                f"{label} is negative (timing not met) for E1X3D logic-tier PD signoff; "
                 f"got {value:g} ({key})"
             )
 
@@ -258,7 +262,7 @@ def main() -> int:
         emit(status, checks, summary, run_dir=None)
         print(f"BLOCKED: E1X3D PD signoff; {detail}")
         print(f"  proving command: {PROVING_COMMAND}")
-        return 1
+        return 2
 
     metrics, load_failures = load_metrics(run_dir)
     drc_failures: list[str] = list(load_failures)
@@ -283,7 +287,10 @@ def main() -> int:
         {
             "id": "e1x3d_tile_completed_pd_run_present",
             "status": "pass",
-            "detail": f"completed e1x3d_tile run {run_dir.relative_to(ROOT)}",
+            "detail": (
+                f"completed E1X3D logic-tier run {run_dir.relative_to(ROOT)} "
+                f"(design {run_design_name(run_dir)})"
+            ),
         },
         {
             "id": "e1x3d_tile_drc_clean",
@@ -324,11 +331,14 @@ def main() -> int:
     emit(status, checks, summary, run_dir=run_dir)
 
     if failures:
-        print("BLOCKED: E1X3D PD signoff failed: " + ", ".join(c["id"] for c in failures))
+        print("BLOCKED: E1X3D logic-tier PD signoff failed: " + ", ".join(c["id"] for c in failures))
         for check in failures:
             print(f"  - {check['id']}: {check['detail']}")
-        return 1
-    print(f"PASS: E1X3D PD signoff; run {run_dir.relative_to(ROOT)}; report {REPORT.relative_to(ROOT)}")
+        return 2
+    print(
+        f"PASS: E1X3D logic-tier PD signoff; run {run_dir.relative_to(ROOT)}; "
+        f"report {REPORT.relative_to(ROOT)}"
+    )
     return 0
 
 
@@ -337,12 +347,13 @@ def emit(
 ) -> None:
     evidence_paths = [
         CONFIG_REL,
-        "pd/constraints/e1x3d_tile.sdc",
         "docs/arch/e1x3d-wafer-stack.md",
         "research/threed_ic_2026/03_implementation/e1x3d_design_decisions.md",
     ]
     if run_dir is not None:
         evidence_paths.insert(1, (run_dir / "final/metrics.json").relative_to(ROOT).as_posix())
+        if run_design_name(run_dir) == "e1x3d_tile":
+            evidence_paths.insert(2, "pd/constraints/e1x3d_tile.sdc")
     report = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x3d-pd-signoff",

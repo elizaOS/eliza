@@ -13,10 +13,18 @@ from eliza_robot.bridge.backends.mock_backend import MockBackend
 from eliza_robot.curriculum.loader import load_curriculum
 from eliza_robot.profiles.schema import load_profile
 from eliza_robot.rl.alberta.agent import AlbertaContinualController, AlbertaControllerConfig
+from eliza_robot.rl.alberta.cbp_agent import (
+    AlbertaCBPController,
+    CBPControllerConfig,
+    RetentionConfig,
+)
+from eliza_robot.rl.alberta.checkpoint import save_state_npz
 from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.train_robot import (
     _action_scale_gate_passed,
     _build_action_scale_schedule,
+    _build_locomotion_prior_residual_schedule,
+    _initial_action_scale_for_training,
     _physical_checks,
     _promotion_blocker,
     _promotion_passed,
@@ -111,8 +119,110 @@ def _write_tiny_alberta_checkpoint(
     (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
 
+def _write_tiny_cbp_alberta_checkpoint(
+    path: Path,
+    *,
+    profile_id: str,
+    output_dim: int,
+    hidden_sizes: tuple[int, ...] = (8, 4),
+) -> None:
+    controller_cfg = CBPControllerConfig(
+        obs_dim=49,
+        action_dim=2,
+        hidden_sizes=hidden_sizes,
+        gamma=0.5,
+        actor_step_size=1e-3,
+        critic_step_size=2e-3,
+        log_sigma_init=-1.0,
+        normalize=False,
+        obgd_kappa=2.0,
+        retention=RetentionConfig(
+            mode="multihead",
+            n_slots=4,
+            embed_dim=4,
+            trunk_step_scale=0.5,
+            proto_seed=123,
+        ),
+        seed=0,
+    )
+    controller = AlbertaCBPController(controller_cfg)
+    save_state_npz(path / "alberta_policy.npz", controller.state_dict())
+    manifest = {
+        "regime": "alberta_streaming",
+        "controller_type": "cbp",
+        "curriculum_version": 1,
+        "pca_dim": 4,
+        "active_tasks": ["stand_up", "walk_forward"],
+        "obs_dim": 49,
+        "proprio_dim": 45,
+        "text_dim": 4,
+        "action_dim": 2,
+        "output_dim": output_dim,
+        "profile_id": profile_id,
+        "ckpt": "alberta_policy.npz",
+        "controller": {
+            "type": "cbp_stream_ac_v1",
+            "obs_dim": controller_cfg.obs_dim,
+            "action_dim": controller_cfg.action_dim,
+            "hidden_sizes": list(controller_cfg.hidden_sizes),
+            "gamma": controller_cfg.gamma,
+            "actor_step_size": controller_cfg.actor_step_size,
+            "critic_step_size": controller_cfg.critic_step_size,
+            "actor_lamda": controller_cfg.actor_lamda,
+            "critic_lamda": controller_cfg.critic_lamda,
+            "log_sigma_init": controller_cfg.log_sigma_init,
+            "log_sigma_min": controller_cfg.log_sigma_min,
+            "log_sigma_max": controller_cfg.log_sigma_max,
+            "learn_log_sigma": controller_cfg.learn_log_sigma,
+            "action_low": controller_cfg.action_low,
+            "action_high": controller_cfg.action_high,
+            "obgd_kappa": controller_cfg.obgd_kappa,
+            "sparsity": controller_cfg.sparsity,
+            "leaky_relu_slope": controller_cfg.leaky_relu_slope,
+            "use_layer_norm": controller_cfg.use_layer_norm,
+            "normalize": controller_cfg.normalize,
+            "normalizer_decay": controller_cfg.normalizer_decay,
+            "seed": controller_cfg.seed,
+            "cbp": {
+                "enabled": controller_cfg.cbp.enabled,
+                "decay_rate": controller_cfg.cbp.decay_rate,
+                "replacement_rate": controller_cfg.cbp.replacement_rate,
+                "maturity_threshold": controller_cfg.cbp.maturity_threshold,
+            },
+            "retention": {
+                "mode": controller_cfg.retention.mode,
+                "n_slots": controller_cfg.retention.n_slots,
+                "embed_dim": controller_cfg.retention.embed_dim,
+                "trunk_step_scale": controller_cfg.retention.trunk_step_scale,
+                "trunk_freeze_after": controller_cfg.retention.trunk_freeze_after,
+                "proto_seed": controller_cfg.retention.proto_seed,
+            },
+        },
+    }
+    (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
 def test_alberta_streaming_policy_adapter_pads_to_full_robot_output(tmp_path: Path) -> None:
     _write_tiny_alberta_checkpoint(tmp_path, profile_id="test-robot", output_dim=5)
+
+    policy = TextConditionedPolicy(tmp_path)
+    action, task = policy.act("stand_up", np.zeros(45, dtype=np.float32))
+
+    assert task == "stand_up"
+    assert action.shape == (5,)
+    assert np.isfinite(action).all()
+    assert np.allclose(action[2:], 0.0)
+
+
+def test_alberta_cbp_policy_adapter_loads_flat_npz_and_pads_output(
+    tmp_path: Path,
+) -> None:
+    _write_tiny_cbp_alberta_checkpoint(
+        tmp_path,
+        profile_id="test-robot",
+        output_dim=5,
+        hidden_sizes=(8, 4),
+    )
 
     policy = TextConditionedPolicy(tmp_path)
     action, task = policy.act("stand_up", np.zeros(45, dtype=np.float32))
@@ -248,11 +358,17 @@ def test_train_robot_manifest_is_reproducible_and_bridge_loadable(
     assert manifest["action_scale_schedule"]["initial_scale"] == 0.15
     assert manifest["action_scale_schedule"]["target_scale"] == 0.3
     assert manifest["action_scale_schedule"]["final_scale"] >= 0.15
+    assert (
+        manifest["locomotion_prior_residual_scale_schedule"]["schema"]
+        == "alberta-locomotion-prior-residual-schedule-v1"
+    )
     assert manifest["history"][0]["action_scale_start"] == 0.15
     assert manifest["phase_promotion"]["phases"][0]["action_scale_target"] == 0.3
     assert manifest["eval_episodes"] == 1
     assert manifest["seed"] == 123
     assert manifest["domain_rand"] is False
+    assert manifest["controller_type"] == "linear"
+    assert manifest["controller"]["type"] == "linear_stream_ac_v1"
     assert manifest["controller"]["gamma"] == 0.97
     assert manifest["controller"]["normalize"] is True
     assert manifest["controller"]["actor_step_size"] == 5e-3
@@ -265,6 +381,46 @@ def test_train_robot_manifest_is_reproducible_and_bridge_loadable(
     assert manifest["controller"]["decouple_global_bias"] is True
     assert manifest["output_dim"] == len(profile.kinematics.joints)
     assert manifest["output_dim"] >= manifest["action_dim"]
+    assert (tmp_path / "alberta_policy.npz").is_file()
+    assert (tmp_path / "manifest.json").is_file()
+
+    policy = TextConditionedPolicy(tmp_path)
+    action, task = policy.act("stand_up", np.zeros(manifest["proprio_dim"], dtype=np.float32))
+
+    assert task == "stand_up"
+    assert action.shape == (manifest["output_dim"],)
+    assert np.isfinite(action).all()
+
+
+def test_train_robot_cbp_manifest_is_bridge_loadable(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("mujoco")
+    profile_id = "hiwonder-ainex"
+
+    manifest = train_robot(
+        profile_id,
+        ["stand_up"],
+        1,
+        tmp_path,
+        controller_type="cbp",
+        pca_dim=32,
+        episode_steps=4,
+        eval_episodes=1,
+        seed=123,
+        domain_rand=False,
+        cbp_hidden_sizes=(8,),
+        cbp_retention_mode="multihead",
+        cbp_retention_slots=4,
+    )
+
+    assert manifest["regime"] == "alberta_streaming"
+    assert manifest["controller_type"] == "cbp"
+    assert manifest["controller"]["type"] == "cbp_stream_ac_v1"
+    assert manifest["controller"]["hidden_sizes"] == [8]
+    assert manifest["controller"]["cbp"]["enabled"] is True
+    assert manifest["controller"]["retention"]["mode"] == "multihead"
+    assert manifest["controller"]["retention"]["embed_dim"] == 32
     assert (tmp_path / "alberta_policy.npz").is_file()
     assert (tmp_path / "manifest.json").is_file()
 
@@ -374,6 +530,65 @@ def test_action_scale_schedule_starts_stable_and_requires_no_fall_physical_gate(
         task_id="walk_forward",
         min_success_rate=1.0,
     )
+
+
+def test_action_scale_schedule_can_require_full_physical_success_only() -> None:
+    schedule = _build_action_scale_schedule(
+        target_scale=0.3,
+        initial_scale=0.28,
+        increment=0.05,
+        min_success_rate=1.0,
+        allow_stable_partial_progress=False,
+    )
+
+    assert schedule["mode"] == "full_physical_success_gate_ramp"
+    assert schedule["criteria"] == {
+        "failure_rate_lte": 0.0,
+        "success_rate_gte": 1.0,
+        "physical_success": True,
+    }
+
+
+def test_locomotion_prior_training_starts_at_validated_prior_scale() -> None:
+    assert (
+        _initial_action_scale_for_training(
+            target_scale=0.3,
+            requested_initial_scale=None,
+            locomotion_action_prior="hiwonder_sine",
+        )
+        == 0.28
+    )
+    assert (
+        _initial_action_scale_for_training(
+            target_scale=0.2,
+            requested_initial_scale=None,
+            locomotion_action_prior="hiwonder_sine",
+        )
+        == 0.2
+    )
+    assert (
+        _initial_action_scale_for_training(
+            target_scale=0.3,
+            requested_initial_scale=None,
+            locomotion_action_prior="none",
+        )
+        is None
+    )
+
+
+def test_locomotion_prior_residual_schedule_starts_at_zero_for_prior() -> None:
+    schedule = _build_locomotion_prior_residual_schedule(
+        target_scale=0.25,
+        initial_scale=None,
+        increment=0.05,
+        locomotion_action_prior="hiwonder_sine",
+    )
+
+    assert schedule["schema"] == "alberta-locomotion-prior-residual-schedule-v1"
+    assert schedule["enabled"] is True
+    assert schedule["initial_scale"] == 0.0
+    assert schedule["target_scale"] == 0.25
+    assert schedule["increment"] == 0.05
 
 
 def test_physical_checks_use_episode_max_yaw_for_walk_forward() -> None:

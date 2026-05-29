@@ -33,6 +33,15 @@ REPORT_PATH = CHIP_ROOT / "build/reports/secure_boot_negative_evidence.json"
 
 GATE = "secure-boot-negative-evidence"
 BLOCKER_ID = "secure_boot_negative_evidence_missing"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "provisioned_root_claim_allowed": False,
+    "signed_image_handoff_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_secure_boot_claim_allowed": False,
+}
 
 # Required transcripts: case name -> expected halt-record name.
 # Mirrors the W7 deliverable list (a)-(h) plus the positive control. Renaming
@@ -136,7 +145,14 @@ def main() -> int:
             "blocker_reason": ("no transcripts; run python3 tests/security/negative/run.py first"),
             "evidence_paths": [],
             "as_of": now,
+            "generated_utc": now,
             "subsystem": "security",
+            **FALSE_CLAIM_FLAGS,
+            "claim_boundary": (
+                "Blocked secure-boot negative evidence report only; no phone, "
+                "release, provisioned-root, signed-image handoff, Linux/Android "
+                "boot, or silicon secure-boot claim."
+            ),
         }
         REPORT_PATH.write_text(json.dumps(report, indent=2) + "\n")
         print(f"BLOCKED: {report['blocker_reason']}", file=sys.stderr)
@@ -153,12 +169,15 @@ def main() -> int:
         "blocker_reason": None if passed else "; ".join(failures),
         "evidence_paths": evidence,
         "as_of": now,
+        "generated_utc": now,
         "subsystem": "security",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "secure-boot reference rejection transcripts only; not silicon "
-            "secure-boot evidence. The shared accept/reject contract is "
-            "docs/security/boot-image-format.md (the RTL/firmware verifier must "
-            "produce identical halt codes)."
+            "secure-boot evidence and not a phone, release, provisioned-root, "
+            "signed-image handoff, Linux boot, or Android boot claim. The shared "
+            "accept/reject contract is docs/security/boot-image-format.md (the "
+            "RTL/firmware verifier must produce identical halt codes)."
         ),
         "summary": {
             "required_rejection_count": len(REQUIRED_REJECTIONS),

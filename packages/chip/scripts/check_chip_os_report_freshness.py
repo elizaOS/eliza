@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,16 @@ REPORT = ROOT / "build/reports/chip-os-report-freshness.json"
 
 SCHEMA = "eliza.chip_os_report_freshness.v1"
 CLAIM_BOUNDARY = "report_freshness_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 @dataclass(frozen=True)
@@ -98,8 +109,8 @@ GATE_REPORT_ALIAS_SOURCES = {
         "packages/os/linux/elizaos/config/includes.chroot/usr/lib/elizaos/run-agent.sh",
         "packages/os/linux/elizaos/config/includes.chroot/usr/lib/elizaos/wait-agent-health.sh",
         "packages/os/linux/elizaos/config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service",
-        "packages/os/linux/elizaos/manifest.json",
         "packages/os/linux/elizaos/manifest.json.template",
+        "packages/os/linux/elizaos/chip-boot-manifest.json",
     ),
     "android_system_bridge_contract.json": (
         "packages/chip/scripts/check_android_system_bridge_contract.py",
@@ -308,6 +319,10 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+def now_iso() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def resolve(path: str) -> Path:
     candidate = Path(path)
     if candidate.is_absolute():
@@ -391,6 +406,8 @@ def build_report() -> dict[str, Any]:
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
+        "generated_utc": now_iso(),
         "summary": {
             "reports": len(rows),
             "missing_reports": sum(1 for row in rows if not row["present"]),

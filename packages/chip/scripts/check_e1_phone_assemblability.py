@@ -896,7 +896,8 @@ def main() -> int:
         "fpc_routing": fpc,
         "trapped_parts": sorted(set(trapped)),
         "device_assemblable": assemblable,
-        "runtime_s": round(time.time() - t0, 2),
+        "runtime_s": 0.0,
+        "runtime_s_note": "wall-clock runtime omitted from committed evidence for deterministic reruns",
     }
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
     (REVIEW_DIR / "assembly-verification.json").write_text(json.dumps(out, indent=2) + "\n")
@@ -904,7 +905,7 @@ def main() -> int:
     summary = (
         f"assemblable={assemblable} steps={len(step_results)} "
         f"trapped={len(set(trapped))} fastener_pass={fastener['pass']} "
-        f"fpc_pass={fpc['pass']} runtime={out['runtime_s']}s"
+        f"fpc_pass={fpc['pass']} runtime={time.time() - t0:.2f}s"
     )
     if assemblable:
         print(summary)

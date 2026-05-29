@@ -1,7 +1,14 @@
 schema: eliza.pd_chip_cva6_closure_gate.v1
-release_use: prohibited_until_signoff_replay
+status: blocked_external_tool
+release_use: prohibited_until_external_review
+scope: cva6_inclusive_pd_closure_gate_only_not_signoff_or_release_evidence
 release_blockers:
 - CVA6-inclusive e1_chip_top sky130 OpenLane place-and-route has not reached final/ with reviewed DRC/LVS/STA/antenna evidence (foundry-PDK + long-runtime dependency; see to_close_this_gate).
+source_artifacts:
+- docs/evidence/pd/e1-chip-cva6-pd-closure-gate.yaml
+- scripts/check_pd_cva6_elaboration.sh
+- scripts/check_pd_config_elaboration.sh
+- pd/openlane/config.sky130.json
 claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
 created: 2026-05-28
 current_committed_netlist:
@@ -43,7 +50,6 @@ missing_dependency:
     '
 owner_lane: top_integration
 severity: high
-status: BLOCKED
 stub_netlist_elaboration_proof:
   command: scripts/check_pd_config_elaboration.sh
   description: 'Every committed e1_chip_top PD config (stub-CPU form) elaborates with

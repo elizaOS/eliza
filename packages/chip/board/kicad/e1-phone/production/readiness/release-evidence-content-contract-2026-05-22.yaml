@@ -17,6 +17,8 @@ inputs:
   - board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
   local_candidate_manifest: board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   factory_candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  public_cad_source_intake: board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
+  public_bom_market_cost_bands: mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
   report_path: board/kicad/e1-phone/production/readiness/release-evidence-content-contract-2026-05-22.yaml
 summary:
   contract_domain_count: 6
@@ -57,6 +59,18 @@ summary:
   local_kicad_cad_incomplete_connection_count: 0
   local_kicad_cad_incomplete_pinout_detail_count: 0
   local_kicad_cad_release_credit: false
+  public_sourcing_intake_ready: true
+  public_cad_source_record_count: 7
+  public_cad_source_step_or_3d_observed_count: 5
+  public_cad_source_footprint_or_eda_observed_count: 7
+  public_cad_source_local_downloaded_hashed_count: 0
+  public_cad_source_release_credit_record_count: 0
+  public_market_bom_cost_category_count: 11
+  public_market_bom_cost_volume_count: 5
+  public_market_bom_cost_avl_quote_count: 0
+  public_market_bom_cost_signed_supplier_quote_count: 0
+  public_sourcing_release_credit: false
+  public_sourcing_release_allowed: false
   artifact_content_requirement_count: 212
   local_candidate_content_requirement_count: 160
   local_candidate_manifest_artifact_path_count: 79
@@ -82,6 +96,23 @@ content_acceptance_policy:
   end_to_end_phone_release_allowed: false
   local_generated_candidates_are_approval_eligible: false
   local_kicad_cad_traceability_is_release_evidence: false
+  public_cad_and_market_bom_intake_is_release_evidence: false
+public_sourcing_intake_context:
+  scope: public_cad_and_market_cost_intake_not_release_evidence
+  public_cad_source_record_count: 7
+  public_cad_source_step_or_3d_observed_count: 5
+  public_cad_source_footprint_or_eda_observed_count: 7
+  public_cad_source_local_downloaded_hashed_count: 0
+  public_cad_source_release_credit_record_count: 0
+  public_market_bom_cost_category_count: 11
+  public_market_bom_cost_volume_count: 5
+  public_market_bom_cost_avl_quote_count: 0
+  public_market_bom_cost_signed_supplier_quote_count: 0
+  public_sourcing_release_credit: false
+  public_sourcing_release_allowed: false
+  source_artifacts:
+  - board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
+  - mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
 content_contracts:
 - id: supplier_return_evidence
   source_report: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
@@ -710,7 +741,7 @@ artifact_content_requirements:
   owner: mechanical_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_mechanical_enclosure_evidence
-  sha256: fcd265000c8ccb87f866ba2e2ff6bdd8a1162a8b8c1d35e9a16ba6030a125831
+  sha256: af93cbb7606c1f7a082cd76a62b80f46a8d0dae5172c63146016e7d867b7a597
   traceability_ids:
   - traceability_c64318b2121327df
   current_presence:
@@ -1271,7 +1302,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 1cba3cc2d6f66a15353771a917aba1cfb6cf1ce71db16ca39ff99e6014b98a53
+  sha256: 03e4abb8c75de93d757483732aebc7c7d4048e1497ad709239f452e306cc7d70
   traceability_ids:
   - traceability_232bc73b56df538d
   current_presence:
@@ -1799,7 +1830,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 566ad9b7997fbbd5dabf0ee13b5eced23bbf33e42b3fddea47bbf2c8e1fcffdc
+  sha256: ba0c76b15987c80b869b11552eb048c900cc5fd101c3df1fe4f7460745bc16f5
   traceability_ids:
   - traceability_e1cc7bb36b7d5c58
   current_presence:
@@ -2294,7 +2325,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 65b95000f437be92e5e4ff0131772223fda5c3bf84f56a3d938dfb7f0c364940
+  sha256: d57f60184d4b9b8685abba02bdfccc50ce9b6d4a90498849bcdd2982b8e43bd6
   traceability_ids:
   - traceability_5881cf0c583fa85b
   current_presence:
@@ -2789,7 +2820,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: af8d3fcb9dc261cc937b8d1cfd2bc7b1181f072675df36b0613e372a86b5976f
+  sha256: 6772d689030ed296ad2fb1ab90e7d84badd7d2ce9bf7fefa4be335adb8a05206
   traceability_ids:
   - traceability_1877dece8545b7d1
   current_presence:
@@ -3284,7 +3315,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: da89ef5e88bd9987710e0b69de0d255413b6e5fe9bc76efd8089f24d74866728
+  sha256: a431e5f72fd4d9146b8cb769b3be1ed915966303da55e7f3559f4953db32b097
   traceability_ids:
   - traceability_6745c2820713bd6b
   current_presence:
@@ -3779,7 +3810,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 62635415656852e02ed8338278ffc1e343418c86b10e794df4fb4f8bc3ee47a9
+  sha256: 26d608b39b29e199c81bf1993c4f1113b5b840bedefc311df488eb26284212bf
   traceability_ids:
   - traceability_180a672b8505f72b
   current_presence:
@@ -4307,7 +4338,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 4e2c04088e2698256609cb4be5fdf5b7c16100c63a989b2362c73ff64a68d2c5
+  sha256: 9cae4c18777c2ae4c70702bba5c7b12b57c7dc85e3e8612906e7f843a269870d
   traceability_ids:
   - traceability_d3912e9eceb9d200
   current_presence:
@@ -4802,7 +4833,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: b3ea3f1feff8c81fe49e9a492d36c63bbb4a641d54fffcd8c00eb969afbdd13b
+  sha256: 25375f8c57e7f101a799f783640ca6113af058dc5d4f2d1caa2d1f8f68b49cd9
   traceability_ids:
   - traceability_cf7d2bec125d4fb8
   current_presence:
@@ -5297,7 +5328,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 337341c2e9a3625dcff9f49a0c25104e58bfb98ca1fe6ac8a7aa7a774a65b810
+  sha256: 60604605560e15058541a2274e2383fbb58a42021d5d9a349f51c8679309d50f
   traceability_ids:
   - traceability_5007427ee86d29e2
   current_presence:
@@ -5825,7 +5856,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: f483ea9d776db90d9cb2c3371f5de9c9b833eb8ac0d3364169e144ace1367171
+  sha256: a724d696f4ffcfe32039785dd8b15e233df5cc4c97415e3cbc7ca6722802908e
   traceability_ids:
   - traceability_3ce4dd1316a5b6ab
   current_presence:
@@ -6320,7 +6351,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 37795930335696d0e82ca6662f3ea4cc178e1a42a58e995bab4cf677914ba63b
+  sha256: 4339c70bb8c5de3ae9c1e8ef5ca8c3b75992008d57b92dad624cf9d189e96598
   traceability_ids:
   - traceability_5d510961627ca03a
   current_presence:
@@ -6815,7 +6846,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 3fa3ed07a54af87931118cf7b95de0eff67cc6ebb1dbbf0f9a659da276801de9
+  sha256: aa3ebb0db009df7250d97e45788b75ad24e3d98591fc276ecc7b57ad803ab38e
   traceability_ids:
   - traceability_370964821a289564
   current_presence:
@@ -7310,7 +7341,7 @@ artifact_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 3f4f2997bc863c2c02ade4cfec4af5658824c15e466098792840e0dc662e88e6
+  sha256: 02092155682114ac5180eacd96e808f3da187e1d1b344f385cf4ff4c48d7bb8b
   traceability_ids:
   - traceability_de43755ebb9d7af6
   current_presence:
@@ -7629,7 +7660,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: f0d7156101d32d3ed06ee41766d7b581976214f3e87e8d126d2ddf2b0b01e193
+  sha256: 6e427800ca21ab575662a1b8a3bca40728368f963c437967698974d3b420d58b
   traceability_ids:
   - traceability_26cc0446d8028f21
   current_presence:
@@ -8313,7 +8344,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: 194dc54b9e2529691731ffc11959603b92c6d02d88da9c5f3bfdf00f5f504cf2
+  sha256: ca69bdfa2d533ddf2784fc94b4cc0c61b77952c1c8b398d9912739530680ca19
   traceability_ids:
   - traceability_1aa424cb96fe1351
   current_presence:
@@ -8925,7 +8956,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: 3c4a20850f71e00211d362df269b8aee56c1b296c8d9aea08d365f4395d22c73
+  sha256: 2c74c3dd152a0af41a7bcb15bd1836e10c8700d244b26d016dc20f437cd33703
   traceability_ids:
   - traceability_42231e61e85793c0
   current_presence:
@@ -9105,7 +9136,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: 824cbc4ff291748dc43ca85dc0aa348dc8d447323ba47f1da2d57eb39746661e
+  sha256: 921fea26bd4d351e20b2781ad83011b6a70c8f4e7541548dddeb4af7a89090ee
   traceability_ids:
   - traceability_a78548968dd3c8cc
   current_presence:
@@ -9285,7 +9316,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: a1163b84e82bd9d66254806a9e1dae9d0fe9ad8155c890f27a48b899098e68ee
+  sha256: 7611bc4e16d2f5db6457070aa3f495e199c2a555e54986a04f34213b8529408a
   traceability_ids:
   - traceability_3133177b9a00b2c9
   current_presence:
@@ -9321,7 +9352,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: 96608bab509df2363187624cfbe62808ff7d3d1148b8bf1af8ef53a670a4a750
+  sha256: cac527a98118ad8b6bea4b9aa878698ff3b0b956c0ec60a77b17d820d9bf4814
   traceability_ids:
   - traceability_43c0e20947d30f90
   current_presence:
@@ -9429,7 +9460,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: 2a2607202e1f9278aa22bc39ba087ca17a9f73438dc2f9ffaa5a87fac49caa2b
+  sha256: bab61a904583f861aef5cd48076b763733b4a4ec5ae7e5fe0f5e7b2fe0646a6d
   traceability_ids:
   - traceability_877d163ad7ff8209
   current_presence:
@@ -9501,7 +9532,7 @@ local_candidate_content_requirements:
   owner: factory_test_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_first_article_bench_evidence
-  sha256: e86ab4e124c954a4307010fdc83b124e2bbb5b799dc2310f876b2a661c892303
+  sha256: 89689a60083dd61e00aad6e965ac12adb2bad3347fe62b1b28f0520e15b6fbb7
   traceability_ids:
   - traceability_1efd15d9509f820d
   current_presence:
@@ -9753,7 +9784,7 @@ local_candidate_content_requirements:
   owner: manufacturing_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_production_factory_outputs
-  sha256: e86ab4e124c954a4307010fdc83b124e2bbb5b799dc2310f876b2a661c892303
+  sha256: 89689a60083dd61e00aad6e965ac12adb2bad3347fe62b1b28f0520e15b6fbb7
   traceability_ids:
   - traceability_36f429864e369a09
   current_presence:
@@ -10437,7 +10468,7 @@ local_candidate_content_requirements:
   owner: manufacturing_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_production_factory_outputs
-  sha256: f0d7156101d32d3ed06ee41766d7b581976214f3e87e8d126d2ddf2b0b01e193
+  sha256: 6e427800ca21ab575662a1b8a3bca40728368f963c437967698974d3b420d58b
   traceability_ids:
   - traceability_88b514f824082522
   current_presence:
@@ -10509,7 +10540,7 @@ local_candidate_content_requirements:
   owner: manufacturing_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_production_factory_outputs
-  sha256: 3c4a20850f71e00211d362df269b8aee56c1b296c8d9aea08d365f4395d22c73
+  sha256: 2c74c3dd152a0af41a7bcb15bd1836e10c8700d244b26d016dc20f437cd33703
   traceability_ids:
   - traceability_a606f6409d5be66e
   current_presence:
@@ -10581,7 +10612,7 @@ local_candidate_content_requirements:
   owner: manufacturing_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_production_factory_outputs
-  sha256: 96608bab509df2363187624cfbe62808ff7d3d1148b8bf1af8ef53a670a4a750
+  sha256: cac527a98118ad8b6bea4b9aa878698ff3b0b956c0ec60a77b17d820d9bf4814
   traceability_ids:
   - traceability_fcf8b63d88541ea8
   current_presence:
@@ -10689,7 +10720,7 @@ local_candidate_content_requirements:
   owner: manufacturing_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_production_factory_outputs
-  sha256: 2a2607202e1f9278aa22bc39ba087ca17a9f73438dc2f9ffaa5a87fac49caa2b
+  sha256: bab61a904583f861aef5cd48076b763733b4a4ec5ae7e5fe0f5e7b2fe0646a6d
   traceability_ids:
   - traceability_8a16dbed87dd2230
   current_presence:
@@ -10869,7 +10900,7 @@ local_candidate_content_requirements:
   owner: manufacturing_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_production_factory_outputs
-  sha256: 824cbc4ff291748dc43ca85dc0aa348dc8d447323ba47f1da2d57eb39746661e
+  sha256: 921fea26bd4d351e20b2781ad83011b6a70c8f4e7541548dddeb4af7a89090ee
   traceability_ids:
   - traceability_365fc5e4ca2ddb74
   current_presence:
@@ -11229,7 +11260,7 @@ local_candidate_content_requirements:
   owner: manufacturing_release_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_production_factory_outputs
-  sha256: a1163b84e82bd9d66254806a9e1dae9d0fe9ad8155c890f27a48b899098e68ee
+  sha256: 7611bc4e16d2f5db6457070aa3f495e199c2a555e54986a04f34213b8529408a
   traceability_ids:
   - traceability_30b91cc164eb4f9f
   current_presence:
@@ -11553,7 +11584,7 @@ local_candidate_content_requirements:
   owner: pcb_layout_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_routed_board_release_evidence
-  sha256: 7191634cc76c06b08eb6221a44422e81395e274c76c0881fb2659520fbfd8aca
+  sha256: 1047546acb26869c25bbdc8930e1e126837a4b56c7be599dcd26230b5858b424
   traceability_ids:
   - traceability_0569cc0ec25a9481
   current_presence:
@@ -11589,7 +11620,7 @@ local_candidate_content_requirements:
   owner: pcb_layout_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_routed_board_release_evidence
-  sha256: 792c8491480e659f272c871153128398d3556756b4e9878d26e9eaf1e827ace9
+  sha256: e114e836464b10a73fac3d2131502f79556bf038500c87cd585d851e17148a28
   traceability_ids:
   - traceability_9b270b8c70db2f43
   current_presence:
@@ -11625,7 +11656,7 @@ local_candidate_content_requirements:
   owner: pcb_layout_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_routed_board_release_evidence
-  sha256: a19b00a40785ab96c5af0e81cb77474a9c09eb2f8609659337c652114dc5c838
+  sha256: 6aa06864e97fd609adfee5f5f8217d65a8167203715bacad88efeb168bc55a0b
   traceability_ids:
   - traceability_a9beb44d1eda9f3a
   current_presence:
@@ -11913,7 +11944,7 @@ local_candidate_content_requirements:
   owner: pcb_layout_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_routed_board_release_evidence
-  sha256: f0d7156101d32d3ed06ee41766d7b581976214f3e87e8d126d2ddf2b0b01e193
+  sha256: 6e427800ca21ab575662a1b8a3bca40728368f963c437967698974d3b420d58b
   traceability_ids:
   - traceability_707fb260bac856a4
   current_presence:
@@ -12453,7 +12484,7 @@ local_candidate_content_requirements:
   owner: sourcing_owner
   captured_at: '2026-05-22T00:00:00Z'
   revision_or_lot: preapproval_record_20260522_supplier_return_evidence
-  sha256: 96608bab509df2363187624cfbe62808ff7d3d1148b8bf1af8ef53a670a4a750
+  sha256: cac527a98118ad8b6bea4b9aa878698ff3b0b956c0ec60a77b17d820d9bf4814
   traceability_ids:
   - traceability_893859b29b0db109
   current_presence:

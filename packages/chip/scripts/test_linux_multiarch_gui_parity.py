@@ -20,6 +20,12 @@ sys.modules[spec.name] = gate
 spec.loader.exec_module(gate)
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data) + "\n", encoding="utf-8")
@@ -30,6 +36,7 @@ class LinuxMultiarchGuiParityTests(unittest.TestCase):
         report = gate.build_report()
         self.assertEqual(report["schema"], gate.SCHEMA)
         self.assertEqual(report["status"], "pass")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["arches"]["riscv64"]["proof_state"], "proven")
         self.assertEqual(report["arches"]["arm64"]["proof_state"], "proven")
         self.assertEqual(report["findings"], [])
@@ -129,6 +136,7 @@ class LinuxMultiarchGuiParityTests(unittest.TestCase):
                 gate.REPORTS = old_reports
 
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         self.assertEqual(report["summary"]["proven_arches"], 1)
         self.assertEqual(report["summary"]["gui_payload_proven_arches"], 2)
         self.assertEqual(report["arches"]["arm64"]["gui_payload_state"], "proven")

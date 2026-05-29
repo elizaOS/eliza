@@ -262,13 +262,21 @@ def _trace_summary_consistent(trace: dict[str, Any]) -> bool:
     summary_passed = _trace_float(summary.get("passed_obstacle_rate"))
     summary_collision = _trace_float(summary.get("collision_rate"))
     summary_success = _trace_float(summary.get("success_rate"))
+    summary_clearance = _trace_float(summary.get("min_obstacle_clearance_m"))
     if None in (
         final_progress,
         summary_progress,
         summary_passed,
         summary_collision,
         summary_success,
+        summary_clearance,
     ):
+        return False
+    step_clearances = [_trace_float(step.get("obstacle_clearance_m")) for step in rows]
+    if any(clearance is None for clearance in step_clearances):
+        return False
+    min_step_clearance = min(float(clearance) for clearance in step_clearances)
+    if abs(float(summary_clearance) - min_step_clearance) > 1e-5:
         return False
     if abs(float(summary_progress) - float(final_progress)) > 1e-5:
         return False
@@ -346,10 +354,17 @@ def _obstacle_trace_rollout_evidence(results: list[Any]) -> dict[str, Any]:
                 passed = _trace_float(summary.get("passed_obstacle_rate")) == 1.0
                 success = _trace_float(summary.get("success_rate")) == 1.0
                 collision = _trace_float(summary.get("collision_rate")) == 1.0
+                clearance = _trace_float(summary.get("min_obstacle_clearance_m"))
                 final_pass_count += int(passed and physically_cleared)
                 final_collision_count += int(collision)
                 final_successful_clear_count += int(
-                    consistent and success and passed and physically_cleared and not collision
+                    consistent
+                    and success
+                    and passed
+                    and physically_cleared
+                    and not collision
+                    and clearance is not None
+                    and clearance >= 0.0
                 )
         by_learner[learner] = {
             "consistent_trace_count": consistent_count,
@@ -358,6 +373,11 @@ def _obstacle_trace_rollout_evidence(results: list[Any]) -> dict[str, Any]:
             "final_pass_count": final_pass_count,
             "final_collision_count": final_collision_count,
             "final_successful_clear_count": final_successful_clear_count,
+            "final_successful_clear_rate": (
+                float(final_successful_clear_count / final_trace_count)
+                if final_trace_count > 0
+                else 0.0
+            ),
             "has_successful_final_clear": final_successful_clear_count > 0,
         }
     any_required_learner_clears = any(
@@ -371,17 +391,29 @@ def _obstacle_trace_rollout_evidence(results: list[Any]) -> dict[str, Any]:
         by_learner.get("ppo", {}).get("final_successful_clear_count") or 0
     )
     alberta_successful_final_clear = alberta_final_clears > 0
+    alberta_final_trace_count = int(
+        by_learner.get("alberta", {}).get("final_trace_count") or 0
+    )
+    alberta_successful_final_clear_rate = (
+        float(alberta_final_clears / alberta_final_trace_count)
+        if alberta_final_trace_count > 0
+        else 0.0
+    )
+    alberta_majority_final_clear = alberta_successful_final_clear_rate >= 0.5
     alberta_final_clear_advantage = alberta_final_clears > ppo_final_clears
     return {
         "by_learner": by_learner,
         "all_trace_summaries_consistent": all_trace_summaries_consistent,
         "any_required_learner_successful_final_clear": any_required_learner_clears,
         "alberta_successful_final_clear": alberta_successful_final_clear,
+        "alberta_successful_final_clear_rate": alberta_successful_final_clear_rate,
+        "alberta_majority_final_clear": alberta_majority_final_clear,
         "alberta_final_clear_advantage": alberta_final_clear_advantage,
         "ok": (
             all_trace_summaries_consistent
             and any_required_learner_clears
             and alberta_successful_final_clear
+            and alberta_majority_final_clear
             and alberta_final_clear_advantage
         ),
     }

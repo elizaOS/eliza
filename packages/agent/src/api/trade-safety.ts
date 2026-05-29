@@ -83,7 +83,9 @@ export function assertQuoteFresh(
   now: number = Date.now(),
 ): void {
   if (typeof quotedAt !== "number" || !Number.isFinite(quotedAt)) {
-    throw new Error("Quote is missing a timestamp — please request a fresh quote");
+    throw new Error(
+      "Quote is missing a timestamp — please request a fresh quote",
+    );
   }
   if (now - quotedAt > QUOTE_MAX_AGE_MS) {
     throw new Error("Quote expired — please request a fresh quote");

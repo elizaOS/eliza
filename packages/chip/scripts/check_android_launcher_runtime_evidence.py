@@ -26,6 +26,18 @@ DEFAULT_EVIDENCE = ROOT / "docs/evidence/android/eliza_launcher_runtime_evidence
 ANDROID_APK_PAYLOAD_REPORT = ROOT / "build/reports/android_system_apk_payload.json"
 SCHEMA = "eliza.android_launcher_runtime_evidence.v1"
 CLAIM_BOUNDARY = "booted_android_launcher_agent_runtime_evidence_only"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+    "full_android_compatibility_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+RUNTIME_CAPTURE_SCRIPT = "packages/chip/scripts/android/capture_launcher_runtime_evidence.py"
+DEFAULT_CAPTURE_EVIDENCE = "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
+RECHECK_COMMAND = "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py --json-only"
 ANDROID_TARGET_PREFIXES = (
     "/system/",
     "/vendor/",
@@ -128,6 +140,54 @@ def add_if(
 ) -> None:
     if condition:
         findings.append(Finding(code, "blocker", message, evidence, next_step))
+
+
+def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
+    """Return live-capture command batches without granting release credit."""
+
+    if not findings:
+        return []
+    codes = {finding.code for finding in findings}
+    plan: list[dict[str, object]] = []
+    if any(
+        code.startswith(
+            (
+                "missing_launcher_runtime_evidence",
+                "android_",
+                "launcher_",
+                "home_",
+                "foreground_",
+                "role_",
+                "agent_",
+                "fatal_",
+                "selinux_",
+                "logcat_",
+            )
+        )
+        for code in codes
+    ):
+        plan.append(
+            {
+                "id": "capture_android_launcher_runtime_evidence",
+                "scope": "host_adb",
+                "claim_boundary": "operator_live_capture_commands_only_not_runtime_evidence",
+                "commands": [
+                    "adb devices",
+                    (
+                        f"{RUNTIME_CAPTURE_SCRIPT} "
+                        f"--out {DEFAULT_CAPTURE_EVIDENCE}"
+                    ),
+                    RECHECK_COMMAND,
+                ],
+                "requires": [
+                    "exactly one booted Android target or explicit adb serial",
+                    "sys.boot_completed=1 on the selected Android release target",
+                    "launcher APK installed as the current system HOME/foreground app",
+                    "agent service process running with ready /api/health",
+                ],
+            }
+        )
+    return plan
 
 
 def existing_artifact(path_value: object) -> bool:
@@ -462,13 +522,27 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
 def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    dependency_counts: dict[str, int] = {}
+    for finding in blockers:
+        dependency_counts[finding.blocker_dependency] = (
+            dependency_counts.get(finding.blocker_dependency, 0) + 1
+        )
+    command_plan = next_command_plan(findings)
     return {
         "schema": SCHEMA,
         "generated_utc": utc_now(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        **FALSE_CLAIM_FLAGS,
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": dependency_counts,
+            "next_command_batch_count": len(command_plan),
+        },
+        "blocker_dependency_counts": dependency_counts,
         "findings": [asdict(finding) for finding in findings],
+        "next_command_plan": command_plan,
         "evidence": evidence,
     }
 

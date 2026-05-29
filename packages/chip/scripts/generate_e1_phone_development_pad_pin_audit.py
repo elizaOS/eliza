@@ -182,6 +182,65 @@ SUPPORT_PATTERN_BASIS: dict[str, dict[str, object]] = {
     },
 }
 
+PACKAGE_CONFLICTS: dict[str, dict[str, Any]] = {
+    "BACKLIGHT_BIAS_POWER_DEV": {
+        "status": "public_candidate_package_conflicts_with_development_placeholder",
+        "current_placeholder_package": "generic_qfn24_support_pattern",
+        "public_candidate_package": "TI_LM3697_DSBGA12_or_equivalent_phone_backlight_driver",
+        "conflict_reason": (
+            "Supplier research found realistic phone backlight-driver candidates such as "
+            "TI LM3697 in DSBGA12; the current QFN24 placeholder is not a selected "
+            "package and cannot be promoted."
+        ),
+        "source_urls": [
+            "https://www.ti.com/product/LM3697/part-details/LM3697YFQR",
+            "https://www.sg-micro.com/product/SGM37603",
+        ],
+        "required_resolution": (
+            "Select exact backlight/bias driver MPN, import its official land pattern "
+            "and package model, then replace BACKLIGHT_BIAS_POWER_DEV."
+        ),
+    },
+    "FUEL_GAUGE_WLCSP_DEV": {
+        "status": "public_candidate_package_not_bound_to_development_placeholder",
+        "current_placeholder_package": "generic_wlcsp12_support_pattern",
+        "public_candidate_package": "MAX17055_or_BQ27426_class_single_cell_fuel_gauge",
+        "conflict_reason": (
+            "The WLCSP12 placeholder is not tied to an exact selected gauge; public "
+            "fuel-gauge candidates include packages with different ball counts such as "
+            "BQ27426 DSBGA9."
+        ),
+        "source_urls": [
+            "https://www.analog.com/en/products/max17055.html",
+            "https://www.ti.com/product/BQ27426",
+            "https://www.ti.com/lit/ds/symlink/bq27426.pdf",
+        ],
+        "required_resolution": (
+            "Select exact fuel-gauge MPN, capture official package drawing and pinout, "
+            "then regenerate the land pattern and STEP binding."
+        ),
+    },
+    "SENSOR_HUB_QFN_DEV": {
+        "status": "public_candidate_package_conflicts_with_development_placeholder",
+        "current_placeholder_package": "generic_qfn24_support_pattern",
+        "public_candidate_package": "Bosch_BMI270_or_ST_LSM6DSO32_LGA14_IMU_class",
+        "conflict_reason": (
+            "Supplier research found realistic sensor/IMU candidates in LGA14-class "
+            "packages; no selected QFN24 sensor hub has been identified."
+        ),
+        "source_urls": [
+            "https://www.bosch-sensortec.com/products/motion-sensors/imus/bmi270/",
+            "https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi270-ds000.pdf",
+            "https://www.st.com/en/product/lsm6dso32",
+            "https://www.st.com/resource/en/datasheet/lsm6dso32.pdf",
+        ],
+        "required_resolution": (
+            "Select exact sensor hub/IMU MPN and replace SENSOR_HUB_QFN_DEV with "
+            "the official land pattern, pinout, and STEP model."
+        ),
+    },
+}
+
 
 def load_yaml(path: Path) -> Any:
     with path.open() as handle:
@@ -318,6 +377,7 @@ def main() -> None:
             expected = [
                 str(item) for item in cast("list[Any]", support_basis.get("terminal_contract", []))
             ]
+        package_conflict = PACKAGE_CONFLICTS.get(name, {})
         missing = sorted(set(expected) - set(electrical_pads), key=str)
         extra = sorted(set(electrical_pads) - set(expected), key=str) if expected else []
         exact_match = bool(expected) and not missing and not extra
@@ -404,6 +464,9 @@ def main() -> None:
                 "support_pattern_has_explicit_provenance": bool(support_basis),
                 "step_binding_status": record["step_binding_status"],
                 "release_allowed": False,
+                "package_conflict": bool(package_conflict),
+                "package_conflict_status": package_conflict.get("status", ""),
+                "package_conflict_detail": dict(package_conflict) if package_conflict else {},
             }
         )
 
@@ -447,6 +510,24 @@ def main() -> None:
             for item in audit_records
             if "pending" in item["coverage"]
             or item["footprint_status"] == "geometry_only_pending_supplier_pad_map"
+        ],
+        "public_candidate_package_conflict_count": sum(
+            1 for item in audit_records if item["package_conflict"]
+        ),
+        "public_candidate_package_conflict_records": [
+            {
+                "footprint": item["footprint"],
+                "footprint_file": item["footprint_file"],
+                "footprint_status": item["footprint_status"],
+                "pinout_file": item["pinout_file"],
+                "coverage": item["coverage"],
+                "electrical_pad_count": item["electrical_pad_count"],
+                "manifest_pin_count": item["manifest_pin_count"],
+                **item["package_conflict_detail"],
+                "release_allowed": item["release_allowed"],
+            }
+            for item in audit_records
+            if item["package_conflict"]
         ],
         "pinout_bound_footprint_count": sum(1 for item in audit_records if item["pinout_file"]),
         "all_pinout_bound_footprints_have_terminal_contract": all(

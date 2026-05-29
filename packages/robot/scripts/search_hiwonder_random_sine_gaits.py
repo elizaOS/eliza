@@ -50,8 +50,102 @@ FEEDBACK_DAMP_STEPS = (240, 250, 260)
 FEEDBACK_POST_SCALES = (0.0, 0.25, 0.5)
 HYBRID_SWITCH_STEPS = (24, 26, 28, 30, 32)
 HYBRID_RAMP_STEPS = (1, 2)
-HYBRID_PITCH_GAINS = (0.5, 1.0, 2.0, 4.0)
+HYBRID_PITCH_GAINS = (0.5, 1.0, 2.0, 4.0, 8.0)
+HYBRID_ROLL_GAINS = (-0.5, 0.0, 0.5, 1.0, 2.0)
 HYBRID_PRE_SCALES = (1.0, 1.15)
+STABLE_BRIDGE_SCALE_MULTIPLIERS = (0.50, 0.75, 1.00, 1.25, 1.50, 2.00, 2.50)
+STABLE_BRIDGE_HIP_BIAS_DELTAS = (-0.20, -0.10, 0.00, 0.10, 0.20, 0.35)
+HYBRID_BRACED_RECOVERY_PARAMS: tuple[dict[str, Any], ...] = (
+    {
+        "feedback": {"pitch": 4.0, "roll": 0.5, "yaw": -0.5},
+        "hybrid_recovery": {
+            "switch_step": 20,
+            "ramp_steps": 4,
+            "pitch_gain": 4.0,
+            "roll_gain": 6.0,
+            "yaw_gain": 0.0,
+            "pre_scale": 0.85,
+            "post_bias": 0.0,
+            "knee_bias": 0.3337764596642869,
+            "hip_pitch_bias": -0.41531124380444756,
+            "ank_pitch_bias": 0.4687101372562394,
+            "hip_roll_bias": -0.48314861486182237,
+            "ank_roll_bias": -0.41811811206214944,
+        },
+    },
+    {
+        "feedback": {"pitch": 8.0, "roll": 0.0, "yaw": -0.5},
+        "hybrid_recovery": {
+            "switch_step": 20,
+            "ramp_steps": 6,
+            "pitch_gain": 10.0,
+            "roll_gain": 4.0,
+            "yaw_gain": -2.0,
+            "pre_scale": 0.65,
+            "post_bias": 0.0,
+            "knee_bias": 0.36258326593037715,
+            "hip_pitch_bias": -0.6995112730745462,
+            "ank_pitch_bias": 0.5600630238740617,
+            "hip_roll_bias": -0.516618321435776,
+            "ank_roll_bias": -0.4114894360531892,
+        },
+    },
+    {
+        "feedback": {"pitch": 6.0, "roll": 2.0, "yaw": 0.5},
+        "hybrid_recovery": {
+            "switch_dx": 0.30,
+            "max_switch_step": 26,
+            "ramp_steps": 1,
+            "pitch_gain": 4.0,
+            "roll_gain": 10.0,
+            "yaw_gain": 2.0,
+            "pre_scale": 0.65,
+            "post_bias": 0.0,
+            "knee_bias": -0.15088653206028385,
+            "hip_pitch_bias": -0.636867992359232,
+            "ank_pitch_bias": 0.6727036853376975,
+            "hip_roll_bias": -0.30374909386899873,
+            "ank_roll_bias": 0.37961316901534237,
+        },
+    },
+    {
+        "params": {
+            "scale": 0.8465768408918739,
+            "hz": 2.216995601838004,
+            "phase0": -3.1391624968163203,
+            "hip_bias": 0.15379566442312362,
+            "hip_amp": 0.32769881917303806,
+            "knee_bias": 0.38726151454357477,
+            "knee_amp": 0.36022953057793583,
+            "knee_phase": 0.6421970591888169,
+            "ank_bias": 0.39116942391997045,
+            "ank_amp": 0.127054285507044,
+            "ank_phase": -1.9722242080014454,
+            "roll_bias": -0.18224959759509585,
+            "roll_amp": 0.2966744938237414,
+            "ank_roll_amp": 0.12025318883037245,
+            "roll_phase": 0.05231739235428862,
+            "ank_roll_phase_delta": 1.0592762165532055,
+            "yaw_amp": 0.0,
+            "yaw_phase": -3.0957997999352855,
+        },
+        "feedback": {"pitch": 5.0, "roll": 1.5, "yaw": 0.0},
+        "hybrid_recovery": {
+            "switch_step": 24,
+            "ramp_steps": 2,
+            "pitch_gain": 0.022786920400847177,
+            "roll_gain": -3.9796602205824394,
+            "pre_scale": 1.1,
+            "post_bias": 0.0,
+            "yaw_gain": 2.0138034888751677,
+            "knee_bias": -0.12235283455771334,
+            "hip_pitch_bias": 0.1627192513265534,
+            "ank_pitch_bias": 0.04519850266016692,
+            "hip_roll_bias": -0.1462445349103719,
+            "ank_roll_bias": 0.12288233087665291,
+        },
+    },
+)
 
 
 def _candidate_params(*, seed: int, n_candidates: int) -> list[dict[str, float]]:
@@ -185,16 +279,40 @@ def _hybrid_recovery_refinement_params(base: dict[str, Any]) -> list[dict[str, A
         for switch_step in HYBRID_SWITCH_STEPS:
             for ramp_steps in HYBRID_RAMP_STEPS:
                 for pitch_gain in HYBRID_PITCH_GAINS:
-                    for pre_scale in HYBRID_PRE_SCALES:
-                        row = dict(base_row)
-                        row["hybrid_recovery"] = {
-                            "switch_step": switch_step,
-                            "ramp_steps": ramp_steps,
-                            "pitch_gain": pitch_gain,
-                            "pre_scale": pre_scale,
-                            "post_bias": 0.0,
-                        }
-                        params.append(row)
+                    for roll_gain in HYBRID_ROLL_GAINS:
+                        for pre_scale in HYBRID_PRE_SCALES:
+                            row = dict(base_row)
+                            row["hybrid_recovery"] = {
+                                "switch_step": switch_step,
+                                "ramp_steps": ramp_steps,
+                                "pitch_gain": pitch_gain,
+                                "roll_gain": roll_gain,
+                                "pre_scale": pre_scale,
+                                "post_bias": 0.0,
+                            }
+                            params.append(row)
+    for braced in HYBRID_BRACED_RECOVERY_PARAMS:
+        row = dict(braced.get("params") or base)
+        row["feedback"] = dict(braced["feedback"])
+        row["hybrid_recovery"] = dict(braced["hybrid_recovery"])
+        params.append(row)
+    return params
+
+
+def _stable_bridge_refinement_params(base: dict[str, Any]) -> list[dict[str, Any]]:
+    params: list[dict[str, Any]] = []
+    for remove_feedback in (False, True):
+        for remove_hybrid in (False, True):
+            for scale_multiplier in STABLE_BRIDGE_SCALE_MULTIPLIERS:
+                for hip_bias_delta in STABLE_BRIDGE_HIP_BIAS_DELTAS:
+                    row = dict(base)
+                    row["scale"] = float(base["scale"]) * scale_multiplier
+                    row["hip_bias"] = float(base["hip_bias"]) + hip_bias_delta
+                    if remove_feedback:
+                        row.pop("feedback", None)
+                    if remove_hybrid:
+                        row.pop("hybrid_recovery", None)
+                    params.append(row)
     return params
 
 
@@ -218,22 +336,39 @@ def _unmet_predicates(
     *,
     dx: float | None,
     dy: float | None,
-    yaw: float | None,
+    max_abs_yaw: float | None,
+    torso_z: float | None,
+    stand_height_m: float | None,
+    max_swing_foot_clearance_m: float | None,
+    max_foot_slip_m_s: float | None,
+    max_self_collision_count: float | None,
     terminated: bool,
     foot_switches: int,
     success_window_s: float,
 ) -> list[str]:
     unmet = []
+    if (
+        torso_z is None
+        or stand_height_m is None
+        or torso_z < stand_height_m * 0.75
+    ):
+        unmet.append("torso_z_min_ratio")
     if dx is None or dx < 0.30:
         unmet.append("delta_x_m_min")
     if dy is None or abs(dy) > 0.20:
         unmet.append("max_lateral_drift_m")
-    if yaw is None or abs(yaw) > 0.40:
+    if max_abs_yaw is None or max_abs_yaw > 0.40:
         unmet.append("max_abs_delta_yaw_rad")
     if terminated:
         unmet.append("no_fall")
     if foot_switches < 2:
         unmet.append("min_alternating_foot_contacts")
+    if max_swing_foot_clearance_m is None or max_swing_foot_clearance_m < 0.015:
+        unmet.append("min_swing_foot_clearance_m")
+    if max_foot_slip_m_s is None or max_foot_slip_m_s > 0.35:
+        unmet.append("max_foot_slip_m_s")
+    if max_self_collision_count is None or max_self_collision_count > 0:
+        unmet.append("max_self_collision_count")
     if success_window_s < 1.0:
         unmet.append("hold_s")
     return unmet
@@ -270,30 +405,79 @@ def _apply_feedback(
     return corrected
 
 
+def _failure_info(info: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "tracked_delta_x",
+        "tracked_delta_y",
+        "delta_yaw",
+        "torso_z",
+        "stand_height_m",
+        "fall_threshold",
+        "upright_proj",
+        "imu_roll",
+        "imu_pitch",
+        "left_foot_contact",
+        "right_foot_contact",
+        "left_foot_z",
+        "right_foot_z",
+        "max_swing_foot_clearance_m",
+        "max_foot_slip_m_s",
+        "self_collision_count",
+        "done_reason",
+        "success_predicate_now",
+        "success_bound_violation",
+        "raw_action_max_abs",
+        "effective_action_max_abs",
+    )
+    return {key: info.get(key) for key in keys if key in info}
+
+
 def _hybrid_recovery_action(
     env: TextConditionedProfileEnv,
     *,
     step: int,
+    switch_step: int | None = None,
     start_pose: np.ndarray,
     recovery: dict[str, Any],
 ) -> np.ndarray:
     home_pose = env._home_pose.astype(np.float32)  # noqa: SLF001
-    switch_step = int(recovery["switch_step"])
+    switch_step = int(switch_step if switch_step is not None else recovery["switch_step"])
     ramp_steps = max(1, int(recovery.get("ramp_steps", 1)))
     alpha = min(1.0, max(0.0, float(step - switch_step + 1) / float(ramp_steps)))
     alpha = alpha * alpha * (3.0 - 2.0 * alpha)
     target = (1.0 - alpha) * start_pose + alpha * home_pose
     pose = env._root_pose_summary()  # noqa: SLF001
     pitch = float(pose.get("pitch", 0.0))
+    roll = float(pose.get("roll", 0.0))
+    yaw = float(pose.get("yaw", 0.0)) - float(env._episode_start_yaw)  # noqa: SLF001
     pitch_gain = float(recovery.get("pitch_gain", 1.0))
+    roll_gain = float(recovery.get("roll_gain", 0.0))
+    yaw_gain = float(recovery.get("yaw_gain", 0.0))
     post_bias = float(recovery.get("post_bias", 0.0))
     for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
         name = joint.name.lower()
         side = 1.0 if name.startswith("l_") else -1.0
+        if "knee" in name:
+            target[idx] += float(recovery.get("knee_bias", 0.0))
         if "hip_pitch" in name:
-            target[idx] += side * pitch_gain * pitch + side * post_bias
+            target[idx] += (
+                float(recovery.get("hip_pitch_bias", 0.0))
+                + side * pitch_gain * pitch
+                + side * post_bias
+            )
         elif "ank_pitch" in name:
+            target[idx] += float(recovery.get("ank_pitch_bias", 0.0))
             target[idx] -= side * pitch_gain * pitch + side * post_bias
+        elif "hip_roll" in name:
+            target[idx] += side * (
+                float(recovery.get("hip_roll_bias", 0.0)) + roll_gain * roll
+            )
+        elif "ank_roll" in name:
+            target[idx] -= side * (
+                float(recovery.get("ank_roll_bias", 0.0)) + roll_gain * roll
+            )
+        elif "hip_yaw" in name:
+            target[idx] -= side * yaw_gain * yaw
     target = np.clip(target, env._lower, env._upper)  # noqa: SLF001
     action_scale = max(float(env.config.action_scale), 1e-6)
     return np.clip((target - home_pose) / action_scale, -1.0, 1.0).astype(
@@ -307,6 +491,7 @@ def _rollout_candidate(
     name: str,
     params: dict[str, Any],
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> dict[str, Any]:
     task_id = "walk_forward"
     task = load_curriculum().by_id(task_id)
@@ -339,11 +524,34 @@ def _rollout_candidate(
     terminated = False
     truncated = False
     hybrid_start_pose: np.ndarray | None = None
+    hybrid_switch_step: int | None = None
+    latched_goal_failure: dict[str, Any] | None = None
+    post_goal_failure_dx: list[float] = []
+    post_goal_failure_max_success_window_s = 0.0
     for step in range(max_steps):
         hybrid_recovery = params.get("hybrid_recovery")
+        if isinstance(hybrid_recovery, dict) and hybrid_switch_step is None:
+            tracked_dx = _finite_or_none(info.get("tracked_delta_x"))
+            if (
+                (
+                    "switch_step" in hybrid_recovery
+                    and step >= int(hybrid_recovery["switch_step"])
+                )
+                or (
+                    "switch_dx" in hybrid_recovery
+                    and tracked_dx is not None
+                    and tracked_dx >= float(hybrid_recovery["switch_dx"])
+                )
+                or (
+                    "max_switch_step" in hybrid_recovery
+                    and step >= int(hybrid_recovery["max_switch_step"])
+                )
+            ):
+                hybrid_switch_step = step
         if (
             isinstance(hybrid_recovery, dict)
-            and step >= int(hybrid_recovery["switch_step"])
+            and hybrid_switch_step is not None
+            and step >= hybrid_switch_step
         ):
             if hybrid_start_pose is None:
                 hybrid_start_pose = np.array(
@@ -356,6 +564,7 @@ def _rollout_candidate(
             action = _hybrid_recovery_action(
                 env,
                 step=step,
+                switch_step=hybrid_switch_step,
                 start_pose=hybrid_start_pose,
                 recovery=hybrid_recovery,
             )
@@ -376,17 +585,47 @@ def _rollout_candidate(
         for key in ("left_foot_contact", "right_foot_contact"):
             traces[key].append(1.0 if info.get(key) else 0.0)
         result = checker.update(_sample((step + 1) * env.config.control_dt_s, info))
+        if result.failed and latched_goal_failure is None:
+            latched_goal_failure = {
+                "step": step + 1,
+                "t_s": (step + 1) * env.config.control_dt_s,
+                "reason": result.reason,
+                "info": _failure_info(info),
+                "hybrid_switch_step": hybrid_switch_step,
+                "hybrid_active_at_failure": hybrid_switch_step is not None,
+            }
+        if latched_goal_failure is not None:
+            value = _finite_or_none(info.get("tracked_delta_x"))
+            if value is not None:
+                post_goal_failure_dx.append(value)
+            post_goal_failure_max_success_window_s = max(
+                post_goal_failure_max_success_window_s,
+                float(result.success_window_s),
+            )
         max_success_window_s = max(
             max_success_window_s,
             float(result.success_window_s),
         )
-        if result.success or result.failed or terminated or truncated:
+        if (
+            result.success
+            or terminated
+            or truncated
+            or (result.failed and not continue_after_goal_failure)
+        ):
             break
     if result is None:
         raise RuntimeError("rollout produced no result")
     dx = _finite_or_none(info.get("tracked_delta_x"))
     dy = _finite_or_none(info.get("tracked_delta_y"))
     yaw = _finite_or_none(info.get("delta_yaw"))
+    max_abs_yaw = _safe_max_abs(traces["delta_yaw"])
+    torso_z = _finite_or_none(info.get("torso_z"))
+    stand_height_m = _finite_or_none(info.get("stand_height_m"))
+    max_swing_foot_clearance_m = _finite_or_none(
+        info.get("max_swing_foot_clearance_m")
+    )
+    max_foot_slip_m_s = _finite_or_none(info.get("max_foot_slip_m_s"))
+    max_self_collision_count = _finite_or_none(info.get("self_collision_count"))
     foot_switches = _count_alternating_contacts(
         traces["left_foot_contact"],
         traces["right_foot_contact"],
@@ -394,19 +633,29 @@ def _rollout_candidate(
     unmet = _unmet_predicates(
         dx=dx,
         dy=dy,
-        yaw=yaw,
+        max_abs_yaw=max_abs_yaw,
+        torso_z=torso_z,
+        stand_height_m=stand_height_m,
+        max_swing_foot_clearance_m=max_swing_foot_clearance_m,
+        max_foot_slip_m_s=max_foot_slip_m_s,
+        max_self_collision_count=max_self_collision_count,
         terminated=terminated,
         foot_switches=foot_switches,
         success_window_s=max_success_window_s,
     )
+    strict_success = bool(result.success) and latched_goal_failure is None
     return {
         "task_id": task_id,
         "controller": name,
         "action_scale": action_scale,
         "controller_params": params,
-        "success": bool(result.success),
-        "failed": bool(result.failed),
-        "reason": result.reason,
+        "success": strict_success,
+        "failed": bool(result.failed or latched_goal_failure is not None),
+        "reason": (
+            str(latched_goal_failure["reason"])
+            if latched_goal_failure is not None
+            else result.reason
+        ),
         "steps": len(traces["tracked_delta_x"]),
         "terminated": bool(terminated),
         "truncated": bool(truncated),
@@ -417,9 +666,39 @@ def _rollout_candidate(
         "final_delta_y_m": dy,
         "max_abs_delta_y_m": _safe_max_abs(traces["tracked_delta_y"]),
         "final_delta_yaw_rad": yaw,
-        "max_abs_delta_yaw_rad": _safe_max_abs(traces["delta_yaw"]),
+        "final_torso_z_m": torso_z,
+        "stand_height_m": stand_height_m,
+        "max_swing_foot_clearance_m": max_swing_foot_clearance_m,
+        "max_foot_slip_m_s": max_foot_slip_m_s,
+        "max_self_collision_count": max_self_collision_count,
+        "max_abs_delta_yaw_rad": max_abs_yaw,
         "max_success_window_s": max_success_window_s,
         "foot_contact_switches": foot_switches,
+        "goal_failure_latched": latched_goal_failure is not None,
+        "first_goal_failure_step": (
+            latched_goal_failure["step"] if latched_goal_failure is not None else None
+        ),
+        "first_goal_failure_t_s": (
+            latched_goal_failure["t_s"] if latched_goal_failure is not None else None
+        ),
+        "first_goal_failure_reason": (
+            latched_goal_failure["reason"] if latched_goal_failure is not None else None
+        ),
+        "first_goal_failure_info": (
+            latched_goal_failure["info"] if latched_goal_failure is not None else None
+        ),
+        "post_goal_failure_steps": len(post_goal_failure_dx),
+        "post_goal_failure_final_delta_x_m": (
+            post_goal_failure_dx[-1] if post_goal_failure_dx else None
+        ),
+        "post_goal_failure_max_delta_x_m": _safe_max(post_goal_failure_dx),
+        "post_goal_failure_max_success_window_s": (
+            post_goal_failure_max_success_window_s
+        ),
+        "recovered_success_after_goal_failure": bool(
+            latched_goal_failure is not None and result.success
+        ),
+        "hybrid_switch_step": hybrid_switch_step,
         "diagnostics": {
             "unmet_success_predicates": unmet,
         },
@@ -432,6 +711,7 @@ def _run_candidates(
     prefix: str,
     params: list[dict[str, Any]],
     max_steps: int,
+    continue_after_goal_failure: bool = False,
 ) -> list[dict[str, Any]]:
     return [
         _rollout_candidate(
@@ -439,9 +719,55 @@ def _run_candidates(
             name=f"{prefix}_{idx:03d}",
             params=row,
             max_steps=max_steps,
+            continue_after_goal_failure=continue_after_goal_failure,
         )
         for idx, row in enumerate(params)
     ]
+
+
+def _physical_gate_score(row: dict[str, Any]) -> tuple:
+    unmet = set(row.get("diagnostics", {}).get("unmet_success_predicates") or [])
+    gate_names = {
+        "torso_z_min_ratio",
+        "delta_x_m_min",
+        "max_lateral_drift_m",
+        "max_abs_delta_yaw_rad",
+        "no_fall",
+        "min_alternating_foot_contacts",
+        "min_swing_foot_clearance_m",
+        "max_foot_slip_m_s",
+        "max_self_collision_count",
+        "hold_s",
+    }
+    passed = len(gate_names - unmet)
+    return (
+        bool(row.get("success")),
+        passed,
+        "hold_s" not in unmet,
+        "no_fall" not in unmet,
+        "max_foot_slip_m_s" not in unmet,
+        "torso_z_min_ratio" not in unmet,
+        float(row.get("max_success_window_s") or 0.0),
+        float(row.get("final_delta_x_m") or 0.0),
+        -abs(float(row.get("final_delta_y_m") or 0.0)),
+        -abs(float(row.get("final_delta_yaw_rad") or 0.0)),
+    )
+
+
+def _stable_bridge_score(row: dict[str, Any]) -> tuple:
+    unmet = set(row.get("diagnostics", {}).get("unmet_success_predicates") or [])
+    return (
+        bool(row.get("success")),
+        "torso_z_min_ratio" not in unmet,
+        "max_foot_slip_m_s" not in unmet,
+        "max_lateral_drift_m" not in unmet,
+        "max_abs_delta_yaw_rad" not in unmet,
+        "min_alternating_foot_contacts" not in unmet,
+        "max_self_collision_count" not in unmet,
+        float(row.get("final_delta_x_m") or 0.0),
+        "no_fall" not in unmet,
+        "hold_s" not in unmet,
+    )
 
 
 def _refine_best_straight(
@@ -503,6 +829,7 @@ def _transition_refine_near_walk(
             "any_success": False,
             "failure_frontier": _failure_frontier([]),
             "best_by_success_window": None,
+            "best_by_physical_gates": None,
             "candidates": [],
         }
     candidates = _run_candidates(
@@ -519,6 +846,7 @@ def _transition_refine_near_walk(
         ),
         default=None,
     )
+    best_by_physical_gates = max(candidates, key=_physical_gate_score, default=None)
     return {
         "base_controller": base.get("controller"),
         "n_candidates": len(candidates),
@@ -526,6 +854,7 @@ def _transition_refine_near_walk(
         "any_success": any(row["success"] for row in candidates),
         "failure_frontier": _failure_frontier(candidates),
         "best_by_success_window": best_by_success_window,
+        "best_by_physical_gates": best_by_physical_gates,
         "candidates": candidates,
     }
 
@@ -565,6 +894,7 @@ def _feedback_refine_near_walk(
         ),
         default=None,
     )
+    best_by_physical_gates = max(candidates, key=_physical_gate_score, default=None)
     return {
         "base_controller": base.get("controller"),
         "n_candidates": len(candidates),
@@ -572,6 +902,7 @@ def _feedback_refine_near_walk(
         "any_success": any(row["success"] for row in candidates),
         "failure_frontier": _failure_frontier(candidates),
         "best_by_success_window": best_by_success_window,
+        "best_by_physical_gates": best_by_physical_gates,
         "candidates": candidates,
     }
 
@@ -600,6 +931,7 @@ def _hybrid_recovery_refine_near_walk(
             "any_success": False,
             "failure_frontier": _failure_frontier([]),
             "best_by_success_window": None,
+            "best_by_physical_gates": None,
             "candidates": [],
         }
     candidates = _run_candidates(
@@ -616,6 +948,7 @@ def _hybrid_recovery_refine_near_walk(
         ),
         default=None,
     )
+    best_by_physical_gates = max(candidates, key=_physical_gate_score, default=None)
     return {
         "base_controller": base.get("controller"),
         "n_candidates": len(candidates),
@@ -623,6 +956,55 @@ def _hybrid_recovery_refine_near_walk(
         "any_success": any(row["success"] for row in candidates),
         "failure_frontier": _failure_frontier(candidates),
         "best_by_success_window": best_by_success_window,
+        "best_by_physical_gates": best_by_physical_gates,
+        "candidates": candidates,
+    }
+
+
+def _stable_bridge_refine_near_walk(
+    env: TextConditionedProfileEnv,
+    *,
+    hybrid_recovery_refinement: dict[str, Any],
+    max_steps: int,
+) -> dict[str, Any]:
+    base = hybrid_recovery_refinement.get("best_by_physical_gates")
+    if not isinstance(base, dict) or not isinstance(base.get("controller_params"), dict):
+        return {
+            "base_controller": None,
+            "n_candidates": 0,
+            "n_success": 0,
+            "any_success": False,
+            "failure_frontier": _failure_frontier([]),
+            "best_by_success_window": None,
+            "best_by_physical_gates": None,
+            "best_by_stable_bridge": None,
+            "candidates": [],
+        }
+    candidates = _run_candidates(
+        env,
+        prefix=f"stable_bridge_{base.get('controller')}",
+        params=_stable_bridge_refinement_params(base["controller_params"]),
+        max_steps=max_steps,
+    )
+    best_by_success_window = max(
+        candidates,
+        key=lambda row: (
+            float(row.get("max_success_window_s") or 0.0),
+            float(row.get("max_delta_x_m") or row.get("final_delta_x_m") or 0.0),
+        ),
+        default=None,
+    )
+    best_by_physical_gates = max(candidates, key=_physical_gate_score, default=None)
+    best_by_stable_bridge = max(candidates, key=_stable_bridge_score, default=None)
+    return {
+        "base_controller": base.get("controller"),
+        "n_candidates": len(candidates),
+        "n_success": sum(1 for row in candidates if row["success"]),
+        "any_success": any(row["success"] for row in candidates),
+        "failure_frontier": _failure_frontier(candidates),
+        "best_by_success_window": best_by_success_window,
+        "best_by_physical_gates": best_by_physical_gates,
+        "best_by_stable_bridge": best_by_stable_bridge,
         "candidates": candidates,
     }
 
@@ -674,12 +1056,18 @@ def search(
         local_refinement=local_refinement,
         max_steps=max_steps,
     )
+    stable_bridge_refinement = _stable_bridge_refine_near_walk(
+        env,
+        hybrid_recovery_refinement=hybrid_recovery_refinement,
+        max_steps=max_steps,
+    )
     any_success = (
         any(row["success"] for row in candidates)
         or bool(local_refinement.get("any_success"))
         or bool(transition_refinement.get("any_success"))
         or bool(feedback_refinement.get("any_success"))
         or bool(hybrid_recovery_refinement.get("any_success"))
+        or bool(stable_bridge_refinement.get("any_success"))
     )
     return {
         "schema": "hiwonder-random-sine-gait-search-v1",
@@ -695,6 +1083,7 @@ def search(
         "transition_refinement": transition_refinement,
         "feedback_refinement": feedback_refinement,
         "hybrid_recovery_refinement": hybrid_recovery_refinement,
+        "stable_bridge_refinement": stable_bridge_refinement,
         "candidates": candidates,
     }
 
@@ -732,6 +1121,28 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
     hybrid_frontier = hybrid_frontier if isinstance(hybrid_frontier, dict) else {}
     best_hybrid = hybrid.get("best_by_success_window")
     best_hybrid = best_hybrid if isinstance(best_hybrid, dict) else {}
+    best_hybrid_physical = hybrid.get("best_by_physical_gates")
+    best_hybrid_physical = (
+        best_hybrid_physical if isinstance(best_hybrid_physical, dict) else {}
+    )
+    stable_bridge_refinement = report.get("stable_bridge_refinement")
+    stable_bridge_refinement = (
+        stable_bridge_refinement if isinstance(stable_bridge_refinement, dict) else {}
+    )
+    stable_bridge_frontier = stable_bridge_refinement.get("failure_frontier")
+    stable_bridge_frontier = (
+        stable_bridge_frontier if isinstance(stable_bridge_frontier, dict) else {}
+    )
+    best_stable_bridge = stable_bridge_refinement.get("best_by_stable_bridge")
+    best_stable_bridge = (
+        best_stable_bridge if isinstance(best_stable_bridge, dict) else {}
+    )
+    best_stable_bridge_physical = stable_bridge_refinement.get("best_by_physical_gates")
+    best_stable_bridge_physical = (
+        best_stable_bridge_physical
+        if isinstance(best_stable_bridge_physical, dict)
+        else {}
+    )
     lines = [
         "# HiWonder Random Sine Gait Search",
         "",
@@ -796,6 +1207,28 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- best success window s: `{best_hybrid.get('max_success_window_s')}`",
         f"- best success-window dx m: `{best_hybrid.get('final_delta_x_m')}`",
         f"- best success-window failure: `{', '.join(best_hybrid.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_hybrid.get('termination_reason') or 'none'}`",
+        f"- best physical-gates controller: `{best_hybrid_physical.get('controller')}`",
+        f"- best physical-gates dx m: `{best_hybrid_physical.get('final_delta_x_m')}`",
+        f"- best physical-gates torso z m: `{best_hybrid_physical.get('final_torso_z_m')}`",
+        f"- best physical-gates max foot slip m/s: `{best_hybrid_physical.get('max_foot_slip_m_s')}`",
+        f"- best physical-gates failure: `{', '.join(best_hybrid_physical.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_hybrid_physical.get('termination_reason') or 'none'}`",
+        "",
+        "## Stable Bridge Refinement",
+        "",
+        f"- base controller: `{stable_bridge_refinement.get('base_controller')}`",
+        f"- candidates: `{stable_bridge_refinement.get('n_candidates')}`",
+        f"- successes: `{stable_bridge_refinement.get('n_success')}`",
+        f"- primary gap: `{stable_bridge_frontier.get('primary_gap')}`",
+        f"- forward-displacement candidates: `{stable_bridge_frontier.get('n_forward_displacement_candidates')}`",
+        f"- forward + no-fall + straight candidates: `{stable_bridge_frontier.get('n_forward_no_fall_straight_candidates')}`",
+        f"- best stable-bridge controller: `{best_stable_bridge.get('controller')}`",
+        f"- best stable-bridge dx m: `{best_stable_bridge.get('final_delta_x_m')}`",
+        f"- best stable-bridge torso z m: `{best_stable_bridge.get('final_torso_z_m')}`",
+        f"- best stable-bridge max foot slip m/s: `{best_stable_bridge.get('max_foot_slip_m_s')}`",
+        f"- best stable-bridge failure: `{', '.join(best_stable_bridge.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_stable_bridge.get('termination_reason') or 'none'}`",
+        f"- best physical-gates controller: `{best_stable_bridge_physical.get('controller')}`",
+        f"- best physical-gates dx m: `{best_stable_bridge_physical.get('final_delta_x_m')}`",
+        f"- best physical-gates failure: `{', '.join(best_stable_bridge_physical.get('diagnostics', {}).get('unmet_success_predicates') or []) or best_stable_bridge_physical.get('termination_reason') or 'none'}`",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

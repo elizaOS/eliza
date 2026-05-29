@@ -1,11 +1,11 @@
 {
-  "artifacts": "<repo>/packages/os/linux/elizaos/artifacts/riscv64",
-  "claim_boundary": "qemu-user smoke of staged riscv64 Bun or static validation of node-shebang agent bundle; not full ISO boot evidence",
+  "artifact_dir": "artifacts/riscv64",
+  "claim_boundary": "static_staged_runtime_artifact_check_only_not_iso_boot_or_live_agent_health",
   "failures": [],
-  "generated_utc": "2026-05-27T19:16:17.081331+00:00",
+  "generated_utc": "2026-05-29T06:20:54Z",
   "runtime_mode": "bun",
   "schema": "eliza.os.linux.riscv64_agent_runtime_smoke.v1",
   "status": "pass",
-  "transcript": "<repo>/packages/os/linux/elizaos/evidence/riscv64_agent_runtime_smoke.log",
-  "transcript_sha256": "6b7cfcc4b3a6c02f3ef86c60e649420f843022b3638ddeb4daf0de2ced605454"
+  "transcript": "evidence/riscv64_agent_runtime_smoke.log",
+  "transcript_sha256": "c542f90d55fe5daa499d83963106483f5a65daac8b66b24ea26ea55e9f5bd0e0"
 }

@@ -13,6 +13,16 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/sim_ladder.json"
+CLAIM_BOUNDARY = "local_rtl_simulation_ladder_only_not_linux_or_android_chip_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "chip_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 LADDER = [
     {
@@ -183,7 +193,8 @@ def main() -> int:
     manifest = {
         "schema": "eliza.sim_ladder.v1",
         "generated_utc": utc_now(),
-        "claim_boundary": "local_rtl_simulation_ladder_only_not_linux_or_android_chip_boot_evidence",
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "status": "pass"
         if all(item["status"] == "pass" for item in results) and len(results) == len(LADDER)
         else "fail",

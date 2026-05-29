@@ -6,6 +6,7 @@ from scripts.search_hiwonder_random_sine_gaits import (
     _feedback_refinement_params,
     _hybrid_recovery_refinement_params,
     _local_refinement_params,
+    _stable_bridge_refinement_params,
     _transition_refinement_params,
 )
 from scripts.search_hiwonder_stabilized_gaits import (
@@ -83,17 +84,40 @@ def test_hiwonder_random_sine_hybrid_recovery_refinement_is_bounded() -> None:
     base = _candidate_params(seed=123, n_candidates=1)[0]
     params = _hybrid_recovery_refinement_params({**base, "feedback": {"pitch": 1.0}})
 
-    assert len(params) == 160
+    assert len(params) == 1004
     assert "feedback" in params[0]
     assert any("feedback" not in row for row in params)
     assert params[0]["hybrid_recovery"] == {
         "switch_step": 24,
         "ramp_steps": 1,
         "pitch_gain": 0.5,
+        "roll_gain": -0.5,
         "pre_scale": 1.0,
         "post_bias": 0.0,
     }
-    assert params[-1]["hybrid_recovery"]["switch_step"] == 32
+    assert any(row["hybrid_recovery"]["pitch_gain"] == 8.0 for row in params)
+    assert any(row["hybrid_recovery"]["roll_gain"] == 2.0 for row in params)
+    assert any("knee_bias" in row["hybrid_recovery"] for row in params)
+    assert any("switch_dx" in row["hybrid_recovery"] for row in params)
+    assert any(row["scale"] == 0.8465768408918739 for row in params)
+    assert any(row["hybrid_recovery"]["switch_step"] == 32 for row in params)
+
+
+def test_hiwonder_random_sine_stable_bridge_refinement_ablation_is_bounded() -> None:
+    base = {
+        **_candidate_params(seed=123, n_candidates=1)[0],
+        "feedback": {"pitch": 1.0},
+        "hybrid_recovery": {"switch_step": 24},
+    }
+    params = _stable_bridge_refinement_params(base)
+
+    assert len(params) == 168
+    assert params[0]["feedback"] == {"pitch": 1.0}
+    assert params[0]["hybrid_recovery"] == {"switch_step": 24}
+    assert params[-1]["scale"] == base["scale"] * 2.5
+    assert params[-1]["hip_bias"] == base["hip_bias"] + 0.35
+    assert "feedback" not in params[-1]
+    assert "hybrid_recovery" not in params[-1]
 
 
 def test_hiwonder_stabilized_gait_search_includes_hold_strategies() -> None:

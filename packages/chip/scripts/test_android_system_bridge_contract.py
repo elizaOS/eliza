@@ -17,6 +17,12 @@ if str(ROOT / "scripts") not in sys.path:
 import check_android_system_bridge_contract as gate  # noqa: E402
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -151,6 +157,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             with PatchStack(patches):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("system_bridge_native_methods_stubbed", codes)
         self.assertIn("system_bridge_service_class_missing_or_unbound", codes)
@@ -164,6 +171,27 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("chip_local_manifest_does_not_project_system_ui", codes)
         self.assertIn("chip_local_manifest_missing_system_bridge_service", codes)
         self.assertIn("system_bridge_runtime_evidence_missing", codes)
+        self.assertEqual(
+            report["summary"]["blocker_dependency_counts"],
+            report["blocker_dependency_counts"],
+        )
+        self.assertGreaterEqual(report["blocker_dependency_counts"]["live_device_validation"], 1)
+        command_ids = {item["id"] for item in report["next_command_plan"]}
+        self.assertIn("capture_android_system_bridge_runtime_evidence", command_ids)
+        self.assertIn("rebuild_android_product_after_bridge_packaging_fix", command_ids)
+        self.assertEqual(
+            report["summary"]["next_command_batch_count"],
+            len(report["next_command_plan"]),
+        )
+        runtime_batch = next(
+            item
+            for item in report["next_command_plan"]
+            if item["id"] == "capture_android_system_bridge_runtime_evidence"
+        )
+        self.assertIn(
+            "capture_system_bridge_runtime_evidence.py",
+            " ".join(runtime_batch["commands"]),
+        )
 
     def test_implemented_packaged_bridge_contract_passes_static_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -263,7 +291,10 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
-        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertEqual(report["next_command_plan"], [])
+        self.assertEqual(report["blocker_dependency_counts"], {})
+        self.assertEqual(report["summary"]["next_command_batch_count"], 0)
+        assert_false_claim_flags(self, report)
 
     def test_runtime_evidence_must_be_pass_result_zero_and_schema_bound(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -349,6 +380,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                 )
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")
+        assert_false_claim_flags(self, report)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("system_bridge_runtime_schema_mismatch", codes)
         self.assertIn("system_bridge_runtime_claim_boundary_mismatch", codes)

@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_ESIM.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "91802c3f4d88bb9d4af48dec48d02a558fd70ab7d3ce2fa99f7e003960d14a0a",
+  "local_discrete_step_sha256": "f674837dbc50b1a96d27808dc23625505be9acfb2c9d79484405818752f22ea0",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

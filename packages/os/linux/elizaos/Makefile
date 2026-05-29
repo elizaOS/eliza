@@ -73,6 +73,20 @@ help:
 build:
 	ELIZAOS_ARCH="$(or $(ARCH),amd64)" ELIZAOS_PROFILE="$(or $(PROFILE),default)" ./build.sh
 
+stage-agent-artifacts: check-arch
+ifeq ($(ARCH),riscv64)
+ifeq ($(RISCV64_RUNTIME),node)
+	scripts/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --skip-build
+else
+	scripts/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" --riscv64-bun-zip "$(BUN_RISCV64_ZIP)" --riscv64-musl-runtime "$(RISCV64_MUSL_RUNTIME)" $(if $(RISCV64_ICU_DATA),--riscv64-icu-data "$(RISCV64_ICU_DATA)",)
+endif
+else
+	scripts/stage-agent-artifacts.sh --arch "$(ARCH)" --out "$(AGENT_ARTIFACTS)" $(if $(BUN_SOURCE),--bun-source "$(BUN_SOURCE)",)
+endif
+
+riscv64-agent-runtime-smoke:
+	RISCV64_AGENT_RUNTIME_REPORT="$(RISCV64_AGENT_RUNTIME_REPORT)" RISCV64_AGENT_RUNTIME_TRANSCRIPT="$(RISCV64_AGENT_RUNTIME_TRANSCRIPT)" scripts/check-riscv64-agent-runtime-artifact.sh "$(HERE)/artifacts/riscv64"
+
 lint:
 	scripts/static-smoke.sh
 	python3 -m py_compile scripts/check-multiarch-boot-contract.py

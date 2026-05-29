@@ -15,6 +15,7 @@ import re
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -41,6 +42,16 @@ REPORT = ROOT / "build/reports/aosp_product_contract.json"
 
 SCHEMA = "eliza.aosp_product_contract.v1"
 CLAIM_BOUNDARY = "static_aosp_product_contract_only_not_android_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "gms_claim_allowed": False,
+}
 
 ELIZA_FUSED_PRODUCT = "eliza_openagent_ai_soc_phone-trunk_staging-userdebug"
 CHIP_SCAFFOLD_PRODUCT = "eliza_ai_soc-trunk_staging-userdebug"
@@ -403,8 +414,10 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     blockers = [finding for finding in findings if finding.severity == "blocker"]
     return {
         "schema": SCHEMA,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

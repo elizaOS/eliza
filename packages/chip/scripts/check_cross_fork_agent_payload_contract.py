@@ -17,6 +17,7 @@ import re
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,7 @@ LINUX_TUI_SMOKE_UNIT = (
 LINUX_MANIFEST_CANDIDATES = (
     OS_RV64 / "manifest.json",
     OS_RV64 / "manifest.json.template",
+    OS_RV64 / "chip-boot-manifest.json",
 )
 LINUX_CONTRACT_SCAN_EXCLUDED_DIRS = {
     ".git",
@@ -62,6 +64,17 @@ LINUX_CONTRACT_SCAN_EXCLUDED_DIRS = {
 REPORT = ROOT / "build/reports/cross_fork_agent_payload_contract.json"
 SCHEMA = "eliza.cross_fork_agent_payload_contract.v1"
 CLAIM_BOUNDARY = "static_cross_fork_payload_contract_only_not_runtime_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "runtime_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 
 @dataclass(frozen=True)
@@ -192,6 +205,10 @@ def manifest_evidence_ids(data: dict[str, Any]) -> set[str]:
     if isinstance(required, list):
         ids.update(item for item in required if isinstance(item, str))
     return ids
+
+
+def now_iso() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def load_linux_manifest_evidence_ids() -> tuple[Path | None, set[str]]:
@@ -496,6 +513,8 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
+        "generated_utc": now_iso(),
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,

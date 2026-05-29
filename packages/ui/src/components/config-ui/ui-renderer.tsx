@@ -1652,9 +1652,7 @@ function ElementRenderer({ elementId }: { elementId: string }) {
             </UiContext.Provider>
           ));
           const repeatKey = el.repeat?.key;
-          const itemKey = String(
-            repeatKey != null ? item[repeatKey] : index,
-          );
+          const itemKey = String(repeatKey != null ? item[repeatKey] : index);
           return (
             <React.Fragment key={itemKey}>
               {component(resolvedProps, childNodes, itemCtx, el)}

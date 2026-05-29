@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/TP_DISP_AVDD_5V5.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "a5fce1f4de0ad8858cb1ea1431128f826681aff859b5c79a29f78e669ae48e46",
+  "local_discrete_step_sha256": "94f30cf84a7cc5c0657bae0fda73e212a67abbc45daa98fbe6641aa3a395e6b7",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

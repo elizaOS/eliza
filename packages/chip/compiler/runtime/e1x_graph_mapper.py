@@ -13,7 +13,7 @@ shapes, the quantization of each weight/activation, and the parameter count),
 the mapper produces a deterministic placement:
 
   * weight sharding for every weight matrix, tiling output rows across cores by
-    the usable per-core SRAM budget (45 KiB = 48 KiB local SRAM minus 3 KiB
+    the usable per-core SRAM budget (44 KiB = 48 KiB local SRAM minus 4 KiB
     reserved runtime),
   * a contiguous rectangle of logical mesh coordinates per layer (row-major
     over the logical core grid), so each layer owns a known core span,
@@ -87,9 +87,10 @@ from compiler.runtime.e1x_wafer_model import (
 MANIFEST_SCHEMA = "eliza.e1x.quantized_model_manifest.v1"
 PLACEMENT_SCHEMA = "eliza.e1x.graph_mesh_placement.v1"
 
-# 3 KiB/core reserved for runtime (stack, route tables, activation double
+# 4 KiB/core reserved for runtime (stack, route tables, activation double
 # buffer headroom); the rest of the 48 KiB local SRAM holds resident weights.
-RESERVED_RUNTIME_KIB_PER_CORE = 3
+# Keep this aligned with e1x_wafer_model.model_load_plan().
+RESERVED_RUNTIME_KIB_PER_CORE = 4
 
 LAYER_KINDS = (
     "embedding",

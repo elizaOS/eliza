@@ -180,8 +180,8 @@ def check_scaffold(errors: list[str]) -> None:
         errors,
     )
     require(
-        manifest.get("status") == "selected_not_generated",
-        "Rocket manifest must not claim generated artifacts yet",
+        manifest.get("status") in {"selected_not_generated", "linux_complete"},
+        "Rocket manifest status must be selected_not_generated or linux_complete",
         errors,
     )
     require(
@@ -220,8 +220,14 @@ def check_scaffold(errors: list[str]) -> None:
         errors,
     )
     require(
-        claim_policy.get("linux_capable_cpu_claim") is False,
-        "manifest must not claim Linux boot without evidence",
+        claim_policy.get("linux_capable_cpu_claim")
+        is (manifest.get("status") == "linux_complete"),
+        "manifest Linux boot claim must match selected manifest evidence state",
+        errors,
+    )
+    require(
+        claim_policy.get("platform_contract_has_cpu_may_flip_to_true") is False,
+        "platform e1_chip.has_cpu flip must remain blocked for generated AP evidence",
         errors,
     )
     require(

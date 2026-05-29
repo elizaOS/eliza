@@ -5,10 +5,33 @@ from __future__ import annotations
 
 import unittest
 
+import check_prototype_status_dashboard as dashboard
 from check_prototype_status_dashboard import conservative_snapshot_allowed
 
 
+def assert_false_claim_flags(testcase: unittest.TestCase, report: dict[str, object]) -> None:
+    testcase.assertEqual(report["claim_boundary"], dashboard.CLAIM_BOUNDARY)
+    for key, expected in dashboard.FALSE_CLAIM_FLAGS.items():
+        testcase.assertIs(report.get(key), expected, key)
+
+
 class PrototypeStatusDashboardTest(unittest.TestCase):
+    def test_report_payload_denies_boot_runtime_and_release_claims(self) -> None:
+        report = dashboard.report_payload(
+            "fail",
+            [
+                dashboard.blocker(
+                    "missing",
+                    "missing dashboard row",
+                    "docs/project/prototype-status-dashboard.md",
+                    "restore the dashboard",
+                )
+            ],
+        )
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(report["summary"]["findings"], 1)
+        assert_false_claim_flags(self, report)
+
     def test_allows_conservative_generated_artifact_rows(self) -> None:
         status = {
             "status": "pass",

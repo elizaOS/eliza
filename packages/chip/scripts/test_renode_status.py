@@ -8,6 +8,7 @@ import stat
 import subprocess
 import tempfile
 from pathlib import Path
+import json
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN_RENODE = ROOT / "scripts/run_renode.sh"
@@ -69,6 +70,18 @@ def assert_contains(text: str, expected: str) -> None:
         raise AssertionError(f"missing {expected!r} in output:\n{text}")
 
 
+def assert_false_claim_flags(report: dict) -> None:
+    for key in (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "hardware_boot_claim_allowed",
+        "silicon_evidence_claim_allowed",
+        "linux_boot_claim_allowed",
+    ):
+        if report.get(key) is not False:
+            raise AssertionError(f"{key} must be false in Renode status report: {report}")
+
+
 def test_missing_renode_is_non_strict_blocked() -> None:
     result = run_check(
         {"PATH": "/usr/bin:/bin", "REQUIRE_RENODE": "0", "ELIZA_RENODE_USE_REPO_TOOLS": "0"}
@@ -85,6 +98,7 @@ def test_missing_renode_is_non_strict_blocked() -> None:
     assert_contains(result.stdout, "version unavailable because renode --version could not run")
     assert_contains(result.stdout, "scripts/run_qemu.sh --build-firmware")
     assert_contains(result.stdout, "make renode-check")
+    assert_false_claim_flags(json.loads((ROOT / "build/renode/eliza_e1_status.json").read_text()))
 
 
 def test_missing_renode_is_strict_blocked() -> None:
@@ -191,6 +205,7 @@ def test_renode_with_firmware_and_banner_passes() -> None:
         )
     assert_contains(result.stdout, "STATUS: PASS renode.transcript")
     assert_contains(result.stdout, "STATUS: PASS renode.check")
+    assert_false_claim_flags(json.loads((ROOT / "build/renode/eliza_e1_status.json").read_text()))
     assert_contains(RENODE_ATTEMPT_LOG.read_text(errors="ignore"), BANNER)
     manifest = RENODE_JSON.read_text(errors="ignore")
     assert_contains(manifest, '"exit_code": 0')

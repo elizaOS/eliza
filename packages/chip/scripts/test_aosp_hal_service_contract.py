@@ -23,6 +23,11 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+def assert_no_runtime_or_release_claims(report: dict) -> None:
+    for flag in gate.FALSE_CLAIM_FLAGS:
+        assert report[flag] is False, f"{flag} must remain false"
+
+
 MANIFEST_WITH_E1 = """<manifest version="1.0" type="device">
   <hal format="hidl">
     <name>vendor.eliza.e1_npu</name>
@@ -178,6 +183,7 @@ class AospHalServiceContractTests(unittest.TestCase):
         self.assertIn("aosp_e1_npu_hidl_interface_not_packaged", codes)
         self.assertIn("aosp_e1_npu_hal_not_fail_closed_to_kernel_node", codes)
         self.assertIn("aosp_cuttlefish_sim_hal_not_separated_from_real_product", codes)
+        assert_no_runtime_or_release_claims(report)
 
     def test_packaged_startable_hal_contract_passes_static_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -282,6 +288,7 @@ class AospHalServiceContractTests(unittest.TestCase):
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
         self.assertTrue(report["evidence"]["inherits_cuttlefish_phone"])
+        assert_no_runtime_or_release_claims(report)
 
     def test_deprecated_hidl_hwcomposer_package_blocks_current_fcm(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -298,6 +305,7 @@ class AospHalServiceContractTests(unittest.TestCase):
 
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("aosp_hwcomposer_deprecated_hidl_service_packaged", codes)
+        assert_no_runtime_or_release_claims(report)
 
 
 class PatchStack:

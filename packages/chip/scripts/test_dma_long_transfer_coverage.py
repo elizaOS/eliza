@@ -26,8 +26,10 @@ def valid_payload(gate):
         "covered_contracts": sorted(gate.REQUIRED_CONTRACTS),
         "boundary": (
             "Directed standalone e1_dma long-transfer coverage only; "
-            "no coherent DMA or production memory hierarchy coverage."
+            "no SoC fabric, no coherent DMA, no IOMMU, no cache, no Linux "
+            "dmaengine driver, no throughput, or production memory hierarchy coverage."
         ),
+        **{flag: False for flag in gate.FALSE_CLAIM_FLAGS},
     }
 
 
@@ -55,3 +57,15 @@ def test_cli_rejects_missing_boundary(tmp_path):
     coverage.write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
     assert gate.main(["--coverage", str(coverage)]) == 1
+
+
+def test_rejects_missing_or_true_false_claim_flag():
+    gate = load_gate()
+    payload = valid_payload(gate)
+    payload.pop("soc_fabric_claim_allowed")
+    payload["release_claim_allowed"] = True
+
+    errors = gate.validate_coverage(payload)
+
+    assert any("soc_fabric_claim_allowed" in error for error in errors)
+    assert any("release_claim_allowed" in error for error in errors)

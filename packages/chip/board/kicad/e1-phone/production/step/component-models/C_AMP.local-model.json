@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/C_AMP.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "b4178096af9556ab1bbdcbfea4b8cd8d8accdcff1a0887d1ef16e0b2ea7cf9eb",
+  "local_discrete_step_sha256": "6c038db958daae6da8d3a470f9b2207da98110f43ce132759fa23c3c16c2c340",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

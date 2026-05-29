@@ -15,6 +15,7 @@ import re
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,19 @@ REPORT = ROOT / "build/reports/boot_security_chain_contract.json"
 
 SCHEMA = "eliza.boot_security_chain_contract.v1"
 CLAIM_BOUNDARY = "static_boot_security_chain_contract_only_not_boot_or_secure_boot_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "secure_boot_claim_allowed": False,
+    "provisioned_root_claim_allowed": False,
+    "signed_image_handoff_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "silicon_secure_boot_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 PLACEHOLDER_TOKENS = ("placeholder", "pre-silicon specification", "not implemented")
 REQUIRED_BOOTROM_SIM_MARKERS = {
     "reset_vector_fetch",
@@ -57,6 +71,15 @@ REQUIRED_POSITIVE_HANDOFF_MARKERS = {
     "handoff_target_loaded_from_manifest",
     "opensbi_entry_reached",
 }
+BOOTROM_SIM_FALSE_CLAIM_FLAGS = (
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "provisioned_root_claim_allowed",
+    "signed_image_handoff_claim_allowed",
+    "linux_boot_claim_allowed",
+    "android_boot_claim_allowed",
+    "silicon_secure_boot_claim_allowed",
+)
 
 
 @dataclass(frozen=True)
@@ -66,6 +89,8 @@ class Finding:
     message: str
     evidence: str
     next_step: str
+    blocker_dependency: str = "repo_artifact_generation"
+    next_command: str = ""
 
 
 def rel(path: Path) -> str:
@@ -86,9 +111,60 @@ def add_if(
     message: str,
     evidence: str,
     next_step: str,
+    blocker_dependency: str = "repo_artifact_generation",
+    next_command: str = "",
 ) -> None:
     if condition:
-        findings.append(Finding(code, "blocker", message, evidence, next_step))
+        findings.append(
+            Finding(
+                code,
+                "blocker",
+                message,
+                evidence,
+                next_step,
+                blocker_dependency,
+                next_command,
+            )
+        )
+
+
+def finding_dependency_and_command(code: str) -> tuple[str, str]:
+    if code.startswith("bootrom_positive_handoff"):
+        return (
+            "repo_artifact_generation",
+            "scripts/capture_bootrom_positive_handoff.sh preflight && "
+            "scripts/capture_bootrom_positive_handoff.sh run && "
+            "python3 scripts/check_boot_security_chain_contract.py",
+        )
+    if code.startswith("bootrom_sim_transcript"):
+        return (
+            "repo_artifact_generation",
+            "python3 scripts/check_bootrom_sim_transcript.py && "
+            "python3 scripts/check_boot_security_chain_contract.py",
+        )
+    if code.startswith("bootrom_") or code.startswith("reset_rom_") or code.startswith("rtl_"):
+        return (
+            "repo_artifact_generation",
+            "python3 fw/boot-rom/check_boot_rom.py && "
+            "python3 scripts/check_bootrom_sim_transcript.py && "
+            "python3 scripts/check_boot_security_chain_contract.py",
+        )
+    if code.startswith("platform_contract"):
+        return (
+            "repo_artifact_generation",
+            "python3 scripts/check_platform_contract.py && "
+            "python3 scripts/check_boot_security_chain_contract.py",
+        )
+    if code.startswith("pmc_secure_boot") or code.startswith("security_boot_docs"):
+        return (
+            "actionable_external_dependency",
+            "collect key ceremony, provisioning, verifier implementation, and negative-test evidence; "
+            "then rerun python3 scripts/check_boot_security_chain_contract.py",
+        )
+    return (
+        "repo_artifact_generation",
+        "python3 scripts/check_boot_security_chain_contract.py",
+    )
 
 
 def load_contract(findings: list[Finding]) -> dict[str, Any]:
@@ -355,6 +431,16 @@ def check_bootrom_workflow(findings: list[Finding]) -> None:
         "Regenerate the transcript and preserve reset-vector, mtvec, verifier-call, verifier-entrypoint, and fail-closed trap checks.",
     )
 
+    leaking_flags = [flag for flag in BOOTROM_SIM_FALSE_CLAIM_FLAGS if report.get(flag) is not False]
+    add_if(
+        findings,
+        bool(leaking_flags),
+        "bootrom_sim_transcript_report_allows_release_claims",
+        "boot ROM simulator transcript report does not explicitly deny release, phone, handoff, boot, or silicon claims",
+        f"leaking_flags={leaking_flags} path={rel(BOOTROM_SIM_REPORT)}",
+        "Regenerate the report with scripts/check_bootrom_sim_transcript.py so fail-closed simulator evidence cannot be promoted to handoff, OS boot, release, or silicon claims.",
+    )
+
 
 def check_positive_handoff(findings: list[Finding]) -> None:
     """Require the distinct positive authenticated handoff transcript.
@@ -521,12 +607,64 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str, Any]:
+    normalized_findings: list[Finding] = []
+    for finding in findings:
+        if finding.next_command:
+            normalized_findings.append(finding)
+            continue
+        dependency, command = finding_dependency_and_command(finding.code)
+        normalized_findings.append(
+            Finding(
+                finding.code,
+                finding.severity,
+                finding.message,
+                finding.evidence,
+                finding.next_step,
+                dependency,
+                command,
+            )
+        )
+    findings = normalized_findings
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    dependency_counts = {
+        "repo_artifact_generation": sum(
+            1 for finding in blockers if finding.blocker_dependency == "repo_artifact_generation"
+        ),
+        "live_device_validation": sum(
+            1 for finding in blockers if finding.blocker_dependency == "live_device_validation"
+        ),
+        "actionable_external_dependency": sum(
+            1
+            for finding in blockers
+            if finding.blocker_dependency == "actionable_external_dependency"
+        ),
+    }
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        **FALSE_CLAIM_FLAGS,
+        "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": dependency_counts,
+            "next_command_count": len(
+                {finding.next_command for finding in blockers if finding.next_command}
+            ),
+        },
+        "blocker_dependency_counts": dependency_counts,
+        "next_command_plan": [
+            {
+                "code": finding.code,
+                "blocker_dependency": finding.blocker_dependency,
+                "command": finding.next_command,
+                "next_step": finding.next_step,
+                "claim_boundary": "operator_or_repo_commands_only_not_boot_security_evidence",
+            }
+            for finding in blockers
+            if finding.next_command
+        ],
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,
     }

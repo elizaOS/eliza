@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,20 @@ from chip_utils import load_json_object, load_yaml_object, require
 ROOT = Path(__file__).resolve().parents[1]
 
 OUT = ROOT / "build/reports/npu_scope.json"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "cts_vts_claim_allowed": False,
+    "nnapi_accelerator_claim_allowed": False,
+    "dma_transcript_claim_allowed": False,
+    "measured_tops_latency_claim_allowed": False,
+    "sustained_power_thermal_claim_allowed": False,
+    "mlperf_mobile_claim_allowed": False,
+    "phone_2028_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 NPU_TARGET = ROOT / "docs/spec-db/npu-2028-target.yaml"
 NPU_ROADMAP = ROOT / "docs/spec-db/npu-2028-roadmap.yaml"
 BENCHMARK_PLAN = ROOT / "benchmarks/configs/benchmark_plan.json"
@@ -87,6 +102,10 @@ REQUIRED_POWER_THERMAL_ARTIFACTS = {
     "frequency_trace",
     "calibration_record",
 }
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def rel(path: Path) -> str:
@@ -385,12 +404,14 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.npu_scope.v1",
         "status": "npu_scope_release_blocked",
+        "generated_utc": utc_now(),
         "claim_boundary": (
             "NPU scope audit only; not Android boot evidence, not CTS/VTS evidence, "
             "not NNAPI accelerator proof, not DMA transcript evidence, not measured "
             "TOPS/latency evidence, not sustained power/thermal evidence, not MLPerf "
             "Mobile evidence, and not a 2028 phone-class NPU claim."
         ),
+        **FALSE_CLAIM_FLAGS,
         "current_scaffolds": {
             "npu_target": rel(NPU_TARGET),
             "npu_roadmap": rel(NPU_ROADMAP),
@@ -445,6 +466,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not a 2028 phone-class NPU claim",
     ):
         require(token in boundary, f"claim boundary missing {token}", errors)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        require(data.get(key) is expected, f"{key} must stay false", errors)
     summary = data.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

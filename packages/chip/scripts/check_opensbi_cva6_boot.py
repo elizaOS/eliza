@@ -52,6 +52,19 @@ TRANSCRIPT = ROOT / "docs/evidence/cpu_ap/opensbi_cva6_boot.transcript"
 REPORT = ROOT / "build/reports/opensbi_cva6_boot.json"
 GATE = "opensbi_cva6_boot"
 SUBSYSTEM = "cpu_ap"
+CLAIM_BOUNDARY = (
+    "opensbi_cva6_m_mode_banner_evidence_only_not_smode_linux_android_"
+    "phone_release_or_silicon_boot_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "smode_handoff_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "userland_boot_claim_allowed": False,
+}
 
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
 
@@ -77,6 +90,8 @@ def _write(
         "evidence_paths": evidence,
         "as_of": _now(),
         "subsystem": SUBSYSTEM,
+        "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
     if extra:
         payload["detail"] = extra

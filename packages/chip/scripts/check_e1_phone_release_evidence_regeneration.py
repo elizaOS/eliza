@@ -406,6 +406,13 @@ def main() -> int:
                 str(production_presence),
                 "--mechanical-cad",
                 str(mechanical_cad),
+                "--public-cad-source-intake",
+                str(ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"),
+                "--public-bom-market-cost-bands",
+                str(
+                    ROOT
+                    / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml"
+                ),
                 "--report",
                 str(content_contract),
                 "--write-report",
@@ -518,6 +525,9 @@ def main() -> int:
                 ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/production/test/"
                 "bench-first-article-template-manifest-2026-05-22.yaml",
+                ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml",
+                ROOT
+                / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml",
             )
             content_contract_sources = (
                 committed_supplier_yaml,
@@ -530,6 +540,9 @@ def main() -> int:
                 / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
                 ROOT
                 / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
+                ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml",
+                ROOT
+                / "mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml",
             )
             release_gate_sources = (
                 committed_content_contract,

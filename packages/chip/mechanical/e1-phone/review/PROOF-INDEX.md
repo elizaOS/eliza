@@ -80,8 +80,12 @@ Closure gates (`routed_pcb_ready`, `fabrication_ready`, `enclosure_ready`) remai
 |---|---|
 | Costed BOM (machine) | `review/bom-unit-cost.yaml` |
 | Costed BOM (human) | `review/bom-unit-cost.md` |
+| Public market BOM cost bands (RFQ seed, not AVL) | `review/bom-public-market-cost-bands-2026-05-28.yaml` |
+| Public CAD/STEP source intake (not supplier-approved) | `board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml` |
 
 Ex-factory unit cost (PATH A — SoM, buildable from public data): **$123.90 @ 10k / $93.03 @ 100k** (EXW Shenzhen). PATH B (bare SoC, NDA cost-down): $116.80 @ 10k / $88.48 @ 100k. Chinese off-the-shelf parts; source URLs in the costed BOM.
+
+Public-market category bands for researched off-the-shelf parts only are **$148-180 @100**, **$122-149 @1k**, **$94-121 @10k**, **$70-96 @100k**, and **$56-79 @1M**. These bands exclude compute/AP or SoM, PCB fab/SMT, enclosure/tooling, calibration, RF certification, fixtures, packaging, logistics, tariffs, and warranty reserve. They are public sourcing evidence only, not signed quotes or release BOM proof.
 
 ## 5. Mass / size / tolerance / spec
 

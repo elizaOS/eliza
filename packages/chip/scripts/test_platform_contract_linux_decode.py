@@ -4,6 +4,12 @@ from unittest import mock
 import check_platform_contract as gate
 
 
+def assert_false_claim_flags(report: dict[str, object]) -> None:
+    assert report["claim_boundary"] == gate.CLAIM_BOUNDARY
+    for key, expected in gate.FALSE_CLAIM_FLAGS.items():
+        assert report.get(key) is expected, key
+
+
 CONTRACT = {
     "e1_chip_cpu_variant": {
         "dram": {"base": "0x80000000"},
@@ -68,3 +74,13 @@ def test_linux_contract_decode_rejects_stale_npu_base(tmp_path):
         gate.check_cpu_variant_linux_contract_decode(CONTRACT, errors)
 
     assert any("NPU_BASE" in error and "0x10020000" in error for error in errors)
+
+
+def test_report_payload_denies_boot_and_release_claims():
+    report = gate.report_payload([])
+    assert report["status"] == "pass"
+    assert_false_claim_flags(report)
+
+    fail_report = gate.report_payload(["linux decode mismatch"])
+    assert fail_report["status"] == "fail"
+    assert_false_claim_flags(fail_report)

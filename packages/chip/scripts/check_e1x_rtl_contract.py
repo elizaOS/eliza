@@ -20,10 +20,12 @@ RTL_FILES = [
     ROOT / "rtl/e1x/e1x_mesh_router.sv",
     ROOT / "rtl/e1x/e1x_credit_router.sv",
     ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv",
+    ROOT / "rtl/e1x/e1x_reduction_merge.sv",
     ROOT / "rtl/e1x/e1x_sram_ecc.sv",
     ROOT / "rtl/e1x/e1x_mbist.sv",
     ROOT / "rtl/e1x/e1x_repair_aware_router.sv",
     ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv",
+    ROOT / "rtl/e1x/e1x_repair_fuse_reader.sv",
     ROOT / "rtl/e1x/e1x_repair_rom_loader.sv",
     ROOT / "rtl/e1x/e1x_repair_state.sv",
     ROOT / "rtl/e1x/e1x_repair_route_table.sv",
@@ -33,6 +35,8 @@ RTL_FILES = [
     ROOT / "rtl/e1x/e1x_tiny_core_contract.sv",
     ROOT / "rtl/e1x/e1x_pe_core.sv",
     ROOT / "rtl/e1x/e1x_tile.sv",
+    ROOT / "rtl/e1x/e1x_pe_tile.sv",
+    ROOT / "rtl/e1x/e1x_mesh_fabric.sv",
 ]
 EVIDENCE_PATHS = [str(path.relative_to(ROOT)) for path in RTL_FILES] + [
     "compiler/runtime/e1x_wafer_model.py",
@@ -45,6 +49,11 @@ def read_param(text: str, name: str) -> int:
     if not match:
         raise ValueError(f"missing parameter {name}")
     return int(match.group(1))
+
+
+def strip_sv_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return re.sub(r"//.*", "", text)
 
 
 def structural_checks() -> list[dict[str, str]]:
@@ -189,6 +198,32 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_local_sram_terms),
         }
     )
+    reduction_merge = (ROOT / "rtl/e1x/e1x_reduction_merge.sv").read_text(encoding="utf-8")
+    reduction_merge_terms = (
+        "module e1x_reduction_merge",
+        "cfg_expected_count_i",
+        "in_group_i",
+        "mismatch_count_o",
+        "sign_extend_payload",
+        "saturate_i32",
+        "out_overflow_o",
+        "received_count_o",
+    )
+    missing_reduction_merge_terms = [
+        term for term in reduction_merge_terms if term not in reduction_merge
+    ]
+    checks.append(
+        {
+            "id": "e1x_reduction_merge_supports_bounded_tensor_partials",
+            "status": "pass" if not missing_reduction_merge_terms else "fail",
+            "detail": (
+                "reduction-merge RTL exposes configured group counts, signed partial "
+                "accumulation, mismatch accounting, saturation, and backpressured output"
+            )
+            if not missing_reduction_merge_terms
+            else "missing terms: " + ", ".join(missing_reduction_merge_terms),
+        }
+    )
     pe_core = (ROOT / "rtl/e1x/e1x_pe_core.sv").read_text(encoding="utf-8")
     pe_core_terms = (
         "module e1x_pe_core",
@@ -220,6 +255,55 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_pe_core_terms),
         }
     )
+
+    pe_tile = strip_sv_comments((ROOT / "rtl/e1x/e1x_pe_tile.sv").read_text(encoding="utf-8"))
+    pe_tile_instances = ("e1x_mesh_router", "e1x_pe_core")
+    missing_pe_tile = [name for name in pe_tile_instances if name not in pe_tile]
+    if "e1x_tiny_core_contract" in pe_tile:
+        missing_pe_tile.append("must NOT bind e1x_tiny_core_contract")
+    for term in ("core_boot_en_i", "core_boot_pc_i"):
+        if term not in pe_tile:
+            missing_pe_tile.append(term)
+    checks.append(
+        {
+            "id": "e1x_pe_tile_integrates_real_pe_core",
+            "status": "pass" if not missing_pe_tile else "fail",
+            "detail": (
+                "production PE tile binds the real e1x_pe_core (with boot stream) and the "
+                "mesh router, not the tiny-core contract"
+            )
+            if not missing_pe_tile
+            else "issues: " + ", ".join(missing_pe_tile),
+        }
+    )
+
+    mesh_fabric = (ROOT / "rtl/e1x/e1x_mesh_fabric.sv").read_text(encoding="utf-8")
+    mesh_fabric_terms = (
+        "module e1x_mesh_fabric",
+        "e1x_credit_router",
+        "e1x_pe_core",
+        "ROWS",
+        "COLS",
+        "out_credit_i",
+        "rout_credit",
+        "inject_valid_i",
+        "eject_valid_o",
+        "prog_we_i",
+    )
+    missing_mesh_fabric = [term for term in mesh_fabric_terms if term not in mesh_fabric]
+    checks.append(
+        {
+            "id": "e1x_mesh_fabric_wires_credit_router_across_tiles",
+            "status": "pass" if not missing_mesh_fabric else "fail",
+            "detail": (
+                "parameterized RxC mesh fabric instantiates the production credit router across "
+                "PE-core tiles with credit-returned inter-tile links and route-table programming"
+            )
+            if not missing_mesh_fabric
+            else "missing terms: " + ", ".join(missing_mesh_fabric),
+        }
+    )
+
     sram_ecc = (ROOT / "rtl/e1x/e1x_sram_ecc.sv").read_text(encoding="utf-8")
     sram_ecc_terms = (
         "SECDED",
@@ -446,6 +530,31 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_repair_mmio_routed_tile_terms),
         }
     )
+    repair_fuse_reader = (ROOT / "rtl/e1x/e1x_repair_fuse_reader.sv").read_text(
+        encoding="utf-8"
+    )
+    repair_fuse_reader_terms = (
+        "e1x_repair_fuse_reader",
+        "otp_read_valid_o",
+        "otp_read_addr_o",
+        "otp_read_data_valid_i",
+        "repair_word_valid_o",
+        "repair_word_ready_i",
+        "MAX_WORDS",
+        "TIMEOUT_CYCLES",
+    )
+    missing_repair_fuse_reader_terms = [
+        term for term in repair_fuse_reader_terms if term not in repair_fuse_reader
+    ]
+    checks.append(
+        {
+            "id": "e1x_repair_fuse_reader_bridges_otp_to_repair_loader",
+            "status": "pass" if not missing_repair_fuse_reader_terms else "fail",
+            "detail": "repair fuse-reader bridges persistent OTP/fuse reads to the repair-loader word stream"
+            if not missing_repair_fuse_reader_terms
+            else "missing terms: " + ", ".join(missing_repair_fuse_reader_terms),
+        }
+    )
     return checks
 
 
@@ -494,6 +603,7 @@ def verilator_check() -> dict[str, str]:
         str(ROOT / "rtl/e1x/e1x_mbist.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_aware_router.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_fuse_reader.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_rom_loader.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_state.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_route_table.sv"),
@@ -515,8 +625,107 @@ def verilator_check() -> dict[str, str]:
     }
 
 
+def verilator_mesh_fabric_check() -> dict[str, str]:
+    verilator = shutil.which("verilator") or str(ROOT / "external/oss-cad-suite/bin/verilator")
+    if not Path(verilator).is_file():
+        return {
+            "id": "e1x_mesh_fabric_verilator_lint",
+            "status": "blocked",
+            "detail": "verilator unavailable; structural mesh-fabric contract checks still ran",
+        }
+    cmd = [
+        verilator,
+        "--lint-only",
+        "-Wall",
+        "-Wno-DECLFILENAME",
+        "-Wno-UNUSEDPARAM",
+        "-Wno-UNUSEDSIGNAL",
+        "-Wno-UNOPTFLAT",
+        "-Wno-PINCONNECTEMPTY",
+        "-I" + str(ROOT),
+        str(ROOT / "rtl/e1x/e1x_credit_router.sv"),
+        str(ROOT / "rtl/e1x/e1x_pe_core.sv"),
+        str(ROOT / "rtl/e1x/e1x_mesh_fabric.sv"),
+        "--top-module",
+        "e1x_mesh_fabric",
+    ]
+    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=False)
+    detail = (proc.stderr.strip() or proc.stdout.strip() or "lint clean")[-1000:]
+    return {
+        "id": "e1x_mesh_fabric_verilator_lint",
+        "status": "pass" if proc.returncode == 0 else "fail",
+        "detail": detail,
+    }
+
+
+def verilator_reduction_merge_check() -> dict[str, str]:
+    verilator = shutil.which("verilator") or str(ROOT / "external/oss-cad-suite/bin/verilator")
+    if not Path(verilator).is_file():
+        return {
+            "id": "e1x_reduction_merge_verilator_lint",
+            "status": "blocked",
+            "detail": "verilator unavailable; structural reduction-merge contract checks still ran",
+        }
+    cmd = [
+        verilator,
+        "--lint-only",
+        "-Wall",
+        "-Wno-DECLFILENAME",
+        "-Wno-UNUSEDPARAM",
+        "-Wno-UNUSEDSIGNAL",
+        "-I" + str(ROOT),
+        str(ROOT / "rtl/e1x/e1x_reduction_merge.sv"),
+        "--top-module",
+        "e1x_reduction_merge",
+    ]
+    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=False)
+    detail = (proc.stderr.strip() or proc.stdout.strip() or "lint clean")[-1000:]
+    return {
+        "id": "e1x_reduction_merge_verilator_lint",
+        "status": "pass" if proc.returncode == 0 else "fail",
+        "detail": detail,
+    }
+
+
+def verilator_pe_tile_check() -> dict[str, str]:
+    verilator = shutil.which("verilator") or str(ROOT / "external/oss-cad-suite/bin/verilator")
+    if not Path(verilator).is_file():
+        return {
+            "id": "e1x_pe_tile_verilator_lint",
+            "status": "blocked",
+            "detail": "verilator unavailable; structural PE-tile contract checks still ran",
+        }
+    cmd = [
+        verilator,
+        "--lint-only",
+        "-Wall",
+        "-Wno-DECLFILENAME",
+        "-Wno-UNUSEDPARAM",
+        "-Wno-UNUSEDSIGNAL",
+        "-Wno-UNOPTFLAT",
+        "-I" + str(ROOT),
+        str(ROOT / "rtl/e1x/e1x_mesh_router.sv"),
+        str(ROOT / "rtl/e1x/e1x_pe_core.sv"),
+        str(ROOT / "rtl/e1x/e1x_pe_tile.sv"),
+        "--top-module",
+        "e1x_pe_tile",
+    ]
+    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=False)
+    detail = (proc.stderr.strip() or proc.stdout.strip() or "lint clean")[-1000:]
+    return {
+        "id": "e1x_pe_tile_verilator_lint",
+        "status": "pass" if proc.returncode == 0 else "fail",
+        "detail": detail,
+    }
+
+
 def main() -> int:
-    checks = structural_checks() + model_checks() + [verilator_check()]
+    checks = structural_checks() + model_checks() + [
+        verilator_check(),
+        verilator_pe_tile_check(),
+        verilator_mesh_fabric_check(),
+        verilator_reduction_merge_check(),
+    ]
     failures = [check for check in checks if check["status"] == "fail"]
     report = {
         "schema": "eliza.gate_status.v1",

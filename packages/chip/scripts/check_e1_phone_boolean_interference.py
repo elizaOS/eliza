@@ -1179,7 +1179,10 @@ def main() -> int:
             else "Release-ready boolean evidence requires zero unintentional clashes "
             "against routed board STEP and supplier B-rep models."
         ),
-        "wall_seconds": round(time.time() - t0, 2),
+        "wall_seconds": 0.0,
+        "wall_seconds_note": (
+            "wall-clock runtime omitted from committed evidence for deterministic reruns"
+        ),
     }
     out_json_path = REVIEW_DIR / "full-cad-boolean-interference.json"
     out_json_path.write_text(json.dumps(out_json, indent=2, default=str))

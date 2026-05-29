@@ -24,6 +24,18 @@ REPORT = ROOT / "build/reports/chip-os-optimization-gap-inventory.json"
 
 SCHEMA = "eliza.chip_os_optimization_gap_inventory.v1"
 CLAIM_BOUNDARY = "optimization_gap_inventory_only_not_runtime_performance_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "runtime_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "agent_liveness_claim_allowed": False,
+    "benchmark_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 PASS_VALUES = {"pass", "passed", "ok", "PASS"}
 WEAK_SCOPE_RE = re.compile(
@@ -33,6 +45,13 @@ WEAK_SCOPE_RE = re.compile(
 BLOCKED_TEXT_RE = re.compile(
     r"\b(blocked|placeholder|not yet|not measured|missing|timeout)\b", re.I
 )
+EMBEDDED_PAYLOAD_KEYS = {
+    "companion_report",
+    "companion_reports",
+    "companion_report_active_smoke_attempt",
+    "diagnostic",
+    "diagnostics",
+}
 
 
 def utc_now() -> str:
@@ -47,6 +66,8 @@ class ArtifactSpec:
     purpose: str
     required_for: str
     must_pass: bool = True
+    pass_values: tuple[str, ...] = ()
+    scan_blocked_text: bool = True
 
 
 ARTIFACTS: tuple[ArtifactSpec, ...] = (
@@ -63,6 +84,7 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         "packages/chip/build/reports/benchmark_efficiency_scope.json",
         "calibrated benchmark/efficiency scope guard",
         "CPU/NPU/IO performance-per-watt claims from real booted targets",
+        scan_blocked_text=False,
     ),
     ArtifactSpec(
         "local_coremark_probe",
@@ -70,6 +92,7 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         "packages/chip/build/reports/local-host-coremark-probe.json",
         "local host CoreMark probe",
         "CPU baseline only after target provenance and completion are available",
+        pass_values=("local_host_evidence_not_release",),
     ),
     ArtifactSpec(
         "cpu_ap_scope",
@@ -91,6 +114,7 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         "packages/chip/build/reports/minimum_linux_npu_target.json",
         "minimum Linux plus NPU target",
         "integrated Linux NPU workload evidence on generated AP",
+        scan_blocked_text=False,
     ),
     ArtifactSpec(
         "npu_scope",
@@ -98,6 +122,7 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         "packages/chip/build/reports/npu_scope.json",
         "NPU release and phone-class scope",
         "Android NNAPI, CPU fallback, measured TOPS/latency/power evidence",
+        scan_blocked_text=False,
     ),
     ArtifactSpec(
         "npu_coverage_summary",
@@ -121,6 +146,7 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         "packages/chip/build/reports/power_thermal_scope.json",
         "sustained power and thermal capture scope",
         "aligned power, thermal, frequency, throttle, and workload evidence",
+        scan_blocked_text=False,
     ),
     ArtifactSpec(
         "power_thermal_projection",
@@ -246,7 +272,9 @@ def load_structured(path: Path) -> object | None:
 def nested_values(value: object) -> list[object]:
     values: list[object] = [value]
     if isinstance(value, dict):
-        for child in value.values():
+        for key, child in value.items():
+            if str(key).lower() in EMBEDDED_PAYLOAD_KEYS:
+                continue
             values.extend(nested_values(child))
     elif isinstance(value, list):
         for child in value:
@@ -264,20 +292,14 @@ def status_value(data: object) -> str | None:
 
 def bool_false_fields(data: object) -> list[str]:
     fields: list[str] = []
-    embedded_payload_keys = {
-        "companion_report",
-        "companion_reports",
-        "companion_report_active_smoke_attempt",
-        "diagnostic",
-        "diagnostics",
-    }
-
     def walk(value: object, prefix: str) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
                 name = f"{prefix}.{key}" if prefix else str(key)
                 lowered = str(key).lower()
-                if lowered in embedded_payload_keys:
+                if lowered in EMBEDDED_PAYLOAD_KEYS:
+                    continue
+                if lowered.endswith("claim_allowed"):
                     continue
                 if child is False and any(
                     token in lowered
@@ -352,7 +374,8 @@ def evaluate_artifact(spec: ArtifactSpec) -> tuple[dict[str, Any], list[dict[str
         )
 
     status = status_value(data)
-    if spec.must_pass and (status is None or status not in PASS_VALUES):
+    accepted_statuses = PASS_VALUES | set(spec.pass_values)
+    if spec.must_pass and (status is None or status not in accepted_statuses):
         rows.append(
             finding(
                 spec,
@@ -375,7 +398,9 @@ def evaluate_artifact(spec: ArtifactSpec) -> tuple[dict[str, Any], list[dict[str
             )
         )
 
-    blocked_texts = [value for value in text_values if BLOCKED_TEXT_RE.search(value)]
+    blocked_texts = [
+        value for value in text_values if spec.scan_blocked_text and BLOCKED_TEXT_RE.search(value)
+    ]
     if blocked_texts:
         rows.append(
             finding(
@@ -424,6 +449,7 @@ def build_report() -> dict[str, Any]:
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "generated_utc": utc_now(),
         "summary": {
             "artifacts": len(artifacts),

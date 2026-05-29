@@ -22,7 +22,6 @@ function tokenMatches(expected: string, provided: string): boolean {
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
-import os from "node:os";
 import path from "node:path";
 import {
   type AgentRuntime,
@@ -1090,7 +1089,6 @@ import {
   getProviderOptions,
   isBlockedObjectKey as isBlockedObjectKeyFromConfig,
   isRedactedSecretValue,
-  isSafeResetStateDir,
   readUiLanguageHeader,
   redactConfigSecrets,
   redactDeep,

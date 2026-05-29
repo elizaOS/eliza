@@ -33,6 +33,12 @@ COMPONENT_MODEL_DIR_MANIFEST = (
 CANDIDATE_MANIFEST = (
     CHIP_ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
 )
+PUBLIC_CAD_SOURCE_INTAKE = (
+    CHIP_ROOT / "board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml"
+)
+PUBLIC_BOM_MARKET_COST_BANDS = (
+    REVIEW_DIR / "bom-public-market-cost-bands-2026-05-28.yaml"
+)
 
 REPORT_DATE = "2026-05-22"
 SCRIPT_NAME = "e1_phone_mechanical_cad_evidence_inventory.py"
@@ -446,6 +452,61 @@ def supplier_step_surrogate_intake_detail(
     }
 
 
+def public_sourcing_intake_summary() -> dict[str, Any]:
+    public_cad = read_yaml(PUBLIC_CAD_SOURCE_INTAKE)
+    public_bom = read_yaml(PUBLIC_BOM_MARKET_COST_BANDS)
+    if not isinstance(public_cad, dict):
+        public_cad = {}
+    if not isinstance(public_bom, dict):
+        public_bom = {}
+    public_cad_records = public_cad.get("records", [])
+    public_bom_records = public_bom.get("records", [])
+    if not isinstance(public_cad_records, list):
+        public_cad_records = []
+    if not isinstance(public_bom_records, list):
+        public_bom_records = []
+    public_cad_summary = public_cad.get("summary", {})
+    public_bom_summary = public_bom.get("summary", {})
+    if not isinstance(public_cad_summary, dict):
+        public_cad_summary = {}
+    if not isinstance(public_bom_summary, dict):
+        public_bom_summary = {}
+    return {
+        "ready": True,
+        "scope": "public_cad_and_market_cost_intake_not_release_evidence",
+        "public_cad_source_intake": repo_rel(PUBLIC_CAD_SOURCE_INTAKE),
+        "public_market_bom_cost_bands": repo_rel(PUBLIC_BOM_MARKET_COST_BANDS),
+        "public_cad_source_record_count": len(public_cad_records),
+        "public_cad_source_step_or_3d_observed_count": int(
+            public_cad_summary.get("public_step_or_3d_observed_count") or 0
+        ),
+        "public_cad_source_footprint_or_eda_observed_count": int(
+            public_cad_summary.get("public_footprint_or_eda_observed_count") or 0
+        ),
+        "public_cad_source_local_downloaded_hashed_count": int(
+            public_cad_summary.get("local_downloaded_hashed_count") or 0
+        ),
+        "public_cad_source_release_credit_record_count": int(
+            public_cad_summary.get("release_credit_record_count") or 0
+        ),
+        "public_market_bom_cost_category_count": len(public_bom_records),
+        "public_market_bom_cost_volume_count": int(
+            public_bom_summary.get("volume_count") or 0
+        ),
+        "public_market_bom_cost_avl_quote_count": int(
+            public_bom_summary.get("avl_quote_count") or 0
+        ),
+        "public_market_bom_cost_signed_supplier_quote_count": int(
+            public_bom_summary.get("signed_supplier_quote_count") or 0
+        ),
+        "public_market_bom_cost_subtotal_researched_categories_usd": public_bom.get(
+            "subtotal_researched_categories_usd", {}
+        ),
+        "release_credit": False,
+        "release_allowed": False,
+    }
+
+
 def count_files(root: Path) -> dict[str, Any]:
     files = sorted(path for path in root.rglob("*") if path.is_file())
     top_level_files = sorted(path for path in root.glob("*") if path.is_file())
@@ -688,6 +749,7 @@ def build_report() -> dict[str, Any]:
     missing = missing_release_evidence(gates)
     component_model_dir = component_model_directory_summary()
     supplier_surrogate_detail = supplier_step_surrogate_intake_detail(component_model_dir)
+    public_sourcing_intake = public_sourcing_intake_summary()
     candidate_manifest = read_yaml(CANDIDATE_MANIFEST)
     if not isinstance(candidate_manifest, dict):
         candidate_manifest = {}
@@ -1112,6 +1174,7 @@ def build_report() -> dict[str, Any]:
             ),
             "release_claim_allowed": False,
         },
+        "public_sourcing_intake_ready": public_sourcing_intake,
         "local_enclosure_cad_ready": {
             "ready": local_cad_ready,
             "scope": "generated_evt0_concept_cad_only",

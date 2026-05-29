@@ -21,6 +21,16 @@ REPORT = ROOT / "build/reports/chip-os-environment-preflight.json"
 
 SCHEMA = "eliza.chip_os_environment_preflight.v1"
 CLAIM_BOUNDARY = "environment_preflight_only_not_boot_or_launcher_evidence"
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "boot_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "launcher_runtime_claim_allowed": False,
+    "hardware_boot_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 HOST_LOCAL_PATH = re.compile(r"/(?:home|Users|tmp|var/folders)/[^\s\"']+")
 
 
@@ -488,6 +498,7 @@ def build_report(
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "tools": len(tool_rows),
             "missing_tools": sum(1 for row in tool_rows if not row["present"]),

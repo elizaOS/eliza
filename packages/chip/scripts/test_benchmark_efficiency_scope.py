@@ -23,11 +23,18 @@ def expect_error(report: dict, token: str) -> None:
         raise AssertionError(f"expected {token!r} in {errors}")
 
 
+def assert_false_claim_flags(report: dict) -> None:
+    for key, expected in check_benchmark_efficiency_scope.FALSE_CLAIM_FLAGS.items():
+        if report.get(key) is not expected:
+            raise AssertionError(f"{key} must be {expected!r}: {report.get(key)!r}")
+
+
 def test_valid_report_passes() -> None:
     report = check_benchmark_efficiency_scope.build_report()
     errors = check_benchmark_efficiency_scope.validate_report(report)
     if errors:
         raise AssertionError(errors)
+    assert_false_claim_flags(report)
     print("PASS valid benchmark efficiency scope report")
 
 
@@ -42,6 +49,9 @@ def test_release_claim_flip_fails() -> None:
     report = check_benchmark_efficiency_scope.build_report()
     report["summary"]["release_claim_allowed"] = True
     expect_error(report, "release_claim_allowed")
+    report = check_benchmark_efficiency_scope.build_report()
+    report["measured_tops_w_claim_allowed"] = True
+    expect_error(report, "measured_tops_w_claim_allowed")
     print("PASS release-claim flip rejected")
 
 
