@@ -43,8 +43,9 @@ concurrency:
 #     Publisher:    GitHub Actions
 #     Organization: elizaOS
 #     Repository:   eliza
-#     Workflow:     .github/workflows/release.yaml
-# Until the Trusted Publishers are configured, publish falls back to NPM_TOKEN.
+#     Workflow:     release.yaml
+# npm tries trusted publishing before token auth in OIDC-capable runners, so a
+# missing or mismatched Trusted Publisher entry fails before NPM_TOKEN can be used.
 permissions:
   contents: read
   id-token: write
@@ -428,8 +429,8 @@ jobs:
             exit 1
           fi
 
-          # Create the tag
-          git tag "${TAG_NAME}"
+          # Create an annotated tag so `git push --follow-tags` publishes it.
+          git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
           echo "tag_created=true" >> $GITHUB_OUTPUT
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
 
@@ -478,7 +479,7 @@ jobs:
                 git tag -d "${TAG_NAME}"
               fi
 
-              git tag "${TAG_NAME}"
+              git tag -a "${TAG_NAME}" -m "Release ${TAG_NAME}"
             fi
           }
 
