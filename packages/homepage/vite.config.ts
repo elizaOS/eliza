@@ -92,6 +92,10 @@ export default defineConfig({
         ),
       },
       {
+        find: "@elizaos/ui/i18n/region",
+        replacement: path.resolve(__dirname, "../ui/src/i18n/region.ts"),
+      },
+      {
         find: "@elizaos/ui/product-switcher",
         replacement: path.resolve(
           __dirname,
