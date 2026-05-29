@@ -1,3 +1,6 @@
+// Side-effect import: must run before `electrobun/bun` (native WebKitGTK) so the
+// Linux dmabuf-renderer workaround is set before the web process spawns.
+import "./linux-webkit-env";
 import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
