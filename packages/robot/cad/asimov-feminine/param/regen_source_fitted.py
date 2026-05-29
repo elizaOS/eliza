@@ -157,19 +157,6 @@ def _smooth_field(R, C0, C1, harmonics, axial_sigma):
     return R, C0, C1
 
 
-def _pin_interfaces(R, C0, C1, R0, C00, C10, L, levels, ramp=0.016):
-    """Within a short collar around every reserved joint level, blend the smoothed
-    rings back to the true (pre-smoothing) cross-section + centre. This restores
-    the exact mating interface each part had, so neighbours still overlap and the
-    constraints hold, while the shaft in between stays perfectly smooth."""
-    for lvl in levels:
-        w = np.exp(-(((L - lvl) / ramp) ** 2))
-        R = R * (1 - w[:, None]) + R0 * w[:, None]
-        C0 = C0 * (1 - w) + C00 * w
-        C1 = C1 * (1 - w) + C10 * w
-    return R, C0, C1
-
-
 def _torso_skin(mesh, n_ang=96, dz=0.005):
     """Smooth watertight outer skin of the torso lofted from per-slice outer
     envelopes, with the waist cinch, two breast effectors and back relief sculpted
@@ -237,12 +224,12 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     return skin
 
 
-def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False, reserved=None):
+def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False):
     """Smooth watertight outer skin for a limb/head: loft per-slice outer
     envelopes along the spine axis about the slice centroid. Produces a clean
     single-solid futuristic shell with no bolt-boss lumps or voxel terracing.
-    The input mesh should already carry the slimming warp. `reserved` are the
-    spine-axis joint levels whose mating interface must be preserved exactly."""
+    The input mesh should already carry the slimming warp (its joint collars keep
+    the ends full so neighbours still overlap)."""
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
     lo, hi = mesh.bounds[0][ai], mesh.bounds[1][ai]
@@ -485,14 +472,13 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link == "WAIST_YAW":
         return _torso_skin(m)  # already a clean watertight skin
     if link == "IMU_ORIGIN":
-        return _skin_part(_pelvis_warp(m), "z", reserved=C.reserved_levels(link))
+        return _skin_part(_pelvis_warp(m), "z")
     shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
     spine = C.LINKS[link]["spine"]
-    reserved = C.reserved_levels(link)
     if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
-        return _skin_part(shaped, spine, flat_bottom=True, reserved=reserved)
+        return _skin_part(shaped, spine, flat_bottom=True)
     if link in SKIN_LIMBS:
-        return _skin_part(shaped, spine, reserved=reserved)
+        return _skin_part(shaped, spine)
     return _watertight_cleanup(shaped) if cleanup else shaped
 
 
