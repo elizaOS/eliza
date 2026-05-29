@@ -19,6 +19,20 @@ describe("buildGoalPrompt", () => {
     expect(out).toContain("--- Task ---");
   });
 
+  it("keeps the #7935 routing-banner guard examples and the capability-avoidance clause", () => {
+    // These were silently lost when the planner action was unified onto
+    // buildGoalPrompt; this locks them into the canonical envelope so they
+    // cannot regress again. The named tokens are the ones sub-agents must NOT
+    // emit as prose banners (elizaOS/eliza#7935).
+    const out = buildGoalPrompt({ goal: "anything" });
+    expect(out).toContain("QUESTION_FOR_TASK_CREATOR");
+    expect(out).toContain("AGENT_COORDINATION");
+    expect(out).toContain("no markdown banners");
+    expect(out).toContain(
+      "Avoid unrelated connectors or broad personal-data tools.",
+    );
+  });
+
   it("defaults the concrete task to the goal when omitted", () => {
     const out = buildGoalPrompt({ goal: "Ship the orchestrator view" });
     const taskIdx = out.indexOf("--- Task ---");
