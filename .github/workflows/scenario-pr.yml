@@ -39,7 +39,7 @@ jobs:
   deterministic-scenario:
     name: Zero-Key Deterministic E2E
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -89,6 +89,9 @@ jobs:
 
       - name: Actual app view manager browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
+
+      - name: Actual app all-pages render + click-safety browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts --project=chromium
 
       - name: Electrobun window and dynamic-view coverage
         run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts

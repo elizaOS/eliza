@@ -60,8 +60,6 @@ const LIVE_ONLY: Readonly<Record<string, string>> = {
  */
 const KEYLESS_DEBT: Readonly<Record<string, string>> = {
   "ai-qa-capture.spec.ts": "AI-QA route catalog capture flow",
-  "all-pages-clicksafe.spec.ts":
-    "all-pages render + click-safety matrix (route/tile coverage)",
   "android-system-apps.spec.ts": "android system apps surface",
   "apps-session.spec.ts": "apps session window lifecycle",
   "apps-session-direct-a.spec.ts": "apps session direct-link group A",
@@ -88,7 +86,7 @@ const KEYLESS_DEBT: Readonly<Record<string, string>> = {
  * into keyless CI. This is the ratchet that prevents new dark specs from being
  * parked in debt indefinitely.
  */
-const MAX_KEYLESS_DEBT = 20;
+const MAX_KEYLESS_DEBT = 19;
 
 function specFileNames(): string[] {
   return readdirSync(UI_SMOKE_DIR)
