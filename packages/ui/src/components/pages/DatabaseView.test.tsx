@@ -172,42 +172,37 @@ describe("DatabaseView", () => {
   // called loadTables → setErrorMessage(""), wiping it before paint. The Q2
   // fix reads `t`/`tables` through refs so the loaders are stable and the
   // banner persists.
-  it(
-    "surfaces a row-load error to the user when getDatabaseRows rejects",
-    async () => {
-      clientMock.getDatabaseStatus.mockResolvedValue(connectedStatus);
-      clientMock.getDatabaseTables.mockResolvedValue({
-        tables: [
-          {
-            name: "memories",
-            rowCount: 1,
-            columns: [{ name: "id", type: "text" }],
-          },
-        ],
-      });
-      clientMock.getDatabaseRows.mockRejectedValue(
-        new Error("row fetch failed"),
-      );
-
-      render(<DatabaseView />);
-
-      fireEvent.click(await screen.findByText("memories"));
-
-      await waitFor(() => {
-        expect(clientMock.getDatabaseRows).toHaveBeenCalled();
-      });
-
-      // Desired: an error banner with the failure key is shown to the user.
-      await waitFor(
-        () => {
-          expect(
-            screen.getByText((content) =>
-              content.includes("databaseview.FailedToLoadTable"),
-            ),
-          ).toBeTruthy();
+  it("surfaces a row-load error to the user when getDatabaseRows rejects", async () => {
+    clientMock.getDatabaseStatus.mockResolvedValue(connectedStatus);
+    clientMock.getDatabaseTables.mockResolvedValue({
+      tables: [
+        {
+          name: "memories",
+          rowCount: 1,
+          columns: [{ name: "id", type: "text" }],
         },
-        { timeout: 1000 },
-      );
-    },
-  );
+      ],
+    });
+    clientMock.getDatabaseRows.mockRejectedValue(new Error("row fetch failed"));
+
+    render(<DatabaseView />);
+
+    fireEvent.click(await screen.findByText("memories"));
+
+    await waitFor(() => {
+      expect(clientMock.getDatabaseRows).toHaveBeenCalled();
+    });
+
+    // Desired: an error banner with the failure key is shown to the user.
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText((content) =>
+            content.includes("databaseview.FailedToLoadTable"),
+          ),
+        ).toBeTruthy();
+      },
+      { timeout: 1000 },
+    );
+  });
 });

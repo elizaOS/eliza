@@ -9,9 +9,9 @@ import type {
   ModelBucket,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
-import { formatByteSize } from "../../utils/format";
 import {
   bucketLabel,
   computeFit,

@@ -1,8 +1,6 @@
 import { memo } from "react";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useTranslation } from "../../state";
-import { ChatPanelLayout } from "./ChatPanelLayout";
-import { ChatView } from "./ChatView";
 import { ConversationsSidebar } from "../conversations/ConversationsSidebar";
 import {
   DrawerSheet,
@@ -10,6 +8,8 @@ import {
   DrawerSheetHeader,
   DrawerSheetTitle,
 } from "../ui/drawer-sheet";
+import { ChatPanelLayout } from "./ChatPanelLayout";
+import { ChatView } from "./ChatView";
 
 type ChatModalLayoutVariant = "full-overlay" | "companion-dock";
 

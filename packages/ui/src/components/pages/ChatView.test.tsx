@@ -17,7 +17,9 @@ import { ChatView } from "./ChatView";
 // + transcript children render, so the assertions exercise genuine UI behavior
 // (empty state vs transcript, and that sending dispatches the app handler).
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
-const composerMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+const composerMock = vi.hoisted(() => ({
+  value: {} as Record<string, unknown>,
+}));
 
 function t(key: string, options?: { defaultValue?: string }) {
   return options?.defaultValue ?? key;
@@ -142,7 +144,8 @@ function makeMessage(
 
 beforeEach(() => {
   // jsdom lacks these layout APIs the auto-scroll + ResizeObserver effects use.
-  Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
+  Element.prototype.scrollTo =
+    vi.fn() as unknown as typeof Element.prototype.scrollTo;
   if (typeof globalThis.ResizeObserver === "undefined") {
     globalThis.ResizeObserver = class {
       observe() {}

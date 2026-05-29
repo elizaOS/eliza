@@ -79,7 +79,8 @@ function makeContext(
 beforeEach(() => {
   // jsdom doesn't implement these layout APIs the section-alignment effects use.
   Element.prototype.scrollIntoView = vi.fn();
-  Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
+  Element.prototype.scrollTo =
+    vi.fn() as unknown as typeof Element.prototype.scrollTo;
   appMock.value = makeContext();
 });
 

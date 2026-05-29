@@ -34,7 +34,6 @@ export const COMPUTER_CAPABILITY_PLUGIN_IDS = new Set([
   "computer-use",
 ]);
 
-
 export function avatarIndexFromConversationId(id: string): number {
   let hash = 0;
   for (let i = 0; i < id.length; i += 1) {
