@@ -146,7 +146,7 @@ def build_tier_split_manifest() -> dict:
     block = placement["tier_splits"]["block_sram_on_logic"]
     floorplan = placement["floorplan"]
 
-    logic_signoff = _signoff_run_for_design("e1x3d_tile")
+    logic_signoff = _signoff_run_for_design("e1x3d_router7")
     memory_signoff = _signoff_run_for_design("e1_npu_weight_buffer_array")
 
     recommended_bonding = block["recommended_bonding"]
@@ -164,7 +164,7 @@ def build_tier_split_manifest() -> dict:
     logic_tier = {
         "tier": 0,
         "role": "logic",
-        "content": "tiny RV64 PE datapath (e1x3d_tile)",
+        "content": "3D fabric router / inter-tier routing element (e1x3d_router7); the full PE datapath plus a hard local-SRAM macro run is the deferred fuller logic-tier proxy",
         "area_mm2": block["logic_tier_area_mm2"],
         "footprint_mm2": block["logic_tier_area_mm2"],
         "open_pdk": "sky130A",
@@ -225,8 +225,9 @@ def build_tier_split_manifest() -> dict:
         },
         "per_tier_signoff_note": (
             "Each tier is an independent open-PDK (Sky130) OpenLane signoff: the logic "
-            "tier is the e1x3d_tile run and the memory tier is the e1_npu_weight_buffer_array "
-            "hard-SRAM macro-array run. Per-tier 2D DRC/LVS is the open path; cross-tier "
+            "tier is the e1x3d_router7 run (3D fabric routing element) and the memory tier "
+            "is the e1_npu_weight_buffer_array hard-SRAM macro-array run. Per-tier 2D "
+            "DRC/LVS is the open path; cross-tier "
             "3D DRC/LVS across the bonded interface is commercial-only and fails closed in "
             "the e1x3d-3d-split gate."
         ),
