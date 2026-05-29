@@ -151,6 +151,11 @@
       "import": "./dist/i18n/index.js",
       "default": "./dist/i18n/index.js"
     },
+    "./i18n/region": {
+      "types": "./dist/i18n/region.d.ts",
+      "import": "./dist/i18n/region.js",
+      "default": "./dist/i18n/region.js"
+    },
     "./layouts": {
       "types": "./dist/layouts/index.d.ts",
       "import": "./dist/layouts/index.js",

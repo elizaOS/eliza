@@ -52,6 +52,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js"
+    },
     "./config/allowed-hosts": {
       "types": "./dist/config/allowed-hosts.d.ts",
       "import": "./dist/config/allowed-hosts.js",
