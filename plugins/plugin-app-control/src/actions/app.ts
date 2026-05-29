@@ -26,7 +26,7 @@ import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
-import { readStringOption } from "../params.js";
+import { normalizeActionOptions, readStringOption } from "../params.js";
 import { hasPendingIntent, isChoiceReply, runCreate } from "./app-create.js";
 import { runLaunch } from "./app-launch.js";
 import { runList } from "./app-list.js";
@@ -135,7 +135,7 @@ function hasAccessContext(runtime: IAgentRuntime, message: Memory): boolean {
 export function createAppAction(deps: AppActionDeps = {}): Action {
 	const clientFactory = () => deps.client ?? createAppControlClient();
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
-	const repoRoot = deps.repoRoot ?? defaultRepoRoot();
+	const getRepoRoot = () => deps.repoRoot ?? defaultRepoRoot();
 
 	const canManageApps = async (
 		runtime: IAgentRuntime,
@@ -264,6 +264,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			options?: Record<string, unknown>,
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
+			const actionOptions = normalizeActionOptions(options);
 			if (!(await canManageApps(runtime, message))) {
 				const text = "Permission denied: only the owner may manage apps.";
 				await callback?.({ text });
@@ -282,14 +283,14 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 						runtime,
 						client,
 						message,
-						options,
+						options: actionOptions,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 				}
 			}
 
-			const mode = inferMode(text, options);
+			const mode = inferMode(text, actionOptions);
 			if (!mode) {
 				const reply =
 					'Tell me which app to control. Try: "launch shopify", "list running apps", "create a new note-taking app".';
@@ -301,13 +302,18 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 			switch (mode) {
 				case "launch":
-					return runLaunch({ client, message, options, callback });
+					return runLaunch({
+						client,
+						message,
+						options: actionOptions,
+						callback,
+					});
 				case "relaunch":
 					return runRelaunch({
 						runtime,
 						client,
 						message,
-						options,
+						options: actionOptions,
 						callback,
 					});
 				case "list":
@@ -316,18 +322,18 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 					return runLoadFromDirectory({
 						runtime,
 						message,
-						options,
+						options: actionOptions,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 				case "create":
 					return runCreate({
 						runtime,
 						client,
 						message,
-						options,
+						options: actionOptions,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 			}
 		},

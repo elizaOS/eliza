@@ -626,11 +626,20 @@ export async function runCreate({
 	const appClient = client ?? createAppControlClient();
 	const existing = await findExistingIntentTask(runtime, roomId);
 	const choiceText = explicitChoice ?? userText;
+	const normalizedChoice = choiceText.toLowerCase().trim();
+	if (!existing && normalizedChoice === "cancel") {
+		const text = "Canceled. No app changes made.";
+		await callback?.({ text });
+		return {
+			success: true,
+			text,
+			values: { mode: "create", subMode: "cancel" },
+		};
+	}
 	// Follow-up turn: user picked from a previously-shown choice block.
 	if (existing && isChoiceReply(choiceText)) {
-		const normalized = choiceText.toLowerCase().trim();
 		await deleteIntentTask(runtime, existing.taskId);
-		if (normalized === "cancel") {
+		if (normalizedChoice === "cancel") {
 			const text = "Canceled. No app changes made.";
 			await callback?.({ text });
 			return {
@@ -639,7 +648,7 @@ export async function runCreate({
 				values: { mode: "create", subMode: "cancel" },
 			};
 		}
-		if (normalized === "new") {
+		if (normalizedChoice === "new") {
 			return createNewApp({
 				runtime,
 				intent: existing.metadata.intent,
@@ -649,13 +658,13 @@ export async function runCreate({
 			});
 		}
 		// edit-N path
-		const idxMatch = normalized.match(/^edit-(\d+)$/);
+		const idxMatch = normalizedChoice.match(/^edit-(\d+)$/);
 		const idx = idxMatch ? Number(idxMatch[1]) - 1 : -1;
 		const choice = existing.metadata.choices.filter((c) =>
 			c.key.startsWith("edit-"),
 		)[idx];
 		if (!choice?.appName) {
-			const text = `I lost track of the edit target "${normalized}". Please re-state your request.`;
+			const text = `I lost track of the edit target "${normalizedChoice}". Please re-state your request.`;
 			await callback?.({ text });
 			return { success: false, text };
 		}

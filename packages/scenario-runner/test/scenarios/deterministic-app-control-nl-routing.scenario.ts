@@ -23,6 +23,11 @@ function toRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function actionParameters(value: unknown): Record<string, unknown> {
+  const params = toRecord(value);
+  return toRecord(params.parameters ?? params);
+}
+
 function readPath(value: unknown, path: string): unknown {
   let current = value;
   for (const segment of path.split(".").filter(Boolean)) {
@@ -61,7 +66,7 @@ function expectRoutedAction(
     return `expected ${expected.actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
   }
 
-  const params = toRecord(action.parameters);
+  const params = actionParameters(action.parameters);
   for (const [key, expectedValue] of Object.entries(expected.parameters)) {
     if (!valuesEqual(params[key], expectedValue)) {
       return `expected ${expected.actionName} parameter ${key}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(params[key])}`;
@@ -84,7 +89,7 @@ function expectRoutedAction(
 
 function handleResponseFixture(input: string, actionName: "APP" | "VIEWS") {
   const args = {
-    contexts: ["actions"],
+    contexts: ["settings"],
     intents: [input.toLowerCase()],
     replyText: "On it.",
     threadOps: [],
@@ -98,18 +103,7 @@ function handleResponseFixture(input: string, actionName: "APP" | "VIEWS") {
       input: matchesScenarioInput(input),
       toolName: "HANDLE_RESPONSE",
     },
-    response: {
-      text: JSON.stringify(args),
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: `call-${actionName.toLowerCase()}-handle-response`,
-          name: "HANDLE_RESPONSE",
-          type: "function",
-          arguments: args,
-        },
-      ],
-    },
+    response: args,
     times: 1,
   };
 }
@@ -246,38 +240,68 @@ export default scenario({
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
         runtime.scenarioLlmFixtures?.register(
           handleResponseFixture("Open the settings view", "VIEWS"),
-          plannerFixture("Open the settings view", "VIEWS", {
-            action: "show",
-            view: "settings",
-            viewType: "gui",
-          }, "Navigated to Settings (gui)."),
+          plannerFixture(
+            "Open the settings view",
+            "VIEWS",
+            {
+              action: "show",
+              view: "settings",
+              viewType: "gui",
+            },
+            "Navigated to Settings (gui).",
+          ),
           handleResponseFixture("Search views for finance", "VIEWS"),
-          plannerFixture("Search views for finance", "VIEWS", {
-            action: "search",
-            query: "finance",
-            viewType: "gui",
-          }, 'Views matching "finance" (1):\n  [91] Remote Ledger (remote-ledger) — /remote-ledger — Track finance balances and remote ledger entries.'),
+          plannerFixture(
+            "Search views for finance",
+            "VIEWS",
+            {
+              action: "search",
+              query: "finance",
+              viewType: "gui",
+            },
+            'Views matching "finance" (1):\n  [91] Remote Ledger (remote-ledger) — /remote-ledger — Track finance balances and remote ledger entries.',
+          ),
           handleResponseFixture("Launch the feed app", "APP"),
-          plannerFixture("Launch the feed app", "APP", {
-            action: "launch",
-            app: "feed",
-          }, "Launched Feed. Run ID: run-feed-nl-1."),
+          plannerFixture(
+            "Launch the feed app",
+            "APP",
+            {
+              action: "launch",
+              app: "feed",
+            },
+            "Launched Feed. Run ID: run-feed-nl-1.",
+          ),
           handleResponseFixture("Create a feed dashboard app", "APP"),
-          plannerFixture("Create a feed dashboard app", "APP", {
-            action: "create",
-            intent: "Create a feed dashboard app",
-          }, "Picking next step..."),
-          handleResponseFixture("cancel", "APP"),
-          plannerFixture("cancel", "APP", {
-            action: "create",
-            choice: "cancel",
-          }, "Canceled. No app changes made."),
+          plannerFixture(
+            "Create a feed dashboard app",
+            "APP",
+            {
+              action: "create",
+              intent: "Create a feed dashboard app",
+            },
+            "Picking next step...",
+          ),
+          handleResponseFixture("Cancel the app create flow", "APP"),
+          plannerFixture(
+            "Cancel the app create flow",
+            "APP",
+            {
+              action: "create",
+              choice: "cancel",
+            },
+            "Canceled. No app changes made.",
+          ),
           handleResponseFixture("Delete the remote ledger view", "VIEWS"),
-          plannerFixture("Delete the remote ledger view", "VIEWS", {
-            action: "delete",
-            view: "remote-ledger",
-            confirm: "true",
-          }, "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded."),
+          plannerFixture(
+            "Delete the remote ledger view",
+            "VIEWS",
+            {
+              action: "delete",
+              view: "remote-ledger",
+              confirm: "true",
+            },
+            "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
+          ),
         );
 
         registerAppControlHttpHandler((request) => {
@@ -412,7 +436,7 @@ export default scenario({
     {
       kind: "message",
       name: "natural language cancels pending app create flow",
-      text: "cancel",
+      text: "Cancel the app create flow",
       responseIncludesAny: ["Canceled. No app changes made."],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {

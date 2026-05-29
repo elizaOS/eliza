@@ -18,6 +18,11 @@ function toRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function actionParameters(value: unknown): Record<string, unknown> {
+  const params = toRecord(value);
+  return toRecord(params.parameters ?? params);
+}
+
 function readPath(value: unknown, path: string): unknown {
   let current = value;
   for (const segment of path.split(".").filter(Boolean)) {
@@ -54,7 +59,7 @@ function expectActionTurn(
     return `expected ${expected.actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
   }
 
-  const params = toRecord(action.parameters);
+  const params = actionParameters(action.parameters);
   for (const [key, expectedValue] of Object.entries(expected.parameters)) {
     if (!valuesEqual(params[key], expectedValue)) {
       return `expected ${expected.actionName} parameter ${key}=${JSON.stringify(expectedValue)}, saw ${JSON.stringify(params[key])}`;
@@ -76,8 +81,8 @@ function expectActionTurn(
 }
 
 const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
-const feedPluginDir = path.join(process.cwd(), "plugins", "plugin-feed");
-const statPatchKey = Symbol.for("scenario-runner.app-control-feed-stat-patch");
+const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 
 const views = [
   {
@@ -211,9 +216,9 @@ export default scenario({
       type: "custom",
       name: "stub app-control loopback APIs for deterministic APP and VIEWS actions",
       apply: () => {
-        resetAppControlHttpStub();
         process.env.ELIZA_REPO_ROOT = repoRoot;
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
+        resetAppControlHttpStub();
         let launchCount = 0;
 
         registerAppControlHttpHandler((request) => {
@@ -308,6 +313,7 @@ export default scenario({
                 validate?: (...args: unknown[]) => Promise<boolean> | boolean;
                 handler?: (...args: unknown[]) => Promise<unknown> | unknown;
               }>;
+              agentId?: string;
               getService?: (serviceType: string) => unknown;
               createTask?: (task: Record<string, unknown>) => Promise<string>;
               deleteTask?: (taskId: string) => Promise<void>;
@@ -318,25 +324,6 @@ export default scenario({
           | undefined;
         if (!runtime?.actions) {
           return "runtime actions unavailable";
-        }
-
-        const fsWithPatch = fs as typeof fs & { [statPatchKey]?: true };
-        if (fsWithPatch[statPatchKey] !== true) {
-          const originalStat = fs.stat.bind(fs);
-          fsWithPatch.stat = (async (target, ...args) => {
-            if (
-              String(target).endsWith(
-                `${path.sep}plugins${path.sep}plugin-feed`,
-              )
-            ) {
-              return {
-                isDirectory: () => true,
-                isFile: () => false,
-              };
-            }
-            return originalStat(target, ...args);
-          }) as typeof fs.stat;
-          fsWithPatch[statPatchKey] = true;
         }
 
         await fs.rm(path.dirname(appLoadDirectory), {
@@ -373,7 +360,12 @@ export default scenario({
         runtime.createTask = async (task: Record<string, unknown>) => {
           const id = `00000000-0000-4000-8000-${String(nextTaskId).padStart(12, "0")}`;
           nextTaskId += 1;
-          scenarioTasks.push({ ...task, id });
+          scenarioTasks.push({
+            ...task,
+            agentId:
+              typeof task.agentId === "string" ? task.agentId : runtime.agentId,
+            id,
+          });
           return id;
         };
         runtime.getTasks = async (query: Record<string, unknown> = {}) => {
@@ -395,7 +387,9 @@ export default scenario({
               typeof task.agentId === "string" ? task.agentId : "";
             return (
               wantedTags.every((tag) => tags.includes(tag)) &&
-              (wantedAgentIds.length === 0 || wantedAgentIds.includes(agentId))
+              (wantedAgentIds.length === 0 ||
+                agentId.length === 0 ||
+                wantedAgentIds.includes(agentId))
             );
           });
         };

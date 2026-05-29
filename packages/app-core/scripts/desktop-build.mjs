@@ -35,6 +35,7 @@ const COMMAND_PREFIX = (process.env.ELIZA_DESKTOP_COMMAND_PREFIX ?? "")
   .trim()
   .split(/\s+/)
   .filter(Boolean);
+const DESKTOP_BUILD_LOCK_DIR = path.join(ROOT, ".turbo", "desktop-build.lock");
 const RUNTIME_COPY_SCRIPT = fs.existsSync(
   path.join(ROOT, "scripts", "copy-runtime-node-modules.ts"),
 )
@@ -56,6 +57,57 @@ function resolveWorkspacePackageDir(packageDirName) {
       fs.existsSync(path.join(candidate, "package.json")),
     ) ?? candidates[0]
   );
+}
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function withDesktopBuildLock(run) {
+  const lockParent = path.dirname(DESKTOP_BUILD_LOCK_DIR);
+  const staleAfterMs = 30 * 60 * 1000;
+  let announcedWait = false;
+
+  fs.mkdirSync(lockParent, { recursive: true });
+
+  for (;;) {
+    try {
+      fs.mkdirSync(DESKTOP_BUILD_LOCK_DIR);
+      fs.writeFileSync(
+        path.join(DESKTOP_BUILD_LOCK_DIR, "owner"),
+        `${process.pid}\n${new Date().toISOString()}\n`,
+      );
+      break;
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+
+      let stat = null;
+      try {
+        stat = fs.statSync(DESKTOP_BUILD_LOCK_DIR);
+      } catch {
+        continue;
+      }
+
+      if (Date.now() - stat.mtimeMs > staleAfterMs) {
+        fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+        continue;
+      }
+
+      if (!announcedWait) {
+        console.log("[desktop-build] Waiting for another desktop build to finish...");
+        announcedWait = true;
+      }
+      sleepSync(250);
+    }
+  }
+
+  try {
+    run();
+  } finally {
+    fs.rmSync(DESKTOP_BUILD_LOCK_DIR, { recursive: true, force: true });
+  }
 }
 
 function resolveWorkspacePluginDir(pluginDirName) {
@@ -1286,30 +1338,38 @@ Environment:
 `);
 }
 
-switch (command) {
-  case "preflight":
-    runDesktopPreflight();
-    break;
-  case "stage":
-    stageDesktopBuild();
-    break;
-  case "package":
-    packageDesktopBuild();
-    break;
-  case "build":
-    stageDesktopBuild();
-    packageDesktopBuild();
-    break;
-  case "run":
-    stageDesktopBuild();
-    packageDesktopBuild();
-    runDesktopBuild();
-    break;
-  case "help":
-  case "--help":
-  case "-h":
-    printUsage();
-    break;
-  default:
-    fail(`Unknown command: ${command}`);
+function runCommand() {
+  switch (command) {
+    case "preflight":
+      runDesktopPreflight();
+      break;
+    case "stage":
+      stageDesktopBuild();
+      break;
+    case "package":
+      packageDesktopBuild();
+      break;
+    case "build":
+      stageDesktopBuild();
+      packageDesktopBuild();
+      break;
+    case "run":
+      stageDesktopBuild();
+      packageDesktopBuild();
+      runDesktopBuild();
+      break;
+    case "help":
+    case "--help":
+    case "-h":
+      printUsage();
+      break;
+    default:
+      fail(`Unknown command: ${command}`);
+  }
+}
+
+if (["preflight", "help", "--help", "-h"].includes(command)) {
+  runCommand();
+} else {
+  withDesktopBuildLock(runCommand);
 }

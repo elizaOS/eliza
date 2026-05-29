@@ -6,8 +6,9 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
 
 - `deterministic-pr-smoke` covers the deterministic LLM proxy reply plus
   VIEWS manager, pin, detached window, and mounted-view interact flows.
-- `deterministic-app-control-actions` covers VIEWS list, search, show, and
-  broadcast plus APP list, launch, and relaunch.
+- `deterministic-app-control-actions` covers VIEWS list, search, show,
+  broadcast, create/edit, direct edit, and confirmed delete plus APP list,
+  launch, relaunch, `load_from_directory`, and create/edit.
 - `deterministic-view-switching` covers every built-in view route through the
   VIEWS show action.
 - `deterministic-app-control-nl-routing` covers natural-language APP/VIEWS
@@ -33,10 +34,6 @@ requires a real provider key for live natural-language planner runs.
 
 ## Residual Gaps
 
-- APP `create`, APP `load_from_directory`, VIEWS `create`, VIEWS `edit`, and
-  VIEWS `delete` are still excluded. They need temp repo/plugin fixtures,
-  coding-worker fakes, protected-app assertions, and strict registry routing
-  before they can be reliable zero-key PR checks.
 - Cross-plugin LifeOps/Gmail/calendar action flows remain live or mock-ledger
   coverage outside this PR catalog. They should not be promoted to zero-key
   deterministic PR scenarios until their action names and structured payloads

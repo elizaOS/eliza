@@ -9,7 +9,7 @@
  */
 import path from "node:path";
 import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
-import { readStringOption } from "../params.js";
+import { normalizeActionOptions, readStringOption } from "../params.js";
 import { createViewsClient } from "./views-client.js";
 import {
 	hasPendingViewsCreateIntent,
@@ -26,7 +26,6 @@ import { runViewsEdit } from "./views-edit.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch } from "./views-search.js";
 import { runViewsShow } from "./views-show.js";
-
 const MODES = [
 	"list",
 	"current",
@@ -140,7 +139,7 @@ function extractSearchQuery(text, options) {
 export function createViewsAction(deps = {}) {
 	const clientFactory = () => deps.client ?? createViewsClient();
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
-	const repoRoot = deps.repoRoot ?? defaultRepoRoot();
+	const getRepoRoot = () => deps.repoRoot ?? defaultRepoRoot();
 	return {
 		name: "VIEWS",
 		contexts: ["general", "automation", "settings", "code"],
@@ -336,6 +335,7 @@ export function createViewsAction(deps = {}) {
 			return true;
 		},
 		handler: async (runtime, message, _state, options, callback) => {
+			const actionOptions = normalizeActionOptions(options);
 			const client = clientFactory();
 			const text = message.content.text ?? "";
 			const roomId =
@@ -347,10 +347,10 @@ export function createViewsAction(deps = {}) {
 					return runViewsCreate({
 						runtime,
 						message,
-						options,
+						options: actionOptions,
 						views,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 				}
 			}
@@ -361,15 +361,15 @@ export function createViewsAction(deps = {}) {
 					return runViewsDelete({
 						runtime,
 						message,
-						options,
+						options: actionOptions,
 						views,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 				}
 			}
-			const mode = inferMode(text, options);
-			const viewType = readViewTypeOption(text, options);
+			const mode = inferMode(text, actionOptions);
+			const viewType = readViewTypeOption(text, actionOptions);
 			if (!mode) {
 				const reply =
 					'Tell me what to do with views. Try: "list views", "open wallet view", "create a new view", or "delete the LifeOps plugin".';
@@ -399,9 +399,15 @@ export function createViewsAction(deps = {}) {
 				}
 				case "show":
 				case "open":
-					return runViewsShow({ client, message, options, viewType, callback });
+					return runViewsShow({
+						client,
+						message,
+						options: actionOptions,
+						viewType,
+						callback,
+					});
 				case "search": {
-					const query = extractSearchQuery(text, options);
+					const query = extractSearchQuery(text, actionOptions);
 					return runViewsSearch({ client, query, viewType, callback });
 				}
 				case "manager": {
@@ -426,9 +432,9 @@ export function createViewsAction(deps = {}) {
 				}
 				case "broadcast": {
 					const eventType =
-						readStringOption(options, "eventType") ??
-						readStringOption(options, "event") ??
-						readStringOption(options, "type");
+						readStringOption(actionOptions, "eventType") ??
+						readStringOption(actionOptions, "event") ??
+						readStringOption(actionOptions, "type");
 					if (!eventType) {
 						const reply =
 							"Specify an event type to broadcast, e.g. action=broadcast eventType=wallet:refresh.";
@@ -436,10 +442,10 @@ export function createViewsAction(deps = {}) {
 						return { success: false, text: reply };
 					}
 					const payload =
-						options?.payload !== null &&
-						typeof options?.payload === "object" &&
-						!Array.isArray(options?.payload)
-							? options.payload
+						actionOptions?.payload !== null &&
+						typeof actionOptions?.payload === "object" &&
+						!Array.isArray(actionOptions?.payload)
+							? actionOptions.payload
 							: {};
 					const resultText = await broadcastViewEvent(eventType, payload);
 					await callback?.({ text: resultText });
@@ -452,10 +458,10 @@ export function createViewsAction(deps = {}) {
 				}
 				case "interact": {
 					let viewId =
-						readStringOption(options, "view") ??
-						readStringOption(options, "id") ??
-						readStringOption(options, "name");
-					const capability = readStringOption(options, "capability");
+						readStringOption(actionOptions, "view") ??
+						readStringOption(actionOptions, "id") ??
+						readStringOption(actionOptions, "name");
+					const capability = readStringOption(actionOptions, "capability");
 					let resolvedViewType = viewType;
 					if (!viewId && /\bcurrent\b/i.test(text)) {
 						const currentView = await client.getCurrentView();
@@ -469,14 +475,15 @@ export function createViewsAction(deps = {}) {
 						return { success: false, text: reply };
 					}
 					const params =
-						options?.params !== null &&
-						typeof options?.params === "object" &&
-						!Array.isArray(options?.params)
-							? options.params
+						actionOptions?.params !== null &&
+						typeof actionOptions?.params === "object" &&
+						!Array.isArray(actionOptions?.params)
+							? actionOptions.params
 							: undefined;
 					const timeoutMs =
-						typeof options?.timeoutMs === "number" && options.timeoutMs > 0
-							? options.timeoutMs
+						typeof actionOptions?.timeoutMs === "number" &&
+						actionOptions.timeoutMs > 0
+							? actionOptions.timeoutMs
 							: 5_000;
 					const resultText = await interactWithView(
 						viewId,
@@ -508,10 +515,10 @@ export function createViewsAction(deps = {}) {
 					return runViewsCreate({
 						runtime,
 						message,
-						options,
+						options: actionOptions,
 						views,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 				}
 				case "edit": {
@@ -519,10 +526,10 @@ export function createViewsAction(deps = {}) {
 					return runViewsEdit({
 						runtime,
 						message,
-						options,
+						options: actionOptions,
 						views,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 				}
 				case "delete":
@@ -531,17 +538,17 @@ export function createViewsAction(deps = {}) {
 					return runViewsDelete({
 						runtime,
 						message,
-						options,
+						options: actionOptions,
 						views,
 						callback,
-						repoRoot,
+						repoRoot: getRepoRoot(),
 					});
 				}
 				case "pin": {
 					const pinViewId =
-						readStringOption(options, "view") ??
-						readStringOption(options, "id") ??
-						readStringOption(options, "name");
+						readStringOption(actionOptions, "view") ??
+						readStringOption(actionOptions, "id") ??
+						readStringOption(actionOptions, "name");
 					if (!pinViewId) {
 						const reply =
 							"Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.";
@@ -563,10 +570,10 @@ export function createViewsAction(deps = {}) {
 				}
 				case "window": {
 					const windowViewId =
-						readStringOption(options, "view") ??
-						readStringOption(options, "id") ??
-						readStringOption(options, "name");
-					const alwaysOnTop = readBooleanOption(options, "alwaysOnTop");
+						readStringOption(actionOptions, "view") ??
+						readStringOption(actionOptions, "id") ??
+						readStringOption(actionOptions, "name");
+					const alwaysOnTop = readBooleanOption(actionOptions, "alwaysOnTop");
 					if (!windowViewId) {
 						const reply =
 							"Specify which view to open in a new window, e.g. action=window view=wallet.";

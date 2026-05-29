@@ -77,12 +77,24 @@ export interface AppControlOptions {
 	runId?: string;
 }
 
+export function normalizeActionOptions(
+	options: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+	if (!options) return undefined;
+	const nested = options.parameters;
+	if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+		return nested as Record<string, unknown>;
+	}
+	return options;
+}
+
 export function readStringOption(
 	options: Record<string, unknown> | undefined,
 	key: string,
 ): string | null {
-	if (!options) return null;
-	const value = options[key];
+	const normalized = normalizeActionOptions(options);
+	if (!normalized) return null;
+	const value = normalized[key];
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : null;
