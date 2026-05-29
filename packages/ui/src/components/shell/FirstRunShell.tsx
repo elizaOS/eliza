@@ -387,9 +387,18 @@ export function FirstRunShell({
   const { rendered: renderedPrompt, complete: promptComplete } =
     useTypedPrompt(promptText);
 
+  // `onPromptReady` calls setVoice, which re-renders this component. Its
+  // identity is unstable (it ultimately derives from app-context callbacks like
+  // completeFirstRun, which change when first-run state churns during agent
+  // start). Depending on it here would re-fire the effect on every such render,
+  // re-entering setVoice → re-render → infinite loop that freezes onboarding.
+  // The intent is "fire once when the typed prompt finishes, keyed on its
+  // text", so call the latest handler through a ref and gate on the prompt.
+  const onPromptReadyRef = React.useRef(onPromptReady);
+  onPromptReadyRef.current = onPromptReady;
   React.useEffect(() => {
-    if (promptComplete) onPromptReady(promptText);
-  }, [onPromptReady, promptComplete, promptText]);
+    if (promptComplete) onPromptReadyRef.current(promptText);
+  }, [promptComplete, promptText]);
 
   return (
     <div
