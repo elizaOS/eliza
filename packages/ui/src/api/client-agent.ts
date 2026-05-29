@@ -2660,7 +2660,12 @@ function parseSecurityAuditPayload(
     if (parsed.type === "snapshot" || parsed.type === "entry") {
       onEvent(parsed);
     }
-  } catch {}
+  } catch (error) {
+    console.warn(
+      "[client-agent] dropped malformed security audit stream frame",
+      { payload, error },
+    );
+  }
 }
 
 function consumeSecurityAuditEvent(
