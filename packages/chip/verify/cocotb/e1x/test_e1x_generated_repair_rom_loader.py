@@ -56,7 +56,10 @@ async def generated_high_failure_repair_rom_streams_through_rtl_loader(dut):
     assert rom["word_bits"] == 64
     assert rom["header_word_count"] == 8
     assert len(words) == int(rom["total_word_count"])
-    assert len(words) > 3000
+    assert len(words) == int(rom["header_word_count"]) + int(rom["remap_word_count"]) + int(
+        rom["route_sample_word_count"]
+    )
+    assert len(words) > int(rom["header_word_count"])
 
     observed_remaps = 0
     observed_routes = 0

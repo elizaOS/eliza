@@ -69,3 +69,17 @@ A positive (authenticated handoff) transcript additionally requires a
 provisioned test OTP root hash and a validly signed test image from the W7
 reference builder (`tests/security/negative/opnphn.py`) bound into the ROM
 image window; that path reuses the same runner and gate.
+
+The positive handoff evidence is tracked by a separate fail-closed gate so the
+negative transcript above cannot satisfy firmware/OS readiness:
+
+- transcript:
+  [`transcripts/e1_secure_bootrom_positive_handoff_qemu_rv64.txt`](transcripts/e1_secure_bootrom_positive_handoff_qemu_rv64.txt)
+- capture wrapper: `scripts/capture_bootrom_positive_handoff.sh`
+- gate: `scripts/check_bootrom_positive_handoff.py`
+  (report `build/reports/gate-bootrom-positive-handoff-check.json`)
+
+That gate requires reset-vector, verifier-entrypoint, authenticated-image,
+manifest-selected handoff target, and OpenSBI-entry markers. Until the signed
+image transcript exists, it writes a `BLOCKED` report and the aggregate boot
+security-chain contract stays in its fail-closed state.

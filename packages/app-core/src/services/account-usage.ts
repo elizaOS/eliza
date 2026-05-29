@@ -14,8 +14,8 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared";
 
 /**
@@ -182,10 +182,6 @@ export async function pollCodexUsage(
 
 // Local JSONL counters.
 
-function elizaHome(): string {
-  return process.env.ELIZA_HOME || path.join(os.homedir(), ".eliza");
-}
-
 function dayStamp(ts: number = Date.now()): string {
   const d = new Date(ts);
   const yyyy = d.getUTCFullYear();
@@ -200,7 +196,7 @@ function counterFile(
   ts: number = Date.now(),
 ): string {
   return path.join(
-    elizaHome(),
+    resolveStateDir(),
     "usage",
     providerId,
     accountId,

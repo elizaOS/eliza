@@ -69,6 +69,15 @@ current_state:
     board_segment_count: 306
     board_via_count: 24
     via_net_name_count: 16
+    route_visual_record_count: 306
+    via_visual_record_count: 24
+    filled_copper_zone_record_count: 2
+    filled_copper_zone_filled_polygon_count: 6
+    component_model_record_count: 89
+    cad_connection_record_count: 32
+    all_route_records_have_net_layer_class_and_source: true
+    all_component_records_have_local_step: true
+    all_connection_records_have_cad_step: true
     development_footprint_refs: 89
     remaining_placeholder_marker_count: 0
     supplier_approved_model_count: 0

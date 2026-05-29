@@ -39,6 +39,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from provenance_sanitize import sanitize_log_file
+
 ROOT = Path(__file__).resolve().parents[1]
 COCOTB_DIR = ROOT / "verify/cocotb/integration"
 RESULTS_XML = COCOTB_DIR / "results.xml"
@@ -93,7 +95,7 @@ def _run(cmd, cwd, env, log, timeout):
         proc = subprocess.run(
             cmd, cwd=str(cwd), env=env, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout
         )
-    return proc.returncode, log.read_text(encoding="utf-8", errors="replace")
+    return proc.returncode, sanitize_log_file(log)
 
 
 def _furthest(text: str) -> str:

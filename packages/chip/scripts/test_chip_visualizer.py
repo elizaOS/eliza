@@ -64,6 +64,8 @@ def test_build_payload_parses_full_viewer_contract() -> None:
             gds_size=256,
             tile_gds=False,
             tile_size=128,
+            tile_overlays=False,
+            overlay_tile_count=8,
         )
 
     assert payload["schema"] == "eliza.chip_visualizer.v1"
@@ -82,6 +84,8 @@ def test_build_payload_parses_full_viewer_contract() -> None:
     assert payload["summary"]["layer_counts"]["met5"] == 1
     assert payload["summary"]["layer_counts"]["rect"] == 1
     assert {route["net"] for route in payload["routes"]} == {"VPWR", "reset"}
+    assert payload["analysis"]["schema"] == "eliza.chip_visualizer.analysis.v1"
+    assert "release_or_tapeout" in payload["analysis"]["claim_boundary"]
     assert payload["silicon_image"]["available"] is False
     assert payload["tiles"]
 
@@ -148,11 +152,46 @@ def test_build_payload_records_unrendered_gds_source() -> None:
             gds_size=256,
             tile_gds=False,
             tile_size=128,
+            tile_overlays=False,
+            overlay_tile_count=8,
         )
 
     assert payload["silicon_image"]["available"] is True
     assert payload["silicon_image"]["gds"].endswith("sample.gds")
     assert payload["silicon_image"]["rendered"] is False
+
+
+def test_tiled_overlays_move_def_geometry_out_of_main_payload() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        def_path = root / "sample.def"
+        def_path.write_text(SAMPLE_DEF)
+
+        payload = build_chip_visualizer.build_payload(
+            def_path,
+            "explicit",
+            gds_path=None,
+            out_dir=root / "out",
+            render_gds=False,
+            gds_size=256,
+            tile_gds=False,
+            tile_size=128,
+            tile_overlays=True,
+            overlay_tile_count=4,
+        )
+
+        tile_meta = payload["overlay_tiles"]
+        search_meta = payload["search_index"]
+        assert payload["components"] == []
+        assert payload["routes"] == []
+        assert tile_meta["tile_count"] == 4
+        assert tile_meta["component_count"] == 3
+        assert tile_meta["route_segment_count"] == 6
+        assert search_meta["component_count"] == 3
+        assert search_meta["pin_count"] == 1
+        assert search_meta["net_count"] == 2
+        assert (root / "out" / "overlay-tiles").is_dir()
+        assert (root / "out" / "search-index.json").is_file()
 
 
 def test_make_tile_pyramid_splits_rendered_image() -> None:
@@ -174,12 +213,40 @@ def test_make_tile_pyramid_splits_rendered_image() -> None:
         assert len(tiles["levels"]) == 3
 
 
+def test_summarize_metrics_records_qor_and_violations() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        metrics = Path(tmp) / "metrics.json"
+        metrics.write_text(
+            """{
+              "design__instance__utilization": 0.72,
+              "route__wirelength": 12345,
+              "route__antenna_violation__count": 2,
+              "timing__hold__wns": -0.01,
+              "klayout__drc_error__count": 0
+            }"""
+        )
+
+        summary = build_chip_visualizer.summarize_metrics(metrics)
+
+    assert summary["available"] is True
+    assert {item["key"] for item in summary["summary"]} >= {
+        "design__instance__utilization",
+        "route__wirelength",
+    }
+    assert {item["key"] for item in summary["violations"]} == {
+        "route__antenna_violation__count",
+        "timing__hold__wns",
+    }
+
+
 def main() -> int:
     test_build_payload_parses_full_viewer_contract()
     test_choose_def_prefers_full_soc_before_newer_block_def()
     test_choose_gds_finds_matching_design_in_run()
     test_build_payload_records_unrendered_gds_source()
+    test_tiled_overlays_move_def_geometry_out_of_main_payload()
     test_make_tile_pyramid_splits_rendered_image()
+    test_summarize_metrics_records_qor_and_violations()
     print("chip visualizer tests passed")
     return 0
 

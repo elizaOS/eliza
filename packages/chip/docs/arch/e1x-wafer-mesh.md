@@ -35,7 +35,20 @@ scenario and a high-failure repair-stress scenario.
 The same command also maps the checked `llama13b-w4a8-manifest.json`
 transformer manifest through `compiler/runtime/e1x_graph_mapper.py`, writes
 `e1x-real-graph-model-load.json`, and verifies that the real graph placement
-loads and executes under the high-failure repair-stress map.
+loads and executes under the normal and high-failure repair-stress maps. The
+real-graph path also writes
+`e1x-real-graph-model-load.normal_defect_map.json`,
+`e1x-real-graph-model-load.normal_repair_manifest.json`,
+`e1x-real-graph-model-load.normal_repair_rom.json`/`.hex`,
+`e1x-real-graph-model-load.high_failure_defect_map.json`, and
+`e1x-real-graph-model-load.high_failure_repair_manifest.json` plus
+`e1x-real-graph-model-load.high_failure_repair_rom.json`/`.hex` so both defect
+scenarios have explicit wafer-sort, repair-manifest, and boot-programmable
+repair-ROM sidecars. It also writes
+`e1x-real-graph-model-load.normal_execution_trace.json` and
+`e1x-real-graph-model-load.high_failure_execution_trace.json`, hash-linked
+execution trace sidecars that reference the placement artifact and carry output
+checksums, total cycles, route checks, and sampled layer checksums.
 
 Run the benchmark harness gate, including report schema validation, E1
 comparison checks, normal defect repair, high-failure repair, quantized
@@ -49,8 +62,8 @@ python3 scripts/check_e1x_benchmark.py
 Run the real-graph kernel-dispatch codegen gate, which emits concrete PE boot
 words from the checked 13B W4A8 graph placement, validates a deterministic
 signed W4A8 microkernel numerical proof, and emits a tensor tile / K-wave
-schedule plus a schedule-derived architecture-level cycle estimate for every
-placed layer, with:
+schedule plus fabric color-pressure, per-color fabric timing, and
+architecture-level cycle estimates for every placed layer, with:
 
 ```sh
 python3 scripts/check_e1x_kernel_codegen.py
@@ -60,6 +73,17 @@ Run the RTL repair-ROM consumer simulation with:
 
 ```sh
 python3 scripts/check_e1x_repair_rom_cocotb.py
+```
+
+Run the aggregate E1X evidence-bundle gate, which checks the current benchmark,
+graph-mapper, kernel-codegen, core/PE cocotb, repair-ROM RTL, boot-repair
+firmware, tile, DFT cocotb, fabric, formal, and RTL-contract reports as one
+top-level architecture-simulation evidence bundle.
+It also verifies that each required report declares evidence paths and that
+those files, including archived cocotb result XMLs, are present. Run it with:
+
+```sh
+python3 scripts/check_e1x_evidence_bundle.py
 ```
 
 Run the fabric simulation gate, including the production credit-flow-controlled
@@ -106,11 +130,15 @@ python3 scripts/check_e1x_formal.py
   and 16-bit hop count, so the RTL handoff can steer a next hop rather than
   only count path length. The repair-ROM cocotb gate streams the generated
   high-failure 8GB scaled-model repair ROM sidecar through the RTL loader and
-  verifies decoded remap/route counts against the JSON/hex artifact. The same
-  generated ROM is also streamed into the RTL repair route table and checked
-  against sampled-route manifest lookups, and into a large repair-state RTL
-  instance that stores all generated high-failure remaps for selected
-  logical-to-physical lookup checks. The gate also includes undersized
+  verifies decoded remap/route counts against the JSON/hex artifact. It now
+  also streams the real-graph normal and high-failure repair ROM sidecars
+  through the same RTL loader and route-table lookup path, tying both checked
+  13B W4A8 placement repair artifacts to RTL-facing programming evidence. The
+  scaled generated ROM
+  is also streamed into the RTL repair route table and checked against
+  sampled-route manifest lookups, and into a large repair-state RTL instance
+  that stores all generated high-failure remaps for selected logical-to-physical
+  lookup checks. The gate also includes undersized
   repair-state and route-table negative tests that prove bounded RTL storage
   raises an observable overflow status instead of silently truncating repair
   records. A firmware-style MMIO programming harness stages 32-bit low/high
@@ -122,9 +150,10 @@ python3 scripts/check_e1x_formal.py
   The tile-level MMIO harness then binds the same programmer to the
   repair-routed tile, proving firmware-loaded repair routes can steer a fabric
   wavelet around a disabled output and that clear removes the programmed route.
-  A generated high-failure variant uses a large MMIO-routed tile instance,
-  streams the complete 8GB repair ROM sidecar through the tile programming
-  port, and verifies the tile fabric takes the manifest-selected first hop.
+  Generated tile-level variants use a large MMIO-routed tile instance, stream
+  the complete scaled high-failure plus real-graph normal/high-failure repair
+  ROM sidecars through the tile programming port, and verify the tile fabric
+  takes the manifest-selected first hop for each programmed image.
 - Production fabric router: `rtl/e1x/e1x_credit_router.sv` is the current
   input-buffered, credit-flow-controlled router intended to replace the legacy
   combinational router in production fabric paths. Its cocotb gate verifies
@@ -200,7 +229,17 @@ python3 scripts/check_e1x_formal.py
   logical mesh coordinates, verifies per-core SRAM occupancy and routing-color
   bounds, and feeds that placement into the same wafer repair/model-execution
   accounting. The graph-mapper and benchmark gates both require the real graph
-  to load and produce a high-failure execution checksum after repair.
+  to load and produce normal plus high-failure execution checksums after repair.
+  The benchmark gate also validates both real-graph defect-map and
+  repair-manifest sidecars, their source-map links, blocked-core/link counts,
+  remap counts, route-check counts, sampled repair routes, repaired-hop
+  penalties, repair-ROM source links, ROM word counts, and JSON/hex image
+  consistency. Both real-graph execution-trace sidecar hashes, placement links,
+  golden-trace flags, output checksums, and cycle counts are checked too.
+  Sampled layer trace route colors are checked against the placement, the
+  high-failure trace must be no faster than the normal trace, and the
+  schedule-derived execution estimate is required to fit inside the high-failure
+  trace's total cycle budget.
 - Kernel-dispatch codegen: `compiler/runtime/e1x_kernel_codegen.py` converts the
   real graph placement into deterministic RV64IM PE boot words for every placed
   layer. Each generated dispatch program materializes layer/core/shard metadata,
@@ -218,12 +257,22 @@ python3 scripts/check_e1x_formal.py
   `eliza.e1x.tensor_tile_schedule.v1`, which assigns each layer's output rows to
   its placed cores and splits the K dimension into deterministic activation
   waves while proving row coverage, K-wave presence, and per-core SRAM fit. This
-  feeds `eliza.e1x.schedule_execution_estimate.v1`, a deterministic
-  architecture-level cycle estimate tied to the scheduled rows, K waves, assigned
-  cores, W4A8 MAC count, and fabric bisection model. This is not yet
-  cycle-accurate full tensor execution.
+  also feeds `eliza.e1x.fabric_color_pressure.v1`, which audits activation and
+  reduction wavelets across all 24 routing colors,
+  `eliza.e1x.fabric_color_timing.v1`, which estimates high-failure
+  repair-aware per-color fabric cycles and bounds the peak color by the schedule
+  execution estimate, and
+  `eliza.e1x.schedule_execution_estimate.v1`, a deterministic architecture-level
+  cycle estimate tied to the scheduled rows, K waves, assigned cores, W4A8 MAC
+  count, fabric bisection model, and the same high-failure repair-hop penalty
+  used by the real-graph model-load report. This is not yet cycle-accurate full
+  tensor execution.
 - Comparison: reports keep E1 and E1X separate by comparing E1X against the
-  existing `open_2028_sota_160tops` E1 NPU architecture model.
+  existing `open_2028_sota_160tops` E1 NPU architecture model. The benchmark
+  gate now reports both the scaled E1X peak/SRAM ratios and the real-graph
+  schedule-derived effective TOPS versus the E1 peak baseline, while separately
+  showing that the resident W4A8 real graph needs over 100x the E1 local SRAM
+  budget but fits within the 8GB E1X SRAM model.
 
 ## Evidence Scope
 
@@ -252,17 +301,18 @@ or a production compiler for arbitrary LLM graphs.
 - Silicon fuse burning and the OTP/fuse read port for repair programming. The
   boot-time repair-route programming logic is implemented in `fw/e1x/` and
   verified in simulation against the real generated `eliza.e1x.repair_rom.v1`
-  image (it streams every remap/route word through the MMIO programmer protocol
-  and reconstructs the route table), but the fuse window and OTP read path are
-  modeled, not silicon.
+  images for the scaled high-failure handoff plus the real-graph normal and
+  high-failure handoffs. The native harness streams every remap/route word
+  through the MMIO programmer protocol and reconstructs the route table for each
+  image, but the fuse window and OTP read path are modeled, not silicon.
 - Cycle-accurate full tensor-kernel backend for the placed graph: vectorized
   int4/int8 MAC loops in PE instruction streams, accumulation layout across
   cores, fabric reduction/merge scheduling, and full-output numerical proof. The
   architecture-level placement/sharding/capacity mapping is closed by
   `compiler/runtime/e1x_graph_mapper.py`; dispatch/control instruction streams,
   deterministic scalar W4A8 microkernel semantics, and row/K-wave tensor
-  scheduling plus schedule-derived architecture cycle estimates are checked by
-  `compiler/runtime/e1x_kernel_codegen.py`; the cycle-accurate full tensor
-  executor remains.
+  scheduling plus fabric color-pressure/timing and schedule-derived architecture
+  cycle estimates are checked by `compiler/runtime/e1x_kernel_codegen.py`; the
+  cycle-accurate full tensor executor remains.
 - Formal, full-wafer RTL, PD, package, thermal, and power evidence.
 - Measured benchmark evidence against E1 on FPGA, board, or silicon.

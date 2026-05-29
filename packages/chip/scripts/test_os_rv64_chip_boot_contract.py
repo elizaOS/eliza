@@ -152,6 +152,26 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
         self.assertIn("linux_agent_fallback_payload_allowed", codes)
         self.assertIn("missing_agent_liveness_marker", codes)
         self.assertIn("missing_tui_liveness_marker", codes)
+        command_ids = {item["id"] for item in report["next_command_plan"]}
+        self.assertIn("write_blocked_boot_evidence_from_real_transcript", command_ids)
+        self.assertIn("write_blocked_agent_live_evidence_from_real_transcript", command_ids)
+        self.assertIn("target_agent_live_probe_transcript", command_ids)
+        self.assertIn("recheck_contract", command_ids)
+        self.assertEqual(
+            report["summary"]["next_command_count"],
+            len(report["next_command_plan"]),
+        )
+        blocked_boot = next(
+            item
+            for item in report["next_command_plan"]
+            if item["id"] == "write_blocked_boot_evidence_from_real_transcript"
+        )
+        self.assertIn("capture-chip-boot-evidence.py", blocked_boot["command"])
+        self.assertIn("--write-blocked", blocked_boot["command"])
+        self.assertEqual(
+            blocked_boot["claim_boundary"],
+            "diagnostic_blocked_evidence_only_not_live_capture_proof",
+        )
 
     def test_agent_live_row_cannot_reuse_qemu_virt_reference_for_chip_objective(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -335,6 +355,8 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
                 report = gate.run_check(Namespace(manifest=None, qemu_evidence=None))
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
+        self.assertEqual(report["next_command_plan"], [])
+        self.assertEqual(report["summary"]["next_command_count"], 0)
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
 
 

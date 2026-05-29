@@ -38,27 +38,6 @@ export function DashboardLoadingState({ label }: { label?: string }) {
   );
 }
 
-export function DashboardEndpointPending({
-  endpoint,
-  what,
-}: {
-  endpoint: string;
-  what: string;
-}) {
-  return (
-    <div className="mx-auto max-w-prose space-y-3 p-12 text-sm text-neutral-400">
-      <h1 className="text-lg font-semibold text-white">{what}</h1>
-      <p>
-        The matching API endpoint{" "}
-        <code className="text-orange-400">{endpoint}</code> is not yet converted
-        to a Cloudflare Worker route. Once Agent G publishes it, the matching{" "}
-        <code>useXxx()</code> hook in <code>frontend/src/lib/data/</code> will
-        start returning real data and this page will render automatically.
-      </p>
-    </div>
-  );
-}
-
 export function DashboardErrorState({ message }: { message: string }) {
   return (
     <div className="mx-auto max-w-prose space-y-3 p-12 text-sm text-red-300">

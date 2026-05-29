@@ -21,6 +21,11 @@ def _stand_extra(*, left: bool = True, right: bool = False) -> dict[str, object]
         "stand_height_m": 0.27,
         "left_foot_contact": left,
         "right_foot_contact": right,
+        "left_foot_z_m": 0.0 if left else 0.03,
+        "right_foot_z_m": 0.0 if right else 0.03,
+        "left_foot_slip_m_s": 0.02,
+        "right_foot_slip_m_s": 0.02,
+        "self_collision_count": 0,
     }
 
 
@@ -115,6 +120,53 @@ def test_walk_forward_rejects_sliding_without_alternating_foot_contacts() -> Non
 
     assert result is not None
     assert result.success is False
+
+
+@pytest.mark.parametrize(
+    ("extra", "reason"),
+    (
+        (
+            {
+                "left_foot_z_m": 0.0,
+                "right_foot_z_m": 0.0,
+            },
+            "dragging swing feet",
+        ),
+        (
+            {
+                "left_foot_slip_m_s": 0.8,
+                "right_foot_slip_m_s": 0.8,
+            },
+            "slipping stance feet",
+        ),
+        (
+            {
+                "self_collision_count": 1,
+            },
+            "self collision",
+        ),
+    ),
+)
+def test_walk_forward_requires_clear_non_slipping_non_colliding_steps(
+    extra: dict[str, object],
+    reason: str,
+) -> None:
+    checker = _checker("walk_forward")
+    result = None
+    for t_s, left in ((0.0, True), (1.0, False), (1.5, True), (2.6, False)):
+        result = checker.update(
+            TelemetrySample(
+                t_s=t_s,
+                torso_x_m=0.35 if t_s > 0.0 else 0.0,
+                torso_y_m=0.0,
+                torso_z_m=0.27,
+                yaw_rad=0.0,
+                extra={**_stand_extra(left=left, right=not left), **extra},
+            )
+        )
+
+    assert result is not None, reason
+    assert result.success is False, reason
 
 
 def test_walk_forward_uses_tracked_motion_without_overloading_torso_height() -> None:

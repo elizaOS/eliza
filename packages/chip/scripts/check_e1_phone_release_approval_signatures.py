@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -606,6 +606,7 @@ def write_report(
     report = {
         "schema": REPORT_SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "release_credit": False,
         "approval_contract": {
             "content_contract": CONTRACT.relative_to(ROOT).as_posix(),

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -200,6 +201,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.phone_media_pipeline_scope.v1",
         "status": "media_pipeline_scope_release_blocked",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": (
             "Display scaffold and camera/ISP scope audit only; not GPU, DRM/KMS, "
             "Android HWC, DSI/CSI PHY, camera sensor, ISP tuning, HAL, image quality, "

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -83,7 +84,19 @@ class NoAliasDumper(yaml.SafeDumper):
 
 
 def rel(path: Path) -> str:
+    if not path.is_absolute():
+        path = ROOT / path
     return path.relative_to(ROOT).as_posix()
+
+
+def provenance_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe(item) for item in value]
+    if isinstance(value, str):
+        return value.replace(str(ROOT), "packages/chip")
+    return value
 
 
 def read_yaml(path: Path) -> dict[str, Any]:
@@ -908,6 +921,7 @@ def build_report(
     return {
         "schema": "eliza.e1_phone_enclosure_readiness_gap_map.v1",
         "status": "blocked_fail_closed_diagnostic_only",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "date": REPORT_DATE,
         "claim_boundary": (
             "Diagnostic gap map joining enclosure burndown, mechanical CAD inventory, "
@@ -1012,7 +1026,7 @@ def main() -> int:
         args.routed_matrix,
         args.factory_inventory,
     )
-    text = yaml.dump(report, Dumper=NoAliasDumper, sort_keys=False, width=100)
+    text = yaml.dump(provenance_safe(report), Dumper=NoAliasDumper, sort_keys=False, width=100)
     if args.write_report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(text, encoding="utf-8")

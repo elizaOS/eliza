@@ -12,6 +12,7 @@
   },
   "claim_boundary": "behavioural BPU geometry sweep only; SPEC/AOSP/JetStream real-workload MPKI claims remain blocked until those trace sets are captured",
   "generated_at_utc": "2026-05-24T05:15:17.980329+00:00",
+  "generated_utc": "2026-05-24T05:41:10Z",
   "harness": "behavioural-bpu-model",
   "ittage_evidence_counters": [
     "ittage_hit",

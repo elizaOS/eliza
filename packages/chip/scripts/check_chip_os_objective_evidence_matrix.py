@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -521,6 +522,7 @@ def build_matrix(report_dir: Path) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {
             "requirements": len(rows),

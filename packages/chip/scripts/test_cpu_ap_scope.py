@@ -76,6 +76,16 @@ def test_failed_structural_check_fails() -> None:
     print("PASS structural check failure rejected")
 
 
+def test_legacy_alias_source_order_is_checked() -> None:
+    if not check_cpu_ap_scope.legacy_cpu_alias_is_compatibility_only():
+        raise AssertionError("legacy CPU alias must remain compatibility-only in source lists")
+    report = check_cpu_ap_scope.build_report()
+    check_ids = {check["id"] for check in report["checks"]}
+    if "legacy_cpu_alias_is_compatibility_only" not in check_ids:
+        raise AssertionError(f"missing legacy alias check: {check_ids}")
+    print("PASS legacy CPU alias source-order check is active")
+
+
 def test_scaffold_removal_fails() -> None:
     report = check_cpu_ap_scope.build_report()
     mutated = copy.deepcopy(report)
@@ -92,6 +102,7 @@ def main() -> None:
     test_missing_transcript_blocker_removal_fails()
     test_pass_report_has_no_structured_findings()
     test_failed_structural_check_fails()
+    test_legacy_alias_source_order_is_checked()
     test_scaffold_removal_fails()
 
 

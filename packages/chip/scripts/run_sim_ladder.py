@@ -28,6 +28,11 @@ LADDER = [
         ],
     },
     {
+        "name": "cocotb_npu",
+        "command": ["make", "cocotb-npu"],
+        "required_artifacts": ["build/reports/cocotb/e1_npu_test_e1_npu.xml"],
+    },
+    {
         "name": "cocotb_cpu",
         "command": ["make", "cocotb-cpu"],
         "required_artifacts": [

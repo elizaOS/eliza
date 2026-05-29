@@ -21,7 +21,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import type { VaultEntryMeta } from "./vault-tabs/types";
+import { isVaultEntryMeta, type VaultEntryMeta } from "./vault-tabs/types";
 
 interface RevealPayload {
   ok: boolean;
@@ -83,6 +83,9 @@ export function WalletKeysSection() {
       const json = (await res.json()) as { entries?: unknown };
       if (!Array.isArray(json.entries)) {
         throw new Error("Invalid wallet inventory response");
+      }
+      if (!json.entries.every(isVaultEntryMeta)) {
+        throw new Error("Invalid wallet inventory entry shape");
       }
       setEntries(json.entries);
     } catch (err) {

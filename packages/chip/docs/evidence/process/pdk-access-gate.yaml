@@ -1,208 +1,197 @@
-schema: eliza.process_pdk_access_gate.v1
-status: blocked_until_foundry_agreement
-scope:
-  - TSMC N2P (primary 2028 production target)
-  - TSMC A14 (stretch 2028 production target)
-  - Intel 14A (strategic 2nd source 2028)
-  - Samsung SF2P (backup 2028)
-claim_boundary:
-  allowed:
-    - Document the selected 2028 process shortlist.
-    - Document procurement preconditions for each option.
-    - Run open-PDK methodology lanes (Sky130 + GF180 + IHP SG13G2).
-    - Produce ASAP7 predictive PPA shapes (projection_only).
-  blocked:
-    - Any advanced-node signoff artifact.
-    - Any advanced-node PPA number marked as measured / signoff / release.
-    - Any commercial-NDA library / Liberty / SRAM / PHY / GDS / LEF file.
-
 advanced_node_targets:
-  primary:
-    pdk: TSMC_N2P
-    access_gate_file: pd/n2p-stub/access-gate.yaml
-    library_manifest: pd/library-manifests/tsmc-n2p.yaml
-    corner_manifest: pd/corner-manifests/tsmc-n2p.yaml
-    status: blocked_until_foundry_agreement
-    nre_usd_low: 250000000
-    nre_usd_high: 400000000
-    wafer_usd_low: 30000
-    wafer_usd_high: 33000
-    next_action_checklist:
-      - id: tsmc_oip_conversation_open
-        action: Open TSMC Open Innovation Platform conversation at N2P with Customer Success
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_under_docs_evidence_process
-      - id: tsmc_n2p_nda_executed
-        action: Execute TSMC OIP NDA at N2P (covers PDK, libraries, methodology)
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_document_under_docs_evidence_process
-      - id: hard_ip_licenses_quoted
-        action: Obtain LPDDR5X PHY + USB / MIPI / PLL / SRAM compiler license quotes
-        status: not_started
-        owner: project_principal
-        evidence_required: vendor_quotes_under_docs_evidence_process
-      - id: mpw_slot_query
-        action: Query TSMC for MPW or risk-production slot availability inside 2027Q3-2028Q4
-        status: not_started
-        owner: project_principal
-        evidence_required: foundry_allocation_response_email_under_docs_evidence_process
-      - id: commercial_eda_seat_quote
-        action: Obtain Cadence Innovus + Tempus + Voltus + Pegasus seat quotes
-        status: not_started
-        owner: project_principal
-        evidence_required: vendor_quotes_under_docs_evidence_process
-      - id: nre_budget_committed
-        action: Commit $250-400M tapeout NRE + $40M mask set + $5M+/yr EDA budget
-        status: not_started
-        owner: project_principal
-        evidence_required: funding_commitment_letter_under_docs_evidence_process
-  stretch:
-    pdk: TSMC_A14
-    access_gate_file: pd/a14-stub/access-gate.yaml
-    library_manifest: pd/library-manifests/tsmc-a14.yaml
-    corner_manifest: pd/corner-manifests/tsmc-a14.yaml
-    status: blocked_until_foundry_agreement
-    nre_usd_low: 300000000
-    nre_usd_high: 500000000
-    wafer_usd_low: 40000
-    wafer_usd_high: 45000
-    next_action_checklist:
-      - id: tsmc_oip_conversation_open
-        action: Open TSMC OIP conversation at A14 (after N2P NDA exists; the A14 path uses the same TSMC OIP relationship)
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_addendum_under_docs_evidence_process
-      - id: tsmc_a14_nda_executed
-        action: Execute TSMC OIP NDA addendum at A14 (separate from N2P)
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_document_under_docs_evidence_process
-      - id: hard_ip_licenses_a14_quoted
-        action: Obtain LPDDR5X / LPDDR6 PHY + USB / MIPI / PLL / SRAM compiler license quotes at A14
-        status: not_started
-        owner: project_principal
-        evidence_required: vendor_quotes_under_docs_evidence_process
-      - id: a14_wafer_window_query
-        action: Query TSMC for A14 wafer-allocation window inside 2028Q1-2028Q4
-        status: not_started
-        owner: project_principal
-        evidence_required: foundry_allocation_response_email_under_docs_evidence_process
-      - id: a14_nre_budget_committed
-        action: Commit $300-500M tapeout NRE + $45M mask set
-        status: not_started
-        owner: project_principal
-        evidence_required: funding_commitment_letter_under_docs_evidence_process
-  second_source:
-    pdk: Intel_14A
-    access_gate_file: pd/intel-14a-stub/access-gate.yaml
-    library_manifest: pd/library-manifests/intel-14a.yaml
-    corner_manifest: pd/corner-manifests/intel-14a.yaml
-    status: blocked_until_foundry_agreement
-    nre_usd_estimate: premium_over_tsmc_n2p_due_to_high_na
-    next_action_checklist:
-      - id: ifs_conversation_open
-        action: Open Intel Foundry Services conversation at 14A
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_under_docs_evidence_process
-      - id: ifs_14a_nda_executed
-        action: Execute IFS NDA at 14A
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_document_under_docs_evidence_process
-      - id: darpa_or_gov_subsidy_alignment
-        action: If applicable, open DARPA / RAMP-C or US-gov subsidy conversation
-        status: not_started
-        owner: project_principal
-        evidence_required: subsidy_letter_under_docs_evidence_process
-      - id: high_na_scanner_allocation_query
-        action: Confirm ASML High-NA scanner allocation window through Intel
-        status: not_started
-        owner: project_principal
-        evidence_required: allocation_response_email_under_docs_evidence_process
-      - id: bspdn_two_sided_eda_seat
-        action: Obtain Voltus or RedHawk-SC seat with BSPDN-aware extraction views
-        status: not_started
-        owner: project_principal
-        evidence_required: vendor_quote_under_docs_evidence_process
-      - id: 14a_nre_budget_committed
-        action: Commit premium-over-N2P tapeout NRE
-        status: not_started
-        owner: project_principal
-        evidence_required: funding_commitment_letter_under_docs_evidence_process
   backup:
-    pdk: Samsung_SF2P
     access_gate_file: pd/sf2p-stub/access-gate.yaml
-    library_manifest: pd/library-manifests/samsung-sf2p.yaml
     corner_manifest: pd/corner-manifests/samsung-sf2p.yaml
-    status: blocked_until_foundry_agreement
+    library_manifest: pd/library-manifests/samsung-sf2p.yaml
     next_action_checklist:
-      - id: samsung_safe_conversation_open
-        action: Open Samsung Foundry SAFE program conversation at SF2P
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_under_docs_evidence_process
-      - id: samsung_sf2p_nda_executed
-        action: Execute Samsung Foundry NDA at SF2P
-        status: not_started
-        owner: project_principal
-        evidence_required: signed_nda_document_under_docs_evidence_process
-      - id: hard_ip_licenses_sf2p_quoted
-        action: Obtain LPDDR / USB / MIPI / PLL / SRAM compiler license quotes at SF2P
-        status: not_started
-        owner: project_principal
-        evidence_required: vendor_quotes_under_docs_evidence_process
-      - id: sf2p_yield_evidence_query
-        action: Request mature-yield evidence from Samsung Foundry (post-SF3 issues)
-        status: not_started
-        owner: project_principal
-        evidence_required: yield_report_under_docs_evidence_process
-      - id: sf2p_wafer_window_query
-        action: Query Samsung for SF2P wafer-allocation window inside 2028
-        status: not_started
-        owner: project_principal
-        evidence_required: foundry_allocation_response_email_under_docs_evidence_process
-      - id: sf2p_nre_budget_committed
-        action: Commit tapeout NRE + mask set
-        status: not_started
-        owner: project_principal
-        evidence_required: funding_commitment_letter_under_docs_evidence_process
-
-open_lanes_active:
-  - sky130A
-  - gf180mcuC
-  - ihp-sg13g2
-predictive_lanes_active:
-  - ASAP7
-
-unblock_requires_global:
-  - At_least_one_executed_foundry_agreement
-  - Commercial_signoff_EDA_seat_held
-  - Hard_IP_licenses_for_LPDDR_PHY_USB_MIPI_PLL_SRAM_compiler_at_selected_node
-  - Mask_set_NRE_budget_committed
-  - Tapeout_NRE_budget_committed
-  - Wafer_allocation_window_secured
-
+    - action: Open Samsung Foundry SAFE program conversation at SF2P
+      evidence_required: signed_nda_under_docs_evidence_process
+      id: samsung_safe_conversation_open
+      owner: project_principal
+      status: not_started
+    - action: Execute Samsung Foundry NDA at SF2P
+      evidence_required: signed_nda_document_under_docs_evidence_process
+      id: samsung_sf2p_nda_executed
+      owner: project_principal
+      status: not_started
+    - action: Obtain LPDDR / USB / MIPI / PLL / SRAM compiler license quotes at SF2P
+      evidence_required: vendor_quotes_under_docs_evidence_process
+      id: hard_ip_licenses_sf2p_quoted
+      owner: project_principal
+      status: not_started
+    - action: Request mature-yield evidence from Samsung Foundry (post-SF3 issues)
+      evidence_required: yield_report_under_docs_evidence_process
+      id: sf2p_yield_evidence_query
+      owner: project_principal
+      status: not_started
+    - action: Query Samsung for SF2P wafer-allocation window inside 2028
+      evidence_required: foundry_allocation_response_email_under_docs_evidence_process
+      id: sf2p_wafer_window_query
+      owner: project_principal
+      status: not_started
+    - action: Commit tapeout NRE + mask set
+      evidence_required: funding_commitment_letter_under_docs_evidence_process
+      id: sf2p_nre_budget_committed
+      owner: project_principal
+      status: not_started
+    pdk: Samsung_SF2P
+    status: blocked_until_foundry_agreement
+  primary:
+    access_gate_file: pd/n2p-stub/access-gate.yaml
+    corner_manifest: pd/corner-manifests/tsmc-n2p.yaml
+    library_manifest: pd/library-manifests/tsmc-n2p.yaml
+    next_action_checklist:
+    - action: Open TSMC Open Innovation Platform conversation at N2P with Customer
+        Success
+      evidence_required: signed_nda_under_docs_evidence_process
+      id: tsmc_oip_conversation_open
+      owner: project_principal
+      status: not_started
+    - action: Execute TSMC OIP NDA at N2P (covers PDK, libraries, methodology)
+      evidence_required: signed_nda_document_under_docs_evidence_process
+      id: tsmc_n2p_nda_executed
+      owner: project_principal
+      status: not_started
+    - action: Obtain LPDDR5X PHY + USB / MIPI / PLL / SRAM compiler license quotes
+      evidence_required: vendor_quotes_under_docs_evidence_process
+      id: hard_ip_licenses_quoted
+      owner: project_principal
+      status: not_started
+    - action: Query TSMC for MPW or risk-production slot availability inside 2027Q3-2028Q4
+      evidence_required: foundry_allocation_response_email_under_docs_evidence_process
+      id: mpw_slot_query
+      owner: project_principal
+      status: not_started
+    - action: Obtain Cadence Innovus + Tempus + Voltus + Pegasus seat quotes
+      evidence_required: vendor_quotes_under_docs_evidence_process
+      id: commercial_eda_seat_quote
+      owner: project_principal
+      status: not_started
+    - action: Commit $250-400M tapeout NRE + $40M mask set + $5M+/yr EDA budget
+      evidence_required: funding_commitment_letter_under_docs_evidence_process
+      id: nre_budget_committed
+      owner: project_principal
+      status: not_started
+    nre_usd_high: 400000000
+    nre_usd_low: 250000000
+    pdk: TSMC_N2P
+    status: blocked_until_foundry_agreement
+    wafer_usd_high: 33000
+    wafer_usd_low: 30000
+  second_source:
+    access_gate_file: pd/intel-14a-stub/access-gate.yaml
+    corner_manifest: pd/corner-manifests/intel-14a.yaml
+    library_manifest: pd/library-manifests/intel-14a.yaml
+    next_action_checklist:
+    - action: Open Intel Foundry Services conversation at 14A
+      evidence_required: signed_nda_under_docs_evidence_process
+      id: ifs_conversation_open
+      owner: project_principal
+      status: not_started
+    - action: Execute IFS NDA at 14A
+      evidence_required: signed_nda_document_under_docs_evidence_process
+      id: ifs_14a_nda_executed
+      owner: project_principal
+      status: not_started
+    - action: If applicable, open DARPA / RAMP-C or US-gov subsidy conversation
+      evidence_required: subsidy_letter_under_docs_evidence_process
+      id: darpa_or_gov_subsidy_alignment
+      owner: project_principal
+      status: not_started
+    - action: Confirm ASML High-NA scanner allocation window through Intel
+      evidence_required: allocation_response_email_under_docs_evidence_process
+      id: high_na_scanner_allocation_query
+      owner: project_principal
+      status: not_started
+    - action: Obtain Voltus or RedHawk-SC seat with BSPDN-aware extraction views
+      evidence_required: vendor_quote_under_docs_evidence_process
+      id: bspdn_two_sided_eda_seat
+      owner: project_principal
+      status: not_started
+    - action: Commit premium-over-N2P tapeout NRE
+      evidence_required: funding_commitment_letter_under_docs_evidence_process
+      id: 14a_nre_budget_committed
+      owner: project_principal
+      status: not_started
+    nre_usd_estimate: premium_over_tsmc_n2p_due_to_high_na
+    pdk: Intel_14A
+    status: blocked_until_foundry_agreement
+  stretch:
+    access_gate_file: pd/a14-stub/access-gate.yaml
+    corner_manifest: pd/corner-manifests/tsmc-a14.yaml
+    library_manifest: pd/library-manifests/tsmc-a14.yaml
+    next_action_checklist:
+    - action: Open TSMC OIP conversation at A14 (after N2P NDA exists; the A14 path
+        uses the same TSMC OIP relationship)
+      evidence_required: signed_nda_addendum_under_docs_evidence_process
+      id: tsmc_oip_conversation_open
+      owner: project_principal
+      status: not_started
+    - action: Execute TSMC OIP NDA addendum at A14 (separate from N2P)
+      evidence_required: signed_nda_document_under_docs_evidence_process
+      id: tsmc_a14_nda_executed
+      owner: project_principal
+      status: not_started
+    - action: Obtain LPDDR5X / LPDDR6 PHY + USB / MIPI / PLL / SRAM compiler license
+        quotes at A14
+      evidence_required: vendor_quotes_under_docs_evidence_process
+      id: hard_ip_licenses_a14_quoted
+      owner: project_principal
+      status: not_started
+    - action: Query TSMC for A14 wafer-allocation window inside 2028Q1-2028Q4
+      evidence_required: foundry_allocation_response_email_under_docs_evidence_process
+      id: a14_wafer_window_query
+      owner: project_principal
+      status: not_started
+    - action: Commit $300-500M tapeout NRE + $45M mask set
+      evidence_required: funding_commitment_letter_under_docs_evidence_process
+      id: a14_nre_budget_committed
+      owner: project_principal
+      status: not_started
+    nre_usd_high: 500000000
+    nre_usd_low: 300000000
+    pdk: TSMC_A14
+    status: blocked_until_foundry_agreement
+    wafer_usd_high: 45000
+    wafer_usd_low: 40000
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
 forbidden_claims:
-  - tsmc_n2p_tapeout_ready
-  - tsmc_a14_tapeout_ready
-  - intel_14a_tapeout_ready
-  - samsung_sf2p_tapeout_ready
-  - any_2028_phone_class_signoff_evidence
-
+- tsmc_n2p_tapeout_ready
+- tsmc_a14_tapeout_ready
+- intel_14a_tapeout_ready
+- samsung_sf2p_tapeout_ready
+- any_2028_phone_class_signoff_evidence
+generated_utc: '2026-05-20T10:12:30Z'
 next_commands:
+  die_area_envelope: make die-area-budget-check
+  ppa_projection: make ppa-projection
   preflight: make pdk-portability-check
   procurement_gate: make pdk-access-gate
-  ppa_projection: make ppa-projection
-  die_area_envelope: make die-area-budget-check
-
+open_lanes_active:
+- sky130A
+- gf180mcuC
+- ihp-sg13g2
+predictive_lanes_active:
+- ASAP7
 related_evidence:
-  - docs/spec-db/process-14a-effects.yaml
-  - docs/pd/process-node-selection.md
-  - docs/pd/multi-pdk-portability.md
-  - pd/openlane/portability-index.yaml
-  - docs/evidence/process/multi-pdk-closure.yaml
-  - docs/evidence/process/ppa-projection.yaml
-  - docs/evidence/process/die-area-budget.yaml
+- docs/spec-db/process-14a-effects.yaml
+- docs/pd/process-node-selection.md
+- docs/pd/multi-pdk-portability.md
+- pd/openlane/portability-index.yaml
+- docs/evidence/process/multi-pdk-closure.yaml
+- docs/evidence/process/ppa-projection.yaml
+- docs/evidence/process/die-area-budget.yaml
+schema: eliza.process_pdk_access_gate.v1
+scope:
+- TSMC N2P (primary 2028 production target)
+- TSMC A14 (stretch 2028 production target)
+- Intel 14A (strategic 2nd source 2028)
+- Samsung SF2P (backup 2028)
+status: blocked_until_foundry_agreement
+unblock_requires_global:
+- At_least_one_executed_foundry_agreement
+- Commercial_signoff_EDA_seat_held
+- Hard_IP_licenses_for_LPDDR_PHY_USB_MIPI_PLL_SRAM_compiler_at_selected_node
+- Mask_set_NRE_budget_committed
+- Tapeout_NRE_budget_committed
+- Wafer_allocation_window_secured

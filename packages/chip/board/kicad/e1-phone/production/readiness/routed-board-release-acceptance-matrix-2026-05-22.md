@@ -17,6 +17,9 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | `missing_required_output_path_count` | `0` |
 | `candidate_present_blocked_required_output_path_count` | `37` |
 | `truly_missing_required_output_path_count` | `0` |
+| `candidate_board_matches_real_footprint_source` | `True` |
+| `candidate_board_placeholder_marker_count` | `0` |
+| `candidate_board_legacy_e1phone_footprint_ref_count` | `0` |
 | `candidate_step_size_bytes` | `33644081` |
 | `candidate_step_component_model_count` | `89` |
 | `candidate_step_pinout_bound_model_count` | `22` |
@@ -84,6 +87,7 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | Directory NPTH contracts match footprints | `True` |
 | Component 3D binding rows | `89` |
 | Component 3D binding local STEP files | `89` |
+| Component 3D binding local STEP imported solids | `89` |
 | Component 3D binding supplier intake statuses | `{'not_applicable_board_level_support_pattern': 42, 'present_local_surrogate_step_not_supplier_approved': 47}` |
 | Component 3D binding release credit | `False` |
 | Supplier-approved model rows | `0` |

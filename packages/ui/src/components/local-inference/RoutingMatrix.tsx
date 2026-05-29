@@ -94,6 +94,13 @@ export function RoutingMatrix() {
         const res = await client.setLocalInferencePolicy(slot, policy);
         if (requestSeqRef.current.get(slot) === requestId) {
           setPreferences(res.preferences);
+          setError(null);
+        }
+      } catch (err) {
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setError(
+            err instanceof Error ? err.message : "Failed to update policy",
+          );
         }
       } finally {
         if (requestSeqRef.current.get(slot) === requestId) {
@@ -116,6 +123,15 @@ export function RoutingMatrix() {
         );
         if (requestSeqRef.current.get(slot) === requestId) {
           setPreferences(res.preferences);
+          setError(null);
+        }
+      } catch (err) {
+        if (requestSeqRef.current.get(slot) === requestId) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to update preferred provider",
+          );
         }
       } finally {
         if (requestSeqRef.current.get(slot) === requestId) {

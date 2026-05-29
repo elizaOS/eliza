@@ -104,6 +104,11 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "evidence_paths": [SCANOUT_RTL, AXI4_PKG, TB, TEST],
                 "as_of": datetime.now(UTC).isoformat(),
                 "subsystem": "display",
+                "phone_claim_allowed": False,
+                "release_claim_allowed": False,
+                "panel_bringup_claim_allowed": False,
+                "dsi_phy_claim_allowed": False,
+                "drm_kms_claim_allowed": False,
                 "claim_boundary": (
                     "Proves the buildable display scanout subset: a real AXI4 "
                     "read master (INCR bursts, QoS=DISPLAY_RT, multiple "

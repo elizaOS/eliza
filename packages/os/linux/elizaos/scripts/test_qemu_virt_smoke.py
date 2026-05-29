@@ -117,6 +117,62 @@ class QemuVirtSmokeTests(unittest.TestCase):
         self.assertEqual(data["status"], "pass")
         self.assertEqual(data["evidence"]["boot_completed"], True)
 
+    def test_validate_existing_resolves_repo_token_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            variant = root / "packages/os/linux/elizaos"
+            evidence_dir = variant / "evidence"
+            out_dir = variant / "out"
+            evidence_dir.mkdir(parents=True)
+            out_dir.mkdir(parents=True)
+            iso = out_dir / "elizaos-linux-riscv64.iso"
+            transcript = evidence_dir / "qemu_virt_boot.transcript.log"
+            iso.write_bytes(b"iso")
+            transcript.write_text("Linux version\nelizaos-agent-ready\n", encoding="utf-8")
+            evidence = evidence_dir / "qemu_virt_boot.json"
+            evidence.write_text(
+                json.dumps(
+                    {
+                        "schema": qemu_virt_smoke.EVIDENCE_SCHEMA,
+                        "claim_boundary": qemu_virt_smoke.CLAIM_BOUNDARY,
+                        "iso_path": "<repo>/packages/os/linux/elizaos/out/elizaos-linux-riscv64.iso",
+                        "iso_sha256": sha256(iso),
+                        "transcript_path": (
+                            "<repo>/packages/os/linux/elizaos/evidence/"
+                            "qemu_virt_boot.transcript.log"
+                        ),
+                        "transcript_sha256": sha256(transcript),
+                        "memory_mb": 4096,
+                        "cpus": 4,
+                        "timeout_s": 600,
+                        "duration_s": 8,
+                        "start_utc": "2026-05-23T00:00:00Z",
+                        "qemu_exit_code": 0,
+                        "u_boot_path": None,
+                        "boot_completed": True,
+                        "markers_found": list(qemu_virt_smoke.REQUIRED_MARKERS),
+                        "markers_missing": [],
+                        "forbidden_markers_present": [],
+                        "iso_boot_artifacts": iso_boot_artifacts(),
+                        "provenance": qemu_virt_smoke.PROVENANCE,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            report = root / "report.json"
+            with (
+                mock.patch.object(qemu_virt_smoke, "VARIANT_DIR", variant),
+                mock.patch.object(qemu_virt_smoke, "REPO_ROOT", root),
+            ):
+                rc = qemu_virt_smoke.main(
+                    ["--validate-existing", "--evidence", str(evidence), "--report", str(report)]
+                )
+            data = json.loads(report.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(data["status"], "pass")
+
     def test_validate_existing_rejects_hash_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

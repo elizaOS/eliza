@@ -130,9 +130,10 @@ def _make_scripts(
         train_alberta,
         _shell_header()
         + f"ALBERTA_STREAMING_STEPS=\"${{ALBERTA_STREAMING_STEPS:-{alberta_steps}}}\"\n"
+        + "ALBERTA_PHASE_EVAL_INTERVAL_STEPS=\"${ALBERTA_PHASE_EVAL_INTERVAL_STEPS:-50000}\"\n"
         + "export JAX_PLATFORMS=cpu\n"
         + "export JAX_PLATFORM_NAME=cpu\n"
-        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps \"$ALBERTA_STREAMING_STEPS\" --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0 --require-phase-success --min-phase-success-rate 1.0\n",
+        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps \"$ALBERTA_STREAMING_STEPS\" --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0 --require-phase-success --min-phase-success-rate 1.0 --phase-eval-interval-steps \"$ALBERTA_PHASE_EVAL_INTERVAL_STEPS\"\n",
     )
     scripts["train_alberta"] = str(train_alberta)
 
@@ -203,7 +204,28 @@ def _make_scripts(
         + f"uv run eliza-robot-validate-alberta-checkpoint {checkpoint} --profile {profile_id} --tasks {tasks_s} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-domain-rand --require-inference --require-phase-promotion\n"
         + f"uv run eliza-robot-validate-asimov1-production-checkpoint {checkpoint} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-inference-check\n"
         + f"uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint {checkpoint} --production-min-steps \"$ALBERTA_STREAMING_STEPS\" --require-production --max-steps 2\n"
+        + "rm -rf evidence/curriculum_eval\n"
         + "mkdir -p evidence/curriculum_eval\n"
+        + "uv run python - <<'PY'\n"
+        + "import hashlib, json\n"
+        + "from pathlib import Path\n"
+        + f"checkpoint = Path({checkpoint!r})\n"
+        + "def sha256(path):\n"
+        + "    if not path.is_file():\n"
+        + "        return None\n"
+        + "    h = hashlib.sha256()\n"
+        + "    with path.open('rb') as f:\n"
+        + "        for chunk in iter(lambda: f.read(1024 * 1024), b''):\n"
+        + "            h.update(chunk)\n"
+        + "    return h.hexdigest()\n"
+        + "payload = {\n"
+        + "    'schema': 'robot-curriculum-eval-provenance-v1',\n"
+        + "    'checkpoint': str(checkpoint),\n"
+        + "    'checkpoint_manifest_sha256': sha256(checkpoint / 'manifest.json'),\n"
+        + "    'checkpoint_policy_sha256': sha256(checkpoint / 'alberta_policy.npz') or sha256(checkpoint / 'policy.zip'),\n"
+        + "}\n"
+        + "Path('evidence/curriculum_eval/provenance.json').write_text(json.dumps(payload, indent=2) + '\\n', encoding='utf-8')\n"
+        + "PY\n"
         + f"uv run python scripts/eval_text_policy.py --profile {profile_id} --ckpt {checkpoint} --tasks {tasks_s} --episodes \"$POST_TRAIN_EVAL_EPISODES\" --max-steps \"$POST_TRAIN_EVAL_MAX_STEPS\" --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0\n"
         + f"uv run python scripts/evidence_text_to_action_e2e.py --checkpoint {checkpoint} --profile {profile_id} --no-real\n"
         + "rm -rf evidence/multi_robot_smoke_videos evidence/agent_videos evidence/video_review\n"

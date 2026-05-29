@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 import unittest
 from argparse import Namespace
@@ -92,6 +93,26 @@ class AndroidProofBundlePreflightTests(unittest.TestCase):
         self.assertIn("cts_tradefed_missing", blockers)
         self.assertIn("vts_tradefed_missing", blockers)
         self.assertIn("scripts/android/build_cts_vts_tradefed.sh", blockers["cts_tradefed_missing"]["next_step"])
+
+    def test_report_sanitizes_host_local_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            aosp = root / "aosp"
+            (aosp / "build").mkdir(parents=True)
+            (aosp / "build/envsetup.sh").write_text("# env\n", encoding="utf-8")
+            model = root / "mobile_smoke.tflite"
+            model.write_bytes(b"model")
+            args = Namespace(aosp_tree=str(aosp), no_adb_probe=True)
+            env = {"E1_NPU_TFLITE_MODEL": str(model), "E1_NPU_WRITE_PROOF_JSON": "0"}
+            with mock.patch.object(preflight.shutil, "which", return_value="/home/shaw/Android/Sdk/platform-tools/adb"):
+                _rc, report = preflight.build_report(args, env)
+
+        encoded = json.dumps(report, sort_keys=True)
+        self.assertIn("generated_utc", report)
+        self.assertEqual(report["claim_boundary"], preflight.CLAIM_BOUNDARY)
+        self.assertNotIn("/home/shaw", encoded)
+        self.assertNotIn(str(root), encoded)
+        self.assertIn("$AOSP_TREE", encoded)
 
 
 if __name__ == "__main__":

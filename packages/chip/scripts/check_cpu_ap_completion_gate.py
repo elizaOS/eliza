@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from typing import Any
 
 from cpu_ap_evidence_lib import (
@@ -22,6 +23,10 @@ from cpu_ap_evidence_lib import (
 )
 
 REPORT = ROOT / "build/reports/cpu_ap_completion_gate.json"
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def completion_claimed() -> bool:
@@ -133,6 +138,7 @@ def blocked_report(
     return {
         "schema": "eliza.cpu_ap_completion_gate.v1",
         "status": "blocked",
+        "generated_utc": utc_now(),
         "claim_boundary": (
             "qemu_virt_linux_boot_is_reference_only_not_generated_eliza_cpu_ap_completion"
         ),
@@ -178,6 +184,7 @@ def main() -> int:
                 {
                     "schema": "eliza.cpu_ap_completion_gate.v1",
                     "status": "fail",
+                    "generated_utc": utc_now(),
                     "claim_boundary": "claimed_generated_cpu_ap_completion_requires_artifacts_and_evidence",
                     "summary": {"failures": 1},
                     "next_step": "Run scripts/check_cpu_ap_evidence.py --require-evidence and repair the failing CPU/AP artifact or transcript.",
@@ -191,6 +198,7 @@ def main() -> int:
             {
                 "schema": "eliza.cpu_ap_completion_gate.v1",
                 "status": "pass",
+                "generated_utc": utc_now(),
                 "claim_boundary": "generated_rocket_rv64gc_ap_artifacts_and_boot_evidence_present",
                 "summary": {"blockers": 0, "failures": 0},
                 "next_step": "none",

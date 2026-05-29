@@ -1,15 +1,9 @@
 import { AlertTriangle, Info, TrendingDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
+import type { AnalyticsCostTrendingDto } from "../../types/cloud-api";
 
-interface CostAlertsTrending {
-  currentDailyBurn: number;
-  burnChangePercent: number;
-  daysUntilBalanceZero: number | null;
-  projectedMonthlyBurn: number;
-  monthlyBurnPercent: number;
-  burnAlertThresholdExceeded: boolean;
-}
+type CostAlertsTrending = AnalyticsCostTrendingDto;
 
 interface CostAlertsProps {
   costTrending: CostAlertsTrending;

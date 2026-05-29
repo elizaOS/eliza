@@ -1,5 +1,6 @@
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cocotb
@@ -764,6 +765,10 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
 
     coverage = {
         "schema": "eliza.npu_cocotb_coverage.v1",
+        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
+        "claim_boundary": "Local NPU cocotb runtime ABI coverage only; not NNAPI, phone-class throughput, power, thermal, Android driver, or release evidence.",
         "source": "verify/cocotb/test_e1_npu.py",
         "runtime_contract": "compiler/runtime/e1_npu_runtime.py",
         "covered_opcodes": sorted(covered_opcodes),

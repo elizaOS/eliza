@@ -3,6 +3,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -458,6 +459,7 @@ def write_report(errors: list[str]) -> None:
     report = {
         "schema": "eliza.platform_contract.v1",
         "status": "fail" if errors else "pass",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": "static_platform_contract_consistency_only_not_linux_or_aosp_boot_evidence",
         "summary": {"findings": len(findings)},
         "findings": findings,

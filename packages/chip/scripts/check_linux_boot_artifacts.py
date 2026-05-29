@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +53,10 @@ def rel(path: Path) -> str:
         return path.resolve().relative_to(ROOT).as_posix()
     except ValueError:
         return str(path)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def load_manifest() -> dict[str, Any]:
@@ -418,6 +423,7 @@ def build_report() -> dict[str, Any]:
     findings = structured_findings(preflight, payload_locator, artifacts, local_serial_candidates)
     return {
         "schema": "eliza.linux_boot_artifacts.status.v1",
+        "generated_utc": utc_now(),
         "manifest": rel(MANIFEST),
         "claim_boundary": manifest.get("claim_boundary"),
         "status": state,

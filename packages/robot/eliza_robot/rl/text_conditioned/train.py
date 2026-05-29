@@ -421,7 +421,10 @@ def main(argv: list[str] | None = None) -> int:
         "--phase-eval-interval-steps",
         type=int,
         default=None,
-        help="evaluate phase promotion after this many env steps; default is one eval at the end of each phase",
+        help=(
+            "evaluate phase promotion/action-scale gates after this many env "
+            "steps; default is a bounded periodic interval for long phases"
+        ),
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--full", action="store_true")

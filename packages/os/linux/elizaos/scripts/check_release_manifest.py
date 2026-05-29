@@ -318,6 +318,8 @@ def check_evidence_rows_collected(
 
 def _resolve_evidence_path(variant_dir: Path, path_value: str) -> Path:
     """Resolve an evidence path relative to the variant directory."""
+    if path_value.startswith("<repo>/"):
+        return (REPO_ROOT / path_value.removeprefix("<repo>/")).resolve()
     candidate = Path(path_value)
     if not candidate.is_absolute():
         candidate = (variant_dir / candidate).resolve()
@@ -536,6 +538,8 @@ def check_grub_efi_evidence(
 def _resolve_runtime_artifacts_dir(variant_dir: Path, payload: dict) -> Path:
     artifacts_value = payload.get("artifacts")
     if isinstance(artifacts_value, str) and artifacts_value:
+        if artifacts_value.startswith("<repo>/"):
+            return (REPO_ROOT / artifacts_value.removeprefix("<repo>/")).resolve()
         artifacts = Path(artifacts_value)
         if artifacts.is_absolute():
             return artifacts

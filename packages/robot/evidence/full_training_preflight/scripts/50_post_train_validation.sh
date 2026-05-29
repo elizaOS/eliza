@@ -2,7 +2,7 @@
 set -euo pipefail
 PACKAGE_ROOT="${ELIZA_ROBOT_PACKAGE_ROOT:-/home/shaw/milady/eliza/packages/robot}"
 cd "$PACKAGE_ROOT"
-ALBERTA_STREAMING_STEPS="${ALBERTA_STREAMING_STEPS:-100}"
+ALBERTA_STREAMING_STEPS="${ALBERTA_STREAMING_STEPS:-150000000}"
 POST_TRAIN_EVAL_EPISODES="${POST_TRAIN_EVAL_EPISODES:-5}"
 POST_TRAIN_EVAL_MAX_STEPS="${POST_TRAIN_EVAL_MAX_STEPS:-200}"
 POST_TRAIN_VIDEO_MAX_STEPS="${POST_TRAIN_VIDEO_MAX_STEPS:-200}"
@@ -12,7 +12,28 @@ unset CUDA_VISIBLE_DEVICES
 uv run eliza-robot-validate-alberta-checkpoint checkpoints/asimov_1_alberta_full --profile asimov-1 --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --min-steps "$ALBERTA_STREAMING_STEPS" --require-domain-rand --require-inference --require-phase-promotion
 uv run eliza-robot-validate-asimov1-production-checkpoint checkpoints/asimov_1_alberta_full --min-steps "$ALBERTA_STREAMING_STEPS" --require-inference-check
 uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint checkpoints/asimov_1_alberta_full --production-min-steps "$ALBERTA_STREAMING_STEPS" --require-production --max-steps 2
+rm -rf evidence/curriculum_eval
 mkdir -p evidence/curriculum_eval
+uv run python - <<'PY'
+import hashlib, json
+from pathlib import Path
+checkpoint = Path('checkpoints/asimov_1_alberta_full')
+def sha256(path):
+    if not path.is_file():
+        return None
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+payload = {
+    'schema': 'robot-curriculum-eval-provenance-v1',
+    'checkpoint': str(checkpoint),
+    'checkpoint_manifest_sha256': sha256(checkpoint / 'manifest.json'),
+    'checkpoint_policy_sha256': sha256(checkpoint / 'alberta_policy.npz') or sha256(checkpoint / 'policy.zip'),
+}
+Path('evidence/curriculum_eval/provenance.json').write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
+PY
 uv run python scripts/eval_text_policy.py --profile asimov-1 --ckpt checkpoints/asimov_1_alberta_full --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes "$POST_TRAIN_EVAL_EPISODES" --max-steps "$POST_TRAIN_EVAL_MAX_STEPS" --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0
 uv run python scripts/evidence_text_to_action_e2e.py --checkpoint checkpoints/asimov_1_alberta_full --profile asimov-1 --no-real
 rm -rf evidence/multi_robot_smoke_videos evidence/agent_videos evidence/video_review

@@ -14,8 +14,6 @@ vi.mock("../../platform/init", () => ({
   canRunLocal: () => canRunLocalMock(),
 }));
 
-import type { AgentStatus } from "../../api/client-types-core";
-import { restartAgentAfterOnboarding } from "../../state/onboarding-restart";
 import {
   hasPartialOnboardingConnectionConfig,
   inferOnboardingResumeStep,
@@ -31,17 +29,8 @@ import {
   resolveOnboardingNextStep,
   resolveOnboardingPreviousStep,
   shouldSkipConnectionStepsForCloudProvisionedContainer,
-  shouldSkipFeaturesStep,
   shouldUseCloudOnboardingFastTrack,
 } from "../flow";
-
-const FAKE_RUNNING_STATUS: AgentStatus = {
-  state: "running",
-  agentName: "test",
-  model: undefined,
-  uptime: undefined,
-  startedAt: undefined,
-};
 
 const STEP_IDS = ONBOARDING_STEPS.map((s) => s.id);
 const EXPECTED_ORDER: OnboardingStep[] = [
@@ -325,16 +314,6 @@ describe("shouldSkipConnectionStepsForCloudProvisionedContainer", () => {
   });
 });
 
-describe("shouldSkipFeaturesStep", () => {
-  it("is always false (current product behaviour: features always shown)", () => {
-    for (const target of ["local", "remote", "elizacloud", ""]) {
-      expect(shouldSkipFeaturesStep({ onboardingServerTarget: target })).toBe(
-        false,
-      );
-    }
-  });
-});
-
 describe("shouldUseCloudOnboardingFastTrack", () => {
   it("cloudProvisionedContainer short-circuits everything else", () => {
     expect(
@@ -510,26 +489,6 @@ describe("inferOnboardingResumeStep (resume from persisted state)", () => {
     expect(hasPartialOnboardingConnectionConfig(partial)).toBe(true);
     expect(hasPartialOnboardingConnectionConfig({})).toBe(false);
     expect(hasPartialOnboardingConnectionConfig(null)).toBe(false);
-  });
-});
-
-describe("restartAgentAfterOnboarding", () => {
-  it("delegates to client.restartAndWait with the provided timeout", async () => {
-    const restartAndWait = vi.fn<(maxWaitMs?: number) => Promise<AgentStatus>>(
-      async () => FAKE_RUNNING_STATUS,
-    );
-    const result = await restartAgentAfterOnboarding({ restartAndWait }, 5000);
-    expect(restartAndWait).toHaveBeenCalledTimes(1);
-    expect(restartAndWait).toHaveBeenCalledWith(5000);
-    expect(result.state).toBe("running");
-  });
-
-  it("uses the documented 120s default when no timeout is supplied", async () => {
-    const restartAndWait = vi.fn<(maxWaitMs?: number) => Promise<AgentStatus>>(
-      async () => FAKE_RUNNING_STATUS,
-    );
-    await restartAgentAfterOnboarding({ restartAndWait });
-    expect(restartAndWait).toHaveBeenCalledWith(120_000);
   });
 });
 

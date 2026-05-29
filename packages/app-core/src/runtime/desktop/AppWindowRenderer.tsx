@@ -364,7 +364,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
     [viewerUrl],
   );
   const targetOrigin = useMemo(
-    () => (viewerUrl ? resolvePostMessageTargetOrigin(viewerUrl) : "*"),
+    () => (viewerUrl ? resolvePostMessageTargetOrigin(viewerUrl) : null),
     [viewerUrl],
   );
   const useEmbedded = useMemo(() => shouldUseEmbeddedAppViewer(run), [run]);
@@ -376,7 +376,8 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       runState.status !== "ready" ||
       !useEmbedded ||
       !requiresAuth ||
-      !authMessage
+      !authMessage ||
+      !targetOrigin
     ) {
       return;
     }
@@ -389,7 +390,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       const iframeWindow = iframeRef.current?.contentWindow;
       if (!iframeWindow || event.source !== iframeWindow) return;
       if (event.data?.type !== expectedReadyType) return;
-      if (targetOrigin !== "*" && event.origin !== targetOrigin) return;
+      if (event.origin !== targetOrigin) return;
       iframeWindow.postMessage(authMessage, targetOrigin);
       authSentRef.current = true;
     };

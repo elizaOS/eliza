@@ -113,9 +113,8 @@ export function useWalletState({
       .getConfig()
       .then((cfg) => {
         if (cancelled) return;
-        const ui = cfg.ui as Record<string, unknown> | undefined;
-        const caps = ui?.capabilities as Record<string, unknown> | undefined;
-        if (!caps || typeof caps !== "object") return;
+        const caps = cfg.ui?.capabilities;
+        if (!caps) return;
         if (typeof caps.wallet === "boolean") {
           setWalletEnabledRaw(caps.wallet);
           saveWalletEnabled(caps.wallet);

@@ -1,0 +1,19 @@
+{
+  "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
+  "claim_boundary": "Local tool preflight for routed-board DRC/ERC generation. This is environment evidence only and does not grant release credit.",
+  "tool": "kicad-cli",
+  "available": false,
+  "resolved_path": "",
+  "required_for": [
+    "board/kicad/e1-phone/production/reports/drc.json",
+    "board/kicad/e1-phone/production/reports/erc.json"
+  ],
+  "attempted_commands": [
+    "kicad-cli pcb drc board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output board/kicad/e1-phone/production/reports/drc.json",
+    "kicad-cli sch erc board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output board/kicad/e1-phone/production/reports/erc.json"
+  ],
+  "drc_status": "blocked_tool_unavailable",
+  "erc_status": "blocked_tool_unavailable",
+  "release_credit": false,
+  "next_action": "Install KiCad CLI in the release environment and run DRC/ERC against the routed KiCad board and schematic; archive raw JSON plus waivers before promoting the routed-board intake."
+}

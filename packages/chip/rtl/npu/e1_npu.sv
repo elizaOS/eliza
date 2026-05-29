@@ -27,6 +27,33 @@ module e1_npu (
     output logic        m_axil_rready,
     input  logic [31:0] m_axil_rdata,
     input  logic [1:0]  m_axil_rresp
+`ifdef FORMAL
+    ,
+    output logic        formal_gemm_busy,
+    output logic        formal_vec_busy,
+    output logic        formal_gemm_cfg_ok,
+    output logic        formal_vec_cfg_ok,
+    output logic        formal_gemm_active_s4,
+    output logic [7:0]  formal_gemm_a_addr,
+    output logic [7:0]  formal_gemm_b_addr,
+    output logic [7:0]  formal_gemm_c_addr,
+    output logic [1:0]  formal_gemm_m,
+    output logic [1:0]  formal_gemm_n,
+    output logic [2:0]  formal_gemm_k,
+    output logic [1:0]  formal_gemm_i,
+    output logic [1:0]  formal_gemm_j,
+    output logic [2:0]  formal_gemm_l,
+    output logic signed [31:0] formal_gemm_acc,
+    output logic [5:0]  formal_vec_len,
+    output logic [5:0]  formal_vec_src_base,
+    output logic [5:0]  formal_vec_dst_base,
+    output logic [5:0]  formal_vec_i,
+    output logic [5:0]  formal_vec_src_addr,
+    output logic [5:0]  formal_vec_dst_addr,
+    output logic [31:0] formal_desc_timeout_count,
+    output logic [3:0]  formal_desc_state,
+    output logic        formal_desc_busy
+`endif
 `ifdef E1_NPU_SECURE_SIDEBAND
     ,
     // The port group is `ifdef`-guarded (mirroring USE_POWER_PINS in
@@ -188,6 +215,13 @@ module e1_npu (
     logic [7:0] gemm_a_addr;
     logic [7:0] gemm_b_addr;
     logic [7:0] gemm_c_addr;
+    logic       gemm_runtime_addr_ok;
+    logic [1:0] gemm_m_last;
+    logic [1:0] gemm_n_last;
+    logic [2:0] gemm_k_last;
+    logic [7:0] gemm_a_last_addr;
+    logic [7:0] gemm_b_last_addr;
+    logic [7:0] gemm_c_last_addr;
     logic gemm_cfg_ok;
     logic gemm_active_s4;
     logic signed [7:0] gemm_a_value;
@@ -489,12 +523,29 @@ module e1_npu (
     assign gemm_a_addr = {2'h0, gemm_a_base} + ({6'h0, gemm_i} * {4'h0, gemm_a_stride}) + {5'h0, gemm_l};
     assign gemm_b_addr = {2'h0, gemm_b_base} + ({5'h0, gemm_l} * {4'h0, gemm_b_stride}) + {6'h0, gemm_j};
     assign gemm_c_addr = {2'h0, gemm_c_base} + ({6'h0, gemm_i} * {4'h0, gemm_c_stride}) + {4'h0, gemm_j, 2'b00};
+    assign gemm_m_last = (gemm_m == 2'h0) ? 2'h0 : (gemm_m - 2'd1);
+    assign gemm_n_last = (gemm_n == 2'h0) ? 2'h0 : (gemm_n - 2'd1);
+    assign gemm_k_last = (gemm_k == 3'h0) ? 3'h0 : (gemm_k - 3'd1);
+    assign gemm_a_last_addr = {2'h0, gemm_a_base} +
+                              ({6'h0, gemm_m_last} * {4'h0, gemm_a_stride}) +
+                              {5'h0, gemm_k_last};
+    assign gemm_b_last_addr = {2'h0, gemm_b_base} +
+                              ({5'h0, gemm_k_last} * {4'h0, gemm_b_stride}) +
+                              {6'h0, gemm_n_last};
+    assign gemm_c_last_addr = {2'h0, gemm_c_base} +
+                              ({6'h0, gemm_m_last} * {4'h0, gemm_c_stride}) +
+                              {4'h0, gemm_n_last, 2'b00};
     assign gemm_active_s4 = gemm_busy ? gemm_s4_mode :
                             (desc_busy ? (desc_opcode == OP_GEMM_S4) : (opcode == OP_GEMM_S4));
     assign gemm_cfg_ok = (gemm_m != 2'h0) && (gemm_n != 2'h0) && (gemm_k != 3'h0) &&
-                         (gemm_active_s4 ? ((gemm_a_addr < 8'd128) && (gemm_b_addr < 8'd128)) :
-                                           ((gemm_a_addr < 8'd64) && (gemm_b_addr < 8'd64))) &&
-                         ((gemm_c_addr + 8'd3) < 8'd64) && (gemm_c_addr[1:0] == 2'b00);
+                         (gemm_active_s4 ? ((gemm_a_last_addr < 8'd128) && (gemm_b_last_addr < 8'd128)) :
+                                           ((gemm_a_last_addr < 8'd64) && (gemm_b_last_addr < 8'd64))) &&
+                         ((gemm_c_last_addr + 8'd3) < 8'd64) &&
+                         (gemm_c_base[1:0] == 2'b00) && (gemm_c_stride[1:0] == 2'b00);
+    assign gemm_runtime_addr_ok = (gemm_a_addr[7] == 1'b0) &&
+                                  (gemm_b_addr[7] == 1'b0) &&
+                                  (gemm_c_addr[7:6] == 2'b00) &&
+                                  (gemm_c_addr[1:0] == 2'b00);
     assign gemm_a_value = gemm_active_s4 ? scratch_read_s4(gemm_a_addr[6:0]) : scratch_read_byte(gemm_a_addr[5:0]);
     assign gemm_b_value = gemm_active_s4 ? scratch_read_s4(gemm_b_addr[6:0]) : scratch_read_byte(gemm_b_addr[5:0]);
     assign vec_src_addr = vec_src_base + vec_i;
@@ -686,7 +737,7 @@ module e1_npu (
 
             if (gemm_busy) begin
                 perf_cycles <= perf_cycles + 32'd1;
-                if (!gemm_cfg_ok) begin
+                if (!gemm_cfg_ok || !gemm_runtime_addr_ok) begin
                     gemm_busy <= 1'b0;
                     status <= 32'h0000_0006;
                     perf_errors <= perf_errors + 32'd1;
@@ -1203,4 +1254,31 @@ module e1_npu (
             end
         endcase
     end
+
+`ifdef FORMAL
+    assign formal_gemm_busy          = gemm_busy;
+    assign formal_vec_busy           = vec_busy;
+    assign formal_gemm_cfg_ok        = gemm_cfg_ok;
+    assign formal_vec_cfg_ok         = vec_cfg_ok;
+    assign formal_gemm_active_s4     = gemm_active_s4;
+    assign formal_gemm_a_addr        = gemm_a_addr;
+    assign formal_gemm_b_addr        = gemm_b_addr;
+    assign formal_gemm_c_addr        = gemm_c_addr;
+    assign formal_gemm_m             = gemm_m;
+    assign formal_gemm_n             = gemm_n;
+    assign formal_gemm_k             = gemm_k;
+    assign formal_gemm_i             = gemm_i;
+    assign formal_gemm_j             = gemm_j;
+    assign formal_gemm_l             = gemm_l;
+    assign formal_gemm_acc           = gemm_acc;
+    assign formal_vec_len            = vec_len;
+    assign formal_vec_src_base       = vec_src_base;
+    assign formal_vec_dst_base       = vec_dst_base;
+    assign formal_vec_i              = vec_i;
+    assign formal_vec_src_addr       = vec_src_addr;
+    assign formal_vec_dst_addr       = vec_dst_addr;
+    assign formal_desc_timeout_count = desc_timeout_count;
+    assign formal_desc_state         = desc_state;
+    assign formal_desc_busy          = desc_busy;
+`endif
 endmodule

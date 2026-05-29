@@ -28,6 +28,7 @@ from scripts.validate_alberta_benchmark_artifacts import (  # noqa: E402
     validate_alberta_benchmark_artifacts,
 )
 from scripts.validate_alberta_robot_checkpoint import (  # noqa: E402
+    _phase_numeric_motion_contract,
     validate_alberta_robot_checkpoint,
 )
 from scripts.validate_asimov1_full_training_run import (  # noqa: E402
@@ -39,11 +40,13 @@ from scripts.validate_asimov1_production_checkpoint import (  # noqa: E402
 from scripts.validate_backend_comparison_artifacts import (  # noqa: E402
     validate_backend_comparison_artifacts,
 )
+from eliza_robot.profiles.schema import load_profile  # noqa: E402
 from scripts.validate_multi_robot_training_readiness import (  # noqa: E402
     DEFAULT_COMMANDS as DEFAULT_MULTI_ROBOT_COMMANDS,
     DEFAULT_PROFILES as DEFAULT_MULTI_ROBOT_PROFILES,
     validate as validate_multi_robot_training_readiness,
 )
+from eliza_robot.curriculum.loader import load_curriculum  # noqa: E402
 
 
 STAGES = (
@@ -69,6 +72,7 @@ DEFAULT_TASKS = (
     "turn_left",
     "turn_right",
 )
+PHYSICAL_MOTION_TASKS = frozenset(DEFAULT_TASKS)
 TEXT_POLICY_EVAL_SCHEMA = "robot-text-policy-eval-v1"
 CURRICULUM_EVAL_SCHEMA = "robot-policy-curriculum-eval-v1"
 CURRICULUM_EVAL_REPORT_REL = Path("evidence/curriculum_eval/report.json")
@@ -382,6 +386,7 @@ def _validate_production_policy_videos(
     manifest_checkpoint = manifest.get("policy_checkpoint")
     profile_checkpoints = [entry.get("policy_checkpoint") for entry in entries]
     checkpoint_name = checkpoint.name
+    expected_tracking_body = _expected_locomotion_tracking_body(profile_id)
     def _checkpoint_matches(value: Any) -> bool:
         if value == checkpoint_path:
             return True
@@ -417,6 +422,7 @@ def _validate_production_policy_videos(
             expected_task=_task_id_for_command(command),
             checkpoint_name=checkpoint_name,
             combined=False,
+            expected_tracking_body=expected_tracking_body,
         )
         for command, name in zip(commands, expected_telemetry[:-1], strict=True)
     }
@@ -427,6 +433,7 @@ def _validate_production_policy_videos(
         expected_task=None,
         checkpoint_name=checkpoint_name,
         combined=True,
+        expected_tracking_body=expected_tracking_body,
         expected_tasks=[_task_id_for_command(command) for command in commands],
     )
     telemetry_semantics_ok = all(
@@ -457,6 +464,7 @@ def _validate_production_policy_videos(
         "checks": checks,
         "manifest_policy_checkpoint": manifest_checkpoint,
         "profile_policy_checkpoints": profile_checkpoints,
+        "expected_tracking_body": expected_tracking_body,
         "expected": expected,
         "expected_telemetry": expected_telemetry,
         "present": present,
@@ -538,21 +546,269 @@ def _finite_number(value: Any) -> bool:
         return False
 
 
-def _phase_physical_contract(row: dict[str, Any]) -> bool:
+def _finite_float_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _task_success_predicates(task_id: str) -> dict[str, Any]:
+    return {task.id: task.success for task in load_curriculum().tasks}.get(task_id, {})
+
+
+def _required_physical_check_keys(task_id: str, *, eval_report: bool) -> set[str]:
+    success = _task_success_predicates(task_id)
+    keys: set[str] = set()
+    if eval_report:
+        keys.update({"episodes", "success_rate_full", "failure_rate_zero"})
+    if success.get("no_fall") is True:
+        keys.add("no_fall")
+    if "hold_s" in success:
+        keys.add("hold_s")
+    if "min_alternating_foot_contacts" in success:
+        keys.add("min_alternating_foot_contacts")
+    if "min_swing_foot_clearance_m" in success:
+        keys.add("min_swing_foot_clearance_m")
+    if "max_foot_slip_m_s" in success:
+        keys.add("max_foot_slip_m_s")
+    if "max_self_collision_count" in success:
+        keys.add("max_self_collision_count")
+    if task_id == "stand_up":
+        keys.update({"torso_height_gain", "tracked_height_gain"})
+        if eval_report:
+            keys.update(
+                {"torso_height_finite_positive", "tracked_height_finite_positive"}
+            )
+    elif task_id == "sit_down":
+        keys.update(
+            {
+                "torso_height_seated",
+                "forward_drift_bound",
+                "lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "walk_forward":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_x_forward",
+                "tracked_lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "walk_backward":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_x_backward",
+                "tracked_lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "sidestep_left":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_y_left",
+                "tracked_forward_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "sidestep_right":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_y_right",
+                "tracked_forward_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "turn_left":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_left",
+                "tracked_translation_drift_bound",
+            }
+        )
+    elif task_id == "turn_right":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_right",
+                "tracked_translation_drift_bound",
+            }
+        )
+    elif task_id == "turn_around":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_turn_around",
+                "tracked_translation_drift_bound",
+            }
+        )
+    return keys
+
+
+def _physical_checks_cover_task(
+    task_id: str,
+    checks: Any,
+    *,
+    eval_report: bool,
+) -> bool:
+    if not isinstance(checks, dict) or not checks:
+        return False
+    required = _required_physical_check_keys(task_id, eval_report=eval_report)
+    return (
+        all(value is True for value in checks.values())
+        and required.issubset(checks.keys())
+        and all(checks.get(key) is True for key in required)
+    )
+
+
+def _expected_locomotion_tracking_body(profile_id: str) -> str | None:
+    try:
+        profile = load_profile(profile_id)
+    except Exception:
+        return None
+    body = getattr(getattr(profile, "sensors", None), "locomotion_tracking_body", None)
+    return str(body) if body else None
+
+
+def _task_numeric_motion_contract(
+    task_id: str,
+    metrics: dict[str, Any],
+    *,
+    expected_tracking_body: str | None,
+) -> tuple[bool, dict[str, bool], list[str]]:
+    """Recompute physical task gates from numeric movement evidence."""
+    tracked_body_name = metrics.get("tracked_body_name")
+    tracking_body_ok = (
+        isinstance(tracked_body_name, str)
+        and bool(tracked_body_name)
+        and (
+            expected_tracking_body is None
+            or tracked_body_name == expected_tracking_body
+        )
+    )
+    dx = _finite_float_value(metrics.get("mean_final_tracked_delta_x_m"))
+    dy = _finite_float_value(metrics.get("mean_final_tracked_delta_y_m"))
+    dz = _finite_float_value(metrics.get("mean_final_tracked_delta_z_m"))
+    z = _finite_float_value(metrics.get("mean_final_tracked_z_m"))
+    yaw = _finite_float_value(metrics.get("mean_final_delta_yaw_rad"))
+    torso_z = _finite_float_value(metrics.get("mean_final_torso_z_m"))
+    torso_dz = _finite_float_value(metrics.get("mean_final_torso_z_delta_m"))
+    checks: dict[str, bool] = {
+        "tracked_body_name": tracking_body_ok,
+    }
+    if task_id == "stand_up":
+        checks.update(
+            {
+                "mean_final_torso_z_m": torso_z is not None and torso_z > 0.0,
+                "mean_final_torso_z_delta_m": torso_dz is not None
+                and torso_dz >= 0.02,
+                "mean_final_tracked_delta_z_m": dz is not None and dz >= 0.02,
+                "mean_final_tracked_z_m": z is not None and z > 0.0,
+            }
+        )
+    elif task_id == "walk_forward":
+        checks.update(
+            {
+                "mean_final_tracked_delta_x_m": dx is not None and dx >= 0.30,
+                "mean_final_tracked_delta_y_m": dy is not None and abs(dy) <= 0.20,
+                "mean_final_delta_yaw_rad": yaw is not None and abs(yaw) <= 0.40,
+                "mean_final_tracked_z_m": z is not None and z > 0.0,
+            }
+        )
+    elif task_id == "walk_backward":
+        checks.update(
+            {
+                "mean_final_tracked_delta_x_m": dx is not None and dx <= -0.20,
+                "mean_final_tracked_delta_y_m": dy is not None and abs(dy) <= 0.20,
+                "mean_final_delta_yaw_rad": yaw is not None and abs(yaw) <= 0.40,
+                "mean_final_tracked_z_m": z is not None and z > 0.0,
+            }
+        )
+    elif task_id == "sidestep_left":
+        checks.update(
+            {
+                "mean_final_tracked_delta_y_m": dy is not None and dy >= 0.20,
+                "mean_final_tracked_delta_x_m": dx is not None and abs(dx) <= 0.20,
+                "mean_final_delta_yaw_rad": yaw is not None and abs(yaw) <= 0.40,
+                "mean_final_tracked_z_m": z is not None and z > 0.0,
+            }
+        )
+    elif task_id == "sidestep_right":
+        checks.update(
+            {
+                "mean_final_tracked_delta_y_m": dy is not None and dy <= -0.20,
+                "mean_final_tracked_delta_x_m": dx is not None and abs(dx) <= 0.20,
+                "mean_final_delta_yaw_rad": yaw is not None and abs(yaw) <= 0.40,
+                "mean_final_tracked_z_m": z is not None and z > 0.0,
+            }
+        )
+    elif task_id == "turn_left":
+        checks.update(
+            {
+                "mean_final_delta_yaw_rad": yaw is not None and yaw >= 0.70,
+                "tracked_translation_drift": dx is not None
+                and dy is not None
+                and math.hypot(dx, dy) <= 0.25,
+                "mean_final_tracked_z_m": z is not None and z > 0.0,
+            }
+        )
+    elif task_id == "turn_right":
+        checks.update(
+            {
+                "mean_final_delta_yaw_rad": yaw is not None and yaw <= -0.70,
+                "tracked_translation_drift": dx is not None
+                and dy is not None
+                and math.hypot(dx, dy) <= 0.25,
+                "mean_final_tracked_z_m": z is not None and z > 0.0,
+            }
+        )
+    elif task_id not in PHYSICAL_MOTION_TASKS:
+        return True, checks, []
+    failed = [name for name, ok in checks.items() if not ok]
+    return not failed, checks, failed
+
+
+def _phase_physical_contract(
+    row: dict[str, Any],
+    task_id: str,
+    *,
+    expected_tracking_body: str | None,
+) -> bool:
     checks = row.get("physical_checks")
+    tracked_body_name = row.get("tracked_body_name")
     return (
         row.get("physical_success") is True
         and isinstance(checks, dict)
         and bool(checks)
         and all(value is True for value in checks.values())
-        and isinstance(row.get("tracked_body_name"), str)
-        and bool(row.get("tracked_body_name"))
+        and _physical_checks_cover_task(task_id, checks, eval_report=False)
+        and isinstance(tracked_body_name, str)
+        and bool(tracked_body_name)
+        and (
+            expected_tracking_body is None
+            or tracked_body_name == expected_tracking_body
+        )
         and _finite_number(row.get("failure_rate"))
         and float(row["failure_rate"]) <= 0.0
         and _finite_number(row.get("mean_final_tracked_delta_x_m"))
         and _finite_number(row.get("mean_final_tracked_delta_y_m"))
         and _finite_number(row.get("mean_final_tracked_delta_z_m"))
         and _finite_number(row.get("mean_final_tracked_z_m"))
+        and _phase_numeric_motion_contract(
+            row,
+            task_id,
+            expected_tracking_body=expected_tracking_body,
+        )
     )
 
 
@@ -577,7 +833,7 @@ def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | No
             and final - start_or_min >= 0.02
         )
     elif expected_task == "walk_forward":
-        final = _series_finite_number(x_series)
+        final = _series_finite_number(x_series, "max")
         final_y = _series_finite_number(y_series)
         final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
         min_tracked_z = _series_finite_number(tracked_z, "min")
@@ -586,7 +842,7 @@ def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | No
         checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
         checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "walk_backward":
-        final = _series_finite_number(x_series)
+        final = _series_finite_number(x_series, "min")
         final_y = _series_finite_number(y_series)
         final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
         min_tracked_z = _series_finite_number(tracked_z, "min")
@@ -595,7 +851,7 @@ def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | No
         checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
         checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "sidestep_left":
-        final_y = _series_finite_number(y_series)
+        final_y = _series_finite_number(y_series, "max")
         final_x = _series_finite_number(x_series)
         final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
         min_tracked_z = _series_finite_number(tracked_z, "min")
@@ -604,7 +860,7 @@ def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | No
         checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
         checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "sidestep_right":
-        final_y = _series_finite_number(y_series)
+        final_y = _series_finite_number(y_series, "min")
         final_x = _series_finite_number(x_series)
         final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
         min_tracked_z = _series_finite_number(tracked_z, "min")
@@ -613,7 +869,7 @@ def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | No
         checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
         checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "turn_left":
-        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"), "max")
         final_x = _series_finite_number(x_series)
         final_y = _series_finite_number(y_series)
         min_tracked_z = _series_finite_number(tracked_z, "min")
@@ -625,7 +881,7 @@ def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | No
         )
         checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "turn_right":
-        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"), "min")
         final_x = _series_finite_number(x_series)
         final_y = _series_finite_number(y_series)
         min_tracked_z = _series_finite_number(tracked_z, "min")
@@ -660,6 +916,7 @@ def _validate_policy_video_telemetry(
     expected_task: str | None,
     checkpoint_name: str,
     combined: bool,
+    expected_tracking_body: str | None,
     expected_tasks: list[str] | None = None,
 ) -> dict[str, Any]:
     payload = _load_json_dict(path)
@@ -686,7 +943,11 @@ def _validate_policy_video_telemetry(
         ]
         command_tracked_checks = [
             {
-                "tracked_body_name": bool(item.get("tracked_body_name")),
+                "tracked_body_name": bool(item.get("tracked_body_name"))
+                and (
+                    expected_tracking_body is None
+                    or item.get("tracked_body_name") == expected_tracking_body
+                ),
                 "tracked_z_series": _series_has_finite_value(item.get("tracked_z_m")),
                 "tracked_delta_x_series": _series_has_finite_value(
                     item.get("tracked_delta_x_m")
@@ -739,7 +1000,11 @@ def _validate_policy_video_telemetry(
                 "attempted_action": payload.get("attempted_action") is True,
                 "nonzero_action_steps": int(payload.get("nonzero_action_steps") or 0) > 0,
                 "torso_series": _series_has_finite_value(payload.get("torso_z")),
-                "tracked_body_name": bool(payload.get("tracked_body_name")),
+                "tracked_body_name": bool(payload.get("tracked_body_name"))
+                and (
+                    expected_tracking_body is None
+                    or payload.get("tracked_body_name") == expected_tracking_body
+                ),
                 "tracked_z_series": _series_has_finite_value(payload.get("tracked_z_m")),
                 "action_norm_series": _series_has_finite_value(payload.get("action_norm")),
             }
@@ -860,13 +1125,16 @@ def _validate_production_contract(
         row.get("task") for row in promotion_phases if isinstance(row, dict)
     ]
     phase_tasks_match = phase_tasks == list(tasks)
+    expected_tracking_body = _expected_locomotion_tracking_body(
+        str(manifest.get("profile_id") or "")
+    )
     phase_steps_ok = False
     phase_physical_ok = False
     if phase_tasks_match and total_steps_int is not None:
         last_cumulative = 0
         phase_steps_ok = True
         phase_physical_ok = True
-        for row in promotion_phases:
+        for row, task in zip(promotion_phases, tasks, strict=False):
             if not isinstance(row, dict):
                 phase_steps_ok = False
                 phase_physical_ok = False
@@ -881,7 +1149,11 @@ def _validate_production_contract(
             ):
                 phase_steps_ok = False
                 break
-            if not _phase_physical_contract(row):
+            if not _phase_physical_contract(
+                row,
+                task,
+                expected_tracking_body=expected_tracking_body,
+            ):
                 phase_physical_ok = False
             last_cumulative = cumulative_steps
         phase_steps_ok = phase_steps_ok and last_cumulative == total_steps_int
@@ -1038,15 +1310,37 @@ def _validate_curriculum_eval_report(
     recomputed_pass_rate = (
         n_successful_rows / len(tasks) if len(tasks) > 0 else 0.0
     )
+    expected_tracking_body = _expected_locomotion_tracking_body(profile_id)
+    numeric_contracts = {
+        task: _task_numeric_motion_contract(
+            task,
+            task_by_id[task],
+            expected_tracking_body=expected_tracking_body,
+        )
+        for task in tasks
+        if isinstance(task_by_id.get(task), dict)
+    }
+    numeric_task_checks = {
+        task: bool(numeric_contracts.get(task, (False, {}, []))[0])
+        for task in tasks
+    }
+    numeric_task_fail_reasons = {
+        task: list(numeric_contracts.get(task, (False, {}, ["missing_task_row"]))[2])
+        for task in tasks
+        if numeric_contracts.get(task, (False, {}, ["missing_task_row"]))[2]
+    }
     policy_raw = report.get("policy")
     task_checks = {
         task: bool(
             isinstance(task_by_id.get(task), dict)
             and task_by_id[task].get("success_programmatic") is True
             and task_by_id[task].get("physical_success") is True
-            and isinstance(task_by_id[task].get("physical_checks"), dict)
-            and bool(task_by_id[task].get("physical_checks"))
-            and all(task_by_id[task]["physical_checks"].values())
+            and numeric_task_checks.get(task) is True
+            and _physical_checks_cover_task(
+                task,
+                task_by_id[task].get("physical_checks"),
+                eval_report=True,
+            )
             and success_rates.get(task) is not None
             and float(success_rates[task]) >= 1.0
             and _positive_int(task_by_id[task].get("episodes"))
@@ -1072,9 +1366,25 @@ def _validate_curriculum_eval_report(
         "all_requested_tasks_physical_success": all(
             isinstance(task_by_id.get(task), dict)
             and task_by_id[task].get("physical_success") is True
-            and isinstance(task_by_id[task].get("physical_checks"), dict)
-            and bool(task_by_id[task].get("physical_checks"))
-            and all(task_by_id[task]["physical_checks"].values())
+            and numeric_task_checks.get(task) is True
+            and _physical_checks_cover_task(
+                task,
+                task_by_id[task].get("physical_checks"),
+                eval_report=True,
+            )
+            for task in tasks
+        ),
+        "all_requested_tasks_numeric_motion": all(
+            numeric_task_checks.get(task) is True for task in tasks
+        ),
+        "all_requested_tasks_tracked_body": all(
+            isinstance(task_by_id.get(task), dict)
+            and _task_numeric_motion_contract(
+                task,
+                task_by_id[task],
+                expected_tracking_body=expected_tracking_body,
+            )[1].get("tracked_body_name")
+            is True
             for task in tasks
         ),
         "task_success_rates": all(
@@ -1107,6 +1417,9 @@ def _validate_curriculum_eval_report(
         "min_programmatic_pass_rate": float(min_programmatic_pass_rate),
         "recomputed_programmatic_pass_rate": recomputed_pass_rate,
         "task_checks": task_checks,
+        "numeric_task_checks": numeric_task_checks,
+        "numeric_task_fail_reasons": numeric_task_fail_reasons,
+        "expected_tracked_body_name": expected_tracking_body,
     }
 
 
@@ -1146,12 +1459,43 @@ def _validate_text_policy_eval_report(
         report_path=path,
         checkpoint=checkpoint,
     )
+    expected_tracking_body = _expected_locomotion_tracking_body(profile_id)
+
     def _finite_metric(task: str, key: str) -> bool:
         return (
             _series_finite_number({"final": task_metrics[task].get(key)})
             is not None
         )
 
+    def _metric_value(task: str, key: str) -> float | None:
+        return _series_finite_number({"final": task_metrics[task].get(key)})
+
+    def _metric_at_least(task: str, key: str, threshold: float) -> bool:
+        value = _metric_value(task, key)
+        return value is not None and value >= threshold
+
+    def _metric_at_most(task: str, key: str, threshold: float) -> bool:
+        value = _metric_value(task, key)
+        return value is not None and value <= threshold
+
+    numeric_contracts = {
+        task: _task_numeric_motion_contract(
+            task,
+            task_metrics[task],
+            expected_tracking_body=expected_tracking_body,
+        )
+        for task in tasks
+        if isinstance(task_metrics.get(task), dict)
+    }
+    numeric_task_checks = {
+        task: bool(numeric_contracts.get(task, (False, {}, []))[0])
+        for task in tasks
+    }
+    numeric_task_fail_reasons = {
+        task: list(numeric_contracts.get(task, (False, {}, ["missing_task_row"]))[2])
+        for task in tasks
+        if numeric_contracts.get(task, (False, {}, ["missing_task_row"]))[2]
+    }
     per_task_checks = {
         task: bool(
             isinstance(task_metrics.get(task), dict)
@@ -1159,7 +1503,10 @@ def _validate_text_policy_eval_report(
             and not isinstance(task_metrics[task].get("episodes"), bool)
             and task_metrics[task].get("episodes") > 0
             and _finite_metric(task, "success_rate")
+            and _metric_at_least(task, "success_rate", 1.0)
             and _finite_metric(task, "failure_rate")
+            and _metric_at_most(task, "failure_rate", 0.0)
+            and numeric_task_checks.get(task) is True
         )
         for task in tasks
     }
@@ -1172,6 +1519,17 @@ def _validate_text_policy_eval_report(
         "task_set_exact": actual_tasks == set(tasks),
         "task_count_covers_requested": all(task in task_metrics for task in tasks),
         "per_task_success_fields": all(per_task_checks.values()),
+        "per_task_numeric_motion": all(
+            numeric_task_checks.get(task) is True for task in tasks
+        ),
+        "per_task_tracked_body": all(
+            isinstance(task_metrics.get(task), dict)
+            and numeric_contracts.get(task, (False, {}, []))[1].get(
+                "tracked_body_name"
+            )
+            is True
+            for task in tasks
+        ),
     }
     return {
         "ok": all(checks.values()),
@@ -1180,6 +1538,9 @@ def _validate_text_policy_eval_report(
         "checkpoint": checkpoint_raw,
         "profile_id": report.get("profile_id"),
         "task_checks": per_task_checks,
+        "numeric_task_checks": numeric_task_checks,
+        "numeric_task_fail_reasons": numeric_task_fail_reasons,
+        "expected_tracked_body_name": expected_tracking_body,
     }
 
 

@@ -3,6 +3,7 @@ import json
 import re
 import sys
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 from pathlib import Path
 
 import check_pd_closure
@@ -210,6 +211,7 @@ def write_report(
     payload = {
         "schema": SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
         "mode": mode,
         "manifest": evidence,

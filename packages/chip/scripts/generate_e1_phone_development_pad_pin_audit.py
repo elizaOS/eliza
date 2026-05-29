@@ -356,6 +356,7 @@ def main() -> None:
             {
                 "footprint": name,
                 "footprint_file": str(path.relative_to(ROOT)),
+                "footprint_status": record["status"],
                 "board_instance_count": board_text.count(f'(footprint "e1-phone-dev:{name}"'),
                 "manifest_pin_count": record.get("pin_count", 0),
                 "pad_count": len(numbered_pads),
@@ -424,6 +425,27 @@ def main() -> None:
         ),
         "exact_public_pinout_match_count": exact_public,
         "pending_supplier_pad_map_or_order_count": blocked,
+        "pending_supplier_pad_map_or_order_records": [
+            {
+                "footprint": item["footprint"],
+                "footprint_file": item["footprint_file"],
+                "footprint_status": item["footprint_status"],
+                "pinout_file": item["pinout_file"],
+                "pinout_status": item["pinout_status"],
+                "coverage": item["coverage"],
+                "expected_pin_count": item["expected_pin_count"],
+                "electrical_pad_count": item["electrical_pad_count"],
+                "missing_expected_pads": item["missing_expected_pads"],
+                "extra_footprint_pads": item["extra_footprint_pads"],
+                "land_pattern_basis": item["land_pattern_basis"],
+                "local_terminal_contract_source": item["local_terminal_contract_source"],
+                "step_binding_status": item["step_binding_status"],
+                "release_allowed": item["release_allowed"],
+            }
+            for item in audit_records
+            if "pending" in item["coverage"]
+            or item["footprint_status"] == "geometry_only_pending_supplier_pad_map"
+        ],
         "pinout_bound_footprint_count": sum(1 for item in audit_records if item["pinout_file"]),
         "all_pinout_bound_footprints_have_terminal_contract": all(
             bool(item["local_terminal_contract"]) for item in audit_records if item["pinout_file"]

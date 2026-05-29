@@ -649,6 +649,30 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "python3 scripts/check_phone_runtime_readiness_contract.py",
             inventory["next_commands"],
         )
+        self.assertEqual(len(inventory["next_command_batches"]), 1)
+        batch = inventory["next_command_batches"][0]
+        self.assertEqual(
+            batch["artifact"],
+            "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+        )
+        self.assertEqual(
+            batch["package_relative_artifact"],
+            "docs/evidence/android/eliza_launcher_runtime_evidence.json",
+        )
+        self.assertEqual(
+            batch["claim_boundary"],
+            "operator_command_batch_only_not_runtime_evidence",
+        )
+        self.assertFalse(batch["release_credit"])
+        self.assertTrue(batch["capture_commands"])
+        self.assertEqual(
+            batch["validation_commands"],
+            ["python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"],
+        )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["next_command_batches"],
+            payload["runtime_capture_area_groups"][0]["next_command_batches"],
+        )
 
     def test_prioritized_runtime_capture_plan_lists_live_evidence_without_release_credit(
         self,

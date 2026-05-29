@@ -12,7 +12,10 @@ export function hasRuntimeSendHandler(
 ): boolean {
   const sendHandlers = (runtime as RuntimeWithSendHandlers).sendHandlers;
   if (!(sendHandlers instanceof Map)) {
-    return true;
+    // The handler registry could not be introspected. This gates whether we
+    // attempt delivery, so treat an unknown registry as "no handler" — skip
+    // and log rather than asserting availability we can't verify.
+    return false;
   }
   return sendHandlers.has(source);
 }

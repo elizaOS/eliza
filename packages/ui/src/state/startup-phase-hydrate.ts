@@ -34,7 +34,6 @@ import {
   parseProactiveMessageEvent,
   parseStreamEventEnvelopeEvent,
 } from "./internal";
-import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
 import type { StartupEvent } from "./startup-coordinator";
 import type { OnboardingMode } from "./types";
 
@@ -186,8 +185,7 @@ export async function runHydrating(
   let resolvedIdx = loadAvatarIndex();
   try {
     const cfg = await client.getConfig();
-    const cfgUi = cfg?.ui as Record<string, unknown> | undefined;
-    const cfgAvatarIdx = cfgUi?.avatarIndex;
+    const cfgAvatarIdx = cfg.ui?.avatarIndex;
     if (typeof cfgAvatarIdx === "number" && Number.isFinite(cfgAvatarIdx)) {
       const normalized = normalizeAvatarIndex(cfgAvatarIdx);
       if (normalized > 0) {
@@ -232,14 +230,7 @@ export async function runHydrating(
   const navPath = getWindowNavigationPath();
   const urlTab = tabFromPath(navPath);
   const isRoot = isRouteRootPath(navPath);
-  const shouldCharSelect =
-    deps.onboardingCompletionCommittedRef.current ||
-    shouldStartAtCharacterSelectOnLaunch({
-      onboardingNeedsOptions: false,
-      onboardingMode: deps.onboardingMode,
-      navPath,
-      urlTab,
-    });
+  const shouldCharSelect = deps.onboardingCompletionCommittedRef.current;
   if (!deps.initialTabSetRef.current) {
     deps.initialTabSetRef.current = true;
     if (shouldCharSelect) {

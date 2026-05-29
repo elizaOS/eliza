@@ -702,7 +702,6 @@ export async function runFirstTimeSetup(
       process.env.SKILLS_REGISTRY?.trim() ||
         process.env.CLAWHUB_REGISTRY?.trim(),
     );
-    const _hasSkillsmpKey = Boolean(process.env.SKILLSMP_API_KEY?.trim());
     if (!hasSkillsRegistry) {
       process.env.SKILLS_REGISTRY = "https://clawhub.ai";
     }

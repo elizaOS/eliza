@@ -14,9 +14,8 @@
  *
  *  - On `APP_RESUME_EVENT`:
  *    re-probe `/api/health` to detect that the FGS / dev server respawned
- *    on a new port, clean up the "last assistant turn was an empty
- *    streaming placeholder" anomaly (mark interrupted), and trigger any
- *    pending background-runner wake deliveries.
+ *    on a new port and clean up the "last assistant turn was an empty
+ *    streaming placeholder" anomaly (mark interrupted).
  */
 
 import type { MutableRefObject } from "react";
@@ -69,18 +68,6 @@ async function probeAgentHealth(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Best-effort drain of pending background-runner deliveries.
- *
- * TODO(wave-3d): the `GET /api/internal/wake/pending` route does not exist
- * yet — only the `POST /api/internal/wake` writer is implemented in
- * `packages/app-core/src/api/internal-routes.ts`. Once the reader lands,
- * unblock this function to consume queued deliveries.
- */
-async function drainPendingWakeDeliveries(): Promise<void> {
-  /* TODO(wave-3d): consume queued wake deliveries when reader lands. */
 }
 
 export function useAppLifecycleEvents({
@@ -139,8 +126,6 @@ export function useAppLifecycleEvents({
           ),
         );
       }
-
-      void drainPendingWakeDeliveries();
     };
 
     document.addEventListener(APP_RESUME_EVENT, onResume);

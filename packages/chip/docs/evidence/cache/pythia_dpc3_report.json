@@ -1,11 +1,52 @@
 {
-  "schema": "eliza.cache.pythia_dpc3.v1",
-  "status": "ported_and_champsim_scoped",
-  "evidence_class": "champsim_dpc3_traces_only",
+  "algorithmic_scope": {
+    "action_offsets_blocks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      16,
+      -1,
+      -2,
+      -3,
+      -4,
+      -8,
+      -16,
+      32,
+      0
+    ],
+    "action_space_size": 16,
+    "alpha": "1/8 (right-shift by 3)",
+    "epsilon": "1/16 ~= 6.25 % exploration",
+    "evaluation_queue_size": 256,
+    "gamma": "1/2 (right-shift by 1)",
+    "num_states": 16384,
+    "reward_useful": 20,
+    "reward_useless": -14,
+    "state_features": [
+      "pc_low_8_bits",
+      "page_offset_6_bits"
+    ],
+    "update_rule": "tabular SARSA, Q(s,a) += alpha * (r + gamma * max_a' Q(s', a') - Q(s,a))"
+  },
+  "binary": "external/ChampSim/bin/champsim_pref_pythia",
+  "build_config": "external/ChampSim/build-configs/pref_pythia.json",
   "captured_utc": "2026-05-20T02:54:54.816863+00:00",
+  "champsim_module_api": "2024-12 (champsim::modules::prefetcher)",
   "claim_boundary": "Pythia ChampSim DPC-3 port evidence only; not synthesizable Pythia RTL productization, phone-class IPC, silicon, DRAM, Android, or release evidence.",
+  "deviation_from_reference": [
+    "Canonical 2-feature SARSA only (paper's baseline before extended features).",
+    "No eligibility-trace lambda \u2014 single-step SARSA only.",
+    "Action 'offset 0' (no-prefetch) is placed last so argmax-tie-breaking on zero-initialized Q rows does not collapse to 'do nothing' before any learning has happened."
+  ],
+  "evidence_class": "champsim_dpc3_traces_only",
+  "generated_utc": "2026-05-24T02:03:00Z",
+  "language_note": "Pythia (Bera et al., MICRO'21) is a CPU C++ tabular-SARSA prefetcher. Earlier project notes describing it as a GPU/ML prefetcher were incorrect; corrected here.",
   "phone_claim_allowed": false,
-  "release_claim_allowed": false,
+  "port_location": "external/ChampSim/prefetcher/pythia/",
   "provenance": {
     "source_artifacts": [
       {
@@ -22,30 +63,10 @@
       }
     ]
   },
-  "language_note": "Pythia (Bera et al., MICRO'21) is a CPU C++ tabular-SARSA prefetcher. Earlier project notes describing it as a GPU/ML prefetcher were incorrect; corrected here.",
-  "source_repo": "https://github.com/CMU-SAFARI/Pythia (prefetcher/scooby.{cc,h})",
-  "port_location": "external/ChampSim/prefetcher/pythia/",
-  "champsim_module_api": "2024-12 (champsim::modules::prefetcher)",
-  "binary": "external/ChampSim/bin/champsim_pref_pythia",
-  "build_config": "external/ChampSim/build-configs/pref_pythia.json",
-  "algorithmic_scope": {
-    "state_features": ["pc_low_8_bits", "page_offset_6_bits"],
-    "num_states": 16384,
-    "action_space_size": 16,
-    "action_offsets_blocks": [1, 2, 3, 4, 5, 6, 8, 16, -1, -2, -3, -4, -8, -16, 32, 0],
-    "update_rule": "tabular SARSA, Q(s,a) += alpha * (r + gamma * max_a' Q(s', a') - Q(s,a))",
-    "alpha": "1/8 (right-shift by 3)",
-    "gamma": "1/2 (right-shift by 1)",
-    "epsilon": "1/16 ~= 6.25 % exploration",
-    "reward_useful": 20,
-    "reward_useless": -14,
-    "evaluation_queue_size": 256
-  },
-  "deviation_from_reference": [
-    "Canonical 2-feature SARSA only (paper's baseline before extended features).",
-    "No eligibility-trace lambda — single-step SARSA only.",
-    "Action 'offset 0' (no-prefetch) is placed last so argmax-tie-breaking on zero-initialized Q rows does not collapse to 'do nothing' before any learning has happened."
-  ],
+  "release_claim_allowed": false,
   "results_artifact": "docs/evidence/cache/champsim_prefetch_sweep_report.json",
-  "results_section": "Search aggregate.pythia and per-trace results with label='pythia' for Pythia's ChampSim-scoped IPC / LLC MPKI / L2C MPKI on 401.bzip2-7B, 403.gcc-16B, 429.mcf-22B."
+  "results_section": "Search aggregate.pythia and per-trace results with label='pythia' for Pythia's ChampSim-scoped IPC / LLC MPKI / L2C MPKI on 401.bzip2-7B, 403.gcc-16B, 429.mcf-22B.",
+  "schema": "eliza.cache.pythia_dpc3.v1",
+  "source_repo": "https://github.com/CMU-SAFARI/Pythia (prefetcher/scooby.{cc,h})",
+  "status": "ported_and_champsim_scoped"
 }

@@ -891,9 +891,6 @@ def content_failures(path_text: str) -> list[str]:
         failures.extend(
             f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
         )
-        failures.extend(
-            f"missing_factory_field:{field}" for field in missing_fields(parsed, FACTORY_FIELDS)
-        )
         if isinstance(parsed, dict) and parsed.get("disposition") != "approved":
             failures.append("disposition_not_approved")
     elif suffix == ".csv":

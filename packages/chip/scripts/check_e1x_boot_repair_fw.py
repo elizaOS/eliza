@@ -4,8 +4,8 @@
 Builds the freestanding boot core (fw/e1x/e1x_repair_boot.c) into a native
 verification harness, drives it against a software model of the
 e1x_repair_mmio_programmer.sv register file, and feeds it the REAL generated
-high-failure 8GB scaled-model repair ROM image. The harness asserts that the
-boot routine streams the full image through the MMIO programmer and that the
+scaled and real-graph repair ROM images. The harness asserts that the boot
+routine streams each full image through the MMIO programmer and that the
 resulting route-table model reproduces the manifest's sampled routes.
 
 SILICON BOUNDARY: this proves the boot-time read/parse/MMIO-program logic and
@@ -17,6 +17,7 @@ Emits build/reports/e1x_boot_repair_fw.json (schema eliza.gate_status.v1).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -28,9 +29,29 @@ BUILD_DIR = ROOT / "build/e1x_boot_repair_fw"
 HARNESS_DIR = ROOT / "verify/cocotb/e1x_boot_fw"
 VECTORS_HEADER = HARNESS_DIR / "e1x_boot_repair_vectors.h"
 
-ROM_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json"
-ROM_HEX = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex"
-MANIFEST_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json"
+ROM_CASES = (
+    {
+        "id": "scaled_high_failure",
+        "label": "scaled high-failure",
+        "rom_json": ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json",
+        "rom_hex": ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex",
+        "manifest_json": ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json",
+    },
+    {
+        "id": "real_graph_normal",
+        "label": "real-graph normal",
+        "rom_json": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json",
+        "rom_hex": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex",
+        "manifest_json": ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
+    },
+    {
+        "id": "real_graph_high_failure",
+        "label": "real-graph high-failure",
+        "rom_json": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json",
+        "rom_hex": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex",
+        "manifest_json": ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+    },
+)
 
 CLAIM_BOUNDARY = (
     "E1X boot-time repair-ROM programming firmware verified against the real "
@@ -53,11 +74,26 @@ EVIDENCE_PATHS = [
     "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json",
     "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex",
     "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json",
+    "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json",
+    "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex",
+    "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
+    "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json",
+    "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex",
+    "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
 ]
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def ensure_generated_rom() -> None:
-    if ROM_JSON.is_file() and ROM_HEX.is_file() and MANIFEST_JSON.is_file():
+    required = [
+        path
+        for case in ROM_CASES
+        for path in (case["rom_json"], case["rom_hex"], case["manifest_json"])
+    ]
+    if all(path.is_file() for path in required):
         return
     subprocess.run(
         ["scripts/generate_e1x_scaled_model_evidence.py"],
@@ -72,11 +108,23 @@ def coord_index(coord: dict[str, int], cols: int) -> int:
     return int(coord["row"]) * cols + int(coord["col"])
 
 
-def emit_vectors_header() -> dict[str, int]:
+def emit_vectors_header(case: dict[str, object]) -> dict[str, int | str]:
     """Render the real ROM words + sampled-route expectations into a C header."""
-    rom = json.loads(ROM_JSON.read_text(encoding="utf-8"))
-    manifest = json.loads(MANIFEST_JSON.read_text(encoding="utf-8"))
-    hex_words = [int(line.strip(), 16) for line in ROM_HEX.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rom_json = case["rom_json"]
+    rom_hex = case["rom_hex"]
+    manifest_json = case["manifest_json"]
+    if not isinstance(rom_json, Path) or not isinstance(rom_hex, Path) or not isinstance(
+        manifest_json,
+        Path,
+    ):
+        raise TypeError("invalid E1X boot repair ROM case")
+    rom = json.loads(rom_json.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_json.read_text(encoding="utf-8"))
+    hex_words = [
+        int(line.strip(), 16)
+        for line in rom_hex.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
     json_words = [int(word, 16) for word in rom["words"]]
     if hex_words != json_words:
         raise ValueError("repair ROM .hex and .json word lists disagree")
@@ -119,6 +167,8 @@ def emit_vectors_header() -> dict[str, int]:
     VECTORS_HEADER.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     return {
+        "case": str(case["id"]),
+        "rom_sha256": str(rom["artifact_sha256"]),
         "rom_word_count": len(hex_words),
         "remap_count": int(rom["remap_word_count"]),
         "route_count": int(rom["route_sample_word_count"]),
@@ -139,15 +189,36 @@ def find_riscv_cc() -> str | None:
         "riscv64-elf-gcc",
         "riscv-none-elf-gcc",
         "riscv64-linux-gnu-gcc",
+        str(ROOT / "tools/bin/riscv64-unknown-elf-gcc"),
+        str(ROOT / "external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-gcc"),
+        str(ROOT / "build/riscv-chipyard-prefix/bin/riscv64-unknown-elf-gcc"),
+        str(ROOT / "build/cva6-verilator/riscv-stage/bin/riscv-none-elf-gcc"),
     ):
         if shutil.which(cc):
             return cc
     return None
 
 
-def build_native_harness(cc: str) -> tuple[bool, str, Path | None]:
+def find_riscv_objcopy() -> str | None:
+    for tool in (
+        "riscv64-unknown-elf-objcopy",
+        "riscv64-elf-objcopy",
+        "riscv-none-elf-objcopy",
+        "riscv64-linux-gnu-objcopy",
+        str(ROOT / "tools/bin/riscv64-unknown-elf-objcopy"),
+        str(ROOT / "tools/bin/riscv64-linux-gnu-objcopy"),
+        str(ROOT / "external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-objcopy"),
+        str(ROOT / "build/riscv-chipyard-prefix/bin/riscv64-unknown-elf-objcopy"),
+        str(ROOT / "build/cva6-verilator/riscv-stage/bin/riscv-none-elf-objcopy"),
+    ):
+        if shutil.which(tool):
+            return tool
+    return None
+
+
+def build_native_harness(cc: str, case_id: str) -> tuple[bool, str, Path | None]:
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    binary = BUILD_DIR / "native_repair_model"
+    binary = BUILD_DIR / f"native_repair_model_{case_id}"
     proc = subprocess.run(
         [
             cc,
@@ -173,14 +244,14 @@ def build_native_harness(cc: str) -> tuple[bool, str, Path | None]:
     return True, f"built {binary.relative_to(ROOT)}", binary
 
 
-def build_bare_metal_image(riscv_cc: str) -> tuple[bool, str]:
+def build_bare_metal_image(riscv_cc: str, riscv_objcopy: str) -> tuple[bool, str]:
     proc = subprocess.run(
         ["fw/e1x/build.sh"],
         cwd=ROOT,
         text=True,
         capture_output=True,
         check=False,
-        env={**__import__("os").environ, "RISCV_CC": riscv_cc},
+        env={**os.environ, "RISCV_CC": riscv_cc, "RISCV_OBJCOPY": riscv_objcopy},
     )
     detail = (proc.stdout.strip() or proc.stderr.strip()).splitlines()
     last = detail[-1] if detail else "no output"
@@ -197,42 +268,84 @@ def run_native(binary: Path) -> tuple[bool, str]:
 def main() -> int:
     ensure_generated_rom()
     checks: list[dict[str, str]] = []
-    vector_info: dict[str, int] = {}
-
-    try:
-        vector_info = emit_vectors_header()
-        checks.append({"id": "e1x_boot_repair_vectors", "status": "pass",
-                       "detail": f"emitted {VECTORS_HEADER.relative_to(ROOT)} ({vector_info})"})
-    except Exception as exc:  # noqa: BLE001 - surface the exact generation failure
-        checks.append({"id": "e1x_boot_repair_vectors", "status": "fail", "detail": str(exc)})
-
     host_cc = find_host_cc()
-    native_ok = False
-    if not any(c["id"] == "e1x_boot_repair_vectors" and c["status"] == "pass" for c in checks):
-        checks.append({"id": "e1x_boot_repair_native_build", "status": "fail", "detail": "vectors not generated"})
-        checks.append({"id": "e1x_boot_repair_native_run", "status": "fail", "detail": "not run"})
-    elif host_cc is None:
-        checks.append({"id": "e1x_boot_repair_native_build", "status": "blocked",
-                       "detail": "install a host C compiler (cc/gcc/clang)"})
-        checks.append({"id": "e1x_boot_repair_native_run", "status": "blocked", "detail": "not run"})
-    else:
-        build_ok, build_detail, binary = build_native_harness(host_cc)
-        checks.append({"id": "e1x_boot_repair_native_build",
-                       "status": "pass" if build_ok else "fail", "detail": build_detail})
+    vector_cases: list[dict[str, int | str]] = []
+    native_ok = host_cc is not None
+    for case in ROM_CASES:
+        case_id = str(case["id"])
+        try:
+            vector_info = emit_vectors_header(case)
+            vector_cases.append(vector_info)
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_vectors",
+                "status": "pass",
+                "detail": f"emitted {VECTORS_HEADER.relative_to(ROOT)} ({vector_info})",
+            })
+        except Exception as exc:  # noqa: BLE001 - surface the exact generation failure
+            native_ok = False
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_vectors",
+                "status": "fail",
+                "detail": str(exc),
+            })
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_native_build",
+                "status": "fail",
+                "detail": "vectors not generated",
+            })
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_native_run",
+                "status": "fail",
+                "detail": "not run",
+            })
+            continue
+
+        if host_cc is None:
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_native_build",
+                "status": "blocked",
+                "detail": "install a host C compiler (cc/gcc/clang)",
+            })
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_native_run",
+                "status": "blocked",
+                "detail": "not run",
+            })
+            continue
+
+        build_ok, build_detail, binary = build_native_harness(host_cc, case_id)
+        native_ok = native_ok and build_ok
+        checks.append({
+            "id": f"e1x_boot_repair_{case_id}_native_build",
+            "status": "pass" if build_ok else "fail",
+            "detail": build_detail,
+        })
         if build_ok and binary is not None:
             run_ok, run_detail = run_native(binary)
-            native_ok = run_ok
-            checks.append({"id": "e1x_boot_repair_native_run",
-                           "status": "pass" if run_ok else "fail", "detail": run_detail})
+            native_ok = native_ok and run_ok
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_native_run",
+                "status": "pass" if run_ok else "fail",
+                "detail": run_detail,
+            })
         else:
-            checks.append({"id": "e1x_boot_repair_native_run", "status": "fail", "detail": "not run"})
+            native_ok = False
+            checks.append({
+                "id": f"e1x_boot_repair_{case_id}_native_run",
+                "status": "fail",
+                "detail": "not run",
+            })
 
     riscv_cc = find_riscv_cc()
+    riscv_objcopy = find_riscv_objcopy()
     if riscv_cc is None:
         checks.append({"id": "e1x_boot_repair_bare_metal_build", "status": "blocked",
                        "detail": "install a RISC-V ELF compiler or set RISCV_CC"})
+    elif riscv_objcopy is None:
+        checks.append({"id": "e1x_boot_repair_bare_metal_build", "status": "blocked",
+                       "detail": "install riscv64 objcopy or set RISCV_OBJCOPY"})
     else:
-        bm_ok, bm_detail = build_bare_metal_image(riscv_cc)
+        bm_ok, bm_detail = build_bare_metal_image(riscv_cc, riscv_objcopy)
         checks.append({"id": "e1x_boot_repair_bare_metal_build",
                        "status": "pass" if bm_ok else "fail", "detail": bm_detail})
 
@@ -245,6 +358,7 @@ def main() -> int:
         "gate": "e1x-boot-repair-fw",
         "status": status,
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": utc_now(),
         "subsystem": "e1x",
         "claim_boundary": CLAIM_BOUNDARY,
         "evidence_paths": EVIDENCE_PATHS,
@@ -255,7 +369,10 @@ def main() -> int:
             "blocked_check_count": len(blocked),
             "failing_check_count": len(failed),
             "native_verification_passed": native_ok,
-            **vector_info,
+            "verified_rom_case_count": len(vector_cases),
+            "total_rom_word_count": sum(int(case["rom_word_count"]) for case in vector_cases),
+            "max_rom_word_count": max((int(case["rom_word_count"]) for case in vector_cases), default=0),
+            "rom_cases": vector_cases,
         },
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)

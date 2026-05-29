@@ -8,7 +8,14 @@ smtbmc z3
 smtbmc bitwuzla
 
 [script]
-read -sv power_pkg.sv droop_sensor.sv cdc_properties.sv droop_cdc_bind.sv
+# droop_sensor.sv declares `module droop_sensor import power_pkg::*;`. The
+# stock yosys Verilog frontend cannot parse a package import in the module
+# header, so this task reads the RTL through the yosys-slang frontend
+# (share/yosys/plugins/slang.so, shipped with the pinned oss-cad-suite yosys
+# that sby drives). slang elaborates the package-import header and the bind
+# in droop_cdc_bind.sv natively, with no sv2v lowering pass required.
+plugin -i slang
+read_slang power_pkg.sv droop_sensor.sv cdc_properties.sv droop_cdc_bind.sv --top droop_cdc_props_top --keep-hierarchy
 prep -top droop_cdc_props_top
 
 [files]

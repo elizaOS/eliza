@@ -293,7 +293,12 @@ export async function runPollingBackend(
               try {
                 const det = await scanProviderCredentials();
                 if (det.length > 0) deps.applyDetectedProviders(det);
-              } catch {}
+              } catch (error: unknown) {
+                logger.warn(
+                  { error },
+                  "[startup-phase-poll] provider-credential scan failed during onboarding resume",
+                );
+              }
             }
             applyOnboardingResumeFields(rf, deps);
             deps.setOnboardingStep(

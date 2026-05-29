@@ -34,9 +34,11 @@
 //     NOT emit stale/garbage data. The pipeline resynchronises at the next
 //     vsync (frame restart re-aligns the fetch address to fb_base).
 
-module e1_display_scanout
-    import e1_axi4_pkg::*;
-#(
+/* verilator lint_off IMPORTSTAR */
+import e1_axi4_pkg::*;
+/* verilator lint_on IMPORTSTAR */
+
+module e1_display_scanout #(
     parameter int unsigned ADDR_WIDTH  = 32,
     parameter int unsigned DATA_WIDTH  = 32,   // one 32-bit word per AXI beat
     parameter int unsigned ID_WIDTH    = 4,
@@ -84,6 +86,37 @@ module e1_display_scanout
     // ---- DCS command sideband to the DSI host (panel init at the boundary) -
     output logic                    dcs_vsync_pulse,  // frame-start event for host
     output logic                    irq_vsync
+`ifdef FORMAL
+    ,
+    output logic [31:0]             formal_fb_base,
+    output logic [15:0]             formal_h_active,
+    output logic [15:0]             formal_v_active,
+    output logic [15:0]             formal_h_count,
+    output logic [15:0]             formal_v_count,
+    output logic [15:0]             formal_h_total,
+    output logic [15:0]             formal_v_total,
+    output logic [15:0]             formal_v_sync_end,
+    output logic [31:0]             formal_stride_bytes,
+    output logic [31:0]             formal_format,
+    output logic                    formal_enable,
+    output logic                    formal_active,
+    output logic [15:0]             formal_words_per_line,
+    output logic [31:0]             formal_fetch_addr,
+    output logic [31:0]             formal_line_start_addr,
+    output logic [15:0]             formal_line_words_left,
+    output logic [15:0]             formal_fetch_line,
+    output logic [15:0]             formal_outstanding_cnt,
+    output logic [15:0]             formal_fifo_level,
+    output logic [4:0]              formal_byte_cnt,
+    output logic                    formal_prefetch_arm,
+    output logic                    formal_line_realign,
+    output logic                    formal_underflow_now,
+    output logic                    formal_underflow_sticky,
+    output logic [31:0]             formal_underflow_count,
+    output logic [31:0]             formal_fetched_word_count,
+    output logic                    formal_collect_en,
+    output logic                    formal_fetch_busy
+`endif
 );
 
     // ------------------------------------------------------------------
@@ -267,7 +300,15 @@ module e1_display_scanout
     assign last_line_issued = (fetch_line + 16'd1 >= v_active);
 
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n || !enable) begin
+        if (!rst_n) begin
+            fetch_addr      <= '0;
+            line_start_addr <= '0;
+            line_words_left <= '0;
+            fetch_line      <= '0;
+            outstanding_cnt <= '0;
+            fetch_busy      <= 1'b0;
+            collect_en      <= 1'b0;
+        end else if (!enable) begin
             fetch_addr      <= fb_base;
             line_start_addr <= fb_base;
             line_words_left <= '0;
@@ -378,7 +419,10 @@ module e1_display_scanout
     assign fifo_re = can_refill;
 
     always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n || !enable || prefetch_arm || line_realign) begin
+        if (!rst_n) begin
+            byte_buf <= 96'h0;
+            byte_cnt <= 5'h0;
+        end else if (!enable || prefetch_arm || line_realign) begin
             byte_buf <= 96'h0;
             byte_cnt <= 5'h0;
         end else begin
@@ -561,5 +605,36 @@ module e1_display_scanout
             default: rdata = 32'h0;
         endcase
     end
+
+`ifdef FORMAL
+    assign formal_fb_base            = fb_base;
+    assign formal_h_active           = h_active;
+    assign formal_v_active           = v_active;
+    assign formal_h_count            = h_count;
+    assign formal_v_count            = v_count;
+    assign formal_h_total            = h_total;
+    assign formal_v_total            = v_total;
+    assign formal_v_sync_end         = v_sync_end;
+    assign formal_stride_bytes       = stride_bytes;
+    assign formal_format             = format;
+    assign formal_enable             = enable;
+    assign formal_active             = active;
+    assign formal_words_per_line     = words_per_line;
+    assign formal_fetch_addr         = fetch_addr;
+    assign formal_line_start_addr    = line_start_addr;
+    assign formal_line_words_left    = line_words_left;
+    assign formal_fetch_line         = fetch_line;
+    assign formal_outstanding_cnt    = {{(16-$bits(outstanding_cnt)){1'b0}}, outstanding_cnt};
+    assign formal_fifo_level         = {{(16-$bits(fifo_level)){1'b0}}, fifo_level};
+    assign formal_byte_cnt           = byte_cnt;
+    assign formal_prefetch_arm       = prefetch_arm;
+    assign formal_line_realign       = line_realign;
+    assign formal_underflow_now      = underflow_now;
+    assign formal_underflow_sticky   = underflow_sticky;
+    assign formal_underflow_count    = underflow_count;
+    assign formal_fetched_word_count = fetched_word_count;
+    assign formal_collect_en         = collect_en;
+    assign formal_fetch_busy         = fetch_busy;
+`endif
 
 endmodule

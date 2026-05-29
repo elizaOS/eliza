@@ -47,8 +47,8 @@
         "first_done_step": null,
         "fall_threshold": null,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "command_count": 7,
         "failed_commands": [
           {
@@ -296,8 +296,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.378,
         "action_progress_ok": null,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.36649090046539984,
           "max": 0.6318436326574093,
@@ -385,8 +385,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.378,
         "action_progress_ok": null,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.36646927901001275,
           "max": 0.6318417019519126,
@@ -474,8 +474,8 @@
         "first_done_step": 80,
         "fall_threshold": 0.378,
         "action_progress_ok": null,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.5757729635163551,
           "max": 0.6647926798509988,
@@ -562,8 +562,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.378,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.3664569497121515,
           "max": 0.6318462104824359,
@@ -653,8 +653,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.378,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.3664665480617597,
           "max": 0.6318370498321982,
@@ -744,8 +744,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.378,
         "action_progress_ok": true,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.366449692022043,
           "max": 0.6318425806072878,
@@ -834,8 +834,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.378,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.36653029061892345,
           "max": 0.6318427938039592,
@@ -925,8 +925,8 @@
         "first_done_step": null,
         "fall_threshold": null,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "command_count": 4,
         "failed_commands": [
           {
@@ -1077,8 +1077,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.15,
         "action_progress_ok": null,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.23654185848454226,
           "max": 0.27784002688252235,
@@ -1165,8 +1165,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.15,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.23660363977855792,
           "max": 0.2778354385883302,
@@ -1255,8 +1255,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.15,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.23763801277353214,
           "max": 0.27784450110363446,
@@ -1345,8 +1345,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.15,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.23771576065127176,
           "max": 0.27784002688252235,
@@ -1435,8 +1435,8 @@
         "first_done_step": null,
         "fall_threshold": null,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "command_count": 4,
         "failed_commands": [
           {
@@ -1587,8 +1587,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.474,
         "action_progress_ok": null,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7905181150490029,
           "max": 0.7916153471328852,
@@ -1675,8 +1675,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.474,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7911624301907523,
           "max": 0.7961400371097604,
@@ -1765,8 +1765,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.474,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.791345734166974,
           "max": 0.7961468424577013,
@@ -1855,8 +1855,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.474,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7899316977176414,
           "max": 0.801904128286932,
@@ -1945,8 +1945,8 @@
         "first_done_step": null,
         "fall_threshold": null,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "command_count": 4,
         "failed_commands": [
           {
@@ -2097,8 +2097,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.612,
         "action_progress_ok": null,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.8052169276838833,
           "max": 0.9784249456160091,
@@ -2185,8 +2185,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.612,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7981986171774424,
           "max": 0.9786237324281216,
@@ -2275,8 +2275,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.612,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.8124320666547917,
           "max": 0.9786003631742803,
@@ -2365,8 +2365,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.612,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7788143275696411,
           "max": 0.9784249456160091,
@@ -2455,8 +2455,8 @@
         "first_done_step": null,
         "fall_threshold": null,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "command_count": 4,
         "failed_commands": [
           {
@@ -2607,8 +2607,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.444,
         "action_progress_ok": null,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7393067532804892,
           "max": 0.7419965443537505,
@@ -2695,8 +2695,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.444,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7098661969751928,
           "max": 0.7433338451398809,
@@ -2785,8 +2785,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.444,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7292386574942277,
           "max": 0.7429462147763688,
@@ -2875,8 +2875,8 @@
         "first_done_step": 40,
         "fall_threshold": 0.444,
         "action_progress_ok": false,
-        "min_walk_forward_progress_m": 0.05,
-        "min_turn_yaw_rad": 0.05,
+        "min_walk_forward_progress_m": 0.15,
+        "min_turn_yaw_rad": 0.15,
         "torso_z": {
           "min": 0.7404616458497735,
           "max": 0.7429697387686558,

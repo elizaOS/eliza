@@ -31,13 +31,10 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-wallet",
 ] as const;
 
-const DESKTOP_RUNTIME_ONLY_PLUGINS = new Set<string>([
-  "@elizaos/plugin-agent-orchestrator",
-  "@elizaos/plugin-browser",
-  "@elizaos/plugin-computeruse",
-]);
-
-const LOCAL_RUNTIME_ONLY_PLUGINS = new Set<string>([
+// Plugins excluded from the baseline release that can only be installed on a
+// local desktop runtime after release. Desktop and local runtimes share the
+// same exclusion list, so a single source of truth drives both flags.
+const RUNTIME_ONLY_PLUGINS = new Set<string>([
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-browser",
   "@elizaos/plugin-computeruse",
@@ -125,21 +122,14 @@ export function classifyRegistryPluginRelease(params: {
   const bundled =
     BASELINE_REGISTRY_BUNDLED_PLUGIN_IDS.has(pluginId) &&
     bundledPluginIds.has(pluginId);
-  const requiresDesktopRuntime = DESKTOP_RUNTIME_ONLY_PLUGINS.has(packageName);
-  const requiresLocalRuntime = LOCAL_RUNTIME_ONLY_PLUGINS.has(packageName);
+  const requiresRuntimeInstall = RUNTIME_ONLY_PLUGINS.has(packageName);
 
-  let note: string | undefined;
+  let note: string;
   if (bundled) {
     note = "Included in the baseline Eliza runtime bundle.";
-  } else if (requiresDesktopRuntime && requiresLocalRuntime) {
+  } else if (requiresRuntimeInstall) {
     note =
       "Excluded from the baseline release. Install on a local desktop runtime after release.";
-  } else if (requiresDesktopRuntime) {
-    note =
-      "Excluded from the baseline release. Install on desktop targets after release.";
-  } else if (requiresLocalRuntime) {
-    note =
-      "Excluded from the baseline release. Install on a local runtime after release.";
   } else {
     note = "Excluded from the baseline release and installable after release.";
   }
@@ -148,8 +138,8 @@ export function classifyRegistryPluginRelease(params: {
     releaseAvailability: bundled ? "bundled" : "post-release",
     installSurface: "runtime",
     postReleaseInstallable: !bundled,
-    requiresDesktopRuntime,
-    requiresLocalRuntime,
+    requiresDesktopRuntime: requiresRuntimeInstall,
+    requiresLocalRuntime: requiresRuntimeInstall,
     note,
   };
 }

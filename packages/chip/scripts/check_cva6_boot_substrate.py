@@ -32,6 +32,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from provenance_sanitize import sanitize_log_file
+
 ROOT = Path(__file__).resolve().parents[1]
 FW_DIR = ROOT / "fw/bare-metal/e1-cva6-dram-boot"
 FW_HEX = FW_DIR / "build/boot.hex128"
@@ -80,7 +82,7 @@ def _run(cmd: list[str], cwd: Path, env: dict, log: Path, timeout: int) -> tuple
         proc = subprocess.run(
             cmd, cwd=str(cwd), env=env, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout
         )
-    return proc.returncode, log.read_text(encoding="utf-8", errors="replace")
+    return proc.returncode, sanitize_log_file(log)
 
 
 def _build_firmware(env: dict) -> tuple[bool, str]:

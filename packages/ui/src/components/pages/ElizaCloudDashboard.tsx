@@ -230,9 +230,7 @@ export function CloudDashboard() {
     const maxThreshold = readNumber(limits.maxThreshold) ?? 1000;
     const hasPaymentMethod =
       readBoolean(getBillingAutoTopUp(billingSettings).hasPaymentMethod) ??
-      readBoolean(
-        (billingSummary as Record<string, unknown> | null)?.hasPaymentMethod,
-      ) ??
+      readBoolean(billingSummary?.hasPaymentMethod) ??
       false;
 
     if (!Number.isFinite(amount) || amount < minAmount || amount > maxAmount) {
@@ -330,10 +328,7 @@ export function CloudDashboard() {
   ]);
 
   const handleStartCheckout = useCallback(async () => {
-    const minimumTopUp =
-      readNumber(
-        (billingSummary as Record<string, unknown> | null)?.minimumTopUp,
-      ) ?? 1;
+    const minimumTopUp = readNumber(billingSummary?.minimumTopUp) ?? 1;
     const amountUsd = Number(billingAmount);
     if (!Number.isFinite(amountUsd) || amountUsd < minimumTopUp) {
       setActionNotice(
@@ -543,17 +538,12 @@ export function CloudDashboard() {
   const cloudCurrency = billingSummary?.currency ?? "USD";
   const fallbackBillingUrl =
     billingSummary?.topUpUrl ?? elizaCloudTopUpUrl ?? null;
-  const minimumTopUp =
-    readNumber(
-      (billingSummary as Record<string, unknown> | null)?.minimumTopUp,
-    ) ?? 1;
+  const minimumTopUp = readNumber(billingSummary?.minimumTopUp) ?? 1;
   const billingAutoTopUp = getBillingAutoTopUp(billingSettings);
   const billingLimits = getBillingLimits(billingSettings);
   const autoTopUpHasPaymentMethod =
     readBoolean(billingAutoTopUp.hasPaymentMethod) ??
-    readBoolean(
-      (billingSummary as Record<string, unknown> | null)?.hasPaymentMethod,
-    ) ??
+    readBoolean(billingSummary?.hasPaymentMethod) ??
     false;
   const autoTopUpMinAmount =
     readNumber(billingLimits.minAmount) ?? minimumTopUp;

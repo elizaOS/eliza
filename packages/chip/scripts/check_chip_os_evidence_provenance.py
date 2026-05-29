@@ -49,8 +49,19 @@ EXCLUDED_DIRS = {
 EXCLUDED_FILENAMES = {
     "chip-os-evidence-provenance.json",
 }
+EXCLUDED_SUFFIXES = (
+    ".schema.json",
+    ".example.json",
+)
+EXCLUDED_PATH_PARTS = (
+    ("firmware", "usr", "share", "qemu", "firmware"),
+)
+LINE_MARKER_EXCLUDED_SUFFIXES = (
+    "gap-keyword-inventory.json",
+    "gap_keyword_inventory.json",
+)
 MAX_FILE_BYTES = 750_000
-HOST_PATH_RE = re.compile(r"(?<![\w/])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
+HOST_PATH_RE = re.compile(r"(?<![\w/>])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
 PLACEHOLDER_RE = re.compile(r"\b(placeholder|stub|dummy|fake|sentinel|all-zero|TODO|TBD)\b", re.I)
 BLOCKED_RE = re.compile(r"\b(BLOCKED|FAIL|blocked until|not yet|missing required)\b", re.I)
 REFERENCE_ONLY_RE = re.compile(
@@ -59,6 +70,7 @@ REFERENCE_ONLY_RE = re.compile(
 )
 TIMESTAMP_KEYS = {
     "generated_utc",
+    "generated_at_utc",
     "timestamp",
     "timestamps",
     "start_utc",
@@ -85,8 +97,16 @@ def resolve(path: str) -> Path:
 def is_candidate(path: Path) -> bool:
     if path.name in EXCLUDED_FILENAMES:
         return False
+    if any(path.name.endswith(suffix) for suffix in EXCLUDED_SUFFIXES):
+        return False
     if any(part in EXCLUDED_DIRS for part in path.parts):
         return False
+    for sequence in EXCLUDED_PATH_PARTS:
+        if any(
+            tuple(path.parts[index : index + len(sequence)]) == sequence
+            for index in range(len(path.parts))
+        ):
+            return False
     if path.suffix.lower() not in TEXT_SUFFIXES:
         return False
     try:
@@ -190,6 +210,14 @@ def structured_status(value: object) -> str | None:
     return None
 
 
+def has_claim_boundary(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (dict, list)):
+        return bool(value)
+    return False
+
+
 def load_structured(path: Path, text: str) -> object | None:
     try:
         if path.suffix.lower() == ".json":
@@ -219,7 +247,7 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
         )
 
     boundary = data.get("claim_boundary")
-    if not isinstance(boundary, str) or not boundary.strip():
+    if not has_claim_boundary(boundary):
         rows.append(
             finding(
                 category="missing_claim_boundary",
@@ -229,7 +257,7 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
                 evidence=rel(path),
             )
         )
-    elif REFERENCE_ONLY_RE.search(boundary):
+    elif isinstance(boundary, str) and REFERENCE_ONLY_RE.search(boundary):
         rows.append(
             finding(
                 category="weak_reference_scope",
@@ -255,6 +283,7 @@ def structured_findings(path: Path, data: object) -> list[dict[str, Any]]:
 
 def line_findings(path: Path, text: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    skip_marker_lines = path.name.endswith(LINE_MARKER_EXCLUDED_SUFFIXES)
     for line_number, line in enumerate(text.splitlines(), start=1):
         host_match = HOST_PATH_RE.search(line)
         if host_match:
@@ -268,6 +297,8 @@ def line_findings(path: Path, text: str) -> list[dict[str, Any]]:
                     evidence=host_match.group(0),
                 )
             )
+        if skip_marker_lines:
+            continue
         placeholder_match = PLACEHOLDER_RE.search(line)
         if placeholder_match:
             rows.append(

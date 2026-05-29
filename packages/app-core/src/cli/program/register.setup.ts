@@ -138,13 +138,19 @@ export { resolveConfigPath };
 
 export function loadConfig(configPath: string): Record<string, unknown> {
   if (!fs.existsSync(configPath)) return {};
+  const raw = fs.readFileSync(configPath, "utf-8");
+  let parsed: unknown;
   try {
-    const raw = fs.readFileSync(configPath, "utf-8");
-    const parsed = JSON5.parse(raw);
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
-  } catch {
-    return {};
+    parsed = JSON5.parse(raw);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Cannot parse config at ${configPath}: ${reason}. Fix or remove the file before running setup.`,
+    );
   }
+  return typeof parsed === "object" && parsed !== null
+    ? (parsed as Record<string, unknown>)
+    : {};
 }
 
 export function saveConfig(

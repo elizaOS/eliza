@@ -220,6 +220,158 @@ def _obstacle_baseline_comparisons(
     }
 
 
+def _trace_bool(value: Any) -> bool:
+    return bool(value) if isinstance(value, bool) else False
+
+
+def _trace_float(value: Any) -> float | None:
+    return float(value) if _finite_number(value) else None
+
+
+def _trace_summary_consistent(trace: dict[str, Any]) -> bool:
+    steps = trace.get("steps")
+    summary = trace.get("summary")
+    obstacle = trace.get("obstacle")
+    goal = trace.get("goal")
+    if not isinstance(steps, list) or len(steps) < 2:
+        return False
+    if not isinstance(summary, dict) or not isinstance(obstacle, dict):
+        return False
+    if not isinstance(goal, list) or len(goal) != 2:
+        return False
+    if not all(_finite_number(value) for value in goal):
+        return False
+    if not all(
+        _finite_number(obstacle.get(key)) for key in ("x", "y", "radius")
+    ):
+        return False
+    rows = [step for step in steps if isinstance(step, dict)]
+    if len(rows) != len(steps):
+        return False
+    if not all(_finite_number(step.get("x")) and _finite_number(step.get("y")) for step in rows):
+        return False
+    final = rows[-1]
+    xs = [float(step["x"]) for step in rows]
+    obstacle_x = float(obstacle["x"])
+    obstacle_radius = float(obstacle["radius"])
+    passed_ever = any(_trace_bool(step.get("passed_obstacle")) for step in rows)
+    collision_ever = any(_trace_bool(step.get("collision")) for step in rows)
+    goal_reached = _trace_bool(final.get("goal_reached"))
+    final_progress = _trace_float(final.get("forward_progress_m"))
+    summary_progress = _trace_float(summary.get("mean_forward_progress_m"))
+    summary_passed = _trace_float(summary.get("passed_obstacle_rate"))
+    summary_collision = _trace_float(summary.get("collision_rate"))
+    summary_success = _trace_float(summary.get("success_rate"))
+    if None in (
+        final_progress,
+        summary_progress,
+        summary_passed,
+        summary_collision,
+        summary_success,
+    ):
+        return False
+    if abs(float(summary_progress) - float(final_progress)) > 1e-5:
+        return False
+    expected_passed = 1.0 if _trace_bool(final.get("passed_obstacle")) else 0.0
+    expected_collision = 1.0 if collision_ever else 0.0
+    expected_success = 1.0 if goal_reached else 0.0
+    if abs(float(summary_passed) - expected_passed) > 1e-5:
+        return False
+    if abs(float(summary_collision) - expected_collision) > 1e-5:
+        return False
+    if abs(float(summary_success) - expected_success) > 1e-5:
+        return False
+    if float(summary_passed) > 0.0 and not (
+        passed_ever and max(xs) > obstacle_x + obstacle_radius
+    ):
+        return False
+    return not (
+        float(summary_success) > 0.0
+        and not (goal_reached and passed_ever and max(xs) > obstacle_x + obstacle_radius)
+    )
+
+
+def _obstacle_trace_rollout_evidence(results: list[Any]) -> dict[str, Any]:
+    by_learner: dict[str, dict[str, Any]] = {}
+    all_trace_summaries_consistent = True
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        learner = result.get("name")
+        if not isinstance(learner, str):
+            continue
+        matrix = result.get("trajectory_matrix")
+        if not isinstance(matrix, list) or not matrix:
+            continue
+        consistent_count = 0
+        inconsistent_count = 0
+        final_successful_clear_count = 0
+        final_pass_count = 0
+        final_collision_count = 0
+        final_trace_count = 0
+        for row_index, row in enumerate(matrix):
+            if not isinstance(row, list):
+                all_trace_summaries_consistent = False
+                continue
+            for trace in row:
+                if not isinstance(trace, dict):
+                    all_trace_summaries_consistent = False
+                    inconsistent_count += 1
+                    continue
+                consistent = _trace_summary_consistent(trace)
+                if consistent:
+                    consistent_count += 1
+                else:
+                    inconsistent_count += 1
+                    all_trace_summaries_consistent = False
+                if row_index != len(matrix) - 1:
+                    continue
+                final_trace_count += 1
+                steps = trace.get("steps") if isinstance(trace.get("steps"), list) else []
+                rows = [step for step in steps if isinstance(step, dict)]
+                summary = trace.get("summary") if isinstance(trace.get("summary"), dict) else {}
+                obstacle = trace.get("obstacle") if isinstance(trace.get("obstacle"), dict) else {}
+                xs = [
+                    float(step["x"])
+                    for step in rows
+                    if _finite_number(step.get("x"))
+                ]
+                obstacle_x = _trace_float(obstacle.get("x"))
+                obstacle_radius = _trace_float(obstacle.get("radius")) or 0.0
+                physically_cleared = (
+                    obstacle_x is not None
+                    and bool(xs)
+                    and max(xs) > obstacle_x + obstacle_radius
+                )
+                passed = _trace_float(summary.get("passed_obstacle_rate")) == 1.0
+                success = _trace_float(summary.get("success_rate")) == 1.0
+                collision = _trace_float(summary.get("collision_rate")) == 1.0
+                final_pass_count += int(passed and physically_cleared)
+                final_collision_count += int(collision)
+                final_successful_clear_count += int(
+                    consistent and success and passed and physically_cleared and not collision
+                )
+        by_learner[learner] = {
+            "consistent_trace_count": consistent_count,
+            "inconsistent_trace_count": inconsistent_count,
+            "final_trace_count": final_trace_count,
+            "final_pass_count": final_pass_count,
+            "final_collision_count": final_collision_count,
+            "final_successful_clear_count": final_successful_clear_count,
+            "has_successful_final_clear": final_successful_clear_count > 0,
+        }
+    any_required_learner_clears = any(
+        by_learner.get(learner, {}).get("has_successful_final_clear") is True
+        for learner in REQUIRED_LEARNERS
+    )
+    return {
+        "by_learner": by_learner,
+        "all_trace_summaries_consistent": all_trace_summaries_consistent,
+        "any_required_learner_successful_final_clear": any_required_learner_clears,
+        "ok": all_trace_summaries_consistent and any_required_learner_clears,
+    }
+
+
 def _learner_seed_coverage(results: list[Any], learners: tuple[str, ...]) -> dict[str, list[int]]:
     coverage: dict[str, set[int]] = {name: set() for name in learners}
     for result in results:
@@ -314,6 +466,7 @@ def validate_alberta_benchmark_artifacts(
         ),
     }
     obstacle_baseline = _obstacle_baseline_comparisons(results)
+    obstacle_trace_rollouts = _obstacle_trace_rollout_evidence(results)
     enforced_delta_gates = {
         "alberta_acc_gte_ppo": (
             observed_comparisons["alberta_acc_gte_ppo"]
@@ -457,6 +610,9 @@ def validate_alberta_benchmark_artifacts(
         "obstacle_beats_passive_baseline": True
         if expected_env != "obstacle_course"
         else bool(obstacle_baseline["learning_beats_baseline"]),
+        "obstacle_trace_rollouts": True
+        if expected_env != "obstacle_course"
+        else bool(obstacle_trace_rollouts["ok"]),
         "metrics": required_learners_present
         and all(_metric_block_ok(summary, name) for name in configured_learners),
         "alberta_acc_gte_ppo": enforced_delta_gates["alberta_acc_gte_ppo"],
@@ -493,6 +649,7 @@ def validate_alberta_benchmark_artifacts(
         "summary": summary,
         "motion": motion,
         "obstacle_baseline": obstacle_baseline,
+        "obstacle_trace_rollouts": obstacle_trace_rollouts,
         "seed_coverage": seed_coverage,
         "configured_learners": list(configured_learners),
         "required_learners": list(REQUIRED_LEARNERS),

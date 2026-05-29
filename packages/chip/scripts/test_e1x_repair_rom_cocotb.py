@@ -20,4 +20,8 @@ def test_e1x_repair_rom_cocotb_gate_passes() -> None:
     report = json.loads((ROOT / "build/reports/e1x_repair_rom_cocotb.json").read_text())
     assert report["status"] == "PASS"
     assert report["summary"]["failing_check_count"] == 0
-    assert report["summary"]["testcases"] == 12
+    assert report["summary"]["testcases"] == 16
+    assert report["summary"]["real_graph_normal_repair_rom_sha256"]
+    assert report["summary"]["real_graph_normal_repair_rom_words"] > 400
+    assert report["summary"]["real_graph_high_failure_repair_rom_sha256"]
+    assert report["summary"]["real_graph_high_failure_repair_rom_words"] > 3000

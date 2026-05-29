@@ -261,7 +261,13 @@ kicad_package_state:
   local_routed_kicad_candidate_status: blocked_local_candidate_not_release
   local_routed_kicad_candidate_segment_count: 306
   local_routed_kicad_candidate_via_count: 24
+  local_routed_kicad_candidate_matches_real_footprint_source: true
+  local_routed_kicad_candidate_zero_placeholder_real_footprint_board: true
   local_routed_kicad_candidate_placeholder_markers: 0
+  local_routed_kicad_candidate_legacy_e1phone_footprint_refs: 0
+  local_routed_kicad_candidate_footprint_count: 89
+  local_routed_kicad_candidate_zone_count: 13
+  local_routed_kicad_candidate_filled_zone_count: 6
   local_routed_kicad_candidate_release_credit: false
   development_footprint_library_count: 32
   development_footprint_step_bound_count: 32
@@ -358,9 +364,18 @@ kicad_package_state:
   cad_connection_coverage_represented_route_classification_gap_count: 0
   cad_connection_coverage_all_represented_routes_have_layer_source_and_class: true
   cad_connection_coverage_record_count: 32
+  cad_connection_coverage_record_manifest_id_count: 32
   cad_connection_coverage_represented_net_list_total: 150
+  cad_connection_coverage_represented_route_id_list_total: 153
   cad_connection_coverage_all_records_have_represented_nets: true
+  cad_connection_coverage_all_records_have_represented_routes: true
   cad_connection_coverage_all_represented_nets_match_routed_nets: true
+  cad_connection_coverage_all_represented_routes_match_counts: true
+  cad_connection_coverage_all_records_have_terminal_markers: true
+  cad_connection_coverage_all_records_have_solid_step_parts: true
+  cad_connection_coverage_all_records_have_cad_step_bytes: true
+  cad_connection_coverage_all_records_have_cad_parts: true
+  cad_connection_coverage_all_records_release_credit_false: true
   cad_connection_coverage_physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1

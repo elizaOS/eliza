@@ -1,0 +1,79 @@
+{
+  "schema": "eliza.e1_phone_local_execution_report.v1",
+  "date": "2026-05-28",
+  "claim_boundary": "Local execution and public-source reconnaissance only; not supplier-approved release evidence.",
+  "tool_preflight": {
+    "kicad_cli_available": false,
+    "pcbnew_available": false,
+    "drc_status": "blocked_tool_unavailable",
+    "erc_status": "blocked_tool_unavailable",
+    "preflight_artifact": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
+    "required_commands": [
+      "kicad-cli pcb drc board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output board/kicad/e1-phone/production/reports/drc.json",
+      "kicad-cli sch erc board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output board/kicad/e1-phone/production/reports/erc.json"
+    ]
+  },
+  "existing_local_artifacts": [
+    {
+      "path": "board/kicad/e1-phone/e1-phone.kicad_pro",
+      "status": "present"
+    },
+    {
+      "path": "board/kicad/e1-phone/schematic/e1-phone.kicad_sch",
+      "status": "present"
+    },
+    {
+      "path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
+      "status": "present_local_candidate_not_release"
+    },
+    {
+      "path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+      "status": "present_local_candidate_not_release"
+    }
+  ],
+  "public_source_findings": [
+    {
+      "part_or_family": "GCT USB4105",
+      "source": "https://gct.co/connector/usb4105",
+      "evidence": "manufacturer page with 3D model generator and footprint resources",
+      "release_credit": false,
+      "next_intake": "download official CAD/footprint package and record file hashes/license"
+    },
+    {
+      "part_or_family": "GCT USB4105",
+      "source": "https://www.digikey.com/en/products/detail/gct/USB4105-GF-A-060/14559036",
+      "evidence": "authorized distributor page with CAD model link",
+      "release_credit": false,
+      "next_intake": "download distributor CAD model and compare to manufacturer drawing"
+    },
+    {
+      "part_or_family": "Hirose BM28",
+      "source": "https://www.hirose.com/product/p/CL0673-5049-0-53",
+      "evidence": "manufacturer product page with direct STEP drawing download for BM28 variant",
+      "release_credit": false,
+      "next_intake": "select exact mated pair and import both STEP plus footprint drawing"
+    },
+    {
+      "part_or_family": "Murata Type 2EA LBEE5XV2EA-802",
+      "source": "https://www.murata.com/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea",
+      "evidence": "manufacturer page with datasheet and DXF land-pattern resource",
+      "release_credit": false,
+      "next_intake": "capture DXF/datasheet revision and bind land-pattern coordinates"
+    },
+    {
+      "part_or_family": "Quectel RG255C",
+      "source": "https://www.quectel.com/product/5g-redcap-rg255c-series/",
+      "evidence": "manufacturer product page with module family and interfaces",
+      "release_credit": false,
+      "next_intake": "request hardware design package, STEP, and SKU-specific land pattern from Quectel"
+    }
+  ],
+  "remaining_blockers": [
+    "supplier_approved_land_patterns_and_step_models_missing",
+    "kicad_cli_missing_for_drc_erc",
+    "physical_routed_board_clearance_results_missing",
+    "supplier_response_packs_missing",
+    "production_release_intake_artifacts_missing"
+  ],
+  "release_credit": false
+}

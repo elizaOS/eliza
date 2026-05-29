@@ -84,6 +84,7 @@ write_smoke_manifest() {
         printf 'status=%s\n' "$state"
         printf 'check=qemu.run\n'
         printf 'evidence_kind=qemu-executable-transcript\n'
+        printf 'claim_boundary=qemu-virt software reference only; not e1-chip hardware ABI boot evidence\n'
         printf 'archive=%s\n' "${smoke_log#"$repo_dir"/}"
         if [ -f "$smoke_log" ]; then
             printf 'sha256=%s\n' "$(sha256_file "$smoke_log")"

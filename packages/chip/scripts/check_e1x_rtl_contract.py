@@ -18,7 +18,10 @@ REPORT = ROOT / "build/reports/e1x_rtl_contract.json"
 RTL_FILES = [
     ROOT / "rtl/e1x/e1x_pkg.sv",
     ROOT / "rtl/e1x/e1x_mesh_router.sv",
+    ROOT / "rtl/e1x/e1x_credit_router.sv",
     ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv",
+    ROOT / "rtl/e1x/e1x_sram_ecc.sv",
+    ROOT / "rtl/e1x/e1x_mbist.sv",
     ROOT / "rtl/e1x/e1x_repair_aware_router.sv",
     ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv",
     ROOT / "rtl/e1x/e1x_repair_rom_loader.sv",
@@ -28,7 +31,12 @@ RTL_FILES = [
     ROOT / "rtl/e1x/e1x_repair_routed_tile.sv",
     ROOT / "rtl/e1x/e1x_repair_mmio_routed_tile.sv",
     ROOT / "rtl/e1x/e1x_tiny_core_contract.sv",
+    ROOT / "rtl/e1x/e1x_pe_core.sv",
     ROOT / "rtl/e1x/e1x_tile.sv",
+]
+EVIDENCE_PATHS = [str(path.relative_to(ROOT)) for path in RTL_FILES] + [
+    "compiler/runtime/e1x_wafer_model.py",
+    "scripts/check_e1x_rtl_contract.py",
 ]
 
 
@@ -129,6 +137,35 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_terms),
         }
     )
+    credit_router = (ROOT / "rtl/e1x/e1x_credit_router.sv").read_text(encoding="utf-8")
+    credit_router_terms = (
+        "FIFO_DEPTH",
+        "CREDIT_MAX",
+        "out_credit_i",
+        "credit_q",
+        "fifo_mem",
+        "rr_start_q",
+        "prog_we_i",
+        "prog_dir_o",
+        "route_table_q",
+        "repaired_drop_o",
+        "E1X_DIR_DROP",
+    )
+    missing_credit_router_terms = [
+        term for term in credit_router_terms if term not in credit_router
+    ]
+    checks.append(
+        {
+            "id": "e1x_credit_router_supports_lossless_flow_control",
+            "status": "pass" if not missing_credit_router_terms else "fail",
+            "detail": (
+                "credit router exposes input FIFOs, route-table programming/readback, "
+                "credit counters, round-robin arbitration, and repair/drop reporting"
+            )
+            if not missing_credit_router_terms
+            else "missing terms: " + ", ".join(missing_credit_router_terms),
+        }
+    )
     local_sram_loader = (ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv").read_text(
         encoding="utf-8"
     )
@@ -150,6 +187,82 @@ def structural_checks() -> list[dict[str, str]]:
             "detail": "local SRAM shard loader exposes capacity, loaded-byte, checksum, and overflow evidence"
             if not missing_local_sram_terms
             else "missing terms: " + ", ".join(missing_local_sram_terms),
+        }
+    )
+    pe_core = (ROOT / "rtl/e1x/e1x_pe_core.sv").read_text(encoding="utf-8")
+    pe_core_terms = (
+        "module e1x_pe_core",
+        "RV64IM_Zicsr_Zifencei",
+        "boot_en_i",
+        "boot_pc_i",
+        "local_sram",
+        "regs",
+        "csr_mcycle_q",
+        "csr_minstret_q",
+        "csr_mscratch_q",
+        "mul_op",
+        "div_op",
+        "wavelet_valid_i",
+        "wavelet_payload_o",
+        "OP_FENCE",
+        "OP_SYSTEM",
+    )
+    missing_pe_core_terms = [term for term in pe_core_terms if term not in pe_core]
+    checks.append(
+        {
+            "id": "e1x_pe_core_supports_rv64im_wavelet_execution",
+            "status": "pass" if not missing_pe_core_terms else "fail",
+            "detail": (
+                "PE core exposes boot-loaded local SRAM, integer/M-extension execution, "
+                "CSR counters/scratch, fence/system handling, and wavelet MMIO ports"
+            )
+            if not missing_pe_core_terms
+            else "missing terms: " + ", ".join(missing_pe_core_terms),
+        }
+    )
+    sram_ecc = (ROOT / "rtl/e1x/e1x_sram_ecc.sv").read_text(encoding="utf-8")
+    sram_ecc_terms = (
+        "SECDED",
+        "DATA_BITS",
+        "CHECK_BITS",
+        "hamming_parity",
+        "hamming_syndrome",
+        "dec_single_error_o",
+        "dec_double_error_o",
+        "corrected_count_o",
+        "detected_double_count_o",
+    )
+    missing_sram_ecc_terms = [term for term in sram_ecc_terms if term not in sram_ecc]
+    checks.append(
+        {
+            "id": "e1x_sram_ecc_supports_local_sram_integrity",
+            "status": "pass" if not missing_sram_ecc_terms else "fail",
+            "detail": "local SRAM ECC exposes SECDED encode/decode and correction/detection counters"
+            if not missing_sram_ecc_terms
+            else "missing terms: " + ", ".join(missing_sram_ecc_terms),
+        }
+    )
+    mbist = (ROOT / "rtl/e1x/e1x_mbist.sv").read_text(encoding="utf-8")
+    mbist_terms = (
+        "March C-",
+        "start_i",
+        "busy_o",
+        "done_o",
+        "fail_o",
+        "fail_addr_o",
+        "fail_bit_o",
+        "inject_valid_i",
+        "S_M0",
+        "S_M5_R",
+    )
+    missing_mbist_terms = [term for term in mbist_terms if term not in mbist]
+    checks.append(
+        {
+            "id": "e1x_mbist_supports_local_sram_manufacturing_test",
+            "status": "pass" if not missing_mbist_terms else "fail",
+            "detail": "local SRAM MBIST exposes March C- sequencing, status, fail address/bit, and injection-test hooks"
+            if not missing_mbist_terms
+            else "missing terms: " + ", ".join(missing_mbist_terms),
         }
     )
     repair_rom = (ROOT / "rtl/e1x/e1x_repair_rom_loader.sv").read_text(encoding="utf-8")
@@ -375,7 +488,10 @@ def verilator_check() -> dict[str, str]:
         "-Wno-UNUSEDSIGNAL",
         "-Wno-BLKSEQ",
         str(ROOT / "rtl/e1x/e1x_mesh_router.sv"),
+        str(ROOT / "rtl/e1x/e1x_credit_router.sv"),
         str(ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv"),
+        str(ROOT / "rtl/e1x/e1x_sram_ecc.sv"),
+        str(ROOT / "rtl/e1x/e1x_mbist.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_aware_router.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_rom_loader.sv"),
@@ -385,6 +501,7 @@ def verilator_check() -> dict[str, str]:
         str(ROOT / "rtl/e1x/e1x_repair_routed_tile.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_mmio_routed_tile.sv"),
         str(ROOT / "rtl/e1x/e1x_tiny_core_contract.sv"),
+        str(ROOT / "rtl/e1x/e1x_pe_core.sv"),
         str(ROOT / "rtl/e1x/e1x_tile.sv"),
         "--top-module",
         "e1x_tile",
@@ -406,8 +523,12 @@ def main() -> int:
         "gate": "e1x-rtl-contract-check",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace(
+            "+00:00", "Z"
+        ),
         "subsystem": "e1x",
-        "claim_boundary": "E1X RTL contract and architecture-model consistency only; not a complete RISC-V core, wafer-scale RTL, PD, DFT, package, or silicon claim.",
+        "claim_boundary": "E1X RTL contract and architecture-model consistency only; RV64IM_Zicsr_Zifencei PE core is present but this is not full RISC-V compliance, wafer-scale RTL, PD, DFT, package, or silicon evidence.",
+        "evidence_paths": EVIDENCE_PATHS,
         "checks": checks,
         "summary": {
             "check_count": len(checks),

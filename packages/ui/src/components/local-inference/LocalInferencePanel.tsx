@@ -492,6 +492,7 @@ function appendTokenParam(url: string): string {
  * cellular/metered toggles are OWNER-only.
  */
 function VoiceModelUpdatesSection() {
+  const { setActionNotice } = useApp();
   const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>({
     autoUpdateOnWifi: true,
     autoUpdateOnCellular: false,
@@ -545,36 +546,54 @@ function VoiceModelUpdatesSection() {
       const list = await client.listVoiceModels();
       setInstallations(list.installations);
     } catch (err) {
-      console.warn("[voice-models] check failed", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setActionNotice(`Update check failed: ${message}`, "error", 4000);
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [setActionNotice]);
 
-  const onUpdateNow = useCallback(async (id: VoiceModelId) => {
-    try {
-      await client.triggerVoiceModelUpdate(id);
-      const list = await client.listVoiceModels();
-      setInstallations(list.installations);
-    } catch (err) {
-      console.warn("[voice-models] update failed", err);
-    }
-  }, []);
+  const onUpdateNow = useCallback(
+    async (id: VoiceModelId) => {
+      try {
+        await client.triggerVoiceModelUpdate(id);
+        const list = await client.listVoiceModels();
+        setInstallations(list.installations);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(`Update failed: ${message}`, "error", 4000);
+      }
+    },
+    [setActionNotice],
+  );
 
-  const onTogglePin = useCallback(async (id: VoiceModelId, pinned: boolean) => {
-    try {
-      await client.pinVoiceModel(id, pinned);
-      const list = await client.listVoiceModels();
-      setInstallations(list.installations);
-    } catch (err) {
-      console.warn("[voice-models] pin failed", err);
-    }
-  }, []);
+  const onTogglePin = useCallback(
+    async (id: VoiceModelId, pinned: boolean) => {
+      try {
+        await client.pinVoiceModel(id, pinned);
+        const list = await client.listVoiceModels();
+        setInstallations(list.installations);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(
+          `${pinned ? "Pin" : "Unpin"} failed: ${message}`,
+          "error",
+          4000,
+        );
+      }
+    },
+    [setActionNotice],
+  );
 
   const onSetPreferences = useCallback(
     async (next: VoiceUpdatePreferencesView) => {
-      // Optimistic update — revert on failure so the OWNER gate's 403 is visible.
-      setPreferences(next);
+      // Optimistic update — revert to the prior value on failure so the
+      // OWNER gate's 403 is visible (the flipped toggle snaps back).
+      let previous: VoiceUpdatePreferencesView | null = null;
+      setPreferences((prev) => {
+        previous = prev;
+        return next;
+      });
       try {
         const res = await client.setVoiceModelPreferences({
           autoUpdateOnWifi: next.autoUpdateOnWifi,
@@ -587,21 +606,16 @@ function VoiceModelUpdatesSection() {
           autoUpdateOnMetered: res.preferences.autoUpdateOnMetered,
         });
       } catch (err) {
-        console.warn("[voice-models] setPreferences failed", err);
-        // Refresh server state to undo the optimistic flip.
-        try {
-          const refreshed = await client.getVoiceModelPreferences();
-          setPreferences({
-            autoUpdateOnWifi: refreshed.preferences.autoUpdateOnWifi,
-            autoUpdateOnCellular: refreshed.preferences.autoUpdateOnCellular,
-            autoUpdateOnMetered: refreshed.preferences.autoUpdateOnMetered,
-          });
-        } catch {
-          /* ignore — UI keeps the optimistic value */
-        }
+        if (previous) setPreferences(previous);
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(
+          `Could not save preference: ${message}`,
+          "error",
+          4000,
+        );
       }
     },
-    [],
+    [setActionNotice],
   );
 
   return (

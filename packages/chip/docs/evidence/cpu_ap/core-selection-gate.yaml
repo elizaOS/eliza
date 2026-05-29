@@ -1,152 +1,148 @@
-schema: eliza.cpu_ap_core_selection_gate.v1
-status: pinned_open_big_core_pending_external_checkout
-claim_boundary: >
-  Core-selection gate for the e1 cluster (1+3+4 topology). Mirrors
-  generators/chipyard/eliza-*-manifest.json files into a single evidence
-  artifact so docs/evidence/cpu_ap/core-selection.json is the audit
-  record. The big-core slot is the open XiangShan Kunminghu V3 scale-up
-  (Mulan PSL v2, no vendor IP license). Tenstorrent Ascalon-D8 was
-  surveyed as the leading commercial flagship-class core but rejected
-  because its mobile-volume IP license terms are not published.
-target_topology: 1_ultra_3_premium_4_pro
+claim_boundary: 'Core-selection gate for the e1 cluster (1+3+4 topology). Mirrors
+  generators/chipyard/eliza-*-manifest.json files into a single evidence artifact
+  so docs/evidence/cpu_ap/core-selection.json is the audit record. The big-core slot
+  is the open XiangShan Kunminghu V3 scale-up (Mulan PSL v2, no vendor IP license).
+  Tenstorrent Ascalon-D8 was surveyed as the leading commercial flagship-class core
+  but rejected because its mobile-volume IP license terms are not published.
+
+  '
 cluster_roles:
   big_core_e1_ultra:
+    fallback_manifest: generators/chipyard/eliza-boom-manifest.json
+    fallback_status: selected_via_chipyard_boom_generator
+    rejected_alternative: "Tenstorrent Ascalon-D8 \u2014 leading commercial flagship-class\
+      \ RISC-V OoO IP, rejected because mobile-volume IP license terms are not published\
+      \ and procurement is not closeable on the program schedule.\n"
     target_manifest: generators/chipyard/eliza-kunminghu-big-manifest.json
     target_status: selected_pending_external_xiangshan_checkout
-    fallback_manifest: generators/chipyard/eliza-boom-manifest.json
-    fallback_status: selected_via_chipyard_boom_generator
-    rejected_alternative: >
-      Tenstorrent Ascalon-D8 — leading commercial flagship-class RISC-V
-      OoO IP, rejected because mobile-volume IP license terms are not
-      published and procurement is not closeable on the program schedule.
-  mid_core_e1_premium:
-    target_manifest: generators/chipyard/eliza-kunminghu-manifest.json
-    target_status: selected_pending_external_xiangshan_checkout
-    fallback_manifest: generators/chipyard/eliza-boom-manifest.json
-    fallback_status: selected_via_chipyard_boom_generator
+  linux_bringup_application_hart:
+    canonical_manifest: docs/generators/chipyard/eliza-rocket-manifest.json
+    target_manifest: generators/chipyard/eliza-rocket-manifest.json
+    target_status: selected_not_generated
   little_core_e1_pro:
     target_manifest: generators/chipyard/eliza-cva6-manifest.json
     target_status: selected_via_chipyard_cva6_wrapper
-  linux_bringup_application_hart:
-    target_manifest: generators/chipyard/eliza-rocket-manifest.json
-    canonical_manifest: docs/generators/chipyard/eliza-rocket-manifest.json
-    target_status: selected_not_generated
+  mid_core_e1_premium:
+    fallback_manifest: generators/chipyard/eliza-boom-manifest.json
+    fallback_status: selected_via_chipyard_boom_generator
+    target_manifest: generators/chipyard/eliza-kunminghu-manifest.json
+    target_status: selected_pending_external_xiangshan_checkout
+fail_closed_until:
+- All four cluster roles have at least one manifest with a real pinned commit.
+- Big-core slot has a real pinned commit (open Kunminghu scale-up; satisfied).
+- Linux bring-up Rocket transcript exists at build/evidence/cpu_ap/eliza_e1_linux_boot.log.
 gate_command: make core-selection-check
 gate_command_strict: make core-selection-check-strict
 gate_evidence_file: docs/evidence/cpu_ap/core-selection.json
-fail_closed_until:
-  - All four cluster roles have at least one manifest with a real pinned commit.
-  - Big-core slot has a real pinned commit (open Kunminghu scale-up; satisfied).
-  - Linux bring-up Rocket transcript exists at build/evidence/cpu_ap/eliza_e1_linux_boot.log.
-
-# ----------------------------------------------------------------------
-# Quarterly decision-tree for the big-core slot.
-#
-# The big core is the single highest-risk integration decision in the
-# program. The selected path is the open XiangShan Kunminghu V3 scale-up
-# (Mulan PSL v2, no vendor IP license). Each row records:
-#
-#   - the quarter (gating point),
-#   - the open-RTL integration state we need to see,
-#   - the fork-risk state (8-wide scale-up microbench / floorplan),
-#   - the schedule slack (weeks until RTL freeze),
-#   - the decision the review can make.
-#
-# Tenstorrent Ascalon-D8 was surveyed as the leading commercial
-# flagship-class core but rejected: its mobile-volume IP license terms
-# are not published and procurement is not closeable on the program
-# schedule. No license-gated track remains live.
-# ----------------------------------------------------------------------
+generated_utc: '2026-05-22T19:53:42Z'
 quarterly_decision_tree:
-  - quarter: 2026Q2
-    review_date_target: 2026-06-15
-    big_core_path: open_kunminghu_scale_up
-    integration_state: upstream_commit_pinned_external_checkout_pending
-    fork_risk: scale_up_kunminghu_unmeasured
-    schedule_slack_weeks_to_rtl_freeze: 78
-    decisions_available:
-      - proceed_open_kunminghu_scale_up
-    chosen: proceed_open_kunminghu_scale_up
-    rationale: >
-      The big-core slot is the open Kunminghu V3 scale-up; the upstream
-      commit is pinned (eliza-kunminghu-big-manifest.json) and requires
-      no vendor IP license. The XiangShan external checkout is still
-      pending (submodule not fetched). The Rocket linux-bringup AP is
-      generated, Verilator simulator built, and the OpenSBI banner is
-      reaching UART in the current Verilator boot smoke; the full Linux
-      userspace transcript is still gated by simulation wall-clock
-      budget. Produce a Kunminghu RTL-fetch artifact before 2026Q3.
-  - quarter: 2026Q3
-    review_date_target: 2026-09-30
-    big_core_path: open_kunminghu_scale_up
-    integration_state: external_checkout_required
-    fork_risk: scale_up_kunminghu_unmeasured
-    schedule_slack_weeks_to_rtl_freeze: 65
-    decisions_available:
-      - proceed_open_kunminghu_scale_up
-    chosen: proceed_open_kunminghu_scale_up
-    rationale: >
-      Kunminghu V3 scale-up has not been measured against an 8-wide
-      ROB 512 target yet. Land the external checkout and require a
-      Kunminghu microbench at 8-wide-issue by 2026Q4.
-  - quarter: 2026Q4
-    review_date_target: 2026-12-15
-    big_core_path: open_kunminghu_scale_up
-    integration_state: microbench_required
-    fork_risk: scale_up_kunminghu_microbench_required
-    schedule_slack_weeks_to_rtl_freeze: 52
-    decisions_available:
-      - confirm_kunminghu_scale_up
-      - drop_big_core_peak_to_mid_spec
-    chosen: TBD
-    blocked_until: kunminghu_8wide_microbench_data
-    fail_closed_action: |
-      If the scale-up microbench does not produce data, freeze the
-      big-core slot as "Kunminghu V3 6-wide" (i.e., drop big-core peak
-      claim to the mid-core spec) and document the IPC/peak-power impact
-      in docs/evidence/cpu_ap/core-selection-gate-impact-2026Q4.yaml.
-  - quarter: 2027Q1
-    review_date_target: 2027-03-15
-    big_core_path: open_kunminghu_scale_up
-    integration_state: floorplan_required
-    fork_risk: kunminghu_scale_up_floorplan_required
-    schedule_slack_weeks_to_rtl_freeze: 39
-    decisions_available:
-      - lock_kunminghu_scale_up_fork
-    chosen: TBD
-    blocked_until: the Kunminghu scale-up fork has a real pinned commit AND a Verilator full-system Linux boot transcript
-    fail_closed_action: |
-      Without a buildable scale-up fork by 2027Q1, the big-core slot is
-      removed from the cluster topology and we ship 0+3+4 (mid+little
-      only). All Geekbench6 peak-single claims are withdrawn until 2030.
-  - quarter: 2027Q2
-    review_date_target: 2027-06-15
-    big_core_path: open_kunminghu_scale_up
-    integration_state: pre_freeze
-    fork_risk: chosen_path_freeze
-    schedule_slack_weeks_to_rtl_freeze: 26
-    decisions_available:
-      - approve_freeze
-      - delay_freeze_one_quarter
-    chosen: TBD
-    blocked_until: design freeze meets the IPC ≥ 9 SPEC2017-int target and the L2 + L1D latency targets.
-  - quarter: 2027Q4
-    review_date_target: 2027-12-15
-    big_core_path: open_kunminghu_scale_up
-    integration_state: rtl_freeze
-    fork_risk: rtl_freeze
-    schedule_slack_weeks_to_rtl_freeze: 0
-    decisions_available:
-      - rtl_freeze
-    chosen: TBD
-    blocked_until: every cluster role is RTL-frozen; the SPEC2017 / Geekbench 6 modelled numbers are within +/- 15 % of the floorplan estimate; the FireSim Linux boot transcript has been captured.
+- big_core_path: open_kunminghu_scale_up
+  chosen: proceed_open_kunminghu_scale_up
+  decisions_available:
+  - proceed_open_kunminghu_scale_up
+  fork_risk: scale_up_kunminghu_unmeasured
+  integration_state: upstream_commit_pinned_external_checkout_pending
+  quarter: 2026Q2
+  rationale: 'The big-core slot is the open Kunminghu V3 scale-up; the upstream commit
+    is pinned (eliza-kunminghu-big-manifest.json) and requires no vendor IP license.
+    The XiangShan external checkout is still pending (submodule not fetched). The
+    Rocket linux-bringup AP is generated, Verilator simulator built, and the OpenSBI
+    banner is reaching UART in the current Verilator boot smoke; the full Linux userspace
+    transcript is still gated by simulation wall-clock budget. Produce a Kunminghu
+    RTL-fetch artifact before 2026Q3.
 
-# Schedule-fit guardrails enforced by scripts/check_core_selection.py.
+    '
+  review_date_target: 2026-06-15
+  schedule_slack_weeks_to_rtl_freeze: 78
+- big_core_path: open_kunminghu_scale_up
+  chosen: proceed_open_kunminghu_scale_up
+  decisions_available:
+  - proceed_open_kunminghu_scale_up
+  fork_risk: scale_up_kunminghu_unmeasured
+  integration_state: external_checkout_required
+  quarter: 2026Q3
+  rationale: 'Kunminghu V3 scale-up has not been measured against an 8-wide ROB 512
+    target yet. Land the external checkout and require a Kunminghu microbench at 8-wide-issue
+    by 2026Q4.
+
+    '
+  review_date_target: 2026-09-30
+  schedule_slack_weeks_to_rtl_freeze: 65
+- big_core_path: open_kunminghu_scale_up
+  blocked_until: kunminghu_8wide_microbench_data
+  chosen: TBD
+  decisions_available:
+  - confirm_kunminghu_scale_up
+  - drop_big_core_peak_to_mid_spec
+  fail_closed_action: 'If the scale-up microbench does not produce data, freeze the
+
+    big-core slot as "Kunminghu V3 6-wide" (i.e., drop big-core peak
+
+    claim to the mid-core spec) and document the IPC/peak-power impact
+
+    in docs/evidence/cpu_ap/core-selection-gate-impact-2026Q4.yaml.
+
+    '
+  fork_risk: scale_up_kunminghu_microbench_required
+  integration_state: microbench_required
+  quarter: 2026Q4
+  review_date_target: 2026-12-15
+  schedule_slack_weeks_to_rtl_freeze: 52
+- big_core_path: open_kunminghu_scale_up
+  blocked_until: the Kunminghu scale-up fork has a real pinned commit AND a Verilator
+    full-system Linux boot transcript
+  chosen: TBD
+  decisions_available:
+  - lock_kunminghu_scale_up_fork
+  fail_closed_action: 'Without a buildable scale-up fork by 2027Q1, the big-core slot
+    is
+
+    removed from the cluster topology and we ship 0+3+4 (mid+little
+
+    only). All Geekbench6 peak-single claims are withdrawn until 2030.
+
+    '
+  fork_risk: kunminghu_scale_up_floorplan_required
+  integration_state: floorplan_required
+  quarter: 2027Q1
+  review_date_target: 2027-03-15
+  schedule_slack_weeks_to_rtl_freeze: 39
+- big_core_path: open_kunminghu_scale_up
+  blocked_until: "design freeze meets the IPC \u2265 9 SPEC2017-int target and the\
+    \ L2 + L1D latency targets."
+  chosen: TBD
+  decisions_available:
+  - approve_freeze
+  - delay_freeze_one_quarter
+  fork_risk: chosen_path_freeze
+  integration_state: pre_freeze
+  quarter: 2027Q2
+  review_date_target: 2027-06-15
+  schedule_slack_weeks_to_rtl_freeze: 26
+- big_core_path: open_kunminghu_scale_up
+  blocked_until: every cluster role is RTL-frozen; the SPEC2017 / Geekbench 6 modelled
+    numbers are within +/- 15 % of the floorplan estimate; the FireSim Linux boot
+    transcript has been captured.
+  chosen: TBD
+  decisions_available:
+  - rtl_freeze
+  fork_risk: rtl_freeze
+  integration_state: rtl_freeze
+  quarter: 2027Q4
+  review_date_target: 2027-12-15
+  schedule_slack_weeks_to_rtl_freeze: 0
 schedule_fit:
-  weeks_to_tapeout_at_2028H1: 26
-  weeks_to_phone_silicon_at_2029: 78
-  notes: |
-    The phone product silicon (2029) tolerates one quarter of dev-board
+  notes: 'The phone product silicon (2029) tolerates one quarter of dev-board
+
     silicon rework. Beyond that, slipping a quarter on the big-core
+
     decision pushes the phone product to 2030. The gate fails closed if
-    any quarter's "chosen" remains TBD past its review_date_target.
+
+    any quarter''s "chosen" remains TBD past its review_date_target.
+
+    '
+  weeks_to_phone_silicon_at_2029: 78
+  weeks_to_tapeout_at_2028H1: 26
+schema: eliza.cpu_ap_core_selection_gate.v1
+status: pinned_open_big_core_pending_external_checkout
+target_topology: 1_ultra_3_premium_4_pro

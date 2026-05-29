@@ -14,6 +14,97 @@ from eliza_robot.rl.alberta.features import FeatureConfig
 from scripts.validate_alberta_robot_checkpoint import validate_alberta_robot_checkpoint
 
 
+def _task_physical_checks(task: str) -> dict[str, bool]:
+    locomotion_support = {
+        "min_swing_foot_clearance_m": True,
+        "max_foot_slip_m_s": True,
+        "max_self_collision_count": True,
+    }
+    if task == "stand_up":
+        return {
+            "hold_s": True,
+            "torso_height_gain": True,
+            "tracked_height_gain": True,
+        }
+    if task == "walk_forward":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_x_forward": True,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "walk_backward":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_x_backward": True,
+            "tracked_lateral_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "sidestep_left":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_y_left": True,
+            "tracked_forward_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "sidestep_right":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "min_alternating_foot_contacts": True,
+            "tracked_height_present": True,
+            "tracked_delta_y_right": True,
+            "tracked_forward_drift_bound": True,
+            "yaw_drift_bound": True,
+            **locomotion_support,
+        }
+    if task == "turn_left":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "tracked_height_present": True,
+            "delta_yaw_left": True,
+            "tracked_translation_drift_bound": True,
+        }
+    if task == "turn_right":
+        return {
+            "no_fall": True,
+            "hold_s": True,
+            "tracked_height_present": True,
+            "delta_yaw_right": True,
+            "tracked_translation_drift_bound": True,
+        }
+    return {}
+
+
+def _task_motion(task: str) -> tuple[float, float, float]:
+    if task == "walk_forward":
+        return 0.4, 0.0, 0.0
+    if task == "walk_backward":
+        return -0.3, 0.0, 0.0
+    if task == "sidestep_left":
+        return 0.0, 0.3, 0.0
+    if task == "sidestep_right":
+        return 0.0, -0.3, 0.0
+    if task == "turn_left":
+        return 0.02, 0.01, 0.8
+    if task == "turn_right":
+        return 0.02, -0.01, -0.8
+    return 0.0, 0.0, 0.0
+
+
 def _write_alberta_checkpoint(
     path: Path,
     *,
@@ -149,6 +240,7 @@ def _write_alberta_checkpoint(
     steps_per_task = total_steps // len(tasks)
     for phase, task in enumerate(tasks):
         cumulative += steps_per_task
+        delta_x, delta_y, delta_yaw = _task_motion(task)
         phases.append(
             {
                 "phase": phase,
@@ -161,11 +253,14 @@ def _write_alberta_checkpoint(
                 "eval_success_rate": 1.0,
                 "failure_rate": 0.0,
                 "physical_success": True,
-                "physical_checks": {"tracked_goal": True},
-                "tracked_body_name": "head_tilt_link",
-                "mean_final_tracked_delta_x_m": 0.4,
-                "mean_final_tracked_delta_y_m": 0.0,
-                "mean_final_tracked_delta_z_m": 0.1,
+                "physical_checks": _task_physical_checks(task),
+                "tracked_body_name": "body_link",
+                "mean_final_delta_yaw_rad": delta_yaw,
+                "mean_final_torso_z_m": 1.0,
+                "mean_final_torso_z_delta_m": 0.1 if task == "stand_up" else 0.0,
+                "mean_final_tracked_delta_x_m": delta_x,
+                "mean_final_tracked_delta_y_m": delta_y,
+                "mean_final_tracked_delta_z_m": 0.1 if task == "stand_up" else 0.0,
                 "mean_final_tracked_z_m": 1.0,
                 "eval_failures": 0,
                 "promotion_passed": True,
@@ -253,6 +348,63 @@ def test_alberta_checkpoint_validator_requires_physical_phase_evidence(
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     manifest["phase_promotion"]["phases"][0].pop("tracked_body_name")
     manifest["phase_promotion"]["phases"][0]["physical_checks"] = {}
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_rejects_stale_tracked_body(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path, profile_id="hiwonder-ainex")
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0]["tracked_body_name"] = "head_tilt_link"
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_recomputes_phase_signed_motion(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path, tasks=["walk_backward"])
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0]["mean_final_tracked_delta_x_m"] = 0.4
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        profile_id="hiwonder-ainex",
+        required_tasks=["walk_backward"],
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_rejects_extra_failed_physical_check(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0]["physical_checks"][
+        "unexpected_extra_check"
+    ] = False
     (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     report = validate_alberta_robot_checkpoint(

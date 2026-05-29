@@ -6,13 +6,19 @@ Overall ok: `False`
 
 - Existing production robot videos prove physical walking/turning: `False`.
 - Existing learned-policy curriculum eval proves task success and physical motion: `False`.
-- Local short learning probe shows actual learning signal: `True`.
+- Local short learning probe shows learned motion signal: `True`.
+- Local short learning probe shows walking-grade learning signal: `False`.
 - Local short learning probe reaches walking success: `False`.
 - Open-loop task feasibility candidates can satisfy walking: `False`.
 - Open-loop gait search finds a walking primitive: `False`.
+- Random sine gait search finds a walking primitive: `False`.
+- Stabilized near-gait search can hold walking: `False`.
+- HiWonder near-gait visual artifact proves active motion: `True`.
+- HiWonder near-gait visual artifact proves valid walking: `False`.
 - Cross-profile walking evidence beats passive baselines: `False`.
-- Existing Nebius obstacle-course evidence has physical rollout metrics: `False`.
-- Fresh obstacle smoke benchmark with physical metrics and path traces passes: `True`.
+- Existing Nebius obstacle-course evidence has benchmark rollout metrics: `False`.
+- Fresh obstacle smoke 2D point-robot benchmark with path traces passes: `True`.
+- Fresh obstacle smoke proves MuJoCo/real robot walking: `False`.
 
 ## Failed Production Video Motion Checks
 
@@ -48,36 +54,45 @@ Programmatic pass rate: `0.0`
 
 | task | failed physical checks | success rate |
 |---|---|---:|
-| `stand_up` | `success_rate_full, torso_height_gain, tracked_height_finite_positive, tracked_height_gain` | 0.00 |
-| `walk_forward` | `success_rate_full, tracked_height_present, tracked_delta_x_forward, tracked_lateral_drift_bound` | 0.00 |
-| `walk_backward` | `success_rate_full, tracked_height_present, tracked_delta_x_backward, tracked_lateral_drift_bound` | 0.00 |
-| `sidestep_left` | `success_rate_full, tracked_height_present, tracked_delta_y_left, tracked_forward_drift_bound` | 0.00 |
-| `sidestep_right` | `success_rate_full, tracked_height_present, tracked_delta_y_right, tracked_forward_drift_bound` | 0.00 |
-| `turn_left` | `success_rate_full, tracked_height_present, delta_yaw_left, tracked_translation_drift_bound` | 0.00 |
-| `turn_right` | `success_rate_full, tracked_height_present, delta_yaw_right, tracked_translation_drift_bound` | 0.00 |
+| `stand_up` | `success_rate_full, hold_s, torso_height_gain, tracked_height_finite_positive, tracked_height_gain` | 0.00 |
+| `walk_forward` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_x_forward, tracked_lateral_drift_bound` | 0.00 |
+| `walk_backward` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_x_backward, tracked_lateral_drift_bound` | 0.00 |
+| `sidestep_left` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_y_left, tracked_forward_drift_bound` | 0.00 |
+| `sidestep_right` | `success_rate_full, hold_s, min_alternating_foot_contacts, min_swing_foot_clearance_m, max_foot_slip_m_s, max_self_collision_count, tracked_height_present, tracked_delta_y_right, tracked_forward_drift_bound` | 0.00 |
+| `turn_left` | `success_rate_full, hold_s, tracked_height_present, delta_yaw_left, tracked_translation_drift_bound` | 0.00 |
+| `turn_right` | `success_rate_full, hold_s, tracked_height_present, delta_yaw_right, tracked_translation_drift_bound` | 0.00 |
 
 ## Local Learning Probe
 
 Probe ok as walking evidence: `False`
-Verdict: `not_walking_after_8k_single_task`
-Reward delta trained-zero: `626.0397703636572`
-Forward delta trained-zero m: `0.13852206620789437`
+Verdict: `stable_forward_shuffle_below_distance_after_scale015_fall100_8k`
+Learned motion signal: `True`
+Walking-grade learning signal: `False`
+Trained is falling lunge: `False`
+Trained is backward fall: `False`
+Trained is stable standstill: `False`
+Trained has no forward motion: `False`
+Trained has alternating contacts: `False`
+Trained is partial stepping below distance: `False`
+Trained is stable forward shuffle below distance: `True`
+Reward delta trained-zero: `425.10796818611345`
+Forward delta trained-zero m: `0.06448205955488585`
+Tracked forward delta trained m: `0.06507441489015495`
+Trained failure rate: `0.0`
+Trained yaw drift rad: `0.17410843586368616`
+Promotion blocker: `phase_success_rate_below_threshold`
 
 ## Open-loop Task Feasibility
 
 Feasibility ok: `False`
 Profile: `hiwonder-ainex`
 
-| task | best controller | best dx m | most-forward controller | most-forward dx m | passive dx m | termination | unmet predicates |
-|---|---|---:|---|---:|---:|---|---|
-| `stand_up` | `deterministic_smoke` | -0.186 | `deterministic_smoke` | -0.186 | -0.185 | `fall` | `torso_z_max_ratio, hold_s` |
-| `sit_down` | `deterministic_smoke` | 0.212 | `deterministic_smoke` | 0.212 | -0.024 | `fall` | `torso_z_max_m, max_abs_delta_x_m, max_abs_delta_yaw_rad, no_fall, hold_s` |
-| `walk_forward` | `deterministic_smoke` | -0.238 | `motion_clip` | 0.142 | -0.026 | `fall` | `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
-| `walk_backward` | `bezier_trimmed` | -0.227 | `bezier_profile` | 0.043 | -0.026 | `fall` | `delta_x_m_max, max_lateral_drift_m, no_fall, min_alternating_foot_contacts, hold_s` |
-| `sidestep_left` | `deterministic_smoke` | -0.057 | `bezier_profile` | 0.066 | -0.026 | `fall` | `no_fall, min_alternating_foot_contacts, hold_s` |
-| `sidestep_right` | `deterministic_wide` | 0.003 | `bezier_profile` | 0.041 | -0.026 | `fall` | `delta_y_m_max, no_fall, min_alternating_foot_contacts, hold_s` |
-| `turn_left` | `deterministic_wide` | -0.003 | `motion_clip` | 0.149 | -0.026 | `fall` | `delta_yaw_rad_min, no_fall, hold_s` |
-| `turn_right` | `deterministic_wide` | -0.192 | `bezier_profile` | 0.044 | -0.026 | `fall` | `delta_yaw_rad_max, no_fall, hold_s` |
+| task | best controller | best dx m | best-progress controller | progress | dx m | dy m | hold s | termination | unmet predicates |
+|---|---|---:|---|---:|---:|---:|---:|---|---|
+| `walk_forward` | `deterministic_smoke` | 0.144 | `bezier_profile` | 0.54 | 0.162 | -0.001 | 0.00 | `fall` | `torso_z_min_ratio, delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
+| `walk_backward` | `deterministic_smoke` | 0.001 | `motion_clip` | 0.23 | -0.046 | 0.000 | 0.00 | `fall` | `delta_x_m_max, no_fall, min_alternating_foot_contacts, min_swing_foot_clearance_m, hold_s` |
+| `sidestep_left` | `deterministic_smoke` | 0.002 | `deterministic_wide` | 0.84 | 0.002 | 0.168 | 0.00 | `fall` | `delta_y_m_min, no_fall, min_alternating_foot_contacts, max_self_collision_count, hold_s` |
+| `sidestep_right` | `deterministic_smoke` | 0.003 | `deterministic_wide` | 0.84 | 0.002 | -0.168 | 0.00 | `fall` | `delta_y_m_max, no_fall, min_alternating_foot_contacts, max_self_collision_count, hold_s` |
 
 ## Open-loop Gait Search
 
@@ -86,10 +101,98 @@ Candidates: `15`
 
 | criterion | controller | final dx m | peak dx m | termination | reason |
 |---|---|---:|---:|---|---|
-| best score | `sinusoidal_seeded_1` | -0.004 | 0.105 | `time_limit` | `none` |
-| best forward | `sinusoidal_seeded_5` | 0.366 | 0.366 | `fall` | `fall: |pitch|=0.65 > 0.6` |
-| best peak forward | `sinusoidal_seeded_5` | 0.366 | 0.366 | `fall` | `fall: |pitch|=0.65 > 0.6` |
-| best stable peak forward | `sinusoidal_seeded_3` | 0.117 | 0.135 | `time_limit` | `none` |
+| best score | `sinusoidal_seeded_2` | 0.033 | 0.112 | `time_limit` | `none` |
+| best forward | `sinusoidal_seeded_4` | 0.283 | 0.283 | `fall` | `fall: |pitch|=0.61 > 0.6` |
+| best peak forward | `sinusoidal_seeded_4` | 0.283 | 0.283 | `fall` | `fall: |pitch|=0.61 > 0.6` |
+| best stable peak forward | `sinusoidal_seeded_3` | 0.127 | 0.134 | `time_limit` | `none` |
+
+Failure frontier:
+- primary gap: `forward_displacement`
+- forward-displacement candidates: `0`
+- forward + no-fall candidates: `0`
+- forward + straight candidates: `0`
+- forward + no-fall + straight candidates: `0`
+
+## Random Sine Gait Search
+
+Search ok: `False`
+Candidates: `240`
+Successes: `0`
+- primary gap: `straightness`
+- forward-displacement candidates: `4`
+- forward + no-fall + straight candidates: `0`
+Local refinement:
+- base controller: `random_sine_013`
+- candidates: `220`
+- successes: `0`
+- primary gap: `stability`
+- forward-displacement candidates: `10`
+- forward + no-fall + straight candidates: `0`
+Transition refinement:
+- base controller: `local_random_sine_013_045`
+- candidates: `144`
+- successes: `0`
+- primary gap: `stability`
+- forward-displacement candidates: `144`
+- forward + no-fall + straight candidates: `0`
+- best success-window controller: `transition_local_random_sine_013_045_000`
+- best success window s: `0.0`
+- best success-window dx m: `0.30805073523872256`
+- best success-window failure: `no_fall, min_alternating_foot_contacts, hold_s`
+Feedback refinement:
+- base controller: `local_random_sine_013_045`
+- candidates: `501`
+- successes: `0`
+- primary gap: `stability`
+- forward-displacement candidates: `189`
+- forward + no-fall + straight candidates: `0`
+- best success-window controller: `feedback_local_random_sine_013_045_093`
+- best success window s: `0.0`
+- best success-window dx m: `0.3630430773073147`
+- best success-window failure: `no_fall, hold_s`
+Hybrid recovery refinement:
+- base controller: `feedback_local_random_sine_013_045_093`
+- candidates: `80`
+- successes: `0`
+- primary gap: `stability`
+- forward-displacement candidates: `28`
+- forward + no-fall + straight candidates: `0`
+- best success-window controller: `hybrid_feedback_local_random_sine_013_045_093_048`
+- best success window s: `0.0`
+- best success-window dx m: `0.30805073523872256`
+- best success-window failure: `no_fall, min_alternating_foot_contacts, hold_s`
+
+## HiWonder Near-gait Visual Evidence
+
+Artifact ok: `True`
+Failed artifact checks: `none`
+Motion evidence: `False`
+Active motion evidence: `True`
+Walking success: `False`
+Controller: `env_hiwonder_sine_prior`
+Locomotion action prior: `hiwonder_sine`
+Locomotion prior feedback: `{'pitch': 2.0, 'roll': -1.5, 'yaw': 0.25}`
+Termination: `time_limit`
+Final tracked dx m: `0.1411921941694567`
+Final tracked dy m: `-0.05698718166626609`
+Final yaw rad: `-0.3642742798674044`
+Max success window s: `0.0`
+Max abs pitch rad: `0.5213942518786491`
+Max abs roll rad: `0.1762227275055259`
+Max abs yaw rad: `0.3940176062810571`
+Foot contact switches: `9`
+Video: `evidence/hiwonder_near_gait_visual_sine_feedback_scale028/env_hiwonder_sine_prior.mp4`
+Contact sheet: `evidence/hiwonder_near_gait_visual_sine_feedback_scale028/env_hiwonder_sine_prior_contact.jpg`
+
+## HiWonder Stabilized Gait Search
+
+Search ok: `False`
+Candidates: `18`
+Best success-window controller: `sine_freeze_s216_b0`
+Best success window s: `0.0`
+Best success-window dx m: `0.2827617409167032`
+Best success-window failure: `delta_x_m_min, max_abs_delta_yaw_rad, no_fall, hold_s`
+Report: `/home/shaw/milady/eliza/packages/robot/evidence/hiwonder_stabilized_gait_search.json`
 
 ## Multi-profile Walk Feasibility
 
@@ -97,19 +200,31 @@ Cross-profile walk ok: `False`
 Valid walking profiles: `0`
 Passive-success profiles: `0`
 
-| profile | active success | passive success | selected dx m | passive dx m | most-forward controller | most-forward dx m |
-|---|---|---|---:|---:|---|---:|
-| `hiwonder-ainex` | `False` | `False` | 0.005 | -0.014 | `motion_clip` | 0.063 |
-| `unitree-g1` | `False` | `False` | -0.410 | -0.000 | `deterministic_smoke` | -0.410 |
-| `unitree-h1` | `False` | `False` | -0.230 | -0.317 | `deterministic_smoke` | -0.230 |
-| `unitree-r1` | `False` | `False` | 0.227 | 0.423 | `deterministic_smoke` | 0.227 |
-| `asimov-1` | `False` | `False` | -0.287 | -0.378 | `deterministic_smoke` | -0.287 |
+| profile | active success | passive success | selected dx m | passive dx m | most-forward controller | most-forward dx m | most-forward failure |
+|---|---|---|---:|---:|---|---:|---|
+| `hiwonder-ainex` | `False` | `False` | 0.144 | 0.001 | `bezier_profile` | 0.162 | `torso_z_min_ratio, delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
+| `unitree-g1` | `False` | `False` | -0.534 | -0.000 | `deterministic_smoke` | -0.534 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
+| `unitree-h1` | `False` | `False` | -0.252 | -0.315 | `deterministic_smoke` | -0.252 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
+| `unitree-r1` | `False` | `False` | 0.324 | 0.444 | `deterministic_smoke` | 0.324 | `no_fall, hold_s` |
+| `asimov-1` | `False` | `False` | -0.300 | -0.376 | `deterministic_smoke` | -0.300 | `delta_x_m_min, no_fall, min_alternating_foot_contacts, hold_s` |
 
 ## Obstacle Course
 
-Existing evidence failed checks: `demo_json, trajectory_matrix_shapes, obstacle_beats_passive_baseline`
+Existing evidence failed checks: `demo_json, trajectory_matrix_shapes, obstacle_beats_passive_baseline, obstacle_trace_rollouts`
+Fresh smoke artifact ok: `True`
+Fresh smoke benchmark model: `2d_point_robot`
+Fresh smoke proves Alberta obstacle learning: `True`
+Fresh smoke proves MuJoCo/real robot walking: `False`
+Fresh smoke note: `Fresh obstacle smoke is a task-conditioned 2D point-robot benchmark; it validates Alberta obstacle-course learning and path traces, not MuJoCo or real robot walking.`
+Fresh smoke artifact failed checks: `none`
 Fresh smoke beats passive baseline: `True`
 Fresh smoke passive baseline is a control: `True`
+Fresh smoke trace rollouts ok: `True`
+Fresh smoke trace consistency: `True`
+Fresh smoke has successful final clear trace: `True`
+Fresh smoke demo frames: `6`
+Fresh smoke demo video bytes json/file: `151820` / `151820`
+Fresh smoke demo video: `/home/shaw/milady/eliza/packages/robot/evidence/obstacle_motion_trajectory_audit_smoke/obstacle_course_demo.mp4`
 
 Fresh smoke motion summary:
 
@@ -133,6 +248,13 @@ Fresh smoke motion summary:
   }
 }
 ```
+
+Fresh smoke trajectory samples:
+
+| learner | steps | start x | final x | max x | progress m | reached obstacle x | cleared obstacle centerline | passed obstacle | collision | min clearance m |
+|---|---:|---:|---:|---:|---:|---|---|---|---|---:|
+| `alberta` | 60 | -1.187 | 1.099 | 1.099 | 2.287 | `True` | `True` | `True` | `False` | 0.039 |
+| `ppo` | 81 | -1.192 | -0.299 | -0.299 | 0.893 | `False` | `False` | `False` | `False` | 0.058 |
 
 ## Conclusion
 

@@ -106,6 +106,10 @@
 			reg = <0x0 0x10030000 0x0 0x00001000>;
 			interrupt-parent = <&plic0>;
 			interrupts = <4>;
+			interrupt-names = "IRQ_VSYNC";
+			eliza,mode = <0x050002d0>;
+			eliza,format = <0x34325258>;
+			eliza,fb-base = <0x80000000>;
 			status = "okay";
 		};
 

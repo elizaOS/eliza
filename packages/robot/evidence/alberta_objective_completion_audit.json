@@ -1,7 +1,7 @@
 {
   "schema": "robot-alberta-objective-completion-audit-v1",
   "ok": false,
-  "generated_at": "2026-05-27T22:10:57.946179Z",
+  "generated_at": "2026-05-29T02:52:40.753028Z",
   "package_root": "/home/shaw/milady/eliza/packages/robot",
   "nebius_run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "passed": [
@@ -277,6 +277,7 @@
         "missing_gates": [
           "stage_status",
           "production_contract",
+          "obstacle_course_benchmark",
           "video_review",
           "production_policy_videos",
           "curriculum_eval",
@@ -287,6 +288,7 @@
       "blockers": [
         "stage_status",
         "production_contract",
+        "obstacle_course_benchmark",
         "video_review",
         "production_policy_videos",
         "curriculum_eval",
@@ -300,9 +302,9 @@
       "evidence": {
         "preflight_ok": true,
         "launch_template_hygiene": true,
-        "relaunch_ready": null,
-        "relaunch_recommendation": null,
-        "relaunch_blockers": null,
+        "relaunch_ready": true,
+        "relaunch_recommendation": "ready_to_launch_clean_run",
+        "relaunch_blockers": [],
         "clean_payload_uploaded": true,
         "clean_payload_uri": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/payload.tar.gz",
         "clean_launch_state": "launched",

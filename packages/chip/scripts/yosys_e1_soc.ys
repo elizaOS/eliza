@@ -13,6 +13,7 @@ read_verilog -sv rtl/npu/e1_npu.sv
 read_verilog -sv rtl/display/e1_display.sv
 read_verilog -sv rtl/cpu/e1_cva6_wrapper.sv
 read_verilog -sv rtl/cpu/e1_cpu_axi_bridge.sv
+read_verilog -sv rtl/cpu/e1_tiny_cpu_contract.sv
 read_verilog -sv rtl/cpu/e1_cpu_subsystem_stub.sv
 read_verilog -sv rtl/interconnect/e1_axi_lite_interconnect.sv
 read_verilog -sv rtl/memory/e1_axi_lite_dram.sv

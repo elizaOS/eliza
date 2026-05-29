@@ -8,6 +8,7 @@
   "boot_command_env": "ELIZA_GENERATED_AP_CHIP_BOOT_CMD",
   "boot_transcript": "evidence/generated_eliza_ap_boot.transcript.log",
   "claim_boundary": "generated_eliza_ap_chip_emulator_required_no_qemu_virt_substitution",
+  "generated_utc": "2026-05-29T02:14:53Z",
   "latest_chipyard_verilator_linux_smoke": {
     "active_smoke_attempt": {
       "bootrom_to_payload_handoff": false,
@@ -27,7 +28,7 @@
       "last_symbol_offset": null,
       "mtime": 1779910988.7989588,
       "path": "build/chipyard/eliza_rocket/verilator-linux-smoke.0CZMBO.raw.tmp",
-      "payload": "/home/shaw/milady/eliza/packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+      "payload": "packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
       "reached_simulator_runtime": true,
       "retired_instruction_count": 0,
       "size_bytes": 7906,
@@ -41,7 +42,7 @@
       "has_linux_boot_markers": true,
       "has_opensbi_banner": true,
       "has_opensbi_handoff": true,
-      "last_progress_marker": "- /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
+      "last_progress_marker": "- packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
       "linux_memory_progress": {
         "last_marker": "",
         "marker_counts": {},
@@ -52,24 +53,24 @@
       "path": "external/chipyard/sims/verilator/output/chipyard.harness.TestHarness.ElizaRocketConfig/eliza-e1-linux-smoke-bin-nodisk.log",
       "sim_failures": [],
       "sim_success_finishes": [
-        "- /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish"
+        "- packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish"
       ],
       "size_bytes": 6682
     },
     "log": "build/chipyard/eliza_rocket/verilator-linux-smoke.log",
     "log_metadata": {
       "exit_code": "143",
-      "last_progress_marker": "- /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
+      "last_progress_marker": "- packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
       "raw_transcript_closed": true,
       "run_target": "run-binary-fast",
       "timeout_after_seconds": "14400"
     },
-    "next_command": "CHIPYARD_LINUX_BINARY=/home/shaw/milady/eliza/packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk scripts/run_chipyard_eliza_linux_smoke.sh",
+    "next_command": "CHIPYARD_LINUX_BINARY=packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk scripts/run_chipyard_eliza_linux_smoke.sh",
     "progress": {
       "next_step": "use the generated AP Linux workload transcript as completion evidence; capture or refresh CPU/AP evidence archives as needed",
       "stage": "generated_linux_workload_completed"
     },
-    "report": "/home/shaw/milady/eliza/packages/chip/build/chipyard/eliza_rocket/verilator-linux-smoke.json",
+    "report": "packages/chip/build/chipyard/eliza_rocket/verilator-linux-smoke.json",
     "status": "pass"
   },
   "next_commands": [

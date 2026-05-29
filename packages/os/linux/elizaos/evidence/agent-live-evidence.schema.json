@@ -1,9 +1,154 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elizaos.ai/schemas/os/linux/agent-live-evidence.v1.json",
-  "title": "elizaOS Linux chip-target agent liveness evidence",
-  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "generated_utc": "2026-05-28T20:06:56Z",
+  "properties": {
+    "claim_boundary": {
+      "pattern": "(generated[_-]eliza[_-]ap|chip[_-]emulator|eliza[_-]chip)",
+      "type": "string"
+    },
+    "fallback_payload_used": {
+      "const": false
+    },
+    "full_agent_bundle": {
+      "const": true
+    },
+    "health": {
+      "additionalProperties": true,
+      "anyOf": [
+        {
+          "properties": {
+            "ready": {
+              "const": true
+            }
+          },
+          "required": [
+            "ready"
+          ]
+        },
+        {
+          "required": [
+            "status"
+          ]
+        }
+      ],
+      "properties": {
+        "http_status": {
+          "const": 200
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "response": {
+          "additionalProperties": true,
+          "properties": {
+            "agentId": {
+              "minLength": 1,
+              "not": {
+                "const": "fallback"
+              },
+              "type": "string"
+            }
+          },
+          "required": [
+            "agentId"
+          ],
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "ok",
+            "healthy"
+          ]
+        },
+        "url": {
+          "pattern": "/api/health",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "http_status",
+        "response"
+      ],
+      "type": "object"
+    },
+    "process": {
+      "additionalProperties": true,
+      "anyOf": [
+        {
+          "properties": {
+            "command": {
+              "pattern": "elizaos"
+            }
+          },
+          "required": [
+            "command"
+          ]
+        },
+        {
+          "properties": {
+            "executable": {
+              "pattern": "elizaos"
+            }
+          },
+          "required": [
+            "executable"
+          ]
+        }
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "executable": {
+          "type": "string"
+        },
+        "pid": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pid"
+      ],
+      "type": "object"
+    },
+    "provenance": {
+      "pattern": "(generated[_-]eliza[_-]ap|chip[_-]emulator|eliza[_-]chip)",
+      "type": "string"
+    },
+    "schema": {
+      "const": "eliza.os.linux.agent_live.v1"
+    },
+    "service": {
+      "additionalProperties": true,
+      "properties": {
+        "active": {
+          "const": true
+        },
+        "name": {
+          "const": "elizaos-agent.service"
+        },
+        "systemctl_is_active": {
+          "const": "active"
+        }
+      },
+      "required": [
+        "name",
+        "active",
+        "systemctl_is_active"
+      ],
+      "type": "object"
+    },
+    "transcript_path": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
   "required": [
     "schema",
     "provenance",
@@ -15,125 +160,6 @@
     "process",
     "health"
   ],
-  "properties": {
-    "schema": {
-      "const": "eliza.os.linux.agent_live.v1"
-    },
-    "provenance": {
-      "type": "string",
-      "pattern": "(generated[_-]eliza[_-]ap|chip[_-]emulator|eliza[_-]chip)"
-    },
-    "claim_boundary": {
-      "type": "string",
-      "pattern": "(generated[_-]eliza[_-]ap|chip[_-]emulator|eliza[_-]chip)"
-    },
-    "transcript_path": {
-      "type": "string",
-      "minLength": 1
-    },
-    "fallback_payload_used": {
-      "const": false
-    },
-    "full_agent_bundle": {
-      "const": true
-    },
-    "service": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["name", "active", "systemctl_is_active"],
-      "properties": {
-        "name": {
-          "const": "elizaos-agent.service"
-        },
-        "active": {
-          "const": true
-        },
-        "systemctl_is_active": {
-          "const": "active"
-        }
-      }
-    },
-    "process": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["pid"],
-      "properties": {
-        "pid": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "command": {
-          "type": "string"
-        },
-        "executable": {
-          "type": "string"
-        }
-      },
-      "anyOf": [
-        {
-          "required": ["command"],
-          "properties": {
-            "command": {
-              "pattern": "elizaos"
-            }
-          }
-        },
-        {
-          "required": ["executable"],
-          "properties": {
-            "executable": {
-              "pattern": "elizaos"
-            }
-          }
-        }
-      ]
-    },
-    "health": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["url", "http_status", "response"],
-      "properties": {
-        "url": {
-          "type": "string",
-          "pattern": "/api/health"
-        },
-        "http_status": {
-          "const": 200
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "status": {
-          "enum": ["ready", "ok", "healthy"]
-        },
-        "response": {
-          "type": "object",
-          "additionalProperties": true,
-          "required": ["agentId"],
-          "properties": {
-            "agentId": {
-              "type": "string",
-              "minLength": 1,
-              "not": {
-                "const": "fallback"
-              }
-            }
-          }
-        }
-      },
-      "anyOf": [
-        {
-          "required": ["ready"],
-          "properties": {
-            "ready": {
-              "const": true
-            }
-          }
-        },
-        {
-          "required": ["status"]
-        }
-      ]
-    }
-  }
+  "title": "elizaOS Linux chip-target agent liveness evidence",
+  "type": "object"
 }

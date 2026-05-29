@@ -1,12 +1,16 @@
 {
-  "schema": "eliza.process_die_area_budget_check.v1",
-  "evidence_class": "envelope_target_real_no_signoff",
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "envelope": {
-    "total_die_area_mm2_min": 100,
-    "total_die_area_mm2_max": 130,
+    "basis": "flagship_mobile_AP_2025_2026_cohort",
     "reticle_limit_n2_a14_mm2": 858,
-    "basis": "flagship_mobile_AP_2025_2026_cohort"
+    "total_die_area_mm2_max": 130,
+    "total_die_area_mm2_min": 100
   },
+  "errors": [],
+  "evidence_class": "envelope_target_real_no_signoff",
+  "generated_utc": "2026-05-29T01:55:06Z",
+  "reference_cohort_count": 6,
+  "schema": "eliza.process_die_area_budget_check.v1",
   "sub_budgets_seen": [
     "big_core_ultra_with_l2_mm2",
     "gpu_mm2",
@@ -18,7 +22,5 @@
     "premium_mid_core_with_l2_mm2",
     "pro_little_core_with_l2_mm2",
     "slc_16_to_32_MB_mm2"
-  ],
-  "reference_cohort_count": 6,
-  "errors": []
+  ]
 }

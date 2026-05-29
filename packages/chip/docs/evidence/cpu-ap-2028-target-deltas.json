@@ -1,11 +1,12 @@
 {
-  "schema": "eliza.cpu_ap_2028_target_deltas.v1",
   "claim_boundary": "current_repo_is_tiny_cpu_scaffold_plus_pinned_single_rocket_import_plan",
+  "claim_policy": {
+    "phone_class_claim_allowed": false,
+    "single_rocket_linux_boot_may_close": "linux_bringup_ap_import_evidence",
+    "single_rocket_linux_boot_may_not_close": "phone_class_2028_target"
+  },
   "current_capability": {
-    "rtl_path": "rtl/cpu/e1_cpu_subsystem_stub.sv",
     "claim": "tiny_rv_contract_scaffold_only",
-    "linux_capable": false,
-    "phone_class": false,
     "implemented": [
       "32-bit AXI-Lite instruction/data manager",
       "single in-order tiny fetch/execute state machine",
@@ -13,6 +14,7 @@
       "ECALL/EBREAK/illegal/bus-error halt behavior",
       "interrupt inputs reflected as pending level only"
     ],
+    "linux_capable": false,
     "not_implemented": [
       "RV64GC compliance",
       "privileged M/S/U modes",
@@ -23,32 +25,55 @@
       "caches, coherence, atomics, compressed instructions, floating point, vector",
       "boot ROM to OpenSBI handoff",
       "Linux boot"
-    ]
+    ],
+    "phone_class": false,
+    "rtl_path": "rtl/cpu/e1_cpu_subsystem_stub.sv"
   },
-  "selected_next_step": {
-    "manifest": "generators/chipyard/eliza-rocket-manifest.json",
-    "purpose": "linux_bringup_ap_import_evidence",
-    "phone_class_completion": false,
-    "generator": "Chipyard",
-    "chipyard_tag": "1.13.0",
-    "chipyard_commit": "69eba860a352343e4ac6b6df0f3638a79a86ec78",
-    "core": "Rocket",
-    "isa": "RV64GC",
-    "harts": 1,
-    "config": "ElizaRocketConfig",
-    "required_before_linux_claim": [
-      "pinned Chipyard checkout with recursive submodule SHAs",
-      "generated ElizaRocketConfig import manifest",
-      "generated AP Verilog wrapper",
-      "generated DTS",
-      "built simulator",
-      "OpenSBI boot transcript",
-      "Linux early console transcript",
-      "trap/timer/software/external interrupt transcript",
-      "ISA/cache/MMU transcript",
-      "AP benchmark transcript"
-    ]
-  },
+  "deltas": [
+    {
+      "current": "one tiny non-Linux scaffold hart; selected import starts with one Rocket hart",
+      "id": "cpu.count.topology",
+      "phone_target": "at least four coherent application harts with phone-suitable performance/power topology",
+      "selected_step": "single Rocket RV64GC Linux bring-up",
+      "status": "blocked_after_selected_bringup"
+    },
+    {
+      "current": "no CSR file, privilege modes, delegation, trap vector, or return path",
+      "id": "cpu.privilege.trap",
+      "phone_target": "Linux-current privileged architecture coverage with exception, interrupt, debug, and virtualization policy documented",
+      "selected_step": "Rocket privileged implementation must be generated and proven by trap transcript",
+      "status": "blocked_until_generated_and_transcripted"
+    },
+    {
+      "current": "32-bit AXI-Lite accesses into a small DRAM model; no MMU/cache/coherence",
+      "id": "memory.mmu.cache.coherence",
+      "phone_target": "coherent multi-level cache hierarchy, DMA coherence, IOMMU/isolation, DRAM QoS, and memory stress evidence",
+      "selected_step": "generated Rocket MMU/cache path plus simulator evidence",
+      "status": "blocked_until_generated_and_transcripted"
+    },
+    {
+      "current": "interrupt inputs are pending-level placeholders only",
+      "id": "interrupt.timer",
+      "phone_target": "Linux-accepted interrupt topology for SMP, wake, power management, and peripheral MSI-style needs",
+      "selected_step": "CLINT/ACLINT and PLIC-compatible generated platform with trap/timer/IRQ transcript",
+      "status": "blocked_until_generated_and_transcripted"
+    },
+    {
+      "current": "no firmware handoff, OpenSBI, Linux, or Android boot on generated AP",
+      "id": "boot.linux.android",
+      "phone_target": "Android boot with BSP, SELinux, HAL, storage, display, input, radio-adjacent integration evidence",
+      "selected_step": "OpenSBI and Linux early console on generated Rocket AP",
+      "status": "blocked_until_generated_and_transcripted"
+    },
+    {
+      "current": "no DVFS, idle, thermal, reset-domain, or reliability model in CPU/AP path",
+      "id": "power.thermal.reliability",
+      "phone_target": "phone thermal envelope, DVFS/idle states, reset recovery, watchdog, RAS, and production telemetry",
+      "selected_step": "not closed by single Rocket bring-up; must stay outside Linux AP completion claim",
+      "status": "blocked_after_selected_bringup"
+    }
+  ],
+  "generated_utc": "2026-05-20T10:12:30Z",
   "phone_class_2028_target": {
     "claim": "phone_class_rv64gc_linux_android_application_processor",
     "minimum_harts": 4,
@@ -74,53 +99,29 @@
       "Android BSP compatibility evidence"
     ]
   },
-  "deltas": [
-    {
-      "id": "cpu.count.topology",
-      "current": "one tiny non-Linux scaffold hart; selected import starts with one Rocket hart",
-      "selected_step": "single Rocket RV64GC Linux bring-up",
-      "phone_target": "at least four coherent application harts with phone-suitable performance/power topology",
-      "status": "blocked_after_selected_bringup"
-    },
-    {
-      "id": "cpu.privilege.trap",
-      "current": "no CSR file, privilege modes, delegation, trap vector, or return path",
-      "selected_step": "Rocket privileged implementation must be generated and proven by trap transcript",
-      "phone_target": "Linux-current privileged architecture coverage with exception, interrupt, debug, and virtualization policy documented",
-      "status": "blocked_until_generated_and_transcripted"
-    },
-    {
-      "id": "memory.mmu.cache.coherence",
-      "current": "32-bit AXI-Lite accesses into a small DRAM model; no MMU/cache/coherence",
-      "selected_step": "generated Rocket MMU/cache path plus simulator evidence",
-      "phone_target": "coherent multi-level cache hierarchy, DMA coherence, IOMMU/isolation, DRAM QoS, and memory stress evidence",
-      "status": "blocked_until_generated_and_transcripted"
-    },
-    {
-      "id": "interrupt.timer",
-      "current": "interrupt inputs are pending-level placeholders only",
-      "selected_step": "CLINT/ACLINT and PLIC-compatible generated platform with trap/timer/IRQ transcript",
-      "phone_target": "Linux-accepted interrupt topology for SMP, wake, power management, and peripheral MSI-style needs",
-      "status": "blocked_until_generated_and_transcripted"
-    },
-    {
-      "id": "boot.linux.android",
-      "current": "no firmware handoff, OpenSBI, Linux, or Android boot on generated AP",
-      "selected_step": "OpenSBI and Linux early console on generated Rocket AP",
-      "phone_target": "Android boot with BSP, SELinux, HAL, storage, display, input, radio-adjacent integration evidence",
-      "status": "blocked_until_generated_and_transcripted"
-    },
-    {
-      "id": "power.thermal.reliability",
-      "current": "no DVFS, idle, thermal, reset-domain, or reliability model in CPU/AP path",
-      "selected_step": "not closed by single Rocket bring-up; must stay outside Linux AP completion claim",
-      "phone_target": "phone thermal envelope, DVFS/idle states, reset recovery, watchdog, RAS, and production telemetry",
-      "status": "blocked_after_selected_bringup"
-    }
-  ],
-  "claim_policy": {
-    "single_rocket_linux_boot_may_close": "linux_bringup_ap_import_evidence",
-    "single_rocket_linux_boot_may_not_close": "phone_class_2028_target",
-    "phone_class_claim_allowed": false
+  "schema": "eliza.cpu_ap_2028_target_deltas.v1",
+  "selected_next_step": {
+    "chipyard_commit": "48f904aefbb3903dce6efa7901982642853ae6a7",
+    "chipyard_tag": "main-2026-05-20",
+    "config": "ElizaRocketConfig",
+    "core": "Rocket",
+    "generator": "Chipyard",
+    "harts": 1,
+    "isa": "RV64GC",
+    "manifest": "docs/generators/chipyard/eliza-rocket-manifest.json",
+    "phone_class_completion": false,
+    "purpose": "linux_bringup_ap_import_evidence",
+    "required_before_linux_claim": [
+      "pinned Chipyard checkout with recursive submodule SHAs",
+      "generated ElizaRocketConfig import manifest",
+      "generated AP Verilog wrapper",
+      "generated DTS",
+      "built simulator",
+      "OpenSBI boot transcript",
+      "Linux early console transcript",
+      "trap/timer/software/external interrupt transcript",
+      "ISA/cache/MMU transcript",
+      "AP benchmark transcript"
+    ]
   }
 }

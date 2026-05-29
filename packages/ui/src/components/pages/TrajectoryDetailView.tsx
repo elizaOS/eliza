@@ -42,7 +42,6 @@ import {
   type PipelineStageId,
   TrajectoryPipelineGraph,
 } from "../composites/trajectories/trajectory-pipeline-graph";
-import { estimateTokenCost } from "../conversations/conversation-utils";
 import {
   getToolCallEventDisplayState,
   getToolCallName,
@@ -118,14 +117,6 @@ function formatTrajectoryStepLabel(
   const normalized = typeof value === "string" ? value.trim() : "";
   if (!normalized) return fallback;
   return normalized.replace(/_/g, " ");
-}
-
-function estimateCost(
-  promptTokens: number,
-  completionTokens: number,
-  model: string,
-): string {
-  return estimateTokenCost(promptTokens, completionTokens, model);
 }
 
 function formatProviderPayload(value: unknown): string {
@@ -706,7 +697,10 @@ export function TrajectoryDetailView({
                   call.stepType || call.purpose || call.actionType,
                   t("trajectorydetailview.Response"),
                 )}
-                latencyLabel={formatTrajectoryDuration(call.latencyMs)}
+                latencyLabel={t("trajectorydetailview.Latency", {
+                  defaultValue: "Latency",
+                })}
+                latencyValue={formatTrajectoryDuration(call.latencyMs)}
                 tokensLabel={t("common.tokens")}
                 totalTokensValue={formatTrajectoryTokenCount(
                   (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
@@ -718,12 +712,6 @@ export function TrajectoryDetailView({
                 )}↑ • ${formatTrajectoryTokenCount(call.completionTokens ?? 0, {
                   emptyLabel: "—",
                 })} ↓`}
-                costLabel={t("trajectorydetailview.Cost")}
-                costValue={estimateCost(
-                  call.promptTokens ?? 0,
-                  call.completionTokens ?? 0,
-                  call.model,
-                )}
                 temperatureLabel={t("trajectorydetailview.Temp")}
                 temperatureValue={call.temperature}
                 maxLabel={t("trajectorydetailview.Max")}

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts import eval_text_policy
 from scripts.eval_text_policy import curriculum_report_from_eval
 
@@ -273,7 +275,7 @@ def test_task_physical_checks_require_expected_direction() -> None:
     assert checks["tracked_delta_x_forward"] is False
 
 
-def test_task_physical_checks_require_per_episode_forward_progress() -> None:
+def test_task_physical_checks_use_directional_forward_extremum() -> None:
     checks = eval_text_policy.task_physical_checks(
         "walk_forward",
         {
@@ -321,7 +323,65 @@ def test_task_physical_checks_require_per_episode_forward_progress() -> None:
         },
     )
 
-    assert checks["tracked_delta_x_forward"] is False
+    assert checks["tracked_delta_x_forward"] is True
+
+
+@pytest.mark.parametrize(
+    ("task_id", "series_key", "check_key", "min_value", "max_value"),
+    (
+        ("walk_forward", "final_tracked_delta_x_m", "tracked_delta_x_forward", 0.0, 0.35),
+        ("walk_backward", "final_tracked_delta_x_m", "tracked_delta_x_backward", -0.25, 0.0),
+        ("sidestep_left", "final_tracked_delta_y_m", "tracked_delta_y_left", 0.0, 0.25),
+        ("sidestep_right", "final_tracked_delta_y_m", "tracked_delta_y_right", -0.25, 0.0),
+        ("turn_left", "final_delta_yaw_rad", "delta_yaw_left", 0.0, 0.75),
+        ("turn_right", "final_delta_yaw_rad", "delta_yaw_right", -0.75, 0.0),
+    ),
+)
+def test_task_physical_checks_use_signed_motion_extrema(
+    task_id: str,
+    series_key: str,
+    check_key: str,
+    min_value: float,
+    max_value: float,
+) -> None:
+    movement_summary = {
+        series_key: {
+            "min": min_value,
+            "max": max_value,
+            "mean": 0.0,
+            "final": 0.0,
+        },
+        "final_tracked_delta_x_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "final_tracked_delta_y_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "final_delta_yaw_rad": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "final_tracked_z_m": {"min": 0.3, "max": 0.3, "mean": 0.3, "final": 0.3},
+        "max_abs_lateral_drift_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "final_translation_drift_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+    }
+    movement_summary[series_key] = {
+        "min": min_value,
+        "max": max_value,
+        "mean": 0.0,
+        "final": 0.0,
+    }
+
+    checks = eval_text_policy.task_physical_checks(
+        task_id,
+        {
+            "success_rate": 1.0,
+            "failure_rate": 0.0,
+            "episodes": 1,
+            "mean_final_delta_x_m": 0.0,
+            "mean_final_delta_y_m": 0.0,
+            "mean_final_delta_yaw_rad": 0.0,
+            "mean_final_tracked_delta_x_m": 0.0,
+            "mean_final_tracked_delta_y_m": 0.0,
+            "mean_final_tracked_z_m": 0.3,
+            "movement_summary": movement_summary,
+        },
+    )
+
+    assert checks[check_key] is True
 
 
 def test_task_physical_checks_require_stand_up_height_gain() -> None:

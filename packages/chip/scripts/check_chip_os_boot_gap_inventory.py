@@ -20,6 +20,7 @@ import aggregate_tapeout_readiness as aggregate
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AGGREGATE = ROOT / "build/reports/chip-os-bring-up-status.json"
+CHIP_TAPEOUT_AGGREGATE = ROOT / "build/reports/tapeout-readiness-chip.json"
 FALLBACK_AGGREGATE = ROOT / "build/reports/tapeout-readiness.json"
 REPORT_DIR = ROOT / "build/reports"
 REPORT = REPORT_DIR / "chip-os-boot-gap-inventory.json"
@@ -107,9 +108,14 @@ def code_from_text(text: str, fallback: str) -> str:
 def aggregate_path(explicit: str | None) -> Path:
     if explicit:
         return Path(explicit)
-    if DEFAULT_AGGREGATE.is_file():
-        return DEFAULT_AGGREGATE
-    return FALLBACK_AGGREGATE
+    candidates = [
+        path
+        for path in (DEFAULT_AGGREGATE, CHIP_TAPEOUT_AGGREGATE, FALLBACK_AGGREGATE)
+        if path.is_file()
+    ]
+    if candidates:
+        return max(candidates, key=lambda path: path.stat().st_mtime)
+    return DEFAULT_AGGREGATE
 
 
 def collect_aggregate_gates(data: dict[str, Any]) -> list[dict[str, Any]]:

@@ -167,6 +167,8 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
                 "--eval-episodes",
                 "--require-phase-success",
                 "--min-phase-success-rate 1.0",
+                "--phase-eval-interval-steps",
+                "ALBERTA_PHASE_EVAL_INTERVAL_STEPS",
             ),
         ),
         "backend_compare_script": _script_contains(

@@ -32,6 +32,10 @@ TASKS: tuple[tuple[str, str, str, bool], ...] = (
 )
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def sby_env() -> dict[str, str]:
     env = os.environ.copy()
     if OSS_CAD_BIN.is_dir():
@@ -67,6 +71,7 @@ def main() -> int:
             "gate": "e1x-formal",
             "status": "BLOCKED",
             "as_of": datetime.now(UTC).isoformat(),
+            "generated_utc": utc_now(),
             "subsystem": "e1x",
             "claim_boundary": (
                 "E1X mesh-router and repair-store formal safety properties only; "
@@ -104,6 +109,7 @@ def main() -> int:
         "gate": "e1x-formal",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": utc_now(),
         "subsystem": "e1x",
         "claim_boundary": (
             "E1X mesh-router crossbar safety (no output contention, disabled-port "

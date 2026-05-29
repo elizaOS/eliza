@@ -61,9 +61,9 @@ tasks:
     profile_init:
       hiwonder-ainex:
         init_torso_height_ratio: 0.65
-        init_hip_pitch_rad: -0.90
-        init_knee_rad: 1.90
-        init_ankle_pitch_rad: 0.90
+        init_hip_pitch_rad: -0.80
+        init_knee_rad: 1.60
+        init_ankle_pitch_rad: 0.80
         min_init_stand_height_drop_ratio: 0.15
     reward:
       torso_height_target_ratio: 1.0
@@ -129,6 +129,9 @@ tasks:
       no_fall: true
       hold_s: 1.0
       min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: walk_backward
@@ -154,6 +157,9 @@ tasks:
       no_fall: true
       hold_s: 1.0
       min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: sidestep_left
@@ -177,6 +183,9 @@ tasks:
       no_fall: true
       hold_s: 1.0
       min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: sidestep_right
@@ -200,6 +209,9 @@ tasks:
       no_fall: true
       hold_s: 1.0
       min_alternating_foot_contacts: 2
+      min_swing_foot_clearance_m: 0.015
+      max_foot_slip_m_s: 0.35
+      max_self_collision_count: 0
     max_episode_s: 8.0
 
   - id: turn_left

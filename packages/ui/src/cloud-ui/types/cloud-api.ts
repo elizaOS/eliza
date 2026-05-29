@@ -9,24 +9,11 @@ export interface ApiSuccessEnvelope<TData> {
 /**
  * Raw transport shape for PostgreSQL `numeric` columns. The pg driver serializes
  * `numeric` as a string to preserve precision, while `real`/`integer` columns
- * arrive as numbers and nullable columns may be `null`. Every monetization value
- * is therefore expressed with this alias on the wire, and consumers MUST run it
- * through {@link coerceNumeric} at the API-client boundary so presentation code
- * receives a clean `number | null` (commandment #3: clients display, never
- * compute on ambiguous transport values).
+ * arrive as numbers and nullable columns may be `null`. Monetization values are
+ * therefore expressed with this alias on the wire; consumers parse to a finite
+ * number at their own client boundary before display.
  */
 export type NumericLike = string | number | null;
-
-/**
- * Coerce a raw `numeric`/`real` transport value into a finite number, or `null`
- * when the field is genuinely absent or non-numeric. Returns `null` (not `0`)
- * for missing data so callers never conflate "not loaded" with "zero earnings".
- */
-export function coerceNumeric(value: NumericLike | undefined): number | null {
-  if (value == null) return null;
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 export interface CurrentUserOrganizationDto {
   id: string;
@@ -271,6 +258,12 @@ export interface AnalyticsCostTrendingDto {
   burnChangePercent: number;
   projectedMonthlyBurn: number;
   daysUntilBalanceZero: number | null;
+  /** Projected monthly burn as a 0..N percent of credit balance (1dp). */
+  monthlyBurnPercent: number;
+  /** Same as monthlyBurnPercent clamped to 100 for progress bars (1dp). */
+  monthlyBurnPercentClamped: number;
+  /** True when projected monthly burn exceeds 80% of current balance. */
+  burnAlertThresholdExceeded: boolean;
 }
 
 export interface AnalyticsProviderBreakdownDto {
@@ -363,36 +356,6 @@ export interface ProjectionsDataDto {
   alerts: AnalyticsProjectionAlertDto[];
   alertEvents?: AnalyticsAlertEventDto[];
   creditBalance: number;
-}
-
-export type HttpMethod =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "PATCH"
-  | "DELETE"
-  | "OPTIONS"
-  | "HEAD";
-
-export interface ApiRouteMetaDto {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  requiresAuth: boolean;
-  pricing?: string | { type?: string; [key: string]: unknown };
-  rateLimit?:
-    | string
-    | { requests: number; window: string; [key: string]: unknown };
-  tags?: string[];
-}
-
-export interface DiscoveredApiRouteDto {
-  path: string;
-  methods: HttpMethod[];
-  filePath: string;
-  meta?: ApiRouteMetaDto;
-  metaByMethod?: Partial<Record<HttpMethod, ApiRouteMetaDto>>;
 }
 
 export interface CreditBalanceResponse {

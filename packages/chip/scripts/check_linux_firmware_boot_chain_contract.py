@@ -82,6 +82,7 @@ class Finding:
     next_step: str
     next_command: str = ""
     evidence_requirements: list[dict[str, Any]] | None = None
+    blocker_dependency: str | None = None
 
 
 def rel(path: Path) -> str:
@@ -149,9 +150,22 @@ def add_if(
     message: str,
     evidence: str,
     next_step: str,
+    next_command: str = "",
+    *,
+    blocker_dependency: str | None = None,
 ) -> None:
     if condition:
-        findings.append(Finding(code, "blocker", message, evidence, next_step))
+        findings.append(
+            Finding(
+                code,
+                "blocker",
+                message,
+                evidence,
+                next_step,
+                next_command,
+                blocker_dependency=blocker_dependency,
+            )
+        )
 
 
 def manifest_items(manifest: Mapping[str, Any], target: str) -> list[dict[str, Any]]:
@@ -447,6 +461,9 @@ def check_preflight(findings: list[Finding], preflight: Mapping[str, Any]) -> No
         "OpenSBI fw_dynamic handoff evidence still uses a placeholder command",
         rel(PREFLIGHT_REPORT),
         "Set ELIZA_OPENSBI_HANDOFF_CMD to the exact QEMU, Renode, or board handoff command and recapture the OpenSBI handoff transcript.",
+        "ELIZA_OPENSBI_HANDOFF_CMD='<exact qemu, renode, or board handoff command>' "
+        "python3 scripts/check_software_bsp_external_preflight.py --write-report",
+        blocker_dependency="live_device_validation",
     )
 
 
@@ -512,11 +529,29 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
 
 def payload(findings: list[Finding], evidence: Mapping[str, object]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
+    blocker_dependency_counts = {
+        "repo_artifact_generation": sum(
+            1 for finding in blockers if finding.blocker_dependency == "repo_artifact_generation"
+        ),
+        "live_device_validation": sum(
+            1 for finding in blockers if finding.blocker_dependency == "live_device_validation"
+        ),
+        "actionable_external_dependency": sum(
+            1
+            for finding in blockers
+            if finding.blocker_dependency == "actionable_external_dependency"
+        ),
+    }
     return {
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": blocker_dependency_counts,
+        },
+        "blocker_dependency_counts": blocker_dependency_counts,
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,
     }

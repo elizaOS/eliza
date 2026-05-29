@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -328,6 +329,7 @@ def main() -> int:
     report = {
         "schema": "eliza.npu_scale_sim.v1",
         "status": "pass",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": (
             "Deterministic architecture scale model only; not measured RTL, "
             "Android NNAPI, silicon performance, or phone-class throughput evidence."

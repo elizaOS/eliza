@@ -54,6 +54,7 @@
   ],
   "generated_by": "verify/cocotb/cache/test_cache_pressure.py",
   "generated_by_sha256": "51c3640458af6d1a20b65ba5a697e74eee56d90b2d85ecd5fa4745c4cd064dd8",
+  "generated_utc": "2026-05-24T02:03:00Z",
   "memory_blocked_count": 1,
   "metrics": {
     "attempted_misses": 12,

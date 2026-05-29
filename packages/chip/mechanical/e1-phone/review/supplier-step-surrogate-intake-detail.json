@@ -1,0 +1,501 @@
+{
+  "all_lane_component_records_reference_surrogate": true,
+  "all_lane_component_records_release_credit_false": true,
+  "all_lane_component_reference_counts_match_manifest": true,
+  "all_lane_surrogate_hashes_match": true,
+  "all_lane_surrogate_sizes_match": true,
+  "all_lane_surrogates_present": true,
+  "all_lane_surrogates_release_credit_false": true,
+  "claim_boundary": "Lane STEP files are local surrogate geometry for CAD continuity only; they are not supplier-returned, approved, or release evidence.",
+  "component_model_record_count": 89,
+  "lane_records": [
+    {
+      "actual_bytes": 15716,
+      "actual_sha256": "1cba3cc2d6f66a15353771a917aba1cfb6cf1ce71db16ca39ff99e6014b98a53",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15716,
+      "component_reference_count": 8,
+      "component_references": [
+        "C_AUDIO",
+        "C_PMIC_IN",
+        "D_MIC",
+        "D_SPK",
+        "RN_AUDIO_CTL",
+        "RN_AUDIO_DIG",
+        "RN_PMIC_CTL",
+        "U_AUDIO_SPK_MIC"
+      ],
+      "expected_supplier_step_files": [
+        "C_AUDIO.step",
+        "C_PMIC_IN.step",
+        "D_MIC.step",
+        "D_SPK.step",
+        "RN_AUDIO_CTL.step",
+        "RN_AUDIO_DIG.step",
+        "RN_PMIC_CTL.step",
+        "U_AUDIO_SPK_MIC.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "AUDIO_CODEC_QFN48_DEV",
+        "C0402_DEV",
+        "ESD_ARRAY_6CH_DEV",
+        "R0402_DEV",
+        "TVS_DIODE_2P_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "audio_speaker_microphone_flexes",
+      "manifest_model_reference_count": 8,
+      "release_credit": false,
+      "sha256": "1cba3cc2d6f66a15353771a917aba1cfb6cf1ce71db16ca39ff99e6014b98a53",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15574,
+      "actual_sha256": "566ad9b7997fbbd5dabf0ee13b5eced23bbf33e42b3fddea47bbf2c8e1fcffdc",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15574,
+      "component_reference_count": 2,
+      "component_references": [
+        "J_BATTERY",
+        "U_FG"
+      ],
+      "expected_supplier_step_files": [
+        "J_BATTERY.step",
+        "U_FG.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "BATTERY_4P_1P00_DEV",
+        "FUEL_GAUGE_WLCSP_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "battery_pack",
+      "manifest_model_reference_count": 2,
+      "release_credit": false,
+      "sha256": "566ad9b7997fbbd5dabf0ee13b5eced23bbf33e42b3fddea47bbf2c8e1fcffdc",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15608,
+      "actual_sha256": "65b95000f437be92e5e4ff0131772223fda5c3bf84f56a3d938dfb7f0c364940",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15608,
+      "component_reference_count": 8,
+      "component_references": [
+        "MN_CELL_DIV",
+        "MN_CELL_MAIN",
+        "MN_GNSS",
+        "RFTP_CELL_DIV",
+        "RFTP_CELL_MAIN",
+        "RFTP_GNSS",
+        "U_CELL",
+        "U_GNSS_RF"
+      ],
+      "expected_supplier_step_files": [
+        "MN_CELL_DIV.step",
+        "MN_CELL_MAIN.step",
+        "MN_GNSS.step",
+        "RFTP_CELL_DIV.step",
+        "RFTP_CELL_MAIN.step",
+        "RFTP_GNSS.step",
+        "U_CELL.step",
+        "U_GNSS_RF.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "L0402_DEV",
+        "PI_MATCH_0402_DEV",
+        "QUECTEL_RG255C_GEOMETRY_DEV",
+        "TESTPOINT_1MM_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "cellular",
+      "manifest_model_reference_count": 8,
+      "release_credit": false,
+      "sha256": "65b95000f437be92e5e4ff0131772223fda5c3bf84f56a3d938dfb7f0c364940",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15600,
+      "actual_sha256": "af8d3fcb9dc261cc937b8d1cfd2bc7b1181f072675df36b0613e372a86b5976f",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15600,
+      "component_reference_count": 1,
+      "component_references": [
+        "U_CHARGER"
+      ],
+      "expected_supplier_step_files": [
+        "U_CHARGER.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "ADI_MAX77860_WLP81_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "charger_power_path",
+      "manifest_model_reference_count": 1,
+      "release_credit": false,
+      "sha256": "af8d3fcb9dc261cc937b8d1cfd2bc7b1181f072675df36b0613e372a86b5976f",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15660,
+      "actual_sha256": "da89ef5e88bd9987710e0b69de0d255413b6e5fe9bc76efd8089f24d74866728",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15660,
+      "component_reference_count": 3,
+      "component_references": [
+        "D_DSI_ESD",
+        "D_TOUCH_ESD",
+        "J_DISPLAY_TOUCH"
+      ],
+      "expected_supplier_step_files": [
+        "D_DSI_ESD.step",
+        "D_TOUCH_ESD.step",
+        "J_DISPLAY_TOUCH.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "DISPLAY_40P_0P30_DEV",
+        "ESD_ARRAY_6CH_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "display_touch",
+      "manifest_model_reference_count": 3,
+      "release_credit": false,
+      "sha256": "da89ef5e88bd9987710e0b69de0d255413b6e5fe9bc76efd8089f24d74866728",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15574,
+      "actual_sha256": "62635415656852e02ed8338278ffc1e343418c86b10e794df4fb4f8bc3ee47a9",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15574,
+      "component_reference_count": 2,
+      "component_references": [
+        "D_CAM1_ESD",
+        "J_FRONT_CAMERA"
+      ],
+      "expected_supplier_step_files": [
+        "D_CAM1_ESD.step",
+        "J_FRONT_CAMERA.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "CAMERA_30P_0P50_DEV",
+        "ESD_ARRAY_6CH_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "front_camera",
+      "manifest_model_reference_count": 2,
+      "release_credit": false,
+      "sha256": "62635415656852e02ed8338278ffc1e343418c86b10e794df4fb4f8bc3ee47a9",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15694,
+      "actual_sha256": "4e2c04088e2698256609cb4be5fdf5b7c16100c63a989b2362c73ff64a68d2c5",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15694,
+      "component_reference_count": 9,
+      "component_references": [
+        "C_AON",
+        "C_AP_RAILS",
+        "C_CAM_RAILS",
+        "C_DISP_RAILS",
+        "C_RF_RAILS",
+        "TP_AON_1V8",
+        "TP_RF_VBAT",
+        "TP_SYS",
+        "TP_VBAT"
+      ],
+      "expected_supplier_step_files": [
+        "C_AON.step",
+        "C_AP_RAILS.step",
+        "C_CAM_RAILS.step",
+        "C_DISP_RAILS.step",
+        "C_RF_RAILS.step",
+        "TP_AON_1V8.step",
+        "TP_RF_VBAT.step",
+        "TP_SYS.step",
+        "TP_VBAT.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/pmic/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "C0402_DEV",
+        "TESTPOINT_1MM_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "pmic",
+      "manifest_model_reference_count": 9,
+      "release_credit": false,
+      "sha256": "4e2c04088e2698256609cb4be5fdf5b7c16100c63a989b2362c73ff64a68d2c5",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15574,
+      "actual_sha256": "b3ea3f1feff8c81fe49e9a492d36c63bbb4a641d54fffcd8c00eb969afbdd13b",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15574,
+      "component_reference_count": 2,
+      "component_references": [
+        "D_CAM0_ESD",
+        "J_REAR_CAMERA"
+      ],
+      "expected_supplier_step_files": [
+        "D_CAM0_ESD.step",
+        "J_REAR_CAMERA.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "CAMERA_24P_0P50_DEV",
+        "ESD_ARRAY_6CH_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "rear_camera",
+      "manifest_model_reference_count": 2,
+      "release_credit": false,
+      "sha256": "b3ea3f1feff8c81fe49e9a492d36c63bbb4a641d54fffcd8c00eb969afbdd13b",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15716,
+      "actual_sha256": "337341c2e9a3625dcff9f49a0c25104e58bfb98ca1fe6ac8a7aa7a774a65b810",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15716,
+      "component_reference_count": 3,
+      "component_references": [
+        "D_KEYS_ESD",
+        "SW_POWER_VOL",
+        "U_HAPTIC"
+      ],
+      "expected_supplier_step_files": [
+        "D_KEYS_ESD.step",
+        "SW_POWER_VOL.step",
+        "U_HAPTIC.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "ESD_ARRAY_6CH_DEV",
+        "HAPTIC_DRIVER_WLCSP_DEV",
+        "PANASONIC_EVQ_P7_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "side_buttons",
+      "manifest_model_reference_count": 3,
+      "release_credit": false,
+      "sha256": "337341c2e9a3625dcff9f49a0c25104e58bfb98ca1fe6ac8a7aa7a774a65b810",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15546,
+      "actual_sha256": "f483ea9d776db90d9cb2c3371f5de9c9b833eb8ac0d3364169e144ace1367171",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15546,
+      "component_reference_count": 2,
+      "component_references": [
+        "J_TOP_BOTTOM_FLEX_BOTTOM",
+        "J_TOP_BOTTOM_FLEX_TOP"
+      ],
+      "expected_supplier_step_files": [
+        "J_TOP_BOTTOM_FLEX_BOTTOM.step",
+        "J_TOP_BOTTOM_FLEX_TOP.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "HIROSE_DF40_80P_0P4_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "top_bottom_interconnect",
+      "manifest_model_reference_count": 2,
+      "release_credit": false,
+      "sha256": "f483ea9d776db90d9cb2c3371f5de9c9b833eb8ac0d3364169e144ace1367171",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15576,
+      "actual_sha256": "37795930335696d0e82ca6662f3ea4cc178e1a42a58e995bab4cf677914ba63b",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15576,
+      "component_reference_count": 1,
+      "component_references": [
+        "J_USB_C"
+      ],
+      "expected_supplier_step_files": [
+        "J_USB_C.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "GCT_USB4105_GF_A_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "usb_c_receptacle_evt0",
+      "manifest_model_reference_count": 1,
+      "release_credit": false,
+      "sha256": "37795930335696d0e82ca6662f3ea4cc178e1a42a58e995bab4cf677914ba63b",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15538,
+      "actual_sha256": "3fa3ed07a54af87931118cf7b95de0eff67cc6ebb1dbbf0f9a659da276801de9",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15538,
+      "component_reference_count": 1,
+      "component_references": [
+        "U_USB_PD"
+      ],
+      "expected_supplier_step_files": [
+        "U_USB_PD.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "TI_TPS65987_RSH_56QFN_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "usb_pd_controller",
+      "manifest_model_reference_count": 1,
+      "release_credit": false,
+      "sha256": "3fa3ed07a54af87931118cf7b95de0eff67cc6ebb1dbbf0f9a659da276801de9",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    },
+    {
+      "actual_bytes": 15640,
+      "actual_sha256": "3f4f2997bc863c2c02ade4cfec4af5658824c15e466098792840e0dc662e88e6",
+      "all_component_records_reference_this_surrogate": true,
+      "all_component_records_release_credit_false": true,
+      "bytes": 15640,
+      "component_reference_count": 5,
+      "component_references": [
+        "MN_WIFI0",
+        "MN_WIFI1",
+        "RFTP_WIFI0",
+        "RFTP_WIFI1",
+        "U_WIFI_BT"
+      ],
+      "expected_supplier_step_files": [
+        "MN_WIFI0.step",
+        "MN_WIFI1.step",
+        "RFTP_WIFI0.step",
+        "RFTP_WIFI1.step",
+        "U_WIFI_BT.step"
+      ],
+      "file": "board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step",
+      "file_present": true,
+      "footprints": [
+        "MURATA_TYPE_2EA_GEOMETRY_DEV",
+        "PI_MATCH_0402_DEV",
+        "TESTPOINT_1MM_DEV"
+      ],
+      "hash_matches_file": true,
+      "lane": "wifi_bluetooth",
+      "manifest_model_reference_count": 5,
+      "release_credit": false,
+      "sha256": "3f4f2997bc863c2c02ade4cfec4af5658824c15e466098792840e0dc662e88e6",
+      "size_matches_file": true,
+      "status": "present_local_surrogate_step_not_supplier_approved",
+      "supplier_step_intake_statuses": [
+        "present_local_surrogate_step_not_supplier_approved"
+      ]
+    }
+  ],
+  "present": true,
+  "release_allowed": false,
+  "release_credit": false,
+  "schema": "eliza.e1_phone_supplier_step_surrogate_intake_detail.v1",
+  "source_manifest": "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml",
+  "status": "blocked_local_surrogate_steps_not_supplier_approved",
+  "supplier_lane_surrogate_step_count": 13,
+  "supplier_step_intake_lane_counts": {
+    "audio_speaker_microphone_flexes": 8,
+    "battery_pack": 2,
+    "board_support_passives_mechanicals": 42,
+    "cellular": 8,
+    "charger_power_path": 1,
+    "display_touch": 3,
+    "front_camera": 2,
+    "pmic": 9,
+    "rear_camera": 2,
+    "side_buttons": 3,
+    "top_bottom_interconnect": 2,
+    "usb_c_receptacle_evt0": 1,
+    "usb_pd_controller": 1,
+    "wifi_bluetooth": 5
+  },
+  "supplier_step_intake_local_surrogate_count": 47,
+  "supplier_step_intake_missing_count": 0,
+  "supplier_step_intake_not_applicable_count": 42,
+  "supplier_step_intake_release_candidate_count": 0
+}

@@ -86,9 +86,125 @@ def load_json_list_if_present(path: Path) -> list[dict[str, Any]]:
     return [item for item in data if isinstance(item, dict)]
 
 
+def board_text_counts(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else ""
+    return {
+        "board_file": chip_rel(path) if path.is_file() else str(path),
+        "present": path.is_file(),
+        "sha256": sha256(path) if path.is_file() else "",
+        "bytes": path.stat().st_size if path.is_file() else 0,
+        "footprint_count": text.count('(footprint "'),
+        "legacy_e1phone_footprint_ref_count": text.count('(footprint "E1Phone:'),
+        "placeholder_not_fabrication_footprint_marker_count": text.count(
+            "placeholder_not_fabrication_footprint"
+        ),
+        "segment_count": text.count("\n  (segment "),
+        "via_count": text.count("\n  (via "),
+        "zone_count": text.count("\n  (zone "),
+        "filled_zone_count": text.count("(filled_polygon"),
+    }
+
+
+def routed_candidate_source_binding(candidate_board: Path) -> dict[str, Any]:
+    source = board_text_counts(SOURCE_BOARD)
+    candidate = board_text_counts(candidate_board)
+    return {
+        "source_board": chip_rel(SOURCE_BOARD),
+        "candidate_board": chip_rel(candidate_board) if candidate_board.is_file() else str(candidate_board),
+        "source_board_sha256": source["sha256"],
+        "candidate_board_sha256": candidate["sha256"],
+        "candidate_matches_source_board": bool(
+            candidate["present"] and source["present"] and candidate["sha256"] == source["sha256"]
+        ),
+        "source_placeholder_marker_count": source[
+            "placeholder_not_fabrication_footprint_marker_count"
+        ],
+        "candidate_placeholder_marker_count": candidate[
+            "placeholder_not_fabrication_footprint_marker_count"
+        ],
+        "candidate_legacy_e1phone_footprint_ref_count": candidate[
+            "legacy_e1phone_footprint_ref_count"
+        ],
+        "candidate_footprint_count": candidate["footprint_count"],
+        "candidate_segment_count": candidate["segment_count"],
+        "candidate_via_count": candidate["via_count"],
+        "candidate_zone_count": candidate["zone_count"],
+        "candidate_filled_zone_count": candidate["filled_zone_count"],
+        "source_is_zero_placeholder_real_footprint_board": bool(
+            source["present"]
+            and source["placeholder_not_fabrication_footprint_marker_count"] == 0
+            and source["legacy_e1phone_footprint_ref_count"] == 0
+        ),
+        "candidate_is_zero_placeholder_real_footprint_board": bool(
+            candidate["present"]
+            and candidate["placeholder_not_fabrication_footprint_marker_count"] == 0
+            and candidate["legacy_e1phone_footprint_ref_count"] == 0
+        ),
+        "release_credit": False,
+    }
+
+
 def routed_visual_detail() -> dict[str, Any]:
     step_intake = load_yaml_if_present(STEP_INTAKE)
     routed_intake = load_yaml_if_present(ROUTED_INTAKE)
+    route_records = [
+        {
+            "index": index,
+            "route_id": str(segment.get("route_id", "")),
+            "net": str(segment.get("net", "")),
+            "layer": str(segment.get("layer", "")),
+            "width_mm": segment.get("width_mm"),
+            "start_mm": segment.get("start_mm", {}),
+            "end_mm": segment.get("end_mm", {}),
+            "route_classes": segment.get("route_classes", []),
+            "source_domains": segment.get("source_domains", []),
+            "controlled_impedance_targets_ohm": segment.get(
+                "controlled_impedance_targets_ohm", []
+            ),
+        }
+        for index, segment in enumerate(step_intake.get("segments", []), start=1)
+        if isinstance(segment, dict)
+    ]
+    via_records = [
+        {
+            "index": index,
+            "net": str(via.get("net", "")),
+            "at_mm": via.get("at_mm", {}),
+            "size_mm": via.get("size_mm"),
+            "drill_mm": via.get("drill_mm"),
+            "layers": via.get("layers", []),
+        }
+        for index, via in enumerate(step_intake.get("vias", []), start=1)
+        if isinstance(via, dict)
+    ]
+    zone_records = [
+        {
+            "index": zone.get("index", index),
+            "name": str(zone.get("name", "")),
+            "net": str(zone.get("net", "")),
+            "layers": zone.get("layers", []),
+            "polygon_point_count": int(zone.get("polygon_point_count", 0) or 0),
+            "filled_polygon_count": int(zone.get("filled_polygon_count", 0) or 0),
+            "bbox_mm": zone.get("bbox_mm", {}),
+        }
+        for index, zone in enumerate(step_intake.get("filled_copper_zones", []), start=1)
+        if isinstance(zone, dict)
+    ]
+    route_layer_counts: dict[str, int] = {}
+    route_class_counts: dict[str, int] = {}
+    route_source_domain_counts: dict[str, int] = {}
+    for record in route_records:
+        layer = record["layer"]
+        if layer:
+            route_layer_counts[layer] = route_layer_counts.get(layer, 0) + 1
+        for route_class in record.get("route_classes", []):
+            route_class_text = str(route_class)
+            route_class_counts[route_class_text] = route_class_counts.get(route_class_text, 0) + 1
+        for source_domain in record.get("source_domains", []):
+            source_domain_text = str(source_domain)
+            route_source_domain_counts[source_domain_text] = (
+                route_source_domain_counts.get(source_domain_text, 0) + 1
+            )
     return {
         "source_step_intake": chip_rel(STEP_INTAKE) if STEP_INTAKE.is_file() else "",
         "routed_development_intake": chip_rel(ROUTED_INTAKE) if ROUTED_INTAKE.is_file() else "",
@@ -112,6 +228,44 @@ def routed_visual_detail() -> dict[str, Any]:
         "board_via_count": int(step_intake.get("via_count", 0) or 0),
         "via_net_name_count": int(step_intake.get("via_net_name_count", 0) or 0),
         "development_footprint_refs": int(step_intake.get("development_footprint_refs", 0) or 0),
+        "route_visual_record_count": len(route_records),
+        "route_visual_route_id_count": len(
+            {record["route_id"] for record in route_records if record["route_id"]}
+        ),
+        "route_visual_net_name_count": len(
+            {record["net"] for record in route_records if record["net"]}
+        ),
+        "route_visual_layer_counts": dict(sorted(route_layer_counts.items())),
+        "route_visual_route_class_counts": dict(sorted(route_class_counts.items())),
+        "route_visual_source_domain_counts": dict(sorted(route_source_domain_counts.items())),
+        "route_visual_all_records_have_route_id": bool(route_records)
+        and all(record["route_id"] for record in route_records),
+        "route_visual_all_records_have_net": bool(route_records)
+        and all(record["net"] for record in route_records),
+        "route_visual_all_records_have_layer": bool(route_records)
+        and all(record["layer"] for record in route_records),
+        "route_visual_all_records_have_route_class": bool(route_records)
+        and all(bool(record.get("route_classes")) for record in route_records),
+        "route_visual_all_records_have_source_domain": bool(route_records)
+        and all(bool(record.get("source_domains")) for record in route_records),
+        "route_visual_records": route_records,
+        "via_visual_record_count": len(via_records),
+        "via_visual_net_name_count": len({record["net"] for record in via_records if record["net"]}),
+        "via_visual_all_records_have_net": bool(via_records)
+        and all(record["net"] for record in via_records),
+        "via_visual_all_records_have_layers": bool(via_records)
+        and all(bool(record.get("layers")) for record in via_records),
+        "via_visual_records": via_records,
+        "filled_copper_zone_record_count": len(zone_records),
+        "filled_copper_zone_filled_polygon_count": sum(
+            int(record.get("filled_polygon_count") or 0) for record in zone_records
+        ),
+        "filled_copper_zone_all_records_have_net": bool(zone_records)
+        and all(record["net"] for record in zone_records),
+        "filled_copper_zone_all_records_have_bbox": bool(zone_records)
+        and all(bool(record.get("bbox_mm")) for record in zone_records),
+        "filled_copper_zone_records": zone_records,
+        "release_credit": False,
     }
 
 
@@ -1852,6 +2006,9 @@ def write_component_3d_binding_gap_matrix(component_model_dir: Path) -> list[dic
                 "local_discrete_step_import_status": str(
                     item.get("local_discrete_step_import_status") or ""
                 ),
+                "local_discrete_step_imported_as_solid": str(
+                    item.get("local_discrete_step_imported_as_solid") is True
+                ).lower(),
                 "local_discrete_step_bbox_matches_envelope": str(
                     item.get("local_discrete_step_bbox_matches_envelope") is True
                 ).lower(),
@@ -1922,6 +2079,9 @@ def write_component_3d_binding_gap_matrix(component_model_dir: Path) -> list[dic
             ),
             "local_discrete_step_import_pass_count": sum(
                 1 for row in rows if row["local_discrete_step_import_status"] == "pass"
+            ),
+            "local_discrete_step_imported_solid_count": sum(
+                1 for row in rows if row["local_discrete_step_imported_as_solid"] == "true"
             ),
             "local_discrete_step_bbox_match_count": sum(
                 1 for row in rows if row["local_discrete_step_bbox_matches_envelope"] == "true"
@@ -2028,9 +2188,15 @@ def generate() -> dict[str, Any]:
     routed_board = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
     routed_board.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(SOURCE_BOARD, routed_board)
+    routed_board_metadata = blocked_metadata(
+        "routed_kicad_pcb_candidate", "routed_kicad_pcb", routed_board
+    )
+    routed_board_metadata["routed_candidate_source_binding"] = (
+        routed_candidate_source_binding(routed_board)
+    )
     write_yaml(
         routed_board.with_suffix(routed_board.suffix + ".metadata.yaml"),
-        blocked_metadata("routed_kicad_pcb_candidate", "routed_kicad_pcb", routed_board),
+        routed_board_metadata,
     )
     artifacts.append(
         {
@@ -2242,6 +2408,7 @@ def generate() -> dict[str, Any]:
         "source_step_size_bytes": SOURCE_STEP.stat().st_size if SOURCE_STEP.exists() else 0,
         "source_step_sha256": sha256(SOURCE_STEP) if SOURCE_STEP.exists() else "",
         "source_board_sha256": sha256(SOURCE_BOARD),
+        "routed_candidate_source_binding": routed_candidate_source_binding(routed_board),
         "routed_step_visual_detail": routed_visual_detail(),
         "cad_connection_coverage": cad_connection_summary(),
         "kicad_cad_traceability": kicad_cad_traceability_summary(),

@@ -1,0 +1,4 @@
+##   0:00:00  Solver: bitwuzla
+##   0:00:00  Trying induction in step 16..
+##   0:00:00  Temporal induction successful.
+##   0:00:00  Status: passed

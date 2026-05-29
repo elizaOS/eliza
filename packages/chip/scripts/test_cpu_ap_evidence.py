@@ -340,7 +340,7 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
     if not linux_boot_evidence_ready:
         assert_contains(blocker_text, "generated-AP Linux/userland boot transcript is not accepted")
     else:
-        assert_contains(blocker_text, "generated-AP benchmark")
+        assert_contains(blocker_text, "generated-AP Linux boot transcript has captured it yet")
     assert_contains("\n".join(report["blockers"]), "claim_level=L3")
     assert_contains("\n".join(report["required_raw_markers"]), "pdk signoff claim=none")
     prerequisites = json.dumps(report["source_build_prerequisites"], sort_keys=True)
@@ -1132,7 +1132,7 @@ def test_ap_benchmark_wrapper_mode_avoids_linux_smoke_checker_and_forbidden_note
             )
 
 
-def test_capture_wire_preflight_reports_remaining_unwired_lanes() -> None:
+def test_capture_wire_preflight_accepts_all_wired_lanes() -> None:
     env = {key: value for key, value in os.environ.items() if not key.startswith("ELIZA_")}
     result = subprocess.run(
         ["scripts/capture_chipyard_linux_evidence.sh", "wire-preflight"],
@@ -1141,18 +1141,17 @@ def test_capture_wire_preflight_reports_remaining_unwired_lanes() -> None:
         capture_output=True,
         env=env,
     )
-    if result.returncode != 2:
+    if result.returncode != 0:
         raise AssertionError(result.stdout + result.stderr)
-    if GENERATED_MANIFEST.is_file() and "READY opensbi-boot" in result.stdout:
-        assert_contains(result.stdout, "READY opensbi-boot: ELIZA_OPENSBI_BOOT_CMD is set")
-        assert_contains(result.stdout, "READY linux-boot: ELIZA_LINUX_BOOT_CMD is set")
-    else:
-        assert_contains(result.stdout, "BLOCKED opensbi-boot: ELIZA_OPENSBI_BOOT_CMD is unset")
-        assert_contains(result.stdout, "BLOCKED linux-boot: ELIZA_LINUX_BOOT_CMD is unset")
-    if "READY trap-timer-irq" in result.stdout:
-        assert_contains(result.stdout, "READY trap-timer-irq: ELIZA_TRAP_TIMER_IRQ_CMD is set")
-    else:
-        assert_contains(result.stdout, "BLOCKED trap-timer-irq: ELIZA_TRAP_TIMER_IRQ_CMD is unset")
+    assert_contains(result.stdout, "STATUS: PASS cpu_ap.capture_preflight")
+    for lane, env_name in (
+        ("opensbi-boot", "ELIZA_OPENSBI_BOOT_CMD"),
+        ("linux-boot", "ELIZA_LINUX_BOOT_CMD"),
+        ("trap-timer-irq", "ELIZA_TRAP_TIMER_IRQ_CMD"),
+        ("isa-cache-mmu", "ELIZA_ISA_CACHE_MMU_CMD"),
+        ("ap-benchmarks", "ELIZA_AP_BENCHMARKS_CMD"),
+    ):
+        assert_contains(result.stdout, f"READY {lane}: {env_name} is set")
 
 
 def test_capture_wrapper_all_reports_every_missing_command_env() -> None:
@@ -1525,7 +1524,7 @@ def main() -> int:
         test_ap_benchmark_workload_packages_marker_emitter_and_tools,
         test_ap_benchmark_evidence_must_be_intaken_after_linux_boot,
         test_ap_benchmark_wrapper_mode_avoids_linux_smoke_checker_and_forbidden_notes,
-        test_capture_wire_preflight_reports_remaining_unwired_lanes,
+        test_capture_wire_preflight_accepts_all_wired_lanes,
         test_capture_wrapper_all_reports_every_missing_command_env,
         test_opensbi_capture_failure_writes_precise_blocker_report,
         test_dts_audit_separates_ap_boot_from_e1_peripherals,

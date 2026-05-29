@@ -20,4 +20,6 @@ def test_e1x_fabric_cocotb_gate_passes() -> None:
     report = json.loads((ROOT / "build/reports/e1x_fabric_cocotb.json").read_text())
     assert report["status"] == "PASS"
     assert report["summary"]["failing_check_count"] == 0
-    assert report["summary"]["testcases"] >= 5
+    assert report["summary"]["testcases"] >= 20
+    checks = {check["id"]: check for check in report["checks"]}
+    assert checks["e1x_credit_router_cocotb_gate"]["status"] == "pass"

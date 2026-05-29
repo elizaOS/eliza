@@ -10,25 +10,18 @@
 // ring FSM all run under proof.
 //
 // Observation boundary. The native Yosys SystemVerilog frontend used by this
-// flow reads cross-module taps of a submodule's internal nets — both
-// hierarchical references (dut.<net>) and bind-port connections to internal
-// regs/wires — as free, disconnected wires (confirmed: a bind-connected
-// perf_thermal_throttle proves "always 0" while the same counter read back
-// through the rdata port is provably nonzero). Sound observation is therefore
-// possible only through the module ports. Every property below reads the DUT
-// state through the rdata register interface (or the master-output ports),
-// which is exactly how the software-visible contract is observed. Properties
-// that depend on internal-only nets (GEMM tile address bounds / INT4 nibble
-// widening / gemm_acc, vector cursor bounds) are not soundly reachable through
-// the port boundary in this toolchain and are tracked as an explicit open gap
-// in verify/rtl_gap_work_order.yaml (npu-formal-engine-coverage).
+// flow reads cross-module taps of a submodule's internal nets as free,
+// disconnected wires. Sound observation is therefore through module ports:
+// the software-visible rdata/master ports, plus `FORMAL`-only observability
+// ports that e1_npu wires directly to the real internal GEMM/vector state.
 //
 // Environmental constraint: software does not reprogram the descriptor ring
 // pointers (addr 6'h11 / 6'h12) after setup. These pointers are configured once
 // during ring setup; scoping the writes out lets the descriptor-empty invariant
-// track hardware-managed ring evolution. No hardware transition is hidden. No
-// assumption constrains the start bit, opcode, GEMM/vector configuration,
-// scratch contents, or AXI response bus.
+// track hardware-managed ring evolution. Engine configuration is programmed
+// before launch and held while a descriptor queue or engine is active, matching
+// the driver contract. No hardware transition is hidden. No assumption
+// constrains the start bit, opcode, scratch contents, or AXI response bus.
 
 module e1_npu_formal(input logic clk);
     logic rst_n = 1'b0;
@@ -48,6 +41,30 @@ module e1_npu_formal(input logic clk);
     logic m_axil_arvalid;
     logic [31:0] m_axil_araddr;
     logic m_axil_rready;
+    logic        formal_gemm_busy;
+    logic        formal_vec_busy;
+    logic        formal_gemm_cfg_ok;
+    logic        formal_vec_cfg_ok;
+    logic        formal_gemm_active_s4;
+    logic [7:0]  formal_gemm_a_addr;
+    logic [7:0]  formal_gemm_b_addr;
+    logic [7:0]  formal_gemm_c_addr;
+    logic [1:0]  formal_gemm_m;
+    logic [1:0]  formal_gemm_n;
+    logic [2:0]  formal_gemm_k;
+    logic [1:0]  formal_gemm_i;
+    logic [1:0]  formal_gemm_j;
+    logic [2:0]  formal_gemm_l;
+    logic signed [31:0] formal_gemm_acc;
+    logic [5:0]  formal_vec_len;
+    logic [5:0]  formal_vec_src_base;
+    logic [5:0]  formal_vec_dst_base;
+    logic [5:0]  formal_vec_i;
+    logic [5:0]  formal_vec_src_addr;
+    logic [5:0]  formal_vec_dst_addr;
+    logic [31:0] formal_desc_timeout_count;
+    logic [3:0]  formal_desc_state;
+    logic        formal_desc_busy;
 
     // Free AXI slave responses: the engine must stay safe and protocol-legal
     // for any handshake/response pattern the memory system can present.
@@ -90,7 +107,31 @@ module e1_npu_formal(input logic clk);
         .m_axil_rvalid(m_axil_rvalid),
         .m_axil_rready(m_axil_rready),
         .m_axil_rdata(m_axil_rdata),
-        .m_axil_rresp(m_axil_rresp)
+        .m_axil_rresp(m_axil_rresp),
+        .formal_gemm_busy(formal_gemm_busy),
+        .formal_vec_busy(formal_vec_busy),
+        .formal_gemm_cfg_ok(formal_gemm_cfg_ok),
+        .formal_vec_cfg_ok(formal_vec_cfg_ok),
+        .formal_gemm_active_s4(formal_gemm_active_s4),
+        .formal_gemm_a_addr(formal_gemm_a_addr),
+        .formal_gemm_b_addr(formal_gemm_b_addr),
+        .formal_gemm_c_addr(formal_gemm_c_addr),
+        .formal_gemm_m(formal_gemm_m),
+        .formal_gemm_n(formal_gemm_n),
+        .formal_gemm_k(formal_gemm_k),
+        .formal_gemm_i(formal_gemm_i),
+        .formal_gemm_j(formal_gemm_j),
+        .formal_gemm_l(formal_gemm_l),
+        .formal_gemm_acc(formal_gemm_acc),
+        .formal_vec_len(formal_vec_len),
+        .formal_vec_src_base(formal_vec_src_base),
+        .formal_vec_dst_base(formal_vec_dst_base),
+        .formal_vec_i(formal_vec_i),
+        .formal_vec_src_addr(formal_vec_src_addr),
+        .formal_vec_dst_addr(formal_vec_dst_addr),
+        .formal_desc_timeout_count(formal_desc_timeout_count),
+        .formal_desc_state(formal_desc_state),
+        .formal_desc_busy(formal_desc_busy)
     );
 
     initial rst_n = 1'b0;
@@ -113,6 +154,14 @@ module e1_npu_formal(input logic clk);
         // Descriptor ring pointers are configured once; the host does not
         // re-poke them after setup.
         assume(!(rst_n && valid && write && (addr == 6'h11 || addr == 6'h12)));
+        // Engine configuration is programmed before a launch and held stable
+        // while a descriptor queue or engine is active. This is the MMIO
+        // programming contract the driver must obey; it does not constrain any
+        // hardware transition.
+        assume(!(rst_n && valid && write && (formal_gemm_busy || formal_desc_busy) &&
+                 (addr == 6'h08 || addr == 6'h09 || addr == 6'h0a || addr == 6'h04)));
+        assume(!(rst_n && valid && write && (formal_vec_busy || formal_desc_busy) &&
+                 (addr == 6'h08 || addr == 6'h09 || addr == 6'h04)));
 
         if (!$past(rst_n)) begin
             assert(!irq);
@@ -156,6 +205,54 @@ module e1_npu_formal(input logic clk);
         // reachable since the engines run); only bits [31:9] are reserved-zero.
         if (rst_n && addr == 6'h07) begin
             assert(rdata[31:9] == 23'h0);
+        end
+
+        // -----------------------------------------------------------------
+        // Internal GEMM/vector engine contract through FORMAL-only ports.
+        // These ports are direct assignments from e1_npu's real internal nets,
+        // avoiding unsound hierarchical or bind-based taps.
+        // -----------------------------------------------------------------
+        if (rst_n && formal_gemm_cfg_ok) begin
+            a_gemm_dims_nonzero: assert(formal_gemm_m != 2'h0);
+            a_gemm_n_nonzero:    assert(formal_gemm_n != 2'h0);
+            a_gemm_k_nonzero:    assert(formal_gemm_k != 3'h0);
+            a_gemm_c_aligned:    assert(formal_gemm_c_addr[1:0] == 2'b00);
+            a_gemm_c_in_bounds:  assert((formal_gemm_c_addr + 8'd3) < 8'd64);
+            if (formal_gemm_active_s4) begin
+                a_gemm_s4_a_nibble_bounds: assert(formal_gemm_a_addr < 8'd128);
+                a_gemm_s4_b_nibble_bounds: assert(formal_gemm_b_addr < 8'd128);
+            end else begin
+                a_gemm_s8_a_byte_bounds: assert(formal_gemm_a_addr < 8'd64);
+                a_gemm_s8_b_byte_bounds: assert(formal_gemm_b_addr < 8'd64);
+            end
+        end
+
+        if (rst_n && formal_gemm_busy) begin
+            a_gemm_busy_cfg_ok: assert(formal_gemm_cfg_ok);
+            a_gemm_i_window:    assert(formal_gemm_i < formal_gemm_m);
+            a_gemm_j_window:    assert(formal_gemm_j < formal_gemm_n);
+            a_gemm_l_window:    assert(formal_gemm_l < formal_gemm_k);
+        end
+
+        if (rst_n && formal_vec_cfg_ok) begin
+            a_vec_len_nonzero:   assert(formal_vec_len != 6'h0);
+            a_vec_src_window:    assert(({2'b00, formal_vec_src_base} + {2'b00, formal_vec_len}) <= 8'd64);
+            a_vec_dst_window:    assert(({2'b00, formal_vec_dst_base} + {2'b00, formal_vec_len}) <= 8'd64);
+        end
+
+        if (rst_n && formal_vec_busy) begin
+            a_vec_busy_cfg_ok:   assert(formal_vec_cfg_ok);
+            a_vec_i_window:      assert(formal_vec_i < formal_vec_len);
+            a_vec_src_addr_calc:  assert({1'b0, formal_vec_src_addr} ==
+                                         ({1'b0, formal_vec_src_base} + {1'b0, formal_vec_i}));
+            a_vec_dst_addr_calc:  assert({1'b0, formal_vec_dst_addr} ==
+                                         ({1'b0, formal_vec_dst_base} + {1'b0, formal_vec_i}));
+            a_vec_src_addr_bound: assert({1'b0, formal_vec_src_addr} < 7'd64);
+            a_vec_dst_addr_bound: assert({1'b0, formal_vec_dst_addr} < 7'd64);
+        end
+
+        if (rst_n && formal_desc_busy) begin
+            a_desc_timeout_prelimit: assert(formal_desc_timeout_count <= 32'd128);
         end
 
         // -----------------------------------------------------------------

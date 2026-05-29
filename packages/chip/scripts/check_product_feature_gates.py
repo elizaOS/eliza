@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -378,6 +379,7 @@ def write_report(failures: list[str]) -> None:
     report = {
         "schema": "eliza.product_feature_gates.v1",
         "status": "fail" if failures else "pass",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": "product_feature_manifest_check_only_not_runtime_or_release_evidence",
         "summary": {"findings": len(findings)},
         "findings": findings,

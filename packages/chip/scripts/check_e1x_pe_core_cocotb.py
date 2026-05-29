@@ -40,6 +40,10 @@ RUNS = {
 }
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def ensure_microkernel_proof() -> None:
     subprocess.run(
         [sys.executable, "scripts/check_e1x_kernel_codegen.py"],
@@ -124,6 +128,7 @@ def main() -> int:
         "gate": "e1x-pe-core-cocotb",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": utc_now(),
         "subsystem": "e1x",
         "claim_boundary": (
             "E1X processing-element core (RV64IM_Zicsr_Zifencei integer datapath) cocotb "

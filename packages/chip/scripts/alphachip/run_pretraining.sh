@@ -45,6 +45,23 @@ ITERATION_TIMEOUT_S="${ITERATION_TIMEOUT_S:-1800}"
 mkdir -p -- "${EVIDENCE_DIR}" "${ROOT_DIR}"
 NOW_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+provenance_path() {
+    case "$1" in
+        "${REPO_ROOT}"/*)
+            printf 'packages/chip/%s' "${1#"${REPO_ROOT}/"}"
+            ;;
+        /tmp/*|/var/tmp/*)
+            printf '<host-tmp>/%s' "$(basename -- "$1")"
+            ;;
+        /home/*|/Users/*)
+            printf '<host-home>/%s' "$(basename -- "$1")"
+            ;;
+        *)
+            printf '%s' "$1"
+            ;;
+    esac
+}
+
 emit_evidence() {
     local status="$1" iterations="$2" detail="$3" plc_path="$4" plc_sha="$5"
     cat >"${EVIDENCE_FILE}" <<JSON
@@ -55,10 +72,10 @@ emit_evidence() {
   "last_run_utc": "${NOW_UTC}",
   "plc_wrapper_main_path": ${plc_path},
   "plc_wrapper_sha256": ${plc_sha},
-  "netlist_file": "${NETLIST_FILE}",
-  "init_placement": "${INIT_PLACEMENT}",
-  "root_dir": "${ROOT_DIR}",
-  "python_venv": "${VENV_PY}",
+  "netlist_file": "$(provenance_path "${NETLIST_FILE}")",
+  "init_placement": "$(provenance_path "${INIT_PLACEMENT}")",
+  "root_dir": "$(provenance_path "${ROOT_DIR}")",
+  "python_venv": "$(provenance_path "${VENV_PY}")",
   "reverb_port": ${REVERB_PORT},
   "sequence_length": ${SEQUENCE_LENGTH},
   "episodes_per_iteration": ${EPISODES_PER_ITERATION},
@@ -102,13 +119,13 @@ if command -v nvidia-smi >/dev/null 2>&1; then
 fi
 
 if [ ! -x "${VENV_PY}" ]; then
-    emit_evidence "blocked_python_venv" 0 "$(json_str "Python venv missing at ${VENV_PY}. Bootstrap with: cd external/circuit_training && uv venv --python 3.11 .venv && .venv/bin/python -m pip install 'tf-agents[reverb]~=0.19.0' tf-keras absl-py gin-config protobuf")" null null
+    emit_evidence "blocked_python_venv" 0 "$(json_str "Python venv missing at $(provenance_path "${VENV_PY}"). Bootstrap with: cd external/circuit_training && uv venv --python 3.11 .venv && .venv/bin/python -m pip install 'tf-agents[reverb]~=0.19.0' tf-keras absl-py gin-config protobuf")" null null
     printf 'run_pretraining.sh: missing python venv at %s; see %s\n' "${VENV_PY}" "${EVIDENCE_FILE}" >&2
     exit 2
 fi
 
 if ! PLC_BIN=$(resolve_plc_wrapper_main); then
-    emit_evidence "blocked_plc_wrapper_main" 0 "$(json_str "plc_wrapper_main not found at \$PLC_WRAPPER_MAIN, ${CT_DIR}/checkpoints/plc_wrapper_main, or /usr/local/bin/plc_wrapper_main. plc_wrapper_main is a closed-source Google binary (upstream google-research/circuit_training#11). The canonical GCS URL has returned HTTP 403 since Feb 2026. Recovery: obtain a pre-Feb-2026 copy and place it at \$PLC_WRAPPER_MAIN or external/circuit_training/checkpoints/plc_wrapper_main (chmod +x). See docs/toolchain/alphachip-checkpoint-blocker.md.")" null null
+    emit_evidence "blocked_plc_wrapper_main" 0 "$(json_str "plc_wrapper_main not found at \$PLC_WRAPPER_MAIN, $(provenance_path "${CT_DIR}/checkpoints/plc_wrapper_main"), or /usr/local/bin/plc_wrapper_main. plc_wrapper_main is a closed-source Google binary (upstream google-research/circuit_training#11). The canonical GCS URL has returned HTTP 403 since Feb 2026. Recovery: obtain a pre-Feb-2026 copy and place it at \$PLC_WRAPPER_MAIN or external/circuit_training/checkpoints/plc_wrapper_main (chmod +x). See docs/toolchain/alphachip-checkpoint-blocker.md.")" null null
     printf 'run_pretraining.sh: plc_wrapper_main not found; see %s\n' "${EVIDENCE_FILE}" >&2
     exit 3
 fi
@@ -116,7 +133,7 @@ fi
 PLC_SHA=$(sha256sum -- "${PLC_BIN}" | awk '{print $1}')
 
 if [ ! -f "${NETLIST_FILE}" ] || [ ! -f "${INIT_PLACEMENT}" ]; then
-    emit_evidence "blocked_ariane_fixtures" 0 "$(json_str "Ariane fixtures missing at ${NETLIST_FILE} / ${INIT_PLACEMENT}")" "$(json_str "${PLC_BIN}")" "$(json_str "${PLC_SHA}")"
+    emit_evidence "blocked_ariane_fixtures" 0 "$(json_str "Ariane fixtures missing at $(provenance_path "${NETLIST_FILE}") / $(provenance_path "${INIT_PLACEMENT}")")" "$(json_str "$(provenance_path "${PLC_BIN}")")" "$(json_str "${PLC_SHA}")"
     printf 'run_pretraining.sh: missing Ariane fixtures; see %s\n' "${EVIDENCE_FILE}" >&2
     exit 4
 fi
@@ -157,7 +174,7 @@ for _ in $(seq 1 60); do
     sleep 1
 done
 if [ "${REVERB_READY}" != true ]; then
-    emit_evidence "failed_reverb_start" 0 "$(json_str "Reverb did not bind 127.0.0.1:${REVERB_PORT} within 60s; see ${REVERB_LOG}")" "$(json_str "${PLC_BIN}")" "$(json_str "${PLC_SHA}")"
+    emit_evidence "failed_reverb_start" 0 "$(json_str "Reverb did not bind 127.0.0.1:${REVERB_PORT} within 60s; see $(provenance_path "${REVERB_LOG}")")" "$(json_str "$(provenance_path "${PLC_BIN}")")" "$(json_str "${PLC_SHA}")"
     printf 'run_pretraining.sh: reverb did not start; see %s and %s\n' "${REVERB_LOG}" "${EVIDENCE_FILE}" >&2
     exit 5
 fi
@@ -217,11 +234,11 @@ if [ "${ITERATIONS_DONE}" -eq 0 ] && grep -qE 'Train iteration [1-9]' "${TRAIN_L
 fi
 
 if [ "${TRAIN_RC}" -eq 0 ] && [ "${ITERATIONS_DONE}" -ge 1 ]; then
-    emit_evidence "ok" "${ITERATIONS_DONE}" "$(json_str "One PPO iteration completed against Ariane fixtures using the local plc_wrapper_main binary.")" "$(json_str "${PLC_BIN}")" "$(json_str "${PLC_SHA}")"
+    emit_evidence "ok" "${ITERATIONS_DONE}" "$(json_str "One PPO iteration completed against Ariane fixtures using the local plc_wrapper_main binary.")" "$(json_str "$(provenance_path "${PLC_BIN}")")" "$(json_str "${PLC_SHA}")"
     printf '%s\n' "${ROOT_DIR}"
     exit 0
 fi
 
-emit_evidence "failed_train_iteration" "${ITERATIONS_DONE}" "$(json_str "trainer exit ${TRAIN_RC}; see ${TRAIN_LOG} (reverb=${REVERB_LOG}, collect=${COLLECT_LOG})")" "$(json_str "${PLC_BIN}")" "$(json_str "${PLC_SHA}")"
+emit_evidence "failed_train_iteration" "${ITERATIONS_DONE}" "$(json_str "trainer exit ${TRAIN_RC}; see $(provenance_path "${TRAIN_LOG}") (reverb=$(provenance_path "${REVERB_LOG}"), collect=$(provenance_path "${COLLECT_LOG}"))")" "$(json_str "$(provenance_path "${PLC_BIN}")")" "$(json_str "${PLC_SHA}")"
 printf 'run_pretraining.sh: trainer failed (rc=%s); see %s and %s\n' "${TRAIN_RC}" "${TRAIN_LOG}" "${EVIDENCE_FILE}" >&2
 exit 6

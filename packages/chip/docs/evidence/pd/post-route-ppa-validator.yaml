@@ -1,48 +1,63 @@
-schema: eliza.pd_post_route_ppa_validator.v1
-status: draft_local_evidence
-release_use: prohibited_until_external_review
-scope: post_route_ppa_truth_for_alphachip_and_dreamplace_candidates
-description: |
-  Post-route PPA validator gate. Captures the JSON hash of every
+acceptance_criteria:
+- Each candidate path is a JSON file with schema eliza.pd_post_route_ppa.v1.
+- Each JSON metrics block contains all required_metric_keys.
+- Routed wirelength delta vs OpenROAD baseline is captured per candidate.
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+description: 'Post-route PPA validator gate. Captures the JSON hash of every
+
   post-route PPA JSON produced by scripts/run_post_route_ppa.py so the
+
   macro-placement-evidence gate has a tamper-evident pointer to the
+
   underlying detailed-route results. Fail-closed until at least one
+
   AlphaChip post-route JSON and one OpenROAD baseline post-route JSON
+
   exist under research/alpha_chip_macro_placement/07_post_route_ppa/.
-source_artifacts:
-  - scripts/run_post_route_ppa.py
-  - research/alpha_chip_macro_placement/07_post_route_ppa/README.md
+
+  '
+generated_utc: '2026-05-20T10:12:30Z'
+release_blockers:
+- OpenROAD baseline post-route requires hard macros in the floorplan.
+- AlphaChip candidate post-route requires PPO training run completion.
+- DREAMPlace candidate post-route requires DREAMPlace harness execution.
+release_use: prohibited_until_external_review
+required_metric_keys:
+- design__instance__count__macros
+- route__wirelength
+- route__drc_errors
+- timing__setup__tns
+- timing__hold__tns
+- antenna__violating__nets
 required_validator_outputs:
-  openroad_baseline:
-    path: research/alpha_chip_macro_placement/07_post_route_ppa/openroad.json
-    status: blocked
-    evidence_boundary: |
-      Requires an OpenLane release run completed with at least one hard
-      macro placed; today the release has Macros: 0.
   alphachip_candidate:
+    evidence_boundary: 'Requires AlphaChip PPO training to converge on the e1 benchmark
+
+      (Nebius H200 runbook ready) and produce an alphachip.plc that
+
+      passes the post-route route step.
+
+      '
     path: research/alpha_chip_macro_placement/07_post_route_ppa/alphachip.json
     status: blocked
-    evidence_boundary: |
-      Requires AlphaChip PPO training to converge on the e1 benchmark
-      (Nebius H200 runbook ready) and produce an alphachip.plc that
-      passes the post-route route step.
   dreamplace_candidate:
+    evidence_boundary: 'DREAMPlace 4.0 has not been run on the e1 benchmark.
+
+      '
     path: research/alpha_chip_macro_placement/07_post_route_ppa/dreamplace.json
     status: blocked
-    evidence_boundary: |
-      DREAMPlace 4.0 has not been run on the e1 benchmark.
-required_metric_keys:
-  - design__instance__count__macros
-  - route__wirelength
-  - route__drc_errors
-  - timing__setup__tns
-  - timing__hold__tns
-  - antenna__violating__nets
-acceptance_criteria:
-  - Each candidate path is a JSON file with schema eliza.pd_post_route_ppa.v1.
-  - Each JSON metrics block contains all required_metric_keys.
-  - Routed wirelength delta vs OpenROAD baseline is captured per candidate.
-release_blockers:
-  - OpenROAD baseline post-route requires hard macros in the floorplan.
-  - AlphaChip candidate post-route requires PPO training run completion.
-  - DREAMPlace candidate post-route requires DREAMPlace harness execution.
+  openroad_baseline:
+    evidence_boundary: 'Requires an OpenLane release run completed with at least one
+      hard
+
+      macro placed; today the release has Macros: 0.
+
+      '
+    path: research/alpha_chip_macro_placement/07_post_route_ppa/openroad.json
+    status: blocked
+schema: eliza.pd_post_route_ppa_validator.v1
+scope: post_route_ppa_truth_for_alphachip_and_dreamplace_candidates
+source_artifacts:
+- scripts/run_post_route_ppa.py
+- research/alpha_chip_macro_placement/07_post_route_ppa/README.md
+status: draft_local_evidence

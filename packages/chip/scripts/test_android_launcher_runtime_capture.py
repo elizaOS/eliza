@@ -93,6 +93,24 @@ class LauncherRuntimeCaptureTests(unittest.TestCase):
         self.assertIn(["adb", "devices", "-l"], commands)
         self.assertIn(["adb", "get-state"], commands)
 
+    def test_provenance_sanitizer_strips_host_local_paths(self) -> None:
+        payload = {
+            "product_out": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+            "tool": "/home/shaw/Android/Sdk/platform-tools/adb",
+            "repo": "/home/shaw/milady/eliza/packages/chip/docs/evidence/android/log.txt",
+            "tmp": "/var/tmp/cvd/1000/1/home/cuttlefish/instances/cvd-1/logs/logcat",
+        }
+
+        sanitized = capture.provenance_safe_value(payload)
+        encoded = json.dumps(sanitized, sort_keys=True)
+
+        self.assertNotIn("/home/shaw", encoded)
+        self.assertNotIn("/var/tmp", encoded)
+        self.assertEqual(
+            sanitized["product_out"], "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc"
+        )
+        self.assertEqual(sanitized["repo"], "packages/chip/docs/evidence/android/log.txt")
+
     def test_passing_capture_shape_satisfies_launcher_gate(self) -> None:
         package = capture.DEFAULT_PACKAGE
 

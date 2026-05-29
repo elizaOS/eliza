@@ -4,7 +4,7 @@
   "cpus": 4,
   "duration_s": 120,
   "forbidden_markers_present": [],
-  "iso_path": "/tmp/elizaos-rv64-iso-fix/elizaos-linux-riscv64-default-20260521T130200Z-grubfix.iso",
+  "iso_path": "<host-tmp>/elizaos-linux-riscv64-default-20260521T130200Z-grubfix.iso",
   "iso_sha256": "74fbafa773d951759ecaaffd2e776627e8b1e1e7fb49443e2c591c17d06ea146",
   "markers_found": [],
   "markers_missing": [

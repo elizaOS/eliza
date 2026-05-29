@@ -19,9 +19,8 @@ This directory contains:
 | File | Purpose |
 |---|---|
 | `server.ts` | HTTP server for benchmark traffic. Initializes `AgentRuntime`, handles benchmark sessions, and routes each message through `runtime.messageService.handleMessage(...)`. |
-| `mock-plugin-base.ts` | Tracked deterministic mock plugin used by benchmark unit tests and CI smoke checks. |
-| `mock-plugin.ts` | Optional local override (gitignored) loaded first when `ELIZA_BENCH_MOCK=true`. |
-| `TESTING_PROTOCOL.md` | Benchmark action/testing protocol (required checks + CUA-bench compatibility commands). |
+| `mock-plugin.ts` | Deterministic mock benchmark plugin loaded when `ELIZA_BENCH_MOCK=true`. Diagnostic only; mock runs are not valid release evidence. |
+| `TESTING_PROTOCOL.md` | Benchmark action/testing protocol (required checks). |
 
 The Python client side can live in a local adapter directory such as `benchmarks/eliza-adapter/`.
 
@@ -45,9 +44,6 @@ bunx vitest run src/benchmark/*.test.ts
 
 # watch a live benchmark smoke run end-to-end
 bun run benchmark:watch
-
-# watch live CUA execution in LUME VM (requires CUA_HOST + model credentials)
-CUA_HOST=localhost:8000 OPENAI_API_KEY=sk-... CUA_COMPUTER_USE_MODEL=computer-use-preview bun run benchmark:cua:watch
 
 # see the full benchmark testing/checklist protocol
 cat src/benchmark/TESTING_PROTOCOL.md
@@ -78,29 +74,6 @@ Response:
 ```json
 { "status": "ok", "room_id": "<uuid>", "task_id": "webshop-42", "benchmark": "agentbench" }
 ```
-
-### `GET /api/benchmark/cua/status`
-
-Returns CUA service status when CUA benchmark mode is enabled (`ELIZA_ENABLE_CUA=1`).
-
-### `POST /api/benchmark/cua/run`
-
-Runs a live CUA task in the configured LUME/cloud sandbox.
-
-Request:
-
-```json
-{
-  "goal": "Open ChatGPT and close extra tabs",
-  "room_id": "optional-room-id",
-  "auto_approve": true,
-  "include_screenshots": false
-}
-```
-
-### `GET /api/benchmark/cua/screenshot`
-
-Captures the current sandbox screenshot (`base64 png`) via the CUA service.
 
 ### `POST /api/benchmark/message`
 
@@ -138,10 +111,6 @@ Response:
 |---|---|---|
 | `ELIZA_BENCH_PORT` | `3939` | Port to listen on |
 | `COMPUTER_USE_ENABLED` | unset | Set to `1` to load local computeruse plugin |
-| `ELIZA_ENABLE_CUA` | unset | If set (or CUA env is configured), loads `@elizaos/plugin-cua` |
-| `CUA_HOST` | unset | Local CUA/LUME host (e.g. `localhost:8000`) |
-| `CUA_API_KEY` + `CUA_SANDBOX_NAME` | unset | Cloud CUA mode alternative to `CUA_HOST` |
-| `CUA_COMPUTER_USE_MODEL` | `auto` | Set `computer-use-preview` to force OpenAI computer-use runner |
 | `ELIZA_BENCH_MOCK` | unset | Enables inline mock benchmark plugin |
 
 ## Notes

@@ -22,4 +22,8 @@ def test_e1x_boot_repair_fw_gate_passes() -> None:
     assert report["summary"]["failing_check_count"] == 0
     assert report["summary"]["blocked_check_count"] == 0
     assert report["summary"]["native_verification_passed"] is True
-    assert report["summary"]["route_count"] == 64
+    assert report["summary"]["verified_rom_case_count"] == 3
+    cases = {case["case"]: case for case in report["summary"]["rom_cases"]}
+    assert cases["scaled_high_failure"]["route_count"] == 64
+    assert cases["real_graph_normal"]["rom_word_count"] == 412
+    assert cases["real_graph_high_failure"]["rom_word_count"] == 3582

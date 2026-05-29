@@ -429,7 +429,21 @@ def run(
             yaw_rad=_finite_float(info.get("root_yaw")),
             imu_roll_rad=float(info.get("imu_roll", 0.0) or 0.0),
             imu_pitch_rad=float(info.get("imu_pitch", 0.0) or 0.0),
-            extra={"stand_height_m": info.get("stand_height_m")},
+            extra={
+                "stand_height_m": info.get("stand_height_m"),
+                "left_foot_contact": info.get("left_foot_contact"),
+                "right_foot_contact": info.get("right_foot_contact"),
+                "left_foot_z_m": info.get("left_foot_z"),
+                "right_foot_z_m": info.get("right_foot_z"),
+                "left_foot_slip_m_s": info.get("left_foot_slip_m_s"),
+                "right_foot_slip_m_s": info.get("right_foot_slip_m_s"),
+                "max_swing_foot_clearance_m": info.get("max_swing_foot_clearance_m"),
+                "max_foot_slip_m_s": info.get("max_foot_slip_m_s"),
+                "self_collision_count": info.get("self_collision_count"),
+                "tracked_x_m": info.get("tracked_x"),
+                "tracked_y_m": info.get("tracked_y"),
+                "tracked_z_m": info.get("tracked_z"),
+            },
         )
 
     def _tick(label: str, task_id: str, writers: list) -> dict:

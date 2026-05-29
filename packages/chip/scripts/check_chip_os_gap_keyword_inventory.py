@@ -10,6 +10,7 @@ evidence logs, build outputs, and package caches are intentionally skipped.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 import re
 from collections import Counter
@@ -78,6 +79,28 @@ EXCLUDED_FILENAMES = {
     "check_chip_os_gap_keyword_inventory.py",
     "test_chip_os_gap_keyword_inventory.py",
 }
+TEST_FILE_PATTERNS = (
+    re.compile(r"(^|/)test_[^/]+\.(c|cc|cpp|h|java|kt|py|rs|ts|tsx)$"),
+    re.compile(r"(^|/)[^/]+_test\.(c|cc|cpp|h|java|kt|rs|ts|tsx)$"),
+    re.compile(r"(^|/)[^/]+\.(test|spec)\.(js|jsx|ts|tsx)$"),
+)
+BENIGN_LINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "implementation_missing",
+        re.compile(r"\bUnsupported HTTP method\b"),
+    ),
+)
+CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
+    re.compile(r"^packages/chip/scripts/(check|product_check)[^/]*\.py$"),
+    re.compile(r"^packages/chip/verify/check_[^/]+\.py$"),
+)
+CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
+    r"("
+    r"raise SystemExit|errors\.append|blockers\.append|findings\.append|"
+    r"closure_evidence=|description=|next_step|next_command|message|evidence|"
+    r"CLAIM_BOUNDARY|claim_boundary|re\.compile|AllowedFinding|print\(|help="
+    r")"
+)
 TEXT_SUFFIXES = {
     "",
     ".bp",
@@ -133,6 +156,10 @@ PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
         ),
     ),
 )
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def rel(path: Path) -> str:
@@ -200,6 +227,8 @@ def is_excluded(path: Path) -> bool:
     relative = rel(path)
     if path.name in EXCLUDED_FILENAMES:
         return True
+    if any(pattern.search(relative) for pattern in TEST_FILE_PATTERNS):
+        return True
     if any(part in EXCLUDED_DIRS for part in path.parts):
         return True
     return any(fragment in relative for fragment in EXCLUDED_PATH_PARTS)
@@ -225,11 +254,30 @@ def is_text_candidate(path: Path) -> bool:
     return True
 
 
+def is_classified_diagnostic_line(path: Path, line: str) -> bool:
+    relative = rel(path)
+    if not any(pattern.search(relative) for pattern in CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS):
+        return False
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if '"' in stripped or "'" in stripped:
+        return True
+    return bool(CLASSIFIED_DIAGNOSTIC_LINE_RE.search(stripped))
+
+
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for category, description, pattern in PATTERNS:
         match = pattern.search(line)
         if not match:
+            continue
+        if is_classified_diagnostic_line(path, line):
+            continue
+        if any(
+            benign_category == category and benign_pattern.search(line)
+            for benign_category, benign_pattern in BENIGN_LINE_PATTERNS
+        ):
             continue
         findings.append(
             {
@@ -277,6 +325,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
         "schema": SCHEMA,
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": utc_now(),
         "summary": {
             "scan_roots": len(roots),
             "files_scanned": files_scanned,

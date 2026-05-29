@@ -240,6 +240,7 @@ contact:
   - right_toe5_collision
 sensors:
   imu_noise_std: 0.01
+  locomotion_tracking_body: pelvis_link
   cameras:
   - name: front_camera
     width: 640

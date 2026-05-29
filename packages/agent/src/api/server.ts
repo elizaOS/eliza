@@ -264,7 +264,6 @@ import { handleAuthRoutes } from "./auth-routes.ts";
 import { handleAvatarRoutes } from "./avatar-routes.ts";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes.ts";
 import { handleBugReportRoutes } from "./bug-report-routes.ts";
-import { handleBuildVariantRoutes } from "./build-variant-routes.ts";
 import { handleCharacterRoutes } from "./character-routes.ts";
 import {
   initSse as initSseFromChatRoutes,
@@ -1852,11 +1851,6 @@ async function handleRequest(
     return;
   }
 
-  // ─ GET /api/build/variant — desktop build variant + platform ─────────
-  if (handleBuildVariantRoutes({ req, res, method, pathname, json })) {
-    return;
-  }
-
   if (
     await handleOnboardingRoutes({
       req,
@@ -1993,9 +1987,6 @@ async function handleRequest(
       json,
       error,
       resolveStateDir,
-      resolvePath: path.resolve,
-      getHomeDir: os.homedir,
-      isSafeResetStateDir,
       stateDirExists: fs.existsSync,
       removeStateDir: (resolvedState) => {
         fs.rmSync(resolvedState, { recursive: true, force: true });

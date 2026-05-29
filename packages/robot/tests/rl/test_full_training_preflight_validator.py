@@ -52,6 +52,37 @@ def test_validate_full_training_preflight_bundle(tmp_path: Path) -> None:
     assert report["checks"]["brax_job_valid"] is True
 
 
+def test_post_training_script_clears_stale_curriculum_eval_and_writes_provenance(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    script = bundle / "scripts" / "50_post_train_validation.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert "rm -rf evidence/curriculum_eval\n" in text
+    assert "mkdir -p evidence/curriculum_eval\n" in text
+    assert "'schema': 'robot-curriculum-eval-provenance-v1'" in text
+    assert "'checkpoint_manifest_sha256': sha256(checkpoint / 'manifest.json')" in text
+    assert "'checkpoint_policy_sha256': sha256(checkpoint / 'alberta_policy.npz')" in text
+    assert text.index("rm -rf evidence/curriculum_eval") < text.index(
+        "scripts/eval_text_policy.py"
+    )
+
+
+def test_training_script_uses_periodic_phase_eval_for_action_scale_ramp(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    script = bundle / "scripts" / "10_nebius_train_alberta.sh"
+    text = script.read_text(encoding="utf-8")
+
+    assert (
+        'ALBERTA_PHASE_EVAL_INTERVAL_STEPS="${ALBERTA_PHASE_EVAL_INTERVAL_STEPS:-50000}"'
+        in text
+    )
+    assert '--phase-eval-interval-steps "$ALBERTA_PHASE_EVAL_INTERVAL_STEPS"' in text
+
+
 def test_validate_full_training_preflight_rejects_non_executable_script(
     tmp_path: Path,
 ) -> None:
@@ -149,6 +180,10 @@ def test_validate_full_training_preflight_rejects_stale_alberta_training_script(
     text = script.read_text()
     text = text.replace(" --require-phase-success", "")
     text = text.replace(" --min-phase-success-rate 1.0", "")
+    text = text.replace(
+        ' --phase-eval-interval-steps "$ALBERTA_PHASE_EVAL_INTERVAL_STEPS"',
+        "",
+    )
     script.write_text(text, encoding="utf-8")
 
     report = validate_bundle(bundle)

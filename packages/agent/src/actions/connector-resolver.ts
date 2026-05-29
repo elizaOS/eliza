@@ -216,8 +216,7 @@ export async function getPersonConversations(
         const room = await runtime.getRoom(roomId);
         if (!room) continue;
 
-        const roomRecord = room as Room & { name?: string; source?: string };
-        const platform = roomRecord.source;
+        const platform = room.source;
 
         // Get recent messages from this room
         const rawMemories = (await runtime.getMemories({
@@ -241,7 +240,7 @@ export async function getPersonConversations(
         conversations.push({
           platform,
           roomId: room.id as UUID,
-          roomName: roomRecord.name ?? `Room ${room.id.slice(0, 8)}`,
+          roomName: room.name ?? `Room ${room.id.slice(0, 8)}`,
           messages,
           messageCount: messages.length,
           lastMessageAt,
@@ -349,8 +348,7 @@ export async function findRoomForEntity(
     for (const roomId of roomIds) {
       const room = await runtime.getRoom(roomId);
       if (!room) continue;
-      const roomRecord = room as Room & { source?: string };
-      if (roomRecord.source.toLowerCase() === platform.toLowerCase()) {
+      if (room.source.toLowerCase() === platform.toLowerCase()) {
         return room;
       }
     }

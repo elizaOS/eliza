@@ -17,6 +17,7 @@ from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.train_robot import (
     _action_scale_gate_passed,
     _build_action_scale_schedule,
+    _physical_checks,
     _promotion_blocker,
     _promotion_passed,
     _telemetry_sample_from_info,
@@ -360,19 +361,280 @@ def test_action_scale_schedule_starts_stable_and_requires_no_fall_physical_gate(
     assert schedule["target_scale"] == 0.3
     assert schedule["criteria"] == {
         "failure_rate_lte": 0.0,
-        "physical_success": True,
+        "physical_success_or_stable_partial_progress": True,
         "success_rate_gte": 1.0,
     }
     assert _action_scale_gate_passed(
         {"success_rate": 1.0, "failure_rate": 0.0, "physical_success": True},
+        task_id="walk_forward",
         min_success_rate=1.0,
     )
     assert not _action_scale_gate_passed(
         {"success_rate": 1.0, "failure_rate": 0.5, "physical_success": True},
+        task_id="walk_forward",
+        min_success_rate=1.0,
+    )
+
+
+def test_physical_checks_use_episode_max_yaw_for_walk_forward() -> None:
+    checks = _physical_checks(
+        "walk_forward",
+        {
+            "tracked_delta_x_m": {"min": 0.31, "max": 0.31, "mean": 0.31, "final": 0.31},
+            "tracked_delta_y_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+            "delta_yaw_rad": {"min": 0.0, "max": 0.1, "mean": 0.0, "final": 0.1},
+            "max_abs_delta_yaw_rad": {
+                "min": 0.0,
+                "max": 0.43,
+                "mean": 0.2,
+                "final": 0.43,
+            },
+            "tracked_z_m": {"min": 0.2, "max": 0.2, "mean": 0.2, "final": 0.2},
+        },
+    )
+
+    assert checks["tracked_delta_x_forward"] is True
+    assert checks["yaw_drift_bound"] is False
+
+
+def test_physical_checks_require_clearance_slip_and_no_self_collision_for_walk() -> None:
+    checks = _physical_checks(
+        "walk_forward",
+        {
+            "tracked_delta_x_m": {"min": 0.0, "max": 0.35, "mean": 0.35, "final": 0.35},
+            "tracked_delta_y_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+            "delta_yaw_rad": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+            "max_abs_delta_yaw_rad": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+            "tracked_z_m": {"min": 0.3, "max": 0.3, "mean": 0.3, "final": 0.3},
+            "max_swing_foot_clearance_m": {
+                "min": 0.0,
+                "max": 0.012,
+                "mean": 0.012,
+                "final": 0.012,
+            },
+            "max_foot_slip_m_s": {"min": 0.0, "max": 0.5, "mean": 0.5, "final": 0.5},
+            "max_self_collision_count": {"min": 0.0, "max": 1.0, "mean": 1.0, "final": 1.0},
+        },
+    )
+
+    assert checks["tracked_delta_x_forward"] is True
+    assert checks["min_swing_foot_clearance_m"] is False
+    assert checks["max_foot_slip_m_s"] is False
+    assert checks["max_self_collision_count"] is False
+    assert not _action_scale_gate_passed(
+        {
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "physical_success": False,
+            "physical_checks": {
+                "no_fall": True,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+            },
+            "movement_summary": {
+                "tracked_delta_x_m": {
+                    "min": 0.0,
+                    "max": 0.0,
+                    "mean": 0.0,
+                    "final": 0.0,
+                },
+            },
+        },
+        task_id="walk_forward",
+        min_success_rate=1.0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("task_id", "series_key", "check_key", "min_value", "max_value"),
+    (
+        ("walk_forward", "tracked_delta_x_m", "tracked_delta_x_forward", 0.0, 0.35),
+        ("walk_backward", "tracked_delta_x_m", "tracked_delta_x_backward", -0.25, 0.0),
+        ("sidestep_left", "tracked_delta_y_m", "tracked_delta_y_left", 0.0, 0.25),
+        ("sidestep_right", "tracked_delta_y_m", "tracked_delta_y_right", -0.25, 0.0),
+        ("turn_left", "delta_yaw_rad", "delta_yaw_left", 0.0, 0.75),
+        ("turn_right", "delta_yaw_rad", "delta_yaw_right", -0.75, 0.0),
+    ),
+)
+def test_physical_checks_use_signed_motion_extrema(
+    task_id: str,
+    series_key: str,
+    check_key: str,
+    min_value: float,
+    max_value: float,
+) -> None:
+    summary = {
+        "tracked_delta_x_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "tracked_delta_y_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "delta_yaw_rad": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "max_abs_delta_yaw_rad": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "tracked_z_m": {"min": 0.3, "max": 0.3, "mean": 0.3, "final": 0.3},
+        "tracked_translation_drift_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+    }
+    summary[series_key] = {
+        "min": min_value,
+        "max": max_value,
+        "mean": 0.0,
+        "final": 0.0,
+    }
+
+    assert _physical_checks(task_id, summary)[check_key] is True
+
+
+@pytest.mark.parametrize(
+    ("task_id", "series_key", "min_value", "max_value"),
+    (
+        ("walk_forward", "tracked_delta_x_m", 0.0, 0.08),
+        ("walk_backward", "tracked_delta_x_m", -0.08, 0.0),
+        ("sidestep_left", "tracked_delta_y_m", 0.0, 0.08),
+        ("sidestep_right", "tracked_delta_y_m", -0.08, 0.0),
+    ),
+)
+def test_action_scale_partial_progress_uses_signed_motion_extrema(
+    task_id: str,
+    series_key: str,
+    min_value: float,
+    max_value: float,
+) -> None:
+    drift_key = (
+        "tracked_lateral_drift_bound"
+        if task_id in {"walk_forward", "walk_backward"}
+        else "tracked_forward_drift_bound"
+    )
+
+    assert _action_scale_gate_passed(
+        {
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "physical_success": False,
+            "physical_checks": {
+                "no_fall": True,
+                "min_alternating_foot_contacts": True,
+                drift_key: True,
+                "yaw_drift_bound": True,
+            },
+            "movement_summary": {
+                series_key: {
+                    "min": min_value,
+                    "max": max_value,
+                    "mean": 0.0,
+                    "final": 0.0,
+                },
+            },
+        },
+        task_id=task_id,
+        min_success_rate=1.0,
+    )
+    assert _action_scale_gate_passed(
+        {
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "physical_success": False,
+            "physical_checks": {
+                "no_fall": True,
+                "min_alternating_foot_contacts": True,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+            },
+            "movement_summary": {
+                "tracked_delta_x_m": {
+                    "min": 0.08,
+                    "max": 0.08,
+                    "mean": 0.08,
+                    "final": 0.08,
+                },
+            },
+        },
+        task_id="walk_forward",
         min_success_rate=1.0,
     )
     assert not _action_scale_gate_passed(
-        {"success_rate": 1.0, "failure_rate": 0.0, "physical_success": False},
+        {
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "physical_success": False,
+            "physical_checks": {
+                "no_fall": True,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+            },
+            "movement_summary": {
+                "tracked_delta_x_m": {
+                    "min": 0.08,
+                    "max": 0.08,
+                    "mean": 0.08,
+                    "final": 0.08,
+                },
+            },
+        },
+        task_id="walk_forward",
+        min_success_rate=1.0,
+    )
+    assert not _action_scale_gate_passed(
+        {
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "physical_success": False,
+            "physical_checks": {
+                "no_fall": True,
+                "min_alternating_foot_contacts": False,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+            },
+            "movement_summary": {
+                "tracked_delta_x_m": {
+                    "min": 0.08,
+                    "max": 0.08,
+                    "mean": 0.08,
+                    "final": 0.08,
+                },
+            },
+        },
+        task_id="walk_forward",
+        min_success_rate=1.0,
+    )
+    assert not _action_scale_gate_passed(
+        {
+            "success_rate": 0.0,
+            "failure_rate": 0.0,
+            "physical_success": False,
+            "physical_checks": {
+                "no_fall": True,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+            },
+            "movement_summary": {
+                "tracked_delta_x_m": {
+                    "min": 0.0,
+                    "max": 0.08,
+                    "mean": 0.04,
+                    "final": 0.08,
+                },
+            },
+        },
+        task_id="walk_forward",
+        min_success_rate=1.0,
+    )
+    assert not _action_scale_gate_passed(
+        {
+            "success_rate": 0.0,
+            "failure_rate": 1.0,
+            "physical_success": False,
+            "physical_checks": {
+                "no_fall": False,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+            },
+            "movement_summary": {
+                "tracked_delta_x_m": {
+                    "min": 0.0,
+                    "max": 0.12,
+                    "mean": 0.12,
+                    "final": 0.12,
+                },
+            },
+        },
+        task_id="walk_forward",
         min_success_rate=1.0,
     )
 

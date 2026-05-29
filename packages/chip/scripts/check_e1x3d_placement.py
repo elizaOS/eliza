@@ -15,6 +15,10 @@ REPORT = ROOT / "build/reports/e1x3d_placement.json"
 EVIDENCE = ROOT / "benchmarks/results/e1x3d-placement-feasibility.json"
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def main() -> int:
     artifact = build_placement_report()
     EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +56,7 @@ def main() -> int:
         "gate": "e1x3d-placement",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": utc_now(),
         "subsystem": "e1x3d",
         "claim_boundary": (
             "E1X3D analytic 3D-placement feasibility only: tier-partition XY footprint shrink, "

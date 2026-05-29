@@ -1,82 +1,85 @@
+blocked_claims:
+- current_gap: 'No PMP/ePMP/Smmtt/H-extension is wired in rtl/cpu today; the MTT per-access
+    walk that enforces per-page confidentiality does not exist.
+
+    '
+  id: confidential_vm_isolation
+  missing_dependency: rtl/security/e1_mtt_checker.sv (C3) + mttp CSR + MTT walker
+  proving_command: make cocotb-mtt-checker
+  required_evidence:
+  - cocotb-mtt-checker green under Verilator
+  - SVA proving no illegal page-state edge completes
+  status: blocked
+- current_gap: 'No Smepmp rule-locked wall isolates the TSM from untrusted OpenSBI
+    inside M-mode.
+
+    '
+  id: tsm_wall_integrity
+  missing_dependency: rtl/security/e1_tsm_epmp_wall.sv (C4)
+  proving_command: make cocotb-tsm-wall
+  required_evidence:
+  - cocotb-tsm-wall green
+  status: blocked
+- current_gap: 'DRAM is a 4 KiB AXI-Lite SRAM stand-in; no MCIE (AES-CTR + counter
+    integrity tree) and no real LPDDR5X controller exist.
+
+    '
+  id: memory_encryption
+  missing_dependency: docs/evidence/memory/lpddr-phy-procurement.yaml + DRAM controller
+  proving_command: make dramsim-sweep
+  required_evidence:
+  - MCIE AES-CTR + counter-tree cocotb against the stand-in
+  - ciphertext bench on real LPDDR5X shows no deterministic collision
+  status: blocked
+- current_gap: 'No riscv64 CoVE QEMU/Salus target exists in the repo; no guest boots
+    as a TVM and no measurement register is filled from a real launch.
+
+    '
+  id: measured_launch
+  missing_dependency: Salus + CoVE TSM bring-up (06 WI-6) + riscv64 CoVE sim target
+  proving_command: make tee-confidential-boot-smoke
+  required_evidence:
+  - confidential elizaOS-Linux boot as a TVM under Salus
+  - end-to-end TeeEvidence signed by the lane-02 DICE key
+  status: blocked
+- current_gap: 'The TeeEvidence folding model is real but unsigned; no RoT-derived
+    DICE key and no silicon key ceremony exist.
+
+    '
+  id: attestation_quote_signed
+  missing_dependency: lane-02 RoT silicon + key ceremony
+  proving_command: make tee-quote-check on silicon
+  required_evidence:
+  - byte-exact cove_quote.c round-trip vs the agent verifier on real hardware
+  status: blocked
+buildable_now:
+- artifact: docs/spec-db/tee-core-target.yaml
+  id: tee_core_target_spec
+  proving_command: python3 scripts/check_tee_core_target.py
+- artifact: docs/spec-db/tee-measured-launch-map.json
+  id: measured_launch_map
+  proving_command: python3 scripts/check_tee_measured_launch_map.py
+- artifact: scripts/tee/page_state_model.py
+  id: page_state_model
+  proving_command: python3 scripts/check_tee_page_state_model.py
+- artifact: scripts/tee/teeevidence_quote.py
+  id: teeevidence_folding_model
+  proving_command: python3 scripts/test_tee_quote_serializer.py
+- artifact: docs/spec-db/tee-evidence-policy-fixtures.json
+  id: evidence_policy_decision_fixtures
+  proving_command: python3 scripts/test_tee_evidence_policy.py
+- artifact: sw/confidential/policy/{local,desktop,cloud}.json
+  id: topology_policy_contract
+  proving_command: python3 scripts/check_tee_topology_policy.py
+claim_boundary: tee_core_buildable_floor_is_not_confidential_vm_silicon_evidence
+generated_utc: '2026-05-22T23:15:38Z'
+owner: tee_core_architecture_lane_01
 schema: eliza.tee_core_evidence_gate.v1
 status: tee_core_scope_release_blocked
-claim_boundary: tee_core_buildable_floor_is_not_confidential_vm_silicon_evidence
-owner: tee_core_architecture_lane_01
-summary: >
-  Lane-01 (TEE core architecture, tee-plan/01 §5-§6, tee-plan/07 §2) fail-closed
-  scope gate. It enumerates what is buildable now (the spec target, the
-  measured-launch source map, the page-state model, the TeeEvidence folding model,
-  and the per-topology policy contract) versus what stays BLOCKED on FPGA /
-  simulator / silicon / LPDDR PHY / lab. BLOCKED means awaiting a dependency, not
-  a bug. No row here may be promoted to a product claim until its named transcript
-  exists.
-
-buildable_now:
-  - id: tee_core_target_spec
-    artifact: docs/spec-db/tee-core-target.yaml
-    proving_command: python3 scripts/check_tee_core_target.py
-  - id: measured_launch_map
-    artifact: docs/spec-db/tee-measured-launch-map.json
-    proving_command: python3 scripts/check_tee_measured_launch_map.py
-  - id: page_state_model
-    artifact: scripts/tee/page_state_model.py
-    proving_command: python3 scripts/check_tee_page_state_model.py
-  - id: teeevidence_folding_model
-    artifact: scripts/tee/teeevidence_quote.py
-    proving_command: python3 scripts/test_tee_quote_serializer.py
-  - id: evidence_policy_decision_fixtures
-    artifact: docs/spec-db/tee-evidence-policy-fixtures.json
-    proving_command: python3 scripts/test_tee_evidence_policy.py
-  - id: topology_policy_contract
-    artifact: sw/confidential/policy/{local,desktop,cloud}.json
-    proving_command: python3 scripts/check_tee_topology_policy.py
-
-blocked_claims:
-  - id: confidential_vm_isolation
-    status: blocked
-    current_gap: >
-      No PMP/ePMP/Smmtt/H-extension is wired in rtl/cpu today; the MTT per-access
-      walk that enforces per-page confidentiality does not exist.
-    missing_dependency: rtl/security/e1_mtt_checker.sv (C3) + mttp CSR + MTT walker
-    required_evidence:
-      - cocotb-mtt-checker green under Verilator
-      - SVA proving no illegal page-state edge completes
-    proving_command: make cocotb-mtt-checker
-  - id: tsm_wall_integrity
-    status: blocked
-    current_gap: >
-      No Smepmp rule-locked wall isolates the TSM from untrusted OpenSBI inside
-      M-mode.
-    missing_dependency: rtl/security/e1_tsm_epmp_wall.sv (C4)
-    required_evidence:
-      - cocotb-tsm-wall green
-    proving_command: make cocotb-tsm-wall
-  - id: memory_encryption
-    status: blocked
-    current_gap: >
-      DRAM is a 4 KiB AXI-Lite SRAM stand-in; no MCIE (AES-CTR + counter integrity
-      tree) and no real LPDDR5X controller exist.
-    missing_dependency: docs/evidence/memory/lpddr-phy-procurement.yaml + DRAM controller
-    required_evidence:
-      - MCIE AES-CTR + counter-tree cocotb against the stand-in
-      - ciphertext bench on real LPDDR5X shows no deterministic collision
-    proving_command: make dramsim-sweep
-  - id: measured_launch
-    status: blocked
-    current_gap: >
-      No riscv64 CoVE QEMU/Salus target exists in the repo; no guest boots as a
-      TVM and no measurement register is filled from a real launch.
-    missing_dependency: Salus + CoVE TSM bring-up (06 WI-6) + riscv64 CoVE sim target
-    required_evidence:
-      - confidential elizaOS-Linux boot as a TVM under Salus
-      - end-to-end TeeEvidence signed by the lane-02 DICE key
-    proving_command: make tee-confidential-boot-smoke
-  - id: attestation_quote_signed
-    status: blocked
-    current_gap: >
-      The TeeEvidence folding model is real but unsigned; no RoT-derived DICE key
-      and no silicon key ceremony exist.
-    missing_dependency: lane-02 RoT silicon + key ceremony
-    required_evidence:
-      - byte-exact cove_quote.c round-trip vs the agent verifier on real hardware
-    proving_command: make tee-quote-check on silicon
+summary: "Lane-01 (TEE core architecture, tee-plan/01 \xA75-\xA76, tee-plan/07 \xA7\
+  2) fail-closed scope gate. It enumerates what is buildable now (the spec target,\
+  \ the measured-launch source map, the page-state model, the TeeEvidence folding\
+  \ model, and the per-topology policy contract) versus what stays BLOCKED on FPGA\
+  \ / simulator / silicon / LPDDR PHY / lab. BLOCKED means awaiting a dependency,\
+  \ not a bug. No row here may be promoted to a product claim until its named transcript\
+  \ exists.\n"

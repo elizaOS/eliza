@@ -16,3 +16,13 @@ set_input_delay  -clock clk -max 2.0 [all_inputs]
 set_input_delay  -clock clk -min 1.0 [all_inputs]
 set_output_delay -clock clk -max 2.0 [all_outputs]
 set_output_delay -clock clk -min 1.0 [all_outputs]
+
+# Give the boundary a realistic driver, input transition, and output load so the
+# wide (~1000-pin) primary IO does not present unbounded slew to the first/last
+# logic level (which otherwise shows up as thousands of max-slew violations the
+# resizer cannot anchor). OpenSTA-safe; the clock transition below is re-pinned
+# after so the clock waveform is not perturbed by the data driving cell.
+set_driving_cell -lib_cell sky130_fd_sc_hd__buf_4 -pin X [all_inputs]
+set_input_transition 0.15 [all_inputs]
+set_load 0.05 [all_outputs]
+set_clock_transition 0.15 [get_clocks clk]

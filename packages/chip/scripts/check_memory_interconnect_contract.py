@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -15,6 +16,7 @@ MEMORY_SUBSYSTEM = ROOT / "docs/arch/memory-subsystem.md"
 INTERCONNECT = ROOT / "docs/arch/interconnect.md"
 UMA = ROOT / "docs/project/uma-coherency-validation-strategy.yaml"
 GATE = ROOT / "docs/evidence/memory/uma-dram-evidence-gate.yaml"
+REPORT = ROOT / "build/reports/memory_interconnect_contract.json"
 
 INTERCONNECT_RTL = ROOT / "rtl/interconnect/e1_axi_lite_interconnect.sv"
 CONTRACT_RTL = ROOT / "rtl/interconnect/e1_linux_soc_contract.sv"
@@ -38,6 +40,18 @@ EXPECTED_E1_CHIP_DRAM_BASE = 0x80000000
 EXPECTED_E1_CHIP_DRAM_BYTES = 0x1000
 EXPECTED_LINUX_DRAM_BYTES = 0x10000000
 EXPECTED_AXI_LITE_WORD_BYTES = 4
+
+EVIDENCE_PATHS = [
+    "sw/platform/e1_platform_contract.json",
+    "docs/arch/memory-map.md",
+    "docs/arch/memory-subsystem.md",
+    "docs/arch/interconnect.md",
+    "docs/project/uma-coherency-validation-strategy.yaml",
+    "docs/evidence/memory/uma-dram-evidence-gate.yaml",
+    "rtl/interconnect/e1_axi_lite_interconnect.sv",
+    "rtl/interconnect/e1_linux_soc_contract.sv",
+    "rtl/memory/e1_axi_lite_dram.sv",
+]
 
 
 def read(path: Path) -> str:
@@ -405,6 +419,50 @@ def check_no_claim_leak(errors: list[str]) -> None:
         fail_unless(claim not in combined, f"forbidden unsupported claim present: {claim}", errors)
 
 
+def write_report(status: str, errors: list[str]) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(
+        json.dumps(
+            {
+                "schema": "eliza.memory_interconnect_contract.local_report.v1",
+                "status": status,
+                "as_of": datetime.now(UTC).isoformat(),
+                "subsystem": "memory_interconnect",
+                "phone_claim_allowed": False,
+                "release_claim_allowed": False,
+                "production_fabric_claim_allowed": False,
+                "claim_boundary": (
+                    "Local contract evidence only: checks the current AXI-Lite scaffold "
+                    "decode, CPU-wins arbitration wrapper, 4 KiB SRAM-backed e1-chip "
+                    "debug DRAM model, separate 256 MiB Linux scaffold aperture, and "
+                    "fail-closed UMA/IOMMU/QoS claim boundaries. This is not production "
+                    "SoC routing, ordering, coherency, cache hierarchy, IOMMU/SMMU, QoS, "
+                    "LPDDR/TileLink/AXI fabric, Android, or phone-class memory evidence."
+                ),
+                "evidence_paths": EVIDENCE_PATHS,
+                "checked_contracts": [
+                    "e1_chip_dram_contract",
+                    "memory_docs_claim_boundary",
+                    "memory_map_vs_platform_vs_rtl_decode",
+                    "axi_lite_scaffold_decode_overlap",
+                    "cpu_wins_dma_arbitration_wrapper",
+                    "uma_strategy_fail_closed",
+                    "unsupported_claim_leak_scan",
+                ],
+                "implemented_capacity": {
+                    "e1_chip_debug_dram_base": "0x80000000",
+                    "e1_chip_debug_dram_bytes": EXPECTED_E1_CHIP_DRAM_BYTES,
+                    "linux_scaffold_aperture_bytes": EXPECTED_LINUX_DRAM_BYTES,
+                },
+                "errors": errors,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     errors: list[str] = []
     contract = json.loads(PLATFORM.read_text())
@@ -416,10 +474,12 @@ def main() -> int:
     check_no_claim_leak(errors)
 
     if errors:
+        write_report("FAIL", errors)
         print("Memory/interconnect contract check failed:")
         for error in errors:
             print(f"  - {error}")
         return 1
+    write_report("PASS", [])
     print("Memory/interconnect contract check passed.")
     return 0
 

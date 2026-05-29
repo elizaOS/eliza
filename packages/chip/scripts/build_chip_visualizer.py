@@ -43,6 +43,37 @@ STREAMOUT_GDS_FILES = [
     SKY130_SRAM_VERSION / "libs.ref" / "sky130_sram_macros" / "gds" / "sky130_sram_2kbyte_1rw1r_32x512_8.gds",
 ]
 
+ANALYSIS_REPORTS = [
+    ("pd_signoff", ROOT / "build" / "reports" / "pd_signoff.json"),
+    ("pd_release_evidence", ROOT / "build" / "reports" / "pd_release_evidence.json"),
+    ("openlane_pd_blocker_summary", ROOT / "build" / "reports" / "openlane_pd_blocker_summary.json"),
+    ("pdn_workload_signoff", ROOT / "build" / "reports" / "pdn_workload_signoff.json"),
+]
+
+METRIC_KEYS = {
+    "design__instance__utilization": "Instance utilization",
+    "design__instance__area": "Instance area",
+    "design__instance__count": "Instances",
+    "route__wirelength": "Routed wirelength",
+    "route__vias": "Vias",
+    "route__drc_errors": "Route DRC errors",
+    "route__antenna_violation__count": "Antenna violations",
+    "antenna__violating__nets": "Antenna violating nets",
+    "antenna__violating__pins": "Antenna violating pins",
+    "klayout__drc_error__count": "KLayout DRC errors",
+    "magic__drc_error__count": "Magic DRC errors",
+    "design__lvs_error__count": "LVS errors",
+    "design__max_slew_violation__count": "Max slew violations",
+    "design__max_cap_violation__count": "Max capacitance violations",
+    "design__max_fanout_violation__count": "Max fanout violations",
+    "timing__setup__wns": "Setup WNS",
+    "timing__setup__tns": "Setup TNS",
+    "timing__hold__wns": "Hold WNS",
+    "timing__hold__tns": "Hold TNS",
+    "power__total": "Total power",
+    "design_powergrid__drop__worst": "Worst IR drop",
+}
+
 
 LAYER_COLORS = {
     "li1": "#a3d977",
@@ -360,6 +391,228 @@ def make_tiles(items: list[dict[str, Any]], diearea: list[int], tile_count: int 
     return list(buckets.values())
 
 
+def item_bounds(item: dict[str, Any]) -> tuple[float, float, float, float]:
+    if "master" in item:
+        return (item["x"], item["y"], item["x"] + item["w"], item["y"] + item["h"])
+    half_width = max(1, item.get("w", 1)) / 2
+    x0 = min(item.get("x1", 0), item.get("x2", item.get("x1", 0))) - half_width
+    x1 = max(item.get("x1", 0), item.get("x2", item.get("x1", 0))) + half_width
+    y0 = min(item.get("y1", 0), item.get("y2", item.get("y1", 0))) - half_width
+    y1 = max(item.get("y1", 0), item.get("y2", item.get("y1", 0))) + half_width
+    return (x0, y0, x1, y1)
+
+
+def tile_range(
+    bounds: tuple[float, float, float, float], diearea: list[int], tile_count: int
+) -> tuple[range, range]:
+    x0, y0, x1, y1 = diearea
+    die_width = max(1, x1 - x0)
+    die_height = max(1, y1 - y0)
+    bx0, by0, bx1, by1 = bounds
+    tx0 = min(tile_count - 1, max(0, math.floor((bx0 - x0) / die_width * tile_count)))
+    tx1 = min(tile_count - 1, max(0, math.floor((bx1 - x0) / die_width * tile_count)))
+    ty0 = min(tile_count - 1, max(0, math.floor((by0 - y0) / die_height * tile_count)))
+    ty1 = min(tile_count - 1, max(0, math.floor((by1 - y0) / die_height * tile_count)))
+    return range(tx0, tx1 + 1), range(ty0, ty1 + 1)
+
+
+def write_overlay_tiles(
+    components: list[dict[str, Any]],
+    routes: list[dict[str, Any]],
+    diearea: list[int],
+    out_dir: Path,
+    tile_count: int,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    tiles_dir = out_dir / "overlay-tiles"
+    if tiles_dir.exists():
+        shutil.rmtree(tiles_dir)
+    tiles_dir.mkdir(parents=True)
+
+    buckets: dict[tuple[int, int], dict[str, Any]] = {}
+    heat: dict[tuple[int, int], dict[str, int]] = {}
+
+    def bucket_for(tx: int, ty: int) -> dict[str, Any]:
+        heat.setdefault((tx, ty), {"x": tx, "y": ty, "components": 0, "routes": 0})
+        return buckets.setdefault((tx, ty), {"components": [], "routes": []})
+
+    for component in components:
+        xs, ys = tile_range(item_bounds(component), diearea, tile_count)
+        for tx in xs:
+            for ty in ys:
+                bucket_for(tx, ty)["components"].append(component)
+                heat[(tx, ty)]["components"] += 1
+
+    for route in routes:
+        xs, ys = tile_range(item_bounds(route), diearea, tile_count)
+        for tx in xs:
+            for ty in ys:
+                bucket_for(tx, ty)["routes"].append(route)
+                heat[(tx, ty)]["routes"] += 1
+
+    for (tx, ty), bucket in buckets.items():
+        (tiles_dir / f"{tx}_{ty}.json").write_text(
+            json.dumps(bucket, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+
+    return (
+        {
+            "path": "overlay-tiles",
+            "tile_count": tile_count,
+            "files": len(buckets),
+            "component_count": len(components),
+            "route_segment_count": len(routes),
+            "assignment": "bounds_intersection",
+        },
+        sorted(heat.values(), key=lambda item: (item["y"], item["x"])),
+    )
+
+
+def write_search_index(
+    components: list[dict[str, Any]],
+    pins: list[dict[str, Any]],
+    routes: list[dict[str, Any]],
+    out_dir: Path,
+) -> dict[str, Any]:
+    nets: dict[str, dict[str, Any]] = {}
+    for route in routes:
+        if route["net"] in nets:
+            continue
+        nets[route["net"]] = {
+            "name": route["net"],
+            "layer": route["layer"],
+            "x1": route["x1"],
+            "y1": route["y1"],
+            "x2": route["x2"],
+            "y2": route["y2"],
+        }
+    path = out_dir / "search-index.json"
+    path.write_text(
+        json.dumps(
+            {
+                "components": [
+                    {
+                        "name": component["name"],
+                        "master": component["master"],
+                        "x": component["x"],
+                        "y": component["y"],
+                        "w": component["w"],
+                        "h": component["h"],
+                        "class": component["class"],
+                    }
+                    for component in components
+                ],
+                "pins": pins,
+                "nets": sorted(nets.values(), key=lambda item: item["name"]),
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return {"path": path.name, "component_count": len(components), "pin_count": len(pins), "net_count": len(nets)}
+
+
+def run_dir_for(path: Path) -> Path | None:
+    return next((parent for parent in path.parents if parent.name.startswith("RUN_")), None)
+
+
+def load_json_object(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def choose_metrics(def_path: Path, design: str) -> Path | None:
+    run = run_dir_for(def_path)
+    if run is not None:
+        metrics = run / "final" / "metrics.json"
+        if metrics.is_file():
+            return metrics
+    candidates = []
+    for path in (ROOT / "pd" / "openlane" / "runs").glob("RUN_*/final/metrics.json"):
+        payload = load_json_object(path)
+        if payload is None:
+            continue
+        design_count = payload.get("design__instance__count")
+        if design == "e1_chip_top" and isinstance(design_count, (int, float)):
+            candidates.append(path)
+        elif design != "e1_chip_top":
+            candidates.append(path)
+    return max(candidates, key=lambda path: path.stat().st_mtime) if candidates else None
+
+
+def summarize_metrics(metrics_path: Path | None) -> dict[str, Any]:
+    if metrics_path is None:
+        return {"available": False, "reason": "no final OpenLane metrics.json found"}
+    metrics = load_json_object(metrics_path)
+    if metrics is None:
+        return {"available": False, "source": rel(metrics_path), "reason": "metrics.json is not a JSON object"}
+    selected = [
+        {"key": key, "label": label, "value": metrics[key]}
+        for key, label in METRIC_KEYS.items()
+        if isinstance(metrics.get(key), (int, float))
+    ]
+    violations = [
+        item
+        for item in selected
+        if (
+            ("violation" in item["key"] or "drc_error" in item["key"] or "lvs_error" in item["key"])
+            and item["value"] != 0
+        )
+        or (item["key"] in {"timing__setup__wns", "timing__hold__wns"} and item["value"] < 0)
+        or (item["key"] in {"timing__setup__tns", "timing__hold__tns"} and item["value"] < 0)
+    ]
+    return {
+        "available": True,
+        "source": rel(metrics_path),
+        "summary": selected,
+        "violations": violations,
+    }
+
+
+def summarize_report(name: str, path: Path) -> dict[str, Any] | None:
+    data = load_json_object(path)
+    if data is None:
+        return None
+    findings = data.get("findings")
+    summary = data.get("summary")
+    return {
+        "name": name,
+        "source": rel(path),
+        "status": data.get("status"),
+        "claim_boundary": data.get("claim_boundary"),
+        "release_credit": data.get("release_credit", summary.get("release_credit") if isinstance(summary, dict) else None),
+        "finding_count": len(findings) if isinstance(findings, list) else 0,
+        "findings": [
+            {
+                "code": finding.get("code"),
+                "severity": finding.get("severity"),
+                "message": finding.get("message"),
+                "next_step": finding.get("next_step") or finding.get("next_command"),
+            }
+            for finding in (findings[:5] if isinstance(findings, list) else [])
+            if isinstance(finding, dict)
+        ],
+    }
+
+
+def collect_analysis(def_path: Path, design: str) -> dict[str, Any]:
+    reports = [
+        report
+        for name, path in ANALYSIS_REPORTS
+        if (report := summarize_report(name, path)) is not None
+    ]
+    return {
+        "schema": "eliza.chip_visualizer.analysis.v1",
+        "claim_boundary": "viewer_analysis_context_only_not_release_or_tapeout_evidence",
+        "openlane_metrics": summarize_metrics(choose_metrics(def_path, design)),
+        "reports": reports,
+    }
+
+
 def collect_gds_near(def_path: Path) -> list[str]:
     run = next((parent for parent in def_path.parents if parent.name.startswith("RUN_")), None)
     if run is None:
@@ -522,7 +775,10 @@ def build_payload(
     gds_size: int,
     tile_gds: bool,
     tile_size: int,
+    tile_overlays: bool,
+    overlay_tile_count: int,
 ) -> dict[str, Any]:
+    out_dir.mkdir(parents=True, exist_ok=True)
     lines = def_path.read_text(errors="replace").splitlines()
     sections = split_sections(lines)
     header = parse_header(lines)
@@ -537,20 +793,35 @@ def build_payload(
     class_counts: dict[str, int] = {}
     for component in components:
         class_counts[component["class"]] = class_counts.get(component["class"], 0) + 1
+    overlay_tiles = None
+    search_index = None
+    density_tiles = make_tiles([*components, *routes], header["diearea"])
+    if tile_overlays:
+        overlay_tiles, density_tiles = write_overlay_tiles(
+            components,
+            routes,
+            header["diearea"],
+            out_dir,
+            overlay_tile_count,
+        )
+        search_index = write_search_index(components, pins, routes, out_dir)
     return {
         "schema": "eliza.chip_visualizer.v1",
         "generated_at": datetime.now(UTC).isoformat(),
         "source": {"def": rel(def_path), "role": role, "nearby_gds": collect_gds_near(def_path)},
+        "analysis": collect_analysis(def_path, header["design"] or def_path.stem),
         "silicon_image": make_silicon_image_metadata(def_path, gds_path, out_dir, render_gds, gds_size, tile_gds, tile_size),
         "design": header["design"] or def_path.stem,
         "units_per_micron": header["units_per_micron"],
         "diearea": header["diearea"],
         "layers": [{"name": name, "color": LAYER_COLORS.get(name, "#d9d9d9")} for name in sorted(layer_counts)],
         "rows": rows,
-        "components": components,
+        "components": [] if tile_overlays else components,
         "pins": pins,
-        "routes": routes,
-        "tiles": make_tiles([*components, *routes], header["diearea"]),
+        "routes": [] if tile_overlays else routes,
+        "tiles": density_tiles,
+        "overlay_tiles": overlay_tiles,
+        "search_index": search_index,
         "summary": {
             "component_count": len(components),
             "pin_count": len(pins),
@@ -577,6 +848,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gds-size", type=int, default=4096, help="GDS render width and height in pixels")
     parser.add_argument("--tile-gds", action="store_true", help="split the rendered GDS image into a zoomable tile pyramid")
     parser.add_argument("--tile-size", type=int, default=512, help="GDS tile width and height in pixels")
+    parser.add_argument("--tile-overlays", action="store_true", help="split DEF instances and routes into lazy viewport tiles")
+    parser.add_argument("--overlay-tile-count", type=int, default=64, help="DEF overlay tile grid width and height")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output directory")
     return parser.parse_args()
 
@@ -603,6 +876,8 @@ def main() -> int:
         args.gds_size,
         args.tile_gds,
         args.tile_size,
+        args.tile_overlays,
+        args.overlay_tile_count,
     )
     write_viewer(out_dir, payload)
     print(f"wrote {args.out / 'index.html'}")
@@ -614,6 +889,12 @@ def main() -> int:
             print(f"silicon tiles: {len(payload['silicon_image']['tiles']['levels'])} levels")
     elif payload["silicon_image"].get("gds"):
         print(f"source GDS: {payload['silicon_image']['gds']} (not rendered)")
+    if payload.get("overlay_tiles"):
+        print(
+            "overlay tiles: "
+            f"{payload['overlay_tiles']['files']} files on a "
+            f"{payload['overlay_tiles']['tile_count']}x{payload['overlay_tiles']['tile_count']} grid"
+        )
     print(
         "features: "
         f"{payload['summary']['component_count']} instances, "

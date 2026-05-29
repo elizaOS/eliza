@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 import re
+import shutil
 import sys
 from contextlib import suppress
 from dataclasses import dataclass
@@ -15800,6 +15801,8 @@ def write_board_step_readiness_artifacts(
     )
     concept_pcb_step_path = OUT_DIR / "main_pcb.step"
     routed_intake_path = REVIEW_DIR / "routed-board-step-intake-template.csv"
+    routed_intake_detail_path = REVIEW_DIR / "routed-board-step-intake-detail.json"
+    routed_kicad_preflight_path = REVIEW_DIR / "routed-board-kicad-cli-preflight.json"
     routed_intake_fieldnames = [
         "release_id",
         "kicad_pcb_path",
@@ -15808,6 +15811,8 @@ def write_board_step_readiness_artifacts(
         "source_board_sha256",
         "source_step_artifact",
         "source_step_sha256",
+        "kicad_cli_preflight_artifact",
+        "kicad_cli_available",
         "drc_report_artifact",
         "drc_status",
         "erc_report_artifact",
@@ -15846,6 +15851,10 @@ def write_board_step_readiness_artifacts(
     routed_output_manifest_path = (
         ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
     )
+    component_model_manifest_path = (
+        ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+    )
+    cad_connection_coverage_path = REVIEW_DIR / "cad-connection-coverage.json"
     component_3d_model_manifest_path = (
         ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
     )
@@ -15896,6 +15905,34 @@ def write_board_step_readiness_artifacts(
     component_models_for_intake = component_manifest_for_intake.get("models", [])
     if not isinstance(component_models_for_intake, list):
         component_models_for_intake = []
+    kicad_cli_path = shutil.which("kicad-cli")
+    kicad_cli_preflight = {
+        "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
+        "claim_boundary": (
+            "Local tool preflight for routed-board DRC/ERC generation. This is "
+            "environment evidence only and does not grant release credit."
+        ),
+        "tool": "kicad-cli",
+        "available": bool(kicad_cli_path),
+        "resolved_path": kicad_cli_path or "",
+        "required_for": [
+            "board/kicad/e1-phone/production/reports/drc.json",
+            "board/kicad/e1-phone/production/reports/erc.json",
+        ],
+        "attempted_commands": [
+            "kicad-cli pcb drc board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output board/kicad/e1-phone/production/reports/drc.json",
+            "kicad-cli sch erc board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output board/kicad/e1-phone/production/reports/erc.json",
+        ],
+        "drc_status": "blocked_tool_unavailable" if not kicad_cli_path else "not_run",
+        "erc_status": "blocked_tool_unavailable" if not kicad_cli_path else "not_run",
+        "release_credit": False,
+        "next_action": (
+            "Install KiCad CLI in the release environment and run DRC/ERC against "
+            "the routed KiCad board and schematic; archive raw JSON plus waivers "
+            "before promoting the routed-board intake."
+        ),
+    }
+    routed_kicad_preflight_path.write_text(json.dumps(kicad_cli_preflight, indent=2) + "\n")
     routed_intake_template_row = {
         "release_id": "LOCAL-ROUTED-CANDIDATE-2026-05-22",
         "kicad_pcb_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
@@ -15908,10 +15945,12 @@ def write_board_step_readiness_artifacts(
         "source_step_sha256": str(
             routed_output_manifest_for_intake.get("source_step_sha256") or ""
         ),
+        "kicad_cli_preflight_artifact": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
+        "kicad_cli_available": str(kicad_cli_preflight["available"]).lower(),
         "drc_report_artifact": "board/kicad/e1-phone/production/reports/drc.json",
-        "drc_status": "not_run",
+        "drc_status": str(kicad_cli_preflight["drc_status"]),
         "erc_report_artifact": "board/kicad/e1-phone/production/reports/erc.json",
-        "erc_status": "not_run",
+        "erc_status": str(kicad_cli_preflight["erc_status"]),
         "gerber_job_artifact": "board/kicad/e1-phone/production/gerbers/release-manifest.yaml",
         "pick_place_artifact": "board/kicad/e1-phone/production/pos/release-manifest.yaml",
         "bom_artifact": "board/kicad/e1-phone/production/bom/release-manifest.yaml",
@@ -16193,6 +16232,16 @@ def write_board_step_readiness_artifacts(
         if routed_output_manifest_path.is_file()
         else {}
     )
+    component_model_manifest = (
+        yaml.safe_load(component_model_manifest_path.read_text())
+        if component_model_manifest_path.is_file()
+        else {}
+    )
+    cad_connection_coverage = (
+        json.loads(cad_connection_coverage_path.read_text())
+        if cad_connection_coverage_path.is_file()
+        else {}
+    )
     development_board_text = (
         development_board_path.read_text() if development_board_path.is_file() else ""
     )
@@ -16284,6 +16333,72 @@ def write_board_step_readiness_artifacts(
         if production_routed_candidate_path.is_file()
         else 0
     )
+    routed_step_visual_detail = routed_output_manifest.get("routed_step_visual_detail", {})
+    if not isinstance(routed_step_visual_detail, dict):
+        routed_step_visual_detail = {}
+    component_model_records = component_model_manifest.get("models", [])
+    if not isinstance(component_model_records, list):
+        component_model_records = []
+    cad_connection_records = cad_connection_coverage.get("connections", [])
+    if not isinstance(cad_connection_records, list):
+        cad_connection_records = []
+
+    def compact_step_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "reference": record.get("reference"),
+            "footprint": record.get("footprint"),
+            "visual_package_class": record.get("visual_package_class"),
+            "pinout_file": record.get("pinout_file"),
+            "pinout_bound": bool(record.get("pinout_file")),
+            "support_pattern_has_explicit_provenance": (
+                record.get("support_pattern_has_explicit_provenance") is True
+            ),
+            "terminal_contract_count": int(record.get("terminal_contract_count") or 0),
+            "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
+            "all_pad_visuals_have_contract": (
+                record.get("all_pad_visuals_have_contract") is True
+            ),
+            "local_step_status": record.get("local_discrete_step_status"),
+            "local_step_file": record.get("local_discrete_step_file"),
+            "local_step_sha256": record.get("local_discrete_step_sha256"),
+            "local_step_bytes": int(record.get("local_discrete_step_bytes") or 0),
+            "local_step_imported_as_solid": (
+                record.get("local_discrete_step_imported_as_solid") is True
+            ),
+            "local_step_bbox_matches_envelope": (
+                record.get("local_discrete_step_bbox_matches_envelope") is True
+            ),
+            "release_credit": record.get("release_credit") is True,
+        }
+
+    def compact_step_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": record.get("id"),
+            "connection_type": record.get("connection_type"),
+            "physical_medium": record.get("physical_medium"),
+            "electrical_class": record.get("electrical_class"),
+            "cad_part": record.get("cad_part"),
+            "from": record.get("from"),
+            "to": record.get("to"),
+            "represented_nets": record.get("represented_nets", []),
+            "represented_route_ids": record.get("represented_route_ids", []),
+            "represented_net_count": int(record.get("represented_net_count") or 0),
+            "represented_route_count": int(record.get("represented_route_count") or 0),
+            "represented_route_record_count": int(
+                record.get("represented_route_record_count") or 0
+            ),
+            "cad_step_bytes": int(record.get("cad_step_bytes") or 0),
+            "terminal_marker_count": int(record.get("terminal_marker_count") or 0),
+            "solid_step_part_count": int(record.get("solid_step_part_count") or 0),
+            "cad_part_present": record.get("cad_part_present") is True,
+            "terminal_markers_present": record.get("terminal_markers_present") is True,
+            "solid_step_parts_present": record.get("solid_step_parts_present") is True,
+            "all_represented_routes_have_layer_source_and_class": (
+                record.get("all_represented_routes_have_layer_source_and_class") is True
+            ),
+            "release_credit": record.get("release_credit") is True,
+        }
+
     detailed_routed_step_candidate = {
         "path": str(production_routed_candidate_path.relative_to(ROOT)),
         "present": production_routed_candidate_path.is_file(),
@@ -16339,6 +16454,57 @@ def write_board_step_readiness_artifacts(
             and routed_source_sha256 == production_routed_candidate_sha256
             and candidate_size_bytes == routed_source_size_bytes
         ),
+        "route_visual_record_count": int(
+            routed_step_visual_detail.get("route_visual_record_count") or 0
+        ),
+        "route_visual_records": routed_step_visual_detail.get("route_visual_records", []),
+        "via_visual_record_count": int(
+            routed_step_visual_detail.get("via_visual_record_count") or 0
+        ),
+        "via_visual_records": routed_step_visual_detail.get("via_visual_records", []),
+        "filled_copper_zone_record_count": int(
+            routed_step_visual_detail.get("filled_copper_zone_record_count") or 0
+        ),
+        "filled_copper_zone_filled_polygon_count": int(
+            routed_step_visual_detail.get("filled_copper_zone_filled_polygon_count") or 0
+        ),
+        "filled_copper_zone_records": routed_step_visual_detail.get(
+            "filled_copper_zone_records", []
+        ),
+        "component_model_record_count": len(component_model_records),
+        "component_model_record_manifest": [
+            compact_step_component_model_record(record)
+            for record in component_model_records
+            if isinstance(record, dict)
+        ],
+        "cad_connection_record_count": len(cad_connection_records),
+        "cad_connection_record_manifest": [
+            compact_step_connection_record(record)
+            for record in sorted(
+                (record for record in cad_connection_records if isinstance(record, dict)),
+                key=lambda record: str(record.get("id") or ""),
+            )
+        ],
+        "all_route_records_have_net_layer_class_and_source": all(
+            record.get("net")
+            and record.get("layer")
+            and record.get("route_classes")
+            and record.get("source_domains")
+            for record in routed_step_visual_detail.get("route_visual_records", [])
+            if isinstance(record, dict)
+        ),
+        "all_component_records_have_local_step": all(
+            record.get("local_discrete_step_file")
+            and int(record.get("local_discrete_step_bytes") or 0) > 0
+            for record in component_model_records
+            if isinstance(record, dict)
+        ),
+        "all_connection_records_have_cad_step": all(
+            record.get("cad_part")
+            and int(record.get("cad_step_bytes") or 0) > 0
+            for record in cad_connection_records
+            if isinstance(record, dict)
+        ),
         "routed_development_intake": str(routed_development_intake_path.relative_to(ROOT)),
         "routed_output_manifest": str(routed_output_manifest_path.relative_to(ROOT)),
     }
@@ -16353,8 +16519,73 @@ def write_board_step_readiness_artifacts(
         == int(development_step_intake.get("footprint_envelope_count") or 0)
         and detailed_routed_step_candidate["pad_contact_visual_count"] > 0
         and detailed_routed_step_candidate["route_segment_visual_count"] > 0
+        and detailed_routed_step_candidate["route_visual_record_count"] == 306
+        and detailed_routed_step_candidate["via_visual_record_count"] == 24
+        and detailed_routed_step_candidate["filled_copper_zone_record_count"]
+        == int(development_step_intake.get("filled_copper_zone_visual_count") or 0)
+        and detailed_routed_step_candidate["filled_copper_zone_filled_polygon_count"]
+        == int(development_step_intake.get("filled_copper_zone_polygon_count") or 0)
+        and detailed_routed_step_candidate["component_model_record_count"] == 89
+        and detailed_routed_step_candidate["cad_connection_record_count"] == 32
+        and detailed_routed_step_candidate["all_route_records_have_net_layer_class_and_source"]
+        and detailed_routed_step_candidate["all_component_records_have_local_step"]
+        and detailed_routed_step_candidate["all_connection_records_have_cad_step"]
         and detailed_routed_step_candidate["release_credit"] is False
     )
+    routed_intake_detail = {
+        "schema": "eliza.e1_phone_routed_board_step_intake_detail.v1",
+        "claim_boundary": (
+            "Detailed local routed-board STEP intake record for CAD/KiCad review only; "
+            "does not constitute physical routed-board release evidence."
+        ),
+        "csv_intake": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
+        "release_id": routed_intake_template_row["release_id"],
+        "evidence_class": routed_intake_template_row["evidence_class"],
+        "routed_step_artifact": detailed_routed_step_candidate["path"],
+        "routed_step_sha256": detailed_routed_step_candidate["sha256"],
+        "kicad_cli_preflight": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
+        "kicad_cli_available": bool(kicad_cli_preflight["available"]),
+        "drc_status": str(kicad_cli_preflight["drc_status"]),
+        "erc_status": str(kicad_cli_preflight["erc_status"]),
+        "route_visual_record_count": detailed_routed_step_candidate[
+            "route_visual_record_count"
+        ],
+        "route_visual_records": detailed_routed_step_candidate["route_visual_records"],
+        "via_visual_record_count": detailed_routed_step_candidate["via_visual_record_count"],
+        "via_visual_records": detailed_routed_step_candidate["via_visual_records"],
+        "filled_copper_zone_record_count": detailed_routed_step_candidate[
+            "filled_copper_zone_record_count"
+        ],
+        "filled_copper_zone_filled_polygon_count": detailed_routed_step_candidate[
+            "filled_copper_zone_filled_polygon_count"
+        ],
+        "filled_copper_zone_records": detailed_routed_step_candidate[
+            "filled_copper_zone_records"
+        ],
+        "component_model_record_count": detailed_routed_step_candidate[
+            "component_model_record_count"
+        ],
+        "component_model_record_manifest": detailed_routed_step_candidate[
+            "component_model_record_manifest"
+        ],
+        "cad_connection_record_count": detailed_routed_step_candidate[
+            "cad_connection_record_count"
+        ],
+        "cad_connection_record_manifest": detailed_routed_step_candidate[
+            "cad_connection_record_manifest"
+        ],
+        "all_route_records_have_net_layer_class_and_source": detailed_routed_step_candidate[
+            "all_route_records_have_net_layer_class_and_source"
+        ],
+        "all_component_records_have_local_step": detailed_routed_step_candidate[
+            "all_component_records_have_local_step"
+        ],
+        "all_connection_records_have_cad_step": detailed_routed_step_candidate[
+            "all_connection_records_have_cad_step"
+        ],
+        "release_credit": False,
+    }
+    routed_intake_detail_path.write_text(json.dumps(routed_intake_detail, indent=2) + "\n")
     development_step_candidates = [
         {
             "path": development_step_output,
@@ -16538,6 +16769,8 @@ def write_board_step_readiness_artifacts(
         "development_step_candidates": development_step_candidates,
         "detailed_routed_step_candidate": detailed_routed_step_candidate,
         "routed_board_step_intake_template": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
+        "routed_board_step_intake_detail": "mechanical/e1-phone/review/routed-board-step-intake-detail.json",
+        "routed_board_kicad_cli_preflight": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
         "required_routed_board_evidence_class": "physical_routed_board_release",
         "routed_board_intake_template_evidence_class": routed_template_evidence_class,
         "routed_board_forbidden_evidence_classes": sorted(routed_forbidden_evidence_classes),
@@ -17010,10 +17243,12 @@ def write_full_cad_boolean_interference_artifacts(
             "source_clearance_ids": ["rear_camera_to_battery"],
             "required_parts": [
                 "rear_camera_module",
+                "orange_back_shell",
                 "rear_camera_cover_glass",
                 "rear_camera_light_baffle_top",
             ],
             "concept_pair_checks": [
+                ["rear_camera_module", "orange_back_shell"],
                 ["rear_camera_module", "battery_pouch"],
                 ["rear_camera_module", "rear_camera_cover_glass"],
             ],

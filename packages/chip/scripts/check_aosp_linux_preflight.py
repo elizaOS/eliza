@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import json
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = Path(
@@ -75,6 +78,20 @@ HANDOFF_COMMANDS = [
     "python3 scripts/check_android_sim_boot.py",
     "python3 scripts/check_software_bsp.py aosp --require-evidence",
 ]
+
+
+def utc_now() -> str:
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_value(value):
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    return value
 
 
 def display_path(path: Path) -> str:
@@ -326,6 +343,7 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
 
     report = {
         "schema": "eliza.aosp_linux_preflight.v1",
+        "generated_utc": utc_now(),
         "status": "blocked" if blockers else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
         "aosp_dir": str(aosp_dir) if aosp_dir else "",
@@ -366,7 +384,7 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
             "used as AOSP build, boot, CTS, VTS, or e1-chip hardware evidence."
         ),
     }
-    return (2 if blockers else 0), report
+    return (2 if blockers else 0), provenance_safe_value(report)
 
 
 def main() -> int:

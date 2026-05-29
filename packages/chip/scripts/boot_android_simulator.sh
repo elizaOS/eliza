@@ -418,6 +418,7 @@ capture_aosp_shell() {
 		echo "RESULT=$rc"
 		printf '%s' "$rc" > "$rcfile"
 	} 2>&1 | tee "$out"
+	python3 "$repo_root/scripts/provenance_sanitize.py" "$out" >/dev/null 2>&1 || true
 	if [ -f "$rcfile" ]; then
 		rc=$(cat "$rcfile")
 		rm -f "$rcfile"

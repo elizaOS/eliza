@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_DIR = ROOT / "docs/evidence/pd"
@@ -106,6 +109,16 @@ def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
+def provenance_safe(value: Any) -> Any:
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    if isinstance(value, list):
+        return [provenance_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): provenance_safe(item) for key, item in value.items()}
+    return value
+
+
 def load_yaml_mapping(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -115,16 +128,21 @@ def load_yaml_mapping(path: Path) -> dict[str, Any]:
 
 def write_report(status: str, findings: list[dict[str, Any]], summary: dict[str, Any]) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "eliza.pd_release_evidence_report.v1",
+        "status": status,
+        "generated_utc": dt.datetime.now(dt.UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "release_credit": False,
+        "claim_boundary": "pd_release_evidence_manifest_check_only_not_signoff_or_tapeout_evidence",
+        "summary": {"release_ready": False, "release_credit": False, **summary},
+        "findings": findings,
+    }
     REPORT.write_text(
         json.dumps(
-            {
-                "schema": "eliza.pd_release_evidence_report.v1",
-                "status": status,
-                "release_credit": False,
-                "claim_boundary": "pd_release_evidence_manifest_check_only_not_signoff_or_tapeout_evidence",
-                "summary": {"release_ready": False, "release_credit": False, **summary},
-                "findings": findings,
-            },
+            provenance_safe(payload),
             indent=2,
             sort_keys=True,
         )

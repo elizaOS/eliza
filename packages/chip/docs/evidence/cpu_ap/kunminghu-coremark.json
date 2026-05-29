@@ -1,48 +1,63 @@
 {
-  "schema": "eliza.cpu_benchmark_measured.v1",
   "benchmark": "coremark",
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
+  "claim_level": "L2_ARCH_SIM",
+  "config": "Kunminghu V3 (6-wide OoO; decode/rename/commit 8 modeled, ROB 352 modeled, 64kB L1I/L1D, 1MB L2 + L3, DecoupledBPUWithBTB = TAGE-SC-L + ITTAGE + MGSC + RAS)",
   "core": "xiangshan_kunminghu",
   "core_role": "mid_core_e1_premium",
-  "model": "XS-GEM5 (OpenXiangShan/GEM5, kmhv3.py)",
-  "model_provenance": ">95% RTL-correlated with XiangShan Kunminghu RTL (upstream)",
-  "config": "Kunminghu V3 (6-wide OoO; decode/rename/commit 8 modeled, ROB 352 modeled, 64kB L1I/L1D, 1MB L2 + L3, DecoupledBPUWithBTB = TAGE-SC-L + ITTAGE + MGSC + RAS)",
-  "isa": "rv64gcbv",
-  "mabi": "lp64d",
-  "status": "passed",
-  "claim_level": "L2_ARCH_SIM",
-  "provenance": "simulator",
-  "flow": "XS-GEM5 kmhv3.py --raw-cpt --generic-rv-cpt; per-instruction DiffTest vs NEMU reference model; canonical CoreMark seed CRCs verified",
-  "result_recorded_at": "2026-05-22T19:35:06Z",
-  "tools": {
-    "xs_gem5_commit": "7930d36334abc282161110c0391e465a6dc6e024",
-    "gem5_binary": "external/xiangshan/GEM5/build/RISCV/gem5.opt",
-    "difftest_ref_so": "/home/shaw/milady/eliza/packages/chip/external/xiangshan/riscv64-nemu-interpreter-so",
-    "coremark_toolchain": "riscv64-linux-gnu-gcc 13.3.0 (matches bundled coremark-2-iteration.bin GCC13.2.0)",
-    "modeled_cpu_clock": "3GHz (kmhv3.py default; CoreMark/MHz is frequency-independent)"
-  },
-  "workload": {
-    "source": "OpenXiangShan/nexus-am apps/coremark, ARCH=riscv64-xs (bare-metal AM, GCPT restorer prologue)",
-    "images": ["coremark-2-iteration-riscv64-xs.bin", "coremark-50-iteration-riscv64-xs.bin"]
-  },
-  "measurement_method": "two-point startup elimination: cycles_per_iteration = (cycles(N1)-cycles(N0))/(N1-N0); coremark_per_mhz = 1/(cycles_per_iteration/1e6). The fixed bare-metal startup (GCPT restore + page tables + CoreMark init) cancels in the slope, isolating the timed iteration region (same scope as CVA6's timed mcycle anchor).",
-  "runs": {
-    "n0": {"iterations": 2, "total_cycles": 837481, "committed_instructions": 663442},
-    "n1": {"iterations": 50, "total_cycles": 5612013, "committed_instructions": 15945688, "ipc": 2.841349, "cpi": 0.351945}
-  },
-  "metrics": {
-    "cycles_per_iteration": 99469.4,
-    "coremark_per_mhz": 10.0533,
-    "coremark_per_mhz_scope": "timed_region (two-point startup-eliminated)",
-    "coremark_per_mhz_whole_program_n1": 8.9095,
-    "ipc_steady_state_n1": 2.841349,
-    "cpi_steady_state_n1": 0.351945
-  },
   "coremark_per_mhz_formula": "1 / (cycles_per_iteration / 1e6); cycles_per_iteration from the two-point regression; frequency-independent",
+  "flow": "XS-GEM5 kmhv3.py --raw-cpt --generic-rv-cpt; per-instruction DiffTest vs NEMU reference model; canonical CoreMark seed CRCs verified",
+  "generated_utc": "2026-05-28T21:08:23Z",
   "head_to_head": {
     "cva6_coremark_per_mhz_measured": 2.2596,
     "cva6_evidence": "docs/evidence/cpu_ap/cva6-coremark-verilator.json",
     "kunminghu_multiple_vs_cva6": 4.45,
     "note": "CVA6 == Ariane == E1 little core (e1-pro). Kunminghu == E1 mid core (e1-premium). Both CoreMark/MHz are frequency-independent timed-region figures, so the multiple is a pure microarchitecture comparison: in-order ~1 IPC vs 6-wide OoO. Matches the published Kunminghu CoreMark/MHz ~10 and >15 SPECint2006/GHz target."
   },
-  "run_command": "scripts/run_kunminghu_bench.sh  (or: external/xiangshan/GEM5/build/RISCV/gem5.opt -d build/kunminghu-gem5-50/m5out external/xiangshan/GEM5/configs/example/kmhv3.py --raw-cpt --generic-rv-cpt=external/xiangshan/nexus-am/apps/coremark/build/coremark-50-iteration-riscv64-xs.bin)"
+  "isa": "rv64gcbv",
+  "mabi": "lp64d",
+  "measurement_method": "two-point startup elimination: cycles_per_iteration = (cycles(N1)-cycles(N0))/(N1-N0); coremark_per_mhz = 1/(cycles_per_iteration/1e6). The fixed bare-metal startup (GCPT restore + page tables + CoreMark init) cancels in the slope, isolating the timed iteration region (same scope as CVA6's timed mcycle anchor).",
+  "metrics": {
+    "coremark_per_mhz": 10.0533,
+    "coremark_per_mhz_scope": "timed_region (two-point startup-eliminated)",
+    "coremark_per_mhz_whole_program_n1": 8.9095,
+    "cpi_steady_state_n1": 0.351945,
+    "cycles_per_iteration": 99469.4,
+    "ipc_steady_state_n1": 2.841349
+  },
+  "model": "XS-GEM5 (OpenXiangShan/GEM5, kmhv3.py)",
+  "model_provenance": ">95% RTL-correlated with XiangShan Kunminghu RTL (upstream)",
+  "provenance": "simulator",
+  "result_recorded_at": "2026-05-22T19:35:06Z",
+  "run_command": "scripts/run_kunminghu_bench.sh  (or: external/xiangshan/GEM5/build/RISCV/gem5.opt -d build/kunminghu-gem5-50/m5out external/xiangshan/GEM5/configs/example/kmhv3.py --raw-cpt --generic-rv-cpt=external/xiangshan/nexus-am/apps/coremark/build/coremark-50-iteration-riscv64-xs.bin)",
+  "runs": {
+    "n0": {
+      "committed_instructions": 663442,
+      "iterations": 2,
+      "total_cycles": 837481
+    },
+    "n1": {
+      "committed_instructions": 15945688,
+      "cpi": 0.351945,
+      "ipc": 2.841349,
+      "iterations": 50,
+      "total_cycles": 5612013
+    }
+  },
+  "schema": "eliza.cpu_benchmark_measured.v1",
+  "status": "passed",
+  "tools": {
+    "coremark_toolchain": "riscv64-linux-gnu-gcc 13.3.0 (matches bundled coremark-2-iteration.bin GCC13.2.0)",
+    "difftest_ref_so": "packages/chip/external/xiangshan/riscv64-nemu-interpreter-so",
+    "gem5_binary": "external/xiangshan/GEM5/build/RISCV/gem5.opt",
+    "modeled_cpu_clock": "3GHz (kmhv3.py default; CoreMark/MHz is frequency-independent)",
+    "xs_gem5_commit": "7930d36334abc282161110c0391e465a6dc6e024"
+  },
+  "workload": {
+    "images": [
+      "coremark-2-iteration-riscv64-xs.bin",
+      "coremark-50-iteration-riscv64-xs.bin"
+    ],
+    "source": "OpenXiangShan/nexus-am apps/coremark, ARCH=riscv64-xs (bare-metal AM, GCPT restorer prologue)"
+  }
 }

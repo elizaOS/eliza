@@ -74,10 +74,12 @@ export function registerClientChatSendHandler(
   runtime.registerSendHandler("client_chat", async (_rt, target, content) => {
     const conv = resolveConversation(state, target.roomId as UUID | undefined);
     if (!conv) {
-      // No conversations exist yet — persist nothing, but don't throw.
-      // The message will be lost; this is acceptable during early boot
-      // before the user has opened the app.
-      return;
+      // No conversation exists to deliver into. Throw so the caller records a
+      // delivery failure (e.g. escalation falls through to the next channel)
+      // instead of treating a silently dropped message as a successful send.
+      throw new Error(
+        "client_chat send failed: no conversation available to deliver message",
+      );
     }
 
     const messageId = crypto.randomUUID() as UUID;

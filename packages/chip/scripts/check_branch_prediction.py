@@ -1900,6 +1900,11 @@ def build_evidence(
     return {
         "schema": "eliza.bpu_params.v1",
         "status": status,
+        "claim_boundary": (
+            "Branch predictor parameter and RTL/model evidence only; not "
+            "Android, SPEC2017, CBP-5 target-met, silicon, power, thermal, or "
+            "phone-class release evidence."
+        ),
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "source_revision": git_revision(),
         "tool_versions": tools,
@@ -1961,7 +1966,7 @@ def build_evidence(
                 "Open RTL geometry verified against 2028 thresholds. CBP-5"
                 " train-trace RTL evidence is on file but aggregate RTL MPKI"
                 " is above target_2028_mpki, so CBP-5 target-met, SPEC,"
-                " AOSP, and JS-engine MPKI claims remain blocked."
+                " AOSP, and JS-engine MPKI claims are not allowed."
             ),
         },
     }

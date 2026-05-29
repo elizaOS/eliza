@@ -5,6 +5,7 @@
     "e1_rtl_geomean_mpki": 15.605351,
     "rtl_improvement_ratio_cva6_over_e1_rtl": 2.7559
   },
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "claim_policy": {
     "android_claim": false,
     "comparison_held_at_lower_level": true,
@@ -38,6 +39,7 @@
   "description": "Fail-closed RTL MPKI comparison. The E1 side is measured on the synthesizable bpu_top.sv via the cocotb harness (L1_RTL_FULL_SOC); the CVA6 side is the behavioural BHT+BTB+RAS baseline model (L2_ARCH_SIM), sized directly from CVA6 RTL. The headline comparison is held at the lower of the two levels.",
   "e1_claim_level": "L1_RTL_FULL_SOC",
   "generated_at_utc": "2026-05-23T09:57:18.233301+00:00",
+  "generated_utc": "2026-05-24T02:03:00Z",
   "harness": "benchmarks/cpu/branch/compare_mpki_rtl.py",
   "headline_note": "E1 RTL tracks the E1 behavioural model within the convergence band on the shared traces; the model-level head-to-head win is RTL-validated on the E1 side. Comparison is held at L2_ARCH_SIM because the CVA6 side remains a behavioural model. Traces listed in rtl_traces_without_model_pair are reported separately and do not contribute to this corroboration status.",
   "model_comparison_source": "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json",

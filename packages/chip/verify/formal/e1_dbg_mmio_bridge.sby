@@ -3,7 +3,6 @@ mode bmc
 depth 16
 
 [engines]
-smtbmc z3
 smtbmc bitwuzla
 
 [script]

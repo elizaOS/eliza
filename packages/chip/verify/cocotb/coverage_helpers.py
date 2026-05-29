@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import json
 from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +129,8 @@ class CoverPointSet:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": COVERAGE_SCHEMA,
+            "generated_utc": datetime.now(UTC).isoformat(),
+            "claim_boundary": "cocotb_functional_coverage_only_not_system_or_release_evidence",
             "block": self.block,
             "cocotb_coverage_available": bool(self._cc_available),
             "classes": {

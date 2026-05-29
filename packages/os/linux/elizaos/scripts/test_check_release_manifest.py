@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().with_name("check_release_manifest.py")
@@ -126,6 +127,56 @@ class ReleaseManifestRuntimeEvidenceTests(unittest.TestCase):
             results = gate.check_riscv64_agent_runtime_evidence(
                 manifest_with_runtime(), False, root
             )
+
+            self.assertEqual(["PASS"], [result.status for result in results])
+
+    def test_runtime_smoke_resolves_repo_token_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            variant = repo / "packages/os/linux/elizaos"
+            evidence = variant / "evidence"
+            evidence.mkdir(parents=True)
+            transcript = evidence / "riscv64_agent_runtime_smoke.log"
+            transcript.write_text("ok\n", encoding="utf-8")
+            artifacts = variant / "artifacts" / "riscv64"
+            bun = artifacts / "elizaos-app" / "musl-runtime" / "bun"
+            bun.parent.mkdir(parents=True)
+            bun.write_bytes(b"fresh-riscv64-bun")
+            (artifacts / "riscv64-bun-provenance.json").write_text(
+                json.dumps(
+                    {
+                        "schema": gate.RISCV64_BUN_PROVENANCE_SCHEMA,
+                        "inputs": {
+                            gate.RISCV64_BUN_VERSION_INPUT: "0" * 64,
+                        },
+                        "artifact": {
+                            "staged_bun_sha256": sha256(b"fresh-riscv64-bun"),
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (evidence / "riscv64_agent_runtime_smoke.json").write_text(
+                json.dumps(
+                    {
+                        "schema": gate.RISCV64_AGENT_RUNTIME_SCHEMA,
+                        "status": "pass",
+                        "failures": [],
+                        "artifacts": "<repo>/packages/os/linux/elizaos/artifacts/riscv64",
+                        "transcript": (
+                            "<repo>/packages/os/linux/elizaos/evidence/"
+                            "riscv64_agent_runtime_smoke.log"
+                        ),
+                        "transcript_sha256": sha256(b"ok\n"),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(gate, "REPO_ROOT", repo):
+                results = gate.check_riscv64_agent_runtime_evidence(
+                    manifest_with_runtime(), False, variant
+                )
 
             self.assertEqual(["PASS"], [result.status for result in results])
 

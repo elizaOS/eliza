@@ -5,13 +5,12 @@ depth 12
 # Single engine per task so the proof concludes deterministically and the
 # engine-agreement gate (verify/check_formal_engine_agreement.py) passes: with
 # two engines in one task SBY terminates the slower one the moment the faster
-# returns, leaving "did not return a status" in the log — the exact silent
-# disagreement the gate fails on (dossier §5.6.1). z3 is the engine §5.6.1
-# flagged as previously not concluding; this proof drives it to a full PASS at
-# depth 12. bitwuzla independently reaches the same PASS at this depth (run it
-# by swapping the engine line); both were cross-checked through the gate.
+# returns, leaving "did not return a status" in the log. bitwuzla reaches the
+# depth-12 NPU proof quickly enough for routine regeneration; z3 remains useful
+# as an ad hoc cross-check but can exceed the bounded execution window after
+# the FORMAL-only GEMM/vector observability assertions were added.
 [engines]
-smtbmc z3
+smtbmc bitwuzla
 
 [script]
 read -define AXIL_PROTO_ASSUME_LIVENESS

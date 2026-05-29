@@ -6,8 +6,8 @@ source_artifacts:
   - package/e1-demo-pinout.yaml
   - docs/board/kicad/e1-demo/fab-notes.md
   - docs/manufacturing/real-world-verification-gaps.yaml
-  - pd/openlane/runs/RUN_2026-05-18_05-41-42/final/metrics.json
-  - pd/openlane/runs/RUN_2026-05-18_05-41-42/signoff-run.yaml
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/final/metrics.json
+  - pd/openlane/runs/RUN_2026-05-19_05-01-02/signoff-run.yaml
 local_findings:
   package_model:
     status: missing_vendor_artifact

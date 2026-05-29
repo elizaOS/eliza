@@ -74,6 +74,46 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
                 _, findings = opt.evaluate_artifact(spec)
         self.assertEqual(findings, [])
 
+    def test_embedded_companion_reports_do_not_create_required_boolean_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            artifact = repo / "packages/chip/build/reports/demo.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text(
+                json.dumps(
+                    {
+                        "status": "pass",
+                        "claim_boundary": "chip emulator runtime benchmark evidence",
+                        "runtime_claim_allowed": True,
+                        "companion_reports": {
+                            "linux_probe": {
+                                "report": {
+                                    "summary": {
+                                        "release_ready": False,
+                                    }
+                                }
+                            }
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            spec = opt.ArtifactSpec(
+                "demo",
+                "benchmarks",
+                "packages/chip/build/reports/demo.json",
+                "demo benchmark scope",
+                "runtime optimization claim",
+            )
+            with mock.patch.object(opt, "REPO", repo):
+                _, findings = opt.evaluate_artifact(spec)
+
+        self.assertNotIn(
+            "optimization_required_boolean_false",
+            {finding["code"] for finding in findings},
+        )
+
     def test_inventory_covers_android_no_issues_runtime_gates(self) -> None:
         artifact_ids = {artifact.ident for artifact in opt.ARTIFACTS}
         expected = {

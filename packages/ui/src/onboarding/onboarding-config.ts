@@ -38,7 +38,6 @@ export interface BuildOnboardingConnectionArgs {
   // Feature toggles from onboarding features step
   onboardingFeatureTelegram?: boolean;
   onboardingFeatureDiscord?: boolean;
-  onboardingFeaturePhone?: boolean;
   onboardingFeatureCrypto?: boolean;
   onboardingFeatureBrowser?: boolean;
   onboardingFeatureComputerUse?: boolean;

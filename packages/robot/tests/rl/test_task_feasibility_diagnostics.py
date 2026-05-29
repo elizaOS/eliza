@@ -291,11 +291,62 @@ def test_zero_action_factory_returns_stable_shape() -> None:
 def test_hiwonder_locomotion_specs_include_sine_and_settle_primitives() -> None:
     forward = {spec.name for spec in _primitive_specs("hiwonder-ainex", "walk_forward")}
     sidestep = {spec.name for spec in _primitive_specs("hiwonder-ainex", "sidestep_left")}
+    stand_up = {spec.name for spec in _primitive_specs("hiwonder-ainex", "stand_up")}
 
+    assert "stand_up_pitch_feedback" in stand_up
     assert "sinusoidal_seeded_0" in forward
     assert "sinusoidal_seeded_1" in forward
+    assert "sinusoidal_seeded_3" in forward
+    seeded = {
+        spec.name: spec
+        for spec in _primitive_specs("hiwonder-ainex", "walk_forward")
+        if spec.name.startswith("sinusoidal")
+    }
+    assert seeded["sinusoidal_seeded_3"].params is not None
     assert "switched_deterministic_freeze" in sidestep
     assert "switched_deterministic_damped" in sidestep
+
+
+def test_hiwonder_stand_up_pitch_feedback_reaches_goal_and_holds() -> None:
+    pytest.importorskip("mujoco")
+
+    row = _rollout("hiwonder-ainex", "stand_up", max_steps=260)
+
+    assert row["success"] is True
+    assert row["controller"] == "stand_up_pitch_feedback"
+    assert row["final_torso_z_m"] >= row["stand_height_m"] * 0.90
+    assert row["max_success_window_s"] >= 2.0
+    assert row["termination_reason"] is None
+    assert row["passive_success"] is False
+
+
+def test_sit_down_smooth_target_reaches_crouch_and_holds() -> None:
+    pytest.importorskip("mujoco")
+
+    row = _rollout("hiwonder-ainex", "sit_down", max_steps=500)
+
+    assert row["success"] is True
+    assert row["controller"] == "sit_down_smooth_target"
+    assert 0.13 <= row["final_torso_z_m"] <= 0.20
+    assert row["max_abs_delta_x_m"] <= 0.10
+    assert row["max_abs_delta_y_m"] <= 0.10
+    assert row["max_abs_delta_yaw_rad"] <= 0.35
+    assert row["max_success_window_s"] >= 1.0
+    assert row["termination_reason"] is None
+    assert row["passive_success"] is False
+
+
+def test_rollout_reports_imu_tilt_extrema() -> None:
+    pytest.importorskip("mujoco")
+
+    row = _rollout("hiwonder-ainex", "sidestep_left", max_steps=80)
+
+    assert row["max_abs_imu_roll_rad"] is not None
+    assert row["max_abs_imu_pitch_rad"] is not None
+    assert row["diagnostics"]["imu_roll_rad"]["max_abs"] == row["max_abs_imu_roll_rad"]
+    assert row["diagnostics"]["imu_pitch_rad"]["max_abs"] == row["max_abs_imu_pitch_rad"]
+    assert row["candidate_results"][0]["max_abs_imu_roll_rad"] is not None
+    assert row["candidate_results"][0]["max_abs_imu_pitch_rad"] is not None
 
 
 def test_sinusoidal_action_freezes_after_hold_switch() -> None:

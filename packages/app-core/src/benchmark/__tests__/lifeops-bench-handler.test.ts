@@ -862,7 +862,7 @@ describe("LifeOpsBenchHandler", () => {
     expect(parsed.tool_calls[0].error).toMatch(/unsupported/);
   });
 
-  it("terminates repeated prompt after successful archive without invoking planner again", async () => {
+  it("routes every repeated prompt through the planner (no canned short-circuit)", async () => {
     const path = writeFixture();
     let plannerCalls = 0;
     const handler = new LifeOpsBenchHandler({
@@ -916,9 +916,18 @@ describe("LifeOpsBenchHandler", () => {
       await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/message");
       expect(res.getStatus()).toBe(200);
       const parsed = JSON.parse(res.getBody());
-      expect(parsed.text).toBe("Archived t1.");
-      expect(parsed.tool_calls).toEqual([]);
-      expect(plannerCalls).toBe(1);
+      // The repeated prompt must be answered by the real planner output, not a
+      // hand-authored "Archived t1." string. The planner is invoked again and
+      // its tool calls are re-executed and recorded.
+      expect(parsed.text).toBe(
+        "Benchmark LifeOps action captured: ARCHIVE_THREAD",
+      );
+      expect(parsed.tool_calls).toHaveLength(1);
+      expect(parsed.tool_calls[0]).toMatchObject({
+        name: "ARCHIVE_THREAD",
+        ok: true,
+      });
+      expect(plannerCalls).toBe(2);
     }
   });
 });

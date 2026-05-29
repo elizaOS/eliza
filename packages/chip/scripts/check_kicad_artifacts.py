@@ -6,9 +6,12 @@ import shutil
 import subprocess
 import sys
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
+
+from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 BOARD_DIR = ROOT / "board/kicad/e1-demo"
@@ -104,6 +107,17 @@ LOCAL_TMP_UNBLOCK_COMMANDS = [
         "kicad-cli version"
     ),
 ]
+
+
+def provenance_safe(value):
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    if isinstance(value, list):
+        return [provenance_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): provenance_safe(item) for key, item in value.items()}
+    return value
+
 
 REQUIRED_FAB_NOTE_MARKERS = {
     "release_status": "Release status: `blocked`",
@@ -711,6 +725,7 @@ def write_report(status: str, failures: list[str], blockers: list[str], release:
     report = {
         "schema": REPORT_SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "summary": {
             "release_mode": release,
             "failure_count": len(failures),
@@ -752,7 +767,10 @@ def write_report(status: str, failures: list[str], blockers: list[str], release:
         "claim_boundary": "kicad_artifact_inventory_only_not_fabrication_release_evidence",
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    REPORT.write_text(
+        json.dumps(provenance_safe(report), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def main() -> int:

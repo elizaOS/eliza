@@ -94,18 +94,6 @@ export function shouldSkipConnectionStepsForCloudProvisionedContainer(args: {
   return args.cloudProvisionedContainer && args.currentStep === "deployment";
 }
 
-/**
- * Whether to skip the features step entirely.
- * The current wizard always shows features so local capabilities such as
- * Browser and Wallet can be chosen for local, remote, and cloud agents.
- */
-export function shouldSkipFeaturesStep(args: {
-  onboardingServerTarget: string;
-}): boolean {
-  void args;
-  return false;
-}
-
 export function shouldUseCloudOnboardingFastTrack(args: {
   cloudProvisionedContainer: boolean;
   elizaCloudConnected: boolean;

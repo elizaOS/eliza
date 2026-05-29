@@ -28,6 +28,9 @@ UMBRELLA_MANIFEST = WORKSPACE / "os/release/beta-2026-05-16/manifest.json"
 RELEASE_DIR = WORKSPACE / "os/release/beta-2026-05-16"
 RELEASE_ANDROID_PARTITIONS_DIR = RELEASE_DIR / "android/partitions"
 RELEASE_ANDROID_ARCHIVES_DIR = RELEASE_DIR / "android/archives"
+RELEASE_ANDROID_ARTIFACT_INVENTORY = (
+    RELEASE_DIR / "evidence/android/android-release-artifact-inventory.json"
+)
 POST_FLASH = WORKSPACE / "os/android/installer/scripts/validate-post-flash.sh"
 INSTALLER = WORKSPACE / "os/android/installer/install-elizaos-android.sh"
 LAUNCHER_RUNTIME_REPORT = ROOT / "build/reports/android_launcher_runtime_evidence.json"
@@ -148,6 +151,7 @@ class Finding:
     evidence: str
     next_step: str
     blocker_dependency: str = "repo_artifact_generation"
+    next_command: str = ""
 
 
 def read_text(path: Path) -> str:
@@ -521,9 +525,20 @@ def add_if(
     evidence: str,
     next_step: str,
     blocker_dependency: str = "repo_artifact_generation",
+    next_command: str = "",
 ) -> None:
     if condition:
-        findings.append(Finding(code, "blocker", message, evidence, next_step, blocker_dependency))
+        findings.append(
+            Finding(
+                code,
+                "blocker",
+                message,
+                evidence,
+                next_step,
+                blocker_dependency,
+                next_command,
+            )
+        )
 
 
 def android_artifacts(umbrella: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1149,10 +1164,11 @@ def live_launcher_agent_missing_evidence(umbrella: dict[str, Any]) -> dict[str, 
             missing_targets.append(artifact_id)
         expected_release_path = str(target_plan["expectedReleaseEvidencePath"])
         target_label = str(target_plan["targetLabel"])
+        docs_evidence_dir = repo_rel(ROOT / "docs/evidence/android")
         expected_outputs = [
-            expected_release_path,
-            f"docs/evidence/android/{target_label}-launcher-agent-live.logcat.txt",
-            f"docs/evidence/android/{target_label}-launcher-agent-live.transcript.log",
+            repo_rel(RELEASE_DIR / expected_release_path),
+            f"{docs_evidence_dir}/{target_label}-launcher-agent-live.logcat.txt",
+            f"{docs_evidence_dir}/{target_label}-launcher-agent-live.transcript.log",
         ]
         validation_command = (
             "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
@@ -1592,7 +1608,7 @@ def prioritized_live_evidence_capture_plan(
                 "release_credit": False,
                 "prerequisites": target_prerequisites.get(artifact_id, []),
                 "expected_output_files": [
-                    expected_release_path,
+                    repo_rel(RELEASE_DIR / expected_release_path),
                     f"{docs_evidence_dir}/{target_label}-launcher-agent-live.logcat.txt",
                     f"{docs_evidence_dir}/{target_label}-launcher-agent-live.transcript.log",
                 ],
@@ -1743,8 +1759,9 @@ def prioritized_live_evidence_capture_plan(
                     f'--output {docs_evidence_dir}/power/sustained_npu_power_thermal_trace.json"'
                 ),
                 (
-                    'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell cmd neuralnetworks list '
-                    f"| tee {docs_evidence_dir}/eliza_ai_soc_e1_npu_hal_liveness.log"
+                    "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py "
+                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
+                    f"--output $(pwd)/{docs_evidence_dir}/eliza_ai_soc_e1_npu_hal_liveness.log"
                 ),
             ],
             "validation_commands": [
@@ -2079,6 +2096,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"missing_hashes={umbrella_missing_hashes} missing_sizes={umbrella_missing_sizes}",
         "Populate hash and size fields only from staged Android archives built from complete target product_out directories.",
         archive_source_dependency,
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
+        "&& jq '.evidence.android_release_artifact_inventory.commands.populateIntegrity' "
+        "packages/chip/build/reports/android_release_readiness_contract.json",
     )
     add_if(
         findings,
@@ -2088,6 +2108,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"missing={artifact_inventory['missing']}",
         "Build and stage the exact partition images and Android archives listed in evidence.android_release_artifact_inventory.commands, then populate real byte sizes and SHA-256 values.",
         archive_source_dependency,
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
+        "&& jq '.evidence.android_release_artifact_inventory.commands' "
+        "packages/chip/build/reports/android_release_readiness_contract.json",
     )
     add_if(
         findings,
@@ -2174,6 +2197,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"missing_targets={live_launcher_missing_inventory['missingTargets']}",
         "Run the per-target command lists in evidence.live_launcher_agent_missing_evidence.records[*].collectionCommands, then update each manifest evidence row only with collected payloads from the named booted target.",
         "live_device_validation",
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
+        "&& jq '.evidence.live_launcher_agent_missing_evidence.records[] | "
+        "{artifactId, collectionCommands, validationCommand}' "
+        "packages/chip/build/reports/android_release_readiness_contract.json",
     )
     add_if(
         findings,
@@ -2183,6 +2210,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"artifacts={umbrella_uncollected_evidence}",
         "Collect boot, role, launcher foreground, agent health, fatal log, and SELinux evidence before promoting any Android artifact.",
         "live_device_validation",
+        "python3 packages/chip/scripts/check_android_release_readiness_contract.py "
+        "&& jq '.evidence.prioritized_live_evidence_capture_plan[] | "
+        "{capture_area, capture_commands, validation_commands}' "
+        "packages/chip/build/reports/android_release_readiness_contract.json",
     )
     add_if(
         findings,
@@ -2245,7 +2276,11 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
         "generated_utc": generated_utc(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
-        "summary": {"blockers": len(blockers), "findings": len(findings)},
+        "summary": {
+            "blockers": len(blockers),
+            "findings": len(findings),
+            "blocker_dependency_counts": dependency_counts,
+        },
         "blockers": blocker_rows,
         "blocker_dependency_counts": dependency_counts,
         "findings": [provenance_safe_value(asdict(finding)) for finding in findings],
@@ -2256,6 +2291,38 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
 def write_report(report: dict[str, Any], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def release_artifact_inventory_sidecar(report: dict[str, Any]) -> dict[str, Any]:
+    evidence = report.get("evidence") if isinstance(report.get("evidence"), dict) else {}
+    assert isinstance(evidence, dict)
+    return provenance_safe_value(
+        {
+            "schema": "eliza.android_release_artifact_inventory.v3",
+            "generated_utc": generated_utc(),
+            "generatedAt": generated_utc(),
+            "status": evidence.get("android_release_artifact_inventory", {}).get("status"),
+            "claim_boundary": (
+                "current_android_release_artifact_inventory_and_static_archive_integrity_only_not_runtime_evidence"
+            ),
+            "releaseCredit": False,
+            "sourceReport": repo_rel(REPORT),
+            "notes": (
+                "Fail-closed inventory. Static chip/riscv64 archive integrity can be "
+                "credited only for exact staged zip size/SHA/member checks; live "
+                "launcher/agent evidence remains required before release promotion."
+            ),
+            "android_release_artifact_inventory": evidence.get(
+                "android_release_artifact_inventory", {}
+            ),
+            "staged_android_archive_integrity_inventory": evidence.get(
+                "staged_android_archive_integrity_inventory", {}
+            ),
+            "android_archive_source_member_inventory": evidence.get(
+                "android_archive_source_member_inventory", {}
+            ),
+        }
+    )
 
 
 def print_summary(report: dict[str, Any]) -> None:
@@ -2280,6 +2347,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     report = run_check(args)
     write_report(report, Path(args.report))
+    write_report(release_artifact_inventory_sidecar(report), RELEASE_ANDROID_ARTIFACT_INVENTORY)
     if not args.json_only:
         print_summary(report)
     return 0 if report["status"] == "pass" else 2

@@ -3,22 +3,15 @@
  * Inlined OAuth flow (MIT) — vendored to avoid a runtime dependency.
  */
 
-let _randomBytes: typeof import("node:crypto").randomBytes | null = null;
-let _http: typeof import("node:http") | null = null;
-if (
-  typeof process !== "undefined" &&
-  (process.versions.node || process.versions.bun)
-) {
-  void import("node:crypto").then((m) => {
-    _randomBytes = m.randomBytes;
-  });
-  void import("node:http").then((m) => {
-    _http = m;
-  });
-}
-
 import { logger } from "@elizaos/core";
 import { generatePKCE } from "./pkce.ts";
+
+function isNodeLikeRuntime(): boolean {
+  return (
+    typeof process !== "undefined" &&
+    Boolean(process.versions.node || process.versions.bun)
+  );
+}
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
@@ -51,13 +44,14 @@ export interface OAuthPrompt {
   placeholder?: string;
 }
 
-function createState(): string {
-  if (!_randomBytes) {
+async function createState(): Promise<string> {
+  if (!isNodeLikeRuntime()) {
     throw new Error(
       "OpenAI Codex OAuth is only available in Node.js environments",
     );
   }
-  return _randomBytes(16).toString("hex");
+  const { randomBytes } = await import("node:crypto");
+  return randomBytes(16).toString("hex");
 }
 
 function parseAuthorizationInput(input: string): {
@@ -215,7 +209,7 @@ async function createAuthorizationFlow(originator = "pi"): Promise<{
   url: string;
 }> {
   const { verifier, challenge } = await generatePKCE();
-  const state = createState();
+  const state = await createState();
   const url = new URL(AUTHORIZE_URL);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", CLIENT_ID);
@@ -236,16 +230,19 @@ type OAuthServerInfo = {
   waitForCode: () => Promise<{ code: string } | null>;
 };
 
-function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
-  if (!_http) {
+async function startLocalOAuthServer(
+  state: string,
+): Promise<OAuthServerInfo> {
+  if (!isNodeLikeRuntime()) {
     throw new Error(
       "OpenAI Codex OAuth is only available in Node.js environments",
     );
   }
+  const http = await import("node:http");
 
   let lastCode: string | null = null;
   let cancelled = false;
-  const server = _http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     try {
       const url = new URL(req.url || "", "http://localhost");
       if (url.pathname !== "/auth/callback") {

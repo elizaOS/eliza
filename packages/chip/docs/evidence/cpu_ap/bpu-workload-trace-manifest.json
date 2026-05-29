@@ -1,7 +1,8 @@
 {
   "claim_boundary": "Local QEMU-RV64 workload-trace provenance only. This manifest does not satisfy SPEC2017, AOSP, browser/JS, or production GPU MPKI claims.",
   "evidence_class": "qemu_rv64_workload_trace_manifest",
-  "generated_at_utc": "2026-05-24T04:06:18.604395+00:00",
+  "generated_at_utc": "2026-05-28T20:41:18.671481+00:00",
+  "generated_utc": "2026-05-28T20:41:18.671458+00:00",
   "missing_required_local_trace_names": [],
   "phone_claim_allowed": false,
   "present_required_local_trace_names": [
@@ -221,7 +222,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 1400,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "browser_layout_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -255,7 +256,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 1200,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "build_compiler_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -290,7 +291,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 1200,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "compression_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -325,7 +326,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 1600,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "crypto_packet_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -359,7 +360,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 1800,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "database_btree_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -428,7 +429,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 1200,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "gc_runtime_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -463,7 +464,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 1800,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "gpu_control_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -505,7 +506,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 80,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "gpu_irq_fence_scheduler_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -547,7 +548,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 80,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "gpu_memory_residency_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -616,7 +617,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 2200,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "kernel_syscall_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -658,7 +659,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 80,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "mobile_ui_frame_scheduler_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -700,7 +701,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 80,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "nn_delegate_fallback_proxy"
       },
       "trace_class": "qemu_rv64_workload"
@@ -810,7 +811,7 @@
         "qemu": "qemu-riscv64 user-mode + libexeclog",
         "scale": 80,
         "src": "system_mix.c",
-        "toolchain": "/home/shaw/milady/eliza/packages/chip/tools/bin/riscv64-linux-gnu-gcc",
+        "toolchain": "tools/bin/riscv64-linux-gnu-gcc",
         "workload": "wasm_jit_osr_proxy"
       },
       "trace_class": "qemu_rv64_workload"

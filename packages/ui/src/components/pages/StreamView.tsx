@@ -41,6 +41,11 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
           setStreamAvailable(false);
           return;
         }
+        // Non-404 poll failure: the last status is now stale, so don't keep
+        // showing the stream as live with frozen uptime/frame numbers.
+        if (mounted && !loadingRef.current) {
+          setStreamLive(false);
+        }
       }
     };
     if (!streamAvailable || !docVisible) return;

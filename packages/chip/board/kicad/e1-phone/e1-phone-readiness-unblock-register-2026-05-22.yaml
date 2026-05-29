@@ -1070,7 +1070,6 @@ blockers:
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/gerbers:
     - blocked_candidate_not_approved
@@ -1158,7 +1157,6 @@ blockers:
     board/kicad/e1-phone/production/reports/escape-density-via-count.yaml:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/external-interface-design-review.yaml:
     - blocked_candidate_not_approved
@@ -1209,7 +1207,6 @@ blockers:
     board/kicad/e1-phone/production/reports/rf:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml:
     - blocked_candidate_not_approved
@@ -1258,7 +1255,6 @@ blockers:
     board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml:
     - blocked_candidate_not_approved
@@ -1273,7 +1269,6 @@ blockers:
     board/kicad/e1-phone/production/reports/si-pi:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml:
     - blocked_candidate_not_approved
@@ -1310,12 +1305,10 @@ blockers:
     board/kicad/e1-phone/production/step:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/factory-test-limits.yaml:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/first-article-test-transcript.json:
     - blocked_candidate_not_approved
@@ -1427,7 +1420,6 @@ blockers:
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
     - not_approved
-    - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:
     - blocked_candidate_not_approved

@@ -6,7 +6,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
+from eliza_robot.profiles.schema import load_profile
 from scripts.validate_multi_robot_training_readiness import (
     DEFAULT_COMMANDS as DEFAULT_MULTI_ROBOT_COMMANDS,
 )
@@ -15,6 +17,7 @@ from scripts.validate_multi_robot_training_readiness import (
 )
 from scripts.validate_nebius_full_training_run import (
     STAGES,
+    _policy_video_motion_checks,
     _validate_curriculum_eval_report,
     _validate_production_contract,
     _validate_production_policy_videos,
@@ -28,6 +31,132 @@ from scripts.validate_nebius_full_training_run import (
 def _write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def _task_physical_checks(task: str, *, eval_report: bool = False) -> dict[str, bool]:
+    locomotion_support = {
+        "min_swing_foot_clearance_m": True,
+        "max_foot_slip_m_s": True,
+        "max_self_collision_count": True,
+    }
+    checks = {
+        "episodes": True,
+        "success_rate_full": True,
+        "failure_rate_zero": True,
+    } if eval_report else {}
+    if task == "stand_up":
+        checks.update(
+            {
+                "hold_s": True,
+                "torso_height_gain": True,
+                "tracked_height_gain": True,
+            }
+        )
+        if eval_report:
+            checks.update(
+                {
+                    "torso_height_finite_positive": True,
+                    "tracked_height_finite_positive": True,
+                }
+            )
+    elif task == "walk_forward":
+        checks.update(
+            {
+                "no_fall": True,
+                "hold_s": True,
+                "min_alternating_foot_contacts": True,
+                "tracked_height_present": True,
+                "tracked_delta_x_forward": True,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+                **locomotion_support,
+            }
+        )
+    elif task == "walk_backward":
+        checks.update(
+            {
+                "no_fall": True,
+                "hold_s": True,
+                "min_alternating_foot_contacts": True,
+                "tracked_height_present": True,
+                "tracked_delta_x_backward": True,
+                "tracked_lateral_drift_bound": True,
+                "yaw_drift_bound": True,
+                **locomotion_support,
+            }
+        )
+    elif task == "sidestep_left":
+        checks.update(
+            {
+                "no_fall": True,
+                "hold_s": True,
+                "min_alternating_foot_contacts": True,
+                "tracked_height_present": True,
+                "tracked_delta_y_left": True,
+                "tracked_forward_drift_bound": True,
+                "yaw_drift_bound": True,
+                **locomotion_support,
+            }
+        )
+    elif task == "sidestep_right":
+        checks.update(
+            {
+                "no_fall": True,
+                "hold_s": True,
+                "min_alternating_foot_contacts": True,
+                "tracked_height_present": True,
+                "tracked_delta_y_right": True,
+                "tracked_forward_drift_bound": True,
+                "yaw_drift_bound": True,
+                **locomotion_support,
+            }
+        )
+    elif task == "turn_left":
+        checks.update(
+            {
+                "no_fall": True,
+                "hold_s": True,
+                "tracked_height_present": True,
+                "delta_yaw_left": True,
+                "tracked_translation_drift_bound": True,
+            }
+        )
+    elif task == "turn_right":
+        checks.update(
+            {
+                "no_fall": True,
+                "hold_s": True,
+                "tracked_height_present": True,
+                "delta_yaw_right": True,
+                "tracked_translation_drift_bound": True,
+            }
+        )
+    return checks
+
+
+def _task_motion_fields(task: str, profile_id: str) -> dict[str, float | str]:
+    tracked_body_name = load_profile(profile_id).sensors.locomotion_tracking_body
+    delta_x, delta_y, delta_yaw = _task_motion(task)
+    fields: dict[str, float | str] = {
+        "mean_final_delta_x_m": delta_x,
+        "mean_final_delta_y_m": delta_y,
+        "mean_final_delta_yaw_rad": delta_yaw,
+        "mean_final_torso_z_m": 1.0,
+        "mean_final_torso_z_delta_m": 0.0,
+        "mean_final_tracked_delta_x_m": delta_x,
+        "mean_final_tracked_delta_y_m": delta_y,
+        "mean_final_tracked_delta_z_m": 0.0,
+        "mean_final_tracked_z_m": 1.0,
+        "tracked_body_name": tracked_body_name,
+    }
+    if task == "stand_up":
+        fields.update(
+            {
+                "mean_final_torso_z_delta_m": 0.1,
+                "mean_final_tracked_delta_z_m": 0.1,
+            }
+        )
+    return fields
 
 
 def _valid_curriculum_eval_report(
@@ -51,16 +180,12 @@ def _valid_curriculum_eval_report(
                 "task_id": task,
                 "success_programmatic": True,
                 "physical_success": True,
-                "physical_checks": {
-                    "episodes": True,
-                    "success_rate_full": True,
-                    "failure_rate_zero": True,
-                    "command_motion": True,
-                },
+                "physical_checks": _task_physical_checks(task, eval_report=True),
                 "success_rate": 1.0,
                 "failure_rate": 0.0,
                 "episodes": 2,
                 "error": None,
+                **_task_motion_fields(task, profile_id),
             }
             for task in tasks
         ],
@@ -72,7 +197,7 @@ def test_curriculum_eval_gate_rejects_missing_physical_success(tmp_path: Path) -
     checkpoint.mkdir()
     report = _valid_curriculum_eval_report(checkpoint=checkpoint)
     report["tasks"][1]["physical_success"] = False
-    report["tasks"][1]["physical_checks"]["delta_x_forward"] = False
+    report["tasks"][1]["physical_checks"]["tracked_delta_x_forward"] = False
     path = tmp_path / "evidence" / "curriculum_eval" / "report.json"
     _write_json(path, report)
 
@@ -86,6 +211,77 @@ def test_curriculum_eval_gate_rejects_missing_physical_success(tmp_path: Path) -
     assert validation["ok"] is False
     assert validation["checks"]["all_requested_tasks_physical_success"] is False
     assert validation["task_checks"]["walk_forward"] is False
+
+
+def test_curriculum_eval_gate_rejects_extra_failed_physical_check(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    report = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    report["tasks"][1]["physical_checks"]["unexpected_extra_check"] = False
+    path = tmp_path / "evidence" / "curriculum_eval" / "report.json"
+    _write_json(path, report)
+
+    validation = _validate_curriculum_eval_report(
+        path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+
+    assert validation["ok"] is False
+    assert validation["checks"]["all_requested_tasks_physical_success"] is False
+    assert validation["task_checks"]["walk_forward"] is False
+
+
+def test_curriculum_eval_gate_rejects_boolean_only_physical_evidence(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    report = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    for key in tuple(report["tasks"][1]):
+        if key.startswith("mean_final_") or key == "tracked_body_name":
+            report["tasks"][1].pop(key)
+    path = tmp_path / "evidence" / "curriculum_eval" / "report.json"
+    _write_json(path, report)
+
+    validation = _validate_curriculum_eval_report(
+        path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+
+    assert validation["ok"] is False
+    assert validation["checks"]["all_requested_tasks_numeric_motion"] is False
+    assert validation["checks"]["all_requested_tasks_tracked_body"] is False
+    assert "mean_final_tracked_delta_x_m" in validation[
+        "numeric_task_fail_reasons"
+    ]["walk_forward"]
+
+
+def test_curriculum_eval_gate_rejects_wrong_tracking_body(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    report = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    report["tasks"][0]["tracked_body_name"] = "base_link"
+    path = tmp_path / "evidence" / "curriculum_eval" / "report.json"
+    _write_json(path, report)
+
+    validation = _validate_curriculum_eval_report(
+        path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+
+    assert validation["ok"] is False
+    assert validation["checks"]["all_requested_tasks_tracked_body"] is False
+    assert validation["numeric_task_fail_reasons"]["stand_up"] == [
+        "tracked_body_name"
+    ]
 
 
 def _valid_text_policy_eval_report(
@@ -107,6 +303,7 @@ def _valid_text_policy_eval_report(
                 "success_rate": 1.0,
                 "failure_rate": 0.0,
                 "episodes": 2,
+                **_task_motion_fields(task, profile_id),
             }
             for task in tasks
         },
@@ -139,6 +336,7 @@ def _write_video_telemetry(
     policy_source: str = "checkpoint:asimov_1_alberta_full",
 ) -> None:
     delta_x, delta_y, delta_yaw = _task_motion(task_id)
+    tracked_body_name = load_profile(profile).sensors.locomotion_tracking_body
     torso_z = {"min": 0.9, "max": 1.0, "final": 1.0, "mean": 0.95} if task_id == "stand_up" else {"min": 1.0, "max": 1.0, "final": 1.0, "mean": 1.0}
     tracked_delta_z = _summary(0.1) if task_id == "stand_up" else _summary(0.0)
     _write_json(
@@ -155,7 +353,7 @@ def _write_video_telemetry(
             "attempted_action": True,
             "nonzero_action_steps": 8,
             "torso_z": torso_z,
-            "tracked_body_name": "head_tilt_link",
+            "tracked_body_name": tracked_body_name,
             "tracked_z_m": torso_z,
             "tracked_delta_x_m": _summary(delta_x),
             "tracked_delta_y_m": _summary(delta_y),
@@ -204,6 +402,7 @@ def _write_combined_video_telemetry(
     commands: tuple[str, ...] = DEFAULT_MULTI_ROBOT_COMMANDS,
     policy_source: str = "checkpoint:asimov_1_alberta_full",
 ) -> None:
+    tracked_body_name = load_profile(profile).sensors.locomotion_tracking_body
     _write_json(
         path,
         {
@@ -221,7 +420,7 @@ def _write_combined_video_telemetry(
                     "goal_success": True,
                     "attempted_action": True,
                     "nonzero_action_steps": 8,
-                    "tracked_body_name": "head_tilt_link",
+                    "tracked_body_name": tracked_body_name,
                     "torso_z": (
                         {"min": 0.9, "max": 1.0, "final": 1.0, "mean": 0.95}
                         if task_id == "stand_up"
@@ -623,11 +822,13 @@ def _production_contract_manifest(
     tasks: tuple[str, ...] = ("stand_up", "walk_forward"),
     total_steps: int = 150_000_000,
 ) -> dict:
+    tracked_body_name = load_profile("asimov-1").sensors.locomotion_tracking_body
     steps_per_task = total_steps // len(tasks)
     cumulative = 0
     phases = []
     for phase, task in enumerate(tasks):
         cumulative += steps_per_task
+        delta_x, delta_y, delta_yaw = _task_motion(task)
         phases.append(
             {
                 "phase": phase,
@@ -639,11 +840,14 @@ def _production_contract_manifest(
                 "eval_success_rate": 1.0,
                 "failure_rate": 0.0,
                 "physical_success": True,
-                "physical_checks": {"tracked_goal": True},
-                "tracked_body_name": "head_tilt_link",
-                "mean_final_tracked_delta_x_m": 0.4,
-                "mean_final_tracked_delta_y_m": 0.0,
-                "mean_final_tracked_delta_z_m": 0.1,
+                "physical_checks": _task_physical_checks(task),
+                "tracked_body_name": tracked_body_name,
+                "mean_final_delta_yaw_rad": delta_yaw,
+                "mean_final_torso_z_m": 1.0,
+                "mean_final_torso_z_delta_m": 0.1 if task == "stand_up" else 0.0,
+                "mean_final_tracked_delta_x_m": delta_x,
+                "mean_final_tracked_delta_y_m": delta_y,
+                "mean_final_tracked_delta_z_m": 0.1 if task == "stand_up" else 0.0,
                 "mean_final_tracked_z_m": 1.0,
                 "promotion_passed": True,
             }
@@ -726,6 +930,36 @@ def test_production_contract_rejects_phase_promotion_without_physical_evidence(
     payload = _production_contract_manifest(tasks=tasks)
     payload["phase_promotion"]["phases"][0].pop("tracked_body_name")
     payload["phase_promotion"]["phases"][0]["physical_success"] = False
+    _write_json(manifest, payload)
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_phase_promotion_physical"] is False
+
+
+def test_production_contract_rejects_phase_promotion_wrong_signed_motion(
+    tmp_path: Path,
+) -> None:
+    tasks = ("walk_backward",)
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    payload = _production_contract_manifest(tasks=tasks)
+    payload["phase_promotion"]["phases"][0]["mean_final_tracked_delta_x_m"] = 0.4
+    _write_json(manifest, payload)
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_phase_promotion_physical"] is False
+
+
+def test_production_contract_rejects_stale_tracked_body_name(
+    tmp_path: Path,
+) -> None:
+    tasks = ("stand_up", "walk_forward")
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    payload = _production_contract_manifest(tasks=tasks)
+    payload["phase_promotion"]["phases"][0]["tracked_body_name"] = "head_tilt_link"
     _write_json(manifest, payload)
 
     report = _validate_production_manifest(manifest, tasks)
@@ -1176,6 +1410,40 @@ def test_production_policy_video_gate_rejects_turn_translation_drift(
     assert turn_report["checks"]["translation_drift_bound"] is False
 
 
+@pytest.mark.parametrize(
+    ("task_id", "series_key", "check_key", "min_value", "max_value"),
+    (
+        ("walk_forward", "tracked_delta_x_m", "delta_x_forward", 0.0, 0.35),
+        ("walk_backward", "tracked_delta_x_m", "delta_x_backward", -0.25, 0.0),
+        ("sidestep_left", "tracked_delta_y_m", "delta_y_left", 0.0, 0.25),
+        ("sidestep_right", "tracked_delta_y_m", "delta_y_right", -0.25, 0.0),
+        ("turn_left", "delta_yaw_rad", "delta_yaw_left", 0.0, 0.75),
+        ("turn_right", "delta_yaw_rad", "delta_yaw_right", -0.75, 0.0),
+    ),
+)
+def test_policy_video_motion_checks_use_signed_motion_extrema(
+    task_id: str,
+    series_key: str,
+    check_key: str,
+    min_value: float,
+    max_value: float,
+) -> None:
+    payload = {
+        "tracked_delta_x_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "tracked_delta_y_m": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "delta_yaw_rad": {"min": 0.0, "max": 0.0, "mean": 0.0, "final": 0.0},
+        "tracked_z_m": {"min": 0.3, "max": 0.3, "mean": 0.3, "final": 0.3},
+    }
+    payload[series_key] = {
+        "min": min_value,
+        "max": max_value,
+        "mean": 0.0,
+        "final": 0.0,
+    }
+
+    assert _policy_video_motion_checks(payload, task_id)[check_key] is True
+
+
 def test_production_policy_video_gate_rejects_combined_wrong_motion(
     tmp_path: Path,
 ) -> None:
@@ -1308,6 +1576,66 @@ def test_production_policy_video_gate_rejects_combined_missing_tracked_telemetry
     ]
     assert combined_report["checks"]["all_goal_success"] is True
     assert combined_report["checks"]["all_command_tracked_telemetry"] is False
+
+
+def test_production_policy_video_gate_rejects_stale_tracked_body_name(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence" / "agent_videos"
+    profile = "asimov-1"
+    profile_dir = evidence / profile
+    profile_dir.mkdir(parents=True)
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "manifest.json").write_text("{}\n")
+    (checkpoint / "alberta_policy.npz").write_bytes(b"checkpoint")
+    checkpoint_path = str(checkpoint.resolve())
+    commands = ("stand up", "walk forward")
+    for command in commands:
+        name = f"{profile}_{command.replace(' ', '_')}.mp4"
+        _write_moving_video(profile_dir / name)
+        _write_video_telemetry(
+            (profile_dir / name).with_suffix(".telemetry.json"),
+            profile=profile,
+            task_id=command.replace(" ", "_"),
+        )
+    stale_path = profile_dir / f"{profile}_walk_forward.telemetry.json"
+    stale_payload = json.loads(stale_path.read_text())
+    stale_payload["tracked_body_name"] = "head_tilt_link"
+    _write_json(stale_path, stale_payload)
+    combined = f"{profile}_combined_actions.mp4"
+    _write_moving_video(profile_dir / combined)
+    _write_combined_video_telemetry(
+        (profile_dir / combined).with_suffix(".telemetry.json"),
+        profile=profile,
+        commands=commands,
+    )
+    _write_json(
+        evidence / "manifest.json",
+        {
+            "ok": True,
+            "policy_checkpoint": checkpoint_path,
+            "profiles": [
+                {
+                    "profile": profile,
+                    "policy_checkpoint": checkpoint_path,
+                    "ok": True,
+                }
+            ],
+        },
+    )
+
+    report = _validate_production_policy_videos(
+        evidence,
+        checkpoint=checkpoint,
+        profile_id=profile,
+        commands=commands,
+    )
+
+    assert report["ok"] is False
+    single_report = report["telemetry_reports"][f"{profile}_walk_forward.telemetry.json"]
+    assert report["expected_tracking_body"] == "pelvis_link"
+    assert single_report["checks"]["tracked_body_name"] is False
 
 
 def test_curriculum_eval_gate_requires_checkpoint_bound_task_success(
@@ -1485,6 +1813,53 @@ def test_text_policy_eval_gate_requires_exact_native_schema(
     )
     assert missing_exact["ok"] is False
     assert missing_exact["checks"]["present"] is False
+
+
+def test_text_policy_eval_gate_rejects_boolean_only_motion_evidence(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    native_path = tmp_path / "evidence" / "curriculum_eval" / "eval_text_policy.json"
+    payload = _valid_text_policy_eval_report(checkpoint=checkpoint)
+    for key in tuple(payload["tasks"]["walk_forward"]):
+        if key.startswith("mean_final_") or key == "tracked_body_name":
+            payload["tasks"]["walk_forward"].pop(key)
+    _write_json(native_path, payload)
+
+    report = _validate_text_policy_eval_report(
+        native_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["per_task_numeric_motion"] is False
+    assert report["checks"]["per_task_tracked_body"] is False
+    assert "mean_final_tracked_delta_x_m" in report["numeric_task_fail_reasons"][
+        "walk_forward"
+    ]
+
+
+def test_text_policy_eval_gate_rejects_wrong_tracking_body(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    native_path = tmp_path / "evidence" / "curriculum_eval" / "eval_text_policy.json"
+    payload = _valid_text_policy_eval_report(checkpoint=checkpoint)
+    payload["tasks"]["stand_up"]["tracked_body_name"] = "base_link"
+    _write_json(native_path, payload)
+
+    report = _validate_text_policy_eval_report(
+        native_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["per_task_tracked_body"] is False
+    assert report["numeric_task_fail_reasons"]["stand_up"] == ["tracked_body_name"]
 
 
 def test_validate_nebius_full_training_run_rejects_missing_success(

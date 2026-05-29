@@ -276,10 +276,6 @@ async function applyConnectorAdminWhitelists(
                 continue;
               }
 
-              if (typeof metadata.roles[entityId] === "string") {
-                continue;
-              }
-
               metadata.roles[entityId] = "ADMIN";
               metadata.roleSources[entityId] = "connector_admin";
               updated = true;

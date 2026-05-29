@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/MH_TR.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "7090dca36806e0e32bc545f2c31348a04d217393bafddc187118ceb1193e80ae",
+  "local_discrete_step_sha256": "72aed933aef0d8a29956115a5f44e092bc13966cac0f83ddf474ef0b4a1c0d15",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

@@ -75,9 +75,6 @@ export interface AgentAdminRouteContext
   onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
   onRuntimeSwapped?: () => void;
   resolveStateDir: () => string;
-  resolvePath: (value: string) => string;
-  getHomeDir: () => string;
-  isSafeResetStateDir: (resolvedState: string, homeDir: string) => boolean;
   stateDirExists: (resolvedState: string) => boolean;
   removeStateDir: (resolvedState: string) => void;
   logWarn: (message: string) => void;
@@ -115,9 +112,6 @@ export async function handleAgentAdminRoutes(
     json,
     error,
     resolveStateDir,
-    resolvePath,
-    getHomeDir,
-    isSafeResetStateDir,
     stateDirExists,
     removeStateDir,
     logWarn,
@@ -234,55 +228,6 @@ export async function handleAgentAdminRoutes(
       state.model = undefined;
       state.startedAt = undefined;
       state.config = config;
-      state.chatRoomId = null;
-      state.chatUserId = null;
-      state.chatConnectionReady = null;
-      state.chatConnectionPromise = null;
-      state.pendingRestartReasons = [];
-      state.conversations?.clear();
-      state.activeConversationId = null;
-      state.conversationRestorePromise = null;
-
-      json(res, { ok: true });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      error(res, `Reset failed: ${message}`, 500);
-    }
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api@elizaos/agent/reset") {
-    try {
-      if (state.runtime) {
-        await state.runtime.stop();
-        state.runtime = null;
-      }
-
-      const stateDir = resolveStateDir();
-      const resolvedState = resolvePath(stateDir);
-      const home = getHomeDir();
-      const isSafe = isSafeResetStateDir(resolvedState, home);
-      if (!isSafe) {
-        logWarn(
-          `[eliza-api] Refusing to delete unsafe state dir: "${resolvedState}"`,
-        );
-        error(
-          res,
-          `Reset aborted: state directory "${resolvedState}" does not appear safe to delete`,
-          400,
-        );
-        return true;
-      }
-
-      if (stateDirExists(resolvedState)) {
-        removeStateDir(resolvedState);
-      }
-
-      state.agentState = "stopped";
-      state.agentName = getDefaultStylePreset().name;
-      state.model = undefined;
-      state.startedAt = undefined;
-      state.config = {};
       state.chatRoomId = null;
       state.chatUserId = null;
       state.chatConnectionReady = null;

@@ -2359,15 +2359,24 @@ export async function startBenchmarkServer() {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
       let bodyBytes = 0;
+      let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
         bodyBytes += chunk.length;
         if (bodyBytes > MAX_BODY_BYTES) {
+          bodyTooLarge = true;
+          res.writeHead(413, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: `Request body exceeded max size ${MAX_BODY_BYTES} bytes`,
+            }),
+          );
           req.destroy();
           return;
         }
         body += chunk;
       });
       req.on("end", async () => {
+        if (bodyTooLarge) return;
         try {
           const parsed = body.trim()
             ? (JSON.parse(body) as {
@@ -2531,15 +2540,24 @@ export async function startBenchmarkServer() {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
       let bodyBytes = 0;
+      let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
         bodyBytes += chunk.length;
         if (bodyBytes > MAX_BODY_BYTES) {
+          bodyTooLarge = true;
+          res.writeHead(413, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: `Request body exceeded max size ${MAX_BODY_BYTES} bytes`,
+            }),
+          );
           req.destroy();
           return;
         }
         body += chunk;
       });
       req.on("end", async () => {
+        if (bodyTooLarge) return;
         try {
           let parsed: {
             text?: unknown;

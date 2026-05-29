@@ -13,6 +13,12 @@ REPORT = ROOT / "build/reports/e1x_tile_cocotb.json"
 GENERATED_ROM_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json"
 GENERATED_ROM_HEX = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex"
 GENERATED_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json"
+REAL_GRAPH_NORMAL_ROM_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json"
+REAL_GRAPH_NORMAL_ROM_HEX = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex"
+REAL_GRAPH_NORMAL_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json"
+REAL_GRAPH_HIGH_ROM_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json"
+REAL_GRAPH_HIGH_ROM_HEX = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex"
+REAL_GRAPH_HIGH_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json"
 RUNS = {
     "tile": {
         "top": "e1x_tile_tb",
@@ -22,6 +28,15 @@ RUNS = {
             "tile_programs_core_through_instruction_port",
             "tile_routes_fabric_wavelet_into_core_and_back_out",
             "tile_ecall_halts_integrated_core_and_blocks_wavelets",
+        },
+    },
+    "pe_tile": {
+        "top": "e1x_pe_tile_tb",
+        "module": "test_e1x_pe_tile",
+        "result": ROOT / "verify/cocotb/results/e1x_pe_tile_tb_test_e1x_pe_tile.xml",
+        "expected": {
+            "pe_tile_boots_and_runs_rv64im_program",
+            "pe_tile_exchanges_fabric_wavelet_through_real_core",
         },
     },
     "repair_routed_tile": {
@@ -56,11 +71,54 @@ RUNS = {
             "E1X_REPAIR_MANIFEST_JSON": str(GENERATED_MANIFEST_JSON),
         },
     },
+    "real_graph_normal_repair_mmio_routed_tile": {
+        "top": "e1x_repair_mmio_routed_tile_large_tb",
+        "module": "test_e1x_generated_repair_mmio_routed_tile",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_mmio_routed_tile_large_tb_test_e1x_generated_repair_mmio_routed_tile.xml",
+        "expected": {
+            "generated_high_failure_repair_rom_programs_tile_reroute_via_mmio",
+        },
+        "env": {
+            "E1X_REPAIR_ROM_JSON": str(REAL_GRAPH_NORMAL_ROM_JSON),
+            "E1X_REPAIR_ROM_HEX": str(REAL_GRAPH_NORMAL_ROM_HEX),
+            "E1X_REPAIR_MANIFEST_JSON": str(REAL_GRAPH_NORMAL_MANIFEST_JSON),
+        },
+    },
+    "real_graph_high_repair_mmio_routed_tile": {
+        "top": "e1x_repair_mmio_routed_tile_large_tb",
+        "module": "test_e1x_generated_repair_mmio_routed_tile",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_mmio_routed_tile_large_tb_test_e1x_generated_repair_mmio_routed_tile.xml",
+        "expected": {
+            "generated_high_failure_repair_rom_programs_tile_reroute_via_mmio",
+        },
+        "env": {
+            "E1X_REPAIR_ROM_JSON": str(REAL_GRAPH_HIGH_ROM_JSON),
+            "E1X_REPAIR_ROM_HEX": str(REAL_GRAPH_HIGH_ROM_HEX),
+            "E1X_REPAIR_MANIFEST_JSON": str(REAL_GRAPH_HIGH_MANIFEST_JSON),
+        },
+    },
 }
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def ensure_generated_repair_rom() -> None:
-    if GENERATED_ROM_JSON.is_file() and GENERATED_ROM_HEX.is_file() and GENERATED_MANIFEST_JSON.is_file():
+    required = (
+        GENERATED_ROM_JSON,
+        GENERATED_ROM_HEX,
+        GENERATED_MANIFEST_JSON,
+        REAL_GRAPH_NORMAL_ROM_JSON,
+        REAL_GRAPH_NORMAL_ROM_HEX,
+        REAL_GRAPH_NORMAL_MANIFEST_JSON,
+        REAL_GRAPH_HIGH_ROM_JSON,
+        REAL_GRAPH_HIGH_ROM_HEX,
+        REAL_GRAPH_HIGH_MANIFEST_JSON,
+    )
+    if all(path.is_file() for path in required):
         return
     subprocess.run(
         ["scripts/generate_e1x_scaled_model_evidence.py"],
@@ -111,6 +169,20 @@ def parse_results(result_xml: Path, expected_tests: set[str]) -> tuple[bool, str
     return True, f"{len(cases)} E1X tile integration cocotb tests passed", counts
 
 
+def repair_rom_summary() -> dict[str, int | str]:
+    scaled = json.loads(GENERATED_ROM_JSON.read_text(encoding="utf-8"))
+    normal = json.loads(REAL_GRAPH_NORMAL_ROM_JSON.read_text(encoding="utf-8"))
+    high = json.loads(REAL_GRAPH_HIGH_ROM_JSON.read_text(encoding="utf-8"))
+    return {
+        "scaled_high_failure_repair_rom_sha256": str(scaled["artifact_sha256"]),
+        "scaled_high_failure_repair_rom_words": int(scaled["total_word_count"]),
+        "real_graph_normal_repair_rom_sha256": str(normal["artifact_sha256"]),
+        "real_graph_normal_repair_rom_words": int(normal["total_word_count"]),
+        "real_graph_high_failure_repair_rom_sha256": str(high["artifact_sha256"]),
+        "real_graph_high_failure_repair_rom_words": int(high["total_word_count"]),
+    }
+
+
 def main() -> int:
     ensure_generated_repair_rom()
     checks = []
@@ -153,13 +225,18 @@ def main() -> int:
         "gate": "e1x-tile-cocotb",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": utc_now(),
         "subsystem": "e1x",
-        "claim_boundary": "E1X tile integration cocotb verification only; not full wafer-scale RTL, full RISC-V compliance, PD, DFT, package, or silicon evidence.",
+        "claim_boundary": "E1X tile integration cocotb verification only: tiny-core contract tiles, repair-routed/MMIO tiles, and the production e1x_pe_tile that integrates the real RV64IM_Zicsr_Zifencei e1x_pe_core (boots a program, executes M-extension MUL, round-trips a fabric wavelet through the router Local port). Not full wafer-scale RTL, full RISC-V compliance, PD, DFT, package, or silicon evidence.",
         "evidence_paths": [
             "rtl/e1x/e1x_tile.sv",
+            "rtl/e1x/e1x_pe_tile.sv",
+            "rtl/e1x/e1x_pe_core.sv",
             "rtl/e1x/e1x_repair_routed_tile.sv",
             "rtl/e1x/e1x_repair_mmio_routed_tile.sv",
             "verify/cocotb/e1x/e1x_tile_tb.sv",
+            "verify/cocotb/e1x/e1x_pe_tile_tb.sv",
+            "verify/cocotb/e1x/test_e1x_pe_tile.py",
             "verify/cocotb/e1x/e1x_repair_routed_tile_tb.sv",
             "verify/cocotb/e1x/e1x_repair_mmio_routed_tile_tb.sv",
             "verify/cocotb/e1x/e1x_repair_mmio_routed_tile_large_tb.sv",
@@ -170,7 +247,14 @@ def main() -> int:
             "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json",
             "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json",
             "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex",
+            "benchmarks/results/e1x-real-graph-model-load.normal_repair_manifest.json",
+            "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.json",
+            "benchmarks/results/e1x-real-graph-model-load.normal_repair_rom.hex",
+            "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_manifest.json",
+            "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.json",
+            "benchmarks/results/e1x-real-graph-model-load.high_failure_repair_rom.hex",
             "verify/cocotb/results/e1x_tile_tb_test_e1x_tile.xml",
+            "verify/cocotb/results/e1x_pe_tile_tb_test_e1x_pe_tile.xml",
             "verify/cocotb/results/e1x_repair_routed_tile_tb_test_e1x_repair_routed_tile.xml",
             "verify/cocotb/results/e1x_repair_mmio_routed_tile_tb_test_e1x_repair_mmio_routed_tile.xml",
             "verify/cocotb/results/e1x_repair_mmio_routed_tile_large_tb_test_e1x_generated_repair_mmio_routed_tile.xml",
@@ -178,6 +262,7 @@ def main() -> int:
         "checks": checks,
         "summary": {
             **aggregate_counts,
+            **repair_rom_summary(),
             "check_count": len(checks),
             "failing_check_count": len(failures),
         },

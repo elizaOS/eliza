@@ -75,6 +75,18 @@ PRODUCTION_EXTERNAL_SUITES = [
 REQUIRED_PRODUCTION_EXTERNAL_SUITE_NAMES = {suite["name"] for suite in PRODUCTION_EXTERNAL_SUITES}
 
 
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): provenance_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(child) for child in value]
+    if isinstance(value, str):
+        root = ROOT.as_posix()
+        if value.startswith(root + "/"):
+            return Path(value).relative_to(ROOT).as_posix()
+    return value
+
+
 def sha256_path(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as handle:
@@ -138,6 +150,7 @@ def build_manifest() -> dict[str, Any]:
         meta = _read_json_metadata_before_branches(path)
         name = path.name[: -len(".btrace.json")]
         source = meta.get("source") if isinstance(meta.get("source"), dict) else {}
+        source = provenance_safe_value(source)
         branch_count = int(meta.get("branch_count", 0))
         instruction_count = int(meta.get("instruction_count", 0))
         class_counts = (
@@ -165,6 +178,7 @@ def build_manifest() -> dict[str, Any]:
     present_required = sorted(REQUIRED_LOCAL_TRACES & names)
     return {
         "schema": SCHEMA,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "trace_dir": "external/workload-traces",
         "evidence_class": "qemu_rv64_workload_trace_manifest",

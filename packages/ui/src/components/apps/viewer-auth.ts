@@ -19,18 +19,29 @@ export function resolveEmbeddedViewerUrl(viewerUrl: string): string {
   return normalized;
 }
 
-export function resolvePostMessageTargetOrigin(viewerUrl: string): string {
+/**
+ * Resolve the concrete http(s) origin to use as the postMessage targetOrigin
+ * for a viewer iframe. Returns `null` when the viewer URL does not resolve to a
+ * concrete http(s) origin (non-http(s) scheme, opaque "null" origin, or
+ * unparseable URL). Callers MUST treat `null` as "do not send" and refuse
+ * inbound messages: an auth payload carries session/agent tokens, so it must
+ * never be broadcast with a wildcard targetOrigin, and an unverifiable sender
+ * origin must never be trusted (fail closed).
+ */
+export function resolvePostMessageTargetOrigin(
+  viewerUrl: string,
+): string | null {
   const resolvedViewerUrl = resolveEmbeddedViewerUrl(viewerUrl);
   try {
     const parsed = resolvedViewerUrl.startsWith("/")
       ? new URL(resolvedViewerUrl, window.location.origin)
       : new URL(resolvedViewerUrl);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return "*";
+      return null;
     }
-    return parsed.origin === "null" ? "*" : parsed.origin;
+    return parsed.origin === "null" ? null : parsed.origin;
   } catch {
-    return "*";
+    return null;
   }
 }
 

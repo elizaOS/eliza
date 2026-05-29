@@ -42,6 +42,7 @@ import type {
   AgentEventsResponse,
   AgentSelfStatusSnapshot,
   AgentStatus,
+  AppConfigResponse,
   BuildTrainingAnalysisIndexOptions,
   BuildTrainingReadinessReportOptions,
   CharacterData,
@@ -518,7 +519,7 @@ declare module "./client-base" {
     restartAndWait(maxWaitMs?: number): Promise<AgentStatus>;
     resetAgent(): Promise<void>;
     restart(): Promise<{ ok: boolean }>;
-    getConfig(): Promise<Record<string, unknown>>;
+    getConfig(): Promise<AppConfigResponse>;
     getConfigSchema(): Promise<ConfigSchemaResponse>;
     updateConfig(
       patch: Record<string, unknown>,
@@ -1568,18 +1569,17 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
   logSettingsClient("GET /api/config → start", {
     baseUrl: this.getBaseUrl(),
   });
-  let viaRpc: Record<string, unknown> | null = null;
+  let viaRpc: AppConfigResponse | null = null;
   try {
-    viaRpc = await invokeDesktopBridgeRequest<Record<string, unknown>>({
+    viaRpc = await invokeDesktopBridgeRequest<AppConfigResponse>({
       rpcMethod: "getConfig",
       ipcChannel: "agent",
     });
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
-  const r =
-    viaRpc ?? ((await this.fetch("/api/config")) as Record<string, unknown>);
-  const cloud = r.cloud as Record<string, unknown> | undefined;
+  const r = viaRpc ?? ((await this.fetch("/api/config")) as AppConfigResponse);
+  const cloud = r.cloud;
   logSettingsClient("GET /api/config ← ok", {
     baseUrl: this.getBaseUrl(),
     topKeys: Object.keys(r).sort(),

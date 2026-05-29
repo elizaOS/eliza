@@ -68,6 +68,8 @@ INTEGRATED_SOURCES = [
     "rtl/cpu/e1_cpu_axi_bridge.sv",
     "rtl/cpu/e1_tiny_cpu_contract.sv",
     "rtl/cpu/e1_cpu_subsystem_stub.sv",
+    "rtl/interconnect/e1_axil_to_mmio.sv",
+    "rtl/interconnect/e1_mmio_arb2.sv",
     "rtl/memory/e1_weight_buffer_sram.sv",
     "rtl/interrupts/e1_clint.sv",
     "rtl/interrupts/e1_plic.sv",
@@ -128,7 +130,11 @@ def _python() -> str:
 
 
 def _now() -> str:
-    return _dt.datetime.now(_dt.UTC).isoformat()
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def repo_safe(text: str) -> str:
+    return text.replace(str(ROOT), ".")
 
 
 def check_lint(verilator: str) -> dict:
@@ -152,7 +158,7 @@ def check_lint(verilator: str) -> dict:
     return {
         "id": "verilator_elaborate_integrated",
         "status": "fail",
-        "detail": "integrated elaboration failed: " + "\n".join(diags[:8]),
+        "detail": repo_safe("integrated elaboration failed: " + "\n".join(diags[:8])),
     }
 
 
@@ -257,6 +263,7 @@ def main() -> int:
             "verify/cocotb/soc/Makefile",
         ],
         "as_of": _now(),
+        "generated_utc": _now(),
         "subsystem": "soc-integration",
         "claim_boundary": (
             "Behind +define+E1_SOC_REAL_IRQ / +define+E1_SOC_REAL_DRAM, "

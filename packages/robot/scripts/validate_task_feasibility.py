@@ -54,6 +54,26 @@ _MOTION_CLIP_DIR = ROOT / "assets" / "profiles" / "hiwonder-ainex" / "motions"
 
 _HIWONDER_FORWARD_SINE_PARAMS: tuple[dict[str, Any], ...] = (
     {
+        "scale": 0.4,
+        "hz": 1.9563907621711247,
+        "phase0": 1.5402834507831917,
+        "hip_bias": 0.2755584748442317,
+        "hip_amp": 0.3212468621215588,
+        "knee_bias": 0.09924759866261687,
+        "knee_amp": 0.312690957982961,
+        "knee_phase": 1.4589047174050291,
+        "ank_bias": 0.2105912950140183,
+        "ank_amp": 0.3654458496024856,
+        "ank_phase": 0.15487493622422388,
+        "roll_bias": -0.1729556790550616,
+        "roll_amp": 0.5051988821589164,
+        "ank_roll_amp": 0.25950980435178034,
+        "roll_phase": 0.04278032216174843,
+        "ank_roll_phase_delta": 0.5739662341358047,
+        "yaw_amp": 0.0494646013783038,
+        "yaw_phase": 1.397874927385332,
+    },
+    {
         "scale": 0.4034294095831785,
         "hz": 1.9855734322995764,
         "phase0": 1.6844958278078308,
@@ -96,6 +116,29 @@ _HIWONDER_FORWARD_SINE_PARAMS: tuple[dict[str, Any], ...] = (
         "hold_mode": "freeze",
         "hold_blend_steps": 10,
     },
+    {
+        "scale": 0.4034294095831785,
+        "hz": 1.9855734322995764,
+        "phase0": 1.6844958278078308,
+        "hip_bias": 0.28770228475844883,
+        "hip_amp": 0.2412191794545148,
+        "knee_bias": 0.07058999827144093,
+        "knee_amp": 0.28693207311954694,
+        "knee_phase": 1.4589047174050291,
+        "ank_bias": 0.2105912950140183,
+        "ank_amp": 0.3849445885113766,
+        "ank_phase": 0.38509251894537644,
+        "roll_bias": -0.2142212852219753,
+        "roll_amp": 0.5051988821589164,
+        "ank_roll_amp": 0.22919304073908292,
+        "roll_phase": 0.04278032216174843,
+        "ank_roll_phase_delta": 0.5677232568921792,
+        "yaw_amp": 0.0,
+        "yaw_phase": 0.0,
+        "hold_switch_step": 224,
+        "hold_mode": "freeze",
+        "hold_blend_steps": 0,
+    },
 )
 
 
@@ -104,6 +147,7 @@ class _PrimitiveSpec:
     name: str
     action_scale: float
     factory: Callable[[TextConditionedProfileEnv, str], Callable[[int], np.ndarray | None]]
+    params: dict[str, Any] | None = None
 
 
 def _sample(t_s: float, info: dict) -> TelemetrySample:
@@ -119,6 +163,13 @@ def _sample(t_s: float, info: dict) -> TelemetrySample:
             "stand_height_m": info.get("stand_height_m"),
             "left_foot_contact": info.get("left_foot_contact"),
             "right_foot_contact": info.get("right_foot_contact"),
+            "left_foot_z_m": info.get("left_foot_z"),
+            "right_foot_z_m": info.get("right_foot_z"),
+            "left_foot_slip_m_s": info.get("left_foot_slip_m_s"),
+            "right_foot_slip_m_s": info.get("right_foot_slip_m_s"),
+            "max_swing_foot_clearance_m": info.get("max_swing_foot_clearance_m"),
+            "max_foot_slip_m_s": info.get("max_foot_slip_m_s"),
+            "self_collision_count": info.get("self_collision_count"),
             "root_x_m": info.get("root_x"),
             "root_y_m": info.get("root_y"),
             "torso_z_m": info.get("torso_z"),
@@ -578,6 +629,39 @@ def _success_predicate_diagnostics(
                 unmet=actual < required,
             )
         )
+    if "min_swing_foot_clearance_m" in success:
+        required = float(success["min_swing_foot_clearance_m"])
+        actual = _safe_max(traces.get("swing_foot_clearance", []))
+        diagnostics.append(
+            _predicate_row(
+                name="min_swing_foot_clearance_m",
+                expected={">=": required},
+                actual=actual,
+                unmet=actual is None or actual < required,
+            )
+        )
+    if "max_foot_slip_m_s" in success:
+        limit = float(success["max_foot_slip_m_s"])
+        actual = _safe_max(traces.get("foot_slip", []))
+        diagnostics.append(
+            _predicate_row(
+                name="max_foot_slip_m_s",
+                expected={"<=": limit},
+                actual=actual,
+                unmet=actual is None or actual > limit,
+            )
+        )
+    if "max_self_collision_count" in success:
+        limit = int(success["max_self_collision_count"])
+        actual = _safe_max(traces.get("self_collision_count", []))
+        diagnostics.append(
+            _predicate_row(
+                name="max_self_collision_count",
+                expected={"<=": limit},
+                actual=actual,
+                unmet=actual is None or actual > limit,
+            )
+        )
     if "hold_s" in success:
         hold_s = float(success["hold_s"])
         diagnostics.append(
@@ -729,6 +813,71 @@ def _make_stand_up_ramp_action(
     def _action(step: int) -> np.ndarray:
         alpha = min(1.0, float(step + 1) / float(ramp_steps))
         target = (1.0 - alpha) * start_pose + alpha * home_pose
+        return np.clip((target - home_pose) / action_scale, -1.0, 1.0).astype(
+            np.float32
+        )
+
+    return _action
+
+
+def _make_stand_up_pitch_feedback_action(
+    env: TextConditionedProfileEnv,
+    _task_id: str,
+) -> Callable[[int], np.ndarray | None]:
+    start_pose = np.array(
+        [env._data.qpos[qpos_idx] for qpos_idx in env._joint_qpos_idx],  # noqa: SLF001
+        dtype=np.float32,
+    )
+    home_pose = env._home_pose.astype(np.float32)  # noqa: SLF001
+    action_scale = max(float(env.config.action_scale), 1e-6)
+    ramp_steps = max(1, int(round(0.5 / env.config.control_dt_s)))
+    pitch_gain = 1.0
+
+    def _action(step: int) -> np.ndarray:
+        alpha = min(1.0, float(step + 1) / float(ramp_steps))
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        target = (1.0 - alpha) * start_pose + alpha * home_pose
+        pitch = float(env._root_pose_summary().get("pitch", 0.0))  # noqa: SLF001
+        correction = pitch_gain * pitch
+        for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+            name = joint.name.lower()
+            side = 1.0 if name.startswith("l_") else -1.0
+            if "hip_pitch" in name:
+                target[idx] += side * correction
+            elif "ank_pitch" in name:
+                target[idx] -= side * correction
+        target = np.clip(target, env._lower, env._upper)  # noqa: SLF001
+        return np.clip((target - home_pose) / action_scale, -1.0, 1.0).astype(
+            np.float32
+        )
+
+    return _action
+
+
+def _make_sit_down_smooth_action(
+    env: TextConditionedProfileEnv,
+    _task_id: str,
+) -> Callable[[int], np.ndarray | None]:
+    home_pose = env._home_pose.astype(np.float32)  # noqa: SLF001
+    target_pose = home_pose.copy()
+    for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+        name = joint.name.lower()
+        if "hip_pitch" in name:
+            target_pose[idx] = -0.8
+        elif "knee" in name:
+            target_pose[idx] = 1.6
+        elif "ank_pitch" in name:
+            target_pose[idx] = 0.8
+    target_pose = np.clip(target_pose, env._lower, env._upper)  # noqa: SLF001
+    action_scale = max(float(env.config.action_scale), 1e-6)
+    ramp_steps = max(1, int(round(2.0 / env.config.control_dt_s)))
+
+    def _action(step: int) -> np.ndarray:
+        alpha = min(1.0, float(step + 1) / float(ramp_steps))
+        # Smoothstep avoids the early impulse that made the generic primitive
+        # pitch forward and fail before reaching the crouched height bracket.
+        alpha = alpha * alpha * (3.0 - 2.0 * alpha)
+        target = (1.0 - alpha) * home_pose + alpha * target_pose
         return np.clip((target - home_pose) / action_scale, -1.0, 1.0).astype(
             np.float32
         )
@@ -924,7 +1073,33 @@ def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
         _PrimitiveSpec("deterministic_smoke", 0.3, _make_deterministic_action),
     ]
     if task_id == "stand_up":
-        specs.insert(0, _PrimitiveSpec("stand_up_smooth_ramp", 2.0, _make_stand_up_ramp_action))
+        specs.insert(
+            0,
+            _PrimitiveSpec("stand_up_smooth_ramp", 2.0, _make_stand_up_ramp_action),
+        )
+        if profile_id == "hiwonder-ainex":
+            specs.insert(
+                0,
+                _PrimitiveSpec(
+                    "stand_up_pitch_feedback",
+                    2.0,
+                    _make_stand_up_pitch_feedback_action,
+                    {
+                        "ramp_s": 0.5,
+                        "pitch_gain": 1.0,
+                        "mode": "mirrored_hip_ank",
+                    },
+                ),
+            )
+    if task_id == "sit_down":
+        specs.insert(
+            0,
+            _PrimitiveSpec(
+                "sit_down_smooth_target",
+                2.0,
+                _make_sit_down_smooth_action,
+            ),
+        )
     if profile_id == "hiwonder-ainex" and _controller_command(task_id) is not None:
         specs.extend(
             [
@@ -950,6 +1125,7 @@ def _primitive_specs(profile_id: str, task_id: str) -> list[_PrimitiveSpec]:
                         f"sinusoidal_seeded_{idx}",
                         float(params["scale"]),
                         partial(_make_sinusoidal_action, params=params),
+                        dict(params),
                     )
                 )
         if task_id in {"sidestep_left", "sidestep_right"}:
@@ -1057,8 +1233,13 @@ def _rollout_candidate(
         "tracked_delta_x": [],
         "tracked_delta_y": [],
         "tracked_delta_z": [],
+        "imu_roll": [],
+        "imu_pitch": [],
         "left_foot_contact": [],
         "right_foot_contact": [],
+        "swing_foot_clearance": [],
+        "foot_slip": [],
+        "self_collision_count": [],
     }
     result = None
     max_success_window_s = 0.0
@@ -1082,6 +1263,8 @@ def _rollout_candidate(
             "tracked_delta_x",
             "tracked_delta_y",
             "tracked_delta_z",
+            "imu_roll",
+            "imu_pitch",
         ):
             value = _finite_or_none(last_info.get(key))
             if value is not None:
@@ -1090,6 +1273,26 @@ def _rollout_candidate(
             value = last_info.get(key)
             if value is not None:
                 traces[key].append(1.0 if bool(value) else 0.0)
+        left_contact = bool(last_info.get("left_foot_contact", False))
+        right_contact = bool(last_info.get("right_foot_contact", False))
+        swing_clearances = []
+        if not left_contact:
+            value = _finite_or_none(last_info.get("left_foot_z"))
+            if value is not None:
+                swing_clearances.append(value)
+        if not right_contact:
+            value = _finite_or_none(last_info.get("right_foot_z"))
+            if value is not None:
+                swing_clearances.append(value)
+        if swing_clearances:
+            traces["swing_foot_clearance"].append(max(swing_clearances))
+        for key in ("left_foot_slip_m_s", "right_foot_slip_m_s"):
+            value = _finite_or_none(last_info.get(key))
+            if value is not None:
+                traces["foot_slip"].append(value)
+        value = _finite_or_none(last_info.get("self_collision_count"))
+        if value is not None:
+            traces["self_collision_count"].append(value)
         result = checker.update(_sample((step + 1) * env.config.control_dt_s, last_info))
         max_success_window_s = max(max_success_window_s, float(result.success_window_s))
         if result.success or result.failed or terminated or truncated:
@@ -1162,6 +1365,18 @@ def _rollout_candidate(
             "min": _safe_min(traces["delta_yaw"]),
             "max": _safe_max(traces["delta_yaw"]),
         },
+        "imu_roll_rad": {
+            "final": _finite_or_none(last_info.get("imu_roll")),
+            "max_abs": _safe_max_abs(traces["imu_roll"]),
+            "min": _safe_min(traces["imu_roll"]),
+            "max": _safe_max(traces["imu_roll"]),
+        },
+        "imu_pitch_rad": {
+            "final": _finite_or_none(last_info.get("imu_pitch")),
+            "max_abs": _safe_max_abs(traces["imu_pitch"]),
+            "min": _safe_min(traces["imu_pitch"]),
+            "max": _safe_max(traces["imu_pitch"]),
+        },
         "success_predicates": success_predicates,
         "unmet_success_predicates": [
             row["predicate"] for row in success_predicates if row["unmet"]
@@ -1179,6 +1394,7 @@ def _rollout_candidate(
         "task_id": task_id,
         "controller": diagnostics["controller"],
         "action_scale": primitive.action_scale,
+        "controller_params": primitive.params,
         "success": bool(result.success),
         "failed": bool(result.failed),
         "reason": result.reason,
@@ -1204,6 +1420,8 @@ def _rollout_candidate(
         "max_abs_delta_x_m": _safe_max_abs(delta_x_trace),
         "max_abs_delta_y_m": _safe_max_abs(delta_y_trace),
         "max_abs_delta_yaw_rad": _safe_max_abs(traces["delta_yaw"]),
+        "max_abs_imu_roll_rad": _safe_max_abs(traces["imu_roll"]),
+        "max_abs_imu_pitch_rad": _safe_max_abs(traces["imu_pitch"]),
         "max_success_window_s": max_success_window_s,
         "progress_ratio": diagnostics["progress_ratio"],
         "candidate_score": score,
@@ -1233,6 +1451,7 @@ def _candidate_summary(row: dict) -> dict:
     return {
         "controller": row["controller"],
         "action_scale": row.get("action_scale"),
+        "controller_params": row.get("controller_params"),
         "success": row["success"],
         "failed": row["failed"],
         "terminated": row["terminated"],
@@ -1246,6 +1465,8 @@ def _candidate_summary(row: dict) -> dict:
         "max_delta_y_m": row.get("max_delta_y_m"),
         "final_delta_yaw_rad": row["final_delta_yaw_rad"],
         "max_delta_yaw_rad": row.get("max_delta_yaw_rad"),
+        "max_abs_imu_roll_rad": row.get("max_abs_imu_roll_rad"),
+        "max_abs_imu_pitch_rad": row.get("max_abs_imu_pitch_rad"),
         "max_success_window_s": row.get("max_success_window_s"),
         "tracked_body": row.get("diagnostics", {}).get("tracked_body"),
         "progress_ratio": row["progress_ratio"],

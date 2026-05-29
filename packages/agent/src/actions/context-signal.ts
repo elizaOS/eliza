@@ -43,8 +43,8 @@ function resolveContextSignalLocale(
   runtime: ContextSignalRuntimeLike | null,
   state: State | undefined,
   localeOverride?: unknown,
-): unknown {
-  if (localeOverride !== undefined) {
+): string | undefined {
+  if (typeof localeOverride === "string" && localeOverride.trim().length > 0) {
     return localeOverride;
   }
 

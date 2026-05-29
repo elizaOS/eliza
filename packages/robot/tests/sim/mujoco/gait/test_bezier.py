@@ -119,6 +119,27 @@ def test_controller_reset_returns_neutral_pose() -> None:
     np.testing.assert_allclose(ctl.phase, np.array([0.0, np.pi]))
 
 
+def test_controller_neutral_pose_mirrors_ainex_sagittal_joint_signs() -> None:
+    """Equivalent bent-knee flexion uses opposite signs on the right leg."""
+    from eliza_robot.sim.mujoco.gait.controller import (
+        L_ANK_PITCH,
+        L_HIP_PITCH,
+        L_KNEE,
+        R_ANK_PITCH,
+        R_HIP_PITCH,
+        R_KNEE,
+    )
+
+    q0 = BezierGaitController().reset()
+
+    assert q0[L_HIP_PITCH] > 0.0
+    assert q0[L_KNEE] < 0.0
+    assert q0[L_ANK_PITCH] > 0.0
+    assert q0[R_HIP_PITCH] == pytest.approx(-q0[L_HIP_PITCH])
+    assert q0[R_KNEE] == pytest.approx(-q0[L_KNEE])
+    assert q0[R_ANK_PITCH] == pytest.approx(-q0[L_ANK_PITCH])
+
+
 def test_controller_profile_override_takes_precedence() -> None:
     """A profile-provided gait config overrides the explicit kwargs."""
 

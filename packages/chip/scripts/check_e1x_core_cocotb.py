@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_core_cocotb.json"
+PE_CORE_REPORT = ROOT / "build/reports/e1x_pe_core_cocotb.json"
 GENERATED_MODEL_SHARD_SAMPLE_JSON = (
     ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json"
 )
@@ -47,6 +49,10 @@ RUNS = {
         },
     },
 }
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def ensure_generated_model_shard_sample() -> None:
@@ -101,6 +107,31 @@ def parse_results(result_xml: Path, expected_tests: set[str]) -> tuple[bool, str
     return True, f"{len(cases)} E1X tiny-core cocotb tests passed", counts
 
 
+def run_pe_core_gate() -> tuple[bool, str, dict[str, int]]:
+    proc = subprocess.run(
+        [sys.executable, "scripts/check_e1x_pe_core_cocotb.py"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return False, (proc.stderr.strip() or proc.stdout.strip())[-1200:], {}
+    if not PE_CORE_REPORT.is_file():
+        return False, f"missing PE-core report {PE_CORE_REPORT.relative_to(ROOT)}", {}
+    report = json.loads(PE_CORE_REPORT.read_text(encoding="utf-8"))
+    summary = report.get("summary", {})
+    counts = {
+        "testcases": int(summary.get("testcases", 0)),
+        "failures": int(summary.get("failures", 0)),
+        "errors": int(summary.get("errors", 0)),
+        "missing_expected_tests": int(summary.get("missing_expected_tests", 0)),
+    }
+    if report.get("status") != "PASS":
+        return False, f"PE-core gate status={report.get('status')}", counts
+    return True, f"{counts['testcases']} E1X PE-core cocotb tests passed", counts
+
+
 def main() -> int:
     ensure_generated_model_shard_sample()
     checks = []
@@ -137,26 +168,42 @@ def main() -> int:
                 },
             ]
         )
+    pe_core_ok, pe_core_detail, pe_core_counts = run_pe_core_gate()
+    for key in aggregate_counts:
+        aggregate_counts[key] += int(pe_core_counts.get(key, 0))
+    checks.append(
+        {
+            "id": "e1x_pe_core_cocotb_gate",
+            "status": "pass" if pe_core_ok else "fail",
+            "detail": pe_core_detail,
+        }
+    )
     failures = [check for check in checks if check["status"] != "pass"]
     report = {
         "schema": "eliza.gate_status.v1",
         "gate": "e1x-core-cocotb",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": utc_now(),
         "subsystem": "e1x",
-        "claim_boundary": "E1X tiny-core and local SRAM shard-loader cocotb verification only; not full RISC-V compliance, full model compiler/runtime, PD, DFT, package, or silicon evidence.",
+        "claim_boundary": "E1X core cocotb verification covers the legacy tiny-core tile contract, local SRAM shard loading, generated model-shard loading, and standalone RV64IM_Zicsr_Zifencei PE-core execution tests; not full RISC-V compliance, full model compiler/runtime, PD, DFT, package, or silicon evidence.",
         "evidence_paths": [
             "rtl/e1x/e1x_tiny_core_contract.sv",
+            "rtl/e1x/e1x_pe_core.sv",
             "rtl/e1x/e1x_local_sram_shard_loader.sv",
             "verify/cocotb/e1x/e1x_tiny_core_tb.sv",
             "verify/cocotb/e1x/e1x_local_sram_shard_loader_tb.sv",
+            "verify/cocotb/e1x_core_full/e1x_pe_core_tb.sv",
             "verify/cocotb/e1x/test_e1x_tiny_core.py",
             "verify/cocotb/e1x/test_e1x_local_sram_shard_loader.py",
             "verify/cocotb/e1x/test_e1x_generated_model_shard_loader.py",
+            "verify/cocotb/e1x_core_full/test_e1x_pe_core.py",
             "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json",
             "verify/cocotb/results/e1x_tiny_core_tb_test_e1x_tiny_core.xml",
             "verify/cocotb/results/e1x_local_sram_shard_loader_tb_test_e1x_local_sram_shard_loader.xml",
             "verify/cocotb/results/e1x_local_sram_shard_loader_tb_test_e1x_generated_model_shard_loader.xml",
+            "verify/cocotb/results/e1x_pe_core_tb_test_e1x_pe_core.xml",
+            "build/reports/e1x_pe_core_cocotb.json",
         ],
         "checks": checks,
         "summary": {

@@ -322,6 +322,30 @@ class GoalChecker:
                 return fail()
             reasons.append(f"foot_contact_switches={switches}")
 
+        if "min_swing_foot_clearance_m" in crit:
+            matched = True
+            clearance = self._max_swing_foot_clearance_m()
+            required = float(crit["min_swing_foot_clearance_m"])
+            if clearance is None or clearance < required:
+                return fail()
+            reasons.append(f"swing_clearance={clearance:.3f}m ≥ {required:.3f}")
+
+        if "max_foot_slip_m_s" in crit:
+            matched = True
+            slip = self._max_foot_slip_m_s()
+            limit = float(crit["max_foot_slip_m_s"])
+            if slip is None or slip > limit:
+                return fail()
+            reasons.append(f"foot_slip≤{limit:.3f}m/s")
+
+        if "max_self_collision_count" in crit:
+            matched = True
+            collisions = self._max_self_collision_count()
+            limit = int(crit["max_self_collision_count"])
+            if collisions is None or collisions > limit:
+                return fail()
+            reasons.append(f"self_collisions≤{limit}")
+
         if "head_tilt_min_rad" in crit:
             matched = True
             if sample.head_tilt_rad < float(crit["head_tilt_min_rad"]):
@@ -434,6 +458,33 @@ class GoalChecker:
                 switches += 1
             last_stance = stance
         return switches
+
+    def _max_swing_foot_clearance_m(self) -> float | None:
+        clearances: list[float] = []
+        for sample in self.samples:
+            for side in ("left", "right"):
+                contact = _bool_or_none(sample.extra.get(f"{side}_foot_contact"))
+                foot_z = _float_or_none(sample.extra.get(f"{side}_foot_z_m"))
+                if contact is False and foot_z is not None:
+                    clearances.append(foot_z)
+        return max(clearances) if clearances else None
+
+    def _max_foot_slip_m_s(self) -> float | None:
+        slips: list[float] = []
+        for sample in self.samples:
+            for side in ("left", "right"):
+                slip = _float_or_none(sample.extra.get(f"{side}_foot_slip_m_s"))
+                if slip is not None:
+                    slips.append(slip)
+        return max(slips) if slips else None
+
+    def _max_self_collision_count(self) -> int | None:
+        collisions = [
+            int(value)
+            for sample in self.samples
+            if (value := _float_or_none(sample.extra.get("self_collision_count"))) is not None
+        ]
+        return max(collisions) if collisions else None
 
 
 def _bool_or_none(value: object) -> bool | None:

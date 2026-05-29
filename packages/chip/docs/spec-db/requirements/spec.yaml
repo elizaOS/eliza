@@ -157,7 +157,7 @@ requirements:
     title: Platform contract pins SoC software-visible platform surface
     owner: platform
     source_doc: sw/platform/e1_platform_contract.json
-    source_doc_sha: a6cf225fe9208f58c9c5eadd30684f95c079e4de603669c8a54375a533e71c71
+    source_doc_sha: ce65c6784923006f827c5443d28c92ce1a02ec5beebe6b07897d910da9593286
     status: contract
     claim_boundary: platform_contract_no_boot_or_product_claim
     links:

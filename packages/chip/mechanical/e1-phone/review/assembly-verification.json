@@ -1001,7 +1001,7 @@
         "keepout": "split_interconnect_side_flex",
         "connector": "split_interconnect_top_connector",
         "unpinched": true,
-        "min_clearance_mm": 0.0,
+        "min_clearance_mm": 0.56,
         "pinching_parts": []
       },
       {
@@ -1009,7 +1009,7 @@
         "keepout": "split_interconnect_top_flex_tail",
         "connector": "split_interconnect_top_connector",
         "unpinched": true,
-        "min_clearance_mm": 0.0,
+        "min_clearance_mm": 0.25,
         "pinching_parts": []
       },
       {
@@ -1017,12 +1017,12 @@
         "keepout": "split_interconnect_bottom_flex_tail",
         "connector": "split_interconnect_bottom_connector",
         "unpinched": true,
-        "min_clearance_mm": 0.0,
+        "min_clearance_mm": 0.25,
         "pinching_parts": []
       }
     ]
   },
   "trapped_parts": [],
   "device_assemblable": true,
-  "runtime_s": 15.93
+  "runtime_s": 23.54
 }

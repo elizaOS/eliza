@@ -8,6 +8,7 @@ is run by the top-level ``cocotb-dma`` gate.
 import random
 import sys
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cocotb
@@ -33,6 +34,8 @@ def write_coverage_artifact(extra):
     _COVERED_CONTRACTS.update(extra)
     coverage = {
         "schema": "e1-chip.dma_long_transfer_cocotb_coverage.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": "directed_dma_long_transfer_cocotb_coverage_only_not_system_or_release_evidence",
         "source": "verify/cocotb/dma/test_dma_long_transfer.py",
         "covered_contracts": sorted(_COVERED_CONTRACTS),
         "boundary": "Directed standalone e1_dma long-transfer, partial-tail, IRQ, unaligned-programming, and SLVERR propagation coverage only; no coherent DMA, IOMMU, cache, or production memory hierarchy coverage.",

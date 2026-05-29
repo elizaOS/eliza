@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +30,34 @@ REQUIRED_COUNTER_ENVS = (
     "E1_NPU_GENERATED_BY",
     "E1_NPU_TARGET",
 )
+CLAIM_BOUNDARY = (
+    "android_e1_npu_proof_bundle_preflight_only_not_runtime_nnapi_or_release_evidence"
+)
+HOST_LOCAL_PATH = re.compile(r"(?<![\w/])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
+
+
+def utc_now() -> str:
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str, aosp_tree: Path | None = None) -> str:
+    sanitized = value
+    replacements: list[tuple[str, str]] = [(ROOT.as_posix(), "packages/chip")]
+    if aosp_tree is not None:
+        replacements.append((aosp_tree.as_posix(), "$AOSP_TREE"))
+    for source, replacement in replacements:
+        sanitized = sanitized.replace(source, replacement.rstrip("/"))
+    return HOST_LOCAL_PATH.sub(lambda match: f"<host-path>/{Path(match.group(0)).name}", sanitized)
+
+
+def provenance_safe_value(value: Any, aosp_tree: Path | None = None) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item, aosp_tree) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item, aosp_tree) for item in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value, aosp_tree)
+    return value
 
 
 def default_aosp_tree(env: dict[str, str]) -> str:
@@ -167,6 +197,8 @@ def build_report(args: argparse.Namespace, env: dict[str, str]) -> tuple[int, di
 
     report = {
         "schema": "eliza.e1_npu_android_proof_bundle_preflight.v1",
+        "generated_utc": utc_now(),
+        "claim_boundary": CLAIM_BOUNDARY,
         "status": "pass" if not blockers else "blocked",
         "aosp_tree": str(aosp_tree) if aosp_tree else "",
         "adb": adb,
@@ -178,7 +210,7 @@ def build_report(args: argparse.Namespace, env: dict[str, str]) -> tuple[int, di
         "warnings": warnings,
         "bundle_command": "scripts/android/capture_e1_npu_android_proof_bundle.sh",
     }
-    return (0 if not blockers else 2), report
+    return (0 if not blockers else 2), provenance_safe_value(report, aosp_tree)
 
 
 def main(argv: list[str]) -> int:

@@ -9,6 +9,7 @@ Linux/AOSP merely boot or actually run the launcher and agent without issues.
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import json
 import re
 from dataclasses import dataclass
@@ -32,6 +33,10 @@ WEAK_SCOPE_RE = re.compile(
 BLOCKED_TEXT_RE = re.compile(
     r"\b(blocked|placeholder|not yet|not measured|missing|timeout)\b", re.I
 )
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -259,12 +264,21 @@ def status_value(data: object) -> str | None:
 
 def bool_false_fields(data: object) -> list[str]:
     fields: list[str] = []
+    embedded_payload_keys = {
+        "companion_report",
+        "companion_reports",
+        "companion_report_active_smoke_attempt",
+        "diagnostic",
+        "diagnostics",
+    }
 
     def walk(value: object, prefix: str) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
                 name = f"{prefix}.{key}" if prefix else str(key)
                 lowered = str(key).lower()
+                if lowered in embedded_payload_keys:
+                    continue
                 if child is False and any(
                     token in lowered
                     for token in (
@@ -410,6 +424,7 @@ def build_report() -> dict[str, Any]:
         "schema": SCHEMA,
         "status": "blocked" if findings else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
+        "generated_utc": utc_now(),
         "summary": {
             "artifacts": len(artifacts),
             "findings": len(findings),

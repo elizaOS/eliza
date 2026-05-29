@@ -30,25 +30,36 @@ class FormalManifestGateTests(unittest.TestCase):
         report.mkdir(parents=True)
         log = report / "formal.log"
         log.write_text("fallback completed\n", encoding="utf-8")
+        def entry_for(target: str) -> dict:
+            entry = {
+                "status": "fallback_pass" if evidence_class.startswith("fallback") else "pass",
+                "evidence_class": evidence_class,
+                "paths": {
+                    "log": "build/reports/formal.log",
+                    "log_sha256": self.pipeline.sha256(log),
+                },
+            }
+            if evidence_class.startswith("sby_"):
+                entry["sby"] = {
+                    "spec": f"verify/formal/{target}.sby",
+                    "engines": ["smtbmc z3"],
+                    "tasks": {"default": {"mode": "bmc", "depth": "4"}},
+                    "covered_files": ["rtl/example.sv"],
+                }
+            return entry
+
         manifest = {
             "schema": "e1-chip-formal-evidence-v1",
             "mode": mode,
+            "fallback_equivalent_to_sby": False,
+            "strict_release_claim_allowed": mode == "sby-deep-top",
+            "deep_top_required_for_release": True,
             "release_claim": (
                 "strict_formal_bmc_evidence"
                 if mode == "sby-deep-top"
                 else "strict_requires_sby_and_deep_top"
             ),
-            "entries": {
-                target: {
-                    "status": "fallback_pass" if evidence_class.startswith("fallback") else "pass",
-                    "evidence_class": evidence_class,
-                    "paths": {
-                        "log": "build/reports/formal.log",
-                        "log_sha256": self.pipeline.sha256(log),
-                    },
-                }
-                for target in self.pipeline.FORMAL_TARGETS
-            },
+            "entries": {target: entry_for(target) for target in self.pipeline.FORMAL_TARGETS},
             "source_hashes": {"scripts/run_formal.sh": "dummy"},
         }
         (report / "formal_manifest.json").write_text(
@@ -77,6 +88,17 @@ class FormalManifestGateTests(unittest.TestCase):
             root = Path(tmpdir)
             self.write_manifest(root, mode="sby-deep-top", evidence_class="sby_bmc_deep")
             self.assertEqual(self.pipeline.validate_formal_manifest(root, strict=True), [])
+
+    def test_sby_manifest_requires_solver_depth_and_covered_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self.write_manifest(root, mode="sby-deep-top", evidence_class="sby_bmc_deep")
+            manifest_path = root / "build/reports/formal_manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["entries"]["e1_npu"].pop("sby")
+            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+            errors = self.pipeline.validate_formal_manifest(root, strict=True)
+        self.assertIn("formal e1_npu: missing SBY metadata", errors)
 
 
 if __name__ == "__main__":

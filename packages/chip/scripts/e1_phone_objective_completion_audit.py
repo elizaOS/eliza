@@ -81,6 +81,9 @@ def main() -> int:
     mechanical_burndown = load_yaml(
         BOARD_ROOT / "enclosure-mechanical-release-burndown-2026-05-22.yaml"
     )
+    mechanical_inventory = load_yaml(
+        CHIP_ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
+    )
     bench_templates = load_yaml(
         BOARD_ROOT / "production/test/bench-first-article-template-manifest-2026-05-22.yaml"
     )
@@ -96,10 +99,24 @@ def main() -> int:
     candidate_context = routed_acceptance.get("candidate_end_to_end_context", {})
     routed_candidate_counts = board_text_counts(ROUTED_CANDIDATE_PATH)
     routed_visual = candidate_context.get("routed_step_visual_detail", {})
+    routed_source_binding = candidate_context.get("routed_candidate_source_binding", {})
+    if not isinstance(routed_source_binding, dict):
+        routed_source_binding = {}
     cad_connection = candidate_context.get("cad_connection_coverage", {})
     traceability = candidate_context.get("kicad_cad_traceability", {})
     component_model = candidate_context.get("component_model_manifest_summary", {})
     component_dir = candidate_context.get("component_model_directory_summary", {})
+    mechanical_component_dir = mechanical_inventory.get("component_model_directory_ready", {})
+    if not isinstance(mechanical_component_dir, dict):
+        mechanical_component_dir = {}
+    supplier_lane_surrogate_records = (
+        mechanical_component_dir.get("supplier_lane_surrogate_records", []) or []
+    )
+    if not isinstance(supplier_lane_surrogate_records, list):
+        supplier_lane_surrogate_records = []
+    local_enclosure_cad = mechanical_inventory.get("local_enclosure_cad_ready", {})
+    if not isinstance(local_enclosure_cad, dict):
+        local_enclosure_cad = {}
     development_route = routed_acceptance.get("development_route_context", {})
     route_domains = routed_acceptance.get("route_domain_acceptance_matrix", [])
     if not isinstance(route_domains, list):
@@ -107,6 +124,9 @@ def main() -> int:
     pad_records = pad_pin_audit.get("records", [])
     if not isinstance(pad_records, list):
         pad_records = []
+    pending_pad_records = pad_pin_audit.get("pending_supplier_pad_map_or_order_records", [])
+    if not isinstance(pending_pad_records, list):
+        pending_pad_records = []
     captured_pinout_files = sorted(
         {
             str(record.get("pinout_file"))
@@ -168,6 +188,20 @@ def main() -> int:
         ),
         "real_footprint_development_refs": int(routed_visual.get("development_footprint_refs") or 0),
         "real_footprint_remaining_placeholder_markers": 0,
+        "routed_candidate_matches_real_footprint_source": routed_source_binding.get(
+            "candidate_matches_source_board"
+        )
+        is True,
+        "routed_candidate_zero_placeholder_real_footprint_board": routed_source_binding.get(
+            "candidate_is_zero_placeholder_real_footprint_board"
+        )
+        is True,
+        "routed_candidate_legacy_e1phone_footprint_ref_count": int(
+            routed_source_binding.get("candidate_legacy_e1phone_footprint_ref_count") or 0
+        ),
+        "routed_candidate_placeholder_marker_count": int(
+            routed_source_binding.get("candidate_placeholder_marker_count") or 0
+        ),
         "routed_step_candidate_present": bool(candidate_context.get("source_step")),
         "routed_step_candidate_path": candidate_context.get("source_step", ""),
         "routed_step_candidate_release_credit": candidate_context.get("release_credit") is True,
@@ -187,6 +221,8 @@ def main() -> int:
         "pinout_pending_supplier_pad_map_or_order_count": int(
             pad_pin_audit.get("pending_supplier_pad_map_or_order_count") or 0
         ),
+        "pinout_pending_supplier_pad_map_or_order_record_count": len(pending_pad_records),
+        "pinout_pending_supplier_pad_map_or_order_records": pending_pad_records,
         "pinout_all_bound_footprints_have_terminal_contract": pad_pin_audit.get(
             "all_pinout_bound_footprints_have_terminal_contract"
         ) is True,
@@ -378,7 +414,114 @@ def main() -> int:
         "component_model_directory_supplier_step_intake_lane_counts": (
             component_dir.get("supplier_step_intake_lane_counts", {})
         ),
+        "component_model_directory_supplier_lane_surrogate_step_count": int(
+            mechanical_component_dir.get("supplier_lane_surrogate_step_count") or 0
+        ),
+        "component_model_directory_supplier_lane_surrogate_record_count": len(
+            supplier_lane_surrogate_records
+        ),
+        "component_model_directory_all_lane_surrogates_present": (
+            mechanical_component_dir.get("all_lane_surrogates_present") is True
+        ),
+        "component_model_directory_all_lane_surrogate_hashes_match": (
+            mechanical_component_dir.get("all_lane_surrogate_hashes_match") is True
+        ),
+        "component_model_directory_all_lane_surrogate_sizes_match": (
+            mechanical_component_dir.get("all_lane_surrogate_sizes_match") is True
+        ),
+        "component_model_directory_all_lane_surrogates_release_credit_false": (
+            mechanical_component_dir.get("all_lane_surrogates_release_credit_false") is True
+        ),
+        "component_model_directory_all_lane_component_reference_counts_match_manifest": (
+            mechanical_component_dir.get(
+                "all_lane_component_reference_counts_match_manifest"
+            )
+            is True
+        ),
+        "component_model_directory_all_lane_component_records_release_credit_false": (
+            mechanical_component_dir.get("all_lane_component_records_release_credit_false")
+            is True
+        ),
+        "component_model_directory_all_lane_component_records_reference_surrogate": (
+            mechanical_component_dir.get("all_lane_component_records_reference_surrogate")
+            is True
+        ),
         "component_model_directory_release_allowed": component_dir.get("release_allowed") is True,
+    }
+    detailed_trace_manifests = {
+        "scope": "local_non_release_kicad_to_cad_trace_records",
+        "route_visual_record_count": len(routed_visual.get("route_visual_records", []) or []),
+        "route_visual_records": routed_visual.get("route_visual_records", []) or [],
+        "via_visual_record_count": len(routed_visual.get("via_visual_records", []) or []),
+        "via_visual_records": routed_visual.get("via_visual_records", []) or [],
+        "filled_copper_zone_record_count": len(
+            routed_visual.get("filled_copper_zone_records", []) or []
+        ),
+        "filled_copper_zone_filled_polygon_count": sum(
+            int(record.get("filled_polygon_count") or 0)
+            for record in routed_visual.get("filled_copper_zone_records", []) or []
+            if isinstance(record, dict)
+        ),
+        "filled_copper_zone_records": (
+            routed_visual.get("filled_copper_zone_records", []) or []
+        ),
+        "component_model_record_count": len(
+            component_model.get("component_model_record_manifest", []) or []
+        ),
+        "component_model_record_manifest": (
+            component_model.get("component_model_record_manifest", []) or []
+        ),
+        "mechanical_component_model_record_count": len(
+            mechanical_component_dir.get("component_model_record_manifest", []) or []
+        ),
+        "mechanical_component_model_record_manifest": (
+            mechanical_component_dir.get("component_model_record_manifest", []) or []
+        ),
+        "supplier_lane_surrogate_record_count": len(supplier_lane_surrogate_records),
+        "supplier_lane_surrogate_records": supplier_lane_surrogate_records,
+        "cad_connection_record_count": len(
+            local_enclosure_cad.get("cad_connection_record_manifest", []) or []
+        ),
+        "cad_connection_record_manifest": (
+            local_enclosure_cad.get("cad_connection_record_manifest", []) or []
+        ),
+        "all_route_records_have_net_layer_class_and_source": all(
+            record.get("net")
+            and record.get("layer")
+            and record.get("route_classes")
+            and record.get("source_domains")
+            for record in routed_visual.get("route_visual_records", []) or []
+            if isinstance(record, dict)
+        ),
+        "all_component_records_have_local_step_and_release_credit_false": all(
+            record.get("local_discrete_step_file")
+            and int(record.get("local_discrete_step_bytes") or 0) > 0
+            and record.get("release_credit") is False
+            for record in component_model.get("component_model_record_manifest", []) or []
+            if isinstance(record, dict)
+        ),
+        "all_connection_records_have_cad_step_and_release_credit_false": all(
+            record.get("cad_part")
+            and int(record.get("cad_step_bytes") or 0) > 0
+            and record.get("release_credit") is False
+            for record in local_enclosure_cad.get("cad_connection_record_manifest", []) or []
+            if isinstance(record, dict)
+        ),
+        "all_supplier_lane_surrogates_have_hash_size_components_and_release_credit_false": all(
+            record.get("file")
+            and record.get("file_present") is True
+            and record.get("hash_matches_file") is True
+            and record.get("size_matches_file") is True
+            and record.get("release_credit") is False
+            and int(record.get("component_reference_count") or 0) > 0
+            and record.get("component_reference_count")
+            == record.get("manifest_model_reference_count")
+            and record.get("all_component_records_release_credit_false") is True
+            and record.get("all_component_records_reference_this_surrogate") is True
+            for record in supplier_lane_surrogate_records
+            if isinstance(record, dict)
+        ),
+        "release_credit": False,
     }
 
     objective_requirements = [
@@ -401,12 +544,16 @@ def main() -> int:
             "blocking_facts": [
                 f"artifact manifest routed_pcb gate is {release_gates['routed_pcb']['status']}",
                 (
-                    "production concept source has "
-                    f"{route_counts['placeholder_footprint_count']} placeholder footprints"
+                    "current local routed KiCad candidate has "
+                    f"{routed_candidate_counts['placeholder_marker_count']} placeholder markers, "
+                    f"{routed_candidate_counts['segment_count']} segments, "
+                    f"{routed_candidate_counts['via_count']} vias, and "
+                    f"{routed_candidate_counts['filled_zone_count']} filled zones"
                 ),
                 (
-                    "production concept source has "
-                    f"{route_counts['segment_count']} routed segments and "
+                    "legacy concept source remains non-release planning evidence with "
+                    f"{route_counts['placeholder_footprint_count']} placeholder footprints, "
+                    f"{route_counts['segment_count']} routed segments, and "
                     f"{route_counts['filled_zone_count']} filled zones"
                 ),
                 (
@@ -492,6 +639,7 @@ def main() -> int:
             "board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml",
             "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml",
             "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
+            "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",
             "board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml",
         ],
         "summary": {
@@ -519,6 +667,7 @@ def main() -> int:
             ],
         },
         "live_pcb_evidence": {
+            "scope": "legacy_concept_planning_board_not_current_local_routed_candidate",
             "board_file": route_inventory["inputs"]["board_file"],
             "footprint_count": route_counts["footprint_count"],
             "placeholder_footprint_count": route_counts["placeholder_footprint_count"],
@@ -527,6 +676,13 @@ def main() -> int:
             "filled_zone_count": route_counts["filled_zone_count"],
             "release_state": route_inventory["summary"]["release_state"],
         },
+        "current_local_pcb_evidence": {
+            "scope": "real_footprint_routed_kicad_candidate_not_release",
+            **routed_candidate_counts,
+            "release_credit": candidate_context.get("release_credit") is True,
+            "release_state": "blocked_local_candidate_not_release",
+            "candidate_metadata": f"{ROUTED_CANDIDATE_REL}.metadata.yaml",
+        },
         "local_routed_kicad_candidate_evidence": {
             **routed_candidate_counts,
             "release_credit": candidate_context.get("release_credit") is True,
@@ -534,6 +690,7 @@ def main() -> int:
             "candidate_metadata": f"{ROUTED_CANDIDATE_REL}.metadata.yaml",
         },
         "local_non_release_progress_evidence": local_non_release_progress,
+        "detailed_trace_manifests": detailed_trace_manifests,
         "production_output_presence": required_output_presence(production_required_outputs),
         "objective_requirements": objective_requirements,
         "release_policy": {

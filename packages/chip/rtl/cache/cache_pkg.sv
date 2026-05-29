@@ -152,28 +152,86 @@ package e1_cache_pkg;
     } qos_class_e;
 
     // -----------------------------------------------------------------------
-    // SECDED (72,64) Hamming codeword helpers for L1D / L2 ECC
+    // SECDED (72,64) Hsiao codeword helpers for L1D / L2 ECC
     //
-    // Encodes 64 data bits + 8 ECC bits = 72-bit codeword. Single-bit error
-    // is corrected, double-bit error is detected and surfaced as an error.
-    // Standard (72,64) SEC-DED Hsiao matrix is used; see Hsiao (1970).
+    // Encodes 64 data bits + 8 check bits = 72-bit codeword. A single-bit
+    // error (in any of the 72 codeword bits) is corrected; a double-bit error
+    // is detected and surfaced as uncorrectable.
+    //
+    // Code construction (Hsiao 1970, "A Class of Optimal Minimum Odd-weight-
+    // column SEC-DED Codes", IBM J. Res. Dev. 14(4)). The 8x72 parity-check
+    // matrix H has one column per codeword bit. Every column is a DISTINCT,
+    // nonzero, ODD-weight 8-bit vector:
+    //   - the 64 data columns are the 56 weight-3 vectors plus 8 weight-5
+    //     vectors (`secded_data_col` below),
+    //   - the 8 check columns are the weight-1 identity vectors (one per
+    //     check bit), implicit in the encoder.
+    // Consequences that make this a true SEC-DED code:
+    //   - a single-bit flip XORs exactly one column into the syndrome, so the
+    //     syndrome equals that (odd-weight, hence nonzero) column and uniquely
+    //     names the flipped bit -> single-error correctable (SEC),
+    //   - a double-bit flip XORs two distinct odd-weight columns, giving a
+    //     nonzero EVEN-weight syndrome that can never equal any single-bit
+    //     (odd-weight) column -> double-error detectable, never miscorrected
+    //     as a single (DED).
+    //
+    // `secded_data_col` is the single source of truth for the H-matrix data
+    // columns; encode, syndrome decode, and correction are all derived from
+    // it so the three paths cannot drift. The constructive verification of
+    // the SEC-DED properties is the cocotb injection test in
+    // verify/cocotb/l1d_ecc/.
     // -----------------------------------------------------------------------
     // Implicit-return form (function-name = value) is used so the yosys
     // SystemVerilog frontend can parse these helpers alongside verilator.
+
+    // H-matrix column (8-bit syndrome contribution) for data bit `d` in
+    // [0,63]. The 56 weight-3 vectors are enumerated first, then 8 weight-5
+    // vectors, matching the generator in verify/cocotb/l1d_ecc/.
+    function automatic logic [7:0] secded_data_col(input int unsigned d);
+        unique case (d)
+            32'd0:  secded_data_col = 8'h07; 32'd1:  secded_data_col = 8'h0B;
+            32'd2:  secded_data_col = 8'h13; 32'd3:  secded_data_col = 8'h23;
+            32'd4:  secded_data_col = 8'h43; 32'd5:  secded_data_col = 8'h83;
+            32'd6:  secded_data_col = 8'h0D; 32'd7:  secded_data_col = 8'h15;
+            32'd8:  secded_data_col = 8'h25; 32'd9:  secded_data_col = 8'h45;
+            32'd10: secded_data_col = 8'h85; 32'd11: secded_data_col = 8'h19;
+            32'd12: secded_data_col = 8'h29; 32'd13: secded_data_col = 8'h49;
+            32'd14: secded_data_col = 8'h89; 32'd15: secded_data_col = 8'h31;
+            32'd16: secded_data_col = 8'h51; 32'd17: secded_data_col = 8'h91;
+            32'd18: secded_data_col = 8'h61; 32'd19: secded_data_col = 8'hA1;
+            32'd20: secded_data_col = 8'hC1; 32'd21: secded_data_col = 8'h0E;
+            32'd22: secded_data_col = 8'h16; 32'd23: secded_data_col = 8'h26;
+            32'd24: secded_data_col = 8'h46; 32'd25: secded_data_col = 8'h86;
+            32'd26: secded_data_col = 8'h1A; 32'd27: secded_data_col = 8'h2A;
+            32'd28: secded_data_col = 8'h4A; 32'd29: secded_data_col = 8'h8A;
+            32'd30: secded_data_col = 8'h32; 32'd31: secded_data_col = 8'h52;
+            32'd32: secded_data_col = 8'h92; 32'd33: secded_data_col = 8'h62;
+            32'd34: secded_data_col = 8'hA2; 32'd35: secded_data_col = 8'hC2;
+            32'd36: secded_data_col = 8'h1C; 32'd37: secded_data_col = 8'h2C;
+            32'd38: secded_data_col = 8'h4C; 32'd39: secded_data_col = 8'h8C;
+            32'd40: secded_data_col = 8'h34; 32'd41: secded_data_col = 8'h54;
+            32'd42: secded_data_col = 8'h94; 32'd43: secded_data_col = 8'h64;
+            32'd44: secded_data_col = 8'hA4; 32'd45: secded_data_col = 8'hC4;
+            32'd46: secded_data_col = 8'h38; 32'd47: secded_data_col = 8'h58;
+            32'd48: secded_data_col = 8'h98; 32'd49: secded_data_col = 8'h68;
+            32'd50: secded_data_col = 8'hA8; 32'd51: secded_data_col = 8'hC8;
+            32'd52: secded_data_col = 8'h70; 32'd53: secded_data_col = 8'hB0;
+            32'd54: secded_data_col = 8'hD0; 32'd55: secded_data_col = 8'hE0;
+            32'd56: secded_data_col = 8'h1F; 32'd57: secded_data_col = 8'h2F;
+            32'd58: secded_data_col = 8'h4F; 32'd59: secded_data_col = 8'h8F;
+            32'd60: secded_data_col = 8'h37; 32'd61: secded_data_col = 8'h57;
+            32'd62: secded_data_col = 8'h97; 32'd63: secded_data_col = 8'h67;
+            default: secded_data_col = 8'h00;
+        endcase
+    endfunction
+
+    // Encode: 8 check bits = XOR of the H-matrix columns of all set data bits.
     function automatic logic [7:0] secded_encode(input logic [63:0] d);
         logic [7:0] c;
-        // Hsiao parity bits over odd-weight columns.
-        // Each parity bit covers a disjoint subset of data bits chosen so
-        // that the syndrome of any single-bit error is unique and odd-weight,
-        // and any double-bit error yields an even-weight syndrome.
-        c[0] = ^(d & 64'hFF00_FF00_FF00_FF00);
-        c[1] = ^(d & 64'h00FF_00FF_00FF_00FF);
-        c[2] = ^(d & 64'hF0F0_F0F0_F0F0_F0F0);
-        c[3] = ^(d & 64'h0F0F_0F0F_0F0F_0F0F);
-        c[4] = ^(d & 64'hCCCC_CCCC_CCCC_CCCC);
-        c[5] = ^(d & 64'h3333_3333_3333_3333);
-        c[6] = ^(d & 64'hAAAA_AAAA_AAAA_AAAA);
-        c[7] = ^(d & 64'h5555_5555_5555_5555);
+        c = 8'h00;
+        for (int unsigned i = 0; i < 64; i++) begin
+            if (d[i]) c = c ^ secded_data_col(i);
+        end
         secded_encode = c;
     endfunction
 
@@ -184,6 +242,8 @@ package e1_cache_pkg;
     endfunction
 
     // Single-bit error iff syndrome non-zero AND syndrome has odd parity.
+    // Every codeword column is odd-weight, so the syndrome of any single flip
+    // is odd; a double flip yields an even-weight syndrome.
     function automatic logic secded_is_single(input logic [7:0] s);
         secded_is_single = (s != 8'h00) && ^s;
     endfunction
@@ -191,6 +251,24 @@ package e1_cache_pkg;
     // Double-bit error iff syndrome non-zero AND syndrome has even parity.
     function automatic logic secded_is_double(input logic [7:0] s);
         secded_is_double = (s != 8'h00) && !(^s);
+    endfunction
+
+    // Single-error correction. When the syndrome names a data column, flip
+    // that data bit. A syndrome that names a check column (weight-1) means the
+    // flip was in a check bit and the data is already intact, so `d` is
+    // returned unchanged. A double-bit (even, nonzero) syndrome is not
+    // correctable; callers gate on secded_is_double and must not consume the
+    // result as corrected data.
+    function automatic logic [63:0] secded_correct(input logic [63:0] d,
+                                                    input logic [7:0]  s);
+        logic [63:0] r;
+        r = d;
+        if (secded_is_single(s)) begin
+            for (int unsigned i = 0; i < 64; i++) begin
+                if (secded_data_col(i) == s) r[i] = ~d[i];
+            end
+        end
+        secded_correct = r;
     endfunction
 
     // -----------------------------------------------------------------------

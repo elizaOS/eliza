@@ -1054,6 +1054,174 @@ class BuildReportTests(unittest.TestCase):
             "\n".join(actions.values()),
         )
 
+    def test_chip_bsp_release_actions_include_nested_operator_packets(self) -> None:
+        paths = (
+            agg.FPGA_RELEASE_REPORT_PATH,
+            agg.LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH,
+            agg.ANDROID_RELEASE_READINESS_REPORT_PATH,
+            agg.ANDROID_SYSTEM_BRIDGE_REPORT_PATH,
+        )
+        originals = {
+            path: path.read_text(encoding="utf-8") if path.exists() else None
+            for path in paths
+        }
+        try:
+            agg.FPGA_RELEASE_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            agg.FPGA_RELEASE_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "summary": {
+                            "blocker_dependency_counts": {
+                                "actionable_external_dependency": 2,
+                                "live_device_validation": 0,
+                                "repo_artifact_generation": 0,
+                            },
+                            "blocker_category_counts": {
+                                "missing_bitstream_evidence": 1,
+                                "missing_timing_evidence": 1,
+                            },
+                        },
+                        "findings": [
+                            {
+                                "dependency_type": "actionable_external_dependency",
+                                "next_step": "Generate release-credit bitstream with: TOP=e1_chip_top make -C board/fpga pack",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blocker_dependency_counts": {
+                            "actionable_external_dependency": 0,
+                            "live_device_validation": 1,
+                            "repo_artifact_generation": 0,
+                        },
+                        "findings": [
+                            {
+                                "blocker_dependency": "live_device_validation",
+                                "next_step": "Set ELIZA_OPENSBI_HANDOFF_CMD to the exact QEMU, Renode, or board handoff command.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.ANDROID_RELEASE_READINESS_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blocker_dependency_counts": {
+                            "actionable_external_dependency": 2,
+                            "live_device_validation": 2,
+                            "repo_artifact_generation": 0,
+                        },
+                        "evidence": {
+                            "android_release_artifact_inventory": {
+                                "missing": {
+                                    "umbrellaAndroidArchives": [
+                                        "packages/os/release/beta/android/archives/cuttlefish.zip",
+                                    ]
+                                },
+                                "commands": {
+                                    "buildCuttlefishX8664Archive": ["build"],
+                                    "generateArchiveIntegrityEvidence": ["hash"],
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.ANDROID_SYSTEM_BRIDGE_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blocker_dependency_counts": {
+                            "actionable_external_dependency": 0,
+                            "live_device_validation": 1,
+                            "repo_artifact_generation": 0,
+                        },
+                        "findings": [
+                            {
+                                "blocker_dependency": "live_device_validation",
+                                "next_step": "Collect system bridge runtime evidence with status=PASS.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="fpga-release-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED FPGA release check",
+                        subsystem="platform",
+                        tier="silicon",
+                        script="scripts/check_fpga_release.py",
+                        args=("--release",),
+                    ),
+                    agg.GateResult(
+                        name="linux-firmware-boot-chain-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED linux.firmware_boot_chain_contract",
+                        subsystem="bsp",
+                        tier="silicon",
+                        script="scripts/check_linux_firmware_boot_chain_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="android-release-readiness-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED android.release_readiness_contract",
+                        subsystem="bsp",
+                        tier="silicon",
+                        script="scripts/check_android_release_readiness_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="android-system-bridge-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED android.system_bridge_contract",
+                        subsystem="bsp",
+                        tier="silicon",
+                        script="scripts/check_android_system_bridge_contract.py",
+                    ),
+                ]
+            )
+            actions = {
+                row["name"]: row["next_action"]
+                for rows in report["blocker_action_plan"].values()
+                for row in rows
+            }
+            self.assertIn("TOP=e1_chip_top make -C board/fpga pack", actions["fpga-release-check"])
+            self.assertIn("external=2, live=0, repo=0", actions["fpga-release-check"])
+            self.assertIn("ELIZA_OPENSBI_HANDOFF_CMD", actions["linux-firmware-boot-chain-contract-check"])
+            self.assertIn(
+                "external=2, live=2, repo=0",
+                actions["android-release-readiness-contract-check"],
+            )
+            self.assertIn(
+                "buildCuttlefishX8664Archive",
+                actions["android-release-readiness-contract-check"],
+            )
+            self.assertIn(
+                "status=PASS",
+                actions["android-system-bridge-contract-check"],
+            )
+            self.assertNotIn("Inspect the checker report", "\n".join(actions.values()))
+        finally:
+            for path, original in originals.items():
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_text(original, encoding="utf-8")
+
     def test_chip_release_gates_use_nested_repo_generation_taxonomy(self) -> None:
         paths = (
             agg.PD_SIGNOFF_REPORT_PATH,
@@ -1348,9 +1516,9 @@ class BuildReportTests(unittest.TestCase):
             )
             self.assertEqual(
                 report["blocker_dependency_counts"]["actionable_external_dependency"],
-                9,
+                8,
             )
-            self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 1)
+            self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 2)
             self.assertEqual(report["blocker_dependency_counts"]["live_device_validation"], 3)
             by_name = {
                 row["name"]: row["blocker_dependency"]
@@ -1359,7 +1527,7 @@ class BuildReportTests(unittest.TestCase):
             }
             self.assertEqual(by_name["pdk-access-gate"], "actionable_external_dependency")
             self.assertEqual(by_name["pd-signoff-check"], "actionable_external_dependency")
-            self.assertEqual(by_name["fpga-release-check"], "actionable_external_dependency")
+            self.assertEqual(by_name["fpga-release-check"], "repo_artifact_generation")
             self.assertEqual(
                 by_name["pdn-workload-signoff"],
                 "actionable_external_dependency",
@@ -1444,6 +1612,7 @@ class BuildReportTests(unittest.TestCase):
                             {
                                 "message": "OpenSBI fw_dynamic handoff transcript missing markers",
                                 "next_step": "Capture from a real external OpenSBI tree.",
+                                "blocker_dependency": "live_device_validation",
                             }
                         ],
                     }
@@ -1499,7 +1668,7 @@ class BuildReportTests(unittest.TestCase):
             )
             self.assertEqual(
                 by_name["linux-firmware-boot-chain-contract-check"],
-                "actionable_external_dependency",
+                "live_device_validation",
             )
             self.assertEqual(
                 by_name["aosp-linux-handoff-contract-check"],
@@ -1685,6 +1854,34 @@ class GateInventoryTests(unittest.TestCase):
         )
         self.assertEqual(spec.subsystem, "platform")
         self.assertEqual(spec.tier, "pd")
+
+    def test_phone_release_evidence_regeneration_runs_before_release_consumers(self) -> None:
+        phone_names = [spec.name for spec in agg.PHONE_PRODUCT_GATES]
+        regeneration_index = phone_names.index("e1-phone-release-evidence-regeneration-check")
+        product_index = phone_names.index("product-release-status-check")
+        source_generators = {
+            "e1-phone-board-package-check",
+            "e1-phone-fabrication-release-check",
+            "e1-phone-release-approval-signature-check",
+            "e1-phone-supplier-return-content-check",
+            "e1-phone-routed-output-content-check",
+            "e1-phone-factory-output-content-check",
+            "e1-phone-first-article-content-check",
+        }
+        release_consumers = {
+            "e1-phone-enclosure-mechanical-content-check",
+            "e1-phone-assemblability-check",
+            "e1-phone-button-orientation-check",
+            "e1-phone-boolean-interference-check",
+        }
+
+        for source in source_generators:
+            with self.subTest(source=source):
+                self.assertLess(phone_names.index(source), regeneration_index)
+        for consumer in release_consumers:
+            with self.subTest(consumer=consumer):
+                self.assertLess(regeneration_index, phone_names.index(consumer))
+        self.assertLess(regeneration_index, product_index)
 
     def test_e1_phone_release_approval_signature_gate_registered(self) -> None:
         specs = {spec.name: spec for spec in agg.GATES}
@@ -1888,7 +2085,11 @@ class GateInventoryTests(unittest.TestCase):
         specs = {spec.name: spec for spec in os_gates}
         self.assertEqual(
             specs["os-rv64-qemu-virt-boot-test"].args,
-            ("--validate-existing",),
+            (
+                "--validate-existing",
+                "--evidence",
+                "../os/linux/elizaos/evidence/qemu_virt_boot_20260524T030430Z.json",
+            ),
         )
 
     def test_android_release_readiness_gate_registered(self) -> None:

@@ -139,7 +139,7 @@ export async function handleTelegramStandaloneMessage(
     );
 
     const runtimeWithMessages = runtime as RuntimeMessageServiceCompat;
-    if (!runtimeWithMessages.messageService.handleMessage) {
+    if (!runtimeWithMessages.messageService?.handleMessage) {
       logger.warn("[eliza] Telegram runtime missing messageService");
       return;
     }

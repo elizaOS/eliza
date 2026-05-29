@@ -156,23 +156,11 @@ export function ChatComposer({
   placeholder,
   textareaAriaLabel,
 }: ChatComposerProps) {
-  const [isNarrow, setIsNarrow] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 310,
-  );
   const [isInlineMultiline, setIsInlineMultiline] = useState(false);
   const [inlineMeasureVersion, setInlineMeasureVersion] = useState(0);
   const inlineRootRef = useRef<HTMLDivElement | null>(null);
   const inlineMeasureRef = useRef<HTMLTextAreaElement | null>(null);
   const lastInlineSingleLineWidthRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 309px)");
-    const sync = () => setIsNarrow(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
 
   const isGameModal = variant === "game-modal";
   const isInline = layout === "inline";
@@ -190,7 +178,7 @@ export function ChatComposer({
         : t("common.send")
       : t("chat.stopSpeaking");
   const actionButtonLabel = isGameModal ? undefined : actionButtonTitle;
-  const inputPlaceholder = isNarrow ? t("common.message") : t("common.message");
+  const inputPlaceholder = t("common.message");
   const voiceButtonTitle = isAgentStarting
     ? t("chat.agentStarting")
     : voice.isListening

@@ -237,22 +237,3 @@ export function resolveWidgetsForSlot(
 
   return results;
 }
-
-// -- Backward compatibility --------------------------------------------------
-// Re-export a function matching the old `resolveChatSidebarWidgets` signature
-// so existing consumers (TasksEventsPanel) work during migration.
-
-import type { ChatSidebarPluginState } from "../components/chat/widgets/types";
-
-export function resolveChatSidebarWidgets(
-  plugins: readonly ChatSidebarPluginState[],
-) {
-  return resolveWidgetsForSlot("chat-sidebar", plugins).map((w) => ({
-    id: w.declaration.id,
-    pluginId: w.declaration.pluginId,
-    order: w.declaration.order ?? 100,
-    defaultEnabled: w.declaration.defaultEnabled !== false,
-    // biome-ignore lint/style/noNonNullAssertion: chat-sidebar widgets always have bundled components
-    Component: w.Component!,
-  }));
-}

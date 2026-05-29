@@ -107,7 +107,59 @@ def candidate_end_to_end_context(
     model_binding = component_manifest.get("model_to_footprint_binding", {})
     visual_summary = component_manifest.get("package_visual_summary", {})
     local_step_binding = component_manifest.get("local_discrete_step_binding", {})
+    component_models = [
+        item for item in component_manifest.get("models", []) if isinstance(item, dict)
+    ]
+    component_model_records = [
+        {
+            "reference": str(model.get("reference", "")),
+            "footprint": str(model.get("footprint", "")),
+            "visual_package_class": str(model.get("visual_package_class", "")),
+            "pinout_file": str(model.get("pinout_file", "")),
+            "pinout_status": str(model.get("pinout_status", "")),
+            "coverage": str(model.get("coverage", "")),
+            "land_pattern_basis": str(model.get("land_pattern_basis", "")),
+            "support_pattern_has_explicit_provenance": bool(
+                model.get("support_pattern_has_explicit_provenance") is True
+            ),
+            "pad_visual_count": int(model.get("pad_visual_count", 0) or 0),
+            "pad_contract_covered_count": int(
+                model.get("pad_contract_covered_count", 0) or 0
+            ),
+            "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
+            "non_signal_pad_contract_count": len(model.get("non_signal_pad_contract", [])),
+            "npth_mechanical_feature_contract_count": len(
+                model.get("npth_mechanical_feature_contract", [])
+            ),
+            "all_pad_visuals_have_contract": bool(
+                model.get("all_pad_visuals_have_contract") is True
+            ),
+            "terminal_contract_matches_pad_visuals": bool(
+                model.get("terminal_contract_matches_pad_visuals") is True
+            ),
+            "non_signal_pad_contract_matches_pad_visuals": bool(
+                model.get("non_signal_pad_contract_matches_pad_visuals") is True
+            ),
+            "npth_mechanical_feature_contract_matches_footprint": bool(
+                model.get("npth_mechanical_feature_contract_matches_footprint") is True
+            ),
+            "local_discrete_step_file": str(model.get("local_discrete_step_file", "")),
+            "local_discrete_step_sha256": str(model.get("local_discrete_step_sha256", "")),
+            "local_discrete_step_bytes": int(model.get("local_discrete_step_bytes", 0) or 0),
+            "local_discrete_step_imported_as_solid": bool(
+                model.get("local_discrete_step_imported_as_solid") is True
+            ),
+            "local_discrete_step_bbox_matches_envelope": bool(
+                model.get("local_discrete_step_bbox_matches_envelope") is True
+            ),
+            "release_credit": bool(model.get("release_credit") is True),
+        }
+        for model in sorted(component_models, key=lambda item: str(item.get("reference", "")))
+    ]
     visual = candidate_manifest.get("routed_step_visual_detail", {})
+    source_binding = candidate_manifest.get("routed_candidate_source_binding", {})
+    if not isinstance(source_binding, dict):
+        source_binding = {}
     connection = candidate_manifest.get("cad_connection_coverage", {})
     traceability = candidate_manifest.get("kicad_cad_traceability", {})
     connection_records = [
@@ -138,6 +190,40 @@ def candidate_end_to_end_context(
         "status": candidate_manifest.get("status", ""),
         "release_credit": bool(candidate_manifest.get("release_credit") is True),
         "source_board": candidate_manifest.get("source_board", ""),
+        "routed_candidate_source_binding": {
+            "source_board": source_binding.get("source_board", ""),
+            "candidate_board": source_binding.get("candidate_board", ""),
+            "candidate_matches_source_board": bool(
+                source_binding.get("candidate_matches_source_board") is True
+            ),
+            "source_is_zero_placeholder_real_footprint_board": bool(
+                source_binding.get("source_is_zero_placeholder_real_footprint_board") is True
+            ),
+            "candidate_is_zero_placeholder_real_footprint_board": bool(
+                source_binding.get("candidate_is_zero_placeholder_real_footprint_board") is True
+            ),
+            "source_placeholder_marker_count": int(
+                source_binding.get("source_placeholder_marker_count", 0) or 0
+            ),
+            "candidate_placeholder_marker_count": int(
+                source_binding.get("candidate_placeholder_marker_count", 0) or 0
+            ),
+            "candidate_legacy_e1phone_footprint_ref_count": int(
+                source_binding.get("candidate_legacy_e1phone_footprint_ref_count", 0) or 0
+            ),
+            "candidate_footprint_count": int(
+                source_binding.get("candidate_footprint_count", 0) or 0
+            ),
+            "candidate_segment_count": int(
+                source_binding.get("candidate_segment_count", 0) or 0
+            ),
+            "candidate_via_count": int(source_binding.get("candidate_via_count", 0) or 0),
+            "candidate_zone_count": int(source_binding.get("candidate_zone_count", 0) or 0),
+            "candidate_filled_zone_count": int(
+                source_binding.get("candidate_filled_zone_count", 0) or 0
+            ),
+            "release_credit": bool(source_binding.get("release_credit") is True),
+        },
         "source_step": candidate_manifest.get("source_step", ""),
         "source_step_size_bytes": int(candidate_manifest.get("source_step_size_bytes", 0) or 0),
         "source_step_sha256": candidate_manifest.get("source_step_sha256", ""),
@@ -161,6 +247,59 @@ def candidate_end_to_end_context(
             "board_via_count": int(visual.get("board_via_count", 0) or 0),
             "via_net_name_count": int(visual.get("via_net_name_count", 0) or 0),
             "development_footprint_refs": int(visual.get("development_footprint_refs", 0) or 0),
+            "route_visual_record_count": int(visual.get("route_visual_record_count", 0) or 0),
+            "route_visual_route_id_count": int(
+                visual.get("route_visual_route_id_count", 0) or 0
+            ),
+            "route_visual_net_name_count": int(
+                visual.get("route_visual_net_name_count", 0) or 0
+            ),
+            "route_visual_layer_counts": visual.get("route_visual_layer_counts", {}),
+            "route_visual_route_class_counts": visual.get(
+                "route_visual_route_class_counts", {}
+            ),
+            "route_visual_source_domain_counts": visual.get(
+                "route_visual_source_domain_counts", {}
+            ),
+            "route_visual_all_records_have_route_id": bool(
+                visual.get("route_visual_all_records_have_route_id") is True
+            ),
+            "route_visual_all_records_have_net": bool(
+                visual.get("route_visual_all_records_have_net") is True
+            ),
+            "route_visual_all_records_have_layer": bool(
+                visual.get("route_visual_all_records_have_layer") is True
+            ),
+            "route_visual_all_records_have_route_class": bool(
+                visual.get("route_visual_all_records_have_route_class") is True
+            ),
+            "route_visual_all_records_have_source_domain": bool(
+                visual.get("route_visual_all_records_have_source_domain") is True
+            ),
+            "route_visual_records": visual.get("route_visual_records", []),
+            "via_visual_record_count": int(visual.get("via_visual_record_count", 0) or 0),
+            "via_visual_net_name_count": int(visual.get("via_visual_net_name_count", 0) or 0),
+            "via_visual_all_records_have_net": bool(
+                visual.get("via_visual_all_records_have_net") is True
+            ),
+            "via_visual_all_records_have_layers": bool(
+                visual.get("via_visual_all_records_have_layers") is True
+            ),
+            "via_visual_records": visual.get("via_visual_records", []),
+            "filled_copper_zone_record_count": int(
+                visual.get("filled_copper_zone_record_count", 0) or 0
+            ),
+            "filled_copper_zone_filled_polygon_count": int(
+                visual.get("filled_copper_zone_filled_polygon_count", 0) or 0
+            ),
+            "filled_copper_zone_all_records_have_net": bool(
+                visual.get("filled_copper_zone_all_records_have_net") is True
+            ),
+            "filled_copper_zone_all_records_have_bbox": bool(
+                visual.get("filled_copper_zone_all_records_have_bbox") is True
+            ),
+            "filled_copper_zone_records": visual.get("filled_copper_zone_records", []),
+            "release_credit": bool(visual.get("release_credit") is True),
         },
         "cad_connection_coverage": {
             "status": connection.get("status", ""),
@@ -437,6 +576,27 @@ def candidate_end_to_end_context(
             "all_npth_mechanical_features_have_contract": bool(
                 terminal_binding.get("all_npth_mechanical_features_have_contract", False)
             ),
+            "component_model_record_count": len(component_model_records),
+            "component_model_record_manifest": component_model_records,
+            "component_model_record_reference_count": len(
+                {record["reference"] for record in component_model_records if record["reference"]}
+            ),
+            "all_component_model_records_have_local_step": bool(component_model_records)
+            and all(record["local_discrete_step_file"] for record in component_model_records),
+            "all_component_model_records_have_step_hash": bool(component_model_records)
+            and all(record["local_discrete_step_sha256"] for record in component_model_records),
+            "all_component_model_records_import_as_solids": bool(component_model_records)
+            and all(
+                record["local_discrete_step_imported_as_solid"]
+                for record in component_model_records
+            ),
+            "all_component_model_records_match_step_envelope": bool(component_model_records)
+            and all(
+                record["local_discrete_step_bbox_matches_envelope"]
+                for record in component_model_records
+            ),
+            "all_component_model_records_release_credit_false": bool(component_model_records)
+            and all(record["release_credit"] is False for record in component_model_records),
             "release_allowed": bool(component_manifest.get("release_allowed") is True),
         },
         "component_model_directory_summary": {
@@ -576,6 +736,9 @@ def candidate_end_to_end_context(
             ),
             "local_discrete_step_import_pass_count": int(
                 component_binding_report.get("local_discrete_step_import_pass_count", 0) or 0
+            ),
+            "local_discrete_step_imported_solid_count": int(
+                component_binding_report.get("local_discrete_step_imported_solid_count", 0) or 0
             ),
             "local_discrete_step_bbox_match_count": int(
                 component_binding_report.get("local_discrete_step_bbox_match_count", 0) or 0
@@ -909,6 +1072,15 @@ def build_report(
                 candidate_present_blocked_outputs
             ),
             "truly_missing_required_output_path_count": len(truly_missing_outputs),
+            "candidate_board_matches_real_footprint_source": candidate_context[
+                "routed_candidate_source_binding"
+            ]["candidate_matches_source_board"],
+            "candidate_board_placeholder_marker_count": candidate_context[
+                "routed_candidate_source_binding"
+            ]["candidate_placeholder_marker_count"],
+            "candidate_board_legacy_e1phone_footprint_ref_count": candidate_context[
+                "routed_candidate_source_binding"
+            ]["candidate_legacy_e1phone_footprint_ref_count"],
             "candidate_step_size_bytes": candidate_context["source_step_size_bytes"],
             "candidate_step_component_model_count": candidate_context[
                 "component_model_manifest_summary"
@@ -1066,6 +1238,8 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"| Component 3D binding rows | `{candidate_binding['row_count']}` |",
             "| Component 3D binding local STEP files | "
             f"`{candidate_binding['local_discrete_step_file_count']}` |",
+            "| Component 3D binding local STEP imported solids | "
+            f"`{candidate_binding['local_discrete_step_imported_solid_count']}` |",
             "| Component 3D binding supplier intake statuses | "
             f"`{candidate_binding['supplier_step_intake_status_counts']}` |",
             "| Component 3D binding release credit | "

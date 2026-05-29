@@ -59,6 +59,7 @@
     }
   },
   "claim_boundary": "static ISO squashfs payload check for graphical kiosk dependencies; not a pixel-rendered GUI runtime screenshot or physical display claim",
+  "generated_utc": "2026-05-28T20:06:56Z",
   "iso": {
     "bytes": 1519091712,
     "path": "out/elizaos-linux-arm64-default-20260524T075932Z.iso",

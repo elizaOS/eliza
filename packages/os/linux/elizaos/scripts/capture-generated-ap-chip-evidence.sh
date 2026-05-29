@@ -10,6 +10,8 @@ chipyard_smoke_report="$workspace_dir/packages/chip/build/chipyard/eliza_rocket/
 chipyard_smoke_mirror="$workspace_dir/packages/chip/build/reports/chipyard_verilator_linux_smoke.json"
 boot_cmd="${ELIZA_GENERATED_AP_CHIP_BOOT_CMD:-}"
 agent_cmd="${ELIZA_GENERATED_AP_CHIP_AGENT_CMD:-}"
+skip_agent="${ELIZA_GENERATED_AP_SKIP_AGENT:-0}"
+write_blocked="${ELIZA_GENERATED_AP_WRITE_BLOCKED:-0}"
 mode="${1:-run}"
 
 usage() {
@@ -17,6 +19,8 @@ usage() {
 	printf '\n'
 	printf 'Set ELIZA_GENERATED_AP_CHIP_BOOT_CMD to the command that boots the generated Eliza AP/chip emulator and prints the real serial transcript.\n'
 	printf 'Optionally set ELIZA_GENERATED_AP_CHIP_AGENT_CMD to a command that probes the already-booted target and prints systemd, process, /api/health, and TUI readiness output.\n'
+	printf 'Set ELIZA_GENERATED_AP_SKIP_AGENT=1 only for boot-only firstboot capture; the full agent-live contract is still required separately.\n'
+	printf 'Set ELIZA_GENERATED_AP_WRITE_BLOCKED=1 to emit diagnostic blocked evidence JSONs from real incomplete transcripts.\n'
 	printf '\n'
 	printf 'Outputs, if the transcript validator passes:\n'
 	printf '  evidence/generated_eliza_ap_boot.json\n'
@@ -25,16 +29,21 @@ usage() {
 
 write_blocked_report() {
 	mkdir -p "$(dirname -- "$blocked_report")"
-	python3 - "$blocked_report" "$variant_dir" "$boot_transcript" "$agent_transcript" "$chipyard_smoke_report" "$chipyard_smoke_mirror" <<'PY'
+	python3 - "$blocked_report" "$variant_dir" "$workspace_dir" "$boot_transcript" "$agent_transcript" "$chipyard_smoke_report" "$chipyard_smoke_mirror" <<'PY'
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 blocked_report = Path(sys.argv[1])
 variant_dir = Path(sys.argv[2])
-boot_transcript = Path(sys.argv[3])
-agent_transcript = Path(sys.argv[4])
-smoke_candidates = [Path(sys.argv[5]), Path(sys.argv[6])]
+workspace_dir = Path(sys.argv[3])
+boot_transcript = Path(sys.argv[4])
+agent_transcript = Path(sys.argv[5])
+smoke_candidates = [Path(sys.argv[6]), Path(sys.argv[7])]
+
+sys.path.insert(0, str(workspace_dir / "packages/chip/scripts"))
+from provenance_sanitize import sanitize_host_local_paths  # noqa: E402
 
 
 def rel_variant(path: Path) -> str:
@@ -47,7 +56,21 @@ def rel_variant(path: Path) -> str:
 def rel_workspace(path: str | None) -> str | None:
     if not path:
         return path
-    return path
+    candidate = Path(path)
+    try:
+        return candidate.resolve().relative_to(workspace_dir.resolve()).as_posix()
+    except (OSError, ValueError):
+        return sanitize_host_local_paths(path)
+
+
+def portable_value(value):
+    if isinstance(value, str):
+        return sanitize_host_local_paths(value)
+    if isinstance(value, list):
+        return [portable_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): portable_value(item) for key, item in value.items()}
+    return value
 
 
 def load_latest_smoke() -> dict[str, object] | None:
@@ -65,7 +88,7 @@ def load_latest_smoke() -> dict[str, object] | None:
         active = payload.get("active_smoke_attempt")
         progress = payload.get("progress")
         log_metadata = payload.get("log_metadata")
-        return {
+        return portable_value({
             "report": rel_workspace(payload.get("report")) or str(candidate),
             "status": payload.get("status"),
             "log": payload.get("log"),
@@ -88,13 +111,14 @@ def load_latest_smoke() -> dict[str, object] | None:
             }
             if isinstance(log_metadata, dict)
             else {},
-        }
+        })
     return None
 
 
 payload: dict[str, object] = {
     "schema": "eliza.os.linux.generated_ap_capture_blocked.v1",
     "status": "blocked",
+    "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "claim_boundary": "generated_eliza_ap_chip_emulator_required_no_qemu_virt_substitution",
     "boot_command_env": "ELIZA_GENERATED_AP_CHIP_BOOT_CMD",
     "agent_command_env": "ELIZA_GENERATED_AP_CHIP_AGENT_CMD",
@@ -119,7 +143,10 @@ latest_smoke = load_latest_smoke()
 if latest_smoke is not None:
     payload["latest_chipyard_verilator_linux_smoke"] = latest_smoke
 
-blocked_report.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+blocked_report.write_text(
+    json.dumps(portable_value(payload), indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
 PY
 }
 
@@ -133,6 +160,8 @@ export ELIZA_GENERATED_AP_CHIP_BOOT_CMD=''
 export ELIZA_GENERATED_AP_CHIP_AGENT_CMD=''
 export ELIZA_GENERATED_AP_BOOT_TRANSCRIPT='${boot_transcript}'
 export ELIZA_GENERATED_AP_AGENT_TRANSCRIPT='${agent_transcript}'
+export ELIZA_GENERATED_AP_SKIP_AGENT='0'
+export ELIZA_GENERATED_AP_WRITE_BLOCKED='0'
 
 # Required boot transcript markers:
 # - OpenSBI or SBI handoff markers
@@ -167,7 +196,11 @@ preflight() {
 		printf '  - READY ELIZA_GENERATED_AP_CHIP_BOOT_CMD is set\n'
 	fi
 	if [ -z "$agent_cmd" ]; then
-		printf '  - INFO ELIZA_GENERATED_AP_CHIP_AGENT_CMD is unset; boot transcript must include agent/API/TUI markers\n'
+		if [ "$skip_agent" = "1" ]; then
+			printf '  - INFO ELIZA_GENERATED_AP_SKIP_AGENT=1; collecting boot evidence only and leaving agent-live evidence unchanged\n'
+		else
+			printf '  - INFO ELIZA_GENERATED_AP_CHIP_AGENT_CMD is unset; boot transcript must include agent/API/TUI markers\n'
+		fi
 	else
 		printf '  - READY ELIZA_GENERATED_AP_CHIP_AGENT_CMD is set\n'
 	fi
@@ -216,14 +249,24 @@ run_capture() {
 	capture_command boot "$boot_cmd" "$boot_transcript"
 	if [ -n "$agent_cmd" ]; then
 		capture_command agent "$agent_cmd" "$agent_transcript"
-	else
+	elif [ "$skip_agent" != "1" ]; then
 		agent_transcript="$boot_transcript"
 	fi
 
+	capture_args=""
+	if [ "$skip_agent" = "1" ]; then
+		capture_args="$capture_args --skip-agent"
+	fi
+	if [ "$write_blocked" = "1" ]; then
+		capture_args="$capture_args --write-blocked"
+	fi
+
+	# shellcheck disable=SC2086 # capture_args is assembled from fixed flags above.
 	"$variant_dir/scripts/capture-chip-boot-evidence.py" \
 		--boot-transcript "$boot_transcript" \
 		--agent-transcript "$agent_transcript" \
-		--update-manifest
+		--update-manifest \
+		$capture_args
 }
 
 case "$mode" in

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -60,6 +61,7 @@ def write_report(
     payload = {
         "schema": SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
         "mode": "release" if release else "preflight",
         "source_report": evidence,

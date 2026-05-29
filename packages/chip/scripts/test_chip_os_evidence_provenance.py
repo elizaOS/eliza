@@ -72,6 +72,126 @@ class ChipOsEvidenceProvenanceTests(unittest.TestCase):
         self.assertEqual(data["summary"]["findings"], 0)
         self.assertEqual(data["status"], "pass")
 
+    def test_generated_at_utc_counts_as_timestamp_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "docs/evidence/cpu_ap/branch-prediction-params.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.bpu_params.v1",
+                        "status": "clean",
+                        "claim_boundary": "branch predictor parameter evidence only",
+                        "generated_at_utc": "2026-05-21T00:00:00Z",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/docs/evidence"])
+
+        self.assertEqual(data["summary"]["findings"], 0)
+        self.assertEqual(data["status"], "pass")
+
+    def test_sanitized_host_tmp_placeholder_is_not_host_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            sanitized = root / "docs/evidence/qemu-sanitized.log"
+            raw = root / "docs/evidence/qemu-raw.log"
+            sanitized.parent.mkdir(parents=True)
+            sanitized.write_text(
+                "## generated_utc: 2026-05-21T00:00:00Z\n"
+                "## claim_boundary: sanitized host placeholder transcript\n"
+                "virtiofs_mount=<host-tmp>/tmp.bnFbovaV2I\n",
+                encoding="utf-8",
+            )
+            raw.write_text(
+                "## generated_utc: 2026-05-21T00:00:00Z\n"
+                "## claim_boundary: raw host transcript fixture\n"
+                "virtiofs_mount=/tmp/raw-host-path\n",
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/docs/evidence"])
+
+        host_findings = [
+            finding
+            for finding in data["findings"]
+            if finding["category"] == "host_local_path"
+        ]
+        self.assertEqual(len(host_findings), 1)
+        self.assertEqual(host_findings[0]["path"], "packages/chip/docs/evidence/qemu-raw.log")
+
+    def test_keyword_inventory_excerpts_do_not_expand_marker_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/chip-os-gap-keyword-inventory.json"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.chip_os_gap_keyword_inventory.v1",
+                        "status": "blocked",
+                        "claim_boundary": "source keyword inventory only",
+                        "generated_utc": "2026-05-21T00:00:00Z",
+                        "findings": [
+                            {
+                                "description": "stub/placeholder marker",
+                                "excerpt": "TODO placeholder remains blocked",
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        self.assertEqual(data["summary"]["findings"], 1)
+        self.assertEqual(data["findings"][0]["category"], "nonpassing_status")
+
+    def test_structured_claim_boundary_is_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip"
+            report = root / "build/reports/demo.yaml"
+            report.parent.mkdir(parents=True)
+            report.write_text(
+                "schema: demo.v1\n"
+                "status: pass\n"
+                "generated_utc: '2026-05-21T00:00:00Z'\n"
+                "claim_boundary:\n"
+                "  allowed_current_claims:\n"
+                "    - scaffold only\n"
+                "  blocked_claims:\n"
+                "    - release evidence\n",
+                encoding="utf-8",
+            )
+            with (
+                mock.patch.object(provenance, "REPO", repo),
+                mock.patch.object(provenance, "ROOT", root),
+            ):
+                data = provenance.build_report(["packages/chip/build/reports"])
+
+        self.assertEqual(data["summary"]["findings"], 0)
+        self.assertEqual(data["status"], "pass")
+
     def test_default_roots_cover_os_android_release_and_app_payload_manifests(self) -> None:
         expected = {
             "packages/chip/build/reports",

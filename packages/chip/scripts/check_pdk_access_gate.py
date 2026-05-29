@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ def write_report(status: str, findings: list[dict[str, Any]], summary: dict[str,
             {
                 "schema": "eliza.pdk_access_gate_report.v1",
                 "status": status,
+                "generated_utc": datetime.now(UTC).isoformat(),
                 "claim_boundary": "foundry_access_gate_only_not_pdk_license_or_tapeout_evidence",
                 "summary": {"release_ready": False, **summary},
                 "findings": findings,

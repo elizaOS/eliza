@@ -47,6 +47,7 @@
   "claim_boundary": "android_e1_npu_artifact_manifest_only_not_full_android_compatibility_claim",
   "date_utc": "2026-05-27T22:15:56Z",
   "generated_by": "scripts/assemble_e1_npu_android_proof_manifest.py",
+  "generated_utc": "2026-05-28T20:06:56Z",
   "proof_gate": {
     "android_boot_claim": "none_until_all_required_artifacts_pass",
     "compatibility_claim": "none",

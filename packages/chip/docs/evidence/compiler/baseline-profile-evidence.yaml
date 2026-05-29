@@ -1,28 +1,29 @@
-schema: eliza.compiler.baseline_profile_evidence.v1
 as_of: 2026-05-19
-claim_boundary: |
-  Android baseline-profile capture/apply recipe committed; no executable
+blocked_until:
+- AOSP RISC-V branch SHA pinned (see docs/toolchain/android-rva23-prebuilts.md)
+- androidx.benchmark library RISC-V support landed
+- Cuttlefish RISC-V image bootable with adb shell
+- build/reports/compiler/baseline-prof.txt produced from a real Macrobenchmark run
+- measured cold-start uplift documented in docs/evidence/compiler/baseline-profile-cold-start.json
+claim_boundary: 'Android baseline-profile capture/apply recipe committed; no executable
+
   evidence is accepted until a Cuttlefish RISC-V image plus a
+
   Macrobenchmark run produces baseline-prof.txt with measured cold-start
+
   uplift.
 
-blocked_until:
-  - AOSP RISC-V branch SHA pinned (see docs/toolchain/android-rva23-prebuilts.md)
-  - androidx.benchmark library RISC-V support landed
-  - Cuttlefish RISC-V image bootable with adb shell
-  - build/reports/compiler/baseline-prof.txt produced from a real Macrobenchmark run
-  - measured cold-start uplift documented in docs/evidence/compiler/baseline-profile-cold-start.json
-
-required_artifacts:
-  - path: compiler/baseline-profiles/README.md
-    purpose: capture/apply flow documentation
-  - path: compiler/baseline-profiles/capture.sh
-    purpose: Macrobenchmark wrapper
-
-verification_commands:
-  - compiler/baseline-profiles/capture.sh --app apps/demo --output build/reports/compiler/baseline-prof.txt
-  - test -s build/reports/compiler/baseline-prof.txt
-
+  '
 forbidden_claims_without_required_evidence:
-  - "20-40% cold-start uplift"
-  - "Android baseline profile measured"
+- 20-40% cold-start uplift
+- Android baseline profile measured
+generated_utc: '2026-05-20T10:12:30Z'
+required_artifacts:
+- path: compiler/baseline-profiles/README.md
+  purpose: capture/apply flow documentation
+- path: compiler/baseline-profiles/capture.sh
+  purpose: Macrobenchmark wrapper
+schema: eliza.compiler.baseline_profile_evidence.v1
+verification_commands:
+- compiler/baseline-profiles/capture.sh --app apps/demo --output build/reports/compiler/baseline-prof.txt
+- test -s build/reports/compiler/baseline-prof.txt

@@ -121,6 +121,7 @@ run_capture() {
 		echo "$rc" > "$status_file"
 		exit "$rc"
 	} 2>&1 | tee "$out"
+	python3 "$repo_root/scripts/provenance_sanitize.py" "$out" >/dev/null 2>&1 || true
 	rc=$(cat "$status_file" 2>/dev/null || echo 1)
 	rm -f "$status_file"
 	return "$rc"

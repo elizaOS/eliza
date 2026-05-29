@@ -55,10 +55,11 @@
     }
   },
   "claim_boundary": "static ISO squashfs payload check for graphical kiosk dependencies; not a pixel-rendered GUI runtime screenshot or physical display claim",
+  "generated_utc": "2026-05-28T22:15:09Z",
   "iso": {
-    "bytes": 926879744,
-    "path": "out/elizaos-linux-riscv64-gui-20260527T181540Z.iso",
-    "sha256": "69e27b799a0617b5c1eaaf7dd4eef330fe29c3b2364a22cb7c27c9777fb3c0a7"
+    "bytes": 926898176,
+    "path": "out/elizaos-linux-riscv64-gui-20260528T212853Z.iso",
+    "sha256": "37343baefd3b40c9695e1165b0da5d3c15d47cb97c936ff911ac786f8a792aa4"
   },
   "missing": [],
   "schema": "eliza.os.linux.gui_kiosk_iso_check.v1",

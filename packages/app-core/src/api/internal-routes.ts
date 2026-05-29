@@ -71,6 +71,13 @@ export function __resetWakeTelemetryForTests(): void {
   wakeTelemetry.lastWakeError = null;
 }
 
+/**
+ * Minimum length for the device bearer secret, enforced identically across
+ * both ingestion paths (env-provided and persisted). Freshly generated secrets
+ * are 64 hex chars (32 random bytes), comfortably above this floor.
+ */
+const MIN_DEVICE_SECRET_LENGTH = 32;
+
 let cachedDeviceSecret: string | null = null;
 let deviceSecretPathOverrideForTests: string | null = null;
 
@@ -84,7 +91,7 @@ function getDeviceSecretPath(): string {
 function readPersistedDeviceSecret(filePath: string): string | null {
   try {
     const secret = fs.readFileSync(filePath, "utf8").trim();
-    return secret.length >= 32 ? secret : null;
+    return secret.length >= MIN_DEVICE_SECRET_LENGTH ? secret : null;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     return null;
@@ -114,7 +121,7 @@ function writePersistedDeviceSecret(filePath: string, secret: string): void {
 export function getDeviceSecret(): string {
   if (cachedDeviceSecret === null) {
     const fromEnv = process.env.ELIZA_DEVICE_SECRET;
-    if (typeof fromEnv === "string" && fromEnv.length >= 16) {
+    if (typeof fromEnv === "string" && fromEnv.length >= MIN_DEVICE_SECRET_LENGTH) {
       cachedDeviceSecret = fromEnv;
     } else {
       const secretPath = getDeviceSecretPath();

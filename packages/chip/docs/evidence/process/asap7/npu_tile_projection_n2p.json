@@ -1,41 +1,35 @@
 {
-  "schema": "eliza.pd_asap7_per_block_projection.v1",
-  "block_id": "npu_tile",
-  "evidence_class": "projection_only_never_signoff",
-  "source_shape": "docs/evidence/process/asap7/npu_tile_shape.json",
   "advanced_targets": [
     "n2p",
     "a14",
     "intel_14a",
     "samsung_sf2p"
   ],
+  "asap7_baseline": {
+    "dyn_power_mw_per_mhz": null,
+    "leakage_mw": null,
+    "max_freq_mhz": null,
+    "std_cell_area_mm2": 0.01038078504
+  },
+  "block_id": "npu_tile",
+  "claim_boundary": "ASAP7 predictive shape scaled to advanced-node envelope via published vendor scaling factors. Projection only, never signoff. Per-block bands are co-located with the shape that drove them so reviewers can audit one block at a time.",
+  "evidence_class": "projection_only_never_signoff",
+  "forbidden_uses": [
+    "cite_as_tsmc_n2p_signoff",
+    "cite_as_tsmc_a14_signoff",
+    "cite_as_intel_14a_signoff",
+    "cite_as_samsung_sf2p_signoff",
+    "cite_as_measured_silicon_evidence"
+  ],
+  "generated_utc": "2026-05-22T20:15:39Z",
   "monte_carlo": {
     "samples": 4096,
     "seed": 20260519,
     "uncertainty_basis": "public-disclosure 1-sigma bands from ppa-projection.yaml.uncertainty_bands, sampled lognormal so the perturbation is strictly positive"
   },
-  "asap7_baseline": {
-    "std_cell_area_mm2": 0.01038078504,
-    "dyn_power_mw_per_mhz": null,
-    "leakage_mw": null,
-    "max_freq_mhz": null
-  },
   "projections": {
-    "n2p": {
-      "point": {
-        "std_cell_area_mm2": 0.007159162096551724,
-        "dyn_power_mw_per_mhz": null,
-        "leakage_mw": null,
-        "max_freq_mhz_iso_power": null
-      },
+    "a14": {
       "monte_carlo": {
-        "samples": 4096,
-        "seed": 20260519,
-        "std_cell_area_mm2": {
-          "p10": 0.006387169958410981,
-          "p50": 0.007180153318837729,
-          "p90": 0.00809265334559824
-        },
         "dyn_power_mw_per_mhz": {
           "p10": null,
           "p50": null,
@@ -45,39 +39,20 @@
           "p10": null,
           "p50": null,
           "p90": null
-        }
-      },
-      "scaling_factors_used": {
-        "density": 1.45,
-        "perf_iso_power": 1.1330000000000002,
-        "power_iso_perf": 0.7124999999999999
-      }
-    },
-    "a14": {
-      "point": {
-        "std_cell_area_mm2": 0.005965968413793103,
-        "dyn_power_mw_per_mhz": null,
-        "leakage_mw": null,
-        "max_freq_mhz_iso_power": null
-      },
-      "monte_carlo": {
+        },
         "samples": 4096,
         "seed": 20260519,
         "std_cell_area_mm2": {
           "p10": 0.005121168214248438,
           "p50": 0.006030474109164852,
           "p90": 0.00709297277616021
-        },
-        "dyn_power_mw_per_mhz": {
-          "p10": null,
-          "p50": null,
-          "p90": null
-        },
-        "max_freq_mhz_iso_power": {
-          "p10": null,
-          "p50": null,
-          "p90": null
         }
+      },
+      "point": {
+        "dyn_power_mw_per_mhz": null,
+        "leakage_mw": null,
+        "max_freq_mhz_iso_power": null,
+        "std_cell_area_mm2": 0.005965968413793103
       },
       "scaling_factors_used": {
         "density": 1.74,
@@ -86,20 +61,7 @@
       }
     },
     "intel_14a": {
-      "point": {
-        "std_cell_area_mm2": 0.007159162096551724,
-        "dyn_power_mw_per_mhz": null,
-        "leakage_mw": null,
-        "max_freq_mhz_iso_power": null
-      },
       "monte_carlo": {
-        "samples": 4096,
-        "seed": 20260519,
-        "std_cell_area_mm2": {
-          "p10": 0.005995458728013924,
-          "p50": 0.007221475092182944,
-          "p90": 0.008770629170965105
-        },
         "dyn_power_mw_per_mhz": {
           "p10": null,
           "p50": null,
@@ -109,7 +71,20 @@
           "p10": null,
           "p50": null,
           "p90": null
+        },
+        "samples": 4096,
+        "seed": 20260519,
+        "std_cell_area_mm2": {
+          "p10": 0.005995458728013924,
+          "p50": 0.007221475092182944,
+          "p90": 0.008770629170965105
         }
+      },
+      "point": {
+        "dyn_power_mw_per_mhz": null,
+        "leakage_mw": null,
+        "max_freq_mhz_iso_power": null,
+        "std_cell_area_mm2": 0.007159162096551724
       },
       "scaling_factors_used": {
         "density": 1.45,
@@ -117,21 +92,8 @@
         "power_iso_perf": 0.65
       }
     },
-    "samsung_sf2p": {
-      "point": {
-        "std_cell_area_mm2": 0.007985219261538461,
-        "dyn_power_mw_per_mhz": null,
-        "leakage_mw": null,
-        "max_freq_mhz_iso_power": null
-      },
+    "n2p": {
       "monte_carlo": {
-        "samples": 4096,
-        "seed": 20260519,
-        "std_cell_area_mm2": {
-          "p10": 0.006719645700877998,
-          "p50": 0.008089443803904462,
-          "p90": 0.009811253034047646
-        },
         "dyn_power_mw_per_mhz": {
           "p10": null,
           "p50": null,
@@ -141,7 +103,52 @@
           "p10": null,
           "p50": null,
           "p90": null
+        },
+        "samples": 4096,
+        "seed": 20260519,
+        "std_cell_area_mm2": {
+          "p10": 0.006387169958410981,
+          "p50": 0.007180153318837729,
+          "p90": 0.00809265334559824
         }
+      },
+      "point": {
+        "dyn_power_mw_per_mhz": null,
+        "leakage_mw": null,
+        "max_freq_mhz_iso_power": null,
+        "std_cell_area_mm2": 0.007159162096551724
+      },
+      "scaling_factors_used": {
+        "density": 1.45,
+        "perf_iso_power": 1.1330000000000002,
+        "power_iso_perf": 0.7124999999999999
+      }
+    },
+    "samsung_sf2p": {
+      "monte_carlo": {
+        "dyn_power_mw_per_mhz": {
+          "p10": null,
+          "p50": null,
+          "p90": null
+        },
+        "max_freq_mhz_iso_power": {
+          "p10": null,
+          "p50": null,
+          "p90": null
+        },
+        "samples": 4096,
+        "seed": 20260519,
+        "std_cell_area_mm2": {
+          "p10": 0.006719645700877998,
+          "p50": 0.008089443803904462,
+          "p90": 0.009811253034047646
+        }
+      },
+      "point": {
+        "dyn_power_mw_per_mhz": null,
+        "leakage_mw": null,
+        "max_freq_mhz_iso_power": null,
+        "std_cell_area_mm2": 0.007985219261538461
       },
       "scaling_factors_used": {
         "density": 1.3,
@@ -150,12 +157,6 @@
       }
     }
   },
-  "claim_boundary": "ASAP7 predictive shape scaled to advanced-node envelope via published vendor scaling factors. Projection only, never signoff. Per-block bands are co-located with the shape that drove them so reviewers can audit one block at a time.",
-  "forbidden_uses": [
-    "cite_as_tsmc_n2p_signoff",
-    "cite_as_tsmc_a14_signoff",
-    "cite_as_intel_14a_signoff",
-    "cite_as_samsung_sf2p_signoff",
-    "cite_as_measured_silicon_evidence"
-  ]
+  "schema": "eliza.pd_asap7_per_block_projection.v1",
+  "source_shape": "docs/evidence/process/asap7/npu_tile_shape.json"
 }

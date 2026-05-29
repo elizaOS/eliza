@@ -26,8 +26,15 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.check = load_check_module()
 
-    def write_archive(self, archive: Path, *, omit: set[str] | None = None) -> None:
+    def write_archive(
+        self,
+        archive: Path,
+        *,
+        omit: set[str] | None = None,
+        drop_tokens: dict[str, set[str]] | None = None,
+    ) -> None:
         omit = omit or set()
+        drop_tokens = drop_tokens or {}
         root = archive.parent / "archive-root"
         root.mkdir()
         members: list[str] = []
@@ -36,7 +43,11 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
                 continue
             member = root / suffix
             member.parent.mkdir(parents=True, exist_ok=True)
-            tokens = self.check.REQUIRED_TEXT.get(suffix, [])
+            tokens = [
+                token
+                for token in self.check.REQUIRED_TEXT.get(suffix, [])
+                if token not in drop_tokens.get(suffix, set())
+            ]
             member.write_text("\n".join(tokens or [f"fixture for {suffix}"]) + "\n")
             members.append(f"eliza-release/{suffix}")
 
@@ -84,6 +95,38 @@ class ReleaseArchiveSimulatorEvidenceTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn(
             "missing archive member ending with renode/eliza_e1_status.json",
+            result.stdout,
+        )
+
+    def test_qemu_manifest_without_pass_status_blocks_release_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive = Path(tmpdir) / "release.tar.gz"
+            self.write_archive(
+                archive,
+                drop_tokens={"reports/qemu_smoke.manifest": {"status=PASS"}},
+            )
+            result = self.run_checker(archive)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(
+            "reports/qemu_smoke.manifest missing required text token: status=PASS",
+            result.stdout,
+        )
+
+    def test_qemu_manifest_without_claim_boundary_blocks_release_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            archive = Path(tmpdir) / "release.tar.gz"
+            self.write_archive(
+                archive,
+                drop_tokens={
+                    "reports/qemu_smoke.manifest": {
+                        "claim_boundary=qemu-virt software reference only; not e1-chip hardware ABI boot evidence"
+                    }
+                },
+            )
+            result = self.run_checker(archive)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn(
+            "reports/qemu_smoke.manifest missing required text token: claim_boundary=qemu-virt software reference only; not e1-chip hardware ABI boot evidence",
             result.stdout,
         )
 

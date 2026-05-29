@@ -1,5 +1,5 @@
 {
-  "artifacts": "/home/shaw/milady/eliza/packages/os/linux/elizaos/artifacts/riscv64",
+  "artifacts": "<repo>/packages/os/linux/elizaos/artifacts/riscv64",
   "claim_boundary": "qemu-user smoke of staged riscv64 Bun and agent bundle; not full ISO boot evidence",
   "failures": [
     "agent-entrypoint failed rc=1",

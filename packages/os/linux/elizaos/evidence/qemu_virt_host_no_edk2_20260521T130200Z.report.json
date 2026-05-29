@@ -12,7 +12,7 @@
     }
   ],
   "generated_utc": "2026-05-21T21:45:26.534787+00:00",
-  "iso_path": "/tmp/elizaos-rv64-iso-fix/elizaos-linux-riscv64-default-20260521T130200Z-grubfix.iso",
+  "iso_path": "<host-tmp>/elizaos-linux-riscv64-default-20260521T130200Z-grubfix.iso",
   "message": "qemu_virt_smoke: ERROR: evidence file not found: evidence/qemu_virt_host_no_edk2_20260521T130200Z.json",
   "required_markers": [
     "Linux version",

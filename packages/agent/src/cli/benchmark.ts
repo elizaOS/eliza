@@ -38,6 +38,7 @@ interface BenchmarkTask {
 interface BenchmarkResult {
   id: string;
   response: string;
+  task_type: string;
   actions_taken: string[];
   duration_ms: number;
   success: boolean;
@@ -127,7 +128,8 @@ async function runTask(
       return {
         id: task.id,
         response: "",
-        actions_taken: [taskType],
+        task_type: taskType,
+        actions_taken: [],
         duration_ms: Math.round(performance.now() - start),
         success: false,
         error: "runtime.messageService is not available",
@@ -136,7 +138,7 @@ async function runTask(
 
     let callbackText = "";
     let streamText = "";
-    const actionsTaken: string[] = [taskType];
+    const actionsTaken: string[] = [];
 
     // Race message handling against the timeout.
     // Text can arrive via three channels:
@@ -144,6 +146,7 @@ async function runTask(
     //   2. onStreamChunk — streamed LLM tokens
     //   3. result.responseContent — final composed response
     // We capture all three and deduplicate.
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const result = (await Promise.race([
       (async () => {
         const handleResult = await runtime.messageService?.handleMessage(
@@ -168,16 +171,19 @@ async function runTask(
         );
         return handleResult;
       })(),
-      new Promise<"timeout">((resolve) =>
-        setTimeout(() => resolve("timeout"), timeoutMs),
-      ),
-    ])) as unknown;
+      new Promise<"timeout">((resolve) => {
+        timeoutHandle = setTimeout(() => resolve("timeout"), timeoutMs);
+      }),
+    ]).finally(() => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    })) as unknown;
 
     if (result === "timeout") {
       const responseText = streamText || callbackText;
       return {
         id: task.id,
         response: responseText,
+        task_type: taskType,
         actions_taken: actionsTaken,
         duration_ms: Math.round(performance.now() - start),
         success: false,
@@ -226,6 +232,7 @@ async function runTask(
     return {
       id: task.id,
       response: responseText,
+      task_type: taskType,
       actions_taken: actionsTaken,
       duration_ms: Math.round(performance.now() - start),
       success: true,
@@ -234,7 +241,8 @@ async function runTask(
     return {
       id: task.id,
       response: "",
-      actions_taken: [taskType],
+      task_type: taskType,
+      actions_taken: [],
       duration_ms: Math.round(performance.now() - start),
       success: false,
       error: err instanceof Error ? err.message : String(err),
@@ -288,6 +296,7 @@ async function runServerMode(
       const errorResult: BenchmarkResult = {
         id: "unknown",
         response: "",
+        task_type: "",
         actions_taken: [],
         duration_ms: 0,
         success: false,
@@ -330,6 +339,7 @@ export async function runBenchmark(
     const errorResult: BenchmarkResult = {
       id: opts.task ? "file" : "stdin",
       response: "",
+      task_type: "",
       actions_taken: [],
       duration_ms: 0,
       success: false,

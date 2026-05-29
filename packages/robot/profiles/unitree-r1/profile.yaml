@@ -265,6 +265,7 @@ contact:
   - right_foot_front_inner
 sensors:
   imu_noise_std: 0.005
+  locomotion_tracking_body: torso_link
   cameras:
   - name: head_cam
     width: 320

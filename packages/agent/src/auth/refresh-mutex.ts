@@ -11,21 +11,26 @@ export class KeyedMutex {
 
   /**
    * Run `fn` while holding the lock for `key`. Concurrent callers with
-   * the same key wait for the in-flight promise to settle, then run
-   * their own attempt — they do NOT share the result. The caller is
-   * expected to re-check state (e.g. re-read credentials) after acquire.
+   * the same key are queued and run strictly one at a time — they do NOT
+   * share the result. The caller is expected to re-check state (e.g.
+   * re-read credentials) after acquire.
+   *
+   * The queue is built synchronously: each acquirer chains off whatever
+   * promise is currently registered for the key and immediately registers
+   * itself as the new tail. Two callers arriving in the same tick observe
+   * different predecessors, so they cannot run `fn` concurrently.
    */
   async acquire<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const previous = this.inflight.get(key);
-    if (previous) {
-      await previous.catch(() => {});
-    }
-    const next = (async () => fn())();
-    this.inflight.set(key, next);
+    const previous = this.inflight.get(key) ?? Promise.resolve();
+    const run = previous.then(() => fn());
+    // Register a non-rejecting tail so the next acquirer waits for this
+    // run to settle regardless of outcome, without unhandled rejections.
+    const tail = run.catch(() => {});
+    this.inflight.set(key, tail);
     try {
-      return await next;
+      return await run;
     } finally {
-      if (this.inflight.get(key) === next) {
+      if (this.inflight.get(key) === tail) {
         this.inflight.delete(key);
       }
     }

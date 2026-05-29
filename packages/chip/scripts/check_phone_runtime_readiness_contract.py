@@ -572,7 +572,10 @@ def live_capture_contract(relative_path: str) -> dict[str, Any]:
     for contract in contracts:
         if not isinstance(contract, dict):
             continue
-        if contract.get("expected_path") != relative_path:
+        if contract.get("expected_path") not in {
+            relative_path,
+            repo_output_path(relative_path),
+        }:
             continue
         return {
             **contract,
@@ -909,6 +912,7 @@ def runtime_evidence_collection_inventory(evidence: dict[str, Any]) -> list[dict
                     PHONE_RUNTIME_VALIDATION_COMMAND,
                     PHONE_RUNTIME_AGGREGATE_COMMAND,
                 ],
+                "next_command_batches": next_command_batches(blocked_files),
             }
         )
     return inventory
@@ -941,6 +945,48 @@ def count_blocker_categories(records: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
+def next_command_batches(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return ordered, per-artifact operator command batches.
+
+    ``next_commands`` remains a flat compatibility field, but operators need to
+    know which commands belong to which missing/blocking artifact and in what
+    order to run them. These batches are plan metadata only; they are not
+    evidence that a target booted or passed.
+    """
+    batches: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        commands = [
+            str(command)
+            for command in record.get("capture_commands", [])
+            if isinstance(command, str)
+        ]
+        validation_commands = [
+            str(command)
+            for command in record.get("validation_commands", [])
+            if isinstance(command, str)
+        ]
+        if not commands and not validation_commands:
+            continue
+        batches.append(
+            {
+                "artifact": record.get("repo_relative_expected_path") or record.get("path"),
+                "package_relative_artifact": record.get("package_relative_expected_path")
+                or record.get("path"),
+                "description": record.get("description"),
+                "blocker_class": record.get("blocker_class"),
+                "blocker_category": record.get("blocker_category"),
+                "release_credit": False,
+                "expected_output_files": record.get("expected_output_files", []),
+                "capture_commands": commands,
+                "validation_commands": validation_commands,
+                "claim_boundary": "operator_command_batch_only_not_runtime_evidence",
+            }
+        )
+    return batches
+
+
 def runtime_capture_area_groups(
     collection_inventory: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -959,6 +1005,7 @@ def runtime_capture_area_groups(
         for record in blocked_files:
             capture_commands.extend(str(command) for command in record.get("capture_commands", []))
             expected_files.extend(str(path) for path in record.get("expected_output_files", []))
+        command_batches = next_command_batches(blocked_files)
         groups.append(
             {
                 "capture_area": scope_record.get("scope"),
@@ -971,6 +1018,7 @@ def runtime_capture_area_groups(
                 "next_artifacts": sorted(set(expected_files)),
                 "next_commands": list(dict.fromkeys(capture_commands))
                 + [PHONE_RUNTIME_VALIDATION_COMMAND, PHONE_RUNTIME_AGGREGATE_COMMAND],
+                "next_command_batches": command_batches,
             }
         )
     return sorted(groups, key=lambda row: row["priority"])
@@ -993,6 +1041,7 @@ def next_runtime_capture_action(
         "blocked_evidence_category_counts": group.get("blocked_evidence_category_counts", {}),
         "next_artifacts": group.get("next_artifacts", []),
         "next_commands": group.get("next_commands", []),
+        "next_command_batches": group.get("next_command_batches", []),
         "validation_commands": [
             PHONE_RUNTIME_VALIDATION_COMMAND,
             PHONE_RUNTIME_AGGREGATE_COMMAND,

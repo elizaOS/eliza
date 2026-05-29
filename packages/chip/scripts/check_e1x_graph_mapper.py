@@ -61,7 +61,7 @@ MANIFEST = ROOT / "benchmarks/models/llama13b-w4a8-manifest.json"
 
 
 def _now() -> str:
-    return _dt.datetime.now(_dt.UTC).isoformat()
+    return _dt.datetime.now(_dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def run_checks() -> list[dict[str, str]]:
@@ -269,6 +269,7 @@ def main() -> int:
             "scripts/test_e1x_graph_mapper.py",
         ],
         "as_of": _now(),
+        "generated_utc": _now(),
         "subsystem": "compiler_runtime",
         "claim_boundary": (
             "Architecture-level placement/sharding/capacity compiler: it maps a "

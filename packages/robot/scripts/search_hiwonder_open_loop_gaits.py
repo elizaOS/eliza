@@ -255,9 +255,109 @@ def _candidate_specs() -> list[_PrimitiveSpec]:
                 f"sinusoidal_seeded_{idx}",
                 params["scale"],
                 partial(_make_sinusoidal_action, params=params),
+                dict(params),
             )
         )
     return specs
+
+
+_WALK_FORWARD_THRESHOLDS = {
+    "delta_x_m_min": 0.30,
+    "max_lateral_drift_m": 0.20,
+    "max_abs_delta_yaw_rad": 0.40,
+    "hold_s": 1.0,
+}
+
+
+def _row_brief(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "controller": row.get("controller"),
+        "success": row.get("success"),
+        "failed": row.get("failed"),
+        "terminated": row.get("terminated"),
+        "termination_reason": row.get("termination_reason"),
+        "final_delta_x_m": row.get("final_delta_x_m"),
+        "max_delta_x_m": row.get("max_delta_x_m"),
+        "max_abs_delta_y_m": row.get("max_abs_delta_y_m"),
+        "max_abs_delta_yaw_rad": row.get("max_abs_delta_yaw_rad"),
+        "max_success_window_s": row.get("max_success_window_s"),
+        "unmet_success_predicates": row.get("diagnostics", {}).get(
+            "unmet_success_predicates"
+        ),
+        "controller_params": row.get("controller_params"),
+    }
+
+
+def _forward_metric(row: dict[str, Any]) -> float:
+    return float(row.get("max_delta_x_m") or row.get("final_delta_x_m") or 0.0)
+
+
+def _straight_enough(row: dict[str, Any]) -> bool:
+    lateral = float(row.get("max_abs_delta_y_m") or 0.0)
+    yaw = float(row.get("max_abs_delta_yaw_rad") or 0.0)
+    return (
+        lateral <= _WALK_FORWARD_THRESHOLDS["max_lateral_drift_m"]
+        and yaw <= _WALK_FORWARD_THRESHOLDS["max_abs_delta_yaw_rad"]
+    )
+
+
+def _no_fall(row: dict[str, Any]) -> bool:
+    return not bool(row.get("failed")) and not bool(row.get("terminated"))
+
+
+def _failure_frontier(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    dx_min = _WALK_FORWARD_THRESHOLDS["delta_x_m_min"]
+    forward_rows = [row for row in rows if _forward_metric(row) >= dx_min]
+    straight_rows = [row for row in rows if _straight_enough(row)]
+    no_fall_rows = [row for row in rows if _no_fall(row)]
+    no_fall_straight_rows = [
+        row for row in rows if _no_fall(row) and _straight_enough(row)
+    ]
+    forward_no_fall_rows = [
+        row for row in forward_rows if _no_fall(row)
+    ]
+    forward_straight_rows = [
+        row for row in forward_rows if _straight_enough(row)
+    ]
+    forward_no_fall_straight_rows = [
+        row for row in forward_rows if _no_fall(row) and _straight_enough(row)
+    ]
+    if not forward_rows:
+        primary_gap = "forward_displacement"
+    elif not forward_straight_rows:
+        primary_gap = "straightness"
+    elif not forward_no_fall_straight_rows:
+        primary_gap = "stability"
+    else:
+        primary_gap = "hold_window_or_other_predicates"
+    by_forward = sorted(rows, key=_forward_metric, reverse=True)
+    return {
+        "thresholds": dict(_WALK_FORWARD_THRESHOLDS),
+        "primary_gap": primary_gap,
+        "n_forward_displacement_candidates": len(forward_rows),
+        "n_straight_candidates": len(straight_rows),
+        "n_no_fall_candidates": len(no_fall_rows),
+        "n_no_fall_straight_candidates": len(no_fall_straight_rows),
+        "n_forward_no_fall_candidates": len(forward_no_fall_rows),
+        "n_forward_straight_candidates": len(forward_straight_rows),
+        "n_forward_no_fall_straight_candidates": len(
+            forward_no_fall_straight_rows
+        ),
+        "best_forward_any": _row_brief(by_forward[0] if by_forward else None),
+        "best_forward_without_fall": _row_brief(
+            max(no_fall_rows, key=_forward_metric) if no_fall_rows else None
+        ),
+        "best_forward_straight": _row_brief(
+            max(straight_rows, key=_forward_metric) if straight_rows else None
+        ),
+        "best_forward_no_fall_straight": _row_brief(
+            max(no_fall_straight_rows, key=_forward_metric)
+            if no_fall_straight_rows
+            else None
+        ),
+    }
 
 
 def search(*, max_steps: int) -> dict[str, Any]:
@@ -301,6 +401,7 @@ def search(*, max_steps: int) -> dict[str, Any]:
         "best_stable_by_peak_forward_progress": (
             stable_by_peak_forward[0] if stable_by_peak_forward else None
         ),
+        "failure_frontier": _failure_frontier(rows),
         "candidates": rows,
     }
 
@@ -320,6 +421,11 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
     stable_peak = (
         report.get("best_stable_by_peak_forward_progress")
         if isinstance(report.get("best_stable_by_peak_forward_progress"), dict)
+        else {}
+    )
+    frontier = (
+        report.get("failure_frontier")
+        if isinstance(report.get("failure_frontier"), dict)
         else {}
     )
     lines = [
@@ -369,6 +475,14 @@ def write_markdown(path: Path, report: dict[str, Any]) -> None:
         f"- peak dx m: `{stable_peak.get('max_delta_x_m')}`",
         f"- progress ratio: `{stable_peak.get('progress_ratio')}`",
         f"- reason: `{stable_peak.get('reason')}`",
+        "",
+        "## Failure Frontier",
+        "",
+        f"- primary gap: `{frontier.get('primary_gap')}`",
+        f"- forward-displacement candidates: `{frontier.get('n_forward_displacement_candidates')}`",
+        f"- forward + no-fall candidates: `{frontier.get('n_forward_no_fall_candidates')}`",
+        f"- forward + straight candidates: `{frontier.get('n_forward_straight_candidates')}`",
+        f"- forward + no-fall + straight candidates: `{frontier.get('n_forward_no_fall_straight_candidates')}`",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

@@ -167,7 +167,10 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
       session: [],
       system: [],
     };
-    for (const e of entries ?? []) buckets[e.category].push(e);
+    for (const e of entries ?? []) {
+      const bucket = buckets[e.category];
+      if (bucket) bucket.push(e);
+    }
     return buckets;
   }, [entries]);
 

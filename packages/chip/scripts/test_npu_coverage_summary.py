@@ -29,7 +29,18 @@ class NpuCoverageSummaryTests(unittest.TestCase):
         summary = self.gate.build_summary(self.gate.DEFAULT_COCOTB_COVERAGE)
         self.assertEqual(summary["schema"], "eliza.npu_local_coverage_summary.v1")
         self.assertEqual(summary["status"], "pass")
+        self.assertIn("generated_utc", summary)
         self.assertEqual(summary["validation_errors"], [])
+        self.assertFalse(summary["phone_claim_allowed"])
+        self.assertFalse(summary["release_claim_allowed"])
+        self.assertFalse(summary["production_accelerator_claim_allowed"])
+        self.assertFalse(summary["nnapi_claim_allowed"])
+        self.assertFalse(summary["performance_claim_allowed"])
+        self.assertIn(
+            "DMA-backed tensor execution readiness.",
+            summary["claim_boundary"]["blocked_claims"],
+        )
+        self.assertFalse(summary["claim_boundary"]["dma_backed_tensor_execution"])
         self.assertEqual(
             summary["artifacts"]["runtime"]["sha256"],
             self.gate.artifact(self.gate.RUNTIME)["sha256"],

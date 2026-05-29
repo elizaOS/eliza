@@ -63,7 +63,6 @@ function isAnthropicRuntime(runtime: AgentRuntime): boolean {
 
 function patchAiSdk(webSearchTool: unknown): void {
   if (patched) return;
-  patched = true;
 
   let aiModule: Record<string, unknown>;
   try {
@@ -72,6 +71,8 @@ function patchAiSdk(webSearchTool: unknown): void {
     logger.warn("[web-search] Could not require('ai') — skipping patch");
     return;
   }
+
+  patched = true;
 
   const wrapFn = (
     original: (...a: unknown[]) => unknown,

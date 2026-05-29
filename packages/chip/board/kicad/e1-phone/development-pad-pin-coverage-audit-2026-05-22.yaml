@@ -12,6 +12,189 @@ footprint_count: 32
 board_bound_footprint_type_count: 32
 exact_public_pinout_match_count: 17
 pending_supplier_pad_map_or_order_count: 13
+pending_supplier_pad_map_or_order_records:
+- footprint: AUDIO_CODEC_QFN48_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/AUDIO_CODEC_QFN48_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml
+  pinout_status: public_audio_interface_contract_pending_selected_codec_package_pinout
+  coverage: exact_public_audio_signal_contract_pending_selected_codec_pinout
+  expected_pin_count: 48
+  electrical_pad_count: 48
+  missing_expected_pads: &id001 []
+  extra_footprint_pads: &id002 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: BACKLIGHT_BIAS_POWER_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/BACKLIGHT_BIAS_POWER_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/backlight-bias-qfn24-pinout.yaml
+  pinout_status: public_backlight_bias_signal_contract_pending_selected_driver_pinout
+  coverage: exact_public_backlight_bias_signal_contract_pending_selected_driver_pinout
+  expected_pin_count: 24
+  electrical_pad_count: 24
+  missing_expected_pads: &id003 []
+  extra_footprint_pads: &id004 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: BATTERY_4P_1P00_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/BATTERY_4P_1P00_DEV.kicad_mod
+  footprint_status: development_pattern_generated
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/battery-pack-4pin-pinout.yaml
+  pinout_status: public_pack_connector_signal_contract_pending_supplier_connector_pin_order
+  coverage: exact_public_pack_signal_contract_pending_supplier_pin_order
+  expected_pin_count: 4
+  electrical_pad_count: 4
+  missing_expected_pads: &id005 []
+  extra_footprint_pads: &id006 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: CAMERA_24P_0P50_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_24P_0P50_DEV.kicad_mod
+  footprint_status: development_pattern_generated
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/ov13855-pinout.yaml
+  pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
+  coverage: signal_set_only_pending_signed_fpc_order
+  expected_pin_count: 24
+  electrical_pad_count: 24
+  missing_expected_pads: &id007 []
+  extra_footprint_pads: &id008 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: CAMERA_30P_0P50_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_30P_0P50_DEV.kicad_mod
+  footprint_status: development_pattern_generated
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/gc5035-pinout.yaml
+  pinout_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
+  coverage: signal_set_only_pending_signed_fpc_order
+  expected_pin_count: 30
+  electrical_pad_count: 30
+  missing_expected_pads: &id009 []
+  extra_footprint_pads: &id010 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: DISPLAY_40P_0P30_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/DISPLAY_40P_0P30_DEV.kicad_mod
+  footprint_status: development_pattern_generated
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/chenghao-ch550fh01a-pinout.yaml
+  pinout_status: per_pin_fpc_pinout_requires_module_house_signed_specification
+  coverage: signal_set_only_pending_signed_fpc_order
+  expected_pin_count: 40
+  electrical_pad_count: 40
+  missing_expected_pads: &id011 []
+  extra_footprint_pads: &id012 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: FUEL_GAUGE_WLCSP_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/FUEL_GAUGE_WLCSP_DEV.kicad_mod
+  footprint_status: generic_wlp_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/fuel-gauge-wlcsp12-pinout.yaml
+  pinout_status: public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
+  coverage: exact_public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
+  expected_pin_count: 12
+  electrical_pad_count: 12
+  missing_expected_pads: &id013 []
+  extra_footprint_pads: &id014 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: HAPTIC_DRIVER_WLCSP_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/HAPTIC_DRIVER_WLCSP_DEV.kicad_mod
+  footprint_status: generic_wlp_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml
+  pinout_status: public_haptic_signal_contract_pending_selected_driver_pinout
+  coverage: exact_public_haptic_signal_contract_pending_selected_driver_pinout
+  expected_pin_count: 9
+  electrical_pad_count: 9
+  missing_expected_pads: &id015 []
+  extra_footprint_pads: &id016 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: NFC_CONTROLLER_QFN_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/NFC_CONTROLLER_QFN_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/nfc-controller-qfn32-pinout.yaml
+  pinout_status: public_nfc_signal_contract_pending_selected_controller_pinout
+  coverage: exact_public_nfc_signal_contract_pending_selected_controller_pinout
+  expected_pin_count: 32
+  electrical_pad_count: 32
+  missing_expected_pads: &id017 []
+  extra_footprint_pads: &id018 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: NFC_LOOP_MATCH_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/NFC_LOOP_MATCH_DEV.kicad_mod
+  footprint_status: generic_rf_pi_match_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/nfc-loop-match-5pad-pinout.yaml
+  pinout_status: public_nfc_loop_match_contract_pending_antenna_tuning
+  coverage: exact_public_nfc_loop_match_contract_pending_antenna_tuning
+  expected_pin_count: 5
+  electrical_pad_count: 5
+  missing_expected_pads: &id019 []
+  extra_footprint_pads: &id020 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: QUECTEL_RG255C_GEOMETRY_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/QUECTEL_RG255C_GEOMETRY_DEV.kicad_mod
+  footprint_status: public_pinout_development_pattern_pending_land_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/quectel-rg255c-pinout.yaml
+  pinout_status: public_hardware_design_pdf_captured_non_release_until_supplier_sku_pack
+  coverage: exact_public_pin_table_pending_final_regional_sku_pack
+  expected_pin_count: 204
+  electrical_pad_count: 204
+  missing_expected_pads: &id021 []
+  extra_footprint_pads: &id022 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: SENSOR_HUB_QFN_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SENSOR_HUB_QFN_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/sensor-hub-qfn24-pinout.yaml
+  pinout_status: public_sensor_hub_signal_contract_pending_selected_sensor_pinout
+  coverage: exact_public_sensor_hub_signal_contract_pending_selected_sensor_pinout
+  expected_pin_count: 24
+  electrical_pad_count: 24
+  missing_expected_pads: &id023 []
+  extra_footprint_pads: &id024 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
+- footprint: USIM_ESD_LEVELSHIFT_DEV
+  footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/USIM_ESD_LEVELSHIFT_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
+  pinout_file: board/kicad/e1-phone/supplier-pinouts/usim-esd-levelshift-pinout.yaml
+  pinout_status: public_usim_signal_contract_pending_selected_levelshift_pinout
+  coverage: exact_public_usim_signal_contract_pending_selected_levelshift_pinout
+  expected_pin_count: 10
+  electrical_pad_count: 10
+  missing_expected_pads: &id025 []
+  extra_footprint_pads: &id026 []
+  land_pattern_basis: ''
+  local_terminal_contract_source: captured_public_pinout_expected_pins
+  step_binding_status: development_envelope_step_bound
+  release_allowed: false
 pinout_bound_footprint_count: 21
 all_pinout_bound_footprints_have_terminal_contract: true
 explicit_support_pattern_count: 11
@@ -28,6 +211,7 @@ public_som_pad_count_aligned: true
 records:
 - footprint: ADI_MAX77860_WLP81_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/ADI_MAX77860_WLP81_DEV.kicad_mod
+  footprint_status: development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 81
   pad_count: 81
@@ -141,6 +325,7 @@ records:
   release_allowed: false
 - footprint: AUDIO_CODEC_QFN48_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/AUDIO_CODEC_QFN48_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
   board_instance_count: 1
   manifest_pin_count: 48
   pad_count: 49
@@ -164,8 +349,8 @@ records:
   expected_pin_count: 48
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id001
+  extra_footprint_pads: *id002
   pinout_signal_group_count: 25
   land_pattern_basis: ''
   local_terminal_contract:
@@ -223,6 +408,7 @@ records:
   release_allowed: false
 - footprint: BACKLIGHT_BIAS_POWER_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/BACKLIGHT_BIAS_POWER_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
   board_instance_count: 1
   manifest_pin_count: 24
   pad_count: 25
@@ -246,8 +432,8 @@ records:
   expected_pin_count: 24
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id003
+  extra_footprint_pads: *id004
   pinout_signal_group_count: 8
   land_pattern_basis: ''
   local_terminal_contract:
@@ -281,6 +467,7 @@ records:
   release_allowed: false
 - footprint: BATTERY_4P_1P00_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/BATTERY_4P_1P00_DEV.kicad_mod
+  footprint_status: development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 4
   pad_count: 4
@@ -302,8 +489,8 @@ records:
   expected_pin_count: 4
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id005
+  extra_footprint_pads: *id006
   pinout_signal_group_count: 11
   land_pattern_basis: ''
   local_terminal_contract:
@@ -317,6 +504,7 @@ records:
   release_allowed: false
 - footprint: C0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/C0402_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 11
   manifest_pin_count: 2
   pad_count: 2
@@ -351,6 +539,7 @@ records:
   release_allowed: false
 - footprint: CAMERA_24P_0P50_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_24P_0P50_DEV.kicad_mod
+  footprint_status: development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 24
   pad_count: 24
@@ -372,8 +561,8 @@ records:
   expected_pin_count: 24
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id007
+  extra_footprint_pads: *id008
   pinout_signal_group_count: 24
   land_pattern_basis: ''
   local_terminal_contract:
@@ -407,6 +596,7 @@ records:
   release_allowed: false
 - footprint: CAMERA_30P_0P50_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/CAMERA_30P_0P50_DEV.kicad_mod
+  footprint_status: development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 30
   pad_count: 30
@@ -428,8 +618,8 @@ records:
   expected_pin_count: 30
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id009
+  extra_footprint_pads: *id010
   pinout_signal_group_count: 18
   land_pattern_basis: ''
   local_terminal_contract:
@@ -469,6 +659,7 @@ records:
   release_allowed: false
 - footprint: DISPLAY_40P_0P30_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/DISPLAY_40P_0P30_DEV.kicad_mod
+  footprint_status: development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 40
   pad_count: 40
@@ -490,8 +681,8 @@ records:
   expected_pin_count: 40
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id011
+  extra_footprint_pads: *id012
   pinout_signal_group_count: 29
   land_pattern_basis: ''
   local_terminal_contract:
@@ -541,6 +732,7 @@ records:
   release_allowed: false
 - footprint: ESD_ARRAY_6CH_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/ESD_ARRAY_6CH_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 9
   manifest_pin_count: 6
   pad_count: 6
@@ -580,6 +772,7 @@ records:
   release_allowed: false
 - footprint: ESIM_LGA_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/ESIM_LGA_DEV.kicad_mod
+  footprint_status: public_mff2_esim_development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 8
   pad_count: 9
@@ -622,6 +815,7 @@ records:
   release_allowed: false
 - footprint: FIDUCIAL_1MM_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/FIDUCIAL_1MM_DEV.kicad_mod
+  footprint_status: standard_global_fiducial_development_pattern
   board_instance_count: 3
   manifest_pin_count: 1
   pad_count: 1
@@ -655,6 +849,7 @@ records:
   release_allowed: false
 - footprint: FUEL_GAUGE_WLCSP_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/FUEL_GAUGE_WLCSP_DEV.kicad_mod
+  footprint_status: generic_wlp_support_development_pattern
   board_instance_count: 1
   manifest_pin_count: 12
   pad_count: 12
@@ -676,8 +871,8 @@ records:
   expected_pin_count: 12
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id013
+  extra_footprint_pads: *id014
   pinout_signal_group_count: 6
   land_pattern_basis: ''
   local_terminal_contract:
@@ -699,6 +894,7 @@ records:
   release_allowed: false
 - footprint: GCT_USB4105_GF_A_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/GCT_USB4105_GF_A_DEV.kicad_mod
+  footprint_status: public_pinout_development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 24
   pad_count: 26
@@ -759,6 +955,7 @@ records:
   release_allowed: false
 - footprint: HAPTIC_DRIVER_WLCSP_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/HAPTIC_DRIVER_WLCSP_DEV.kicad_mod
+  footprint_status: generic_wlp_support_development_pattern
   board_instance_count: 1
   manifest_pin_count: 9
   pad_count: 9
@@ -780,8 +977,8 @@ records:
   expected_pin_count: 9
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id015
+  extra_footprint_pads: *id016
   pinout_signal_group_count: 4
   land_pattern_basis: ''
   local_terminal_contract:
@@ -800,6 +997,7 @@ records:
   release_allowed: false
 - footprint: HIROSE_DF40_80P_0P4_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/HIROSE_DF40_80P_0P4_DEV.kicad_mod
+  footprint_status: development_pattern_generated
   board_instance_count: 2
   manifest_pin_count: 80
   pad_count: 80
@@ -912,6 +1110,7 @@ records:
   release_allowed: false
 - footprint: L0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/L0402_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 1
   manifest_pin_count: 2
   pad_count: 2
@@ -946,6 +1145,7 @@ records:
   release_allowed: false
 - footprint: MOUNTING_HOLE_1P2_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/MOUNTING_HOLE_1P2_DEV.kicad_mod
+  footprint_status: mechanical_np_thru_hole_development_pattern
   board_instance_count: 4
   manifest_pin_count: 0
   pad_count: 0
@@ -996,6 +1196,7 @@ records:
   release_allowed: false
 - footprint: MURATA_TYPE_2EA_GEOMETRY_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/MURATA_TYPE_2EA_GEOMETRY_DEV.kicad_mod
+  footprint_status: public_terminal_table_and_dxf_land_pattern_development
   board_instance_count: 1
   manifest_pin_count: 199
   pad_count: 199
@@ -1227,6 +1428,7 @@ records:
   release_allowed: false
 - footprint: NFC_CONTROLLER_QFN_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/NFC_CONTROLLER_QFN_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
   board_instance_count: 1
   manifest_pin_count: 32
   pad_count: 33
@@ -1250,8 +1452,8 @@ records:
   expected_pin_count: 32
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id017
+  extra_footprint_pads: *id018
   pinout_signal_group_count: 9
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1293,6 +1495,7 @@ records:
   release_allowed: false
 - footprint: NFC_LOOP_MATCH_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/NFC_LOOP_MATCH_DEV.kicad_mod
+  footprint_status: generic_rf_pi_match_development_pattern
   board_instance_count: 1
   manifest_pin_count: 5
   pad_count: 5
@@ -1314,8 +1517,8 @@ records:
   expected_pin_count: 5
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id019
+  extra_footprint_pads: *id020
   pinout_signal_group_count: 3
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1330,6 +1533,7 @@ records:
   release_allowed: false
 - footprint: PANASONIC_EVQ_P7_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/PANASONIC_EVQ_P7_DEV.kicad_mod
+  footprint_status: public_pinout_development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 4
   pad_count: 4
@@ -1366,6 +1570,7 @@ records:
   release_allowed: false
 - footprint: PI_MATCH_0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/PI_MATCH_0402_DEV.kicad_mod
+  footprint_status: generic_rf_pi_match_development_pattern
   board_instance_count: 5
   manifest_pin_count: 5
   pad_count: 5
@@ -1403,6 +1608,7 @@ records:
   release_allowed: false
 - footprint: QUECTEL_RG255C_GEOMETRY_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/QUECTEL_RG255C_GEOMETRY_DEV.kicad_mod
+  footprint_status: public_pinout_development_pattern_pending_land_pattern
   board_instance_count: 1
   manifest_pin_count: 204
   pad_count: 204
@@ -1424,8 +1630,8 @@ records:
   expected_pin_count: 204
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id021
+  extra_footprint_pads: *id022
   pinout_signal_group_count: 55
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1639,6 +1845,7 @@ records:
   release_allowed: false
 - footprint: R0402_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/R0402_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 9
   manifest_pin_count: 2
   pad_count: 2
@@ -1673,6 +1880,7 @@ records:
   release_allowed: false
 - footprint: RC_ARRAY_4CH_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/RC_ARRAY_4CH_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 4
   manifest_pin_count: 8
   pad_count: 8
@@ -1714,6 +1922,7 @@ records:
   release_allowed: false
 - footprint: SENSOR_HUB_QFN_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SENSOR_HUB_QFN_DEV.kicad_mod
+  footprint_status: generic_qfn_support_development_pattern
   board_instance_count: 1
   manifest_pin_count: 24
   pad_count: 25
@@ -1737,8 +1946,8 @@ records:
   expected_pin_count: 24
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id023
+  extra_footprint_pads: *id024
   pinout_signal_group_count: 9
   land_pattern_basis: ''
   local_terminal_contract:
@@ -1772,6 +1981,7 @@ records:
   release_allowed: false
 - footprint: SHUNT_1206_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SHUNT_1206_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 1
   manifest_pin_count: 2
   pad_count: 2
@@ -1806,6 +2016,7 @@ records:
   release_allowed: false
 - footprint: SODIMM_260P_0P5_COMPUTE_SOM_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/SODIMM_260P_0P5_COMPUTE_SOM_DEV.kicad_mod
+  footprint_status: development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 260
   pad_count: 260
@@ -2098,6 +2309,7 @@ records:
   release_allowed: false
 - footprint: TESTPOINT_1MM_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/TESTPOINT_1MM_DEV.kicad_mod
+  footprint_status: off_the_shelf_test_pad_development_pattern
   board_instance_count: 18
   manifest_pin_count: 1
   pad_count: 1
@@ -2131,6 +2343,7 @@ records:
   release_allowed: false
 - footprint: TI_TPS65987_RSH_56QFN_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/TI_TPS65987_RSH_56QFN_DEV.kicad_mod
+  footprint_status: public_pinout_development_pattern_generated
   board_instance_count: 1
   manifest_pin_count: 59
   pad_count: 59
@@ -2222,6 +2435,7 @@ records:
   release_allowed: false
 - footprint: TVS_DIODE_2P_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/TVS_DIODE_2P_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 2
   manifest_pin_count: 2
   pad_count: 2
@@ -2256,6 +2470,7 @@ records:
   release_allowed: false
 - footprint: USIM_ESD_LEVELSHIFT_DEV
   footprint_file: board/kicad/e1-phone/e1-phone-dev.pretty/USIM_ESD_LEVELSHIFT_DEV.kicad_mod
+  footprint_status: generic_off_the_shelf_development_pattern
   board_instance_count: 1
   manifest_pin_count: 10
   pad_count: 10
@@ -2277,8 +2492,8 @@ records:
   expected_pin_count: 10
   pinout_pad_count_alignment: null
   expected_pins_match_footprint_pads: true
-  missing_expected_pads: []
-  extra_footprint_pads: []
+  missing_expected_pads: *id025
+  extra_footprint_pads: *id026
   pinout_signal_group_count: 7
   land_pattern_basis: ''
   local_terminal_contract:

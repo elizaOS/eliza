@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import hashlib
 import importlib.util
 import json
@@ -54,6 +55,26 @@ REQUIRED_DIRECTED_TESTS: dict[str, tuple[str, ...]] = {
 SOFTWARE_FALLBACK_TESTS = (
     "compiler/runtime/test_e1_npu_tiny_mlp_e2e.py::test_mobilenet_first_conv2d_partitioner_emits_cpu_fallback_set",
 )
+CLAIM_BOUNDARY = {
+    "allowed_current_claims": [
+        "Local RTL/cocotb/runtime ABI coverage for the e1 NPU.",
+        "Validated descriptor, counter, invalid-programming, IRQ, and software-fallback boundary coverage.",
+    ],
+    "blocked_claims": [
+        "DMA-backed tensor execution readiness.",
+        "Android NNAPI acceleration readiness.",
+        "Phone-class TOPS, latency, throughput, or perf/W readiness.",
+        "Hardware benchmark, silicon, product, tapeout, or release evidence.",
+    ],
+    "nnapi_acceleration": False,
+    "dma_backed_tensor_execution": False,
+    "phone_class_tops": False,
+    "hardware_benchmark": False,
+}
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def load_runtime_class():
@@ -139,20 +160,21 @@ def build_summary(
     summary = {
         "schema": "eliza.npu_local_coverage_summary.v1",
         "status": "unchecked",
+        "generated_utc": utc_now(),
         "source": rel(cocotb_path),
         "coverage_kind": "local_rtl_runtime_only",
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "production_accelerator_claim_allowed": False,
+        "nnapi_claim_allowed": False,
+        "performance_claim_allowed": False,
         "artifacts": {
             "cocotb_coverage": artifact(cocotb_path),
             "cocotb_results": artifact(results_path),
             "runtime": artifact(RUNTIME),
             "runtime_contract": artifact(CONTRACT),
         },
-        "claim_boundary": {
-            "nnapi_acceleration": False,
-            "dma_backed_tensor_execution": False,
-            "phone_class_tops": False,
-            "hardware_benchmark": False,
-        },
+        "claim_boundary": CLAIM_BOUNDARY,
         "opcodes": {
             "required": opcodes,
             "covered_ids": covered_opcode_ids,
@@ -204,6 +226,16 @@ def build_summary(
 
 def validate_summary(summary: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    for claim in (
+        "phone_claim_allowed",
+        "release_claim_allowed",
+        "production_accelerator_claim_allowed",
+        "nnapi_claim_allowed",
+        "performance_claim_allowed",
+    ):
+        if summary.get(claim) is not False:
+            errors.append(f"{claim} must be false")
+
     boundary = summary.get("claim_boundary", {})
     for claim in (
         "nnapi_acceleration",

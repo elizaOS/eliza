@@ -1247,7 +1247,7 @@ async function initializeStatusBar(): Promise<void> {
   // `apple-mobile-web-app-status-bar-style: black-translucent` meta tag;
   // Android needs an explicit opt-in via `setOverlaysWebView`). Imported
   // dynamically so non-mobile bundles don't try to resolve the native
-  // plugin's named exports through the vite native stub.
+  // plugin's named exports through the vite native compatibility module.
   try {
     const { StatusBar, Style } = await import("@capacitor/status-bar");
     await StatusBar.setStyle({ style: Style.Dark });

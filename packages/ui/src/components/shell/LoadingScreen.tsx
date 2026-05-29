@@ -30,30 +30,16 @@ const PHASE_META: Record<
 
 interface LoadingScreenProps {
   phase?: StartupPhase;
-  elapsedSeconds?: number;
   vrmUrl?: string;
 }
 
 export function LoadingScreen({
   phase = "starting-backend",
-  elapsedSeconds,
   vrmUrl,
 }: LoadingScreenProps) {
   const { t } = useApp();
   const [vrmCached, setVrmCached] = useState(false);
   const [fetchProgress, setFetchProgress] = useState(0);
-  const [, setRuntimeElapsedSeconds] = useState(0);
-
-  useEffect(() => {
-    if (typeof elapsedSeconds === "number") return;
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      setRuntimeElapsedSeconds(
-        Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
-      );
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [elapsedSeconds]);
 
   useEffect(() => {
     if (!vrmUrl) return;

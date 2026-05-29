@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/D_VBUS_TVS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "22b107e63bac977492b37436266e4c2c5daa0f3f37fcd27341fb1fb0f0c2adb1",
+  "local_discrete_step_sha256": "44fe4eeb1d794ec938ebc41e2fe1a2a449235f1c551a7ffad89bd558762f65f5",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

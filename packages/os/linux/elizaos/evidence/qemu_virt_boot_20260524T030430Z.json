@@ -13,7 +13,7 @@
     },
     "missing": []
   },
-  "iso_path": "/home/shaw/milady/eliza/packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T030430Z.iso",
+  "iso_path": "<repo>/packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T030430Z.iso",
   "iso_sha256": "0816de4b5b8ea33698a22d07e42d51b756b70a5b1831b2640e640b5b30aed1a2",
   "markers_found": [
     "Linux version",
@@ -30,6 +30,6 @@
   "start_utc": "2026-05-24T03:44:14Z",
   "timeout_s": 1200,
   "transcript_path": "evidence/qemu_virt_boot_20260524T030430Z.transcript.log",
-  "transcript_sha256": "a23b0f40a05437df882c76a0c0ae49d7de57c85a8222e3ce3d374f32f1adfbdf",
+  "transcript_sha256": "cec3d200be58d52f85d15579d342f41aead50ef09418d4d4c8bbf30b4410244f",
   "u_boot_path": null
 }

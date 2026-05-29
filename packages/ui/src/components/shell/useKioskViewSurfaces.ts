@@ -43,8 +43,9 @@ function isKioskViewEvent(value: unknown): value is KioskViewEventPayload {
  * iframes) instead of opening native windows. This hook turns the bun-side
  * mount/unmount events into the list of surfaces the `KioskViewCanvas` renders.
  *
- * `a2ui` events re-key the surface so the iframe reloads with the latest
- * agent-pushed state without a separate postMessage channel.
+ * `a2ui` events are intentionally not forwarded here: each view loads its
+ * initial state from its own entrypoint over the local agent, so the canvas
+ * only reacts to `mount`/`unmount` events.
  */
 export function useKioskViewSurfaces(): KioskViewSurface[] {
   const [surfaces, setSurfaces] = useState<KioskViewSurface[]>([]);

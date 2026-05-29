@@ -1,71 +1,113 @@
-schema: eliza.pd_multi_corner_sta_evidence.v1
-status: draft_local_evidence
-release_use: prohibited_until_external_review
-scope: sky130_six_corner_mvp_plus_n3_pocv_socv_blocked
-description: |
-  Multi-corner STA evidence gate. Six-corner SS/TT/FF x min/max RC is the
-  open-PDK MVP. 100+ corner POCV/SOCV with LVF Liberty + ML corner-pruning
-  is required at the 2028 advanced-node target and is BLOCKED on the
-  commercial-EDA gate.
-source_artifacts:
-  - scripts/run_multi_corner_sta.py
-  - docs/pd/multi-corner-sta.md
-required_corners_stage1:
-  - SS_min
-  - SS_max
-  - TT_min
-  - TT_max
-  - FF_min
-  - FF_max
-local_findings:
-  six_corner_mvp:
-    status: captured_locally
-    captured_run: build/pd/multi_corner_sta/RUN_2026-05-19_05-08-54/multi_corner_sta.json
-    invocation: |
-      docker run --rm -v "$PWD":/work -w /work -e PDK_ROOT=/work/external/pdks \
-          ghcr.io/efabless/openlane2:2.4.0.dev1 \
-          python3 /work/scripts/run_multi_corner_sta.py \
-              --run-dir pd/openlane/runs/RUN_2026-05-19_05-08-54 \
-              --out-dir build/pd/multi_corner_sta/RUN_2026-05-19_05-08-54 \
-              --pdk-root /work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af
-    corner_summary:
-      SS_min: {setup_wns: -7.854, setup_tns: -647.886, hold_wns: -4.252, hold_tns: -442.826}
-      SS_max: {setup_wns: -12.260, setup_tns: -1512.434, hold_wns: -5.312, hold_tns: -742.716}
-      TT_min: {setup_wns: 85.752, setup_tns: 0.000, hold_wns: 0.453, hold_tns: 0.000}
-      TT_max: {setup_wns: 85.074, setup_tns: 0.000, hold_wns: 0.399, hold_tns: 0.000}
-      FF_min: {setup_wns: 90.915, setup_tns: 0.000, hold_wns: 0.112, hold_tns: 0.000}
-      FF_max: {setup_wns: 90.404, setup_tns: 0.000, hold_wns: 0.065, hold_tns: 0.000}
-    interpretation: |
-      TT and FF corners pass (positive setup and hold WNS). SS corner shows
-      design needs setup retiming on long paths: -12.26 ns setup WNS at
-      SS_max with -1512 ns TNS implies the synthesis flow needs to size
-      up critical-path drivers or insert pipeline registers for SS sign-off.
-      The hold violations on SS (-5.3 ns WNS) are consistent with the SS
-      Liberty's smaller cell delays moving hold paths into negative slack
-      and will be fixed by hold-buffer insertion at SS sign-off.
-  pocv_socv_lvf:
-    status: blocked
-    evidence_boundary: |
-      POCV/SOCV+LVF requires LVF Liberty libraries. The Sky130 open
-      libraries do not ship LVF. Open PDKs at N3/N2 do not exist.
-  ml_corner_pruning:
-    status: blocked
-    evidence_boundary: |
-      Pruning depends on a baseline of N3/N2 PrimeTime SI runs. BLOCKED on
-      commercial-eda-gate.
 acceptance_criteria_stage1:
-  - All 6 corner reports exist under build/pd/multi_corner_sta/<run_id>/.
-  - TT_max setup_wns >= 0.
-  - FF_min hold_wns >= 0.
-  - SS_max setup_wns >= 0 OR violators land in documented exception list.
+- All 6 corner reports exist under build/pd/multi_corner_sta/<run_id>/.
+- TT_max setup_wns >= 0.
+- FF_min hold_wns >= 0.
+- SS_max setup_wns >= 0 OR violators land in documented exception list.
 acceptance_criteria_stage3:
-  - PrimeTime SI runs path-based STA on >= 32 N3/N2 corners.
-  - POCV/SOCV LVF Liberty in use.
-  - ML corner-pruning regression validated against the full Cartesian
-    subset for at least one block.
+- PrimeTime SI runs path-based STA on >= 32 N3/N2 corners.
+- POCV/SOCV LVF Liberty in use.
+- ML corner-pruning regression validated against the full Cartesian subset for at
+  least one block.
+claim_boundary: scope_limited_to_structural_metadata_inventory_and_gate_diagnostics
+description: 'Multi-corner STA evidence gate. Six-corner SS/TT/FF x min/max RC is
+  the
+
+  open-PDK MVP. 100+ corner POCV/SOCV with LVF Liberty + ML corner-pruning
+
+  is required at the 2028 advanced-node target and is BLOCKED on the
+
+  commercial-EDA gate.
+
+  '
+generated_utc: '2026-05-20T10:12:30Z'
+local_findings:
+  ml_corner_pruning:
+    evidence_boundary: 'Pruning depends on a baseline of N3/N2 PrimeTime SI runs.
+      BLOCKED on
+
+      commercial-eda-gate.
+
+      '
+    status: blocked
+  pocv_socv_lvf:
+    evidence_boundary: 'POCV/SOCV+LVF requires LVF Liberty libraries. The Sky130 open
+
+      libraries do not ship LVF. Open PDKs at N3/N2 do not exist.
+
+      '
+    status: blocked
+  six_corner_mvp:
+    captured_run: build/pd/multi_corner_sta/RUN_2026-05-19_05-08-54/multi_corner_sta.json
+    corner_summary:
+      FF_max:
+        hold_tns: 0.0
+        hold_wns: 0.065
+        setup_tns: 0.0
+        setup_wns: 90.404
+      FF_min:
+        hold_tns: 0.0
+        hold_wns: 0.112
+        setup_tns: 0.0
+        setup_wns: 90.915
+      SS_max:
+        hold_tns: -742.716
+        hold_wns: -5.312
+        setup_tns: -1512.434
+        setup_wns: -12.26
+      SS_min:
+        hold_tns: -442.826
+        hold_wns: -4.252
+        setup_tns: -647.886
+        setup_wns: -7.854
+      TT_max:
+        hold_tns: 0.0
+        hold_wns: 0.399
+        setup_tns: 0.0
+        setup_wns: 85.074
+      TT_min:
+        hold_tns: 0.0
+        hold_wns: 0.453
+        setup_tns: 0.0
+        setup_wns: 85.752
+    interpretation: 'TT and FF corners pass (positive setup and hold WNS). SS corner
+      shows
+
+      design needs setup retiming on long paths: -12.26 ns setup WNS at
+
+      SS_max with -1512 ns TNS implies the synthesis flow needs to size
+
+      up critical-path drivers or insert pipeline registers for SS sign-off.
+
+      The hold violations on SS (-5.3 ns WNS) are consistent with the SS
+
+      Liberty''s smaller cell delays moving hold paths into negative slack
+
+      and will be fixed by hold-buffer insertion at SS sign-off.
+
+      '
+    invocation: "docker run --rm -v \"$PWD\":/work -w /work -e PDK_ROOT=/work/external/pdks\
+      \ \\\n    ghcr.io/efabless/openlane2:2.4.0.dev1 \\\n    python3 /work/scripts/run_multi_corner_sta.py\
+      \ \\\n        --run-dir pd/openlane/runs/RUN_2026-05-19_05-08-54 \\\n      \
+      \  --out-dir build/pd/multi_corner_sta/RUN_2026-05-19_05-08-54 \\\n        --pdk-root\
+      \ /work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af\n"
+    status: captured_locally
 release_blockers:
-  - SS_max setup WNS -12.26 ns; design needs longer-path retiming for
-    SS sign-off. Not a flow bug — a real timing finding from real STA.
-  - SS hold WNS -5.31 ns; hold-buffer insertion required at SS sign-off.
-  - POCV/SOCV+LVF Liberty libraries unavailable at open PDKs.
-  - PrimeTime SI / Tempus BLOCKED on commercial-eda-gate.
+- "SS_max setup WNS -12.26 ns; design needs longer-path retiming for SS sign-off.\
+  \ Not a flow bug \u2014 a real timing finding from real STA."
+- SS hold WNS -5.31 ns; hold-buffer insertion required at SS sign-off.
+- POCV/SOCV+LVF Liberty libraries unavailable at open PDKs.
+- PrimeTime SI / Tempus BLOCKED on commercial-eda-gate.
+release_use: prohibited_until_external_review
+required_corners_stage1:
+- SS_min
+- SS_max
+- TT_min
+- TT_max
+- FF_min
+- FF_max
+schema: eliza.pd_multi_corner_sta_evidence.v1
+scope: sky130_six_corner_mvp_plus_n3_pocv_socv_blocked
+source_artifacts:
+- scripts/run_multi_corner_sta.py
+- docs/pd/multi-corner-sta.md
+status: draft_local_evidence

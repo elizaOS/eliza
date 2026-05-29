@@ -631,17 +631,3 @@ function VaultBody({
   );
 }
 
-// ── Re-exports for legacy imports ──────────────────────────────────
-//
-// External callers (tests, App root mounts) historically imported
-// `BackendRow`, `SavedLoginsPanel`, and `SecretsManagerModal` from this
-// file. Re-export them so the move into `vault-tabs/` doesn't break
-// anything that hasn't migrated yet.
-
-export { LoginsTab as SavedLoginsPanel } from "./vault-tabs/LoginsTab";
-export {
-  BackendRow,
-  InstallSheet,
-  SigninSheet,
-} from "./vault-tabs/OverviewTab";
-export { VaultModal as SecretsManagerModal };

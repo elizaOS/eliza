@@ -338,6 +338,23 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertIn("umbrella_android_artifacts_missing_required_evidence_rows", codes)
         self.assertIn("android_live_launcher_agent_evidence_missing_by_target", codes)
         self.assertIn("umbrella_missing_android_riscv64_chip_artifact", codes)
+        findings_by_code = {finding["code"]: finding for finding in report["findings"]}
+        self.assertIn(
+            "android_release_artifact_inventory.commands",
+            findings_by_code["android_release_artifacts_missing_from_expected_paths"][
+                "next_command"
+            ],
+        )
+        self.assertIn(
+            "live_launcher_agent_missing_evidence.records",
+            findings_by_code["android_live_launcher_agent_evidence_missing_by_target"][
+                "next_command"
+            ],
+        )
+        self.assertEqual(
+            report["summary"]["blocker_dependency_counts"],
+            report["blocker_dependency_counts"],
+        )
         inventory = report["evidence"]["android_release_artifact_inventory"]
         self.assertEqual(inventory["status"], "blocked")
         self.assertIn(
@@ -392,7 +409,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertFalse(live_by_id["android-cuttlefish-x86_64-zip"]["releaseCredit"])
         self.assertIn(
-            "evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
+            "os/release/beta-2026-05-16/evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
             live_by_id["android-cuttlefish-x86_64-zip"]["expectedOutputFiles"],
         )
         self.assertIn(
@@ -421,7 +438,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertTrue(all(row["release_credit"] is False for row in prioritized))
         cuttlefish = prioritized[0]
         self.assertIn(
-            "evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
+            "os/release/beta-2026-05-16/evidence/android/cuttlefish-x86_64-launcher-agent-live.json",
             cuttlefish["expected_output_files"],
         )
         self.assertTrue(
@@ -547,7 +564,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertFalse(by_id["android-chip-riscv64-zip"]["releaseCredit"])
         self.assertIn(
-            "evidence/android/chip-riscv64-launcher-agent-live.json",
+            str(tmp / "evidence/android/chip-riscv64-launcher-agent-live.json"),
             by_id["android-chip-riscv64-zip"]["expectedOutputFiles"],
         )
         self.assertIn(
@@ -1302,6 +1319,35 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             sanitized["repo"],
             "packages/chip/docs/evidence/android/log.txt",
         )
+
+    def test_release_artifact_inventory_sidecar_is_provenance_safe(self) -> None:
+        report = {
+            "evidence": {
+                "android_release_artifact_inventory": {"status": "blocked"},
+                "android_archive_source_member_inventory": {
+                    "records": [
+                        {
+                            "sourceDirectory": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+                            "members": [
+                                {
+                                    "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img"
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "staged_android_archive_integrity_inventory": {},
+            }
+        }
+
+        sidecar = gate.release_artifact_inventory_sidecar(report)
+        encoded = json.dumps(sidecar, sort_keys=True)
+
+        self.assertEqual(sidecar["schema"], "eliza.android_release_artifact_inventory.v3")
+        self.assertEqual(sidecar["status"], "blocked")
+        self.assertIn("generated_utc", sidecar)
+        self.assertNotIn("/home/shaw", encoded)
+        self.assertIn("$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/vendor.img", encoded)
 
 
 class PatchStack:

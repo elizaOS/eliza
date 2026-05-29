@@ -52,7 +52,7 @@ The local QFN64 footprint and package assumptions are review-only inputs. They
 are not derived from an approved package-vendor drawing and must not be used as
 the basis for fabrication.
 
-Explicit placeholder markers for the board-package evidence gate:
+Explicit non-release markers for the board-package evidence gate:
 
 - Footprint is not derived from a package vendor drawing.
 - No SI/PI analysis has been performed.

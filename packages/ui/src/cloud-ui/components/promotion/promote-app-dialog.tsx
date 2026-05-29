@@ -165,28 +165,33 @@ export function PromoteAppDialog({
 
   const handlePromote = useCallback(async () => {
     setIsLoading(true);
-    const response = await fetch(`/api/v1/apps/${app.id}/promote`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(config),
-    });
-    const data = await response.json();
-    setIsLoading(false);
-
-    if (response.ok) {
-      setResult({
-        success: data.errors?.length === 0,
-        channels: {
-          social: data.channels?.social,
-          seo: data.channels?.seo,
-          advertising: data.channels?.advertising,
-        },
-        totalCreditsUsed: data.totalCreditsUsed,
+    try {
+      const response = await fetch(`/api/v1/apps/${app.id}/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(config),
       });
-      setStep("result");
-      toast.success("Promotion launched!");
-    } else {
-      toast.error(data.error || "Failed to launch promotion");
+      const data = await response.json();
+
+      if (response.ok) {
+        setResult({
+          success: data.errors?.length === 0,
+          channels: {
+            social: data.channels?.social,
+            seo: data.channels?.seo,
+            advertising: data.channels?.advertising,
+          },
+          totalCreditsUsed: data.totalCreditsUsed,
+        });
+        setStep("result");
+        toast.success("Promotion launched!");
+      } else {
+        toast.error(data.error || "Failed to launch promotion");
+      }
+    } catch {
+      toast.error("Failed to launch promotion. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   }, [app.id, config]);
 
@@ -195,20 +200,6 @@ export function PromoteAppDialog({
     setConfig({ channels: [] });
     setResult(null);
     onOpenChange(false);
-  };
-
-  const estimatedCost = () => {
-    let cost = 0;
-    if (config.channels.includes("social")) {
-      cost += (config.social?.platforms?.length || 0) * 0.01 + 0.02;
-    }
-    if (config.channels.includes("seo")) {
-      cost += 0.03;
-    }
-    if (config.channels.includes("advertising") && config.advertising) {
-      cost += 0.5 + config.advertising.budget * 1.15;
-    }
-    return cost.toFixed(2);
   };
 
   return (
@@ -243,15 +234,6 @@ export function PromoteAppDialog({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-white">Social Media</span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] ${
-                        config.channels.includes("social")
-                          ? "bg-blue-500/20 text-blue-300"
-                          : "bg-white/10 text-neutral-400"
-                      }`}
-                    >
-                      ~$0.02/post
-                    </span>
                   </div>
                   <p className="text-sm text-white/50 mt-0.5">
                     Post to Twitter, LinkedIn, Discord...
@@ -286,15 +268,6 @@ export function PromoteAppDialog({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-white">SEO</span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] ${
-                        config.channels.includes("seo")
-                          ? "bg-green-500/20 text-green-300"
-                          : "bg-white/10 text-neutral-400"
-                      }`}
-                    >
-                      ~$0.03
-                    </span>
                   </div>
                   <p className="text-sm text-white/50 mt-0.5">
                     Optimize for search engines
@@ -386,7 +359,9 @@ export function PromoteAppDialog({
                 </p>
                 <Button
                   onClick={() => {
-                    setActiveTab(config.channels[0]);
+                    const first = config.channels[0];
+                    if (!first) return;
+                    setActiveTab(first);
                     setStep("configure");
                   }}
                   disabled={config.channels.length === 0}
@@ -817,13 +792,11 @@ export function PromoteAppDialog({
                   )}
                 </div>
 
-                <div className="border-t border-white/5 pt-4 flex justify-between">
-                  <span className="text-sm font-medium text-white">
-                    Estimated Cost:
-                  </span>
-                  <span className="text-sm font-medium text-white">
-                    ${estimatedCost()}
-                  </span>
+                <div className="border-t border-white/5 pt-4">
+                  <p className="text-xs text-neutral-500">
+                    Credits are charged based on the work actually performed. The
+                    exact amount used is shown after the promotion launches.
+                  </p>
                 </div>
               </div>
 

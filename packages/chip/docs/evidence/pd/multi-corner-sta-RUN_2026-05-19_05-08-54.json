@@ -1,4 +1,5 @@
 {
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "corners": [
     {
       "corner": {
@@ -121,6 +122,7 @@
       "returncode": 0
     }
   ],
+  "generated_utc": "2026-05-20T10:12:30Z",
   "pdk_root": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af",
   "run_dir": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54",
   "schema": "eliza.pd_multi_corner_sta.v1"

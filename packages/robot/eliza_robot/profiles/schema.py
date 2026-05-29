@@ -204,6 +204,14 @@ class SensorSpecs(BaseModel):
         ge=0.0,
         description="Gaussian noise std applied to simulated IMU (rad or m/s²).",
     )
+    locomotion_tracking_body: str | None = Field(
+        default=None,
+        description=(
+            "MuJoCo body name used for locomotion displacement and height "
+            "success checks. Prefer a stable torso/pelvis body, not a camera "
+            "or head link."
+        ),
+    )
     cameras: list[CameraSpec]
 
 

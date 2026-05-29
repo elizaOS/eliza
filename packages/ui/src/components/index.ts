@@ -91,8 +91,6 @@ export {
   ApiParameterSelect,
   type ApiParameterSelectOption,
   type ApiParameterSelectProps,
-  ApiRouteExplorer,
-  ApiRouteExplorerClient,
   EndpointCard,
   type EndpointCardProps,
   OpenApiViewer,
@@ -165,7 +163,6 @@ export {
   DashboardActionCards,
   type DashboardActionCardsProps,
   DashboardActionCardsSkeleton,
-  DashboardEndpointPending,
   DashboardErrorState,
   DashboardLoadingState,
   DashboardRouteError,
@@ -195,7 +192,6 @@ export * from "./chat/connector-send-as";
 export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
-export * from "./chat/widgets/registry";
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
@@ -229,7 +225,6 @@ export * from "./pages/DatabaseView";
 export * from "./pages/DocumentsView";
 export * from "./pages/ElizaCloudDashboard";
 export * from "./pages/HeartbeatsView";
-export * from "./pages/HomePlaceholderView";
 export * from "./pages/LogsView";
 export * from "./pages/MediaGalleryView";
 export * from "./pages/MemoryViewerView";

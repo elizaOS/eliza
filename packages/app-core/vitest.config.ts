@@ -152,10 +152,6 @@ export default defineConfig({
       // Uses Node.js built-in test runner (node:test), not vitest.
       "scripts/android-sms-gateway-template.test.mjs",
       "scripts/stage-android-agent.test.mjs",
-      // node:sqlite (stable in Node ≥24) is unavailable in Bun. CI runs this
-      // separately under Node via vitest.node-sqlite.config.ts with
-      // NODE_OPTIONS=--experimental-sqlite (see .github/workflows/test.yml).
-      "src/api/training-benchmarks.test.ts",
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",

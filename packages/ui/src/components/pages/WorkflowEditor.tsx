@@ -12,12 +12,12 @@
  * settle we parse the JSON. Valid → push to the viewer. Invalid → keep
  * the last valid graph rendered and surface the error inline.
  *
- * Toolbar: Generate from prompt, Validate, Save, Run. The Validate
- * action is local-only (re-runs `parseWorkflowJson`) until the workflow
- * plugin exposes a richer validation endpoint.
+ * Toolbar: Generate from prompt, Format JSON, Save, Run. Validation is
+ * always-on via the debounced parse above (the status badge shows
+ * Valid/Invalid live), so there is no separate manual "Validate" control.
  */
 
-import { Play, RefreshCw, Save, Sparkles, Wand2 } from "lucide-react";
+import { Play, Save, Sparkles, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import {
@@ -209,18 +209,6 @@ export function WorkflowEditor({
         >
           <Wand2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
           Format JSON
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const result = parseWorkflowJson(text);
-            setParseState(result);
-            if (result.ok) setLastValidWorkflow(result.workflow);
-          }}
-        >
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          Validate
         </Button>
         <Button
           variant="default"

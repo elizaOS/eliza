@@ -5,6 +5,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 import {
   asRecord,
@@ -36,7 +37,12 @@ export async function loadPersistedTrajectoryRows(
     return rows
       .map((row) => asRecord(row))
       .filter((row): row is Record<string, unknown> => Boolean(row));
-  } catch {
+  } catch (error) {
+    logger.warn(
+      `[trajectory-query] Failed to load trajectory rows (agent=${runtime.agentId}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
     return null;
   }
 }

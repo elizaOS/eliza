@@ -221,6 +221,8 @@ def inspect_iso_boot_artifacts(iso_path: Path) -> dict[str, Any]:
 
 
 def _resolve_evidence_path(path_value: str, evidence_path: Path) -> Path:
+    if path_value.startswith("<repo>/"):
+        return (REPO_ROOT / path_value.removeprefix("<repo>/")).resolve()
     path = Path(path_value)
     if path.is_absolute():
         return path
@@ -315,7 +317,7 @@ def validate_completed_existing_evidence(doc: dict[str, Any], evidence_path: Pat
             f"existing evidence has forbidden markers: {doc['forbidden_markers_present']}"
         )
 
-    iso_path = Path(doc["iso_path"])
+    iso_path = _resolve_evidence_path(doc["iso_path"], evidence_path)
     if not iso_path.is_file():
         raise EvidenceValidationError(f"existing evidence ISO path is missing: {iso_path}")
     if _sha256_file(iso_path) != doc["iso_sha256"]:
@@ -351,7 +353,7 @@ def validate_completed_existing_evidence(doc: dict[str, Any], evidence_path: Pat
 
 def refresh_evidence_markers_from_transcript(doc: dict[str, Any], evidence_path: Path) -> dict[str, Any]:
     """Recompute marker lists and transcript hash from the captured transcript."""
-    iso_path = Path(str(doc.get("iso_path", "")))
+    iso_path = _resolve_evidence_path(str(doc.get("iso_path", "")), evidence_path)
     if not iso_path.is_file():
         raise EvidenceValidationError(f"existing evidence ISO path is missing: {iso_path}")
     try:

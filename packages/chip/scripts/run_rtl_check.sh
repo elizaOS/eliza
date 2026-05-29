@@ -18,6 +18,7 @@ rtl/memory/e1_behavioral_dram.sv
 rtl/top/e1_chip_top.sv
 rtl/clock/e1_reset_sync.sv
 rtl/debug/e1_dbg_mmio_bridge.sv
+rtl/dft/e1_jtag_tap.sv
 rtl/top/e1_soc_top.sv
 rtl/bootrom/e1_bootrom.sv
 rtl/peripherals/e1_peripherals.sv
@@ -26,7 +27,10 @@ rtl/npu/e1_npu.sv
 rtl/display/e1_display.sv
 rtl/cpu/e1_cva6_wrapper.sv
 rtl/cpu/e1_cpu_axi_bridge.sv
+rtl/cpu/e1_tiny_cpu_contract.sv
 rtl/cpu/e1_cpu_subsystem_stub.sv
+rtl/interconnect/e1_axil_to_mmio.sv
+rtl/interconnect/e1_mmio_arb2.sv
 rtl/interconnect/e1_axi_lite_interconnect.sv
 rtl/memory/e1_axi_lite_dram.sv
 rtl/memory/e1_weight_buffer_sram.sv

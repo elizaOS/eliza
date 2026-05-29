@@ -742,8 +742,8 @@ async function handleCompatRoute(
       whitelistMintOpen: false,
       mintedOut: false,
       currentSupply: 0,
-      maxSupply: 2138,
-      shinyPrice: "0.1",
+      maxSupply: 0,
+      shinyPrice: "0",
       userHasMinted: false,
     });
     return true;

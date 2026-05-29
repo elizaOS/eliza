@@ -76,7 +76,15 @@ export const rolodexProvider: Provider = {
         limit: MAX_CONTACTS,
       });
 
-      if (!snapshot || snapshot.people.length === 0) {
+      if (!snapshot) {
+        return {
+          text: "Rolodex: No known contacts yet.",
+          values: { rolodexCount: 0 },
+          data: { contacts: [] },
+        };
+      }
+
+      if (snapshot.people.length === 0) {
         return {
           text: "Rolodex: No known contacts yet.",
           values: { rolodexCount: 0 },

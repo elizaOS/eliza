@@ -87,6 +87,9 @@ contact:
 # ---------------------------------------------------------------------------
 sensors:
   imu_noise_std: 0.01
+  # Locomotion rewards and success predicates must track the torso, not the
+  # camera/head link; otherwise head pitch can masquerade as task progress.
+  locomotion_tracking_body: body_link
   cameras:
     - name: head_rgb
       width: 640

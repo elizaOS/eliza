@@ -34,6 +34,7 @@ import {
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
+import { isPrivateNetworkHost } from "./private-network-host";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -73,15 +74,7 @@ function isSameOriginLocalHttpBackend(): boolean {
     return false;
   }
 
-  return (
-    hostname === "localhost" ||
-    hostname === "::1" ||
-    hostname.endsWith(".local") ||
-    /^127\./.test(hostname) ||
-    /^10\./.test(hostname) ||
-    /^192\.168\./.test(hostname) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
-  );
+  return isPrivateNetworkHost(hostname);
 }
 
 function isCapacitorNativeRuntime(): boolean {

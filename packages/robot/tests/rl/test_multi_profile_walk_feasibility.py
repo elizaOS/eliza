@@ -18,6 +18,9 @@ def test_summarize_profile_rejects_passive_walk_success() -> None:
                             "controller": "deterministic_smoke",
                             "final_delta_x_m": 0.2,
                             "termination_reason": "fall",
+                            "progress_ratio": 0.5,
+                            "unmet_success_predicates": ["no_fall"],
+                            "max_success_window_s": 0.0,
                         }
                     ],
                     "passive_baseline": {
@@ -33,6 +36,9 @@ def test_summarize_profile_rejects_passive_walk_success() -> None:
     assert summary["active_success"] is False
     assert summary["passive_success"] is True
     assert summary["valid_walking_evidence"] is False
+    assert summary["most_forward_progress_ratio"] == 0.5
+    assert summary["most_forward_unmet_success_predicates"] == ["no_fall"]
+    assert summary["most_forward_success_window_s"] == 0.0
 
 
 def test_summarize_profile_accepts_active_nonpassive_success() -> None:

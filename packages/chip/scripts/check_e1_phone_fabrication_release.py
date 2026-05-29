@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -264,6 +265,7 @@ def write_report(
     report = {
         "schema": REPORT_SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "summary": {
             "release_ready": status == "pass",
             "release_state": release_state,
@@ -308,6 +310,7 @@ def write_report(
             "release_credit": False,
         },
         "blocker_diagnostics": diagnostics,
+        "next_unblock_groups": diagnostics["next_unblock_groups"],
         "next_unblock_actions": (blocked_inventory or [])[:20],
         "claim_boundary": "release_gate_blocker_report_only_not_release_evidence",
     }

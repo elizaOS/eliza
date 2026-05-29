@@ -3,12 +3,22 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CHECK_PATH = ROOT / "scripts/check_fpga_release.py"
+
+spec = importlib.util.spec_from_file_location("check_fpga_release", CHECK_PATH)
+if spec is None or spec.loader is None:
+    raise RuntimeError(f"unable to import {CHECK_PATH}")
+check_fpga_release = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = check_fpga_release
+spec.loader.exec_module(check_fpga_release)
 
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -23,6 +33,23 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 class FpgaReleaseDiagnosticsTest(unittest.TestCase):
+    def test_report_provenance_sanitizer_strips_host_local_paths(self) -> None:
+        payload = {
+            "path": "/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin/yosys",
+            "command": (
+                "PATH=/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
+                "TOP=e1_chip_top make -C board/fpga synth"
+            ),
+            "tmp": "/tmp/fpga-release/run.log",
+        }
+
+        sanitized = check_fpga_release.provenance_safe_value(payload)
+        encoded = json.dumps(sanitized, sort_keys=True)
+
+        self.assertNotIn("/home/shaw", encoded)
+        self.assertNotIn("/tmp/fpga-release", encoded)
+        self.assertIn("packages/chip/external/oss-cad-suite/bin/yosys", encoded)
+
     def test_release_report_groups_blockers_and_quarantines_diagnostics(self) -> None:
         result = run(["python3", "scripts/check_fpga_release.py", "--release"])
         self.assertEqual(result.returncode, 2, result.stdout)
@@ -46,9 +73,18 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
         self.assertEqual(report["summary"]["missing_locate_comp_assignment_count"], 0)
         self.assertEqual(report["summary"]["missing_programming_evidence_count"], 2)
         self.assertEqual(report["summary"]["repo_generatable_now_count"], 0)
+        self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 0)
+        self.assertEqual(
+            report["blocker_dependency_counts"]["actionable_external_dependency"],
+            report["summary"]["blockers"],
+        )
         self.assertGreaterEqual(report["summary"]["blocked_repo_generation_count"], 15)
         self.assertGreaterEqual(report["summary"]["present_but_nonrelease_artifact_count"], 1)
         self.assertIn("release_artifacts", report["blocker_groups"])
+        self.assertEqual(
+            report["blocker_groups"]["release_artifacts"]["dependency_type"],
+            "actionable_external_dependency",
+        )
         self.assertIn("synthesis_runtime", report["blocker_groups"])
         self.assertNotIn("rtl_synthesis", report["blocker_groups"])
         self.assertNotIn("toolchain", report["blocker_groups"])
@@ -313,7 +349,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
                 "memory_or_rom_expansion",
             )
             self.assertIn(
-                "FPGA-specific BRAM/external-memory stub",
+                "FPGA-specific BRAM/external-memory model",
                 pressure_by_module["e1_behavioral_dram"]["next_step"],
             )
             self.assertEqual(
@@ -373,7 +409,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
 
         for finding in report["findings"]:
             self.assertIn("group", finding)
-            self.assertEqual(finding["dependency_type"], "repo_artifact_generation")
+            self.assertEqual(finding["dependency_type"], "actionable_external_dependency")
 
     def test_diagnostic_generator_writes_non_release_credit_transcripts(self) -> None:
         result = run(["python3", "scripts/generate_e1_demo_fpga_blocked_cli_evidence.py"])

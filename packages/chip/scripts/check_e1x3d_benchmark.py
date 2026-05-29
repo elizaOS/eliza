@@ -14,11 +14,19 @@ REPORT_ID = "e1x3d-scaled-repair-model-gate"
 BENCH_REPORT = ROOT / f"benchmarks/results/{REPORT_ID}/report.json"
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def repo_safe(text: str) -> str:
+    return text.replace(str(ROOT), ".")
+
+
 def run_command(cmd: list[str]) -> tuple[bool, str]:
     proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, check=False)
     if proc.returncode != 0:
-        return False, (proc.stderr.strip() or proc.stdout.strip())[-1600:]
-    return True, (proc.stdout.strip() or "command completed")[-1600:]
+        return False, repo_safe((proc.stderr.strip() or proc.stdout.strip())[-1600:])
+    return True, repo_safe((proc.stdout.strip() or "command completed")[-1600:])
 
 
 def _required_repo_file(value: object) -> Path | None:
@@ -214,6 +222,7 @@ def main() -> int:
         "gate": "e1x3d-benchmark",
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
+        "generated_utc": utc_now(),
         "subsystem": "e1x3d",
         "claim_boundary": (
             "E1X3D L2 architecture-simulator benchmark only: 3D-stacked wafer mesh, "

@@ -15,8 +15,11 @@ import json
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from provenance_sanitize import sanitize_host_local_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "build/reports/tee_software_aggregate.json"
@@ -52,49 +55,49 @@ BLOCKED_HARDWARE_GATES: list[dict[str, str]] = [
         "id": "mtt-checker-rtl",
         "claim": "per-access MTT page-state enforcement in hardware (C3)",
         "missing_dependency": "rtl/security/e1_mtt_checker.sv + cocotb harness",
-        "proving_command": "make cocotb-mtt-checker (BLOCKED until RTL lands)",
+        "proving_command": "make cocotb-mtt-checker (pending RTL landing)",
     },
     {
         "id": "tsm-epmp-wall-rtl",
         "claim": "Smepmp Dorami wall isolates TSM from OpenSBI (C4)",
         "missing_dependency": "rtl/security/e1_tsm_epmp_wall.sv",
-        "proving_command": "make cocotb-tsm-wall (BLOCKED until RTL lands)",
+        "proving_command": "make cocotb-tsm-wall (pending RTL landing)",
     },
     {
         "id": "secure-boot-rom",
         "claim": "verified secure boot chain (R2/R3/R7)",
         "missing_dependency": "fw/boot-rom/secure constant-time Ed25519 + measurement extend",
-        "proving_command": "make boot-security-chain-contract-check (BLOCKED until firmware + negative vectors)",
+        "proving_command": "make boot-security-chain-contract-check (pending firmware + negative vectors)",
     },
     {
         "id": "otp-lc-ctrl-rtl",
         "claim": "OTP shadow regs + 6-state lc_ctrl (R4/R5)",
         "missing_dependency": "rtl/security/otp/e1_otp_map.sv + rtl/security/lc/e1_lc_ctrl.sv",
-        "proving_command": "make otp-fuse-map-check on RTL (BLOCKED until RTL lands)",
+        "proving_command": "make otp-fuse-map-check on RTL (pending RTL landing)",
     },
     {
         "id": "iommu-iopmp-rebuild",
         "claim": "two-stage IOMMU + IOPMP source-ID enforcement (IO1-IO8)",
         "missing_dependency": "rtl/iommu/* PTW + DDT/PDT + IOPMP",
-        "proving_command": "make cocotb-iommu + iommu-evidence-check (greenfield RTL, BLOCKED)",
+        "proving_command": "make cocotb-iommu + iommu-evidence-check (pending greenfield RTL)",
     },
     {
         "id": "npu-secure-io-rehome",
         "claim": "NPU re-homed behind IOMMU as confidential I/O (IO11-IO13)",
         "missing_dependency": "rtl/npu/e1_npu_secure_io.sv + private-queue FSM",
-        "proving_command": "make cocotb-npu-secure-io (BLOCKED until RTL lands)",
+        "proving_command": "make cocotb-npu-secure-io (pending RTL landing)",
     },
     {
         "id": "mcie-lpddr5x",
         "claim": "MCIE AES-CTR + integrity tree on real LPDDR5X (section 3.2)",
         "missing_dependency": "docs/evidence/memory/lpddr-phy-procurement.yaml + DRAM controller",
-        "proving_command": "make dramsim-sweep + ciphertext bench (BLOCKED until PHY + silicon)",
+        "proving_command": "make dramsim-sweep + ciphertext bench (pending PHY + silicon)",
     },
     {
         "id": "side-channel-lab",
         "claim": "TVLA/DPA/glitch/ciphertext-bench/tamper validation (section 6)",
         "missing_dependency": "side-channel lab + DDR capture bench",
-        "proving_command": "lab validation campaign (BLOCKED until silicon + lab)",
+        "proving_command": "lab validation campaign (pending silicon + lab)",
     },
 ]
 
@@ -107,14 +110,22 @@ def run_checker(checker_id: str, script: str) -> dict[str, Any]:
         text=True,
     )
     status = "pass" if result.returncode == 0 else "fail"
-    return {
+    row: dict[str, Any] = {
         "id": checker_id,
         "script": script,
         "status": status,
         "returncode": result.returncode,
-        "stdout_tail": result.stdout.strip().splitlines()[-1:] if result.stdout else [],
-        "stderr_tail": result.stderr.strip().splitlines()[-3:] if result.stderr else [],
     }
+    if status != "pass":
+        row["stdout_tail"] = [
+            sanitize_host_local_paths(line)
+            for line in (result.stdout.strip().splitlines()[-1:] if result.stdout else [])
+        ]
+        row["stderr_tail"] = [
+            sanitize_host_local_paths(line)
+            for line in (result.stderr.strip().splitlines()[-3:] if result.stderr else [])
+        ]
+    return row
 
 
 def code_from_text(text: str, fallback: str) -> str:
@@ -169,6 +180,7 @@ def build_report() -> dict[str, Any]:
     failed = [check for check in checks if check["status"] != "pass"]
     return {
         "schema": "eliza.tee_software_aggregate.v1",
+        "generated_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "status": "tee_software_floor_only_release_blocked",
         "claim_boundary": (
             "Pure-software TEE models, contracts, and checkers only; not secure "

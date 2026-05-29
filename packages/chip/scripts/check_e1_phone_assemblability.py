@@ -749,6 +749,8 @@ FPC_ROUTES: list[FpcRoute] = [
             {
                 "split_interconnect_top_connector",
                 "split_interconnect_bottom_connector",
+                "split_interconnect_top_flex_tail",
+                "split_interconnect_bottom_flex_tail",
                 "main_pcb",
                 "battery_pouch",
                 "orange_side_frame",
@@ -760,13 +762,26 @@ FPC_ROUTES: list[FpcRoute] = [
         "split top flex tail",
         "split_interconnect_top_flex_tail",
         "split_interconnect_top_connector",
-        frozenset({"split_interconnect_top_connector", "main_pcb", "battery_pouch"}),
+        frozenset(
+            {
+                "split_interconnect_top_connector",
+                "split_interconnect_side_flex",
+                "main_pcb",
+                "battery_pouch",
+            }
+        ),
     ),
     FpcRoute(
         "split bottom flex tail",
         "split_interconnect_bottom_flex_tail",
         "split_interconnect_bottom_connector",
-        frozenset({"split_interconnect_bottom_connector", "main_pcb"}),
+        frozenset(
+            {
+                "split_interconnect_bottom_connector",
+                "split_interconnect_side_flex",
+                "main_pcb",
+            }
+        ),
     ),
 ]
 

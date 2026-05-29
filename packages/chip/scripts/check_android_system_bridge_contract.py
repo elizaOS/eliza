@@ -15,6 +15,7 @@ import re
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
@@ -24,6 +25,10 @@ WORKSPACE = ROOT.parent
 ELIZA_ROOT = ROOT.parents[1]
 ANDROID_APP_GRADLE = WORKSPACE / "app/android/app/build.gradle"
 LOCAL_MANIFEST = ROOT / "sw/aosp-device/local_manifests/eliza.xml"
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def read_android_gradle_identity() -> dict[str, str] | None:
@@ -638,6 +643,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     blockers = [finding for finding in findings if finding.severity == "blocker"]
     return {
         "schema": SCHEMA,
+        "generated_utc": utc_now(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {"blockers": len(blockers), "findings": len(findings)},

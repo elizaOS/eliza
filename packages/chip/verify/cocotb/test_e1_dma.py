@@ -1,6 +1,7 @@
 import json
 import random
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cocotb
@@ -103,6 +104,8 @@ def write_coverage_artifact(extra):
     } | set(extra)
     coverage = {
         "schema": "e1-chip.dma_cocotb_coverage.v1",
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": "directed_dma_cocotb_coverage_only_not_system_or_release_evidence",
         "source": "verify/cocotb/test_e1_dma.py",
         "covered_contracts": sorted(covered),
         "status_bits": ["busy", "done", "error"],

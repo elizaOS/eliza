@@ -4,12 +4,15 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_fabric_cocotb.json"
+CREDIT_ROUTER_REPORT = ROOT / "build/reports/e1x_credit_router_cocotb.json"
+MESH_FABRIC_REPORT = ROOT / "build/reports/e1x_mesh_fabric_cocotb.json"
 RUNS = {
     "router": {
         "top": "e1x_mesh_router_tb",
@@ -62,6 +65,48 @@ RUNS = {
         },
     },
 }
+
+
+def run_subgate(script: str, report_path: Path, label: str) -> tuple[bool, str, dict[str, int]]:
+    proc = subprocess.run(
+        [sys.executable, script],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    detail = (proc.stdout.strip() or proc.stderr.strip() or f"{label} gate produced no output")[-1200:]
+    if proc.returncode != 0:
+        return False, detail, {}
+    if not report_path.is_file():
+        return False, f"missing {label} report {report_path.relative_to(ROOT)}", {}
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if report.get("status") != "PASS":
+        return False, f"{label} report status={report.get('status')}", {}
+    summary = report.get("summary")
+    if not isinstance(summary, dict):
+        return False, f"{label} report missing summary", {}
+    counts = {
+        "testcases": int(summary.get("testcases", 0)),
+        "failures": int(summary.get("failures", 0)),
+        "errors": int(summary.get("errors", 0)),
+        "missing_expected_tests": int(summary.get("missing_expected_tests", 0)),
+    }
+    if counts["failures"] or counts["errors"] or counts["missing_expected_tests"]:
+        return False, f"{label} summary has failures: {counts}", counts
+    return True, detail, counts
+
+
+def run_credit_router_gate() -> tuple[bool, str, dict[str, int]]:
+    return run_subgate(
+        "scripts/check_e1x_credit_router_cocotb.py", CREDIT_ROUTER_REPORT, "credit-router"
+    )
+
+
+def run_mesh_fabric_gate() -> tuple[bool, str, dict[str, int]]:
+    return run_subgate(
+        "scripts/check_e1x_mesh_fabric_cocotb.py", MESH_FABRIC_REPORT, "mesh-fabric"
+    )
 
 
 def run_cocotb(top: str, module: str) -> tuple[bool, str]:
@@ -131,6 +176,26 @@ def main() -> int:
                 },
             ]
         )
+    credit_ok, credit_detail, credit_counts = run_credit_router_gate()
+    for key in aggregate_counts:
+        aggregate_counts[key] += int(credit_counts.get(key, 0))
+    checks.append(
+        {
+            "id": "e1x_credit_router_cocotb_gate",
+            "status": "pass" if credit_ok else "fail",
+            "detail": credit_detail,
+        }
+    )
+    mesh_ok, mesh_detail, mesh_counts = run_mesh_fabric_gate()
+    for key in aggregate_counts:
+        aggregate_counts[key] += int(mesh_counts.get(key, 0))
+    checks.append(
+        {
+            "id": "e1x_mesh_fabric_cocotb_gate",
+            "status": "pass" if mesh_ok else "fail",
+            "detail": mesh_detail,
+        }
+    )
     failures = [check for check in checks if check["status"] != "pass"]
     report = {
         "schema": "eliza.gate_status.v1",
@@ -138,19 +203,37 @@ def main() -> int:
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
-        "claim_boundary": "E1X mesh-router cocotb verification only; not full wafer-scale fabric, full RISC-V core, PD, DFT, package, or silicon evidence.",
+        "claim_boundary": (
+            "E1X fabric cocotb verification: legacy combinational mesh router, repair-aware "
+            "router, ROM-routed router/2x2 mesh, production input-buffered credit router "
+            "with two-router lossless-chain proof, and the full RxC (default 4x4) credit-router "
+            "mesh fabric top with real RV64IM PE-core nodes and multi-hop lossless delivery. Not "
+            "a formal network-level deadlock proof, full RISC-V compliance, PD, DFT, package, or "
+            "silicon evidence."
+        ),
         "evidence_paths": [
             "rtl/e1x/e1x_mesh_router.sv",
+            "rtl/e1x/e1x_credit_router.sv",
+            "rtl/e1x/e1x_mesh_fabric.sv",
             "rtl/e1x/e1x_repair_aware_router.sv",
             "rtl/e1x/e1x_repair_routed_router.sv",
+            "scripts/check_e1x_credit_router_cocotb.py",
+            "scripts/check_e1x_mesh_fabric_cocotb.py",
+            "verify/cocotb/e1x/e1x_mesh_fabric_4x4_tb.sv",
+            "verify/cocotb/e1x/test_e1x_mesh_fabric_4x4.py",
+            "verify/cocotb/results/e1x_mesh_fabric_4x4_tb_test_e1x_mesh_fabric_4x4.xml",
             "verify/cocotb/e1x/e1x_mesh_router_tb.sv",
             "verify/cocotb/e1x/e1x_repair_aware_router_tb.sv",
             "verify/cocotb/e1x/e1x_repair_routed_router_tb.sv",
             "verify/cocotb/e1x/e1x_repair_routed_mesh_2x2_tb.sv",
+            "verify/cocotb/e1x_router_prod/e1x_credit_router_tb.sv",
+            "verify/cocotb/e1x_router_prod/e1x_credit_router_chain_tb.sv",
             "verify/cocotb/e1x/test_e1x_mesh_router.py",
             "verify/cocotb/e1x/test_e1x_repair_aware_router.py",
             "verify/cocotb/e1x/test_e1x_repair_routed_router.py",
             "verify/cocotb/e1x/test_e1x_repair_routed_mesh_2x2.py",
+            "verify/cocotb/e1x_router_prod/test_e1x_credit_router.py",
+            "verify/cocotb/e1x_router_prod/test_e1x_credit_router_chain.py",
             "verify/cocotb/e1x/e1x_mesh_2x2_tb.sv",
             "verify/cocotb/e1x/test_e1x_mesh_2x2.py",
             "verify/cocotb/results/e1x_mesh_router_tb_test_e1x_mesh_router.xml",
@@ -158,6 +241,8 @@ def main() -> int:
             "verify/cocotb/results/e1x_repair_routed_router_tb_test_e1x_repair_routed_router.xml",
             "verify/cocotb/results/e1x_repair_routed_mesh_2x2_tb_test_e1x_repair_routed_mesh_2x2.xml",
             "verify/cocotb/results/e1x_mesh_2x2_tb_test_e1x_mesh_2x2.xml",
+            "verify/cocotb/results/e1x_credit_router_tb_test_e1x_credit_router.xml",
+            "verify/cocotb/results/e1x_credit_router_chain_tb_test_e1x_credit_router_chain.xml",
         ],
         "checks": checks,
         "summary": {

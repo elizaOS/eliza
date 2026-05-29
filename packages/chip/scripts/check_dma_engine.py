@@ -81,6 +81,12 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "evidence_paths": [DMA_RTL, AXI4_PKG, TEST],
                 "as_of": datetime.now(UTC).isoformat(),
                 "subsystem": "dma",
+                "phone_claim_allowed": False,
+                "release_claim_allowed": False,
+                "production_memory_system_claim_allowed": False,
+                "coherent_dma_claim_allowed": False,
+                "linux_dmaengine_driver_claim_allowed": False,
+                "throughput_claim_allowed": False,
                 "claim_boundary": (
                     "Proves e1_dma_sg is a descriptor-based scatter-gather DMA "
                     "with a full AXI4 INCR-burst read+write data mover: it "

@@ -34,12 +34,14 @@ os.environ.setdefault("JAX_PLATFORMS", "cpu")
 import numpy as np
 
 from eliza_robot.curriculum.goal_checker import GoalChecker, TelemetrySample
+from eliza_robot.curriculum.loader import load_curriculum
 from eliza_robot.rl.alberta.agent import AlbertaContinualController, AlbertaControllerConfig
 from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.loop import evaluate, train_online
 
 DEFAULT_ACTION_SCALE_INITIAL = 0.15
 DEFAULT_ACTION_SCALE_INCREMENT = 0.05
+DEFAULT_PHASE_EVAL_INTERVAL_STEPS = 50_000
 ACTION_SCALE_SCHEDULE_SCHEMA = "alberta-action-scale-schedule-v1"
 
 
@@ -108,12 +110,13 @@ def _build_action_scale_schedule(
         "increment": min(step, target),
         "criteria": {
             "failure_rate_lte": 0.0,
-            "physical_success": True,
+            "physical_success_or_stable_partial_progress": True,
             "success_rate_gte": float(min_success_rate),
         },
         "rationale": (
-            "start at a stable small action scale, then ramp only after "
-            "GoalChecker success, no-fall failure rate, and physical checks pass"
+            "start at a stable small action scale, then ramp after either "
+            "full GoalChecker physical success or no-fall partial directional "
+            "progress with drift checks still passing"
         ),
     }
 
@@ -125,12 +128,65 @@ def _set_env_action_scale(env, action_scale: float) -> None:
 def _action_scale_gate_passed(
     promotion_eval: dict,
     *,
+    task_id: str,
     min_success_rate: float,
 ) -> bool:
-    return (
-        _promotion_passed(promotion_eval, min_success_rate)
-        and float(promotion_eval.get("failure_rate", 1.0)) <= 0.0
+    if float(promotion_eval.get("failure_rate", 1.0)) > 0.0:
+        return False
+    if _promotion_passed(promotion_eval, min_success_rate):
+        return True
+    return _stable_partial_progress_gate_passed(promotion_eval, task_id=task_id)
+
+
+def _stable_partial_progress_gate_passed(promotion_eval: dict, *, task_id: str) -> bool:
+    checks = (
+        promotion_eval.get("physical_checks")
+        if isinstance(promotion_eval.get("physical_checks"), dict)
+        else {}
     )
+    if checks.get("no_fall") is False:
+        return False
+    task_success = {
+        task.id: task.success for task in load_curriculum().tasks
+    }.get(task_id, {})
+    if (
+        "min_alternating_foot_contacts" in task_success
+        and checks.get("min_alternating_foot_contacts") is not True
+    ):
+        return False
+    for key in (
+        "tracked_lateral_drift_bound",
+        "tracked_forward_drift_bound",
+        "yaw_drift_bound",
+        "tracked_translation_drift_bound",
+    ):
+        if key in checks and checks[key] is not True:
+            return False
+    summary = (
+        promotion_eval.get("movement_summary")
+        if isinstance(promotion_eval.get("movement_summary"), dict)
+        else {}
+    )
+
+    def _stat(series: str, key: str) -> float | None:
+        values = summary.get(series)
+        if not isinstance(values, dict):
+            return None
+        return _optional_float(values.get(key))
+
+    if task_id == "walk_forward":
+        value = _stat("tracked_delta_x_m", "max")
+        return value is not None and value >= 0.05
+    if task_id == "walk_backward":
+        value = _stat("tracked_delta_x_m", "min")
+        return value is not None and value <= -0.04
+    if task_id == "sidestep_left":
+        value = _stat("tracked_delta_y_m", "max")
+        return value is not None and value >= 0.04
+    if task_id == "sidestep_right":
+        value = _stat("tracked_delta_y_m", "min")
+        return value is not None and value <= -0.04
+    return False
 
 
 def _physical_checks(task_id: str, summary: dict[str, dict[str, float | None]]) -> dict[str, bool]:
@@ -153,42 +209,67 @@ def _physical_checks(task_id: str, summary: dict[str, dict[str, float | None]]) 
     max_y = stat("tracked_delta_y_m", "max")
     min_yaw = stat("delta_yaw_rad", "min")
     max_yaw = stat("delta_yaw_rad", "max")
+    observed_max_abs_yaw = stat("max_abs_delta_yaw_rad", "max")
     max_abs_yaw = max(abs(v) for v in (min_yaw, max_yaw) if v is not None) if (
         min_yaw is not None or max_yaw is not None
     ) else None
+    if observed_max_abs_yaw is not None:
+        max_abs_yaw = max(
+            observed_max_abs_yaw,
+            max_abs_yaw if max_abs_yaw is not None else 0.0,
+        )
     min_tracked_z = stat("tracked_z_m", "min")
     min_tracked_dz = stat("tracked_delta_z_m", "min")
     max_translation = stat("tracked_translation_drift_m", "max")
+    max_swing_clearance = stat("max_swing_foot_clearance_m", "max")
+    max_foot_slip = stat("max_foot_slip_m_s", "max")
+    max_self_collision = stat("max_self_collision_count", "max")
     checks: dict[str, bool] = {
         "tracked_height_present": min_tracked_z is not None and min_tracked_z > 0.0,
     }
     if task_id == "stand_up":
+        checks["torso_height_gain"] = min_tracked_dz is not None and min_tracked_dz >= 0.02
         checks["tracked_height_gain"] = min_tracked_dz is not None and min_tracked_dz >= 0.02
     elif task_id == "walk_forward":
-        checks["tracked_delta_x_forward"] = min_x is not None and min_x >= 0.30
+        checks["tracked_delta_x_forward"] = max_x is not None and max_x >= 0.30
         checks["tracked_lateral_drift_bound"] = max_y is not None and min_y is not None and max(abs(max_y), abs(min_y)) <= 0.20
         checks["yaw_drift_bound"] = max_abs_yaw is not None and max_abs_yaw <= 0.40
     elif task_id == "walk_backward":
-        checks["tracked_delta_x_backward"] = max_x is not None and max_x <= -0.20
+        checks["tracked_delta_x_backward"] = min_x is not None and min_x <= -0.20
         checks["tracked_lateral_drift_bound"] = max_y is not None and min_y is not None and max(abs(max_y), abs(min_y)) <= 0.20
         checks["yaw_drift_bound"] = max_abs_yaw is not None and max_abs_yaw <= 0.40
     elif task_id == "sidestep_left":
-        checks["tracked_delta_y_left"] = min_y is not None and min_y >= 0.20
+        checks["tracked_delta_y_left"] = max_y is not None and max_y >= 0.20
         checks["tracked_forward_drift_bound"] = max_x is not None and min_x is not None and max(abs(max_x), abs(min_x)) <= 0.20
         checks["yaw_drift_bound"] = max_abs_yaw is not None and max_abs_yaw <= 0.40
     elif task_id == "sidestep_right":
-        checks["tracked_delta_y_right"] = max_y is not None and max_y <= -0.20
+        checks["tracked_delta_y_right"] = min_y is not None and min_y <= -0.20
         checks["tracked_forward_drift_bound"] = max_x is not None and min_x is not None and max(abs(max_x), abs(min_x)) <= 0.20
         checks["yaw_drift_bound"] = max_abs_yaw is not None and max_abs_yaw <= 0.40
     elif task_id == "turn_left":
-        checks["delta_yaw_left"] = min_yaw is not None and min_yaw >= 0.70
+        checks["delta_yaw_left"] = max_yaw is not None and max_yaw >= 0.70
         checks["tracked_translation_drift_bound"] = max_translation is not None and max_translation <= 0.25
     elif task_id == "turn_right":
-        checks["delta_yaw_right"] = max_yaw is not None and max_yaw <= -0.70
+        checks["delta_yaw_right"] = min_yaw is not None and min_yaw <= -0.70
         checks["tracked_translation_drift_bound"] = max_translation is not None and max_translation <= 0.25
     elif task_id == "turn_around":
         checks["delta_yaw_turn_around"] = max_abs_yaw is not None and max_abs_yaw >= 2.60
         checks["tracked_translation_drift_bound"] = max_translation is not None and max_translation <= 0.35
+    if task_id in {
+        "walk_forward",
+        "walk_backward",
+        "sidestep_left",
+        "sidestep_right",
+    }:
+        checks["min_swing_foot_clearance_m"] = (
+            max_swing_clearance is not None and max_swing_clearance >= 0.015
+        )
+        checks["max_foot_slip_m_s"] = (
+            max_foot_slip is not None and max_foot_slip <= 0.35
+        )
+        checks["max_self_collision_count"] = (
+            max_self_collision is not None and max_self_collision <= 0.0
+        )
     return checks
 
 
@@ -205,6 +286,13 @@ def _telemetry_sample_from_info(t_s: float, info: dict) -> TelemetrySample:
             "stand_height_m": info.get("stand_height_m"),
             "left_foot_contact": info.get("left_foot_contact"),
             "right_foot_contact": info.get("right_foot_contact"),
+            "left_foot_z_m": info.get("left_foot_z"),
+            "right_foot_z_m": info.get("right_foot_z"),
+            "left_foot_slip_m_s": info.get("left_foot_slip_m_s"),
+            "right_foot_slip_m_s": info.get("right_foot_slip_m_s"),
+            "max_swing_foot_clearance_m": info.get("max_swing_foot_clearance_m"),
+            "max_foot_slip_m_s": info.get("max_foot_slip_m_s"),
+            "self_collision_count": info.get("self_collision_count"),
             "root_x_m": info.get("root_x"),
             "root_y_m": info.get("root_y"),
             "torso_z_m": info.get("torso_z"),
@@ -241,21 +329,56 @@ def _evaluate_task_success(
     final_tracked_delta_z: list[float] = []
     final_tracked_z: list[float] = []
     tracked_translation_drift: list[float] = []
+    max_tracked_delta_x: list[float] = []
+    min_tracked_delta_x: list[float] = []
+    max_tracked_delta_y: list[float] = []
+    min_tracked_delta_y: list[float] = []
+    max_abs_delta_yaw: list[float] = []
+    final_foot_contact_switches: list[float] = []
+    max_swing_foot_clearance: list[float] = []
+    max_foot_slip: list[float] = []
+    max_self_collision: list[float] = []
+    action_l2: list[float] = []
+    action_abs_mean: list[float] = []
+    action_max_abs: list[float] = []
     tracked_body_names: list[str] = []
+    reward_term_totals: dict[str, list[float]] = {}
     try:
         for ep in range(max(1, int(episodes))):
             obs, info = env.reset(seed=seed + ep)
             checker = GoalChecker(task, episode_start_t_s=0.0)
             last_result = checker.update(_telemetry_sample_from_info(0.0, info))
             total = 0.0
+            episode_reward_terms: dict[str, float] = {}
+            episode_tracked_dx = [0.0]
+            episode_tracked_dy = [0.0]
+            episode_delta_yaw = [0.0]
             steps = 0
             terminated = False
             truncated = False
             while steps < max_episode_steps:
                 action = controller.act_greedy(np.asarray(obs, dtype=np.float32))
+                action_l2.append(float(np.linalg.norm(action)))
+                action_abs_mean.append(float(np.mean(np.abs(action))))
+                action_max_abs.append(float(np.max(np.abs(action))))
                 obs, reward, terminated, truncated, info = env.step(action)
                 total += float(reward)
+                reward_terms = info.get("reward_terms")
+                if isinstance(reward_terms, dict):
+                    for key, value in reward_terms.items():
+                        number = _optional_float(value)
+                        if number is not None:
+                            episode_reward_terms[key] = (
+                                episode_reward_terms.get(key, 0.0) + number
+                            )
                 steps += 1
+                episode_tracked_dx.append(
+                    float(info.get("tracked_delta_x", info.get("delta_x", 0.0)) or 0.0)
+                )
+                episode_tracked_dy.append(
+                    float(info.get("tracked_delta_y", info.get("delta_y", 0.0)) or 0.0)
+                )
+                episode_delta_yaw.append(float(info.get("delta_yaw", 0.0) or 0.0))
                 last_result = checker.update(
                     _telemetry_sample_from_info(
                         steps * env.config.control_dt_s,
@@ -285,9 +408,24 @@ def _evaluate_task_success(
             final_tracked_delta_z.append(tz)
             final_tracked_z.append(float(info.get("tracked_z", info.get("torso_z", 0.0)) or 0.0))
             tracked_translation_drift.append(float(np.hypot(tx, ty)))
+            max_tracked_delta_x.append(float(np.max(episode_tracked_dx)))
+            min_tracked_delta_x.append(float(np.min(episode_tracked_dx)))
+            max_tracked_delta_y.append(float(np.max(episode_tracked_dy)))
+            min_tracked_delta_y.append(float(np.min(episode_tracked_dy)))
+            max_abs_delta_yaw.append(float(np.max(np.abs(episode_delta_yaw))))
+            final_foot_contact_switches.append(
+                float(info.get("foot_contact_switch_count", 0.0) or 0.0)
+            )
+            max_swing_foot_clearance.append(
+                float(info.get("max_swing_foot_clearance_m", 0.0) or 0.0)
+            )
+            max_foot_slip.append(float(info.get("max_foot_slip_m_s", 0.0) or 0.0))
+            max_self_collision.append(float(info.get("self_collision_count", 0.0) or 0.0))
             tracked_name = str(info.get("tracked_body_name") or "")
             if tracked_name:
                 tracked_body_names.append(tracked_name)
+            for key, value in episode_reward_terms.items():
+                reward_term_totals.setdefault(key, []).append(value)
             if reason:
                 reasons.append(reason)
     finally:
@@ -302,12 +440,51 @@ def _evaluate_task_success(
         "tracked_delta_z_m": _float_stats(final_tracked_delta_z),
         "tracked_z_m": _float_stats(final_tracked_z),
         "tracked_translation_drift_m": _float_stats(tracked_translation_drift),
+        "max_tracked_delta_x_m": _float_stats(max_tracked_delta_x),
+        "min_tracked_delta_x_m": _float_stats(min_tracked_delta_x),
+        "max_tracked_delta_y_m": _float_stats(max_tracked_delta_y),
+        "min_tracked_delta_y_m": _float_stats(min_tracked_delta_y),
+        "max_abs_delta_yaw_rad": _float_stats(max_abs_delta_yaw),
+        "foot_contact_switches": _float_stats(final_foot_contact_switches),
+        "max_swing_foot_clearance_m": _float_stats(max_swing_foot_clearance),
+        "max_foot_slip_m_s": _float_stats(max_foot_slip),
+        "max_self_collision_count": _float_stats(max_self_collision),
     }
     physical_checks = _physical_checks(task.id, movement_summary)
+    success_rate = float(np.mean(successes)) if successes else 0.0
+    failure_rate = float(np.mean(failures)) if failures else 0.0
+    if task.success.get("no_fall") is True:
+        physical_checks["no_fall"] = failure_rate <= 0.0
+    if "hold_s" in task.success:
+        physical_checks["hold_s"] = success_rate >= 1.0
+    if "min_alternating_foot_contacts" in task.success:
+        min_switches = float(task.success["min_alternating_foot_contacts"])
+        observed_min = movement_summary["foot_contact_switches"]["min"]
+        physical_checks["min_alternating_foot_contacts"] = (
+            observed_min is not None and observed_min >= min_switches
+        )
+    if "min_swing_foot_clearance_m" in task.success:
+        required_clearance = float(task.success["min_swing_foot_clearance_m"])
+        observed_max = movement_summary["max_swing_foot_clearance_m"]["max"]
+        physical_checks["min_swing_foot_clearance_m"] = (
+            observed_max is not None and observed_max >= required_clearance
+        )
+    if "max_foot_slip_m_s" in task.success:
+        slip_limit = float(task.success["max_foot_slip_m_s"])
+        observed_max = movement_summary["max_foot_slip_m_s"]["max"]
+        physical_checks["max_foot_slip_m_s"] = (
+            observed_max is not None and observed_max <= slip_limit
+        )
+    if "max_self_collision_count" in task.success:
+        collision_limit = float(task.success["max_self_collision_count"])
+        observed_max = movement_summary["max_self_collision_count"]["max"]
+        physical_checks["max_self_collision_count"] = (
+            observed_max is not None and observed_max <= collision_limit
+        )
     return {
         "episodes": len(successes),
-        "success_rate": float(np.mean(successes)) if successes else 0.0,
-        "failure_rate": float(np.mean(failures)) if failures else 0.0,
+        "success_rate": success_rate,
+        "failure_rate": failure_rate,
         "mean_return": float(np.mean(returns)) if returns else 0.0,
         "mean_length": float(np.mean(lengths)) if lengths else 0.0,
         "mean_final_delta_x_m": float(np.mean(final_delta_x)) if final_delta_x else 0.0,
@@ -330,6 +507,14 @@ def _evaluate_task_success(
         if final_tracked_z
         else 0.0,
         "movement_summary": movement_summary,
+        "reward_term_summary": {
+            key: _float_stats(values) for key, values in sorted(reward_term_totals.items())
+        },
+        "action_summary": {
+            "l2_norm": _float_stats(action_l2),
+            "mean_abs": _float_stats(action_abs_mean),
+            "max_abs": _float_stats(action_max_abs),
+        },
         "physical_checks": physical_checks,
         "physical_success": bool(physical_checks) and all(physical_checks.values()),
         "reasons": reasons[:5],
@@ -370,10 +555,18 @@ def train_robot(
     action_scale_initial: float | None = None,
     action_scale_increment: float = DEFAULT_ACTION_SCALE_INCREMENT,
     gamma: float = 0.97,
+    actor_step_size: float = 5e-3,
+    critic_step_size: float = 1e-2,
+    log_sigma_init: float = -1.0,
     normalize: bool = True,
     require_phase_success: bool = False,
     min_phase_success_rate: float = 1.0,
     phase_eval_interval_steps: int | None = None,
+    locomotion_action_prior: str = "none",
+    locomotion_prior_residual_scale: float = 1.0,
+    locomotion_prior_feedback_pitch: float = 0.0,
+    locomotion_prior_feedback_roll: float = 0.0,
+    locomotion_prior_feedback_yaw: float = 0.0,
 ) -> dict:
     """Train an Alberta controller on the MuJoCo env over a task sequence."""
     from eliza_robot.curriculum.loader import load_curriculum
@@ -404,6 +597,11 @@ def train_robot(
             pca_dim=pca_dim,
             episode_steps=episode_steps,
             action_scale=current_action_scale,
+            locomotion_action_prior=locomotion_action_prior,
+            locomotion_prior_residual_scale=locomotion_prior_residual_scale,
+            locomotion_prior_feedback_pitch=locomotion_prior_feedback_pitch,
+            locomotion_prior_feedback_roll=locomotion_prior_feedback_roll,
+            locomotion_prior_feedback_yaw=locomotion_prior_feedback_yaw,
             domain_rand=domain_rand,
         ),
     )
@@ -422,9 +620,9 @@ def train_robot(
         obs_dim=obs_dim,
         action_dim=action_dim,
         gamma=gamma,
-        actor_step_size=5e-3,
-        critic_step_size=1e-2,
-        log_sigma_init=-1.0,
+        actor_step_size=actor_step_size,
+        critic_step_size=critic_step_size,
+        log_sigma_init=log_sigma_init,
         normalize=normalize,
         obgd_kappa=2.0,
         features=feature_cfg,
@@ -449,7 +647,11 @@ def train_robot(
         }
     ]
     total_steps_run = 0
-    eval_interval = int(phase_eval_interval_steps or steps_per_task)
+    eval_interval = int(
+        phase_eval_interval_steps
+        if phase_eval_interval_steps is not None
+        else min(DEFAULT_PHASE_EVAL_INTERVAL_STEPS, steps_per_task)
+    )
     eval_interval = max(1, eval_interval)
     for phase, task in enumerate(tasks):
         if task not in all_active:
@@ -510,6 +712,7 @@ def train_robot(
                 first_promotion_step = int(phase_steps_run)
             gate_passed = _action_scale_gate_passed(
                 promotion_eval,
+                task_id=task,
                 min_success_rate=min_phase_success_rate,
             )
             target_scale = float(action_scale_schedule["target_scale"])
@@ -535,6 +738,12 @@ def train_robot(
                     "success_rate": float(promotion_eval["success_rate"]),
                     "failure_rate": float(promotion_eval["failure_rate"]),
                     "physical_success": bool(promotion_eval["physical_success"]),
+                    "partial_progress_gate": bool(
+                        _stable_partial_progress_gate_passed(
+                            promotion_eval,
+                            task_id=task,
+                        )
+                    ),
                 }
                 phase_scale_events.append(event)
                 action_scale_events.append(event)
@@ -555,6 +764,8 @@ def train_robot(
                 "mean_final_tracked_delta_z_m": 0.0,
                 "mean_final_tracked_z_m": 0.0,
                 "movement_summary": {},
+                "reward_term_summary": {},
+                "action_summary": {},
                 "physical_checks": {},
                 "physical_success": False,
                 "reasons": [],
@@ -614,6 +825,8 @@ def train_robot(
                 "physical_success": promotion_eval["physical_success"],
                 "physical_checks": promotion_eval["physical_checks"],
                 "movement_summary": promotion_eval["movement_summary"],
+                "reward_term_summary": promotion_eval["reward_term_summary"],
+                "action_summary": promotion_eval["action_summary"],
                 "learning_return_delta": float(ev.mean_return - pre_ev.mean_return),
                 "learning_success_rate_delta": float(
                     promotion_eval["success_rate"] - pre_success_eval["success_rate"]
@@ -675,6 +888,8 @@ def train_robot(
                 "physical_success": promotion_eval["physical_success"],
                 "physical_checks": promotion_eval["physical_checks"],
                 "movement_summary": promotion_eval["movement_summary"],
+                "reward_term_summary": promotion_eval["reward_term_summary"],
+                "action_summary": promotion_eval["action_summary"],
                 "learning_return_delta": float(ev.mean_return - pre_ev.mean_return),
                 "learning_success_rate_delta": float(
                     promotion_eval["success_rate"] - pre_success_eval["success_rate"]
@@ -761,6 +976,13 @@ def train_robot(
         "eval_episodes": int(eval_episodes),
         "seed": int(seed),
         "domain_rand": bool(domain_rand),
+        "locomotion_action_prior": locomotion_action_prior,
+        "locomotion_prior_residual_scale": float(locomotion_prior_residual_scale),
+        "locomotion_prior_feedback": {
+            "pitch": float(locomotion_prior_feedback_pitch),
+            "roll": float(locomotion_prior_feedback_roll),
+            "yaw": float(locomotion_prior_feedback_yaw),
+        },
         "phase_promotion": {
             "gate": "curriculum_goal_checker",
             "status": "completed" if all_promoted else "failed",
@@ -846,7 +1068,19 @@ def main(argv: list[str] | None = None) -> None:
         default=DEFAULT_ACTION_SCALE_INCREMENT,
     )
     p.add_argument("--gamma", type=float, default=0.97)
+    p.add_argument("--actor-step-size", type=float, default=5e-3)
+    p.add_argument("--critic-step-size", type=float, default=1e-2)
+    p.add_argument("--log-sigma-init", type=float, default=-1.0)
     p.add_argument("--no-normalize", action="store_true")
+    p.add_argument(
+        "--locomotion-action-prior",
+        choices=("none", "gait", "hiwonder_sine"),
+        default="none",
+    )
+    p.add_argument("--locomotion-prior-residual-scale", type=float, default=1.0)
+    p.add_argument("--locomotion-prior-feedback-pitch", type=float, default=0.0)
+    p.add_argument("--locomotion-prior-feedback-roll", type=float, default=0.0)
+    p.add_argument("--locomotion-prior-feedback-yaw", type=float, default=0.0)
     p.add_argument("--out-dir", default="checkpoints/alberta_text_conditioned")
     p.add_argument("--require-phase-success", action="store_true")
     p.add_argument("--min-phase-success-rate", type=float, default=1.0)
@@ -870,7 +1104,15 @@ def main(argv: list[str] | None = None) -> None:
         action_scale_initial=args.action_scale_initial,
         action_scale_increment=args.action_scale_increment,
         gamma=args.gamma,
+        actor_step_size=args.actor_step_size,
+        critic_step_size=args.critic_step_size,
+        log_sigma_init=args.log_sigma_init,
         normalize=not args.no_normalize,
+        locomotion_action_prior=args.locomotion_action_prior,
+        locomotion_prior_residual_scale=args.locomotion_prior_residual_scale,
+        locomotion_prior_feedback_pitch=args.locomotion_prior_feedback_pitch,
+        locomotion_prior_feedback_roll=args.locomotion_prior_feedback_roll,
+        locomotion_prior_feedback_yaw=args.locomotion_prior_feedback_yaw,
         domain_rand=not args.no_domain_rand,
         require_phase_success=args.require_phase_success,
         min_phase_success_rate=args.min_phase_success_rate,

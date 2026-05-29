@@ -3056,6 +3056,13 @@ export async function handleChatRoutes(
           return true;
         }
 
+        // Anthropic's wire format reports input_tokens on message_start (the
+        // prompt is fully known here) and accumulates output_tokens on the
+        // closing message_delta. We don't have a real model-side prompt count
+        // before generation, so input_tokens is the same heuristic estimate the
+        // rest of this file uses (estimateTokenCount); output_tokens is filled
+        // from the real generation result below.
+        const inputTokens = estimateTokenCount(prompt);
         writeSseJson(
           res,
           {
@@ -3068,7 +3075,7 @@ export async function handleChatRoutes(
               content: [],
               stop_reason: null,
               stop_sequence: null,
-              usage: { input_tokens: 0, output_tokens: 0 },
+              usage: { input_tokens: inputTokens, output_tokens: 0 },
             },
           },
           "message_start",
@@ -3084,6 +3091,7 @@ export async function handleChatRoutes(
         );
 
         let fullText = "";
+        let outputTokens = 0;
 
         const onDelta = (chunk: string) => {
           if (!chunk) return;
@@ -3122,12 +3130,18 @@ export async function handleChatRoutes(
             },
           });
 
-          await generateChatResponse(runtime, message, state.agentName, {
-            isAborted: () => aborted,
-            onChunk: onDelta,
-            resolveNoResponseText: () =>
-              resolveNoResponseFallback(state.logBuffer, runtime),
-          });
+          const generation = await generateChatResponse(
+            runtime,
+            message,
+            state.agentName,
+            {
+              isAborted: () => aborted,
+              onChunk: onDelta,
+              resolveNoResponseText: () =>
+                resolveNoResponseFallback(state.logBuffer, runtime),
+            },
+          );
+          outputTokens = generation.usage?.completionTokens ?? outputTokens;
           syncRuntimeCharacterToChatStateConfig(state);
         }
 
@@ -3153,7 +3167,10 @@ export async function handleChatRoutes(
           {
             type: "message_delta",
             delta: { stop_reason: "end_turn", stop_sequence: null },
-            usage: { output_tokens: 0 },
+            usage: {
+              output_tokens:
+                outputTokens > 0 ? outputTokens : estimateTokenCount(fullText),
+            },
           },
           "message_delta",
         );
@@ -3193,6 +3210,8 @@ export async function handleChatRoutes(
     // Non-streaming
     try {
       let responseText: string;
+      let inputTokens = estimateTokenCount(prompt);
+      let outputTokens = 0;
 
       {
         if (!state.runtime) {
@@ -3238,6 +3257,10 @@ export async function handleChatRoutes(
         );
         syncRuntimeCharacterToChatStateConfig(state);
         responseText = result.text;
+        if (result.usage) {
+          inputTokens = result.usage.promptTokens;
+          outputTokens = result.usage.completionTokens;
+        }
       }
 
       const resolvedText = normalizeChatResponseText(
@@ -3253,7 +3276,11 @@ export async function handleChatRoutes(
         content: [{ type: "text", text: resolvedText }],
         stop_reason: "end_turn",
         stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 },
+        usage: {
+          input_tokens: inputTokens,
+          output_tokens:
+            outputTokens > 0 ? outputTokens : estimateTokenCount(resolvedText),
+        },
       });
     } catch (err) {
       if (isNoProviderError(err)) {

@@ -42,6 +42,9 @@ RTL_SOURCES := \
   $(RTL_DIR)/top/e1_chip_top.sv \
   $(RTL_DIR)/top/e1_soc_top.sv \
   $(RTL_DIR)/clock/e1_reset_sync.sv \
+  $(RTL_DIR)/dft/e1_jtag_tap.sv \
+  $(RTL_DIR)/interconnect/e1_axil_to_mmio.sv \
+  $(RTL_DIR)/interconnect/e1_mmio_arb2.sv \
   $(RTL_DIR)/interconnect/e1_axi_lite_interconnect.sv \
   $(RTL_DIR)/interrupts/e1_interrupt_controller.sv \
   $(RTL_DIR)/peripherals/e1_clint.sv \

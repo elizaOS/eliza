@@ -23,6 +23,7 @@ FRAGMENT = ROOT / "sw/linux/configs/eliza_e1.fragment"
 IMPORT_SCRIPT = ROOT / "sw/linux/scripts/import-linux-bsp.sh"
 CAPTURE_SCRIPT = ROOT / "sw/linux/scripts/capture-linux-bsp-evidence.sh"
 DTS = ROOT / "sw/linux/dts/eliza-e1.dts"
+DISPLAY_BINDING = ROOT / "sw/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml"
 DRIVERS_E1 = ROOT / "sw/linux/drivers/e1"
 DRIVERS_ELIZA = ROOT / "sw/linux/drivers/eliza"
 REPORT = ROOT / "build/reports/linux_bsp_contract.json"
@@ -48,6 +49,18 @@ FULL_DTS_DRIVER_COMPATIBLES = {
     "eliza,e1-npu": "CONFIG_ELIZA_E1_NPU",
     "eliza,e1-display": "CONFIG_ELIZA_E1_DISPLAY",
     "eliza,e1-gpio": "CONFIG_ELIZA_E1_GPIO",
+}
+DISPLAY_DTS_REQUIRED_TOKENS = {
+    'interrupt-names = "IRQ_VSYNC"': "named vsync IRQ",
+    "eliza,mode = <0x050002d0>": "720x1280 packed MODE value",
+    "eliza,format = <0x34325258>": "XR24 framebuffer format",
+    "eliza,fb-base = <0x80000000>": "DRAM framebuffer base",
+}
+DISPLAY_BINDING_REQUIRED_TOKENS = {
+    "eliza,mode": "mode property",
+    "eliza,format": "format property",
+    "eliza,fb-base": "framebuffer base property",
+    "IRQ_VSYNC": "vsync IRQ name",
 }
 
 
@@ -96,8 +109,20 @@ def dts_compatibles(text: str) -> set[str]:
     return compatibles
 
 
+def display_node_text(dts: str) -> str:
+    match = re.search(r"display@10030000\s*\{(?P<body>.*?)\n\s*\};", dts, re.DOTALL)
+    return match.group("body") if match else ""
+
+
 def run_check(args: argparse.Namespace) -> dict[str, object]:
-    inputs = (FRAGMENT, IMPORT_SCRIPT, CAPTURE_SCRIPT, DTS, DRIVERS_E1 / "Kconfig")
+    inputs = (
+        FRAGMENT,
+        IMPORT_SCRIPT,
+        CAPTURE_SCRIPT,
+        DTS,
+        DISPLAY_BINDING,
+        DRIVERS_E1 / "Kconfig",
+    )
     findings: list[Finding] = []
     for path in inputs:
         add_if(
@@ -115,6 +140,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     import_script = read_text(IMPORT_SCRIPT)
     capture_script = read_text(CAPTURE_SCRIPT)
     dts = read_text(DTS)
+    display_binding = read_text(DISPLAY_BINDING)
     e1_kconfig = read_text(DRIVERS_E1 / "Kconfig")
     eliza_kconfig = (
         read_text(DRIVERS_ELIZA / "Kconfig") if (DRIVERS_ELIZA / "Kconfig").is_file() else ""
@@ -130,6 +156,13 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         if compatible in compatibles
     }
     missing_dts_symbols = sorted(dts_required_symbols - symbols)
+    display_node = display_node_text(dts)
+    missing_display_tokens = sorted(
+        token for token in DISPLAY_DTS_REQUIRED_TOKENS if token not in display_node
+    )
+    missing_display_binding_tokens = sorted(
+        token for token in DISPLAY_BINDING_REQUIRED_TOKENS if token not in display_binding
+    )
     import_uses_reduced_tree = (
         "sw/linux/drivers/e1" in import_script or "drivers/e1/" in import_script
     )
@@ -162,6 +195,22 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "Linux kernel fragment does not enable every driver implied by the checked-in e1 DTS",
         f"missing={missing_dts_symbols} compatibles={sorted(compatibles & set(FULL_DTS_DRIVER_COMPATIBLES))}",
         "Either enable the DTS-backed display/GPIO drivers or mark those DTS nodes disabled/out of scope for this target.",
+    )
+    add_if(
+        findings,
+        "eliza,e1-display" in compatibles and bool(missing_display_tokens),
+        "linux_display_dts_missing_programming_contract",
+        "Display DTS node is active but does not provide the mode/format/framebuffer properties consumed by the Linux display glue",
+        f"missing={missing_display_tokens} path={rel(DTS)}",
+        "Add interrupt-names, eliza,mode, eliza,format, and eliza,fb-base to the display@10030000 node or disable the node.",
+    )
+    add_if(
+        findings,
+        "eliza,e1-display" in compatibles and bool(missing_display_binding_tokens),
+        "linux_display_binding_missing_programming_contract",
+        "Display devicetree binding does not document every property the Linux display glue consumes",
+        f"missing={missing_display_binding_tokens} path={rel(DISPLAY_BINDING)}",
+        "Document the display mode, format, framebuffer base, and IRQ naming contract in the binding.",
     )
     add_if(
         findings,
@@ -210,6 +259,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "import_script": rel(IMPORT_SCRIPT),
         "capture_script": rel(CAPTURE_SCRIPT),
         "dts": rel(DTS),
+        "display_binding": rel(DISPLAY_BINDING),
         "configured_symbols": sorted(symbols),
         "dts_compatibles": sorted(compatibles),
         "drivers_e1": rel(DRIVERS_E1),

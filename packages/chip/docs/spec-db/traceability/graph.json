@@ -1,21 +1,21 @@
 {
   "claim_boundary": "traceability_graph_records_existing_edges_no_silicon_or_signoff_claim",
   "counts": {
-    "edges": 192,
-    "gates": 72,
+    "edges": 253,
+    "gates": 108,
     "node_kinds": {
-      "artifact": 14,
-      "gate": 72,
+      "artifact": 45,
+      "gate": 108,
       "pd_evidence": 9,
       "requirement": 28,
-      "rtl": 14,
-      "rtl_gap": 16,
+      "rtl": 17,
+      "rtl_gap": 17,
       "spec_doc": 17,
-      "test": 15
+      "test": 30
     },
-    "nodes": 185,
+    "nodes": 271,
     "requirements": 28,
-    "rtl_gaps": 16
+    "rtl_gaps": 17
   },
   "edges": [
     {
@@ -589,7 +589,7 @@
       "src": "REQ-VERIF-0001"
     },
     {
-      "dst": "test:verify/properties/axi_lite.sv",
+      "dst": "test:verify/properties/axi_lite_protocol.sv",
       "relation": "links_tests",
       "src": "REQ-VERIF-0001"
     },
@@ -619,7 +619,7 @@
       "src": "REQ-VERIF-0002"
     },
     {
-      "dst": "test:verify/properties/axi_lite.sv",
+      "dst": "test:verify/properties/axi_lite_protocol.sv",
       "relation": "links_tests",
       "src": "REQ-VERIF-0002"
     },
@@ -689,6 +689,16 @@
       "src": "gap:bootrom-firmware-handoff"
     },
     {
+      "dst": "artifact:scripts/check_boot_security_chain_contract.py",
+      "relation": "affects",
+      "src": "gap:bootrom-firmware-handoff"
+    },
+    {
+      "dst": "artifact:scripts/check_bootrom_sim_transcript.py",
+      "relation": "affects",
+      "src": "gap:bootrom-firmware-handoff"
+    },
+    {
       "dst": "artifact:scripts/run_qemu.sh",
       "relation": "affects",
       "src": "gap:bootrom-firmware-handoff"
@@ -724,6 +734,11 @@
       "src": "gap:cpu-legacy-stub-module-name"
     },
     {
+      "dst": "rtl:rtl/cpu/e1_tiny_cpu_contract.sv",
+      "relation": "affects",
+      "src": "gap:cpu-legacy-stub-module-name"
+    },
+    {
       "dst": "artifact:scripts/run_qemu.sh",
       "relation": "affects",
       "src": "gap:cpu-privileged-boot-contract"
@@ -744,7 +759,37 @@
       "src": "gap:cpu-privileged-boot-contract"
     },
     {
+      "dst": "rtl:rtl/cpu/e1_tiny_cpu_contract.sv",
+      "relation": "affects",
+      "src": "gap:cpu-privileged-boot-contract"
+    },
+    {
+      "dst": "artifact:build/reports/cpu_ap_completion_gate.json",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
+      "dst": "artifact:build/reports/cpu_ap_scope.json",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
+      "dst": "artifact:scripts/check_cpu_ap_completion_gate.py",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
+      "dst": "artifact:scripts/check_cpu_ap_scope.py",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
       "dst": "rtl:rtl/cpu/e1_cpu_subsystem_stub.sv",
+      "relation": "affects",
+      "src": "gap:cpu-real-core-integration"
+    },
+    {
+      "dst": "rtl:rtl/cpu/e1_tiny_cpu_contract.sv",
       "relation": "affects",
       "src": "gap:cpu-real-core-integration"
     },
@@ -774,9 +819,59 @@
       "src": "gap:display-proof-gap"
     },
     {
+      "dst": "rtl:rtl/display/e1_display_scanout.sv",
+      "relation": "affects",
+      "src": "gap:display-proof-gap"
+    },
+    {
+      "dst": "test:verify/formal/e1_display_scanout.sby",
+      "relation": "affects",
+      "src": "gap:display-proof-gap"
+    },
+    {
+      "dst": "test:verify/formal/e1_display_scanout_formal.sv",
+      "relation": "affects",
+      "src": "gap:display-proof-gap"
+    },
+    {
       "dst": "test:verify/formal/e1_soc_top_formal.sv",
       "relation": "affects",
       "src": "gap:display-proof-gap"
+    },
+    {
+      "dst": "artifact:Makefile",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
+      "dst": "artifact:scripts/check_display_scanout.py",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
+      "dst": "artifact:scripts/check_linux_bsp_contract.py",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
+      "dst": "artifact:scripts/test_display_scanout_gate.py",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
+      "dst": "artifact:sw/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
+      "dst": "artifact:sw/linux/dts/eliza-e1-soc.dtsi",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
+      "dst": "artifact:sw/linux/dts/eliza-e1.dts",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
     },
     {
       "dst": "rtl:rtl/display/e1_display.sv",
@@ -784,7 +879,17 @@
       "src": "gap:display-real-framebuffer-path"
     },
     {
+      "dst": "rtl:rtl/display/e1_display_scanout.sv",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
       "dst": "rtl:rtl/top/e1_soc_top.sv",
+      "relation": "affects",
+      "src": "gap:display-real-framebuffer-path"
+    },
+    {
+      "dst": "test:verify/cocotb/display/test_display_scanout.py",
       "relation": "affects",
       "src": "gap:display-real-framebuffer-path"
     },
@@ -804,9 +909,34 @@
       "src": "gap:dma-proof-depth-and-protocol"
     },
     {
+      "dst": "test:verify/formal/e1_dma_axil.sby",
+      "relation": "affects",
+      "src": "gap:dma-proof-depth-and-protocol"
+    },
+    {
       "dst": "test:verify/formal/e1_dma_formal.sv",
       "relation": "affects",
       "src": "gap:dma-proof-depth-and-protocol"
+    },
+    {
+      "dst": "artifact:Makefile",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
+      "dst": "artifact:scripts/check_dma_long_transfer_coverage.py",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
+      "dst": "artifact:scripts/test_dma_long_transfer_coverage.py",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
+      "dst": "artifact:verify/cocotb/dma/Makefile",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
     },
     {
       "dst": "rtl:rtl/dma/e1_dma.sv",
@@ -824,6 +954,11 @@
       "src": "gap:dma-real-memory-system"
     },
     {
+      "dst": "test:verify/cocotb/dma/test_dma_long_transfer.py",
+      "relation": "affects",
+      "src": "gap:dma-real-memory-system"
+    },
+    {
       "dst": "test:verify/cocotb/test_cpu_mem_intc_contract.py",
       "relation": "affects",
       "src": "gap:dma-real-memory-system"
@@ -834,7 +969,27 @@
       "src": "gap:dma-real-memory-system"
     },
     {
+      "dst": "artifact:Makefile",
+      "relation": "affects",
+      "src": "gap:dram-controller-and-capacity"
+    },
+    {
+      "dst": "artifact:scripts/check_dram_controller.py",
+      "relation": "affects",
+      "src": "gap:dram-controller-and-capacity"
+    },
+    {
+      "dst": "artifact:scripts/test_dram_controller_make_target.py",
+      "relation": "affects",
+      "src": "gap:dram-controller-and-capacity"
+    },
+    {
       "dst": "rtl:rtl/interconnect/e1_linux_soc_contract.sv",
+      "relation": "affects",
+      "src": "gap:dram-controller-and-capacity"
+    },
+    {
+      "dst": "rtl:rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
       "relation": "affects",
       "src": "gap:dram-controller-and-capacity"
     },
@@ -864,6 +1019,11 @@
       "src": "gap:formal-yosys-fallback-is-not-equivalent"
     },
     {
+      "dst": "artifact:scripts/test_pipeline_formal_manifest.py",
+      "relation": "affects",
+      "src": "gap:formal-yosys-fallback-is-not-equivalent"
+    },
+    {
       "dst": "artifact:scripts/yosys_formal_dma.ys",
       "relation": "affects",
       "src": "gap:formal-yosys-fallback-is-not-equivalent"
@@ -879,6 +1039,16 @@
       "src": "gap:formal-yosys-fallback-is-not-equivalent"
     },
     {
+      "dst": "test:verify/check_formal_engine_agreement.py",
+      "relation": "affects",
+      "src": "gap:formal-yosys-fallback-is-not-equivalent"
+    },
+    {
+      "dst": "test:verify/formal/*.sby",
+      "relation": "affects",
+      "src": "gap:formal-yosys-fallback-is-not-equivalent"
+    },
+    {
       "dst": "artifact:scripts/run_formal.sh",
       "relation": "affects",
       "src": "gap:interconnect-axi-lite-proof-coverage"
@@ -889,12 +1059,67 @@
       "src": "gap:interconnect-axi-lite-proof-coverage"
     },
     {
+      "dst": "test:verify/formal/e1_axi_lite_dram.sby",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
+      "dst": "test:verify/formal/e1_axi_lite_dram_bind.sv",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
+      "dst": "test:verify/formal/e1_axi_lite_interconnect.sby",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
+      "dst": "test:verify/formal/e1_axi_lite_interconnect_bind.sv",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
+      "dst": "test:verify/formal/e1_interrupt_controller.sby",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
+      "dst": "test:verify/formal/e1_interrupt_controller_bind.sv",
+      "relation": "affects",
+      "src": "gap:interconnect-axi-lite-proof-coverage"
+    },
+    {
       "dst": "test:verify/formal/e1_soc_top_formal.sv",
       "relation": "affects",
       "src": "gap:interconnect-axi-lite-proof-coverage"
     },
     {
+      "dst": "artifact:docs/arch/interconnect.md",
+      "relation": "affects",
+      "src": "gap:interconnect-display-npu-linux-mmio"
+    },
+    {
+      "dst": "artifact:docs/arch/memory-map.md",
+      "relation": "affects",
+      "src": "gap:interconnect-display-npu-linux-mmio"
+    },
+    {
+      "dst": "artifact:scripts/check_platform_contract.py",
+      "relation": "affects",
+      "src": "gap:interconnect-display-npu-linux-mmio"
+    },
+    {
+      "dst": "artifact:scripts/test_platform_contract_linux_decode.py",
+      "relation": "affects",
+      "src": "gap:interconnect-display-npu-linux-mmio"
+    },
+    {
       "dst": "rtl:rtl/display/e1_display.sv",
+      "relation": "affects",
+      "src": "gap:interconnect-display-npu-linux-mmio"
+    },
+    {
+      "dst": "rtl:rtl/interconnect/e1_axi_lite_interconnect.sv",
       "relation": "affects",
       "src": "gap:interconnect-display-npu-linux-mmio"
     },
@@ -907,6 +1132,26 @@
       "dst": "rtl:rtl/npu/e1_npu.sv",
       "relation": "affects",
       "src": "gap:interconnect-display-npu-linux-mmio"
+    },
+    {
+      "dst": "test:verify/cocotb/test_cpu_mem_intc_contract.py",
+      "relation": "affects",
+      "src": "gap:interconnect-display-npu-linux-mmio"
+    },
+    {
+      "dst": "artifact:Makefile",
+      "relation": "affects",
+      "src": "gap:interconnect-full-soc-routing"
+    },
+    {
+      "dst": "artifact:scripts/check_memory_interconnect_contract.py",
+      "relation": "affects",
+      "src": "gap:interconnect-full-soc-routing"
+    },
+    {
+      "dst": "artifact:scripts/test_memory_interconnect_contract_report.py",
+      "relation": "affects",
+      "src": "gap:interconnect-full-soc-routing"
     },
     {
       "dst": "rtl:rtl/interconnect/e1_axi_lite_interconnect.sv",
@@ -931,6 +1176,26 @@
     {
       "dst": "rtl:rtl/npu/e1_npu.sv",
       "relation": "affects",
+      "src": "gap:npu-formal-engine-coverage"
+    },
+    {
+      "dst": "test:verify/formal/e1_npu.sby",
+      "relation": "affects",
+      "src": "gap:npu-formal-engine-coverage"
+    },
+    {
+      "dst": "test:verify/formal/e1_npu_formal.sv",
+      "relation": "affects",
+      "src": "gap:npu-formal-engine-coverage"
+    },
+    {
+      "dst": "test:verify/properties/npu_axil_bind.sv",
+      "relation": "affects",
+      "src": "gap:npu-formal-engine-coverage"
+    },
+    {
+      "dst": "rtl:rtl/npu/e1_npu.sv",
+      "relation": "affects",
       "src": "gap:npu-production-accelerator"
     },
     {
@@ -949,7 +1214,32 @@
       "src": "gap:npu-production-accelerator"
     },
     {
+      "dst": "artifact:Makefile",
+      "relation": "affects",
+      "src": "gap:npu-test-coverage-accounting"
+    },
+    {
+      "dst": "artifact:build/reports/npu_cocotb_coverage.json",
+      "relation": "affects",
+      "src": "gap:npu-test-coverage-accounting"
+    },
+    {
+      "dst": "artifact:build/reports/npu_coverage_summary.json",
+      "relation": "affects",
+      "src": "gap:npu-test-coverage-accounting"
+    },
+    {
       "dst": "artifact:docs/three-week-prototype-workstreams.md",
+      "relation": "affects",
+      "src": "gap:npu-test-coverage-accounting"
+    },
+    {
+      "dst": "artifact:scripts/check_npu_coverage_summary.py",
+      "relation": "affects",
+      "src": "gap:npu-test-coverage-accounting"
+    },
+    {
+      "dst": "artifact:scripts/test_npu_coverage_summary.py",
       "relation": "affects",
       "src": "gap:npu-test-coverage-accounting"
     },
@@ -969,12 +1259,27 @@
       "src": "gap:qemu-renode-scaffold-pass-risk"
     },
     {
+      "dst": "artifact:scripts/archive_release.sh",
+      "relation": "affects",
+      "src": "gap:qemu-renode-scaffold-pass-risk"
+    },
+    {
+      "dst": "artifact:scripts/check_release_archive.py",
+      "relation": "affects",
+      "src": "gap:qemu-renode-scaffold-pass-risk"
+    },
+    {
       "dst": "artifact:scripts/run_qemu.sh",
       "relation": "affects",
       "src": "gap:qemu-renode-scaffold-pass-risk"
     },
     {
       "dst": "artifact:scripts/run_renode.sh",
+      "relation": "affects",
+      "src": "gap:qemu-renode-scaffold-pass-risk"
+    },
+    {
+      "dst": "artifact:scripts/test_release_archive_simulator_evidence.py",
       "relation": "affects",
       "src": "gap:qemu-renode-scaffold-pass-risk"
     }
@@ -1266,6 +1571,36 @@
       "path": "Makefile"
     },
     {
+      "id": "artifact:build/reports/cpu_ap_completion_gate.json",
+      "kind": "artifact",
+      "path": "build/reports/cpu_ap_completion_gate.json"
+    },
+    {
+      "id": "artifact:build/reports/cpu_ap_scope.json",
+      "kind": "artifact",
+      "path": "build/reports/cpu_ap_scope.json"
+    },
+    {
+      "id": "artifact:build/reports/npu_cocotb_coverage.json",
+      "kind": "artifact",
+      "path": "build/reports/npu_cocotb_coverage.json"
+    },
+    {
+      "id": "artifact:build/reports/npu_coverage_summary.json",
+      "kind": "artifact",
+      "path": "build/reports/npu_coverage_summary.json"
+    },
+    {
+      "id": "artifact:docs/arch/interconnect.md",
+      "kind": "artifact",
+      "path": "docs/arch/interconnect.md"
+    },
+    {
+      "id": "artifact:docs/arch/memory-map.md",
+      "kind": "artifact",
+      "path": "docs/arch/memory-map.md"
+    },
+    {
       "id": "artifact:docs/three-week-prototype-workstreams.md",
       "kind": "artifact",
       "path": "docs/three-week-prototype-workstreams.md"
@@ -1281,9 +1616,74 @@
       "path": "fw/boot-rom/reset.S"
     },
     {
+      "id": "artifact:scripts/archive_release.sh",
+      "kind": "artifact",
+      "path": "scripts/archive_release.sh"
+    },
+    {
+      "id": "artifact:scripts/check_boot_security_chain_contract.py",
+      "kind": "artifact",
+      "path": "scripts/check_boot_security_chain_contract.py"
+    },
+    {
+      "id": "artifact:scripts/check_bootrom_sim_transcript.py",
+      "kind": "artifact",
+      "path": "scripts/check_bootrom_sim_transcript.py"
+    },
+    {
+      "id": "artifact:scripts/check_cpu_ap_completion_gate.py",
+      "kind": "artifact",
+      "path": "scripts/check_cpu_ap_completion_gate.py"
+    },
+    {
+      "id": "artifact:scripts/check_cpu_ap_scope.py",
+      "kind": "artifact",
+      "path": "scripts/check_cpu_ap_scope.py"
+    },
+    {
+      "id": "artifact:scripts/check_display_scanout.py",
+      "kind": "artifact",
+      "path": "scripts/check_display_scanout.py"
+    },
+    {
+      "id": "artifact:scripts/check_dma_long_transfer_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/check_dma_long_transfer_coverage.py"
+    },
+    {
+      "id": "artifact:scripts/check_dram_controller.py",
+      "kind": "artifact",
+      "path": "scripts/check_dram_controller.py"
+    },
+    {
+      "id": "artifact:scripts/check_linux_bsp_contract.py",
+      "kind": "artifact",
+      "path": "scripts/check_linux_bsp_contract.py"
+    },
+    {
+      "id": "artifact:scripts/check_memory_interconnect_contract.py",
+      "kind": "artifact",
+      "path": "scripts/check_memory_interconnect_contract.py"
+    },
+    {
       "id": "artifact:scripts/check_mvp_status.py",
       "kind": "artifact",
       "path": "scripts/check_mvp_status.py"
+    },
+    {
+      "id": "artifact:scripts/check_npu_coverage_summary.py",
+      "kind": "artifact",
+      "path": "scripts/check_npu_coverage_summary.py"
+    },
+    {
+      "id": "artifact:scripts/check_platform_contract.py",
+      "kind": "artifact",
+      "path": "scripts/check_platform_contract.py"
+    },
+    {
+      "id": "artifact:scripts/check_release_archive.py",
+      "kind": "artifact",
+      "path": "scripts/check_release_archive.py"
     },
     {
       "id": "artifact:scripts/pipeline_check.py",
@@ -1311,6 +1711,46 @@
       "path": "scripts/run_rtl_check.sh"
     },
     {
+      "id": "artifact:scripts/test_display_scanout_gate.py",
+      "kind": "artifact",
+      "path": "scripts/test_display_scanout_gate.py"
+    },
+    {
+      "id": "artifact:scripts/test_dma_long_transfer_coverage.py",
+      "kind": "artifact",
+      "path": "scripts/test_dma_long_transfer_coverage.py"
+    },
+    {
+      "id": "artifact:scripts/test_dram_controller_make_target.py",
+      "kind": "artifact",
+      "path": "scripts/test_dram_controller_make_target.py"
+    },
+    {
+      "id": "artifact:scripts/test_memory_interconnect_contract_report.py",
+      "kind": "artifact",
+      "path": "scripts/test_memory_interconnect_contract_report.py"
+    },
+    {
+      "id": "artifact:scripts/test_npu_coverage_summary.py",
+      "kind": "artifact",
+      "path": "scripts/test_npu_coverage_summary.py"
+    },
+    {
+      "id": "artifact:scripts/test_pipeline_formal_manifest.py",
+      "kind": "artifact",
+      "path": "scripts/test_pipeline_formal_manifest.py"
+    },
+    {
+      "id": "artifact:scripts/test_platform_contract_linux_decode.py",
+      "kind": "artifact",
+      "path": "scripts/test_platform_contract_linux_decode.py"
+    },
+    {
+      "id": "artifact:scripts/test_release_archive_simulator_evidence.py",
+      "kind": "artifact",
+      "path": "scripts/test_release_archive_simulator_evidence.py"
+    },
+    {
       "id": "artifact:scripts/yosys_formal_dma.ys",
       "kind": "artifact",
       "path": "scripts/yosys_formal_dma.ys"
@@ -1329,6 +1769,26 @@
       "id": "artifact:sw/bootrom/e1_qemu_firmware.S",
       "kind": "artifact",
       "path": "sw/bootrom/e1_qemu_firmware.S"
+    },
+    {
+      "id": "artifact:sw/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml",
+      "kind": "artifact",
+      "path": "sw/linux/Documentation/devicetree/bindings/eliza/eliza,e1-display.yaml"
+    },
+    {
+      "id": "artifact:sw/linux/dts/eliza-e1-soc.dtsi",
+      "kind": "artifact",
+      "path": "sw/linux/dts/eliza-e1-soc.dtsi"
+    },
+    {
+      "id": "artifact:sw/linux/dts/eliza-e1.dts",
+      "kind": "artifact",
+      "path": "sw/linux/dts/eliza-e1.dts"
+    },
+    {
+      "id": "artifact:verify/cocotb/dma/Makefile",
+      "kind": "artifact",
+      "path": "verify/cocotb/dma/Makefile"
     },
     {
       "area": "bootrom",
@@ -1436,6 +1896,14 @@
     },
     {
       "area": "npu",
+      "category": "proof_gap",
+      "gap_id": "npu-formal-engine-coverage",
+      "id": "gap:npu-formal-engine-coverage",
+      "kind": "rtl_gap",
+      "severity": "high"
+    },
+    {
+      "area": "npu",
       "category": "rtl_stub",
       "gap_id": "npu-production-accelerator",
       "id": "gap:npu-production-accelerator",
@@ -1523,6 +1991,14 @@
       "tier": "pd"
     },
     {
+      "id": "gate:antenna-metadata-release-check",
+      "kind": "gate",
+      "name": "antenna-metadata-release-check",
+      "script": "scripts/check_antenna_metadata.py",
+      "subsystem": "pd",
+      "tier": "pd"
+    },
+    {
       "id": "gate:aosp-hal-service-contract-check",
       "kind": "gate",
       "name": "aosp-hal-service-contract-check",
@@ -1576,6 +2052,30 @@
       "name": "chip-os-bringup-workflow-contract-check",
       "script": "scripts/check_chip_os_bringup_workflow_contract.py",
       "subsystem": "bsp",
+      "tier": "spec"
+    },
+    {
+      "id": "gate:chip-stats-consistency",
+      "kind": "gate",
+      "name": "chip-stats-consistency",
+      "script": "scripts/check_chip_stats_consistency.py",
+      "subsystem": "platform",
+      "tier": "spec"
+    },
+    {
+      "id": "gate:chip-stats-consistency-check",
+      "kind": "gate",
+      "name": "chip-stats-consistency-check",
+      "script": "scripts/check_chip_stats_consistency.py",
+      "subsystem": "platform",
+      "tier": "spec"
+    },
+    {
+      "id": "gate:chip-topology-pkg-sync",
+      "kind": "gate",
+      "name": "chip-topology-pkg-sync",
+      "script": "scripts/gen_e1_topology_pkg.py",
+      "subsystem": "platform",
       "tier": "spec"
     },
     {
@@ -1643,12 +2143,140 @@
       "tier": "pd"
     },
     {
+      "id": "gate:dts-soc-consistency",
+      "kind": "gate",
+      "name": "dts-soc-consistency",
+      "script": "scripts/check_dts_soc_consistency.py",
+      "subsystem": "bsp",
+      "tier": "spec"
+    },
+    {
+      "id": "gate:e1-phone-assemblability-check",
+      "kind": "gate",
+      "name": "e1-phone-assemblability-check",
+      "script": "scripts/check_e1_phone_assemblability.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-board-package-check",
+      "kind": "gate",
+      "name": "e1-phone-board-package-check",
+      "script": "scripts/check_e1_phone_board_package.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-boolean-interference-check",
+      "kind": "gate",
+      "name": "e1-phone-boolean-interference-check",
+      "script": "scripts/check_e1_phone_boolean_interference.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-button-orientation-check",
+      "kind": "gate",
+      "name": "e1-phone-button-orientation-check",
+      "script": "scripts/check_e1_phone_button_orientation.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-enclosure-mechanical-content-check",
+      "kind": "gate",
+      "name": "e1-phone-enclosure-mechanical-content-check",
+      "script": "scripts/check_e1_phone_enclosure_mechanical_content.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-fabrication-release-check",
+      "kind": "gate",
+      "name": "e1-phone-fabrication-release-check",
+      "script": "scripts/check_e1_phone_fabrication_release.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-factory-output-content-check",
+      "kind": "gate",
+      "name": "e1-phone-factory-output-content-check",
+      "script": "scripts/check_e1_phone_factory_output_content.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-first-article-content-check",
+      "kind": "gate",
+      "name": "e1-phone-first-article-content-check",
+      "script": "scripts/check_e1_phone_first_article_content.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-manufacturing-artifacts-check",
+      "kind": "gate",
+      "name": "e1-phone-manufacturing-artifacts-check",
+      "script": "scripts/check_manufacturing_artifacts.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-release-approval-signature-check",
+      "kind": "gate",
+      "name": "e1-phone-release-approval-signature-check",
+      "script": "scripts/check_e1_phone_release_approval_signatures.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-release-evidence-regeneration-check",
+      "kind": "gate",
+      "name": "e1-phone-release-evidence-regeneration-check",
+      "script": "scripts/check_e1_phone_release_evidence_regeneration.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-routed-output-content-check",
+      "kind": "gate",
+      "name": "e1-phone-routed-output-content-check",
+      "script": "scripts/check_e1_phone_routed_output_content.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:e1-phone-supplier-return-content-check",
+      "kind": "gate",
+      "name": "e1-phone-supplier-return-content-check",
+      "script": "scripts/check_e1_phone_supplier_return_content.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:fpga-release-check",
+      "kind": "gate",
+      "name": "fpga-release-check",
+      "script": "scripts/check_fpga_release.py",
+      "subsystem": "platform",
+      "tier": "silicon"
+    },
+    {
       "id": "gate:fpga-target-check",
       "kind": "gate",
       "name": "fpga-target-check",
       "script": "scripts/check_fpga_target.py",
       "subsystem": "platform",
       "tier": "spec"
+    },
+    {
+      "id": "gate:io-cell-contract-check",
+      "kind": "gate",
+      "name": "io-cell-contract-check",
+      "script": "scripts/check_io_cell_contract.py",
+      "subsystem": "pd",
+      "tier": "pd"
     },
     {
       "id": "gate:iommu-evidence-check",
@@ -1665,6 +2293,14 @@
       "script": "scripts/check_kicad_artifacts.py",
       "subsystem": "platform",
       "tier": "spec"
+    },
+    {
+      "id": "gate:kicad-artifacts-release-check",
+      "kind": "gate",
+      "name": "kicad-artifacts-release-check",
+      "script": "scripts/check_kicad_artifacts.py",
+      "subsystem": "platform",
+      "tier": "pd"
     },
     {
       "id": "gate:linux-boot-artifacts-check",
@@ -1702,6 +2338,14 @@
       "id": "gate:manufacturing-artifacts-check",
       "kind": "gate",
       "name": "manufacturing-artifacts-check",
+      "script": "scripts/check_manufacturing_artifacts.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:manufacturing-artifacts-release-check",
+      "kind": "gate",
+      "name": "manufacturing-artifacts-release-check",
       "script": "scripts/check_manufacturing_artifacts.py",
       "subsystem": "platform",
       "tier": "pd"
@@ -1761,6 +2405,22 @@
       "script": "scripts/check_minimum_linux_target.py",
       "subsystem": "bsp",
       "tier": "silicon"
+    },
+    {
+      "id": "gate:mlperf-inference-check",
+      "kind": "gate",
+      "name": "mlperf-inference-check",
+      "script": "scripts/check_mlperf_inference.py",
+      "subsystem": "npu",
+      "tier": "spec"
+    },
+    {
+      "id": "gate:multi-pdk-closure-check",
+      "kind": "gate",
+      "name": "multi-pdk-closure-check",
+      "script": "scripts/check_multi_pdk_closure.py",
+      "subsystem": "pd",
+      "tier": "spec"
     },
     {
       "id": "gate:mvp-npu-ml-evidence-check",
@@ -1827,6 +2487,14 @@
       "tier": "pd"
     },
     {
+      "id": "gate:openlane-run-release-preflight-check",
+      "kind": "gate",
+      "name": "openlane-run-release-preflight-check",
+      "script": "scripts/check_openlane_run_preflight.py",
+      "subsystem": "pd",
+      "tier": "pd"
+    },
+    {
       "id": "gate:os-rv64-chip-boot-contract-check",
       "kind": "gate",
       "name": "os-rv64-chip-boot-contract-check",
@@ -1859,6 +2527,14 @@
       "tier": "spec"
     },
     {
+      "id": "gate:package-cross-probe-release-check",
+      "kind": "gate",
+      "name": "package-cross-probe-release-check",
+      "script": "scripts/check_package_cross_probe.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
       "id": "gate:padframe-check",
       "kind": "gate",
       "name": "padframe-check",
@@ -1883,10 +2559,34 @@
       "tier": "pd"
     },
     {
+      "id": "gate:pd-release-evidence-check",
+      "kind": "gate",
+      "name": "pd-release-evidence-check",
+      "script": "scripts/check_pd_release_evidence.py",
+      "subsystem": "pd",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:pd-signoff-check",
+      "kind": "gate",
+      "name": "pd-signoff-check",
+      "script": "scripts/check_pd_signoff.py",
+      "subsystem": "pd",
+      "tier": "pd"
+    },
+    {
       "id": "gate:pd-signoff-manifest-check",
       "kind": "gate",
       "name": "pd-signoff-manifest-check",
       "script": "scripts/check_pd_signoff.py",
+      "subsystem": "pd",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:pd-soc-input-contract-check",
+      "kind": "gate",
+      "name": "pd-soc-input-contract-check",
+      "script": "scripts/check_e1_soc_pd_input_contract.py",
       "subsystem": "pd",
       "tier": "pd"
     },
@@ -1899,11 +2599,27 @@
       "tier": "pd"
     },
     {
+      "id": "gate:pdk-access-gate",
+      "kind": "gate",
+      "name": "pdk-access-gate",
+      "script": "scripts/check_pdk_access_gate.py",
+      "subsystem": "process",
+      "tier": "pd"
+    },
+    {
       "id": "gate:pdk-portability-check",
       "kind": "gate",
       "name": "pdk-portability-check",
       "script": "scripts/check_pdk_portability.py",
       "subsystem": "process",
+      "tier": "pd"
+    },
+    {
+      "id": "gate:pdn-workload-signoff",
+      "kind": "gate",
+      "name": "pdn-workload-signoff",
+      "script": "scripts/check_pdn_workload_signoff.py",
+      "subsystem": "pd",
       "tier": "pd"
     },
     {
@@ -1931,12 +2647,28 @@
       "tier": "pd"
     },
     {
+      "id": "gate:pinout-check",
+      "kind": "gate",
+      "name": "pinout-check",
+      "script": "package/scripts/validate_pinout.py",
+      "subsystem": "pd",
+      "tier": "spec"
+    },
+    {
       "id": "gate:platform-contract-check",
       "kind": "gate",
       "name": "platform-contract-check",
       "script": "scripts/check_platform_contract.py",
       "subsystem": "platform",
       "tier": "spec"
+    },
+    {
+      "id": "gate:pmic-procurement-gate",
+      "kind": "gate",
+      "name": "pmic-procurement-gate",
+      "script": "scripts/check_pdn_workload_signoff.py",
+      "subsystem": "pd",
+      "tier": "pd"
     },
     {
       "id": "gate:process-14a-effects-check",
@@ -1955,6 +2687,14 @@
       "tier": "spec"
     },
     {
+      "id": "gate:product-release-status-check",
+      "kind": "gate",
+      "name": "product-release-status-check",
+      "script": "scripts/product_check.py",
+      "subsystem": "platform",
+      "tier": "pd"
+    },
+    {
       "id": "gate:project-plan-check",
       "kind": "gate",
       "name": "project-plan-check",
@@ -1969,6 +2709,14 @@
       "script": "scripts/check_prototype_status_dashboard.py",
       "subsystem": "benchmarks",
       "tier": "spec"
+    },
+    {
+      "id": "gate:rail-plan-check",
+      "kind": "gate",
+      "name": "rail-plan-check",
+      "script": "scripts/check_rail_plan.py",
+      "subsystem": "pd",
+      "tier": "pd"
     },
     {
       "id": "gate:real-world-gates-check",
@@ -2017,6 +2765,14 @@
       "script": "verify/check_stub_audit.py",
       "subsystem": "verify",
       "tier": "rtl"
+    },
+    {
+      "id": "gate:upf-check",
+      "kind": "gate",
+      "name": "upf-check",
+      "script": "scripts/check_upf_consistency.py",
+      "subsystem": "pd",
+      "tier": "pd"
     },
     {
       "id": "gate:verification-maturity-matrix-check",
@@ -2100,9 +2856,19 @@
       "path": "rtl/cpu/e1_cva6_wrapper.sv"
     },
     {
+      "id": "rtl:rtl/cpu/e1_tiny_cpu_contract.sv",
+      "kind": "rtl",
+      "path": "rtl/cpu/e1_tiny_cpu_contract.sv"
+    },
+    {
       "id": "rtl:rtl/display/e1_display.sv",
       "kind": "rtl",
       "path": "rtl/display/e1_display.sv"
+    },
+    {
+      "id": "rtl:rtl/display/e1_display_scanout.sv",
+      "kind": "rtl",
+      "path": "rtl/display/e1_display_scanout.sv"
     },
     {
       "id": "rtl:rtl/dma/e1_dma.sv",
@@ -2118,6 +2884,11 @@
       "id": "rtl:rtl/interconnect/e1_linux_soc_contract.sv",
       "kind": "rtl",
       "path": "rtl/interconnect/e1_linux_soc_contract.sv"
+    },
+    {
+      "id": "rtl:rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
+      "kind": "rtl",
+      "path": "rtl/memory/dram_ctrl/e1_dram_ctrl.sv"
     },
     {
       "id": "rtl:rtl/memory/e1_axi_lite_dram.sv",
@@ -2153,43 +2924,43 @@
       "id": "spec_doc:docs/evidence/pd/commercial-eda-gate.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/pd/commercial-eda-gate.yaml",
-      "sha": "b3d237f944921026"
+      "sha": "344b4738f05b7803"
     },
     {
       "id": "spec_doc:docs/evidence/pd/cts-evidence.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/pd/cts-evidence.yaml",
-      "sha": "8a37bae5f0b289ed"
+      "sha": "416a200108207677"
     },
     {
       "id": "spec_doc:docs/evidence/pd/dft-evidence.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/pd/dft-evidence.yaml",
-      "sha": "4beb4a7587b905ed"
+      "sha": "aecc6b64527d1a00"
     },
     {
       "id": "spec_doc:docs/evidence/pd/macro-placement-evidence.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/pd/macro-placement-evidence.yaml",
-      "sha": "8f8ac3c1df57e1be"
+      "sha": "cce0ad1f9e3b5548"
     },
     {
       "id": "spec_doc:docs/evidence/pd/multi-corner-sta-evidence.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/pd/multi-corner-sta-evidence.yaml",
-      "sha": "5fecc188514fdd79"
+      "sha": "1a8e1a9f909b3e47"
     },
     {
       "id": "spec_doc:docs/evidence/pd/post-route-ppa-validator.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/pd/post-route-ppa-validator.yaml",
-      "sha": "fd19cd8b46846df0"
+      "sha": "392b84f743f4e96e"
     },
     {
       "id": "spec_doc:docs/evidence/process/die-area-budget.yaml",
       "kind": "spec_doc",
       "path": "docs/evidence/process/die-area-budget.yaml",
-      "sha": "aff8b3052dc52e11"
+      "sha": "ccaa0b0f4bc9812d"
     },
     {
       "id": "spec_doc:docs/spec-db/axi4-interconnect-mmio.yaml",
@@ -2243,18 +3014,33 @@
       "id": "spec_doc:sw/platform/e1_platform_contract.json",
       "kind": "spec_doc",
       "path": "sw/platform/e1_platform_contract.json",
-      "sha": "a6cf225fe9208f58c9c5eadd30684f95c079e4de603669c8a54375a533e71c71"
+      "sha": "ce65c6784923006f827c5443d28c92ce1a02ec5beebe6b07897d910da9593286"
     },
     {
       "id": "spec_doc:verify/rtl_gap_work_order.yaml",
       "kind": "spec_doc",
       "path": "verify/rtl_gap_work_order.yaml",
-      "sha": "e30517bee4fbd7090e8bacfe345ad3797ffa7ff45753bf626603590a14e3186d"
+      "sha": "cfafbfcc4dd766698c9341b8ebe9868332b5bd76939295bd7b0b2ea97a9d6512"
     },
     {
       "id": "test:fw/boot-rom/check_boot_rom.py",
       "kind": "test",
       "path": "fw/boot-rom/check_boot_rom.py"
+    },
+    {
+      "id": "test:verify/check_formal_engine_agreement.py",
+      "kind": "test",
+      "path": "verify/check_formal_engine_agreement.py"
+    },
+    {
+      "id": "test:verify/cocotb/display/test_display_scanout.py",
+      "kind": "test",
+      "path": "verify/cocotb/display/test_display_scanout.py"
+    },
+    {
+      "id": "test:verify/cocotb/dma/test_dma_long_transfer.py",
+      "kind": "test",
+      "path": "verify/cocotb/dma/test_dma_long_transfer.py"
     },
     {
       "id": "test:verify/cocotb/e1_tiny_cpu_contract_tb.sv",
@@ -2287,14 +3073,69 @@
       "path": "verify/cocotb/test_tiny_cpu_execution.py"
     },
     {
+      "id": "test:verify/formal/*.sby",
+      "kind": "test",
+      "path": "verify/formal/*.sby"
+    },
+    {
+      "id": "test:verify/formal/e1_axi_lite_dram.sby",
+      "kind": "test",
+      "path": "verify/formal/e1_axi_lite_dram.sby"
+    },
+    {
+      "id": "test:verify/formal/e1_axi_lite_dram_bind.sv",
+      "kind": "test",
+      "path": "verify/formal/e1_axi_lite_dram_bind.sv"
+    },
+    {
+      "id": "test:verify/formal/e1_axi_lite_interconnect.sby",
+      "kind": "test",
+      "path": "verify/formal/e1_axi_lite_interconnect.sby"
+    },
+    {
+      "id": "test:verify/formal/e1_axi_lite_interconnect_bind.sv",
+      "kind": "test",
+      "path": "verify/formal/e1_axi_lite_interconnect_bind.sv"
+    },
+    {
+      "id": "test:verify/formal/e1_display_scanout.sby",
+      "kind": "test",
+      "path": "verify/formal/e1_display_scanout.sby"
+    },
+    {
+      "id": "test:verify/formal/e1_display_scanout_formal.sv",
+      "kind": "test",
+      "path": "verify/formal/e1_display_scanout_formal.sv"
+    },
+    {
       "id": "test:verify/formal/e1_dma.sby",
       "kind": "test",
       "path": "verify/formal/e1_dma.sby"
     },
     {
+      "id": "test:verify/formal/e1_dma_axil.sby",
+      "kind": "test",
+      "path": "verify/formal/e1_dma_axil.sby"
+    },
+    {
       "id": "test:verify/formal/e1_dma_formal.sv",
       "kind": "test",
       "path": "verify/formal/e1_dma_formal.sv"
+    },
+    {
+      "id": "test:verify/formal/e1_interrupt_controller.sby",
+      "kind": "test",
+      "path": "verify/formal/e1_interrupt_controller.sby"
+    },
+    {
+      "id": "test:verify/formal/e1_interrupt_controller_bind.sv",
+      "kind": "test",
+      "path": "verify/formal/e1_interrupt_controller_bind.sv"
+    },
+    {
+      "id": "test:verify/formal/e1_npu.sby",
+      "kind": "test",
+      "path": "verify/formal/e1_npu.sby"
     },
     {
       "id": "test:verify/formal/e1_npu_formal.sv",
@@ -2307,9 +3148,9 @@
       "path": "verify/formal/e1_soc_top_formal.sv"
     },
     {
-      "id": "test:verify/properties/axi_lite.sv",
+      "id": "test:verify/properties/axi_lite_protocol.sv",
       "kind": "test",
-      "path": "verify/properties/axi_lite.sv"
+      "path": "verify/properties/axi_lite_protocol.sv"
     },
     {
       "id": "test:verify/properties/dma_axil.sby",
@@ -2320,6 +3161,11 @@
       "id": "test:verify/properties/dma_axil_bind.sv",
       "kind": "test",
       "path": "verify/properties/dma_axil_bind.sv"
+    },
+    {
+      "id": "test:verify/properties/npu_axil_bind.sv",
+      "kind": "test",
+      "path": "verify/properties/npu_axil_bind.sv"
     },
     {
       "id": "test:verify/verilator/test_npu_gemm.cpp",

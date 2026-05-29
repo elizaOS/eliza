@@ -12,7 +12,11 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/e1x/e1x_repair_routed_router.sv \
 	$(REPO)/rtl/e1x/e1x_repair_routed_tile.sv \
 	$(REPO)/rtl/e1x/e1x_tiny_core_contract.sv \
+	$(REPO)/rtl/e1x/e1x_pe_core.sv \
+	$(REPO)/rtl/e1x/e1x_credit_router.sv \
 	$(REPO)/rtl/e1x/e1x_tile.sv \
+	$(REPO)/rtl/e1x/e1x_pe_tile.sv \
+	$(REPO)/rtl/e1x/e1x_mesh_fabric.sv \
 	$(PWD)/e1x_mesh_router_tb.sv \
 	$(PWD)/e1x_local_sram_shard_loader_tb.sv \
 	$(PWD)/e1x_mesh_2x2_tb.sv \
@@ -30,11 +34,13 @@ VERILOG_SOURCES := \
 	$(PWD)/e1x_repair_mmio_routed_tile_tb.sv \
 	$(PWD)/e1x_repair_mmio_routed_tile_large_tb.sv \
 	$(PWD)/e1x_tiny_core_tb.sv \
-	$(PWD)/e1x_tile_tb.sv
+	$(PWD)/e1x_tile_tb.sv \
+	$(PWD)/e1x_pe_tile_tb.sv \
+	$(PWD)/e1x_mesh_fabric_4x4_tb.sv
 
 TOPLEVEL ?= e1x_mesh_router_tb
 MODULE   ?= test_e1x_mesh_router
 
-EXTRA_ARGS += -I$(REPO) -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-UNOPTFLAT
+EXTRA_ARGS += -I$(REPO) -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-UNOPTFLAT -Wno-PINCONNECTEMPTY
 
 include $(COCOTB_SIM_MK)

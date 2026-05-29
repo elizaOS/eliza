@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,20 @@ COMMAND_WIRING = ROOT / "scripts/wire_cpu_ap_capture_commands.py"
 CAPTURE_WRAPPER = ROOT / "scripts/capture_chipyard_linux_evidence.sh"
 COMPLETION_GATE = ROOT / "scripts/check_cpu_ap_completion_gate.py"
 EVIDENCE_CHECKER = ROOT / "scripts/check_cpu_ap_evidence.py"
+CPU_CONTRACT_RTL = ROOT / "rtl/cpu/e1_tiny_cpu_contract.sv"
+CPU_LEGACY_ALIAS_RTL = ROOT / "rtl/cpu/e1_cpu_subsystem_stub.sv"
+CPU_SOURCE_LISTS = (
+    ROOT / "Makefile",
+    ROOT / "scripts/run_rtl_check.sh",
+    ROOT / "scripts/run_verilator.sh",
+    ROOT / "scripts/yosys_e1_soc.ys",
+    ROOT / "scripts/yosys_formal_top.ys",
+    ROOT / "scripts/yosys_formal_top_structural.ys",
+    ROOT / "verify/cocotb/Makefile",
+    ROOT / "verify/cocotb/soc/Makefile",
+    ROOT / "verify/cocotb/jtag_tap/Makefile",
+    ROOT / "verify/formal/e1_soc_top.sby",
+)
 
 REQUIRED_TRANSCRIPTS = {
     "opensbi_boot_log",
@@ -64,6 +79,10 @@ REQUIRED_PHONE_BLOCKERS = {
     "process_14a_corner_benchmark_derate_evidence",
     "android_cts_vts_and_userspace_evidence",
 }
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def rel(path: Path) -> str:
@@ -313,6 +332,29 @@ def linux_contract_covers_release_requirements() -> bool:
     )
 
 
+def legacy_cpu_alias_is_compatibility_only() -> bool:
+    alias = CPU_LEGACY_ALIAS_RTL.read_text(encoding="utf-8")
+    alias_ok = (
+        "module e1_cpu_subsystem_stub" in alias
+        and "Compatibility alias for legacy source lists" in alias
+        and alias.count("e1_tiny_cpu_contract #(") == 1
+        and "always_ff" not in alias
+        and "always_comb" not in alias
+    )
+    if not alias_ok:
+        return False
+
+    contract_token = "rtl/cpu/e1_tiny_cpu_contract.sv"
+    alias_token = "rtl/cpu/e1_cpu_subsystem_stub.sv"
+    for source_list in CPU_SOURCE_LISTS:
+        text = source_list.read_text(encoding="utf-8")
+        contract_index = text.find(contract_token)
+        alias_index = text.find(alias_token)
+        if contract_index < 0 or alias_index < 0 or contract_index > alias_index:
+            return False
+    return True
+
+
 def build_report() -> dict[str, Any]:
     manifest = load_evidence_manifest([])
     selected = load_json_object(SELECTED_MANIFEST)
@@ -352,6 +394,11 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(LINUX_CONTRACT),
         },
         {
+            "id": "legacy_cpu_alias_is_compatibility_only",
+            "status": "pass" if legacy_cpu_alias_is_compatibility_only() else "fail",
+            "evidence": rel(CPU_LEGACY_ALIAS_RTL),
+        },
+        {
             "id": "cpu_ap_evidence_bundle_complete",
             "status": "pass"
             if cpu_scaffold_passes() and evidence["evidence_status"] == "PASS"
@@ -375,6 +422,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.cpu_ap_scope.v1",
         "status": status,
+        "generated_utc": utc_now(),
         "claim_boundary": (
             "Generated Chipyard Rocket RV64GC AP scope only; accepts generated AP artifacts, "
             "OpenSBI handoff, Linux boot, RV64GC smoke, and AP benchmark transcripts for "
@@ -394,6 +442,9 @@ def build_report() -> dict[str, Any]:
             "command_wiring": rel(COMMAND_WIRING),
             "completion_gate": rel(COMPLETION_GATE),
             "evidence_checker": rel(EVIDENCE_CHECKER),
+            "cpu_contract_rtl": rel(CPU_CONTRACT_RTL),
+            "cpu_legacy_alias_rtl": rel(CPU_LEGACY_ALIAS_RTL),
+            "cpu_source_lists": [rel(path) for path in CPU_SOURCE_LISTS],
         },
         "required_transcripts": transcript_paths,
         "missing_transcripts": evidence["missing_transcripts"],
@@ -426,6 +477,7 @@ def build_report() -> dict[str, Any]:
 def validate_report(data: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     require(data.get("schema") == "eliza.cpu_ap_scope.v1", "schema mismatch", errors)
+    require(isinstance(data.get("generated_utc"), str), "generated_utc missing", errors)
     require(
         data.get("status") in {"pass", "cpu_ap_scope_release_blocked"},
         "status must be pass or cpu_ap_scope_release_blocked",
@@ -522,8 +574,22 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             "command_wiring",
             "completion_gate",
             "evidence_checker",
+            "cpu_contract_rtl",
+            "cpu_legacy_alias_rtl",
+            "cpu_source_lists",
         ):
-            require(isinstance(scaffolds.get(key), str), f"current_scaffolds missing {key}", errors)
+            if key == "cpu_source_lists":
+                require(
+                    isinstance(scaffolds.get(key), list) and bool(scaffolds.get(key)),
+                    f"current_scaffolds missing {key}",
+                    errors,
+                )
+            else:
+                require(
+                    isinstance(scaffolds.get(key), str),
+                    f"current_scaffolds missing {key}",
+                    errors,
+                )
     return errors
 
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 MODE="${1:---check}"
 JOB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BRAX_MJX_STEPS="${BRAX_MJX_STEPS:-100}"
+BRAX_MJX_STEPS="${BRAX_MJX_STEPS:-150000000}"
 BRAX_MJX_NUM_ENVS="${BRAX_MJX_NUM_ENVS:-}"
 BRAX_MJX_NUM_EVALS="${BRAX_MJX_NUM_EVALS:-}"
 BRAX_MJX_EVAL_EPISODES="${BRAX_MJX_EVAL_EPISODES:-5}"
@@ -15,7 +15,7 @@ if [[ "$MODE" == "--check" || "$MODE" == "check" ]]; then
   uv run python scripts/run_asimov1_full_training.py --job-dir "$JOB_DIR" --check-only --require-ready
   echo 'ASIMOV-1 full-training package is valid and ready.'
 elif [[ "$MODE" == "--train" || "$MODE" == "train" ]]; then
-  if [[ "$BRAX_MJX_STEPS" != "100" ]]; then
+  if [[ "$BRAX_MJX_STEPS" != "150000000" ]]; then
     cp -n "$JOB_DIR/training_job.json" "$JOB_DIR/training_job.full_contract.json"
     uv run python - "$JOB_DIR/training_job.json" "$BRAX_MJX_STEPS" "$BRAX_MJX_NUM_ENVS" "$BRAX_MJX_NUM_EVALS" <<'PY'
 import json
@@ -71,7 +71,7 @@ PY
   unset CUDA_VISIBLE_DEVICES
   uv run python scripts/validate_asimov1_full_training_run.py "$JOB_DIR/full_training_run.json" --job-dir "$JOB_DIR"
   uv run python scripts/verify_brax_text_policy.py --ckpt "$JOB_DIR" --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25 --require-critic-obs-dim 86 --require-policy-obs-key state --require-value-obs-key privileged_state
-  # Production contract default: --min-steps 100
+  # Production contract default: --min-steps 150000000
   uv run python scripts/validate_asimov1_production_checkpoint.py "$JOB_DIR" --min-steps "$BRAX_MJX_STEPS" --require-inference-check
   if [[ "$BRAX_MJX_SKIP_ROLLOUT_EVAL" != "1" ]]; then
     mkdir -p evidence/curriculum_eval

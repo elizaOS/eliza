@@ -217,6 +217,31 @@ def test_aosp_linux_preflight_blocks_without_aosp_dir() -> None:
             PREFLIGHT_REPORT.write_bytes(saved)
 
 
+def test_aosp_linux_preflight_sanitizes_host_local_paths() -> None:
+    saved = PREFLIGHT_REPORT.read_bytes() if PREFLIGHT_REPORT.is_file() else None
+    try:
+        result = run(
+            [sys.executable, str(PREFLIGHT), "--json", "--write-report"],
+            {"AOSP_DIR": "/home/shaw/aosp"},
+        )
+        if result.returncode not in {0, 2}:
+            raise AssertionError(result.stdout)
+        data = json.loads(result.stdout)
+        encoded = json.dumps(data, sort_keys=True)
+        if "generated_utc" not in data:
+            raise AssertionError("AOSP Linux preflight must include generated_utc")
+        if "/home/shaw" in encoded:
+            raise AssertionError(encoded)
+        if "packages/chip/tools/bin/renode" not in encoded and "<host-path>/renode" not in encoded:
+            raise AssertionError(encoded)
+    finally:
+        if saved is None:
+            PREFLIGHT_REPORT.unlink(missing_ok=True)
+        else:
+            PREFLIGHT_REPORT.parent.mkdir(parents=True, exist_ok=True)
+            PREFLIGHT_REPORT.write_bytes(saved)
+
+
 def test_aosp_linux_preflight_reports_uninstalled_repo_launcher() -> None:
     saved = PREFLIGHT_REPORT.read_bytes() if PREFLIGHT_REPORT.is_file() else None
     try:
@@ -330,6 +355,7 @@ def main() -> int:
             test_checker_rejects_pass_without_required_aosp_evidence,
             test_boot_script_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_blocks_without_aosp_dir,
+            test_aosp_linux_preflight_sanitizes_host_local_paths,
             test_aosp_linux_preflight_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_allows_existing_checkout_without_repo,
             test_riscv64_aosp_overlay_materializes_files_not_host_symlinks,

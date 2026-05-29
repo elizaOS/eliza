@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +179,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.e1_npu_linux_smoke_source.v1",
         "status": "fail" if problems else ("blocked" if blockers else "pass"),
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": "source wiring plus explicit target transcript gate; not NNAPI or hardware benchmark proof",
         "sources": {
             "smoke": rel(SMOKE),

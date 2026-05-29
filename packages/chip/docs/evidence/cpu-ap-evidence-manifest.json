@@ -1,8 +1,222 @@
 {
-  "schema_version": 1,
+  "capture_helper": "scripts/capture_cpu_ap_evidence.py",
   "claim_boundary": "generated_chipyard_artifacts_and_external_transcripts_only",
   "completion_claim": "blocked_until_all_required_artifacts_and_evidence_pass",
+  "generated_artifacts": {
+    "dts": {
+      "claim": "Generated DTS matching the AP integration being booted.",
+      "kind": "file",
+      "manifest_key": "dts",
+      "min_bytes": 512,
+      "path": "build/chipyard/eliza_rocket/eliza-e1.dts",
+      "required_strings": [
+        "/dts-v1/",
+        "cpus",
+        "memory",
+        "interrupt-controller",
+        "serial"
+      ],
+      "sha256_key": "dts_sha256"
+    },
+    "generated_src": {
+      "claim": "Recursive generated source tree from the pinned Chipyard checkout.",
+      "kind": "directory",
+      "manifest_key": "generated_src",
+      "path": "build/chipyard/eliza_rocket/generated-src",
+      "sha256_key": "generated_src_tree_sha256"
+    },
+    "simulator": {
+      "claim": "Simulator or simulator run directory built from the pinned generated AP.",
+      "kind": "file_or_directory",
+      "manifest_key": "simulator",
+      "path": "build/chipyard/eliza_rocket/simulator",
+      "requires_executable": true,
+      "sha256_key": "simulator_sha256"
+    },
+    "verilog": {
+      "claim": "Generated Rocket RV64GC AP wrapper Verilog.",
+      "kind": "file",
+      "manifest_key": "verilog",
+      "min_bytes": 1024,
+      "path": "build/chipyard/eliza_rocket/eliza_rocket_ap.v",
+      "required_strings": [
+        "module eliza_rocket_ap"
+      ],
+      "sha256_key": "verilog_sha256"
+    }
+  },
+  "generated_manifest": "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",
+  "generated_utc": "2026-05-28T20:06:56Z",
+  "linux_capable_gate_matrix": [
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
+      "fail_if": [
+        "missing generated AP transcript",
+        "qemu-virt software reference only",
+        "placeholder transcript"
+      ],
+      "gate": "rv64gc_isa",
+      "pass_requires": [
+        "ISA profile",
+        "RV64GC",
+        "misa",
+        "Zicsr",
+        "Zifencei"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
+      "fail_if": [
+        "missing CSR/trap transcript",
+        "M-mode only transcript",
+        "placeholder transcript"
+      ],
+      "gate": "s_mode_privilege",
+      "pass_requires": [
+        "mstatus",
+        "medeleg",
+        "mideleg",
+        "satp",
+        "sret"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
+      "fail_if": [
+        "missing MMU transcript",
+        "bare-metal only transcript",
+        "placeholder transcript"
+      ],
+      "gate": "mmu_sv39_or_stronger",
+      "pass_requires": [
+        "Sv39",
+        "satp",
+        "TLB",
+        "page table",
+        "Linux CONFIG_MMU: CONFIG_MMU=y"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log",
+      "fail_if": [
+        "missing CLINT/ACLINT transcript",
+        "polling-only timer",
+        "placeholder transcript"
+      ],
+      "gate": "clint_timer_software_irq",
+      "pass_requires": [
+        "mtime",
+        "mtimecmp",
+        "msip",
+        "timer interrupt",
+        "software interrupt"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log",
+      "fail_if": [
+        "missing external IRQ transcript",
+        "no claim/complete evidence",
+        "placeholder transcript"
+      ],
+      "gate": "plic_external_irq",
+      "pass_requires": [
+        "PLIC",
+        "external interrupt claim/complete",
+        "interrupt-controller node"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+      "fail_if": [
+        "missing serial transcript",
+        "disabled UART node",
+        "placeholder transcript"
+      ],
+      "gate": "uart_console",
+      "pass_requires": [
+        "UART console",
+        "Linux early console",
+        "UART node"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/chipyard/eliza_rocket/eliza-e1.dts",
+      "fail_if": [
+        "missing generated DTS",
+        "DTS does not compile",
+        "DTS missing boot nodes"
+      ],
+      "gate": "dtb_linux_boot_contract",
+      "pass_requires": [
+        "CPU node",
+        "memory node",
+        "timer node",
+        "interrupt-controller node",
+        "UART node",
+        "chosen stdout"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
+      "fail_if": [
+        "missing OpenSBI transcript",
+        "no next-stage handoff",
+        "placeholder transcript"
+      ],
+      "gate": "opensbi_handoff",
+      "pass_requires": [
+        "OpenSBI next-stage handoff",
+        "DRAM base",
+        "timer source",
+        "interrupt controller"
+      ],
+      "status": "blocked"
+    },
+    {
+      "evidence": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+      "fail_if": [
+        "missing Linux transcript",
+        "kernel panic before initramfs",
+        "placeholder transcript"
+      ],
+      "gate": "linux_initramfs_smoke",
+      "pass_requires": [
+        "Linux early console",
+        "initramfs start",
+        "e1 MMIO smoke result"
+      ],
+      "status": "blocked"
+    }
+  ],
+  "qemu_reference_evidence": {
+    "allowed_results": [
+      "BLOCKED",
+      "FAIL",
+      "PASS"
+    ],
+    "attempt_log": "build/reports/qemu_os_boot_attempt.log",
+    "capture_command": "scripts/run_qemu.sh --check-os",
+    "claim_limit": "QEMU virt may exercise software payloads but cannot satisfy generated Chipyard/Rocket AP evidence gates.",
+    "status": "software_reference_only_not_linux_capable_cpu_evidence"
+  },
+  "schema_version": 1,
+  "selected_manifest": "generators/chipyard/eliza-rocket-manifest.json",
   "target_policy": {
+    "forbidden_without_evidence": [
+      "phone-class AP",
+      "2028 phone competitive",
+      "Android compatible",
+      "production silicon",
+      "Linux-capable e1 chip hardware"
+    ],
     "initial_linux_bringup_claim": "single_hart_rocket_rv64gc_linux_smoke_only",
     "phone_2028_ap_claim": "blocked_until_phone_class_artifacts_and_evidence_pass",
     "phone_2028_claim_requires": [
@@ -14,430 +228,75 @@
       "power_thermal_voltage_frequency_evidence",
       "process_14a_corner_benchmark_derate_evidence",
       "android_cts_vts_and_userspace_evidence"
-    ],
-    "forbidden_without_evidence": [
-      "phone-class AP",
-      "2028 phone competitive",
-      "Android compatible",
-      "production silicon",
-      "Linux-capable e1 chip hardware"
     ]
   },
-  "selected_manifest": "generators/chipyard/eliza-rocket-manifest.json",
-  "generated_manifest": "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",
-  "capture_helper": "scripts/capture_cpu_ap_evidence.py",
-  "linux_capable_gate_matrix": [
-    {
-      "gate": "rv64gc_isa",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-      "pass_requires": ["ISA profile", "RV64GC", "misa", "Zicsr", "Zifencei"],
-      "fail_if": [
-        "missing generated AP transcript",
-        "qemu-virt software reference only",
-        "placeholder transcript"
-      ]
-    },
-    {
-      "gate": "s_mode_privilege",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
-      "pass_requires": ["mstatus", "medeleg", "mideleg", "satp", "sret"],
-      "fail_if": [
-        "missing CSR/trap transcript",
-        "M-mode only transcript",
-        "placeholder transcript"
-      ]
-    },
-    {
-      "gate": "mmu_sv39_or_stronger",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-      "pass_requires": [
-        "Sv39",
-        "satp",
-        "TLB",
-        "page table",
-        "Linux CONFIG_MMU: CONFIG_MMU=y"
-      ],
-      "fail_if": [
-        "missing MMU transcript",
-        "bare-metal only transcript",
-        "placeholder transcript"
-      ]
-    },
-    {
-      "gate": "clint_timer_software_irq",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log",
-      "pass_requires": [
-        "mtime",
-        "mtimecmp",
-        "msip",
-        "timer interrupt",
-        "software interrupt"
-      ],
-      "fail_if": [
-        "missing CLINT/ACLINT transcript",
-        "polling-only timer",
-        "placeholder transcript"
-      ]
-    },
-    {
-      "gate": "plic_external_irq",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log",
-      "pass_requires": [
-        "PLIC",
-        "external interrupt claim/complete",
-        "interrupt-controller node"
-      ],
-      "fail_if": [
-        "missing external IRQ transcript",
-        "no claim/complete evidence",
-        "placeholder transcript"
-      ]
-    },
-    {
-      "gate": "uart_console",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
-      "pass_requires": ["UART console", "Linux early console", "UART node"],
-      "fail_if": [
-        "missing serial transcript",
-        "disabled UART node",
-        "placeholder transcript"
-      ]
-    },
-    {
-      "gate": "dtb_linux_boot_contract",
-      "status": "blocked",
-      "evidence": "build/chipyard/eliza_rocket/eliza-e1.dts",
-      "pass_requires": [
-        "CPU node",
-        "memory node",
-        "timer node",
-        "interrupt-controller node",
-        "UART node",
-        "chosen stdout"
-      ],
-      "fail_if": [
-        "missing generated DTS",
-        "DTS does not compile",
-        "DTS missing boot nodes"
-      ]
-    },
-    {
-      "gate": "opensbi_handoff",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
-      "pass_requires": [
-        "OpenSBI next-stage handoff",
-        "DRAM base",
-        "timer source",
-        "interrupt controller"
-      ],
-      "fail_if": [
-        "missing OpenSBI transcript",
-        "no next-stage handoff",
-        "placeholder transcript"
-      ]
-    },
-    {
-      "gate": "linux_initramfs_smoke",
-      "status": "blocked",
-      "evidence": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
-      "pass_requires": [
-        "Linux early console",
-        "initramfs start",
-        "e1 MMIO smoke result"
-      ],
-      "fail_if": [
-        "missing Linux transcript",
-        "kernel panic before initramfs",
-        "placeholder transcript"
-      ]
-    }
-  ],
-  "qemu_reference_evidence": {
-    "status": "software_reference_only_not_linux_capable_cpu_evidence",
-    "attempt_log": "build/reports/qemu_os_boot_attempt.log",
-    "capture_command": "scripts/run_qemu.sh --check-os",
-    "allowed_results": ["BLOCKED", "FAIL", "PASS"],
-    "claim_limit": "QEMU virt may exercise software payloads but cannot satisfy generated Chipyard/Rocket AP evidence gates."
-  },
-  "generated_artifacts": {
-    "generated_src": {
-      "path": "build/chipyard/eliza_rocket/generated-src",
-      "manifest_key": "generated_src",
-      "sha256_key": "generated_src_tree_sha256",
-      "kind": "directory",
-      "claim": "Recursive generated source tree from the pinned Chipyard checkout."
-    },
-    "verilog": {
-      "path": "build/chipyard/eliza_rocket/eliza_rocket_ap.v",
-      "manifest_key": "verilog",
-      "sha256_key": "verilog_sha256",
-      "kind": "file",
-      "min_bytes": 1024,
-      "required_strings": ["module eliza_rocket_ap"],
-      "claim": "Generated Rocket RV64GC AP wrapper Verilog."
-    },
-    "dts": {
-      "path": "build/chipyard/eliza_rocket/eliza-e1.dts",
-      "manifest_key": "dts",
-      "sha256_key": "dts_sha256",
-      "kind": "file",
-      "min_bytes": 512,
-      "required_strings": [
-        "/dts-v1/",
-        "cpus",
-        "memory",
-        "interrupt-controller",
-        "serial"
-      ],
-      "claim": "Generated DTS matching the AP integration being booted."
-    },
-    "simulator": {
-      "path": "build/chipyard/eliza_rocket/simulator",
-      "manifest_key": "simulator",
-      "sha256_key": "simulator_sha256",
-      "kind": "file_or_directory",
-      "requires_executable": true,
-      "claim": "Simulator or simulator run directory built from the pinned generated AP."
-    }
-  },
   "transcripts": {
-    "opensbi_boot_log": {
-      "artifact": "OpenSBI AP boot transcript",
-      "path": "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
-      "manifest_key": "opensbi_boot_log",
-      "sha256_key": "opensbi_boot_log_sha256",
-      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake opensbi-boot --source /path/to/opensbi-serial.log --command '/exact/external/boot command'",
-      "min_bytes": 240,
-      "raw_required_strings": [
-        "OpenSBI v1.2",
-        "Platform Name",
-        "Platform Timer Device",
-        "Platform Console Device",
-        "Firmware Base",
-        "Runtime SBI Version",
-        "Domain0 Next Address",
-        "Domain0 Next Arg1",
-        "0x0000000080b00000",
-        "Domain0 Next Mode",
-        "Boot HART ID",
-        "Boot HART Base ISA"
-      ],
-      "raw_ordered_required_strings": [
-        "OpenSBI v1.2",
-        "Domain0 Next Address",
-        "Domain0 Next Arg1",
-        "0x0000000080b00000",
-        "Domain0 Next Mode"
-      ],
-      "required_strings": [
-        "eliza-evidence: target=cpu_ap artifact=eliza_e1_opensbi_boot",
-        "eliza-evidence: command=",
-        "eliza-evidence: generated_manifest=",
-        "OpenSBI v1.2",
-        "Platform Name",
-        "Platform Timer Device",
-        "Platform Console Device",
-        "Firmware Base",
-        "Runtime SBI Version",
-        "Domain0 Next Address",
-        "Domain0 Next Arg1",
-        "0x0000000080b00000",
-        "Domain0 Next Mode",
-        "Boot HART ID",
-        "Boot HART Base ISA",
-        "eliza-evidence: status=PASS"
-      ],
-      "ordered_required_strings": [
-        "OpenSBI v1.2",
-        "Domain0 Next Address",
-        "Domain0 Next Arg1",
-        "0x0000000080b00000",
-        "Domain0 Next Mode",
-        "eliza-evidence: status=PASS"
-      ],
-      "forbidden_strings": [
-        "software reference only",
-        "qemu-virt",
-        "no real transcript",
-        "diagnostic only",
-        "diagnostic-only",
-        "fallback",
-        "synthetic OpenSBI",
-        "fake OpenSBI",
-        "banner only"
-      ]
-    },
-    "linux_boot_log": {
-      "artifact": "Linux AP boot transcript",
-      "path": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
-      "manifest_key": "linux_boot_log",
-      "sha256_key": "linux_boot_log_sha256",
-      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake linux-boot --source /path/to/linux-serial.log --command '/exact/external/boot command'",
-      "min_bytes": 240,
-      "raw_required_strings": [
-        "OpenSBI",
-        "Linux version",
-        "Linux early console",
-        "generated DTS hash",
-        "memory node",
-        "CPU node",
-        "timer node",
-        "interrupt-controller node",
-        "UART node",
-        "chosen stdout",
-        "Linux CONFIG_MMU: CONFIG_MMU=y",
-        "initramfs start",
-        "riscv_hwprobe: syscall rc=0",
-        "riscv_hwprobe: key=mvendorid",
-        "riscv_hwprobe: key=marchid",
-        "riscv_hwprobe: key=ima_ext_0",
-        "e1-npu-ml-smoke: PASS",
-        "device=/dev/e1-npu",
-        "require_npu=true",
-        "CPU fallback percent=0",
-        "e1 MMIO smoke result: PASS"
-      ],
-      "at_least_one": [
-        [
-          "Kernel command line:",
-          "Forcing kernel command line to:"
-        ]
-      ],
-      "raw_ordered_required_strings": [
-        "Linux early console",
-        "Linux CONFIG_MMU: CONFIG_MMU=y",
-        "Run /init as init process",
-        "initramfs start",
-        "riscv_hwprobe: syscall rc=0",
-        "riscv_hwprobe: key=mvendorid",
-        "riscv_hwprobe: key=marchid",
-        "riscv_hwprobe: key=ima_ext_0",
-        "e1-npu-ml-smoke: PASS",
-        "device=/dev/e1-npu",
-        "CPU fallback percent=0",
-        "e1 MMIO smoke result: PASS"
-      ],
-      "required_strings": [
-        "eliza-evidence: target=cpu_ap artifact=eliza_e1_linux_boot",
-        "eliza-evidence: command=",
-        "eliza-evidence: generated_manifest=",
-        "Linux early console",
-        "generated DTS hash",
-        "memory node",
-        "CPU node",
-        "timer node",
-        "interrupt-controller node",
-        "UART node",
-        "chosen stdout",
-        "Linux CONFIG_MMU: CONFIG_MMU=y",
-        "initramfs start",
-        "riscv_hwprobe: syscall rc=0",
-        "riscv_hwprobe: key=mvendorid",
-        "riscv_hwprobe: key=marchid",
-        "riscv_hwprobe: key=ima_ext_0",
-        "e1-npu-ml-smoke: PASS",
-        "device=/dev/e1-npu",
-        "require_npu=true",
-        "CPU fallback percent=0",
-        "e1 MMIO smoke result: PASS",
-        "eliza-evidence: status=PASS"
-      ],
-      "ordered_required_strings": [
-        "Linux early console",
-        "Linux CONFIG_MMU: CONFIG_MMU=y",
-        "Run /init as init process",
-        "initramfs start",
-        "riscv_hwprobe: syscall rc=0",
-        "riscv_hwprobe: key=mvendorid",
-        "riscv_hwprobe: key=marchid",
-        "riscv_hwprobe: key=ima_ext_0",
-        "e1-npu-ml-smoke: PASS",
-        "device=/dev/e1-npu",
-        "CPU fallback percent=0",
-        "e1 MMIO smoke result: PASS",
-        "eliza-evidence: status=PASS"
-      ],
-      "forbidden_strings": [
-        "software reference only",
-        "qemu-virt",
-        "no real transcript",
-        "Kernel panic",
-        "panic - not syncing",
-        "Oops",
-        "riscv_hwprobe: FAIL",
-        "e1-mmio-smoke: FAIL",
-        "e1-npu-ml-smoke: FAIL",
-        "CPU-only fallback rejected",
-        "device=/dev/mem generated-mmio",
-        "eliza-k",
-        "ignore_loglevel",
-        "initcall_debug",
-        "eliza-evidence: kernel_panic=1"
-      ]
-    },
-    "trap_timer_irq_log": {
-      "artifact": "Trap, timer, and interrupt transcript",
-      "path": "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log",
-      "manifest_key": "trap_timer_irq_log",
-      "sha256_key": "trap_timer_irq_log_sha256",
-      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake trap-timer-irq --source /path/to/trap-timer-irq.log --command '/exact/external/test command'",
-      "min_bytes": 240,
-      "raw_required_strings": [
-        "mcause",
-        "mepc",
-        "mtval",
-        "access-fault",
-        "mtime",
-        "mtimecmp",
-        "msip",
-        "timer interrupt",
-        "software interrupt",
-        "PLIC",
-        "interrupt-controller node",
-        "external interrupt claim/complete",
-        "mret",
-        "sret"
-      ],
-      "required_strings": [
-        "eliza-evidence: target=cpu_ap artifact=eliza_e1_trap_timer_irq",
-        "eliza-evidence: command=",
-        "eliza-evidence: generated_manifest=",
-        "mcause",
-        "mepc",
-        "mtval",
-        "access-fault",
-        "mtime",
-        "mtimecmp",
-        "msip",
-        "timer interrupt",
-        "software interrupt",
-        "PLIC",
-        "interrupt-controller node",
-        "external interrupt claim/complete",
-        "mret",
-        "sret",
-        "eliza-evidence: status=PASS"
-      ],
+    "ap_benchmark_log": {
+      "artifact": "CPU/AP benchmark transcript",
+      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake ap-benchmarks --source /path/to/ap-benchmarks.log --command '/exact/external/benchmark command'",
       "forbidden_strings": [
         "software reference only",
         "qemu-virt",
         "no real transcript"
-      ]
+      ],
+      "manifest_key": "ap_benchmark_log",
+      "min_bytes": 240,
+      "path": "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log",
+      "raw_required_strings": [
+        "claim_level=L3",
+        "benchmark report sha256",
+        "CoreMark/MHz",
+        "STREAM Triad",
+        "lat_mem_rd",
+        "fio",
+        "cpu frequency",
+        "run count",
+        "thermal state",
+        "power method",
+        "process effects contract",
+        "process corner count",
+        "worst process corner",
+        "frequency derate",
+        "pdk signoff claim=none",
+        "STATUS: PASS chipyard.verilator_ap_benchmarks"
+      ],
+      "required_strings": [
+        "eliza-evidence: target=cpu_ap artifact=eliza_e1_ap_benchmarks",
+        "eliza-evidence: command=",
+        "eliza-evidence: generated_manifest=",
+        "claim_level=L3",
+        "benchmark report sha256",
+        "CoreMark/MHz",
+        "STREAM Triad",
+        "lat_mem_rd",
+        "fio",
+        "cpu frequency",
+        "run count",
+        "thermal state",
+        "power method",
+        "process effects contract",
+        "process corner count",
+        "worst process corner",
+        "frequency derate",
+        "pdk signoff claim=none",
+        "STATUS: PASS chipyard.verilator_ap_benchmarks",
+        "eliza-evidence: status=PASS"
+      ],
+      "sha256_key": "ap_benchmark_log_sha256"
     },
     "isa_cache_mmu_log": {
       "artifact": "ISA, cache, coherency, and MMU transcript",
-      "path": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-      "manifest_key": "isa_cache_mmu_log",
-      "sha256_key": "isa_cache_mmu_log_sha256",
       "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake isa-cache-mmu --source /path/to/isa-cache-mmu.log --command '/exact/external/isa-cache-mmu command'",
+      "forbidden_strings": [
+        "software reference only",
+        "qemu-virt",
+        "no real transcript",
+        "riscv_hwprobe: FAIL",
+        "Linux hwprobe syscall: not executed by this M-mode bare-metal generated-AP probe"
+      ],
+      "manifest_key": "isa_cache_mmu_log",
       "min_bytes": 240,
+      "path": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
       "raw_required_strings": [
         "ISA profile",
         "RV64GC",
@@ -482,66 +341,230 @@
         "page table",
         "eliza-evidence: status=PASS"
       ],
+      "sha256_key": "isa_cache_mmu_log_sha256"
+    },
+    "linux_boot_log": {
+      "artifact": "Linux AP boot transcript",
+      "at_least_one": [
+        [
+          "Kernel command line:",
+          "Forcing kernel command line to:"
+        ]
+      ],
+      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake linux-boot --source /path/to/linux-serial.log --command '/exact/external/boot command'",
       "forbidden_strings": [
         "software reference only",
         "qemu-virt",
         "no real transcript",
+        "Kernel panic",
+        "panic - not syncing",
+        "Oops",
         "riscv_hwprobe: FAIL",
-        "Linux hwprobe syscall: not executed by this M-mode bare-metal generated-AP probe"
-      ]
-    },
-    "ap_benchmark_log": {
-      "artifact": "CPU/AP benchmark transcript",
-      "path": "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log",
-      "manifest_key": "ap_benchmark_log",
-      "sha256_key": "ap_benchmark_log_sha256",
-      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake ap-benchmarks --source /path/to/ap-benchmarks.log --command '/exact/external/benchmark command'",
-      "min_bytes": 240,
-      "raw_required_strings": [
-        "claim_level=L3",
-        "benchmark report sha256",
-        "CoreMark/MHz",
-        "STREAM Triad",
-        "lat_mem_rd",
-        "fio",
-        "cpu frequency",
-        "run count",
-        "thermal state",
-        "power method",
-        "process effects contract",
-        "process corner count",
-        "worst process corner",
-        "frequency derate",
-        "pdk signoff claim=none",
-        "STATUS: PASS chipyard.verilator_ap_benchmarks"
+        "e1-mmio-smoke: FAIL",
+        "e1-npu-ml-smoke: FAIL",
+        "CPU-only fallback rejected",
+        "device=/dev/mem generated-mmio",
+        "eliza-k",
+        "ignore_loglevel",
+        "initcall_debug",
+        "eliza-evidence: kernel_panic=1"
       ],
-      "required_strings": [
-        "eliza-evidence: target=cpu_ap artifact=eliza_e1_ap_benchmarks",
-        "eliza-evidence: command=",
-        "eliza-evidence: generated_manifest=",
-        "claim_level=L3",
-        "benchmark report sha256",
-        "CoreMark/MHz",
-        "STREAM Triad",
-        "lat_mem_rd",
-        "fio",
-        "cpu frequency",
-        "run count",
-        "thermal state",
-        "power method",
-        "process effects contract",
-        "process corner count",
-        "worst process corner",
-        "frequency derate",
-        "pdk signoff claim=none",
-        "STATUS: PASS chipyard.verilator_ap_benchmarks",
+      "manifest_key": "linux_boot_log",
+      "min_bytes": 240,
+      "ordered_required_strings": [
+        "Linux early console",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "Run /init as init process",
+        "initramfs start",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS",
         "eliza-evidence: status=PASS"
       ],
+      "path": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+      "raw_ordered_required_strings": [
+        "Linux early console",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "Run /init as init process",
+        "initramfs start",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS"
+      ],
+      "raw_required_strings": [
+        "OpenSBI",
+        "Linux version",
+        "Linux early console",
+        "generated DTS hash",
+        "memory node",
+        "CPU node",
+        "timer node",
+        "interrupt-controller node",
+        "UART node",
+        "chosen stdout",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "initramfs start",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "require_npu=true",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS"
+      ],
+      "required_strings": [
+        "eliza-evidence: target=cpu_ap artifact=eliza_e1_linux_boot",
+        "eliza-evidence: command=",
+        "eliza-evidence: generated_manifest=",
+        "Linux early console",
+        "generated DTS hash",
+        "memory node",
+        "CPU node",
+        "timer node",
+        "interrupt-controller node",
+        "UART node",
+        "chosen stdout",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "initramfs start",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "require_npu=true",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS",
+        "eliza-evidence: status=PASS"
+      ],
+      "sha256_key": "linux_boot_log_sha256"
+    },
+    "opensbi_boot_log": {
+      "artifact": "OpenSBI AP boot transcript",
+      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake opensbi-boot --source /path/to/opensbi-serial.log --command '/exact/external/boot command'",
+      "forbidden_strings": [
+        "software reference only",
+        "qemu-virt",
+        "no real transcript",
+        "diagnostic only",
+        "diagnostic-only",
+        "fallback",
+        "synthetic OpenSBI",
+        "fake OpenSBI",
+        "banner only"
+      ],
+      "manifest_key": "opensbi_boot_log",
+      "min_bytes": 240,
+      "ordered_required_strings": [
+        "OpenSBI v1.2",
+        "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
+        "Domain0 Next Mode",
+        "eliza-evidence: status=PASS"
+      ],
+      "path": "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
+      "raw_ordered_required_strings": [
+        "OpenSBI v1.2",
+        "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
+        "Domain0 Next Mode"
+      ],
+      "raw_required_strings": [
+        "OpenSBI v1.2",
+        "Platform Name",
+        "Platform Timer Device",
+        "Platform Console Device",
+        "Firmware Base",
+        "Runtime SBI Version",
+        "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
+        "Domain0 Next Mode",
+        "Boot HART ID",
+        "Boot HART Base ISA"
+      ],
+      "required_strings": [
+        "eliza-evidence: target=cpu_ap artifact=eliza_e1_opensbi_boot",
+        "eliza-evidence: command=",
+        "eliza-evidence: generated_manifest=",
+        "OpenSBI v1.2",
+        "Platform Name",
+        "Platform Timer Device",
+        "Platform Console Device",
+        "Firmware Base",
+        "Runtime SBI Version",
+        "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
+        "Domain0 Next Mode",
+        "Boot HART ID",
+        "Boot HART Base ISA",
+        "eliza-evidence: status=PASS"
+      ],
+      "sha256_key": "opensbi_boot_log_sha256"
+    },
+    "trap_timer_irq_log": {
+      "artifact": "Trap, timer, and interrupt transcript",
+      "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake trap-timer-irq --source /path/to/trap-timer-irq.log --command '/exact/external/test command'",
       "forbidden_strings": [
         "software reference only",
         "qemu-virt",
         "no real transcript"
-      ]
+      ],
+      "manifest_key": "trap_timer_irq_log",
+      "min_bytes": 240,
+      "path": "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log",
+      "raw_required_strings": [
+        "mcause",
+        "mepc",
+        "mtval",
+        "access-fault",
+        "mtime",
+        "mtimecmp",
+        "msip",
+        "timer interrupt",
+        "software interrupt",
+        "PLIC",
+        "interrupt-controller node",
+        "external interrupt claim/complete",
+        "mret",
+        "sret"
+      ],
+      "required_strings": [
+        "eliza-evidence: target=cpu_ap artifact=eliza_e1_trap_timer_irq",
+        "eliza-evidence: command=",
+        "eliza-evidence: generated_manifest=",
+        "mcause",
+        "mepc",
+        "mtval",
+        "access-fault",
+        "mtime",
+        "mtimecmp",
+        "msip",
+        "timer interrupt",
+        "software interrupt",
+        "PLIC",
+        "interrupt-controller node",
+        "external interrupt claim/complete",
+        "mret",
+        "sret",
+        "eliza-evidence: status=PASS"
+      ],
+      "sha256_key": "trap_timer_irq_log_sha256"
     }
   }
 }

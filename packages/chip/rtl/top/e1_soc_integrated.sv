@@ -423,6 +423,11 @@ module e1_soc_integrated
     // client request through the line shim and CHI bridge so the cocotb
     // integration test can exercise the CHI→AXI4 path.
     logic slc_sel;
+    // Power-management datapath control/telemetry @ 0x1009_0000 (4 KiB).
+    // MMIO-writable per-rail enables for the adaptive-clocking/AVFS/dLDO loop
+    // (e1_power_datapath) and read-only mirrors of its droop/AVFS/dLDO
+    // observability, alongside the PMC mailbox at 0x1005_0000.
+    logic pwr_sel;
     logic word_aligned;
     logic implemented_window;
 
@@ -457,6 +462,7 @@ module e1_soc_integrated
     assign iommu_sel   = word_aligned && mmio_addr[31:12] == 20'h1006_0;
     assign iommu_dma_sel = implemented_window && mmio_addr[31:12] == 20'h1007_0;
     assign slc_sel     = implemented_window && mmio_addr[31:12] == 20'h1008_0;
+    assign pwr_sel     = word_aligned && mmio_addr[31:12] == 20'h1009_0;
 
     assign mtip_o = clint_mtime >= clint_mtimecmp;
 
@@ -3040,7 +3046,136 @@ module e1_soc_integrated
     /* verilator lint_on UNUSEDSIGNAL */
 
     // ----------------------------------------------------------------------
-    // PMC (Ibex on AON) + droop / AVFS tied to safe defaults.
+    // Adaptive-clocking / AVFS / dLDO power-delivery datapath.
+    // e1_power_datapath instantiates the per-rail closed loop (droop_sensor +
+    // clock_stretcher + avfs_ctrl + dldo) and feeds the real droop/AVFS
+    // telemetry into pmc_top, replacing the former constant-zero tie-offs. The
+    // per-rail loop enables are held in an MMIO-writable control register at
+    // 0x1009_0000 so a CPU/debug master can arm the loop and read back its
+    // droop/AVFS/dLDO observability.
+    // ----------------------------------------------------------------------
+    localparam int unsigned PWR_RAILS = DVFS_RAIL_COUNT;
+
+    logic [PWR_RAILS-1:0] pwr_droop_en_q;
+    logic [PWR_RAILS-1:0] pwr_avfs_en_q;
+    logic [PWR_RAILS-1:0] pwr_dldo_en_q;
+    logic [PWR_RAILS-1:0] pwr_stretch_en_q;
+
+    // Power-control register map (word offsets within the 0x1009_0000 window):
+    //   0x00  RAIL_ENABLE   [PWR_RAILS-1:0] per-rail loop enable (all blocks)
+    //   0x04  DROOP_ALARM   read-only droop_alarm bitmap
+    //   0x08  AVFS_CODE0    read-only rail-0 AVFS target code
+    //   0x0C  DLDO_REG      read-only dLDO regulating bitmap
+    //   0x10  DROOP_EVT0    read-only rail-0 droop event count
+    logic [31:0] pwr_ctrl_rdata;
+    logic        pwr_wr;
+    assign pwr_wr = mmio_valid && pwr_sel && mmio_write;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            pwr_droop_en_q   <= '0;
+            pwr_avfs_en_q    <= '0;
+            pwr_dldo_en_q    <= '0;
+            pwr_stretch_en_q <= '0;
+        end else if (pwr_wr && mmio_addr[7:2] == 6'h00) begin
+            // One write arms every block of the selected rails for the smoke
+            // and for PMC-firmware bring-up; per-block masking can be split
+            // into separate words when the firmware needs it.
+            pwr_droop_en_q   <= mmio_wdata[PWR_RAILS-1:0];
+            pwr_avfs_en_q    <= mmio_wdata[PWR_RAILS-1:0];
+            pwr_dldo_en_q    <= mmio_wdata[PWR_RAILS-1:0];
+            pwr_stretch_en_q <= mmio_wdata[PWR_RAILS-1:0];
+        end
+    end
+
+    // Analog-boundary inputs to the power datapath. In the digital SoC the RO
+    // clocks are rail clock taps and the rail clocks are the distributed grid;
+    // both are driven here from the available clock domains. Threshold / canary
+    // / Vout calibration values are planning-only defaults until silicon
+    // characterization (docs/pd/droop-detection.md); a fail-closed PD gate
+    // tracks that dependency.
+    logic [PWR_RAILS-1:0]                       pwr_ro_clk;
+    logic [PWR_RAILS-1:0]                       pwr_rail_clk;
+    logic [PWR_RAILS-1:0][DROOP_COUNTER_WIDTH-1:0] pwr_threshold;
+    logic [PWR_RAILS-1:0][AVFS_CANARY_COUNT-1:0]   pwr_canary_low;
+    logic [PWR_RAILS-1:0][AVFS_CANARY_COUNT-1:0]   pwr_canary_high;
+    logic [PWR_RAILS-1:0][DVFS_CODE_WIDTH-1:0]     pwr_vout_sample;
+    logic [PWR_RAILS-1:0]                       pwr_load_step;
+
+    genvar pr;
+    generate
+        for (pr = 0; pr < int'(PWR_RAILS); pr++) begin : gen_pwr_in
+            assign pwr_ro_clk[pr]    = clk_sample;
+            assign pwr_rail_clk[pr]  = clk;
+            assign pwr_threshold[pr] = DROOP_COUNTER_WIDTH'(DROOP_DEFAULT_THRESHOLD);
+            assign pwr_canary_low[pr]  = '0;   // canary replica margins (no low margin alarms)
+            assign pwr_canary_high[pr] = '1;   // healthy high margin -> AVFS may lower
+            assign pwr_vout_sample[pr] = DVFS_CODE_WIDTH'(8'h80);
+            assign pwr_load_step[pr]   = 1'b0;
+        end
+    endgenerate
+
+    logic [PWR_RAILS-1:0]                    pwr_droop_alarm;
+    logic [PWR_RAILS-1:0][31:0]              pwr_droop_event_count;
+    logic [PWR_RAILS-1:0][DVFS_CODE_WIDTH-1:0] pwr_avfs_target_code;
+    logic [PWR_RAILS-1:0][31:0]              pwr_avfs_raise_count;
+    logic [PWR_RAILS-1:0][31:0]              pwr_avfs_lower_count;
+    logic [PWR_RAILS-1:0]                    pwr_avfs_fault;
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [PWR_RAILS-1:0]                    pwr_stretched_clk;
+    logic [PWR_RAILS-1:0]                    pwr_stretch_active;
+    logic [PWR_RAILS-1:0][31:0]              pwr_stretch_event_count;
+    /* verilator lint_on UNUSEDSIGNAL */
+    logic [PWR_RAILS-1:0]                    pwr_dldo_regulating;
+
+    e1_power_datapath #(
+        .RAIL_COUNT (PWR_RAILS)
+    ) u_power_datapath (
+        .clk_sample            (clk_sample),
+        .rst_n                 (rst_n),
+        .droop_enable_i        (pwr_droop_en_q),
+        .avfs_enable_i         (pwr_avfs_en_q),
+        .dldo_enable_i         (pwr_dldo_en_q),
+        .clk_stretch_enable_i  (pwr_stretch_en_q),
+        .ro_clk_i              (pwr_ro_clk),
+        .rail_clk_i            (pwr_rail_clk),
+        .droop_threshold_i     (pwr_threshold),
+        .canary_margin_low_i   (pwr_canary_low),
+        .canary_margin_high_i  (pwr_canary_high),
+        .vout_sample_i         (pwr_vout_sample),
+        .load_step_i           (pwr_load_step),
+        .droop_alarm_o         (pwr_droop_alarm),
+        .droop_event_count_o   (pwr_droop_event_count),
+        .avfs_target_code_o    (pwr_avfs_target_code),
+        .avfs_raise_count_o    (pwr_avfs_raise_count),
+        .avfs_lower_count_o    (pwr_avfs_lower_count),
+        .avfs_fault_o          (pwr_avfs_fault),
+        .stretched_clk_o       (pwr_stretched_clk),
+        .stretch_active_o      (pwr_stretch_active),
+        .stretch_event_count_o (pwr_stretch_event_count),
+        .dldo_regulating_o     (pwr_dldo_regulating)
+    );
+
+    // Power-control read mux (observability mirrors).
+    always_comb begin
+        unique case (mmio_addr[7:2])
+            6'h00:   pwr_ctrl_rdata = {{(32-PWR_RAILS){1'b0}}, pwr_droop_en_q};
+            6'h01:   pwr_ctrl_rdata = {{(32-PWR_RAILS){1'b0}}, pwr_droop_alarm};
+            6'h02:   pwr_ctrl_rdata = {24'h0, pwr_avfs_target_code[0]};
+            6'h03:   pwr_ctrl_rdata = {{(32-PWR_RAILS){1'b0}}, pwr_dldo_regulating};
+            6'h04:   pwr_ctrl_rdata = pwr_droop_event_count[0];
+            default: pwr_ctrl_rdata = 32'h0;
+        endcase
+    end
+
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic unused_pwr_telemetry;
+    assign unused_pwr_telemetry = ^{pwr_stretched_clk, pwr_stretch_active,
+                                    pwr_stretch_event_count};
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    // ----------------------------------------------------------------------
+    // PMC (Ibex on AON) — telemetry now sourced from the real power datapath.
     // The mailbox is exposed via the MMIO aperture so a CPU master (or the
     // existing debug MMIO bridge) can post telemetry / DVFS requests.
     // ----------------------------------------------------------------------
@@ -3062,12 +3197,12 @@ module e1_soc_integrated
         .spmi_enable_o        (),
         .i2c_scl_io           (),
         .i2c_sda_io           (),
-        .droop_alarm_i        ('0),
-        .droop_event_count_i  ('0),
-        .avfs_target_code_i   ('0),
-        .avfs_raise_count_i   ('0),
-        .avfs_lower_count_i   ('0),
-        .avfs_fault_i         ('0),
+        .droop_alarm_i        (pwr_droop_alarm),
+        .droop_event_count_i  (pwr_droop_event_count),
+        .avfs_target_code_i   (pwr_avfs_target_code),
+        .avfs_raise_count_i   (pwr_avfs_raise_count),
+        .avfs_lower_count_i   (pwr_avfs_lower_count),
+        .avfs_fault_i         (pwr_avfs_fault),
         .dvfs_request_code_o  (),
         .dvfs_request_valid_o (),
         .pmic_enable_o        (),
@@ -3332,6 +3467,7 @@ module e1_soc_integrated
             display_sel:  mmio_rdata = display_rdata;
             wbuf_sel:     mmio_rdata = wbuf_rdata;
             pmc_sel:      mmio_rdata = pmc_mbox_rdata;
+            pwr_sel:      mmio_rdata = pwr_ctrl_rdata;
             iommu_sel:    mmio_rdata = iommu_aper_rdata;
             iommu_dma_sel:mmio_rdata = iommu_dma_rdata;
             slc_sel:      mmio_rdata = slc_aper_rdata;

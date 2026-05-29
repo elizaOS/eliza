@@ -10,6 +10,17 @@ elf="$out_dir/e1_secure_boot_rom.elf"
 bin="$out_dir/e1_secure_boot_rom.bin"
 hex="$out_dir/e1_secure_boot_rom.hex"
 
+for tool_dir in \
+    "$repo_dir/tools/bin" \
+    "$repo_dir/external/xpack-riscv-none-elf-gcc-15.2.0-1/bin" \
+    "$repo_dir/external/riscv64-linux-gnu/usr/bin"
+do
+    if [ -d "$tool_dir" ]; then
+        PATH="$tool_dir:$PATH"
+    fi
+done
+export PATH
+
 # Sources: the C reset entrypoint (reset.S) plus the full secure-boot ROM:
 # OPNPHN01 verifier, freestanding Ed25519 + SHA-256, measurement chain, and
 # freestanding memory primitives. reset.S calls into boot.c, which decides the

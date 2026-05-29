@@ -236,18 +236,16 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // WebView, not node-llama-cpp.
 const nativeStubs = {
   "@elizaos/app-core": path.join(stubsDir, "app-core-runtime.cjs"),
-  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that
-  // `packages/app-core/src/api/training-benchmarks.ts` imports at module
-  // top level. Bun 1.3.x on arm64-Android does not yet implement it, so
-  // the unstubbed import bombs on first agent boot:
+  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that Bun 1.3.x on
+  // arm64-Android does not yet implement, so an unstubbed reference bombs the
+  // bundle resolve:
   //   error: Could not resolve: "node:sqlite". Maybe you need to "bun install"?
-  //   at /data/data/<pkg>/files/agent/agent-bundle.js:NNNNN
-  // The benchmarks endpoint has no mobile use case — it reads + writes
-  // training-run JSONL from the desktop training pipeline. Swap the
-  // import for `empty.cjs` so the bundle still loads; route handlers
-  // that touch the missing API will return undefined-method errors
-  // through the existing connector-route error path, which is correct
-  // behaviour for a no-op surface on mobile.
+  // The local-inference voice caches (e.g.
+  // `plugins/plugin-local-inference/src/services/voice/first-line-cache.ts`)
+  // resolve it lazily and fall back when it's missing, so the on-disk SQLite
+  // caches simply stay disabled on mobile. Map it to `empty.cjs` so the bundle
+  // loads; the lazy resolver then sees no `DatabaseSync` export and degrades
+  // to its no-sqlite path, which is correct behaviour on mobile.
   "node:sqlite": path.join(stubsDir, "empty.cjs"),
   // `@node-rs/argon2` ships platform-specific native `.node` binaries. If left
   // unstubbed on a macOS build host, Bun emits `argon2.darwin-arm64...node`

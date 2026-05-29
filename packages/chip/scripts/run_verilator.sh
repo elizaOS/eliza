@@ -23,6 +23,7 @@ verilator -Wall -Wno-UNUSEDSIGNAL --cc --exe --build \
     "$repo_dir/rtl/top/e1_chip_top.sv" \
     "$repo_dir/rtl/clock/e1_reset_sync.sv" \
     "$repo_dir/rtl/debug/e1_dbg_mmio_bridge.sv" \
+    "$repo_dir/rtl/dft/e1_jtag_tap.sv" \
     "$repo_dir/rtl/top/e1_soc_top.sv" \
     "$repo_dir/rtl/bootrom/e1_bootrom.sv" \
     "$repo_dir/rtl/peripherals/e1_peripherals.sv" \
@@ -31,7 +32,10 @@ verilator -Wall -Wno-UNUSEDSIGNAL --cc --exe --build \
     "$repo_dir/rtl/display/e1_display.sv" \
     "$repo_dir/rtl/cpu/e1_cva6_wrapper.sv" \
     "$repo_dir/rtl/cpu/e1_cpu_axi_bridge.sv" \
+    "$repo_dir/rtl/cpu/e1_tiny_cpu_contract.sv" \
     "$repo_dir/rtl/cpu/e1_cpu_subsystem_stub.sv" \
+    "$repo_dir/rtl/interconnect/e1_axil_to_mmio.sv" \
+    "$repo_dir/rtl/interconnect/e1_mmio_arb2.sv" \
     "$repo_dir/rtl/interconnect/e1_axi_lite_interconnect.sv" \
     "$repo_dir/rtl/memory/e1_axi_lite_dram.sv" \
     "$repo_dir/rtl/memory/e1_weight_buffer_sram.sv" \
@@ -56,7 +60,10 @@ verilator -Wall -Wno-UNUSEDSIGNAL --cc --exe --build \
     "$repo_dir/rtl/display/e1_display.sv" \
     "$repo_dir/rtl/cpu/e1_cva6_wrapper.sv" \
     "$repo_dir/rtl/cpu/e1_cpu_axi_bridge.sv" \
+    "$repo_dir/rtl/cpu/e1_tiny_cpu_contract.sv" \
     "$repo_dir/rtl/cpu/e1_cpu_subsystem_stub.sv" \
+    "$repo_dir/rtl/interconnect/e1_axil_to_mmio.sv" \
+    "$repo_dir/rtl/interconnect/e1_mmio_arb2.sv" \
     "$repo_dir/rtl/interconnect/e1_axi_lite_interconnect.sv" \
     "$repo_dir/rtl/memory/e1_axi_lite_dram.sv" \
     "$repo_dir/rtl/memory/e1_weight_buffer_sram.sv" \

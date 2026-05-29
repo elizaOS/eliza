@@ -8,10 +8,13 @@
     "dir::../../rtl/top/e1_chip_top.sv",
     "dir::../../rtl/clock/e1_reset_sync.sv",
     "dir::../../rtl/debug/e1_dbg_mmio_bridge.sv",
+    "dir::../../rtl/dft/e1_jtag_tap.sv",
     "dir::../../rtl/top/e1_soc_top.sv",
     "dir::../../rtl/bootrom/e1_bootrom.sv",
     "dir::../../rtl/cpu/e1_cva6_wrapper.sv",
     "dir::../../rtl/cpu/e1_cpu_axi_bridge.sv",
+    "dir::../../rtl/interconnect/e1_axil_to_mmio.sv",
+    "dir::../../rtl/interconnect/e1_mmio_arb2.sv",
     "dir::../../rtl/peripherals/e1_peripherals.sv",
     "dir::../../rtl/peripherals/e1_mmio_decode.sv",
     "dir::../../rtl/peripherals/e1_clint.sv",
@@ -58,7 +61,10 @@
       ],
       "instances": {
         "u_soc.u_weight_buffer.u_sram": {
-          "location": [150, 150],
+          "location": [
+            150,
+            150
+          ],
           "orientation": "N"
         }
       }

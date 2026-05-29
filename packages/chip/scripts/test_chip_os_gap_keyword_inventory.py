@@ -34,6 +34,7 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 report = inv.build_report(["packages/chip/sw", "packages/app/android"])
 
         self.assertEqual(report["status"], "blocked")
+        self.assertIn("generated_utc", report)
         self.assertEqual(report["summary"]["findings"], 3)
         categories = report["summary"]["categories"]
         self.assertEqual(categories["todo"], 1)
@@ -83,6 +84,65 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
+
+    def test_test_fixtures_and_http_method_rejection_are_not_gaps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            test_source = repo / "packages/app/src/android-update-checker.test.ts"
+            test_source.parent.mkdir(parents=True)
+            test_source.write_text(
+                'vi.mock("@capacitor/app", () => ({}));\n'
+                "const placeholder = true;\n",
+                encoding="utf-8",
+            )
+            cpp_test = repo / "packages/chip/verify/verilator/test_npu_gemm.cpp"
+            cpp_test.parent.mkdir(parents=True)
+            cpp_test.write_text(
+                'printf("unsupported op in negative-path fixture\\n");\n',
+                encoding="utf-8",
+            )
+            service = (
+                repo
+                / "packages/app/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java"
+            )
+            service.parent.mkdir(parents=True)
+            service.write_text(
+                'throw new IllegalArgumentException("Unsupported HTTP method");\n',
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(
+                    [
+                        "packages/app/src",
+                        "packages/app/android/app/src/main",
+                        "packages/chip/verify",
+                    ]
+                )
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["findings"], 0)
+
+    def test_checker_diagnostics_are_classified_but_regular_todos_still_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            checker = repo / "packages/chip/scripts/check_runtime_gate.py"
+            checker.parent.mkdir(parents=True)
+            checker.write_text(
+                'raise SystemExit("runtime must remain blocked until evidence exists")\n'
+                'errors.append("placeholder evidence is rejected")\n'
+                'if "TBD" in payload:\n'
+                '    blockers.append("release blocker remains classified")\n'
+                "# TODO remove this real checker maintenance gap\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/scripts"])
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["summary"]["findings"], 1)
+        self.assertEqual(report["findings"][0]["marker"], "TODO")
 
     def test_default_roots_cover_os_forks_and_launcher_agent_sources(self) -> None:
         expected = {

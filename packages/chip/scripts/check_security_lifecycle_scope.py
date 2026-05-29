@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -190,6 +191,7 @@ def build_report() -> dict[str, Any]:
     return {
         "schema": "eliza.security_lifecycle_scope.v1",
         "status": "security_lifecycle_scope_release_blocked",
+        "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": (
             "Security lifecycle scope audit only; not secure boot, not verified boot, "
             "not rollback protection, not debug lock, not production OTP, not KeyMint, "

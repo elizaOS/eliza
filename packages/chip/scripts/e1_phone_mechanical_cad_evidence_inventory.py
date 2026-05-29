@@ -10,6 +10,7 @@ the enclosure can be treated as release-ready.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
@@ -23,8 +24,14 @@ MECH_DIR = CHIP_ROOT / "mechanical/e1-phone"
 OUT_DIR = MECH_DIR / "out"
 REVIEW_DIR = MECH_DIR / "review"
 DEFAULT_REPORT = REVIEW_DIR / "mechanical-cad-evidence-inventory-2026-05-22.yaml"
+SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL = (
+    REVIEW_DIR / "supplier-step-surrogate-intake-detail.json"
+)
 COMPONENT_MODEL_DIR_MANIFEST = (
     CHIP_ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+)
+CANDIDATE_MANIFEST = (
+    CHIP_ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
 )
 
 REPORT_DATE = "2026-05-22"
@@ -84,6 +91,111 @@ def read_yaml(path: Path) -> Any | None:
     if not path.exists():
         return None
     return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def compact_connection_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Keep wire/flex/coax CAD evidence reviewable without duplicating full route rows."""
+    return {
+        "id": record.get("id"),
+        "connection_type": record.get("connection_type"),
+        "physical_medium": record.get("physical_medium"),
+        "electrical_class": record.get("electrical_class"),
+        "cad_part": record.get("cad_part"),
+        "from": record.get("from"),
+        "to": record.get("to"),
+        "represented_nets": record.get("represented_nets", []),
+        "represented_route_ids": record.get("represented_route_ids", []),
+        "represented_net_count": int(record.get("represented_net_count") or 0),
+        "represented_route_count": int(record.get("represented_route_count") or 0),
+        "represented_route_record_count": int(
+            record.get("represented_route_record_count") or 0
+        ),
+        "represented_route_records_with_layer_count": int(
+            record.get("represented_route_records_with_layer_count") or 0
+        ),
+        "represented_route_records_with_source_domain_count": int(
+            record.get("represented_route_records_with_source_domain_count") or 0
+        ),
+        "represented_route_records_with_route_class_count": int(
+            record.get("represented_route_records_with_route_class_count") or 0
+        ),
+        "represented_route_classification_gap_count": int(
+            record.get("represented_route_classification_gap_count") or 0
+        ),
+        "solid_step_part_names": record.get("solid_step_part_names", []),
+        "solid_step_part_count": int(record.get("solid_step_part_count") or 0),
+        "terminal_marker_count": int(record.get("terminal_marker_count") or 0),
+        "cad_step_bytes": int(record.get("cad_step_bytes") or 0),
+        "solid_step_part_bytes_total": int(record.get("solid_step_part_bytes_total") or 0),
+        "cad_part_present": record.get("cad_part_present") is True,
+        "terminal_markers_present": record.get("terminal_markers_present") is True,
+        "solid_step_parts_present": record.get("solid_step_parts_present") is True,
+        "all_represented_nets_have_route_trace": (
+            record.get("all_represented_nets_have_route_trace") is True
+        ),
+        "all_represented_routes_have_layer_source_and_class": (
+            record.get("all_represented_routes_have_layer_source_and_class") is True
+        ),
+        "release_credit": record.get("release_credit") is True,
+    }
+
+
+def compact_component_model_record(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "reference": record.get("reference"),
+        "footprint": record.get("footprint"),
+        "pinout_bound": record.get("pinout_bound") is True,
+        "support_pattern_has_explicit_provenance": (
+            record.get("support_pattern_has_explicit_provenance") is True
+        ),
+        "terminal_contract_count": int(record.get("terminal_contract_count") or 0),
+        "terminal_contract_matches_pad_visuals": (
+            record.get("terminal_contract_matches_pad_visuals") is True
+        ),
+        "pad_contract_covered_count": int(record.get("pad_contract_covered_count") or 0),
+        "all_pad_visuals_have_contract": (
+            record.get("all_pad_visuals_have_contract") is True
+        ),
+        "non_signal_pad_contract_count": int(
+            record.get("non_signal_pad_contract_count") or 0
+        ),
+        "non_signal_pad_contract_matches_pad_visuals": (
+            record.get("non_signal_pad_contract_matches_pad_visuals") is True
+        ),
+        "npth_mechanical_feature_contract_count": int(
+            record.get("npth_mechanical_feature_contract_count") or 0
+        ),
+        "npth_mechanical_feature_contract_matches_footprint": (
+            record.get("npth_mechanical_feature_contract_matches_footprint") is True
+        ),
+        "combined_step_assembly_name": record.get("combined_step_assembly_name"),
+        "local_discrete_step_file": record.get("local_discrete_step_file"),
+        "local_discrete_step_sha256": record.get("local_discrete_step_sha256"),
+        "local_discrete_step_bytes": int(record.get("local_discrete_step_bytes") or 0),
+        "local_discrete_step_imported_as_solid": (
+            record.get("local_discrete_step_imported_as_solid") is True
+        ),
+        "local_discrete_step_bbox_matches_envelope": (
+            record.get("local_discrete_step_bbox_matches_envelope") is True
+        ),
+        "expected_supplier_step_file": record.get("expected_supplier_step_file"),
+        "supplier_sourcing_lane": record.get("supplier_sourcing_lane"),
+        "supplier_step_intake_status": record.get("supplier_step_intake_status"),
+        "supplier_step_intake_file": record.get("supplier_step_intake_file"),
+        "supplier_step_intake_release_credit": (
+            record.get("supplier_step_intake_release_credit") is True
+        ),
+        "source_routed_step": record.get("source_routed_step"),
+        "release_credit": record.get("release_credit") is True,
+    }
 
 
 def component_model_directory_summary() -> dict[str, Any]:
@@ -161,13 +273,176 @@ def component_model_directory_summary() -> dict[str, Any]:
         ),
         "supplier_step_intake_lane_counts": data.get("supplier_step_intake_lane_counts", {}),
         "expected_supplier_step_file_count": sum(
-            1 for item in model_records if isinstance(item, dict) and item.get("expected_supplier_step_file")
+            1
+            for item in model_records
+            if isinstance(item, dict) and item.get("expected_supplier_step_file")
         ),
         "combined_step_locator_count": sum(
-            1 for item in model_records if isinstance(item, dict) and item.get("combined_step_assembly_name")
+            1
+            for item in model_records
+            if isinstance(item, dict) and item.get("combined_step_assembly_name")
         ),
+        "component_model_record_manifest": [
+            compact_component_model_record(item)
+            for item in model_records
+            if isinstance(item, dict)
+        ],
         "release_allowed": data.get("release_allowed") is True,
         "release_credit": False,
+    }
+
+
+def supplier_step_surrogate_intake_detail(
+    component_model_dir: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    data = read_yaml(COMPONENT_MODEL_DIR_MANIFEST)
+    if not isinstance(data, dict):
+        return {
+            "schema": "eliza.e1_phone_supplier_step_surrogate_intake_detail.v1",
+            "present": False,
+            "source_manifest": repo_rel(COMPONENT_MODEL_DIR_MANIFEST),
+            "status": "missing_component_model_manifest",
+            "release_credit": False,
+            "release_allowed": False,
+        }
+
+    model_records = data.get("model_records", [])
+    if not isinstance(model_records, list):
+        model_records = []
+    lane_surrogates = data.get("supplier_lane_surrogate_steps", {})
+    if not isinstance(lane_surrogates, dict):
+        lane_surrogates = {}
+
+    records_by_intake_file: dict[str, list[dict[str, Any]]] = {}
+    for record in model_records:
+        if not isinstance(record, dict):
+            continue
+        intake_file = str(record.get("supplier_step_intake_file") or "")
+        records_by_intake_file.setdefault(intake_file, []).append(record)
+
+    lane_records: list[dict[str, Any]] = []
+    all_hashes_match = True
+    all_sizes_match = True
+    for lane, item in sorted(lane_surrogates.items()):
+        if not isinstance(item, dict):
+            item = {}
+        file_text = str(item.get("file") or "")
+        step_path = CHIP_ROOT / file_text
+        if not step_path.is_file():
+            actual_sha256 = None
+            actual_bytes = 0
+            file_present = False
+        else:
+            actual_sha256 = file_sha256(step_path)
+            actual_bytes = step_path.stat().st_size
+            file_present = True
+        all_hashes_match = all_hashes_match and actual_sha256 == item.get("sha256")
+        all_sizes_match = all_sizes_match and actual_bytes == int(item.get("bytes") or 0)
+
+        lane_components = sorted(
+            records_by_intake_file.get(file_text, []),
+            key=lambda record: str(record.get("reference") or ""),
+        )
+        lane_records.append(
+            {
+                "lane": lane,
+                "status": item.get("status"),
+                "file": file_text,
+                "file_present": file_present,
+                "sha256": item.get("sha256"),
+                "actual_sha256": actual_sha256,
+                "bytes": int(item.get("bytes") or 0),
+                "actual_bytes": actual_bytes,
+                "hash_matches_file": actual_sha256 == item.get("sha256"),
+                "size_matches_file": actual_bytes == int(item.get("bytes") or 0),
+                "release_credit": item.get("release_credit") is True,
+                "component_reference_count": len(lane_components),
+                "manifest_model_reference_count": int(
+                    item.get("model_reference_count") or 0
+                ),
+                "component_references": [
+                    str(record.get("reference") or "") for record in lane_components
+                ],
+                "expected_supplier_step_files": sorted(
+                    {
+                        str(record.get("expected_supplier_step_file") or "")
+                        for record in lane_components
+                        if record.get("expected_supplier_step_file")
+                    }
+                ),
+                "footprints": sorted(
+                    {
+                        str(record.get("footprint") or "")
+                        for record in lane_components
+                        if record.get("footprint")
+                    }
+                ),
+                "supplier_step_intake_statuses": sorted(
+                    {
+                        str(record.get("supplier_step_intake_status") or "")
+                        for record in lane_components
+                        if record.get("supplier_step_intake_status")
+                    }
+                ),
+                "all_component_records_release_credit_false": all(
+                    record.get("release_credit") is False for record in lane_components
+                ),
+                "all_component_records_reference_this_surrogate": all(
+                    record.get("supplier_step_intake_file") == file_text
+                    for record in lane_components
+                ),
+            }
+        )
+
+    if component_model_dir is None:
+        component_model_dir = component_model_directory_summary()
+
+    return {
+        "schema": "eliza.e1_phone_supplier_step_surrogate_intake_detail.v1",
+        "present": True,
+        "source_manifest": repo_rel(COMPONENT_MODEL_DIR_MANIFEST),
+        "status": "blocked_local_surrogate_steps_not_supplier_approved",
+        "claim_boundary": (
+            "Lane STEP files are local surrogate geometry for CAD continuity only; "
+            "they are not supplier-returned, approved, or release evidence."
+        ),
+        "supplier_lane_surrogate_step_count": len(lane_records),
+        "supplier_step_intake_local_surrogate_count": int(
+            data.get("supplier_step_intake_local_surrogate_count") or 0
+        ),
+        "supplier_step_intake_not_applicable_count": int(
+            data.get("supplier_step_intake_not_applicable_count") or 0
+        ),
+        "supplier_step_intake_missing_count": int(
+            data.get("supplier_step_intake_missing_count") or 0
+        ),
+        "supplier_step_intake_release_candidate_count": int(
+            data.get("supplier_step_intake_release_candidate_count") or 0
+        ),
+        "supplier_step_intake_lane_counts": data.get("supplier_step_intake_lane_counts", {}),
+        "component_model_record_count": int(component_model_dir.get("model_record_count") or 0),
+        "lane_records": lane_records,
+        "all_lane_surrogates_present": all(
+            record["file_present"] for record in lane_records
+        ),
+        "all_lane_surrogate_hashes_match": all_hashes_match,
+        "all_lane_surrogate_sizes_match": all_sizes_match,
+        "all_lane_surrogates_release_credit_false": all(
+            record["release_credit"] is False for record in lane_records
+        ),
+        "all_lane_component_reference_counts_match_manifest": all(
+            record["component_reference_count"] == record["manifest_model_reference_count"]
+            for record in lane_records
+        ),
+        "all_lane_component_records_release_credit_false": all(
+            record["all_component_records_release_credit_false"] for record in lane_records
+        ),
+        "all_lane_component_records_reference_surrogate": all(
+            record["all_component_records_reference_this_surrogate"]
+            for record in lane_records
+        ),
+        "release_credit": False,
+        "release_allowed": False,
     }
 
 
@@ -229,6 +504,8 @@ def review_gate_inventory() -> dict[str, Any]:
             "blocked_candidate_step_files",
             "development_step_candidates",
             "detailed_routed_step_candidate",
+            "routed_board_step_intake_detail",
+            "routed_board_kicad_cli_preflight",
             "demo_step_files_ignored",
             "required_routed_board_evidence_class",
             "routed_board_forbidden_evidence_classes",
@@ -282,7 +559,17 @@ def review_gate_inventory() -> dict[str, Any]:
             connection_records = [
                 item for item in data.get("connections", []) if isinstance(item, dict)
             ]
+            compact_records = [
+                compact_connection_record(item)
+                for item in sorted(
+                    connection_records, key=lambda record: str(record.get("id") or "")
+                )
+            ]
             gate["cad_connection_record_count"] = len(connection_records)
+            gate["cad_connection_record_manifest"] = compact_records
+            gate["cad_connection_record_manifest_id_count"] = len(
+                {str(item.get("id")) for item in compact_records}
+            )
             gate["cad_connection_represented_net_list_total"] = sum(
                 len(item.get("represented_nets", [])) for item in connection_records
             )
@@ -316,6 +603,21 @@ def review_gate_inventory() -> dict[str, Any]:
                 item.get("all_represented_routes_have_layer_source_and_class") is True
                 for item in connection_records
             )
+            gate["cad_connection_all_records_have_terminal_markers"] = bool(
+                connection_records
+            ) and all(item.get("terminal_markers_present") is True for item in connection_records)
+            gate["cad_connection_all_records_have_solid_step_parts"] = bool(
+                connection_records
+            ) and all(item.get("solid_step_parts_present") is True for item in connection_records)
+            gate["cad_connection_all_records_have_cad_step_bytes"] = bool(
+                connection_records
+            ) and all(int(item.get("cad_step_bytes") or 0) > 1000 for item in connection_records)
+            gate["cad_connection_all_records_have_cad_parts"] = bool(
+                connection_records
+            ) and all(item.get("cad_part_present") is True for item in connection_records)
+            gate["cad_connection_all_records_release_credit_false"] = bool(
+                connection_records
+            ) and all(item.get("release_credit") is False for item in connection_records)
         gates[name] = gate
     return gates
 
@@ -362,6 +664,8 @@ def missing_release_evidence(gates: dict[str, Any]) -> list[dict[str, Any]]:
                 "blocked_candidate_step_files",
                 "development_step_candidates",
                 "detailed_routed_step_candidate",
+                "routed_board_step_intake_detail",
+                "routed_board_kicad_cli_preflight",
                 "complete_clearance_result_count",
                 "expected_clearance_case_count",
                 "complete_family_count",
@@ -383,6 +687,13 @@ def build_report() -> dict[str, Any]:
     gates = review_gate_inventory()
     missing = missing_release_evidence(gates)
     component_model_dir = component_model_directory_summary()
+    supplier_surrogate_detail = supplier_step_surrogate_intake_detail(component_model_dir)
+    candidate_manifest = read_yaml(CANDIDATE_MANIFEST)
+    if not isinstance(candidate_manifest, dict):
+        candidate_manifest = {}
+    routed_source_binding = candidate_manifest.get("routed_candidate_source_binding", {})
+    if not isinstance(routed_source_binding, dict):
+        routed_source_binding = {}
 
     assembly = manifests.get("assembly", {})
     solid_handoff = gates.get("solid_cad_handoff", {})
@@ -536,6 +847,12 @@ def build_report() -> dict[str, Any]:
                 connection_coverage.get("represented_controlled_impedance_route_count_total")
             ),
             "cad_connection_record_count": connection_coverage.get("cad_connection_record_count"),
+            "cad_connection_record_manifest_id_count": connection_coverage.get(
+                "cad_connection_record_manifest_id_count"
+            ),
+            "cad_connection_record_manifest": connection_coverage.get(
+                "cad_connection_record_manifest", []
+            ),
             "cad_connection_represented_net_list_total": connection_coverage.get(
                 "cad_connection_represented_net_list_total"
             ),
@@ -553,6 +870,21 @@ def build_report() -> dict[str, Any]:
             ),
             "cad_connection_all_represented_routes_match_counts": connection_coverage.get(
                 "cad_connection_all_represented_routes_match_counts"
+            ),
+            "cad_connection_all_records_have_terminal_markers": connection_coverage.get(
+                "cad_connection_all_records_have_terminal_markers"
+            ),
+            "cad_connection_all_records_have_solid_step_parts": connection_coverage.get(
+                "cad_connection_all_records_have_solid_step_parts"
+            ),
+            "cad_connection_all_records_have_cad_step_bytes": connection_coverage.get(
+                "cad_connection_all_records_have_cad_step_bytes"
+            ),
+            "cad_connection_all_records_have_cad_parts": connection_coverage.get(
+                "cad_connection_all_records_have_cad_parts"
+            ),
+            "cad_connection_all_records_release_credit_false": connection_coverage.get(
+                "cad_connection_all_records_release_credit_false"
             ),
             "cad_connection_all_represented_nets_have_route_trace": connection_coverage.get(
                 "all_represented_nets_have_route_trace"
@@ -595,6 +927,12 @@ def build_report() -> dict[str, Any]:
                 local_routed_step_candidate_ready
             ),
             "detailed_routed_step_candidate_path": detailed_routed_step_candidate.get("path"),
+            "routed_board_step_intake_detail": board_gate.get(
+                "routed_board_step_intake_detail"
+            ),
+            "routed_board_kicad_cli_preflight": board_gate.get(
+                "routed_board_kicad_cli_preflight"
+            ),
             "detailed_routed_step_candidate_bytes": int(
                 detailed_routed_step_candidate.get("size_bytes") or 0
             ),
@@ -619,6 +957,46 @@ def build_report() -> dict[str, Any]:
             "detailed_routed_step_candidate_via_net_name_count": detailed_routed_step_candidate.get(
                 "via_net_name_count"
             ),
+            "routed_candidate_source_binding": {
+                "manifest": repo_rel(CANDIDATE_MANIFEST),
+                "source_board": routed_source_binding.get("source_board", ""),
+                "candidate_board": routed_source_binding.get("candidate_board", ""),
+                "candidate_matches_source_board": (
+                    routed_source_binding.get("candidate_matches_source_board") is True
+                ),
+                "source_is_zero_placeholder_real_footprint_board": (
+                    routed_source_binding.get("source_is_zero_placeholder_real_footprint_board")
+                    is True
+                ),
+                "candidate_is_zero_placeholder_real_footprint_board": (
+                    routed_source_binding.get("candidate_is_zero_placeholder_real_footprint_board")
+                    is True
+                ),
+                "source_placeholder_marker_count": int(
+                    routed_source_binding.get("source_placeholder_marker_count") or 0
+                ),
+                "candidate_placeholder_marker_count": int(
+                    routed_source_binding.get("candidate_placeholder_marker_count") or 0
+                ),
+                "candidate_legacy_e1phone_footprint_ref_count": int(
+                    routed_source_binding.get("candidate_legacy_e1phone_footprint_ref_count")
+                    or 0
+                ),
+                "candidate_footprint_count": int(
+                    routed_source_binding.get("candidate_footprint_count") or 0
+                ),
+                "candidate_segment_count": int(
+                    routed_source_binding.get("candidate_segment_count") or 0
+                ),
+                "candidate_via_count": int(routed_source_binding.get("candidate_via_count") or 0),
+                "candidate_zone_count": int(
+                    routed_source_binding.get("candidate_zone_count") or 0
+                ),
+                "candidate_filled_zone_count": int(
+                    routed_source_binding.get("candidate_filled_zone_count") or 0
+                ),
+                "release_credit": routed_source_binding.get("release_credit") is True,
+            },
             "detailed_routed_step_candidate_release_credit": detailed_candidate_release_credit,
             "release_claim_allowed": False,
         },
@@ -641,6 +1019,9 @@ def build_report() -> dict[str, Any]:
             ),
             "scope": "local_component_model_directory_not_supplier_steps",
             "manifest": component_model_dir.get("manifest"),
+            "supplier_step_surrogate_intake_detail": repo_rel(
+                SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL
+            ),
             "model_record_count": component_model_dir.get("model_record_count"),
             "combined_step_locator_count": component_model_dir.get("combined_step_locator_count"),
             "local_discrete_step_file_count": component_model_dir.get(
@@ -679,6 +1060,35 @@ def build_report() -> dict[str, Any]:
             "supplier_step_intake_lane_counts": component_model_dir.get(
                 "supplier_step_intake_lane_counts"
             ),
+            "supplier_lane_surrogate_step_count": supplier_surrogate_detail.get(
+                "supplier_lane_surrogate_step_count"
+            ),
+            "supplier_lane_surrogate_records": supplier_surrogate_detail.get(
+                "lane_records", []
+            ),
+            "all_lane_surrogates_present": supplier_surrogate_detail.get(
+                "all_lane_surrogates_present"
+            ),
+            "all_lane_surrogate_hashes_match": supplier_surrogate_detail.get(
+                "all_lane_surrogate_hashes_match"
+            ),
+            "all_lane_surrogate_sizes_match": supplier_surrogate_detail.get(
+                "all_lane_surrogate_sizes_match"
+            ),
+            "all_lane_surrogates_release_credit_false": supplier_surrogate_detail.get(
+                "all_lane_surrogates_release_credit_false"
+            ),
+            "all_lane_component_reference_counts_match_manifest": (
+                supplier_surrogate_detail.get(
+                    "all_lane_component_reference_counts_match_manifest"
+                )
+            ),
+            "all_lane_component_records_release_credit_false": supplier_surrogate_detail.get(
+                "all_lane_component_records_release_credit_false"
+            ),
+            "all_lane_component_records_reference_surrogate": supplier_surrogate_detail.get(
+                "all_lane_component_records_reference_surrogate"
+            ),
             "all_model_records_source_routed_step_bound": component_model_dir.get(
                 "all_model_records_source_routed_step_bound"
             ),
@@ -697,6 +1107,9 @@ def build_report() -> dict[str, Any]:
             "all_model_records_have_expected_supplier_step_file": component_model_dir.get(
                 "all_model_records_have_expected_supplier_step_file"
             ),
+            "component_model_record_manifest": component_model_dir.get(
+                "component_model_record_manifest", []
+            ),
             "release_claim_allowed": False,
         },
         "local_enclosure_cad_ready": {
@@ -713,6 +1126,47 @@ def build_report() -> dict[str, Any]:
                 ocp_terminal_step_fallback_complete
             ),
             "cad_connection_coverage_complete": cad_connection_coverage_complete,
+            "cad_connection_record_count": connection_coverage.get(
+                "cad_connection_record_count"
+            ),
+            "cad_connection_record_manifest_id_count": connection_coverage.get(
+                "cad_connection_record_manifest_id_count"
+            ),
+            "cad_connection_record_manifest": connection_coverage.get(
+                "cad_connection_record_manifest", []
+            ),
+            "cad_connection_all_records_have_represented_nets": connection_coverage.get(
+                "cad_connection_all_records_have_represented_nets"
+            ),
+            "cad_connection_all_records_have_represented_routes": connection_coverage.get(
+                "cad_connection_all_records_have_represented_routes"
+            ),
+            "cad_connection_all_represented_nets_match_routed_nets": connection_coverage.get(
+                "cad_connection_all_represented_nets_match_routed_nets"
+            ),
+            "cad_connection_all_represented_routes_match_counts": connection_coverage.get(
+                "cad_connection_all_represented_routes_match_counts"
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": (
+                connection_coverage.get(
+                    "cad_connection_all_represented_routes_have_layer_source_and_class"
+                )
+            ),
+            "cad_connection_all_records_have_terminal_markers": connection_coverage.get(
+                "cad_connection_all_records_have_terminal_markers"
+            ),
+            "cad_connection_all_records_have_solid_step_parts": connection_coverage.get(
+                "cad_connection_all_records_have_solid_step_parts"
+            ),
+            "cad_connection_all_records_have_cad_step_bytes": connection_coverage.get(
+                "cad_connection_all_records_have_cad_step_bytes"
+            ),
+            "cad_connection_all_records_have_cad_parts": connection_coverage.get(
+                "cad_connection_all_records_have_cad_parts"
+            ),
+            "cad_connection_all_records_release_credit_false": connection_coverage.get(
+                "cad_connection_all_records_release_credit_false"
+            ),
             "assembly_step_present": bool(solid_handoff.get("assembly_step")),
             "assembly_step_bytes": assembly_step_bytes,
             "assembly_manifest_part_count": assembly_manifest_part_count,
@@ -798,6 +1252,13 @@ def main() -> int:
     report = build_report()
     text = render_yaml(report)
     if args.write:
+        detail = supplier_step_surrogate_intake_detail(
+            component_model_directory_summary()
+        )
+        SUPPLIER_STEP_SURROGATE_INTAKE_DETAIL.write_text(
+            json.dumps(detail, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         args.output.write_text(text, encoding="utf-8")
     else:
         print(text, end="")

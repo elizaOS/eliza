@@ -4,6 +4,7 @@ import re
 import sys
 from argparse import ArgumentParser
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -489,6 +490,8 @@ def write_report(status: str, mode: str, failures: list[str], blockers: list[str
     payload = {
         "schema": "eliza.package_cross_probe.v1",
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
+        "claim_boundary": "package_padframe_board_cross_probe_only_not_vendor_package_release_evidence",
         "mode": mode,
         "release_ready": status == "pass" and mode == "release",
         "release_credit": status == "pass" and mode == "release",

@@ -88,6 +88,25 @@ _DEFAULT_ARM = {
 }
 
 
+def _left_sagittal_pose(
+    hip_pitch: float,
+    knee: float,
+    ankle_pitch: float,
+) -> tuple[float, float, float]:
+    return float(hip_pitch), float(knee), float(ankle_pitch)
+
+
+def _right_sagittal_pose(
+    hip_pitch: float,
+    knee: float,
+    ankle_pitch: float,
+) -> tuple[float, float, float]:
+    # AiNex right-leg pitch, knee, and ankle axes are mirrored relative to
+    # the left leg. Equivalent physical flexion therefore needs opposite
+    # joint-angle signs; this matches the MJCF stand_bent_knees keyframe.
+    return -float(hip_pitch), -float(knee), -float(ankle_pitch)
+
+
 def _two_link_ik(target_z: float) -> tuple[float, float, float]:
     """Solve hip-pitch / knee / ankle-pitch for a desired hip-to-foot
     vertical distance ``target_z``.
@@ -252,6 +271,16 @@ class BezierGaitController:
         if desired_lift[1] > 1e-3:  # right in swing
             r_hip_pitch += swing_bias
             r_ank_pitch -= swing_bias
+        l_hip_pitch, l_knee, l_ank_pitch = _left_sagittal_pose(
+            l_hip_pitch,
+            l_knee,
+            l_ank_pitch,
+        )
+        r_hip_pitch, r_knee, r_ank_pitch = _right_sagittal_pose(
+            r_hip_pitch,
+            r_knee,
+            r_ank_pitch,
+        )
 
         # Yaw command -> opposite hip-yaw on each leg (very small turn).
         yaw_bias = float(np.clip(vyaw, -1.0, 1.0)) * 0.05  # rad per (rad/s)
@@ -313,15 +342,25 @@ class BezierGaitController:
                 return arr
 
         q = np.zeros(NUM_JOINTS, dtype=np.float64)
-        # Legs.
-        for hip_pitch_idx, knee_idx, ankle_idx, hip_roll_idx, sign in (
-            (L_HIP_PITCH, L_KNEE, L_ANK_PITCH, L_HIP_ROLL, -1),
-            (R_HIP_PITCH, R_KNEE, R_ANK_PITCH, R_HIP_ROLL, +1),
-        ):
-            q[hip_pitch_idx] = _DEFAULT_HIP_PITCH
-            q[knee_idx] = _DEFAULT_KNEE
-            q[ankle_idx] = _DEFAULT_ANKLE_PITCH
-            q[hip_roll_idx] = sign * self.stance_width
+        # Legs. Sagittal pitch-chain signs are mirrored by side in the MJCF.
+        l_hip, l_knee, l_ankle = _left_sagittal_pose(
+            _DEFAULT_HIP_PITCH,
+            _DEFAULT_KNEE,
+            _DEFAULT_ANKLE_PITCH,
+        )
+        r_hip, r_knee, r_ankle = _right_sagittal_pose(
+            _DEFAULT_HIP_PITCH,
+            _DEFAULT_KNEE,
+            _DEFAULT_ANKLE_PITCH,
+        )
+        q[L_HIP_PITCH] = l_hip
+        q[L_KNEE] = l_knee
+        q[L_ANK_PITCH] = l_ankle
+        q[L_HIP_ROLL] = -self.stance_width
+        q[R_HIP_PITCH] = r_hip
+        q[R_KNEE] = r_knee
+        q[R_ANK_PITCH] = r_ankle
+        q[R_HIP_ROLL] = self.stance_width
         # Arms.
         for idx, value in _DEFAULT_ARM.items():
             q[idx] = value

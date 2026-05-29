@@ -160,6 +160,7 @@
       "trace_count": 35
     }
   },
+  "claim_boundary": "scope_limited_to_structural_metadata_inventory_and_gate_diagnostics",
   "claim_level": "L2_ARCH_SIM",
   "claim_policy": {
     "android_claim": false,
@@ -176,6 +177,7 @@
   },
   "description": "Head-to-head MPKI of the Eliza E1 BPU (TAGE-SC-L + ITTAGE + FTB + RAS + SC + loop) against a CVA6/Ariane-class BHT+BTB+RAS baseline, both behavioural models replayed over the identical branch traces.",
   "generated_at_utc": "2026-05-23T09:56:28.366234+00:00",
+  "generated_utc": "2026-05-24T02:03:00Z",
   "harness": "benchmarks/cpu/branch/compare_mpki.py",
   "per_trace": {
     "alias_thrash": {

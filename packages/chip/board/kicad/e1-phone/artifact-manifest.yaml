@@ -199,6 +199,11 @@ current_artifacts:
     - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
     - board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
     - board/kicad/e1-phone/preview/kicad-cli-mainboard.png
+  kicad_routed_candidate:
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb.metadata.yaml
+    - board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
   supplier_pinout_evidence:
     - board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml
     - board/kicad/e1-phone/supplier-pinouts/README.md
@@ -236,7 +241,23 @@ release_gates:
         USB-C, battery, speakers, microphones, antennas, SIM/eSIM, and test.
       - ERC clean or justified waivers.
   routed_pcb:
-    status: missing
+    status: blocked_local_routed_candidate_not_release
+    source_artifacts:
+      - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb.metadata.yaml
+      - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+      - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+      - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+      - board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+    local_candidate_evidence:
+      routed_kicad_candidate_present: true
+      placeholder_marker_count: 0
+      segment_count: 306
+      via_count: 24
+      filled_zone_count: 6
+      routed_step_candidate: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      evidence_class: blocked_local_candidate_outputs_not_release
+      release_credit: false
     required_evidence:
       - Routed release output manifest in board/kicad/e1-phone/routed-release-plan.yaml
         closed with every release-required output present.
@@ -248,13 +269,30 @@ release_gates:
       - Computed board utilization from real component courtyards and no-route
         zones, replacing the concept-only gr_rect report in
         board/kicad/e1-phone/layout-utilization.yaml.
+    release_allowed: false
   enclosure:
-    status: missing
+    status: blocked_local_cad_passes_but_release_requires_supplier_models_routed_clearance_and_first_article
+    source_artifacts:
+      - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+      - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
+      - mechanical/e1-phone/review/board-step-readiness.json
+      - mechanical/e1-phone/review/routed-board-clearance.json
+      - mechanical/e1-phone/review/full-cad-boolean-interference.json
+      - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+    local_candidate_evidence:
+      routed_board_step_candidate_present: true
+      full_cad_boolean_status: pass
+      full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+      full_cad_boolean_release_credit: false
+      routed_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
+      supplier_approved_component_model_count: 0
+      release_credit: false
     required_evidence:
       - STEP assembly with board, display, battery, camera modules, USB-C,
         side buttons, speaker chambers, antennas, and midframe/rear cover.
       - Tolerance stack proving the 11.8 mm flush-back thickness target.
       - USB-C insertion load and side-button load path review.
+    release_allowed: false
   power_thermal:
     status: missing
     required_evidence:

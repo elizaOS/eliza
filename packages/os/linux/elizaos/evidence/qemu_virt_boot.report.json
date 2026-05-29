@@ -15,7 +15,7 @@
       },
       "missing": []
     },
-    "iso_path": "/home/shaw/milady/eliza/packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T000159Z.iso",
+    "iso_path": "<repo>/packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T000159Z.iso",
     "iso_sha256": "289da35c309a6107f0e9b2c2ceb40ff6ca61dda6463242756ad0ae9b99e6d71e",
     "markers_found": [
       "Linux version",
@@ -36,18 +36,18 @@
     "transcript_sha256": "f9bdcf6cd82150f27503478f233014e1a6225077758a59a54c1518757b49c7fc",
     "u_boot_path": null
   },
-  "evidence_path": "/home/shaw/milady/eliza/packages/os/linux/elizaos/evidence/qemu_virt_boot.json",
+  "evidence_path": "<repo>/packages/os/linux/elizaos/evidence/qemu_virt_boot.json",
   "findings": [
     {
       "code": "os_rv64_qemu_virt_boot_incomplete",
-      "evidence": "/home/shaw/milady/eliza/packages/os/linux/elizaos/evidence/qemu_virt_boot.json",
+      "evidence": "<repo>/packages/os/linux/elizaos/evidence/qemu_virt_boot.json",
       "message": "qemu_virt_smoke: FAIL: boot_completed=false; markers_missing=['elizaos-curl-health-ready', 'elizaos-agent-ready', 'elizaos-tui-ready'] forbidden_markers_present=[]",
       "next_step": "Debug the QEMU transcript until all required boot and Eliza readiness markers appear.",
       "severity": "fail"
     }
   ],
   "generated_utc": "2026-05-24T00:49:52.126247+00:00",
-  "iso_path": "/home/shaw/milady/eliza/packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T000159Z.iso",
+  "iso_path": "<repo>/packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T000159Z.iso",
   "message": "qemu_virt_smoke: FAIL: boot_completed=false; markers_missing=['elizaos-curl-health-ready', 'elizaos-agent-ready', 'elizaos-tui-ready'] forbidden_markers_present=[]",
   "required_markers": [
     "Linux version",

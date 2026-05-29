@@ -81,7 +81,6 @@ import {
   resolveOnboardingNextStep,
   resolveOnboardingPreviousStep,
   shouldSkipConnectionStepsForCloudProvisionedContainer,
-  shouldSkipFeaturesStep,
   shouldUseCloudOnboardingFastTrack,
 } from "../onboarding/flow";
 import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
@@ -95,6 +94,7 @@ import {
   type OnboardingNextOptions,
   savePersistedActiveServer,
 } from "./internal";
+import { isPrivateNetworkHost } from "./private-network-host";
 import type {
   AppState,
   CompleteOnboardingOptions,
@@ -102,26 +102,7 @@ import type {
 } from "./types";
 import type { OnboardingStateHook } from "./useOnboardingState";
 
-// ── Helpers copied from AppContext (module-level, no React deps) ──────────
-
-function isPrivateNetworkHost(host: string): boolean {
-  if (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host.endsWith(".local") ||
-    host.endsWith(".internal")
-  ) {
-    return true;
-  }
-  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
-  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
-  if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host)) {
-    return true;
-  }
-  return false;
-}
+// ── Helpers (module-level, no React deps) ─────────────────────────────────
 
 function replaceNavigationPathForCompanionLaunch(): void {
   if (typeof window === "undefined") return;
@@ -396,7 +377,6 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       rpcKeys: onboardingRpcKeys,
       featureTelegram: onboardingFeatureTelegram,
       featureDiscord: onboardingFeatureDiscord,
-      featurePhone: onboardingFeaturePhone,
       featureCrypto: onboardingFeatureCrypto,
       featureBrowser: onboardingFeatureBrowser,
       featureComputerUse: onboardingFeatureComputerUse,
@@ -508,7 +488,6 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           onboardingLargeModel,
           onboardingFeatureTelegram,
           onboardingFeatureDiscord,
-          onboardingFeaturePhone,
           onboardingFeatureCrypto,
           onboardingFeatureBrowser,
         });
@@ -783,7 +762,6 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       onboardingPrimaryModel,
       onboardingFeatureTelegram,
       onboardingFeatureDiscord,
-      onboardingFeaturePhone,
       onboardingFeatureCrypto,
       onboardingFeatureBrowser,
       onboardingFeatureComputerUse,
@@ -925,15 +903,6 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
 
       const nextStep = resolveOnboardingNextStep(onboardingStep);
 
-      // Keep any target-specific feature-step shortcuts centralized in flow.ts.
-      if (
-        nextStep === "features" &&
-        shouldSkipFeaturesStep({ onboardingServerTarget })
-      ) {
-        await handleOnboardingFinish(options);
-        return;
-      }
-
       if (!nextStep) {
         // Last step (features) — finish onboarding and go to chat
         await handleOnboardingFinish(options);
@@ -953,7 +922,6 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
       handleOnboardingFinish,
       onboardingMode,
       onboardingStep,
-      onboardingServerTarget,
       setOnboardingStep,
       setOnboardingActiveGuide,
       cloudProvisionedContainer,

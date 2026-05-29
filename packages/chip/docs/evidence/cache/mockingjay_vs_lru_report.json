@@ -1,12 +1,66 @@
 {
-  "schema": "eliza.cache.mockingjay_vs_lru.v1",
-  "status": "scoped_mockingjay_vs_lru",
-  "mode": "mockingjay-vs-lru",
-  "evidence_class": "champsim_dpc3_traces_only",
+  "aggregate": {
+    "drrip": {
+      "mean_ipc": 1.4502958890253212,
+      "mean_l2c_mpki": 18.636249239001522,
+      "mean_llc_mpki": 0.404499549000902,
+      "parsed_runs": 2,
+      "runs": 2,
+      "trace_count": 2
+    },
+    "lru": {
+      "mean_ipc": 1.4502958890253212,
+      "mean_l2c_mpki": 18.636249239001522,
+      "mean_llc_mpki": 0.404499549000902,
+      "parsed_runs": 2,
+      "runs": 2,
+      "trace_count": 2
+    },
+    "ship": {
+      "mean_ipc": 1.4502958890253212,
+      "mean_l2c_mpki": 18.636249239001522,
+      "mean_llc_mpki": 0.404499549000902,
+      "parsed_runs": 2,
+      "runs": 2,
+      "trace_count": 2
+    },
+    "srrip": {
+      "mean_ipc": 1.4502958890253212,
+      "mean_l2c_mpki": 18.636249239001522,
+      "mean_llc_mpki": 0.404499549000902,
+      "parsed_runs": 2,
+      "runs": 2,
+      "trace_count": 2
+    }
+  },
   "captured_utc": "2026-05-19T23:05:03.312194+00:00",
+  "champsim_bin_dir": "external/ChampSim/bin",
   "claim_boundary": "ChampSim DPC-3 replacement-policy sweep only; not productized Mockingjay/Hawkeye, phone-class IPC, silicon, DRAM, Android, or release evidence.",
+  "evidence_class": "champsim_dpc3_traces_only",
+  "generated_utc": "2026-05-24T02:03:00Z",
+  "lru_vs_others": {
+    "deltas": {
+      "drrip": {
+        "ipc_delta_pct": 0.0,
+        "llc_mpki_delta_pct": 0.0,
+        "mean_ipc": 1.4502958890253212
+      },
+      "ship": {
+        "ipc_delta_pct": 0.0,
+        "llc_mpki_delta_pct": 0.0,
+        "mean_ipc": 1.4502958890253212
+      },
+      "srrip": {
+        "ipc_delta_pct": 0.0,
+        "llc_mpki_delta_pct": 0.0,
+        "mean_ipc": 1.4502958890253212
+      }
+    },
+    "lru_mean_ipc": 1.4502958890253212,
+    "lru_mean_llc_mpki": 0.404499549000902
+  },
+  "mode": "mockingjay-vs-lru",
   "phone_claim_allowed": false,
-  "release_claim_allowed": false,
   "provenance": {
     "source_artifacts": [
       {
@@ -15,324 +69,271 @@
       }
     ]
   },
-  "champsim_bin_dir": "external/ChampSim/bin",
+  "release_claim_allowed": false,
+  "results": [
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_lru",
+      "cycles": 1329731,
+      "instructions": 2000004,
+      "ipc": 1.504066611968887,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__401.bzip2-7B.champsimtrace.json",
+      "l1d": {
+        "access": 490890,
+        "hit": 475348,
+        "miss": 15542
+      },
+      "l2c": {
+        "access": 17674,
+        "hit": 16152,
+        "miss": 1522
+      },
+      "l2c_mpki": 0.760998478003044,
+      "label": "lru",
+      "llc": {
+        "access": 2066,
+        "hit": 1164,
+        "miss": 902
+      },
+      "llc_mpki": 0.450999098001804,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    },
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_lru",
+      "cycles": 1432126,
+      "instructions": 2000000,
+      "ipc": 1.3965251660817555,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__403.gcc-16B.champsimtrace.json",
+      "l1d": {
+        "access": 844669,
+        "hit": 88245,
+        "miss": 756424
+      },
+      "l2c": {
+        "access": 206104,
+        "hit": 133081,
+        "miss": 73023
+      },
+      "l2c_mpki": 36.5115,
+      "label": "lru",
+      "llc": {
+        "access": 144654,
+        "hit": 143938,
+        "miss": 716
+      },
+      "llc_mpki": 0.358,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    },
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_drrip",
+      "cycles": 1329731,
+      "instructions": 2000004,
+      "ipc": 1.504066611968887,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__401.bzip2-7B.champsimtrace.json",
+      "l1d": {
+        "access": 490890,
+        "hit": 475348,
+        "miss": 15542
+      },
+      "l2c": {
+        "access": 17674,
+        "hit": 16152,
+        "miss": 1522
+      },
+      "l2c_mpki": 0.760998478003044,
+      "label": "drrip",
+      "llc": {
+        "access": 2066,
+        "hit": 1164,
+        "miss": 902
+      },
+      "llc_mpki": 0.450999098001804,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    },
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_drrip",
+      "cycles": 1432126,
+      "instructions": 2000000,
+      "ipc": 1.3965251660817555,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__403.gcc-16B.champsimtrace.json",
+      "l1d": {
+        "access": 844669,
+        "hit": 88245,
+        "miss": 756424
+      },
+      "l2c": {
+        "access": 206104,
+        "hit": 133081,
+        "miss": 73023
+      },
+      "l2c_mpki": 36.5115,
+      "label": "drrip",
+      "llc": {
+        "access": 144654,
+        "hit": 143938,
+        "miss": 716
+      },
+      "llc_mpki": 0.358,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    },
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_ship",
+      "cycles": 1329731,
+      "instructions": 2000004,
+      "ipc": 1.504066611968887,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__401.bzip2-7B.champsimtrace.json",
+      "l1d": {
+        "access": 490890,
+        "hit": 475348,
+        "miss": 15542
+      },
+      "l2c": {
+        "access": 17674,
+        "hit": 16152,
+        "miss": 1522
+      },
+      "l2c_mpki": 0.760998478003044,
+      "label": "ship",
+      "llc": {
+        "access": 2066,
+        "hit": 1164,
+        "miss": 902
+      },
+      "llc_mpki": 0.450999098001804,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    },
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_ship",
+      "cycles": 1432126,
+      "instructions": 2000000,
+      "ipc": 1.3965251660817555,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__403.gcc-16B.champsimtrace.json",
+      "l1d": {
+        "access": 844669,
+        "hit": 88245,
+        "miss": 756424
+      },
+      "l2c": {
+        "access": 206104,
+        "hit": 133081,
+        "miss": 73023
+      },
+      "l2c_mpki": 36.5115,
+      "label": "ship",
+      "llc": {
+        "access": 144654,
+        "hit": 143938,
+        "miss": 716
+      },
+      "llc_mpki": 0.358,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    },
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_srrip",
+      "cycles": 1329731,
+      "instructions": 2000004,
+      "ipc": 1.504066611968887,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__401.bzip2-7B.champsimtrace.json",
+      "l1d": {
+        "access": 490890,
+        "hit": 475348,
+        "miss": 15542
+      },
+      "l2c": {
+        "access": 17674,
+        "hit": 16152,
+        "miss": 1522
+      },
+      "l2c_mpki": 0.760998478003044,
+      "label": "srrip",
+      "llc": {
+        "access": 2066,
+        "hit": 1164,
+        "miss": 902
+      },
+      "llc_mpki": 0.450999098001804,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    },
+    {
+      "binary": "packages/chip/external/ChampSim/bin/champsim_repl_srrip",
+      "cycles": 1432126,
+      "instructions": 2000000,
+      "ipc": 1.3965251660817555,
+      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__403.gcc-16B.champsimtrace.json",
+      "l1d": {
+        "access": 844669,
+        "hit": 88245,
+        "miss": 756424
+      },
+      "l2c": {
+        "access": 206104,
+        "hit": 133081,
+        "miss": 73023
+      },
+      "l2c_mpki": 36.5115,
+      "label": "srrip",
+      "llc": {
+        "access": 144654,
+        "hit": 143938,
+        "miss": 716
+      },
+      "llc_mpki": 0.358,
+      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "returncode": 0,
+      "simulation_instructions": 2000000,
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "warmup_instructions": 2000000
+    }
+  ],
+  "schema": "eliza.cache.mockingjay_vs_lru.v1",
+  "simulation_instructions": 2000000,
+  "status": "scoped_mockingjay_vs_lru",
   "trace_count": 2,
   "trace_files": [
     "401.bzip2-7B.champsimtrace.xz",
     "403.gcc-16B.champsimtrace.xz"
   ],
-  "warmup_instructions": 2000000,
-  "simulation_instructions": 2000000,
+  "variants_missing": [],
   "variants_requested": [
     "lru",
     "drrip",
     "ship",
     "srrip"
   ],
-  "variants_missing": [],
-  "results": [
-    {
-      "trace": "401.bzip2-7B.champsimtrace.xz",
-      "label": "lru",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_lru",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__401.bzip2-7B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__401.bzip2-7B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.504066611968887,
-      "instructions": 2000004,
-      "cycles": 1329731,
-      "llc": {
-        "hit": 1164,
-        "miss": 902,
-        "access": 2066
-      },
-      "l2c": {
-        "hit": 16152,
-        "miss": 1522,
-        "access": 17674
-      },
-      "l1d": {
-        "hit": 475348,
-        "miss": 15542,
-        "access": 490890
-      },
-      "llc_mpki": 0.450999098001804,
-      "l2c_mpki": 0.760998478003044
-    },
-    {
-      "trace": "403.gcc-16B.champsimtrace.xz",
-      "label": "lru",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_lru",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__403.gcc-16B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/lru__403.gcc-16B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.3965251660817555,
-      "instructions": 2000000,
-      "cycles": 1432126,
-      "llc": {
-        "hit": 143938,
-        "miss": 716,
-        "access": 144654
-      },
-      "l2c": {
-        "hit": 133081,
-        "miss": 73023,
-        "access": 206104
-      },
-      "l1d": {
-        "hit": 88245,
-        "miss": 756424,
-        "access": 844669
-      },
-      "llc_mpki": 0.358,
-      "l2c_mpki": 36.5115
-    },
-    {
-      "trace": "401.bzip2-7B.champsimtrace.xz",
-      "label": "drrip",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_drrip",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__401.bzip2-7B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__401.bzip2-7B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.504066611968887,
-      "instructions": 2000004,
-      "cycles": 1329731,
-      "llc": {
-        "hit": 1164,
-        "miss": 902,
-        "access": 2066
-      },
-      "l2c": {
-        "hit": 16152,
-        "miss": 1522,
-        "access": 17674
-      },
-      "l1d": {
-        "hit": 475348,
-        "miss": 15542,
-        "access": 490890
-      },
-      "llc_mpki": 0.450999098001804,
-      "l2c_mpki": 0.760998478003044
-    },
-    {
-      "trace": "403.gcc-16B.champsimtrace.xz",
-      "label": "drrip",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_drrip",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__403.gcc-16B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/drrip__403.gcc-16B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.3965251660817555,
-      "instructions": 2000000,
-      "cycles": 1432126,
-      "llc": {
-        "hit": 143938,
-        "miss": 716,
-        "access": 144654
-      },
-      "l2c": {
-        "hit": 133081,
-        "miss": 73023,
-        "access": 206104
-      },
-      "l1d": {
-        "hit": 88245,
-        "miss": 756424,
-        "access": 844669
-      },
-      "llc_mpki": 0.358,
-      "l2c_mpki": 36.5115
-    },
-    {
-      "trace": "401.bzip2-7B.champsimtrace.xz",
-      "label": "ship",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_ship",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__401.bzip2-7B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__401.bzip2-7B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.504066611968887,
-      "instructions": 2000004,
-      "cycles": 1329731,
-      "llc": {
-        "hit": 1164,
-        "miss": 902,
-        "access": 2066
-      },
-      "l2c": {
-        "hit": 16152,
-        "miss": 1522,
-        "access": 17674
-      },
-      "l1d": {
-        "hit": 475348,
-        "miss": 15542,
-        "access": 490890
-      },
-      "llc_mpki": 0.450999098001804,
-      "l2c_mpki": 0.760998478003044
-    },
-    {
-      "trace": "403.gcc-16B.champsimtrace.xz",
-      "label": "ship",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_ship",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__403.gcc-16B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/ship__403.gcc-16B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.3965251660817555,
-      "instructions": 2000000,
-      "cycles": 1432126,
-      "llc": {
-        "hit": 143938,
-        "miss": 716,
-        "access": 144654
-      },
-      "l2c": {
-        "hit": 133081,
-        "miss": 73023,
-        "access": 206104
-      },
-      "l1d": {
-        "hit": 88245,
-        "miss": 756424,
-        "access": 844669
-      },
-      "llc_mpki": 0.358,
-      "l2c_mpki": 36.5115
-    },
-    {
-      "trace": "401.bzip2-7B.champsimtrace.xz",
-      "label": "srrip",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_srrip",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__401.bzip2-7B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__401.bzip2-7B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.504066611968887,
-      "instructions": 2000004,
-      "cycles": 1329731,
-      "llc": {
-        "hit": 1164,
-        "miss": 902,
-        "access": 2066
-      },
-      "l2c": {
-        "hit": 16152,
-        "miss": 1522,
-        "access": 17674
-      },
-      "l1d": {
-        "hit": 475348,
-        "miss": 15542,
-        "access": 490890
-      },
-      "llc_mpki": 0.450999098001804,
-      "l2c_mpki": 0.760998478003044
-    },
-    {
-      "trace": "403.gcc-16B.champsimtrace.xz",
-      "label": "srrip",
-      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_repl_srrip",
-      "returncode": 0,
-      "warmup_instructions": 2000000,
-      "simulation_instructions": 2000000,
-      "json_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__403.gcc-16B.champsimtrace.json",
-      "log_path": "build/reports/cache/champsim_mockingjay-vs-lru_logs/srrip__403.gcc-16B.champsimtrace.log",
-      "parsed": true,
-      "ipc": 1.3965251660817555,
-      "instructions": 2000000,
-      "cycles": 1432126,
-      "llc": {
-        "hit": 143938,
-        "miss": 716,
-        "access": 144654
-      },
-      "l2c": {
-        "hit": 133081,
-        "miss": 73023,
-        "access": 206104
-      },
-      "l1d": {
-        "hit": 88245,
-        "miss": 756424,
-        "access": 844669
-      },
-      "llc_mpki": 0.358,
-      "l2c_mpki": 36.5115
-    }
-  ],
-  "aggregate": {
-    "lru": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4502958890253212,
-      "mean_llc_mpki": 0.404499549000902,
-      "mean_l2c_mpki": 18.636249239001522
-    },
-    "drrip": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4502958890253212,
-      "mean_llc_mpki": 0.404499549000902,
-      "mean_l2c_mpki": 18.636249239001522
-    },
-    "ship": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4502958890253212,
-      "mean_llc_mpki": 0.404499549000902,
-      "mean_l2c_mpki": 18.636249239001522
-    },
-    "srrip": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4502958890253212,
-      "mean_llc_mpki": 0.404499549000902,
-      "mean_l2c_mpki": 18.636249239001522
-    }
-  },
-  "lru_vs_others": {
-    "lru_mean_ipc": 1.4502958890253212,
-    "lru_mean_llc_mpki": 0.404499549000902,
-    "deltas": {
-      "drrip": {
-        "mean_ipc": 1.4502958890253212,
-        "ipc_delta_pct": 0.0,
-        "llc_mpki_delta_pct": 0.0
-      },
-      "ship": {
-        "mean_ipc": 1.4502958890253212,
-        "ipc_delta_pct": 0.0,
-        "llc_mpki_delta_pct": 0.0
-      },
-      "srrip": {
-        "mean_ipc": 1.4502958890253212,
-        "ipc_delta_pct": 0.0,
-        "llc_mpki_delta_pct": 0.0
-      }
-    }
-  }
+  "warmup_instructions": 2000000
 }

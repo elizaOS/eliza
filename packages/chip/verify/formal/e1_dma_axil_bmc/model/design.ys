@@ -1,0 +1,11 @@
+# running in verify/formal/e1_dma_axil_bmc/src/
+read -define AXIL_PROTO_ASSUME_LIVENESS
+read -formal -sv axi_lite_protocol.sv
+read -formal -sv e1_dma.sv
+read -formal -sv dma_axil_bind.sv
+prep -top dma_axil_props_top
+
+hierarchy -smtcheck
+rename -witness
+write_jny -no-connections ../model/design.json
+write_rtlil ../model/design.il

@@ -21,6 +21,7 @@ def test_e1x_formal_gate_passes() -> None:
     assert report["schema"] == "eliza.gate_status.v1"
     assert report["gate"] == "e1x-formal"
     assert report["status"] == "PASS"
+    assert report["generated_utc"].endswith("Z")
     assert report["summary"]["failing_check_count"] == 0
     # Mesh router + credit router + repair-route-table + repair-state,
     # each with bmc and k-induction.

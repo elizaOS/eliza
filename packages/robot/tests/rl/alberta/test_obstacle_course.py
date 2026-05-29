@@ -117,9 +117,17 @@ def test_obstacle_course_benchmark_matrix_retains() -> None:
             seed=123,
         ),
     )
-    R, baseline = run_learner(learner, cfg)
+    R, baseline, baseline_motion, motion_matrix, trajectory_matrix = run_learner(
+        learner, cfg
+    )
     metrics = compute_continual_metrics(R, baseline)
     assert R.shape == (2, 2)
+    assert len(baseline_motion) == 2
+    assert len(motion_matrix) == 2
+    assert len(trajectory_matrix) == 2
+    assert all(len(row) == 2 for row in motion_matrix)
+    assert all(len(row) == 2 for row in trajectory_matrix)
+    assert all("steps" in trace for row in trajectory_matrix for trace in row)
     assert np.isfinite(R).all()
     assert metrics.forgetting >= 0.0
     task0_peak = max(R[0, 0], R[1, 0])

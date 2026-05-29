@@ -38,21 +38,255 @@ def _finite_number(value: Any) -> bool:
         return False
 
 
-def _phase_physical_contract(row: dict[str, Any]) -> bool:
+def _task_success_predicates(task_id: str) -> dict[str, Any]:
+    return {task.id: task.success for task in load_curriculum().tasks}.get(task_id, {})
+
+
+def _required_physical_check_keys(task_id: str) -> set[str]:
+    success = _task_success_predicates(task_id)
+    keys: set[str] = set()
+    if success.get("no_fall") is True:
+        keys.add("no_fall")
+    if "hold_s" in success:
+        keys.add("hold_s")
+    if "min_alternating_foot_contacts" in success:
+        keys.add("min_alternating_foot_contacts")
+    if "min_swing_foot_clearance_m" in success:
+        keys.add("min_swing_foot_clearance_m")
+    if "max_foot_slip_m_s" in success:
+        keys.add("max_foot_slip_m_s")
+    if "max_self_collision_count" in success:
+        keys.add("max_self_collision_count")
+    if task_id == "stand_up":
+        keys.update({"torso_height_gain", "tracked_height_gain"})
+    elif task_id == "sit_down":
+        keys.update(
+            {
+                "torso_height_seated",
+                "forward_drift_bound",
+                "lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "walk_forward":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_x_forward",
+                "tracked_lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "walk_backward":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_x_backward",
+                "tracked_lateral_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "sidestep_left":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_y_left",
+                "tracked_forward_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "sidestep_right":
+        keys.update(
+            {
+                "tracked_height_present",
+                "tracked_delta_y_right",
+                "tracked_forward_drift_bound",
+                "yaw_drift_bound",
+            }
+        )
+    elif task_id == "turn_left":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_left",
+                "tracked_translation_drift_bound",
+            }
+        )
+    elif task_id == "turn_right":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_right",
+                "tracked_translation_drift_bound",
+            }
+        )
+    elif task_id == "turn_around":
+        keys.update(
+            {
+                "tracked_height_present",
+                "delta_yaw_turn_around",
+                "tracked_translation_drift_bound",
+            }
+        )
+    return keys
+
+
+def _physical_checks_cover_task(task_id: str, checks: Any) -> bool:
+    if not isinstance(checks, dict) or not checks:
+        return False
+    required = _required_physical_check_keys(task_id)
+    return (
+        all(value is True for value in checks.values())
+        and required.issubset(checks.keys())
+        and all(checks.get(key) is True for key in required)
+    )
+
+
+def _expected_locomotion_tracking_body(profile: Any) -> str | None:
+    sensors = getattr(profile, "sensors", None)
+    body = getattr(sensors, "locomotion_tracking_body", None)
+    return str(body) if body else None
+
+
+def _finite_float_value(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
+
+
+def _phase_numeric_motion_contract(
+    row: dict[str, Any],
+    task_id: str,
+    *,
+    expected_tracking_body: str | None,
+) -> bool:
+    tracked_body_name = row.get("tracked_body_name")
+    if not (
+        isinstance(tracked_body_name, str)
+        and bool(tracked_body_name)
+        and (expected_tracking_body is None or tracked_body_name == expected_tracking_body)
+    ):
+        return False
+    dx = _finite_float_value(row.get("mean_final_tracked_delta_x_m"))
+    dy = _finite_float_value(row.get("mean_final_tracked_delta_y_m"))
+    dz = _finite_float_value(row.get("mean_final_tracked_delta_z_m"))
+    z = _finite_float_value(row.get("mean_final_tracked_z_m"))
+    yaw = _finite_float_value(row.get("mean_final_delta_yaw_rad"))
+    torso_z = _finite_float_value(row.get("mean_final_torso_z_m"))
+    torso_dz = _finite_float_value(row.get("mean_final_torso_z_delta_m"))
+    if task_id == "stand_up":
+        return (
+            torso_z is not None
+            and torso_z > 0.0
+            and torso_dz is not None
+            and torso_dz >= 0.02
+            and dz is not None
+            and dz >= 0.02
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "walk_forward":
+        return (
+            dx is not None
+            and dx >= 0.30
+            and dy is not None
+            and abs(dy) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "walk_backward":
+        return (
+            dx is not None
+            and dx <= -0.20
+            and dy is not None
+            and abs(dy) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "sidestep_left":
+        return (
+            dy is not None
+            and dy >= 0.20
+            and dx is not None
+            and abs(dx) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "sidestep_right":
+        return (
+            dy is not None
+            and dy <= -0.20
+            and dx is not None
+            and abs(dx) <= 0.20
+            and yaw is not None
+            and abs(yaw) <= 0.40
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "turn_left":
+        return (
+            yaw is not None
+            and yaw >= 0.70
+            and dx is not None
+            and dy is not None
+            and math.hypot(dx, dy) <= 0.25
+            and z is not None
+            and z > 0.0
+        )
+    if task_id == "turn_right":
+        return (
+            yaw is not None
+            and yaw <= -0.70
+            and dx is not None
+            and dy is not None
+            and math.hypot(dx, dy) <= 0.25
+            and z is not None
+            and z > 0.0
+        )
+    return True
+
+
+def _phase_physical_contract(
+    row: dict[str, Any],
+    task_id: str,
+    *,
+    expected_tracking_body: str | None,
+) -> bool:
     checks = row.get("physical_checks")
+    tracked_body_name = row.get("tracked_body_name")
     return (
         row.get("physical_success") is True
         and isinstance(checks, dict)
         and bool(checks)
         and all(value is True for value in checks.values())
-        and isinstance(row.get("tracked_body_name"), str)
-        and bool(row.get("tracked_body_name"))
+        and _physical_checks_cover_task(task_id, checks)
+        and isinstance(tracked_body_name, str)
+        and bool(tracked_body_name)
+        and (
+            expected_tracking_body is None
+            or tracked_body_name == expected_tracking_body
+        )
         and _finite_number(row.get("failure_rate"))
         and float(row["failure_rate"]) <= 0.0
         and _finite_number(row.get("mean_final_tracked_delta_x_m"))
         and _finite_number(row.get("mean_final_tracked_delta_y_m"))
         and _finite_number(row.get("mean_final_tracked_delta_z_m"))
         and _finite_number(row.get("mean_final_tracked_z_m"))
+        and _phase_numeric_motion_contract(
+            row,
+            task_id,
+            expected_tracking_body=expected_tracking_body,
+        )
     )
 
 
@@ -136,6 +370,7 @@ def _phase_promotion_contract(
     total_steps: int,
     eval_episodes: int,
     require_phase_promotion: bool,
+    expected_tracking_body: str | None,
 ) -> bool:
     if manifest.get("phase_promotion_schema") is None and not require_phase_promotion:
         return True
@@ -175,7 +410,11 @@ def _phase_promotion_contract(
             return False
         if row.get("promotion_passed") is not True:
             return False
-        if not _phase_physical_contract(row):
+        if not _phase_physical_contract(
+            row,
+            task,
+            expected_tracking_body=expected_tracking_body,
+        ):
             return False
         if not _finite_number(row.get("steps_trained")) or not _finite_number(
             row.get("cumulative_steps")
@@ -296,6 +535,7 @@ def validate_alberta_robot_checkpoint(
             total_steps=total_steps,
             eval_episodes=int(manifest.get("eval_episodes", 0) or 0),
             require_phase_promotion=require_phase_promotion,
+            expected_tracking_body=_expected_locomotion_tracking_body(profile),
         ),
     }
     inference_report = None

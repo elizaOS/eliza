@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from argparse import ArgumentParser
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -342,6 +343,7 @@ def write_report(
     report = {
         "schema": REPORT_SCHEMA,
         "status": status,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "summary": {
             "release_mode": release,
             "failure_count": len(failures),

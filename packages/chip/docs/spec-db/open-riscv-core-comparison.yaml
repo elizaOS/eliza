@@ -81,9 +81,9 @@ cores:
     frequency:
       target_ghz: {value: 2.2, claim: target, claim_level: L1_RTL_FULL_SOC}
     metrics:
-      coremark_per_mhz: {value: 2.26, claim: measured, claim_level: L1_RTL_FULL_SOC, evidence: docs/evidence/cpu_ap/cva6-coremark-verilator.json}
+      coremark_per_mhz: {value: 2.16, claim: measured, claim_level: L1_RTL_FULL_SOC, evidence: docs/evidence/cpu_ap/cva6-coremark-verilator.json}
       dmips_per_mhz: {value: 1.17, claim: measured, claim_level: L1_RTL_FULL_SOC, evidence: docs/evidence/cpu_ap/cva6-dhrystone-verilator.json}
-      coremark_per_mhz_published_ref: {value: 2.83, claim: published, source: "OpenHW CVA6 user manual (OpenHW reference toolchain; our xpack-gcc rerun on the same RTL measured 2.26)"}
+      coremark_per_mhz_published_ref: {value: 2.83, claim: published, source: "OpenHW CVA6 user manual (OpenHW reference toolchain; our xpack-gcc rerun on the same RTL measured 2.16)"}
       coremark_functional_insns_per_iter: {value: 406456.76, claim: measured, evidence: docs/evidence/cpu_ap/cva6-coremark-qemu.json}
       synth_fmax_mhz_asap7: {value: 222.4, claim: measured, claim_level: L1_RTL_FULL_SOC, evidence: docs/evidence/cpu_ap/e1-pro-synth-ppa.json}
       synth_area_mm2_asap7: {value: 0.0543, claim: measured, claim_level: L1_RTL_FULL_SOC, evidence: docs/evidence/cpu_ap/e1-pro-synth-ppa.json}
@@ -336,8 +336,8 @@ e1_vs_ariane_verdict:
     reason: >-
       MEASURED, cycle-accurate (no longer pending): e1-pro IS CVA6, run on its
       own Verilator testharness via CVA6's veri-testharness flow -> CoreMark/MHz
-      2.26 (CPI 1.28, cva6-coremark-verilator.json) and DMIPS/MHz 1.17
-      (cva6-dhrystone-verilator.json). Parity is by construction. The ~20% gap
+      2.16 (CPI 1.41, cva6-coremark-verilator.json) and DMIPS/MHz 1.17
+      (cva6-dhrystone-verilator.json). Parity is by construction. The ~24% gap
       to CVA6's published 2.83 is toolchain (xpack gcc 15.2 vs OpenHW reference),
       same RTL/config. E1 exceeds this only with the OoO mid/big cores.
   peak_single_thread:

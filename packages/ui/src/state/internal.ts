@@ -105,7 +105,6 @@ export {
   type StartupErrorReason,
   type StartupErrorState,
   type StartupPhase,
-  type TabCommittedDetail,
   type UiShellMode,
 } from "./types";
 export { AppContext, useApp } from "./useApp";

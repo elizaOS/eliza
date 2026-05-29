@@ -215,6 +215,35 @@ export interface ConfigSchemaResponse {
   generatedAt: string;
 }
 
+/** UI-facing capability toggles persisted under `ui.capabilities`. */
+export interface AppConfigCapabilities {
+  wallet?: boolean;
+  browser?: boolean;
+  computerUse?: boolean;
+  [key: string]: unknown;
+}
+
+/** The `ui` sub-object of the agent config that the dashboard reads/writes. */
+export interface AppConfigUi {
+  ownerName?: string;
+  avatarIndex?: number;
+  presetId?: string;
+  language?: string;
+  capabilities?: AppConfigCapabilities;
+  [key: string]: unknown;
+}
+
+/**
+ * Response of `GET /api/config`. The underlying agent config is open-ended,
+ * so unknown keys remain accessible via the index signature; the fields the
+ * dashboard relies on are declared explicitly.
+ */
+export interface AppConfigResponse {
+  ui?: AppConfigUi;
+  cloud?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface TriggerEventDispatchResponse {
   ok: boolean;
   eventKind: string;

@@ -29,6 +29,8 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/memory/dram_ctrl/e1_dram_ctrl.sv \
 	$(REPO)/rtl/security/rot/e1_rot_reset_seq.sv \
 	$(REPO)/rtl/top/adapters/e1_soc_real_subsys.sv \
+	$(REPO)/rtl/interconnect/e1_axil_to_mmio.sv \
+	$(REPO)/rtl/interconnect/e1_mmio_arb2.sv \
 	$(REPO)/rtl/top/e1_soc_top.sv
 
 TOPLEVEL ?= e1_soc_top

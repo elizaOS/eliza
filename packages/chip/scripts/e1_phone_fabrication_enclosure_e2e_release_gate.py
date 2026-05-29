@@ -736,7 +736,7 @@ def build_report(
             "source status starts with blocked",
             "missing required routed or factory output count is nonzero",
             "required artifact content is template-only, presence-only, unvalidated, or unapproved",
-            "board STEP intake uses concept/demo evidence instead of routed-board evidence",
+            "board STEP intake uses local routed-board candidate evidence without supplier approval",
             "routed-board clearance rerun is missing",
             "first-article transcript or traveler is missing",
             "supplier-returned geometry, drawings, and traceability are absent or unvalidated",

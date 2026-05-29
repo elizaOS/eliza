@@ -40,6 +40,11 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cache/slc/e1_slc.sv \
 	$(REPO)/rtl/memory/dram_ctrl/e1_axi4_dram_model.sv \
 	$(REPO)/rtl/memory/dram_ctrl/e1_dram_ctrl.sv \
+	$(REPO)/rtl/power/droop_sensor.sv \
+	$(REPO)/rtl/power/clock_stretcher.sv \
+	$(REPO)/rtl/power/avfs_ctrl.sv \
+	$(REPO)/rtl/power/dldo.sv \
+	$(REPO)/rtl/top/e1_power_datapath.sv \
 	$(REPO)/rtl/power/pmc_top.sv \
 	$(REPO)/rtl/memory/e1_weight_buffer_sram.sv \
 	$(REPO)/rtl/bootrom/e1_bootrom.sv \

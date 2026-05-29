@@ -31,7 +31,7 @@ import signal
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -452,13 +452,6 @@ GATES: tuple[GateSpec, ...] = (
         scope="phone",
     ),
     GateSpec(
-        name="e1-phone-release-evidence-regeneration-check",
-        script="scripts/check_e1_phone_release_evidence_regeneration.py",
-        subsystem="platform",
-        tier="pd",
-        scope="phone",
-    ),
-    GateSpec(
         name="e1-phone-release-approval-signature-check",
         script="scripts/check_e1_phone_release_approval_signatures.py",
         subsystem="platform",
@@ -489,6 +482,13 @@ GATES: tuple[GateSpec, ...] = (
     GateSpec(
         name="e1-phone-first-article-content-check",
         script="scripts/check_e1_phone_first_article_content.py",
+        subsystem="platform",
+        tier="pd",
+        scope="phone",
+    ),
+    GateSpec(
+        name="e1-phone-release-evidence-regeneration-check",
+        script="scripts/check_e1_phone_release_evidence_regeneration.py",
         subsystem="platform",
         tier="pd",
         scope="phone",
@@ -832,7 +832,11 @@ GATES: tuple[GateSpec, ...] = (
         script="../os/linux/elizaos/scripts/qemu_virt_smoke.py",
         subsystem="os_rv64",
         tier="spec",
-        args=("--validate-existing",),
+        args=(
+            "--validate-existing",
+            "--evidence",
+            "../os/linux/elizaos/evidence/qemu_virt_boot_20260524T030430Z.json",
+        ),
     ),
 )
 
@@ -848,6 +852,16 @@ def select_gates(scope: str) -> tuple[GateSpec, ...]:
     if scope == "phone":
         return PHONE_PRODUCT_GATES
     raise ValueError(f"unknown aggregate scope: {scope}")
+
+
+def provenance_safe(value: object) -> object:
+    if isinstance(value, dict):
+        return {key: provenance_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe(item) for item in value]
+    if isinstance(value, str):
+        return value.replace(str(ROOT), "packages/chip")
+    return value
 
 
 @dataclass(frozen=True)
@@ -1042,11 +1056,11 @@ def chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
 
     if report_has_repo_generatable_now(report):
         return "repo_artifact_generation"
-    if report_has_blocked_generation_without_repo_close(report):
-        return "actionable_external_dependency"
     dependency_from_rows = dependency_from_blocker_rows(report)
     if dependency_from_rows is not None:
         return dependency_from_rows
+    if report_has_blocked_generation_without_repo_close(report):
+        return "actionable_external_dependency"
     if report_text_has_live_dependency(report):
         return "live_device_validation"
     if report_text_has_external_dependency(report):
@@ -1081,7 +1095,6 @@ def chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
 def fixed_chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
     if gate_name in (
         "boot-security-chain-contract-check",
-        "linux-firmware-boot-chain-contract-check",
     ):
         return "actionable_external_dependency"
     if gate_name in ("antenna-metadata-check", "antenna-metadata-release-check"):
@@ -1319,6 +1332,37 @@ def chip_report_findings(path: Path) -> list[dict[str, object]]:
     return [row for row in findings if isinstance(row, dict)] if isinstance(findings, list) else []
 
 
+def dependency_counts_text(path: Path) -> str:
+    report = read_report(path)
+    counts = report.get("blocker_dependency_counts")
+    if not isinstance(counts, dict):
+        summary = report.get("summary")
+        if isinstance(summary, dict):
+            counts = summary.get("blocker_dependency_counts")
+    if not isinstance(counts, dict):
+        return ""
+    external = count_value(counts, "actionable_external_dependency")
+    live = count_value(counts, "live_device_validation")
+    repo = count_value(counts, "repo_artifact_generation")
+    return f" Dependency counts: external={external}, live={live}, repo={repo}."
+
+
+def unique_finding_next_steps(path: Path, limit: int = 4) -> list[str]:
+    steps: list[str] = []
+    seen: set[str] = set()
+    findings = chip_report_findings(path)
+    blocker_findings = [row for row in findings if row.get("severity") == "blocker"]
+    for row in blocker_findings or findings:
+        step = row.get("next_step")
+        if not isinstance(step, str) or not step or step in seen:
+            continue
+        steps.append(step)
+        seen.add(step)
+        if len(steps) >= limit:
+            break
+    return steps
+
+
 def pd_signoff_action() -> str:
     summary = report_summary(PD_SIGNOFF_REPORT_PATH)
     findings = chip_report_findings(PD_SIGNOFF_REPORT_PATH)
@@ -1435,6 +1479,85 @@ def openlane_release_preflight_action() -> str:
     )
 
 
+def fpga_release_action() -> str:
+    summary = report_summary(FPGA_RELEASE_REPORT_PATH)
+    category_counts = summary.get("blocker_category_counts")
+    categories: list[str] = []
+    if isinstance(category_counts, dict):
+        ordered = sorted(
+            category_counts.items(),
+            key=lambda item: int(item[1] or 0) if isinstance(item[1], int) else 0,
+            reverse=True,
+        )
+        categories = [f"{name}={count}" for name, count in ordered[:5]]
+    category_text = f" FPGA blocker categories: {'; '.join(categories)}." if categories else ""
+    steps = unique_finding_next_steps(FPGA_RELEASE_REPORT_PATH)
+    step_text = f" Next commands: {'; '.join(steps)}." if steps else ""
+    return (
+        "Close the FPGA release packet with final board/pin revision, release bitstream, "
+        "timing/route reports, pack transcript, programming transcript, and tool versions; "
+        "rerun python3 scripts/check_fpga_release.py --release."
+        + dependency_counts_text(FPGA_RELEASE_REPORT_PATH)
+        + category_text
+        + step_text
+    )
+
+
+def linux_firmware_boot_chain_action() -> str:
+    steps = unique_finding_next_steps(LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH, limit=2)
+    step_text = f" Required capture: {'; '.join(steps)}." if steps else ""
+    return (
+        "Capture a real OpenSBI fw_dynamic handoff transcript from the selected QEMU, Renode, "
+        "or board flow; rerun python3 scripts/check_linux_firmware_boot_chain_contract.py. "
+        "U-Boot alternate evidence and Buildroot qemu-virt evidence are reference-only unless "
+        "that path is selected."
+        + dependency_counts_text(LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH)
+        + step_text
+    )
+
+
+def android_release_readiness_action() -> str:
+    report = read_report(ANDROID_RELEASE_READINESS_REPORT_PATH)
+    evidence = report.get("evidence")
+    inventory = evidence.get("android_release_artifact_inventory") if isinstance(evidence, dict) else None
+    missing_archives: list[str] = []
+    command_keys: list[str] = []
+    if isinstance(inventory, dict):
+        missing = inventory.get("missing")
+        if isinstance(missing, dict):
+            archives = missing.get("umbrellaAndroidArchives")
+            if isinstance(archives, list):
+                missing_archives = [str(path) for path in archives[:3]]
+        commands = inventory.get("commands")
+        if isinstance(commands, dict):
+            command_keys = [str(key) for key in commands.keys()][:6]
+    missing_text = f" Missing staged archives: {', '.join(missing_archives)}." if missing_archives else ""
+    command_text = (
+        f" Use evidence.android_release_artifact_inventory.commands groups: {', '.join(command_keys)}."
+        if command_keys
+        else ""
+    )
+    return (
+        "Close Android release readiness in two packets: first stage/hash the missing Android "
+        "archives and copy only measured size/SHA-256 values into manifests, then collect the "
+        "per-target live launcher/agent evidence; rerun python3 scripts/check_android_release_readiness_contract.py."
+        + dependency_counts_text(ANDROID_RELEASE_READINESS_REPORT_PATH)
+        + missing_text
+        + command_text
+    )
+
+
+def android_system_bridge_action() -> str:
+    steps = unique_finding_next_steps(ANDROID_SYSTEM_BRIDGE_REPORT_PATH, limit=3)
+    step_text = f" Required captures: {'; '.join(steps)}." if steps else ""
+    return (
+        "Boot the Android target and replace system-bridge fail-closed rows with collected "
+        "runtime evidence showing PASS status and result=0; rerun python3 scripts/check_android_system_bridge_contract.py."
+        + dependency_counts_text(ANDROID_SYSTEM_BRIDGE_REPORT_PATH)
+        + step_text
+    )
+
+
 def externalized_candidate_action(
     *,
     noun: str,
@@ -1546,6 +1669,10 @@ def blocker_action(result: GateResult) -> dict[str, object]:
         "antenna-metadata-check": antenna_metadata_action(),
         "antenna-metadata-release-check": antenna_metadata_action(),
         "openlane-run-release-preflight-check": openlane_release_preflight_action(),
+        "fpga-release-check": fpga_release_action(),
+        "linux-firmware-boot-chain-contract-check": linux_firmware_boot_chain_action(),
+        "android-release-readiness-contract-check": android_release_readiness_action(),
+        "android-system-bridge-contract-check": android_system_bridge_action(),
         "e1-phone-board-package-check": (
             "Keep structural board package checks green while replacing fail-closed "
             "planning/candidate artifacts with release evidence from the underlying "
@@ -2106,6 +2233,7 @@ def build_report(results: list[GateResult]) -> dict[str, object]:
     blockers = structured_blockers(categorized_results)
     return {
         "schema": SCHEMA,
+        "generated_utc": datetime.now(UTC).isoformat(),
         "as_of": date.today().isoformat(),
         "status": status,
         "gates": [asdict(result) for result in categorized_results],
@@ -2128,7 +2256,9 @@ def write_report(report: dict[str, object], report_path: Path | None = None) -> 
     if report_path is None:
         report_path = REPORT_PATH
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    report_path.write_text(
+        json.dumps(provenance_safe(report), indent=2, sort_keys=True) + "\n"
+    )
 
 
 def print_summary(report: dict[str, object], strict: bool, report_path: Path | None = None) -> None:
