@@ -2702,24 +2702,6 @@ function AppProviderInner({
     ],
   );
 
-  // TEMP-DIAG(F3): log which AppContext value keys change between commits to
-  // pin the ~1/sec app-wide re-render driver. Remove after diagnosis.
-  const __ctxDiagPrev = useRef<Record<string, unknown> | null>(null);
-  useEffect(() => {
-    const cur = value as unknown as Record<string, unknown>;
-    const prev = __ctxDiagPrev.current;
-    if (prev) {
-      const changed: string[] = [];
-      for (const k of Object.keys(cur)) {
-        if (prev[k] !== cur[k]) changed.push(k);
-      }
-      if (changed.length > 0) {
-        console.warn(`[CTX-DIAG] ${Date.now()} changed: ${changed.join(",")}`);
-      }
-    }
-    __ctxDiagPrev.current = cur;
-  });
-
   const bootConfig = getBootConfig();
   const bootConfigValue = useMemo(
     () => ({
