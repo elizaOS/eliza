@@ -61,6 +61,21 @@ Publication wiring: `smithers` was added to `LATEST_SNAPSHOT_AGENTS` but
 deliberately **not** to `CANONICAL_REAL_HARNESSES`, so it publishes partial
 coverage without becoming a required agent for cross-harness comparability.
 
+## Completeness claim
+
+These 12 are **the complete set of benchmarks runnable in this environment
+without the elizaOS TS bench bridge or external infrastructure.** Verified by
+reading every benchmark's dispatch: each of the other ~41 either (a) routes
+*all* harnesses through the eliza TS bench server (`ElizaClient` /
+`--provider eliza`: mint, lifeops_bench, realm, rlm_bench, mind2web, …), or
+(b) is gated behind Docker / real audio / a multimodal runtime / chain
+credentials for *all four* harnesses (osworld, swe_bench×3, terminal_bench,
+voicebench×3, mmau, vision_language, hyperliquid, solana, evm, gauntlet, …), or
+(c) is a TS-only harness surface (configbench, interrupt-bench).
+
+So Smithers has achieved **4-way parity on 100% of the bridge-free, infra-free
+benchmarks** (12/12). Extending to the rest requires provisioning that infra.
+
 ## Why full 53×4 certification was not completed here
 
 A complete leaderboard run of all 53 discovered benchmarks across 4 harnesses is
