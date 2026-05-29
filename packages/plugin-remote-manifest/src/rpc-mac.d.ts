@@ -10,9 +10,7 @@
 import type { KeyId } from "@elizaos/security";
 import type { WorkerRpcMessage } from "./types.js";
 /** Canonical bytes covered by the MAC. */
-export declare function canonicalRpcBytes(
-  message: Pick<WorkerRpcMessage, "requestId" | "surface" | "target" | "args">,
-): Uint8Array;
+export declare function canonicalRpcBytes(message: Pick<WorkerRpcMessage, "requestId" | "surface" | "target" | "args">): Uint8Array;
 /**
  * KMS keyId for a plugin's per-install RPC HMAC key. The plugin id is
  * sanitized to fit the KMS purpose grammar.
