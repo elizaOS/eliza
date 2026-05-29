@@ -585,8 +585,11 @@ export default scenario({
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "sync",
+            // Boot-time catalog sync is disabled for scenario runs (hermetic,
+            // no network), so this is the FIRST catalog fetch: it discovers the
+            // single mocked registry skill from an empty cache → added: 1.
             "data.updated": 1,
-            "data.added": 0,
+            "data.added": 1,
           },
         }),
     },
