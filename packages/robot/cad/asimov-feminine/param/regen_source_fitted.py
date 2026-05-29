@@ -190,14 +190,11 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     zs = np.array(zs); cxs = np.array(cxs); cys = np.array(cys)
     R_arr = np.array(rings_r)            # (N, n_ang)
     bins = rings_b[0]
-    R0, cx0, cy0 = R_arr.copy(), cxs.copy(), cys.copy()
     # genuinely smooth base surface: low Fourier order + axial low-pass
-    R_arr, cxs, cys = _smooth_field(R_arr, cxs, cys, harmonics=6, axial_sigma=5.0)
+    R_arr, cxs, cys = _smooth_field(R_arr, cxs, cys, harmonics=6, axial_sigma=4.0)
 
     P, B = TORSO, BREAST
     reserved = C.reserved_levels("WAIST_YAW")
-    # preserve the exact neck / shoulder / pelvis mating interfaces
-    R_arr, cxs, cys = _pin_interfaces(R_arr, cxs, cys, R0, cx0, cy0, zs, reserved, ramp=0.018)
     w = W.connection_weight(zs, reserved, ramp=0.03)
     band = np.clip((zs - P["z_lo"]) / 0.04, 0, 1) * np.clip((P["z_hi"] - zs) / 0.04, 0, 1)
     w = w * band
@@ -263,11 +260,11 @@ def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False, res
         Rs.append(r); C0.append(c[0]); C1.append(c[1]); L.append(t)
     Rs = np.array(Rs); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
     bins = b
-    R0, C00, C10 = Rs.copy(), C0.copy(), C1.copy()
-    # low Fourier order + axial low-pass -> long smooth lines, no dimples
-    Rs, C0, C1 = _smooth_field(Rs, C0, C1, harmonics=5, axial_sigma=6.0)
-    if reserved:  # restore the exact mating interface at each joint level
-        Rs, C0, C1 = _pin_interfaces(Rs, C0, C1, R0, C00, C10, L, reserved)
+    # Axial smoothing scaled to the part length: long parts get long smooth lines,
+    # short connectors are barely smoothed so their joint ends are not shrunk away
+    # (over-smoothing short parts was what opened the joint gaps).
+    sig = float(np.clip(len(L) / 12.0, 1.0, 5.0))
+    Rs, C0, C1 = _smooth_field(Rs, C0, C1, harmonics=5, axial_sigma=sig)
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
     for i, t in enumerate(L):

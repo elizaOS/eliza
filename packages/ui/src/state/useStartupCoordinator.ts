@@ -299,7 +299,7 @@ export function useStartupCoordinator(
 
   useEffect(() => {
     if (state.phase !== "error" || !depsReady) return;
-    if (!isRecoverableStartupErrorReason(state.reason)) return;
+    if (!isRecoverableStartupErrorReason(errorReason)) return;
     if (typeof window === "undefined") return;
 
     const currentDeps = depsRef.current;
@@ -341,8 +341,6 @@ export function useStartupCoordinator(
       cancelled.current = true;
       if (timer) window.clearTimeout(timer);
     };
-    // `reason` exists only on the error variant; for other phases this is
-    // undefined, which is fine — the effect body early-returns on non-error.
   }, [state.phase, errorReason, depsReady]);
 
   // ── Public interface ─────────────────────────────────────────────

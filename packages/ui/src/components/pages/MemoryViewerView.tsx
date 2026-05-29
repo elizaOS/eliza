@@ -204,7 +204,9 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           // Cap retained items so a long pagination session can't grow the
           // feed unboundedly. 500 covers many pages of scrollback while
           // bounding memory; older items drop off the top.
-          setFeed((prev) => [...prev, ...result.memories].slice(-FEED_MAX_ITEMS));
+          setFeed((prev) =>
+            [...prev, ...result.memories].slice(-FEED_MAX_ITEMS),
+          );
         } else {
           setFeed(result.memories);
         }

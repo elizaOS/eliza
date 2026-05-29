@@ -6,80 +6,79 @@
  * only needs to pick a single token after verbs like "launch" / "close".
  */
 const LAUNCH_VERBS = [
-    "launch",
-    "open",
-    "start",
-    "run",
-    "fire up",
-    "boot",
-    "show",
+	"launch",
+	"open",
+	"start",
+	"run",
+	"fire up",
+	"boot",
+	"show",
 ];
 const CLOSE_VERBS = [
-    "close",
-    "stop",
-    "exit",
-    "quit",
-    "kill",
-    "shut down",
-    "shutdown",
-    "terminate",
+	"close",
+	"stop",
+	"exit",
+	"quit",
+	"kill",
+	"shut down",
+	"shutdown",
+	"terminate",
 ];
 const FILLER_WORDS = new Set([
-    "the",
-    "app",
-    "application",
-    "overlay",
-    "mini",
-    "please",
-    "now",
-    "my",
+	"the",
+	"app",
+	"application",
+	"overlay",
+	"mini",
+	"please",
+	"now",
+	"my",
 ]);
 function extractAfterVerbs(text, verbs) {
-    const lower = text.toLowerCase();
-    for (const verb of verbs) {
-        const idx = lower.indexOf(verb);
-        if (idx === -1)
-            continue;
-        const afterIdx = idx + verb.length;
-        const rest = text.slice(afterIdx).trim();
-        if (!rest)
-            continue;
-        const tokens = rest
-            .split(/[\s,!.?]+/)
-            .map((token) => token.trim())
-            .filter((token) => token.length > 0);
-        // Peel fillers off the front ("the", "app", etc.). Whatever remains
-        // is the candidate name.
-        let i = 0;
-        while (i < tokens.length && FILLER_WORDS.has(tokens[i].toLowerCase())) {
-            i += 1;
-        }
-        const candidate = tokens[i]?.toLowerCase();
-        if (candidate && !FILLER_WORDS.has(candidate)) {
-            return candidate;
-        }
-    }
-    return null;
+	const lower = text.toLowerCase();
+	for (const verb of verbs) {
+		const idx = lower.indexOf(verb);
+		if (idx === -1) continue;
+		const afterIdx = idx + verb.length;
+		const rest = text.slice(afterIdx).trim();
+		if (!rest) continue;
+		const tokens = rest
+			.split(/[\s,!.?]+/)
+			.map((token) => token.trim())
+			.filter((token) => token.length > 0);
+		// Peel fillers off the front ("the", "app", etc.). Whatever remains
+		// is the candidate name.
+		let i = 0;
+		while (i < tokens.length && FILLER_WORDS.has(tokens[i].toLowerCase())) {
+			i += 1;
+		}
+		const candidate = tokens[i]?.toLowerCase();
+		if (candidate && !FILLER_WORDS.has(candidate)) {
+			return candidate;
+		}
+	}
+	return null;
 }
 export function readStringOption(options, key) {
-    if (!options)
-        return null;
-    const value = options[key];
-    if (typeof value !== "string")
-        return null;
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
+	if (!options) return null;
+	const value = options[key];
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
 }
 export function extractLaunchTarget(message, options) {
-    return (readStringOption(options, "app") ??
-        readStringOption(options, "name") ??
-        extractAfterVerbs(message?.content?.text ?? "", LAUNCH_VERBS));
+	return (
+		readStringOption(options, "app") ??
+		readStringOption(options, "name") ??
+		extractAfterVerbs(message?.content?.text ?? "", LAUNCH_VERBS)
+	);
 }
 export function extractCloseTarget(message, options) {
-    const runId = readStringOption(options, "runId");
-    const appName = readStringOption(options, "app") ??
-        readStringOption(options, "name") ??
-        extractAfterVerbs(message?.content?.text ?? "", CLOSE_VERBS);
-    return { runId, appName };
+	const runId = readStringOption(options, "runId");
+	const appName =
+		readStringOption(options, "app") ??
+		readStringOption(options, "name") ??
+		extractAfterVerbs(message?.content?.text ?? "", CLOSE_VERBS);
+	return { runId, appName };
 }
 //# sourceMappingURL=params.js.map
