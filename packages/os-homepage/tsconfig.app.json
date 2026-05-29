@@ -30,6 +30,7 @@
       "@elizaos/ui": ["../ui/src/backgrounds/CloudVideoBackground.tsx"],
       "@elizaos/ui/button": ["../ui/src/cloud-ui/components/button.tsx"],
       "@elizaos/ui/card": ["../ui/src/components/ui/card.tsx"],
+      "@elizaos/ui/i18n/region": ["../ui/src/i18n/region.ts"],
       "@elizaos/ui/product-switcher": [
         "../ui/src/cloud-ui/components/product-switcher.tsx"
       ]

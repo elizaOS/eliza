@@ -466,6 +466,22 @@ async function ensureUiDistReady(): Promise<void> {
     needsBuild = true;
   }
 
+  // Escape hatch symmetric to ELIZA_DESKTOP_RENDERER_BUILD=always: when the dist
+  // is known-current and only the stub API or specs changed, skip the ~12 min
+  // rebuild. The mtime heuristic false-positives whenever an unrelated bulk op
+  // (git checkout, repo-wide formatter) bumps source mtimes without touching the
+  // renderer. Only honored when a built index.html already exists.
+  if (needsBuild && process.env.ELIZA_UI_SMOKE_SKIP_BUILD === "1") {
+    try {
+      await access(distIndex);
+      needsBuild = false;
+    } catch {
+      throw new Error(
+        `ELIZA_UI_SMOKE_SKIP_BUILD=1 but no built renderer at ${distIndex}. Build once (bun run --cwd packages/app build:web) before skipping.`,
+      );
+    }
+  }
+
   if (!needsBuild) {
     return;
   }

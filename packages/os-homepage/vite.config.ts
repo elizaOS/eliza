@@ -72,41 +72,69 @@ export default defineConfig({
   ],
   resolve: {
     dedupe: ["react", "react-dom", "react-router", "react-router-dom", "zod"],
-    alias: {
-      "@": path.resolve(packageDir, "./src"),
-      "@elizaos/shared/brand": path.resolve(
-        packageDir,
-        "../shared/src/brand/index.ts",
-      ),
-      "@elizaos/shared/checkout": path.resolve(
-        packageDir,
-        "../shared/src/checkout/index.ts",
-      ),
-      "@elizaos/shared/hardware-catalog": path.resolve(
-        packageDir,
-        "../shared/src/hardware-catalog/index.ts",
-      ),
-      "@elizaos/shared/steward-session-client": path.resolve(
-        packageDir,
-        "../shared/src/steward-session-client/index.ts",
-      ),
-      "@elizaos/ui": path.resolve(
-        packageDir,
-        "../ui/src/backgrounds/CloudVideoBackground.tsx",
-      ),
-      "@elizaos/ui/button": path.resolve(
-        packageDir,
-        "../ui/src/cloud-ui/components/button.tsx",
-      ),
-      "@elizaos/ui/card": path.resolve(
-        packageDir,
-        "../ui/src/components/ui/card.tsx",
-      ),
-      "@elizaos/ui/product-switcher": path.resolve(
-        packageDir,
-        "../ui/src/cloud-ui/components/product-switcher.tsx",
-      ),
-    },
+    alias: [
+      { find: /^@\//, replacement: `${path.resolve(packageDir, "./src")}/` },
+      {
+        find: /^@elizaos\/shared\/brand$/,
+        replacement: path.resolve(
+          packageDir,
+          "../shared/src/brand/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/shared\/checkout$/,
+        replacement: path.resolve(
+          packageDir,
+          "../shared/src/checkout/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/shared\/hardware-catalog$/,
+        replacement: path.resolve(
+          packageDir,
+          "../shared/src/hardware-catalog/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/shared\/steward-session-client$/,
+        replacement: path.resolve(
+          packageDir,
+          "../shared/src/steward-session-client/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.resolve(
+          packageDir,
+          "../ui/src/backgrounds/CloudVideoBackground.tsx",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/button$/,
+        replacement: path.resolve(
+          packageDir,
+          "../ui/src/cloud-ui/components/button.tsx",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/card$/,
+        replacement: path.resolve(
+          packageDir,
+          "../ui/src/components/ui/card.tsx",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/product-switcher$/,
+        replacement: path.resolve(
+          packageDir,
+          "../ui/src/cloud-ui/components/product-switcher.tsx",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui\/i18n\/region$/,
+        replacement: path.resolve(packageDir, "../ui/src/i18n/region.ts"),
+      },
+    ],
   },
   server: {
     port: 4455,
