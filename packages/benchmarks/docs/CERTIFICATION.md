@@ -26,15 +26,12 @@ Published through the real orchestrator path, same
 | humaneval | 1.00 | 1.00 | 1.00 | **1.00** |
 | gsm8k | 1.00 | 1.00 | 1.00 | **1.00** |
 | mmlu | 1.00 | 1.00 | 1.00 | **1.00** |
+| context_bench | 1.00 | 1.00 | 1.00 | **1.00** |
 
-- All five posted benchmarks: exact 4-way parity (native tool-message fidelity).
-- **action-calling**: smithers runs end-to-end and is in the ballpark but lower
-  (0.66 vs 1.00 on a 2-example set). The smithers harness renders multi-turn
-  tool-call/tool-result history as *text* (it avoids the ai-SDK structured
-  tool-message schema that caused early validation failures) — lossless for
-  single-turn tool benchmarks (bfcl), lossy for multi-turn native-tool ones.
-  Emitting native `ModelMessage` tool parts is the follow-up before adding more
-  multi-turn benchmarks to `SMITHERS_BENCHMARKS`.
+- All posted benchmarks: exact 4-way parity. The smithers harness emits native
+  ai-SDK `ToolCallPart` / `ToolResultPart` messages, so multi-turn
+  function-calling history is preserved with full fidelity (action-calling went
+  0.66 → 1.00 after this fix).
 
 Standalone BFCL smoke (larger samples) corroborates: smithers 87.5% (7/8) and
 100% (3/3); hermes 0.15.0 and openclaw 2026.5.27 both 100% (2/2). eliza live

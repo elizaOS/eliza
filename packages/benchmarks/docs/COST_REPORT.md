@@ -20,7 +20,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | clawbench | $0.0054 | $0.0021 | $0.0021 | $0.0021* |
 | compactbench | $0.0157 | $0.0245 | $0.0238 | $0.0245* |
 | configbench | $0.0014 | $0.0002 | $0.0002 | $0.0002* |
-| context_bench | $0.0114 | $0.0005 | $0.0005 | $0.0005* |
+| context_bench | $0.0114 | $0.0005 | $0.0005 | $0.0005† |
 | eliza_1 | $0.0115 | $0.0004 | $0.0004 | $0.0004* |
 | experience | $0.0081 | $0.0003 | $0.0003 | $0.0003* |
 | framework | $0.0012 | $0.0001 | $0.0001 | $0.0001* |
@@ -72,7 +72,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | clawbench | $0.3147 | $0.1388 | $0.1390 | $0.1388* |
 | compactbench | $1.0775 | $1.6126 | $1.5605 | $1.6126* |
 | configbench | $0.0773 | $0.0140 | $0.0142 | $0.0140* |
-| context_bench | $0.5551 | $0.0211 | $0.0213 | $0.0211* |
+| context_bench | $0.5551 | $0.0211 | $0.0213 | $0.0211† |
 | eliza_1 | $0.6037 | $0.0236 | $0.0238 | $0.0236* |
 | experience | $0.4282 | $0.0178 | $0.0225 | $0.0178* |
 | framework | $0.0598 | $0.0037 | $0.0037 | $0.0037* |

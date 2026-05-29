@@ -22,6 +22,7 @@ ADAPTER_DIRS = (
     BENCHMARKS_DIR / "eliza-adapter",
     BENCHMARKS_DIR / "hermes-adapter",
     BENCHMARKS_DIR / "openclaw-adapter",
+    BENCHMARKS_DIR / "smithers-adapter",
 )
 
 
@@ -158,6 +159,10 @@ def get_llm_query_fn(provider: str, client: object | None = None, harness: str =
         from openclaw_adapter.context_bench import make_openclaw_llm_query
 
         return make_openclaw_llm_query()
+    if harness_key == "smithers":
+        from smithers_adapter.context_bench import make_smithers_llm_query
+
+        return make_smithers_llm_query()
 
     from eliza_adapter.context_bench import make_eliza_llm_query
 
@@ -308,7 +313,7 @@ def main() -> int:
     parser.add_argument(
         "--harness",
         default="eliza",
-        choices=["eliza", "hermes", "openclaw"],
+        choices=["eliza", "hermes", "openclaw", "smithers"],
         help="Agent harness routing the LLM query (default: eliza)",
     )
     args = parser.parse_args()

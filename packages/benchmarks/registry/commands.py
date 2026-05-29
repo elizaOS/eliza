@@ -407,7 +407,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         harness = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
-        if harness in {"eliza", "hermes", "openclaw"}:
+        if harness in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--harness", harness])
         quick = extra.get("quick")
         if quick is True:
