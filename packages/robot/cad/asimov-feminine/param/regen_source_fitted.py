@@ -317,9 +317,10 @@ def _centerline_xy(V, ai, pd, nb=50):
     return mids, cx, cy
 
 
-def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, n_ang=64, dz=0.004):
+def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, margin=0.0015, n_ang=64, dz=0.004):
     """Clean smooth outer-envelope tube for a shaft interval, slimmed. Low Fourier
-    order (no dimples) + axial low-pass (long lines)."""
+    order (no dimples) + axial low-pass (long lines). `margin` lifts the tube just
+    outside the slimmed shaft surface so it fully covers it (no z-fighting)."""
     from scipy.ndimage import gaussian_filter1d
     normal = np.zeros(3); normal[ai] = 1.0
     bins = np.linspace(0, 2 * np.pi, n_ang, endpoint=False)
@@ -337,7 +338,7 @@ def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, n_ang=64, dz=0.004):
         return None
     R = np.array(R); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
     F = np.fft.rfft(R, axis=1); F[:, 6:] = 0.0; R = np.fft.irfft(F, n_ang, axis=1)
-    R = gaussian_filter1d(R, 3, axis=0, mode="nearest") * slim
+    R = gaussian_filter1d(R, 3, axis=0, mode="nearest") + margin
     C0 = gaussian_filter1d(C0, 3, mode="nearest"); C1 = gaussian_filter1d(C1, 3, mode="nearest")
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
@@ -351,28 +352,37 @@ def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, n_ang=64, dz=0.004):
 
 
 def _hybrid_part(mesh, link, slim, joint_margin=0.030):
-    """Smooth slim mid-shaft + the ORIGINAL (slimmed) joint caps at each reserved
-    level. The caps keep the real clevis/condyle so the limb articulates exactly
-    like the source; the shaft is a clean feminine tube. Short connectors (reserved
-    levels closer than 2*joint_margin) have no shaft and stay fully mechanical."""
+    """Smooth slim mid-shaft sleeve laid OVER the full original (slimmed) part.
+
+    The original is kept intact (its real clevis/condyle joints articulate exactly
+    like the source); a clean smooth tube sleeve covers the cosmetic mid-shaft and
+    tapers into each joint so there is no cut, no open boundary, no tear. Short
+    connectors (reserved levels closer than 2*joint_margin) get no sleeve and stay
+    fully mechanical."""
     spine = C.LINKS[link]["spine"]
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
     base = W.warp_affine(mesh, spine=spine, factor=slim, center=(0.0, 0.0))
     res = sorted(C.reserved_levels(link))
     z_lo, z_hi = res[0] + joint_margin, res[-1] - joint_margin
-    if z_hi - z_lo < 0.02:
+    if z_hi - z_lo < 0.03:
         return base  # too short for a shaft -> keep the real slimmed mechanism
-    tube = _smooth_tube(base, ai, pd, z_lo - 0.006, z_hi + 0.006, slim)
+    # Smooth tube sized to the slim shaft envelope (this is the visible shaft).
+    tube = _smooth_tube(base, ai, pd, z_lo - 0.012, z_hi + 0.012, slim, margin=0.0)
     if tube is None:
         return base
-    V = base.vertices
+    # Tuck the original shaft INSIDE the tube (extra inward scale, ramped to 1.0 at
+    # the joints) so nothing pokes through -- NO slicing, so no open boundary/tear.
+    V = base.vertices.copy()
     t = V[:, ai]
-    top = trimesh.Trimesh(V.copy(), base.faces[(t[base.faces] >= z_hi).all(1)], process=True)
-    top.remove_unreferenced_vertices()
-    bot = trimesh.Trimesh(V.copy(), base.faces[(t[base.faces] <= z_lo).all(1)], process=True)
-    bot.remove_unreferenced_vertices()
-    return trimesh.util.concatenate([top, tube, bot])
+    levels, cx, cy = _centerline_xy(V, ai, pd)
+    c0 = np.interp(t, levels, cx); c1 = np.interp(t, levels, cy)
+    ramp = (np.clip((t - z_lo) / 0.018, 0, 1) * np.clip((z_hi - t) / 0.018, 0, 1))
+    f = 1.0 - 0.18 * ramp  # up to 18% extra-slim in the mid-shaft, 0 at joints
+    V[:, pd[0]] = c0 + (V[:, pd[0]] - c0) * f
+    V[:, pd[1]] = c1 + (V[:, pd[1]] - c1) * f
+    base.vertices = V
+    return trimesh.util.concatenate([base, tube])
 
 
 def _loft_rings(rings):
@@ -564,6 +574,12 @@ def _flat_sole(mesh):
     return cut if (cut is not None and len(cut.faces) > 0) else mesh
 
 
+def _close(mesh):
+    """Close small boundary loops (holes inherited from imperfect source meshes)."""
+    trimesh.repair.fill_holes(mesh)
+    return mesh
+
+
 def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     m = trimesh.load(os.path.join(SRC, f"{link}.STL"))
     slim = SLIM.get(link, 1.0)
@@ -572,12 +588,12 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link in COSMETIC_SKIN:
         return _skin_part(_limb_warp(m, link, slim), C.LINKS[link]["spine"])
     if link == "IMU_ORIGIN":
-        return _pelvis_warp(m)  # keep real hip sockets (slimmed inward)
+        return _close(_pelvis_warp(m))  # keep real hip sockets (slimmed inward)
     if link in FEET:
-        return _flat_sole(_limb_warp(m, link, slim))  # real foot, slimmed, flat sole
+        return _close(_flat_sole(_limb_warp(m, link, slim)))  # real foot, flat sole
     # Mechanical limbs/connectors: smooth slim shaft + ORIGINAL slimmed joint caps.
     # Long shafts get a clean tube; short connectors stay fully mechanical.
-    return _hybrid_part(m, link, slim)
+    return _close(_hybrid_part(m, link, slim))
 
 
 def run() -> None:
