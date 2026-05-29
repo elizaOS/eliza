@@ -98,14 +98,39 @@ function inferCodeFromStatus(status: number): ApiErrorCode {
 }
 
 function safeUnknownErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
+  if (error instanceof Error && !isInfrastructureError(error)) {
     const status = inferStatusFromLegacyError(error);
     if (status < 500) return error.message;
   }
   return "An unexpected error occurred";
 }
 
+/**
+ * Database/driver errors must never reach the substring heuristics below: their
+ * messages embed raw SQL (column lists, bound parameter values) and frequently
+ * contain words like "permission"/"permissions" that would be misclassified as
+ * a 4xx and leaked verbatim to the client. Detect them structurally and force a
+ * generic 500.
+ */
+function isInfrastructureError(error: Error): boolean {
+  // postgres.js / pg attach a SQLSTATE string on `code` (e.g. "42703").
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return true;
+  const message = error.message.toLowerCase();
+  return (
+    message.startsWith("failed query:") ||
+    message.includes("\nselect ") ||
+    message.includes("\ninsert ") ||
+    message.includes("\nupdate ") ||
+    message.includes("\ndelete ") ||
+    message.includes("relation ") ||
+    message.includes("column ") ||
+    message.includes("syntax error at or near")
+  );
+}
+
 function inferStatusFromLegacyError(error: Error): number {
+  if (isInfrastructureError(error)) return 500;
   const message = error.message.toLowerCase();
   if (error.name === "InsufficientCreditsError") return 402;
   if (error.name === "AuthenticationError" || error.name === "UnauthorizedError") return 401;
