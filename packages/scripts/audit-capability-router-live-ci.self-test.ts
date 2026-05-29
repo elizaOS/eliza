@@ -686,12 +686,12 @@ assertValidatorSelfTestFailure(
 
 assertFails(
   "cloud live job is required by test-status",
-  // Replace in test-status.needs specifically: "desktop-contract\n      - cloud-live-e2e\n"
-  // is unique to that block. github-live-artifact-validate has no desktop-contract dep,
+  // Replace in test-status.needs specifically: "zero-key-e2e\n      - cloud-live-e2e\n"
+  // is unique to that block. github-live-artifact-validate has no zero-key dep,
   // so a plain replace("      - cloud-live-e2e\n", ...) would hit that job first.
   workflow.replace(
-    "      - desktop-contract\n      - cloud-live-e2e\n",
-    "      - desktop-contract\n",
+    "      - zero-key-e2e\n      - cloud-live-e2e\n",
+    "      - zero-key-e2e\n",
   ),
 );
 

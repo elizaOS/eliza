@@ -7,7 +7,7 @@ import {
   __resetBrowserWorkspaceStateForTests,
   browserPlugin,
   executeBrowserWorkspaceCommand,
-} from "@elizaos/plugin-browser";
+} from "../../../../plugins/plugin-browser/src/index.ts";
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)

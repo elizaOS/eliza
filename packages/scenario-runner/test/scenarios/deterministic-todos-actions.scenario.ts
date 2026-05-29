@@ -3,7 +3,7 @@ import todosPlugin, {
   currentTodosProvider,
   TodosService,
   todosTable,
-} from "@elizaos/plugin-todos";
+} from "../../../../plugins/plugin-todos/src/index.ts";
 import type {
   CapturedAction,
   ScenarioContext,

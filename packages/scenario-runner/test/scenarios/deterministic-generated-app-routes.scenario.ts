@@ -9,8 +9,6 @@ import {
   registerRuntimeAppRouteModule,
   unregisterRuntimeAppRouteModule,
 } from "@elizaos/agent/services/app-package-modules";
-import appControlPlugin from "@elizaos/plugin-app-control";
-import { handleAppsRoutes } from "@elizaos/plugin-app-manager";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -21,6 +19,8 @@ import {
   getCuratedAppDefinitions,
   packageNameToAppDisplayName,
 } from "@elizaos/shared";
+import appControlPlugin from "../../../../plugins/plugin-app-control/src/index.js";
+import { handleAppsRoutes } from "../../../../plugins/plugin-app-manager/src/index.js";
 import { resetAppControlHttpStub } from "./_helpers/app-control-http-stub";
 
 const GENERATED_PACKAGE = "@scenario/app-generated-console";
