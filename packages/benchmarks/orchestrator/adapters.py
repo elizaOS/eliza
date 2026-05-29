@@ -122,6 +122,8 @@ SMITHERS_BENCHMARKS: frozenset[str] = frozenset(
         "realm",
         "lifeops_bench",
         "mt_bench",
+        "rlm_bench",
+        "mind2web",
     }
 )
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
