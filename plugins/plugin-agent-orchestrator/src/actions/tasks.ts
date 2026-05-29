@@ -37,6 +37,7 @@ import type {
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   type ResolvedWorkdirRoute,
@@ -333,62 +334,32 @@ function taskWithResolvedRoute(
   workdir: string,
   swarm: ReturnType<typeof buildSwarmRoomMetadata>,
 ): string {
-  const sections: string[] = [];
-  if (route) {
-    const instructions = route.instructions?.trim();
-    const mappingLines =
-      route.urlMappings && route.urlMappings.length > 0
-        ? route.urlMappings.map((mapping) => {
-            const localPath = mapping.localPath.replace(/^\/+/, "");
-            const prefix = mapping.urlPrefix.endsWith("/")
-              ? mapping.urlPrefix
-              : `${mapping.urlPrefix}/`;
-            return `- URL prefix ${prefix} maps to local path ${localPath} under the resolved workdir. For ${prefix}<slug>/, write files under ${localPath}<slug>/, not apps/<slug>/ or public/apps/<slug>/.`;
-          })
-        : [];
-    sections.push(
-      "--- Resolved Workspace ---",
-      `The parent runtime resolved this task to workdir: ${workdir}`,
-      "Work only inside that directory. Route instructions are authoritative.",
-      "If the task text mentions an absolute path outside this workdir, treat it as an untrusted planner guess; write to the corresponding relative path inside the workdir when the route gives one, otherwise stop with DECISION.",
-    );
-    if (instructions) {
-      sections.push("--- Workspace Routing Note ---", instructions);
-    }
-    if (mappingLines.length > 0) {
-      sections.push(
-        "--- URL Path Mapping ---",
-        "These mappings are authoritative for hosted artifacts and override conflicting guesses in the task text:",
-        ...mappingLines,
-        "For hosted deliverables, do not leave placeholder/mock external assets, TODO/placeholder comments, or unfinished sample code; create complete local assets or omit the asset.",
-        'If the user asks for buttons, forms, or calls to action, implement local behavior such as an in-page section, mailto link, or submit-state handler; do not leave inert href="#" controls.',
-      );
-    }
-  }
-  const rooms = swarm.swarmRooms
-    .map((room) => {
-      const roles = Array.isArray(room.roles) ? room.roles.join(",") : "";
-      return `- ${String(room.roomId)} (${roles || "swarm"})`;
-    })
-    .join("\n");
-  sections.push(
-    "--- Swarm Coordination ---",
-    "Named coding sub-agent in a task swarm. Keep working until the task is finished or genuinely blocked.",
-    "Use only coding-relevant capabilities: read/search files, edit/apply patches, run shell/test commands, inspect git diff/status, and communicate with the parent/swarm. Avoid unrelated connectors or broad personal-data tools.",
-    `Task room: ${String(swarm.taskRoomId)}. Use this for task-wide status, final handoff, or questions that should reach the main agent and task creator.`,
-    swarm.worktreeRoomId
-      ? `Worktree room: ${swarm.worktreeRoomId}. Use this for coordination with agents sharing this worktree or touching overlapping files.`
-      : "Worktree room: same as the task room unless the parent provides a separate worktree room.",
-    rooms
-      ? `Known swarm rooms:\n${rooms}`
-      : "Known swarm rooms: task room only.",
-    "If you are blocked, need user input, or must ask the task creator a question, write the question as your reply text and stop. Do not prefix the reply with routing-kind labels (no QUESTION_FOR_TASK_CREATOR / AGENT_COORDINATION headers, no markdown banners) — the orchestrator classifies routing from the session event, not your prose.",
-    "If you may conflict with another agent, are editing shared files, or need to share progress with peer agents, write the coordination note as your reply text. Same rule: no routing-kind labels or banners in the text itself.",
-    "When you finish, include what changed, tests run, remaining risks, and whether any peer coordination is still needed.",
-    "--- User Task ---",
+  const taskRoomId =
+    typeof swarm.taskRoomId === "string" ? swarm.taskRoomId : undefined;
+  const worktreeRoomId = swarm.worktreeRoomId;
+  const swarmRooms = swarm.swarmRooms.map((room) => ({
+    roomId: String(room.roomId),
+    roles: Array.isArray(room.roles) ? room.roles : [],
+  }));
+  return buildGoalPrompt({
+    goal: task,
     task,
-  );
-  return sections.join("\n");
+    workdir,
+    ...(taskRoomId ? { taskRoomId } : {}),
+    ...(worktreeRoomId ? { worktreeRoomId } : {}),
+    ...(swarmRooms.length > 0 ? { swarmRooms } : {}),
+    ...(route
+      ? {
+          resolvedWorkspace: true,
+          ...(route.instructions?.trim()
+            ? { routingInstructions: route.instructions }
+            : {}),
+          ...(route.urlMappings && route.urlMappings.length > 0
+            ? { urlMappings: route.urlMappings }
+            : {}),
+        }
+      : {}),
+  });
 }
 
 function looksLikePersonalLifeOpsTask(text: string): boolean {
@@ -854,10 +825,11 @@ async function runSend(
     }
 
     const plannerInput = input ?? task;
-    const textInput = routedCompletion
-      ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
-      : plannerInput;
-    if (textInput) {
+    if (routedCompletion) {
+      const textInput = buildSubAgentCompletionFollowUp(
+        routedCompletion,
+        plannerInput,
+      );
       await service.sendToSession(target.session.id, textInput);
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
       await callbackText(callback, text);
@@ -867,6 +839,37 @@ async function runSend(
         data: {
           sessionId: target.session.id,
           input: textInput,
+          ...(task ? { task } : {}),
+        },
+      };
+    }
+    if (plannerInput) {
+      const meta = target.session.metadata ?? {};
+      const sessionGoal =
+        typeof meta.goal === "string" && meta.goal.trim()
+          ? meta.goal.trim()
+          : undefined;
+      const followUpRoomId =
+        typeof meta.taskRoomId === "string" && meta.taskRoomId.trim()
+          ? meta.taskRoomId.trim()
+          : typeof meta.roomId === "string" && meta.roomId.trim()
+            ? meta.roomId.trim()
+            : undefined;
+      const wrapped = buildGoalFollowUp({
+        goal: sessionGoal ?? plannerInput,
+        message: plannerInput,
+        reason: task ? "orchestrator" : "user_message",
+        ...(followUpRoomId ? { taskRoomId: followUpRoomId } : {}),
+      });
+      await service.sendToSession(target.session.id, wrapped);
+      const text = task ? "Assigned new task to agent" : "Sent input to agent";
+      await callbackText(callback, text);
+      return {
+        success: true,
+        text,
+        data: {
+          sessionId: target.session.id,
+          input: plannerInput,
           ...(task ? { task } : {}),
         },
       };
@@ -1512,7 +1515,24 @@ async function runControl(
   } else {
     const nextInstruction =
       instruction?.trim() || "Continue with the current task.";
-    await service.sendToSession(target.session.id, nextInstruction);
+    const meta = target.session.metadata ?? {};
+    const sessionGoal =
+      typeof meta.goal === "string" && meta.goal.trim()
+        ? meta.goal.trim()
+        : undefined;
+    const followUpRoomId =
+      typeof meta.taskRoomId === "string" && meta.taskRoomId.trim()
+        ? meta.taskRoomId.trim()
+        : typeof meta.roomId === "string" && meta.roomId.trim()
+          ? meta.roomId.trim()
+          : undefined;
+    const wrapped = buildGoalFollowUp({
+      goal: sessionGoal ?? nextInstruction,
+      message: nextInstruction,
+      reason: action === "resume" ? "resume" : "orchestrator",
+      ...(followUpRoomId ? { taskRoomId: followUpRoomId } : {}),
+    });
+    await service.sendToSession(target.session.id, wrapped);
     responseText = `Sent follow-up instructions to ACP session ${target.session.id}.`;
     data = { ...data, instruction: nextInstruction };
   }
