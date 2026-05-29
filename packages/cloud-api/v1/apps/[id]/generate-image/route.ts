@@ -1,33 +1,13 @@
-/**
- * App-specific image generation endpoint.
- *
- * Mirrors the per-app chat route (`v1/apps/[id]/chat`) for billing: it debits
- * the *caller's* app credits and applies the app creator's markup via
- * `appCreditsService`, recording creator earnings. Image generation + public
- * R2 storage reuse the same approach as the top-level `v1/generate-image`
- * route. Returns a settled `charge` receipt so callers (e.g. waifu.fun) can
- * surface base cost, markup, total cost, and creator earnings.
- */
-
-import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
-  addCorsHeaders,
-  createPreflightResponse,
-} from "@/lib/middleware/cors-apps";
-import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { mergeGoogleImageModalitiesWithAnthropicCot } from "@/lib/providers/anthropic-thinking";
-import {
-  getAiProviderConfigurationError,
-  getLanguageModel,
-  hasLanguageModelProviderConfigured,
-} from "@/lib/providers/language-model";
+import { getAiProviderConfigurationError } from "@/lib/providers/language-model";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { calculateImageGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   getSupportedImageModelDefinition,
@@ -37,6 +17,7 @@ import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { generationsService } from "@/lib/services/generations";
+import { getImageProvider } from "@/lib/providers/image/registry";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -72,36 +53,6 @@ interface GeneratedImage {
   sizeBytes: number;
 }
 
-async function deleteStoredImages(
-  env: AppEnv["Bindings"],
-  images: Pick<GeneratedImage, "key">[],
-  logPrefix: string,
-): Promise<void> {
-  await Promise.all(
-    images.map((image) =>
-      env.BLOB.delete(image.key).catch((deleteError) => {
-        logger.error(`${logPrefix} Failed to delete generated image`, {
-          key: image.key,
-          error:
-            deleteError instanceof Error
-              ? deleteError.message
-              : String(deleteError),
-        });
-      }),
-    ),
-  );
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
-
 function extensionForMimeType(mimeType: string): string {
   if (mimeType === "image/jpeg") return "jpg";
   if (mimeType === "image/webp") return "webp";
@@ -109,9 +60,7 @@ function extensionForMimeType(mimeType: string): string {
   return "png";
 }
 
-function imageDimensions(
-  request: ImageRequest,
-): Record<string, string | number> {
+function imageDimensions(request: ImageRequest): Record<string, string | number> {
   const dimensions: Record<string, string | number> = {};
   if (request.width && request.height) {
     dimensions.size = `${request.width}x${request.height}`;
@@ -127,78 +76,54 @@ function imageDimensions(
 function buildImagePrompt(request: ImageRequest): string {
   const parts = [request.prompt];
   if (request.aspectRatio) parts.push(`Aspect ratio: ${request.aspectRatio}.`);
-  if (request.width && request.height)
-    parts.push(`Canvas: ${request.width}x${request.height}.`);
+  if (request.width && request.height) parts.push(`Canvas: ${request.width}x${request.height}.`);
   if (request.stylePreset && request.stylePreset !== "none") {
     parts.push(`Style: ${request.stylePreset}.`);
   }
   return parts.join("\n");
 }
 
-function buildImageMessage(request: ImageRequest) {
-  if (!request.sourceImage) {
-    return undefined;
-  }
-  return [
-    {
-      role: "user" as const,
-      content: [
-        { type: "text" as const, text: buildImagePrompt(request) },
-        { type: "image" as const, image: request.sourceImage },
-      ],
-    },
-  ];
+function failOpenContentSafety(): boolean {
+  return getCloudAwareEnv().CONTENT_SAFETY_FAIL_OPEN !== "false";
 }
 
-async function generateOneImage(request: ImageRequest): Promise<{
-  dataUrl: string;
-  bytes: Uint8Array;
-  mimeType: string;
-  text: string;
-}> {
-  let text = "";
+function isTransientContentSafetyError(error: unknown): boolean {
+  const status = (error as { status?: unknown })?.status;
+  if (typeof status === "number" && status >= 500) return true;
+  if (typeof status === "number" && status === 429) return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("moderation is unavailable") ||
+    message.includes("moderation returned no result") ||
+    message.includes("moderation is not configured")
+  );
+}
 
-  const messages = buildImageMessage(request);
-  const result = streamText({
-    model: getLanguageModel(request.model),
-    ...mergeGoogleImageModalitiesWithAnthropicCot(request.model, process.env),
-    ...(messages ? { messages } : { prompt: buildImagePrompt(request) }),
-  });
-
-  for await (const delta of result.fullStream) {
-    if (delta.type === "text-delta") {
-      text += delta.text;
+async function assertSafeFailOpen(input: Parameters<typeof contentSafetyService.assertSafeForPublicUse>[0]) {
+  try {
+    return await contentSafetyService.assertSafeForPublicUse(input);
+  } catch (error) {
+    if (failOpenContentSafety() && isTransientContentSafetyError(error)) {
+      logger.warn("[App GenerateImage] Content safety unavailable, allowing due to fail-open", {
+        surface: input.surface,
+        appId: input.appId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
-    if (delta.type === "error") {
-      throw new Error(String(delta.error));
-    }
-    if (delta.type === "file" && delta.file.mediaType.startsWith("image/")) {
-      const bytes = delta.file.uint8Array;
-      const dataUrl = `data:${delta.file.mediaType};base64,${bytesToBase64(bytes)}`;
-      return { dataUrl, bytes, mimeType: delta.file.mediaType, text };
-    }
+    throw error;
   }
-
-  throw new Error("Image provider returned no image");
 }
 
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
-app.options("/", (c) =>
-  createPreflightResponse(c.req.header("origin") ?? null, ["POST", "OPTIONS"]),
-);
-
 app.post("/", async (c) => {
-  const origin = c.req.header("origin") ?? null;
-  const withCors = (response: Response): Response =>
-    addCorsHeaders(response, origin, ["POST", "OPTIONS"]);
-
   try {
     const appId = c.req.param("id") ?? "";
     if (!appId) {
-      return withCors(jsonError(c, 400, "Missing app id", "validation_error"));
+      return jsonError(c, 400, "Missing app id", "validation_error");
     }
 
     const [appRecord, user] = await Promise.all([
@@ -207,69 +132,62 @@ app.post("/", async (c) => {
     ]);
 
     if (!appRecord) {
-      return withCors(jsonError(c, 404, "App not found", "resource_not_found"));
+      return jsonError(c, 404, "App not found", "resource_not_found");
     }
 
-    // Access control: non-monetized apps are internal (same org only); monetized
-    // apps are public and billed against the caller's app credits.
-    if (
-      !appRecord.monetization_enabled &&
-      appRecord.organization_id !== user.organization_id
-    ) {
-      return withCors(
-        jsonError(c, 403, "Access denied to this app", "access_denied"),
-      );
+    if (!appRecord.monetization_enabled && appRecord.organization_id !== user.organization_id) {
+      return jsonError(c, 403, "Access denied to this app", "access_denied");
     }
 
     if (!c.env.BLOB) {
-      return withCors(
-        jsonError(c, 503, "R2 storage is not configured", "internal_error"),
-      );
+      return jsonError(c, 503, "R2 storage is not configured", "internal_error");
     }
 
     const request = imageRequestSchema.parse(await c.req.json());
     const definition = getSupportedImageModelDefinition(request.model);
     if (!definition) {
-      return withCors(
-        jsonError(
-          c,
-          400,
-          `Unsupported image model: ${request.model}`,
-          "validation_error",
-          { supportedModels: SUPPORTED_IMAGE_MODEL_IDS },
-        ),
-      );
-    }
-    if (!hasLanguageModelProviderConfigured(request.model)) {
-      return withCors(
-        jsonError(c, 503, getAiProviderConfigurationError(), "internal_error"),
-      );
+      return jsonError(c, 400, `Unsupported image model: ${request.model}`, "validation_error", {
+        supportedModels: SUPPORTED_IMAGE_MODEL_IDS,
+      });
     }
 
-    await contentSafetyService.assertSafeForPublicUse({
+    const provider = getImageProvider(definition.billingSource);
+    const env = getCloudAwareEnv();
+    const apiKeys = {
+      OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
+      FAL_KEY: env.FAL_KEY,
+      FAL_API_KEY: env.FAL_API_KEY,
+    };
+    if (definition.billingSource === "openrouter" && !apiKeys.OPENROUTER_API_KEY) {
+      return jsonError(c, 503, getAiProviderConfigurationError(), "internal_error");
+    }
+    if (definition.billingSource === "fal" && !apiKeys.FAL_KEY && !apiKeys.FAL_API_KEY) {
+      return jsonError(c, 503, getAiProviderConfigurationError(), "internal_error");
+    }
+
+    await assertSafeFailOpen({
       surface: "media_generation_prompt",
       organizationId: user.organization_id,
       userId: user.id,
+      appId,
       text: request.prompt,
       imageUrls: request.sourceImage ? [request.sourceImage] : undefined,
       allowDataImages: true,
-      metadata: { type: "image", model: request.model, appId },
+      metadata: { type: "image", model: request.model, billingSource: definition.billingSource },
     });
 
+    const dimensions = {
+      ...definition.defaultDimensions,
+      ...imageDimensions(request),
+    };
     const cost = await calculateImageGenerationCostFromCatalog({
       model: request.model,
       provider: definition.provider,
       billingSource: definition.billingSource,
       imageCount: request.numImages,
-      dimensions: {
-        ...definition.defaultDimensions,
-        ...imageDimensions(request),
-      },
+      dimensions,
     });
 
-    // Charge the caller's app credits (creator markup applied internally from
-    // the app's monetization settings). Image cost is deterministic, so this is
-    // an exact charge — we only reconcile (full refund) on generation failure.
     const deduction = await appCreditsService.deductCredits({
       appId,
       userId: user.id,
@@ -278,30 +196,39 @@ app.post("/", async (c) => {
       metadata: {
         model: request.model,
         provider: definition.provider,
+        billingSource: definition.billingSource,
         numImages: request.numImages,
+        dimensions,
+        endpoint: "apps.generate-image",
       },
       app: appRecord,
     });
 
     if (!deduction.success) {
-      return withCors(
-        c.json(
-          {
-            success: false,
-            error: deduction.message || "Insufficient app credits",
-            code: "insufficient_app_credits",
-            required: deduction.totalCost,
-            balance: deduction.newBalance,
-          },
-          402,
-        ),
+      return c.json(
+        {
+          success: false,
+          error: deduction.message || "Insufficient app credits",
+          code: "insufficient_app_credits",
+          required: deduction.totalCost,
+          balance: deduction.newBalance,
+        },
+        402,
       );
     }
 
-    const images: GeneratedImage[] = [];
+    let images: GeneratedImage[];
     try {
+      images = [];
       for (let index = 0; index < request.numImages; index += 1) {
-        const generated = await generateOneImage(request);
+        const generated = await provider.generate({
+          model: request.model,
+          prompt: buildImagePrompt(request),
+          sourceImage: request.sourceImage,
+          aspectRatio: request.aspectRatio,
+          size: request.width && request.height ? `${request.width}x${request.height}` : undefined,
+          apiKeys,
+        });
         const ext = extensionForMimeType(generated.mimeType);
         const key = `generations/images/${appRecord.organization_id}/apps/${appId}/${crypto.randomUUID()}.${ext}`;
         const { url, key: storedKey } = await putPublicObject(c.env, {
@@ -313,30 +240,26 @@ app.post("/", async (c) => {
             organizationId: user.organization_id,
             appId,
             model: request.model,
+            billingSource: definition.billingSource,
             source: "app-generate-image",
           },
         });
 
         try {
-          await contentSafetyService.assertSafeForPublicUse({
+          await assertSafeFailOpen({
             surface: "media_generation_output",
             organizationId: user.organization_id,
             userId: user.id,
+            appId,
             imageUrls: [url],
-            metadata: { type: "image", model: request.model, appId },
+            metadata: { type: "image", model: request.model, billingSource: definition.billingSource },
           });
         } catch (safetyError) {
           await c.env.BLOB.delete(storedKey).catch((deleteError) => {
-            logger.error(
-              "[App GenerateImage] Failed to delete blocked image output",
-              {
-                key: storedKey,
-                error:
-                  deleteError instanceof Error
-                    ? deleteError.message
-                    : String(deleteError),
-              },
-            );
+            logger.error("[App GenerateImage] Failed to delete blocked image output", {
+              key: storedKey,
+              error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+            });
           });
           throw safetyError;
         }
@@ -351,8 +274,6 @@ app.post("/", async (c) => {
         });
       }
     } catch (generationError) {
-      await deleteStoredImages(c.env, images, "[App GenerateImage]");
-      // Generation failed after charging — refund the full reserved amount.
       await appCreditsService
         .reconcileCredits({
           appId,
@@ -360,23 +281,19 @@ app.post("/", async (c) => {
           estimatedBaseCost: cost.totalCost,
           actualBaseCost: 0,
           description: "Refund due to image generation failure",
-          metadata: { error: true, model: request.model },
+          metadata: { error: true, model: request.model, endpoint: "apps.generate-image" },
           app: appRecord,
         })
         .catch((refundError) => {
           logger.error("[App GenerateImage] Refund failed", {
             appId,
             userId: user.id,
-            error:
-              refundError instanceof Error
-                ? refundError.message
-                : String(refundError),
+            error: refundError instanceof Error ? refundError.message : String(refundError),
           });
         });
       throw generationError;
     }
 
-    // Best-effort generation records; never fail the request on bookkeeping.
     await Promise.all(
       images.map((image) =>
         generationsService
@@ -415,10 +332,7 @@ app.post("/", async (c) => {
           .catch((recordError) => {
             logger.warn("[App GenerateImage] Failed to record generation", {
               appId,
-              error:
-                recordError instanceof Error
-                  ? recordError.message
-                  : String(recordError),
+              error: recordError instanceof Error ? recordError.message : String(recordError),
             });
           }),
       ),
@@ -428,6 +342,7 @@ app.post("/", async (c) => {
       appId,
       userId: user.id,
       model: request.model,
+      billingSource: definition.billingSource,
       numImages: request.numImages,
       baseCost: deduction.baseCost,
       creatorMarkup: deduction.creatorMarkup,
@@ -437,35 +352,27 @@ app.post("/", async (c) => {
       monetizationEnabled: appRecord.monetization_enabled,
     });
 
-    return withCors(
-      c.json({
-        success: true,
-        appId,
-        model: request.model,
-        images: images.map(({ image, url, text }) => ({ image, url, text })),
-        cost,
-        charge: {
-          status: "charged",
-          currency: "USD",
-          baseCost: deduction.baseCost,
-          creatorMarkup: deduction.creatorMarkup,
-          totalCost: deduction.totalCost,
-          creatorEarnings: deduction.creatorEarnings,
-          balance: deduction.newBalance,
-        },
-      }),
-    );
+    return c.json({
+      success: true,
+      appId,
+      model: request.model,
+      images: images.map(({ image, url, text }) => ({ image, url, text })),
+      cost,
+      charge: {
+        status: "charged",
+        currency: "USD",
+        baseCost: deduction.baseCost,
+        creatorMarkup: deduction.creatorMarkup,
+        totalCost: deduction.totalCost,
+        creatorEarnings: deduction.creatorEarnings,
+        balance: deduction.newBalance,
+      },
+    });
   } catch (error) {
-    return withCors(failureResponse(c, error));
+    return failureResponse(c, error);
   }
 });
 
-app.all("*", (c) => {
-  const response = c.json({ success: false, error: "Method not allowed" }, 405);
-  return addCorsHeaders(response, c.req.header("origin") ?? null, [
-    "POST",
-    "OPTIONS",
-  ]);
-});
+app.all("*", (c) => c.json({ success: false, error: "Method not allowed" }, 405));
 
 export default app;
