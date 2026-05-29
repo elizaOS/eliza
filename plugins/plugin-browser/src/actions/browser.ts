@@ -372,6 +372,7 @@ export const browserAction: Action = {
       subaction,
       tabAction: params?.tabAction ?? normalizeLegacyTabAction(params?.action),
       text: params?.text,
+      value: params?.text,
       timeoutMs: params?.timeoutMs,
       url,
       cursorDurationMs: params?.cursorDurationMs,

@@ -1349,17 +1349,22 @@ export class DesktopLlamaAdapter {
 		let mtpEngine: Pointer = 0;
 		if (wantsSameFileMtp) {
 			if (this.drafterAttached[ctxIdx]) this.detachDrafterFromCtx(ctxIdx);
-			mtpEngine = this.shim.eliza_llama_mtp_engine_create(
-				this.modelPtr ?? 0,
-				ctx,
-				config.draftMin,
-				config.draftMax,
-				config.temperature,
-				config.topK,
-				config.topP,
-				0, // min_p — not part of LlmStreamConfig
-				0xdeadbeef,
-			);
+			// bun FFI surfaces a NULL pointer return as JS `null` (not 0), and
+			// `null !== 0` is true — normalize to 0 so the `mtpEngine === 0`
+			// fallback checks below don't misfire into the prefill path with a
+			// null engine.
+			mtpEngine =
+				this.shim.eliza_llama_mtp_engine_create(
+					this.modelPtr ?? 0,
+					ctx,
+					config.draftMin,
+					config.draftMax,
+					config.temperature,
+					config.topK,
+					config.topP,
+					0, // min_p — not part of LlmStreamConfig
+					0xdeadbeef,
+				) ?? 0;
 		}
 
 		// Speculative decoding (separate drafter): drafter attach is per-ctx.

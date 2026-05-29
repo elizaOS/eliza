@@ -105,7 +105,11 @@ import {
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
-import { applyUiTheme, loadUiTheme } from "@elizaos/ui/state/persistence";
+import {
+  applyUiTheme,
+  loadUiThemeMode,
+  resolveUiTheme,
+} from "@elizaos/ui/state/persistence";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
@@ -2163,7 +2167,7 @@ function initializeMobileRuntimeModeListener(): void {
 }
 
 function applyStoredDetachedShellTheme(): void {
-  applyUiTheme(loadUiTheme());
+  applyUiTheme(resolveUiTheme(loadUiThemeMode()));
 }
 
 async function main(): Promise<void> {

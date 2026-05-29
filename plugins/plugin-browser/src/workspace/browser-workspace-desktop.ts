@@ -781,21 +781,20 @@ export function createDesktopBrowserWorkspaceCommandScript(
           if (command.selector && findTarget()) {
             const found = findTarget();
             const visible =
-              command.state === "visible"
-                ? found && isVisible(found)
-                : !found || !isVisible(found);
+              command.state === "hidden"
+                ? !found || !isVisible(found)
+                : found && isVisible(found);
             if (visible) {
               resolve({ ok: true, selector: command.selector, state: command.state || "visible" });
               return;
             }
           }
-          if (
-            command.findBy &&
-            (command.state === "visible") &&
-            findSemantic()
-          ) {
-            resolve({ findBy: command.findBy, ok: true });
-            return;
+          if (command.findBy) {
+            const found = findSemantic();
+            if (command.state === "hidden" ? !found : found) {
+              resolve({ findBy: command.findBy, ok: true });
+              return;
+            }
           }
           if (command.text && normalize(document.body?.textContent).includes(command.text)) {
             resolve({ ok: true, text: command.text });

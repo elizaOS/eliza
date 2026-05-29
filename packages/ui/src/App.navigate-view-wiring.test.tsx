@@ -116,6 +116,7 @@ vi.mock("./state", () => ({
     setTab: appState.setTab,
     setUiLanguage: vi.fn(),
     setUiTheme: vi.fn(),
+    setUiThemeMode: vi.fn(),
     startupCoordinator: {
       phase: "ready",
       retry: vi.fn(),
@@ -127,6 +128,7 @@ vi.mock("./state", () => ({
     uiLanguage: "en",
     uiShellMode: "default",
     uiTheme: "light",
+    uiThemeMode: "system",
   }),
 }));
 

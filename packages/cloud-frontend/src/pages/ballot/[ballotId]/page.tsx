@@ -199,10 +199,10 @@ export default function BallotPage() {
           </p>
           <p className="text-xs text-gray-500">
             {t("cloud.ballot.expires", {
-              date:
+              when:
                 formatDate(ballot.expiresAt) ??
                 t("cloud.ballot.soon", { defaultValue: "soon" }),
-              defaultValue: "Expires {{date}}.",
+              defaultValue: "Expires {{when}}.",
             })}
           </p>
         </header>

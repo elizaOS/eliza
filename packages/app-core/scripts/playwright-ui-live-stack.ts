@@ -488,10 +488,17 @@ async function ensureUiDistReady(): Promise<void> {
   child.stdout.on("data", (chunk) => logs.push(String(chunk)));
   child.stderr.on("data", (chunk) => logs.push(String(chunk)));
 
-  const exited = await waitForChildExit(child, 300_000);
-  if (!exited || child.exitCode !== 0) {
+  const RENDERER_BUILD_TIMEOUT_MS = 600_000;
+  const exited = await waitForChildExit(child, RENDERER_BUILD_TIMEOUT_MS);
+  if (!exited) {
+    child.kill("SIGKILL");
     throw new Error(
-      `app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+      `app renderer build timed out after ${RENDERER_BUILD_TIMEOUT_MS}ms.\n${logs.join("").slice(-8_000)}`,
+    );
+  }
+  if (child.exitCode !== 0) {
+    throw new Error(
+      `app renderer build failed (exit ${child.exitCode}).\n${logs.join("").slice(-8_000)}`,
     );
   }
 }

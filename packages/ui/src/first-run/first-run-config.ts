@@ -42,7 +42,6 @@ export interface BuildFirstRunConnectionArgs {
   firstRunFeatureCrypto?: boolean;
   firstRunFeatureBrowser?: boolean;
   firstRunFeatureComputerUse?: boolean;
-  firstRunUseLocalEmbeddings?: boolean;
 }
 
 /** Feature selections from the first-run capabilities step. */
@@ -275,9 +274,13 @@ function buildFirstRunServiceRouting(args: {
         includeInference:
           args.shouldConfigureRuntimeProvider &&
           args.source.firstRunProvider === "elizacloud",
-        excludeServices: args.source.firstRunUseLocalEmbeddings
-          ? ["embeddings"]
-          : undefined,
+        // Embeddings follow the runtime: a cloud agent uses cloud embeddings,
+        // a local agent (including local+cloud-inference hybrid) keeps
+        // embeddings local so vectors never depend on a network round-trip.
+        excludeServices:
+          args.deploymentTarget.runtime === "cloud"
+            ? undefined
+            : ["embeddings"],
         ...args.models,
       }),
     );

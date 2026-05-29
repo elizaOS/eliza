@@ -179,5 +179,22 @@
   "homepage_eliza.leaderboard.resend": "Resend",
   "homepage_eliza.leaderboard.loginTitleVerify": "Enter your verification code",
   "homepage_eliza.leaderboard.loginTitlePhone": "What’s your phone number?",
-  "homepage_eliza.leaderboard.loginSubtitleVerify": "Sent SMS to {{phone}}"
+  "homepage_eliza.leaderboard.loginSubtitleVerify": "Sent SMS to {{phone}}",
+  "homepage_eliza.marketing.osStatusAvailable": "Available",
+  "homepage_eliza.marketing.osStatusBeta": "Beta",
+  "homepage_eliza.marketing.osStatusNightly": "Nightly",
+  "homepage_eliza.marketing.osStatusComingSoon": "Coming soon",
+  "homepage_eliza.getStarted.errSolanaSignIn": "Solana sign-in failed",
+  "homepage_eliza.getStarted.solanaAria": "Sign in with Solana",
+  "homepage_eliza.leaderboard.placeholderEliza": "Message Eliza...",
+  "homepage_eliza.model.botResponse0": "sure thing! i'll take care of that right away",
+  "homepage_eliza.model.botResponse1": "on it — give me just a sec",
+  "homepage_eliza.model.botResponse2": "great idea, let me set that up for you and send a confirmation when it's done",
+  "homepage_eliza.model.botResponse3": "done! anything else?",
+  "homepage_eliza.model.botResponse4": "absolutely, i've got you covered. made a few adjustments along the way",
+  "homepage_eliza.model.botResponse5": "just looked into it — all sorted!",
+  "homepage_eliza.model.botResponse6": "no worries, i'll handle that for you. want me to look into anything else?",
+  "homepage_eliza.model.botResponse7": "good thinking! already on it",
+  "homepage_eliza.model.botResponse8": "all done! organized everything so it's easier to find next time",
+  "homepage_eliza.model.botResponse9": "consider it handled"
 }

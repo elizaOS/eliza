@@ -7,6 +7,7 @@ import {
   normalizeLanguage,
   type UiLanguage,
 } from "../i18n";
+import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
 import type {
   CompanionHalfFramerateMode,
@@ -32,10 +33,58 @@ function describePersistenceError(err: unknown): string {
 
 /* ── Theme persistence ────────────────────────────────────────────────── */
 
-export type { UiTheme } from "./ui-preferences";
+export type { UiTheme, UiThemeMode } from "./ui-preferences";
 
 const UI_THEME_STORAGE_KEY = "eliza:ui-theme";
 const LEGACY_UI_THEME_STORAGE_KEY = "elizaos:ui-theme";
+const UI_THEME_MODE_STORAGE_KEY = "eliza:ui-theme-mode";
+
+function normalizeUiThemeMode(value: unknown): UiThemeMode {
+  return value === "light" || value === "dark" || value === "system"
+    ? value
+    : "system";
+}
+
+export { normalizeUiThemeMode };
+
+/**
+ * Resolve the OS-preferred color scheme. Defaults to `dark` when
+ * `matchMedia` is unavailable (SSR, old runtimes) so behavior matches the
+ * historical app default.
+ */
+export function getSystemTheme(): UiTheme {
+  if (typeof window === "undefined" || !window.matchMedia) return "dark";
+  return window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
+
+/** Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}. */
+export function resolveUiTheme(mode: UiThemeMode): UiTheme {
+  return mode === "system" ? getSystemTheme() : mode;
+}
+
+/**
+ * Load the persisted theme mode. New users (no stored value) default to
+ * `system`. A legacy concrete `eliza:ui-theme` value is treated as an
+ * explicit user choice and migrated into a `light`/`dark` mode.
+ */
+export function loadUiThemeMode(): UiThemeMode {
+  return tryLocalStorage(() => {
+    const mode = localStorage.getItem(UI_THEME_MODE_STORAGE_KEY);
+    if (mode != null) return normalizeUiThemeMode(mode);
+    const legacy =
+      localStorage.getItem(UI_THEME_STORAGE_KEY) ??
+      localStorage.getItem(LEGACY_UI_THEME_STORAGE_KEY);
+    return legacy === "light" || legacy === "dark" ? legacy : "system";
+  }, "system");
+}
+
+export function saveUiThemeMode(mode: UiThemeMode): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(UI_THEME_MODE_STORAGE_KEY, normalizeUiThemeMode(mode));
+  }, undefined);
+}
 const THEME_SWITCHING_ATTRIBUTE = "data-theme-switching";
 let themeSwitchResetFrameId: number | null = null;
 
@@ -386,7 +435,9 @@ export function savePersistedActivePackUrl(packUrl: string | null): void {
 export function loadUiLanguage(): UiLanguage {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
-    return normalizeLanguage(stored ?? DEFAULT_UI_LANGUAGE);
+    if (stored != null) return normalizeLanguage(stored);
+    // No explicit user choice yet — guess from browser/region hints.
+    return detectClientLanguage() ?? DEFAULT_UI_LANGUAGE;
   }, DEFAULT_UI_LANGUAGE);
 }
 

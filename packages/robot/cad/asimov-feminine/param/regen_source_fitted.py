@@ -340,6 +340,10 @@ def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, margin=0.0015, n_ang=64, dz=0.0
     F = np.fft.rfft(R, axis=1); F[:, 6:] = 0.0; R = np.fft.irfft(F, n_ang, axis=1)
     R = gaussian_filter1d(R, 3, axis=0, mode="nearest") + margin
     C0 = gaussian_filter1d(C0, 3, mode="nearest"); C1 = gaussian_filter1d(C1, 3, mode="nearest")
+    # taper the tube ends inward so the end rim tucks under the wider joint cap
+    # (softens the sleeve<->joint seam instead of a hard overlapping rim)
+    end = np.clip(np.minimum(L - L[0], L[-1] - L) / 0.014, 0.0, 1.0)
+    R = R * (0.55 + 0.45 * end)[:, None]
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
     for i in range(len(L)):
@@ -577,6 +581,9 @@ def _flat_sole(mesh):
 def _close(mesh):
     """Close small boundary loops (holes inherited from imperfect source meshes)."""
     trimesh.repair.fill_holes(mesh)
+    u, c = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
+    if int((c == 1).sum()) > 0:  # stubborn quantized loops the simple fill misses
+        mesh = W.cap_quantized_boundary_loops(mesh, max_loop_vertices=256)
     return mesh
 
 
@@ -590,7 +597,9 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link == "IMU_ORIGIN":
         return _close(_pelvis_warp(m))  # keep real hip sockets (slimmed inward)
     if link in FEET:
-        return _close(_flat_sole(_limb_warp(m, link, slim)))  # real foot, flat sole
+        # clean smooth shoe shell + flat sole (the warped original foot tore at the
+        # multi-component sole/housing)
+        return _skin_part(_limb_warp(m, link, slim), C.LINKS[link]["spine"], flat_bottom=True)
     # Mechanical limbs/connectors: smooth slim shaft + ORIGINAL slimmed joint caps.
     # Long shafts get a clean tube; short connectors stay fully mechanical.
     return _close(_hybrid_part(m, link, slim))

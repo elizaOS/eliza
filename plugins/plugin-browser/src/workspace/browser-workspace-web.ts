@@ -1494,18 +1494,20 @@ export async function executeWebBrowserWorkspaceDomCommand(
                   undefined,
                   command,
                 );
-                if (command.state === "visible") {
-                  return found
-                    ? isBrowserWorkspaceElementVisible(found)
-                    : false;
+                if (command.state === "hidden") {
+                  return !found || !isBrowserWorkspaceElementVisible(found);
                 }
-                return !found || !isBrowserWorkspaceElementVisible(found);
+                return found ? isBrowserWorkspaceElementVisible(found) : false;
               })()
             : false;
           const matchesFind = command.findBy
-            ? Boolean(
-                resolveBrowserWorkspaceFindElement(currentDocument, command),
-              )
+            ? (() => {
+                const found = resolveBrowserWorkspaceFindElement(
+                  currentDocument,
+                  command,
+                );
+                return command.state === "hidden" ? !found : Boolean(found);
+              })()
             : false;
           const matchesText = command.text?.trim()
             ? normalizeBrowserWorkspaceText(

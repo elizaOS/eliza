@@ -75,7 +75,7 @@ import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { AgentProfile } from "./agent-profile-types";
-import type { UiShellMode, UiTheme } from "./ui-preferences";
+import type { UiShellMode, UiTheme, UiThemeMode } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
 
@@ -298,6 +298,7 @@ export interface AppState {
   uiShellMode: UiShellMode;
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
+  uiThemeMode: UiThemeMode;
   ownerName: string | null;
   /** VRM quality vs GPU use: always full quality, battery-aware (default), or always efficient. */
   companionVrmPowerMode: CompanionVrmPowerMode;
@@ -737,6 +738,7 @@ export interface AppActions {
   navigation: NavigationEventsApi;
   setUiLanguage: (language: UiLanguage) => void;
   setUiTheme: (theme: UiTheme) => void;
+  setUiThemeMode: (mode: UiThemeMode) => void;
   setCompanionVrmPowerMode: (mode: CompanionVrmPowerMode) => void;
   setCompanionAnimateWhenHidden: (enabled: boolean) => void;
   setCompanionHalfFramerateMode: (mode: CompanionHalfFramerateMode) => void;

@@ -71,13 +71,11 @@ describe("PostProviderSwitchRequestSchema", () => {
       provider: "openai",
       apiKey: "  sk-x  ",
       primaryModel: "  gpt-5  ",
-      useLocalEmbeddings: false,
     });
     expect(parsed).toEqual({
       provider: "openai",
       apiKey: "sk-x",
       primaryModel: "gpt-5",
-      useLocalEmbeddings: false,
     });
   });
 

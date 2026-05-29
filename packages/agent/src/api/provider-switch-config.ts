@@ -761,24 +761,23 @@ export function createProviderSwitchConnection(args: {
   };
 }
 
-export interface ApplyFirstRunConnectionOptions {
-  useLocalEmbeddings?: boolean;
-}
-
 export async function applyFirstRunConnectionConfig(
   config: MutableElizaConfig,
   connection: FirstRunConnection,
-  options: ApplyFirstRunConnectionOptions = {},
 ): Promise<void> {
   const normalizedConnection = connection;
-  const excludeServices = options.useLocalEmbeddings
-    ? (["embeddings"] as const)
-    : undefined;
 
   delete (config as Record<string, unknown>).connection;
   const existingDeploymentTarget = normalizeDeploymentTargetConfig(
     config.deploymentTarget,
   );
+  // Embeddings follow the runtime: a cloud agent uses cloud embeddings, a
+  // local agent (including local+cloud-inference hybrid) keeps embeddings
+  // local so vectors never depend on a network round-trip.
+  const excludeServices =
+    existingDeploymentTarget?.runtime === "cloud"
+      ? undefined
+      : (["embeddings"] as const);
 
   if (normalizedConnection.kind === "cloud-managed") {
     clearRemoteProviderConfig(config);

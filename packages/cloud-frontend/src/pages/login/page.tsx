@@ -61,7 +61,7 @@ export default function LoginPage() {
             to="/terms-of-service"
             className="text-white transition-colors hover:opacity-80"
           >
-            {t("cloud.login.terms", { defaultValue: "Terms" })}
+            {t("cloud.login.termsLink", { defaultValue: "Terms" })}
           </Link>{" "}
           {t("cloud.login.and", { defaultValue: "and" })}{" "}
           <Link

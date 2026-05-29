@@ -79,7 +79,6 @@ export async function handleProviderSwitchRoutes(
       return true;
     }
     const body = parsed.data;
-    const useLocalEmbeddings = body.useLocalEmbeddings;
 
     const normalizedProvider = normalizeFirstRunProviderId(body.provider);
     if (!normalizedProvider) {
@@ -155,11 +154,7 @@ export async function handleProviderSwitchRoutes(
             process.env.OPENAI_API_KEY = trimmedApiKey;
           }
 
-          await applyFirstRunConnectionConfig(
-            config,
-            connection,
-            useLocalEmbeddings === undefined ? {} : { useLocalEmbeddings },
-          );
+          await applyFirstRunConnectionConfig(config, connection);
           ctx.saveElizaConfig(config);
 
           return {

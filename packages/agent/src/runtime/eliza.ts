@@ -127,16 +127,24 @@ type AppCoreRuntimeModule = {
   isStoreBuild: () => boolean;
 };
 
-async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
+let _appCoreRuntimePromise: Promise<AppCoreRuntimeModule> | null = null;
+function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   // Use a string-literal dynamic import (no indirection through a `const`)
   // so Bun.build can statically follow it and inline `@elizaos/app-core`
   // into the mobile bundle. The previous indirect form
   // (`const moduleId = "@elizaos/app-core"; import(moduleId)`) defeated
   // Bun's resolver and produced a runtime `Cannot find module` on AOSP
   // where there is no node_modules tree.
-  return import(
-    /* webpackIgnore: true */ "@elizaos/app-core/agent-bridge"
-  ) as Promise<AppCoreRuntimeModule>;
+  //
+  // Memoized: boot resolves this ~7x across the pre-resolve-setup phase. The
+  // ES module cache already dedupes evaluation, but caching the promise
+  // collapses the repeated dynamic-import round-trips into one.
+  if (!_appCoreRuntimePromise) {
+    _appCoreRuntimePromise = import(
+      /* webpackIgnore: true */ "@elizaos/app-core/agent-bridge"
+    ) as Promise<AppCoreRuntimeModule>;
+  }
+  return _appCoreRuntimePromise;
 }
 
 function isBundledMobileRuntime(): boolean {
@@ -3167,7 +3175,12 @@ export async function startEliza(
 
   // 2. Push channel secrets into process.env for plugin discovery
   applyConnectorSecretsToEnv(config);
-  await autoResolveDiscordAppId();
+  // Kick off the Discord App ID lookup (network, up to a 10s timeout) without
+  // blocking. It only writes DISCORD_APPLICATION_ID, which nothing reads until
+  // the Discord connector initializes during plugin resolution — so we await it
+  // at the join point before resolvePlugins() and let the round-trip overlap
+  // the vault hydration + setup work below instead of serializing boot.
+  const discordAppIdPromise = autoResolveDiscordAppId();
 
   // 2b. Propagate cloud config into process.env for ElizaCloud plugin
   applyCloudConfigToEnv(config);
@@ -3557,8 +3570,12 @@ export async function startEliza(
     }
   }
 
-  // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
-  await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
+  // 5a. If cloud is configured and no local GitHub token, try fetching from
+  // cloud. Kick off without blocking (network, up to a 10s timeout); it only
+  // writes GITHUB_TOKEN, consumed by GitHub/git plugins during resolution.
+  const cloudGithubTokenPromise = autoFetchCloudGithubToken(
+    config.cloud?.agentId?.trim() || agentId,
+  );
   bootTimer.lap("pre-resolve-setup");
 
   const elizaPlugin = createElizaPlugin({
@@ -3566,6 +3583,11 @@ export async function startEliza(
 
     agentId,
   });
+
+  // Join point: ensure the boot-time network lookups have written their env
+  // vars before any plugin/connector init reads them. Both promises self-handle
+  // their errors, so this only waits — it never throws.
+  await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
 
   // 6. Resolve and load plugins
   // In headless (GUI) mode before first-run setup, the user hasn't configured a

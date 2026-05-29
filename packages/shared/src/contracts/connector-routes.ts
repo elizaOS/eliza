@@ -8,7 +8,7 @@
  * Routes covered:
  *   POST /api/connectors           { name: string, config: object }
  *   POST /api/provider/switch
- *     { provider: string, apiKey?, primaryModel?, useLocalEmbeddings? }
+ *     { provider: string, apiKey?, primaryModel? }
  */
 
 import z from "zod";
@@ -41,7 +41,6 @@ export const PostProviderSwitchRequestSchema = z
     provider: z.string().regex(/\S/, "Missing provider"),
     apiKey: z.string().max(512, "API key is too long").optional(),
     primaryModel: z.string().optional(),
-    useLocalEmbeddings: z.boolean().optional(),
   })
   .strict()
   .transform((value) => {
@@ -51,9 +50,6 @@ export const PostProviderSwitchRequestSchema = z
       provider: value.provider.trim(),
       ...(apiKey ? { apiKey } : {}),
       ...(primaryModel ? { primaryModel } : {}),
-      ...(value.useLocalEmbeddings !== undefined
-        ? { useLocalEmbeddings: value.useLocalEmbeddings }
-        : {}),
     };
   });
 

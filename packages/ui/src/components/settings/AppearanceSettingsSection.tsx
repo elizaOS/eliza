@@ -1,4 +1,4 @@
-import { Check, Moon, Sun } from "lucide-react";
+import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { useApp, useContentPack } from "../../state";
 import { LANGUAGES } from "../shared/LanguageDropdown";
 import { ModeButton, selectableTileClass } from "./appearance-primitives";
@@ -6,10 +6,10 @@ import { LoadContentPackForm } from "./LoadContentPackForm";
 import { LoadedPacksList } from "./LoadedPacksList";
 
 export function AppearanceSettingsSection() {
-  const { setUiLanguage, uiTheme, uiLanguage, setUiTheme, t } = useApp();
+  const { setUiLanguage, uiThemeMode, uiLanguage, setUiThemeMode, t } =
+    useApp();
   const { activePack, loadedPacks, toggle } = useContentPack();
 
-  const isDark = uiTheme === "dark";
   return (
     <div className="space-y-6">
       <section className="space-y-2">
@@ -49,16 +49,22 @@ export function AppearanceSettingsSection() {
         </h3>
         <div className="flex gap-2">
           <ModeButton
-            active={!isDark}
-            icon={<Sun className="h-4 w-4" />}
-            label={t("settings.appearance.light", { defaultValue: "Light" })}
-            onClick={() => setUiTheme("light")}
+            active={uiThemeMode === "system"}
+            icon={<Monitor className="h-4 w-4" />}
+            label={t("settings.appearance.system", { defaultValue: "System" })}
+            onClick={() => setUiThemeMode("system")}
           />
           <ModeButton
-            active={isDark}
+            active={uiThemeMode === "light"}
+            icon={<Sun className="h-4 w-4" />}
+            label={t("settings.appearance.light", { defaultValue: "Light" })}
+            onClick={() => setUiThemeMode("light")}
+          />
+          <ModeButton
+            active={uiThemeMode === "dark"}
             icon={<Moon className="h-4 w-4" />}
             label={t("settings.appearance.dark", { defaultValue: "Dark" })}
-            onClick={() => setUiTheme("dark")}
+            onClick={() => setUiThemeMode("dark")}
           />
         </div>
       </section>

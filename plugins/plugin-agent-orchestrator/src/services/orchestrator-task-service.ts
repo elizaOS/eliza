@@ -137,6 +137,7 @@ interface ParsedUsage {
   cacheTokens: number;
   costUsd?: number;
   state: UsageState;
+  sourceEventId?: string;
 }
 
 function parseUsage(data: unknown): ParsedUsage | null {
@@ -166,6 +167,7 @@ function parseUsage(data: unknown): ParsedUsage | null {
     cacheTokens,
     costUsd: typeof data.costUsd === "number" ? data.costUsd : undefined,
     state,
+    sourceEventId: str(data.sourceEventId),
   };
 }
 
@@ -390,30 +392,47 @@ export class OrchestratorTaskService extends Service {
     sessionId: string,
     usage: ParsedUsage,
   ): Promise<void> {
+    // Dedup replayed/redelivered usage frames: the producer stamps a stable
+    // per-turn sourceEventId, so a frame already recorded for this task must
+    // not be summed a second time.
+    if (usage.sourceEventId) {
+      const doc = await this.store.getTask(taskId);
+      if (doc?.usage.some((row) => row.sourceEventId === usage.sourceEventId)) {
+        return;
+      }
+    }
+    const found = await this.store.findSession(sessionId);
+    const session = found?.session;
+    // The terminal result often omits provider/model; the session record knows
+    // which framework/model produced the turn, so fill the gaps from there.
+    const provider =
+      usage.provider !== "unknown"
+        ? usage.provider
+        : (session?.providerSource ?? session?.framework ?? usage.provider);
+    const model = usage.model ?? session?.model;
     await this.store.addUsage({
       id: randomUUID(),
       taskId,
       sessionId,
-      provider: usage.provider,
-      model: usage.model,
+      provider,
+      model,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       reasoningTokens: usage.reasoningTokens,
       cacheTokens: usage.cacheTokens,
       costUsd: usage.costUsd,
       state: usage.state,
+      sourceEventId: usage.sourceEventId,
       timestamp: Date.now(),
       createdAt: nowIso(),
     });
-    const found = await this.store.findSession(sessionId);
-    if (!found) return;
-    const s = found.session;
+    if (!session) return;
     await this.store.updateSession(sessionId, {
-      inputTokens: s.inputTokens + usage.inputTokens,
-      outputTokens: s.outputTokens + usage.outputTokens,
-      reasoningTokens: s.reasoningTokens + usage.reasoningTokens,
-      cacheTokens: s.cacheTokens + usage.cacheTokens,
-      costUsd: s.costUsd + (usage.costUsd ?? 0),
+      inputTokens: session.inputTokens + usage.inputTokens,
+      outputTokens: session.outputTokens + usage.outputTokens,
+      reasoningTokens: session.reasoningTokens + usage.reasoningTokens,
+      cacheTokens: session.cacheTokens + usage.cacheTokens,
+      costUsd: session.costUsd + (usage.costUsd ?? 0),
       usageState: usage.state,
     });
   }

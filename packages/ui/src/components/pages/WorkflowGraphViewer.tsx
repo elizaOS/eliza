@@ -610,10 +610,10 @@ export function WorkflowGraphViewer({
   );
 
   const ariaLabel = t("workflowGraph.ariaLabel", {
-    nodes: nodes.length,
-    connections: edges.length,
+    nodeCount: nodes.length,
+    edgeCount: edges.length,
     defaultValue:
-      "Workflow graph with {{nodes}} nodes and {{connections}} connections",
+      "Workflow graph with {{nodeCount}} nodes and {{edgeCount}} connections",
   });
   const workflowId = workflow?.id;
 

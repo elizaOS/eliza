@@ -1636,8 +1636,11 @@ export class AcpService extends Service {
           }
         }
       }
-      // usage_update is informational; we don't currently surface it but could log
-      // available_commands_update is metadata; ignore for now
+      // Streaming `usage_update` sessionUpdates are intentionally not summed
+      // here: the per-turn token total is emitted once from the terminal
+      // result below, which keeps the consumer's per-turn summation exact —
+      // a streamed cumulative update would double-count. The
+      // `available_commands_update` sessionUpdate is metadata; ignore it.
     }
 
     if (sessionId && result) {
@@ -1654,6 +1657,22 @@ export class AcpService extends Service {
     if (sessionId && result && typeof result.stopReason === "string") {
       stopReason = result.stopReason;
       if (emitPromptTerminalEvents) {
+        // Per-turn token usage rides on the terminal result (claude-agent-acp
+        // reports it under `result.usage` / `result._meta.usage`). Emit it once
+        // per prompt turn so the consumer's summation stays exact. Providers
+        // that report no usage simply leave the session "unavailable".
+        const usage = extractUsageUpdate(
+          result,
+          asRecord(result.usage),
+          asRecord(result._meta),
+          asRecord(asRecord(result._meta)?.usage),
+        );
+        if (usage) {
+          this.emitSessionEvent(sessionId, "usage_update", {
+            ...usage,
+            sourceEventId: `${sessionId}:${startedAt}`,
+          });
+        }
         // Treat any non-error terminal stopReason as a completion so
         // downstream evaluators get a chance to summarize the work for
         // the user. claude-agent-sdk emits a variety of stopReasons
@@ -1951,6 +1970,109 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+export interface NormalizedUsage {
+  provider: string;
+  model?: string;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheTokens: number;
+  costUsd?: number;
+  state: "measured";
+}
+
+function firstFiniteNumber(...values: unknown[]): number {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+/**
+ * Normalize a provider usage payload — Anthropic Messages (`input_tokens`,
+ * `cache_read_input_tokens`, ...), OpenAI Chat/Responses (`prompt_tokens`,
+ * `completion_tokens_details.reasoning_tokens`, ...), or the claude-agent-sdk
+ * result `usage` — into the camelCase token shape the orchestrator consumer
+ * records. Merges field-by-field across the candidate records and returns
+ * undefined when no real token data is present, so a turn that reports nothing
+ * never persists a fabricated zero-usage row (it stays "unavailable").
+ */
+export function extractUsageUpdate(
+  ...sources: Array<Record<string, unknown> | undefined>
+): NormalizedUsage | undefined {
+  const records = sources.filter(
+    (source): source is Record<string, unknown> => source !== undefined,
+  );
+  if (records.length === 0) return undefined;
+  const pick = (...keys: string[]): unknown => {
+    for (const record of records) {
+      for (const key of keys) {
+        const value = record[key];
+        if (value !== undefined && value !== null) return value;
+      }
+    }
+    return undefined;
+  };
+  const nested = (key: string, sub: string): unknown => {
+    for (const record of records) {
+      const value = asRecord(record[key])?.[sub];
+      if (value !== undefined && value !== null) return value;
+    }
+    return undefined;
+  };
+
+  const inputTokens = firstFiniteNumber(
+    pick("input_tokens", "inputTokens", "prompt_tokens"),
+  );
+  const outputTokens = firstFiniteNumber(
+    pick("output_tokens", "outputTokens", "completion_tokens"),
+  );
+  const reasoningTokens = firstFiniteNumber(
+    pick("reasoning_tokens", "reasoningTokens"),
+    nested("completion_tokens_details", "reasoning_tokens"),
+    nested("output_tokens_details", "reasoning_tokens"),
+  );
+  const cacheTokens =
+    firstFiniteNumber(pick("cacheTokens")) ||
+    firstFiniteNumber(
+      pick("cache_read_input_tokens", "cacheReadInputTokens"),
+      nested("prompt_tokens_details", "cached_tokens"),
+      nested("input_tokens_details", "cached_tokens"),
+    ) +
+      firstFiniteNumber(
+        pick("cache_creation_input_tokens", "cacheCreationInputTokens"),
+      );
+  const costRaw = pick("total_cost_usd", "cost_usd", "costUsd");
+  const costUsd =
+    typeof costRaw === "number" && Number.isFinite(costRaw)
+      ? costRaw
+      : undefined;
+
+  if (
+    inputTokens === 0 &&
+    outputTokens === 0 &&
+    reasoningTokens === 0 &&
+    cacheTokens === 0 &&
+    costUsd === undefined
+  ) {
+    return undefined;
+  }
+
+  const providerRaw = pick("provider");
+  const modelRaw = pick("model");
+  return {
+    provider:
+      typeof providerRaw === "string" && providerRaw ? providerRaw : "unknown",
+    model: typeof modelRaw === "string" && modelRaw ? modelRaw : undefined,
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cacheTokens,
+    costUsd,
+    state: "measured",
+  };
 }
 
 function stringifyMaybe(value: unknown): string {

@@ -65,7 +65,6 @@ export function applyFirstTimeSetupTopology(
     isCloudRuntime: boolean;
     selectedProviderId?: string;
     cloudFirstRunResult?: FirstTimeSetupCloudResult | null;
-    useLocalEmbeddings?: boolean;
   },
 ): ElizaConfig {
   const linkedAccounts = {
@@ -100,7 +99,10 @@ export function applyFirstTimeSetupTopology(
       buildDefaultElizaCloudServiceRouting({
         base: serviceRouting,
         includeInference: shouldUseCloudInference,
-        excludeServices: args.useLocalEmbeddings ? ["embeddings"] : undefined,
+        // Embeddings follow the runtime: only a cloud agent uses cloud
+        // embeddings. A local agent with cloud inference (hybrid) keeps
+        // embeddings local.
+        excludeServices: args.isCloudRuntime ? undefined : ["embeddings"],
       }),
     );
   }

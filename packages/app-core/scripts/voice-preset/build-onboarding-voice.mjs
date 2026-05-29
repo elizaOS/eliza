@@ -25,13 +25,24 @@
  *   3. Generate:
  *        bun packages/app-core/scripts/voice-preset/build-onboarding-voice.mjs
  *
+ * All lines share one voice: a single reference passage is synthesized from the
+ * instruct, then every line is voice-cloned from that reference so the timbre is
+ * identical across presets (instruct + seed alone do not pin a stable speaker).
+ *
  * Output (default `packages/app-core/assets/onboarding-voice/`):
  *   <id>.wav        one per ONBOARDING_VOICE_LINES entry (24 kHz mono, 16-bit)
- *   manifest.json   { generatedAt, instruct, lang, seed, lines: [...] }
+ *   manifest.json   { generatedAt, lang, seed, voice, lines: [...] }
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,9 +57,25 @@ const DEFAULT_OUT_DIR = path.resolve(HERE, "../../assets/onboarding-voice");
 // Eliza's default onboarding voice. OmniVoice accepts a fixed vocabulary of
 // instruct items (gender, age, pitch, accent); we pin a clear young-adult
 // female voice and keep it fixed-seed for reproducible presets.
+//
+// This is intentionally NOT the licensed Eliza "same" voice. That voice is
+// research-only (Her-derivative) and is reconstructed at runtime from a
+// metadata-only preset in the downloaded eliza-1 bundle — its audio is never
+// committed. Onboarding plays before any bundle exists, so its presets use a
+// generic, license-clean synthetic voice instead.
 const DEFAULT_INSTRUCT = "female, young adult, moderate pitch";
 const DEFAULT_LANG = "English";
 const DEFAULT_SEED = "0";
+
+// Voice consistency across lines is enforced by cloning, not by instruct alone:
+// instruct + seed do not pin a stable speaker identity across different texts,
+// so we synthesize ONE reference passage (instruct-only) and then voice-clone
+// every onboarding line from it (`--ref-wav`/`--ref-text`). The reference is a
+// build-time conditioning input only — it lives in a temp dir, is never served
+// to users, and is never committed. The passage is public-domain Harvard
+// sentences (IEEE), chosen for broad phoneme coverage and unambiguous licensing.
+const REFERENCE_TEXT =
+  "The birch canoe slid on the smooth planks. Glue the sheet to the dark blue background. It is easy to tell the depth of a well. These days a chicken leg is a rare dish. Rice is often served in round bowls.";
 
 function parseArgs(argv) {
   const args = {
@@ -121,27 +148,36 @@ function inspectWav16(buf) {
   throw new Error("no data chunk");
 }
 
-function synthesize(args, text, outFile) {
-  const result = spawnSync(
-    args.bin,
-    [
-      "--model",
-      args.model,
-      "--codec",
-      args.codec,
-      "--lang",
-      args.lang,
-      "--instruct",
-      args.instruct,
-      "--seed",
-      args.seed,
-      "--format",
-      "wav16",
-      "-o",
-      outFile,
-    ],
-    { input: text, stdio: ["pipe", "inherit", "inherit"] },
-  );
+/**
+ * Synthesize `text` to `outFile`. With `ref` (a `{ wav, textFile }` pair) the
+ * voice is cloned from the reference audio; without it the voice is sampled
+ * from `args.instruct`. The two are mutually exclusive — instruct seeds the
+ * one reference, the reference then conditions every line.
+ */
+function synthesize(args, text, outFile, ref) {
+  const cli = [
+    "--model",
+    args.model,
+    "--codec",
+    args.codec,
+    "--lang",
+    args.lang,
+    "--seed",
+    args.seed,
+    "--format",
+    "wav16",
+    "-o",
+    outFile,
+  ];
+  if (ref) {
+    cli.push("--ref-wav", ref.wav, "--ref-text", ref.textFile);
+  } else {
+    cli.push("--instruct", args.instruct);
+  }
+  const result = spawnSync(args.bin, cli, {
+    input: text,
+    stdio: ["pipe", "inherit", "inherit"],
+  });
   if (result.status !== 0) {
     throw new Error(
       `omnivoice-tts exited ${result.status ?? "(signal)"} for "${text}"`,
@@ -171,11 +207,31 @@ async function main() {
   );
 
   mkdirSync(args.out, { recursive: true });
+
+  // Pin the voice once: synthesize the reference passage from instruct, then
+  // clone every line from it. Reference lives in a temp dir — never served,
+  // never committed.
+  const refDir = mkdtempSync(path.join(os.tmpdir(), "onboarding-voice-ref-"));
+  const refWav = path.join(refDir, "reference.wav");
+  const refTextFile = path.join(refDir, "reference.txt");
+  writeFileSync(refTextFile, `${REFERENCE_TEXT}\n`);
+  synthesize(args, REFERENCE_TEXT, refWav);
+  const refInspect = inspectWav16(readFileSync(refWav));
+  if (refInspect.samples === 0 || refInspect.peak === 0) {
+    throw new Error(
+      "OmniVoice produced a silent reference passage — cannot clone onboarding presets from silence.",
+    );
+  }
+  const ref = { wav: refWav, textFile: refTextFile };
+  process.stdout.write(
+    `[onboarding-voice] reference: ${(refInspect.samples / 24000).toFixed(2)}s instruct="${args.instruct}" (temp, not committed)\n`,
+  );
+
   const manifestLines = [];
   for (const line of lines) {
     const file = `${line.id}.wav`;
     const outFile = path.join(args.out, file);
-    synthesize(args, line.text, outFile);
+    synthesize(args, line.text, outFile, ref);
     const wav = readFileSync(outFile);
     const { samples, peak } = inspectWav16(wav);
     if (samples === 0 || peak === 0) {
@@ -199,9 +255,15 @@ async function main() {
     `${JSON.stringify(
       {
         generatedAt: new Date().toISOString(),
-        instruct: args.instruct,
         lang: args.lang,
         seed: args.seed,
+        voice: {
+          mode: "cloned-from-reference",
+          license:
+            "generic synthetic (not the research-only Eliza 'same' voice)",
+          instruct: args.instruct,
+          referenceText: REFERENCE_TEXT,
+        },
         lines: manifestLines,
       },
       null,

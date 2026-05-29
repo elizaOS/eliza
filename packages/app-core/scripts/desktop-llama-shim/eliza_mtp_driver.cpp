@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -101,12 +102,16 @@ void * eliza_llama_mtp_engine_create(
 
     e->ctx_dft = llama_init_from_model(model, cp);
     if (e->ctx_dft == nullptr) {
+        fprintf(stderr, "[eliza-mtp] create: llama_init_from_model(ctx_type=MTP) returned null\n");
         delete e;
         return nullptr;
     }
 
     // Only partial-suffix-removable contexts are supported (dense models).
-    if (common_context_can_seq_rm(ctx_tgt) != COMMON_CONTEXT_SEQ_RM_TYPE_PART) {
+    const auto seq_rm = common_context_can_seq_rm(ctx_tgt);
+    if (seq_rm != COMMON_CONTEXT_SEQ_RM_TYPE_PART) {
+        fprintf(stderr, "[eliza-mtp] create: common_context_can_seq_rm=%d (need PART=%d)\n",
+            (int) seq_rm, (int) COMMON_CONTEXT_SEQ_RM_TYPE_PART);
         llama_free(e->ctx_dft);
         delete e;
         return nullptr;
@@ -121,10 +126,15 @@ void * eliza_llama_mtp_engine_create(
 
     try {
         e->spec = common_speculative_init(sp, 1);
+    } catch (const std::exception & ex) {
+        fprintf(stderr, "[eliza-mtp] create: common_speculative_init threw: %s\n", ex.what());
+        e->spec = nullptr;
     } catch (...) {
+        fprintf(stderr, "[eliza-mtp] create: common_speculative_init threw (unknown)\n");
         e->spec = nullptr;
     }
     if (e->spec == nullptr) {
+        fprintf(stderr, "[eliza-mtp] create: common_speculative_init returned null\n");
         llama_free(e->ctx_dft);
         delete e;
         return nullptr;
@@ -176,6 +186,9 @@ int32_t eliza_llama_mtp_engine_prefill(
     int32_t *       out_first_token) {
     auto * e = static_cast<eliza_mtp_engine *>(engine);
     if (e == nullptr || tokens == nullptr || n_tokens <= 0 || out_first_token == nullptr) {
+        fprintf(stderr,
+            "[eliza-mtp] prefill guard: engine=%p tokens=%p n_tokens=%d out=%p\n",
+            engine, (const void *) tokens, n_tokens, (void *) out_first_token);
         return -1;
     }
 
