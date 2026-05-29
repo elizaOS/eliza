@@ -14,7 +14,7 @@
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:e2e:live-auth": "node scripts/run-e2e.mjs tests/e2e/live-auth-backend.spec.ts",
     "test:e2e:update": "node scripts/run-e2e.mjs --update-snapshots",
-    "audit:cloud": "node scripts/run-e2e.mjs tests/e2e/aesthetic-audit.spec.ts --project=chromium-desktop --workers=4 && node -e \"const o=require('node:child_process'); const p=require('node:path'); const f=p.resolve('aesthetic-audit-output/contact-sheet.html'); const cmd=process.platform==='darwin'?'open':process.platform==='win32'?'start':'xdg-open'; o.spawn(cmd,[f],{stdio:'ignore',detached:true}).unref();\"",
+    "audit:cloud": "node scripts/run-e2e.mjs tests/e2e/aesthetic-audit.spec.ts --project=chromium-desktop --workers=1 && node -e \"const o=require('node:child_process'); const p=require('node:path'); const f=p.resolve('aesthetic-audit-output/contact-sheet.html'); const cmd=process.platform==='darwin'?'open':process.platform==='win32'?'start':'xdg-open'; o.spawn(cmd,[f],{stdio:'ignore',detached:true}).unref();\"",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write src",

@@ -126,11 +126,9 @@ function refreshCompatibilityFiles() {
 await refreshCompatibilityFiles();
 
 async function runNextBuild(args) {
-  return await new Promise((resolve) => {
-    const markerInterval = setInterval(() => {
-      void refreshCompatibilityFiles().catch(() => {});
-    }, 100);
+  await refreshCompatibilityFiles();
 
+  return await new Promise((resolve) => {
     const child = spawn(process.execPath, [nextCliPath, "build", ...args], {
       cwd: packageRoot,
       env: {
@@ -141,7 +139,6 @@ async function runNextBuild(args) {
     });
 
     child.on("close", (code) => {
-      clearInterval(markerInterval);
       resolve(code ?? 1);
     });
   });

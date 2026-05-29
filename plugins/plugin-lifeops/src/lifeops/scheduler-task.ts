@@ -80,6 +80,61 @@ function isMissingTasksTableError(error: unknown): boolean {
   return false;
 }
 
+/**
+ * Detect a Postgres "relation does not exist" (42P01) error referencing a
+ * LifeOps-owned table (the `app_lifeops` schema). A persisted scheduler task
+ * can fire from the task queue on restart before this plugin's schema
+ * migration finishes, so the first tick may hit a not-yet-created table.
+ */
+export function isMissingLifeOpsRelationError(error: unknown): boolean {
+  const queue: unknown[] = [error];
+  const seen = new Set<unknown>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+
+    const message =
+      current instanceof Error
+        ? current.message
+        : isErrorWithCause(current) && typeof current.message === "string"
+          ? current.message
+          : "";
+    if (
+      message.includes("app_lifeops.") &&
+      message.includes("does not exist")
+    ) {
+      return true;
+    }
+
+    if (isErrorWithCause(current)) {
+      if (
+        current.code === "42P01" &&
+        typeof current.query === "string" &&
+        current.query.includes("app_lifeops.")
+      ) {
+        return true;
+      }
+      if (current.cause !== undefined) {
+        queue.push(current.cause);
+      }
+    } else if (current instanceof Error && current.cause !== undefined) {
+      queue.push(current.cause);
+    }
+  }
+
+  return false;
+}
+
+export async function rerunLifeOpsPluginMigrations(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  await rerunPluginMigrations(runtime);
+}
+
 function isLifeOpsSchedulerTask(task: Task): boolean {
   const metadata = isRecord(task.metadata) ? task.metadata : null;
   const scheduler = metadata?.lifeopsScheduler;
