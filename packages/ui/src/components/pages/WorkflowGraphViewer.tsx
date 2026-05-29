@@ -20,6 +20,7 @@ import type {
   WorkflowDefinition,
   WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
@@ -279,13 +280,12 @@ function WorkflowGenerationProgress({
   chrome: ReturnType<typeof graphChrome>;
 }) {
   const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    const start = Date.now();
-    const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - start) / 1000));
-    }, 500);
-    return () => clearInterval(id);
-  }, []);
+  const startRef = useRef(Date.now());
+  // Tick the elapsed counter only while the tab is visible. Elapsed is derived
+  // from wall-clock time, so it self-corrects after the tab regains focus.
+  useIntervalWhenDocumentVisible(() => {
+    setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+  }, 500);
 
   const currentIndex = WORKFLOW_GENERATION_STAGES.reduce(
     (acc, stage, idx) => (elapsed >= stage.startsAt ? idx : acc),

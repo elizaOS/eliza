@@ -31,11 +31,13 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
+import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
+import { useFetchData } from "../../hooks/useFetchData";
 import {
   type FeedFilter,
   passesFilter,
@@ -583,39 +585,18 @@ function WorkflowEditorLoader({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [loaded, setLoaded] = useState<null | {
-    workflow: import("../../api/client-types-chat").WorkflowDefinition | null;
-  }>(workflowId ? null : { workflow: null });
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // A null workflowId means "create new" — resolve to a null definition
+  // without hitting the API. Otherwise fetch the definition to edit.
+  const fetchState = useFetchData<WorkflowDefinition | null>(
+    async () => (workflowId ? client.getWorkflowDefinition(workflowId) : null),
+    [workflowId],
+  );
 
-  useEffect(() => {
-    if (!workflowId) {
-      setLoaded({ workflow: null });
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const wf = await client.getWorkflowDefinition(workflowId);
-        if (!cancelled) setLoaded({ workflow: wf });
-      } catch (e) {
-        if (!cancelled) {
-          setLoadError(
-            e instanceof Error ? e.message : "Failed to load workflow.",
-          );
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [workflowId]);
-
-  if (loadError) {
+  if (fetchState.status === "error") {
     return (
       <div className="p-6">
         <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-          {loadError}
+          {fetchState.error.message || "Failed to load workflow."}
         </div>
         <Button variant="ghost" size="sm" className="mt-3" onClick={onCancel}>
           Back
@@ -623,7 +604,7 @@ function WorkflowEditorLoader({
       </div>
     );
   }
-  if (!loaded) {
+  if (fetchState.status !== "success") {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <Spinner className="h-5 w-5" />
@@ -633,7 +614,7 @@ function WorkflowEditorLoader({
   return (
     <div className="device-layout mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-4 py-4 lg:px-6">
       <WorkflowEditor
-        initial={loaded.workflow}
+        initial={fetchState.data}
         onSaved={onSaved}
         onCancel={onCancel}
       />

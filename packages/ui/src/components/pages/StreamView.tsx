@@ -3,7 +3,7 @@ import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
-import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state/useApp";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
@@ -19,38 +19,45 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const [streamLive, setStreamLive] = useState(false);
   const [streamLoading, setStreamLoading] = useState(false);
   const loadingRef = useRef(false);
-  const docVisible = useDocumentVisibility();
   const [streamAvailable, setStreamAvailable] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [uptime, setUptime] = useState(0);
   const [frameCount, setFrameCount] = useState(0);
 
-  // Poll stream status
-  useEffect(() => {
-    let mounted = true;
-    const poll = async () => {
-      if (loadingRef.current || !streamAvailable) return;
-      try {
-        const status = await client.streamStatus();
-        if (mounted && !loadingRef.current) {
-          setStreamLive(status.running && status.ffmpegAlive);
-          setUptime(status.uptime);
-          setFrameCount(status.frameCount);
-        }
-      } catch (err: unknown) {
-        if (isApiError(err) && err.status === 404) {
-          setStreamAvailable(false);
-          return;
-        }
+  const pollStatus = useCallback(async () => {
+    if (loadingRef.current || !streamAvailable) return;
+    try {
+      const status = await client.streamStatus();
+      if (loadingRef.current) return;
+      setStreamLive(status.running && status.ffmpegAlive);
+      setUptime(status.uptime);
+      setFrameCount(status.frameCount);
+      setStatusError(null);
+    } catch (err: unknown) {
+      // A 404 means the streaming plugin isn't installed — switch to the
+      // "unavailable" panel. Any other error is surfaced so a broken status
+      // endpoint doesn't masquerade as a healthy idle stream.
+      if (isApiError(err) && err.status === 404) {
+        setStreamAvailable(false);
+        return;
       }
-    };
-    if (!streamAvailable || !docVisible) return;
-    poll();
-    const id = setInterval(poll, 5_000);
-    return () => {
-      mounted = false;
-      clearInterval(id);
-    };
-  }, [streamAvailable, docVisible]);
+      setStatusError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInitialLoading(false);
+    }
+  }, [streamAvailable]);
+
+  // Fire one status read on mount, then poll while the tab is visible.
+  useEffect(() => {
+    void pollStatus();
+  }, [pollStatus]);
+
+  useIntervalWhenDocumentVisible(
+    () => void pollStatus(),
+    5_000,
+    streamAvailable,
+  );
 
   const toggleStream = useCallback(async () => {
     if (loadingRef.current) return;
@@ -99,7 +106,28 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
       />
 
       <div className="flex flex-1 min-h-0 items-center justify-center">
-        {!streamAvailable ? (
+        {initialLoading && streamAvailable && !statusError ? (
+          <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
+            <div className="mx-auto mb-4 h-3 w-3 animate-pulse rounded-full bg-muted" />
+            <h2 className="text-lg font-semibold text-txt">
+              {t("streamview.LoadingStatus", {
+                defaultValue: "Checking stream status…",
+              })}
+            </h2>
+          </div>
+        ) : statusError && streamAvailable ? (
+          <div
+            role="alert"
+            className="max-w-lg rounded-sm border border-danger/45 bg-danger/8 p-6 text-center backdrop-blur-xl"
+          >
+            <p className="text-xs-tight uppercase tracking-[0.24em] text-danger">
+              {t("streamview.StatusError", {
+                defaultValue: "Stream status error",
+              })}
+            </p>
+            <p className="mt-3 text-sm leading-6 text-danger">{statusError}</p>
+          </div>
+        ) : !streamAvailable ? (
           <div className="max-w-lg rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
             <p className="text-xs-tight uppercase tracking-[0.24em] text-muted">
               {t("streamview.StreamingUnavailabl")}

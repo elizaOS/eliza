@@ -554,11 +554,13 @@ function PluginListView({
         "error",
         3800,
       );
-      // Still try to refresh in case install succeeded but restart failed
+      // The install failure is already surfaced above. This refresh is a
+      // best-effort reconciliation in case install partially succeeded; its
+      // own failure adds no new actionable information for the user.
       try {
         await loadPlugins();
       } catch {
-        /* ignore */
+        /* best-effort refresh; outer error already shown */
       }
     } finally {
       setInstallingPlugins((prev) => {
@@ -634,7 +636,7 @@ function PluginListView({
       try {
         await loadPlugins();
       } catch {
-        /* ignore */
+        /* best-effort refresh; outer error already shown */
       }
     } finally {
       setUpdatingPlugins((prev) => {
@@ -711,7 +713,7 @@ function PluginListView({
       try {
         await loadPlugins();
       } catch {
-        /* ignore */
+        /* best-effort refresh; outer error already shown */
       }
     } finally {
       setUninstallingPlugins((prev) => {

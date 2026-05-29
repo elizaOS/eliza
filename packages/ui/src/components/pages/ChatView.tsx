@@ -500,9 +500,19 @@ export function ChatView({
             return combined.slice(0, 4);
           });
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          // A failed image read leaves nothing attached; tell the user rather
+          // than silently dropping their image.
+          app.setActionNotice?.(
+            app.t("chatview.ImageReadFailed", {
+              message: err instanceof Error ? err.message : "unknown error",
+              defaultValue: "Couldn't read image: {{message}}",
+            }),
+            "error",
+          );
+        });
     },
-    [setChatPendingImages],
+    [app, setChatPendingImages],
   );
 
   const handleImageDrop = useCallback(
@@ -927,6 +937,7 @@ function InboxChatPanel({
   const t = app?.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replyError, setReplyError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -949,8 +960,17 @@ function InboxChatPanel({
         .reverse()
         .map((m): ConversationMessage => m);
       setMessages(next);
-    } catch {
-      // Transient errors keep the last snapshot; next poll retries.
+      setLoadError(null);
+    } catch (err) {
+      // A failed poll keeps the last snapshot (next tick retries), but a
+      // failure with nothing on screen would otherwise look like an empty
+      // inbox — surface it so the user knows the load failed.
+      setMessages((prev) => {
+        if (prev.length === 0) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+        }
+        return prev;
+      });
     } finally {
       setLoading(false);
     }
@@ -1224,9 +1244,14 @@ function InboxChatPanel({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center text-xs text-muted">
-            {t("inboxview.EmptyRoom", {
-              defaultValue: "No messages in this chat yet.",
-            })}
+            {loadError
+              ? t("inboxview.LoadFailed", {
+                  message: loadError,
+                  defaultValue: "Couldn't load messages: {{message}}",
+                })
+              : t("inboxview.EmptyRoom", {
+                  defaultValue: "No messages in this chat yet.",
+                })}
           </div>
         ) : (
           <ChatTranscript

@@ -36,6 +36,10 @@ export function LogsView({
 
 function LogsViewBody() {
   const [searchQuery, setSearchQuery] = useState("");
+  // The logs store does not track load progress, so gate the initial load
+  // locally: until the first loadLogs() settles we show a loading state
+  // instead of the "no entries yet" empty state (which is misleading mid-load).
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const {
     logs,
@@ -51,7 +55,13 @@ function LogsViewBody() {
   } = useApp();
 
   useEffect(() => {
-    void loadLogs();
+    let cancelled = false;
+    void loadLogs().finally(() => {
+      if (!cancelled) setInitialLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [loadLogs]);
 
   const handleClearFilters = () => {
@@ -227,7 +237,15 @@ function LogsViewBody() {
         variant="surface"
         className="flex-1 min-h-0 overflow-y-auto p-2 font-mono text-sm"
       >
-        {filteredLogs.length === 0 ? (
+        {initialLoading && filteredLogs.length === 0 && !logLoadError ? (
+          <PagePanel.Loading
+            variant="panel"
+            className="m-1 min-h-[16rem] rounded-sm border-border/35 bg-bg-hover/60"
+            heading={t("logsview.LoadingLogs", {
+              defaultValue: "Loading logs…",
+            })}
+          />
+        ) : filteredLogs.length === 0 ? (
           <PagePanel.Empty
             variant="panel"
             role="status"

@@ -6,6 +6,7 @@ import {
   isElectrobunRuntime,
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import {
   getAppSlugFromPath,
@@ -392,36 +393,39 @@ export function AppsView() {
     return runs;
   }, [setState]);
 
+  const heartbeat = useCallback(async () => {
+    const records = appWindowsRef.current;
+    for (const record of records) {
+      if (!record.runId) continue;
+      try {
+        await client.heartbeatAppRun(record.runId);
+      } catch (err) {
+        // A 404 means the run is gone — drop it and refresh the run list.
+        // Any other error is a transient heartbeat hiccup; the next tick
+        // retries, so it does not warrant a user-facing error.
+        if (getApiStatus(err) !== 404) continue;
+        setAppWindows((current) =>
+          current.filter((item) => item.runId !== record.runId),
+        );
+        // Secondary run-list refresh; a failure here is non-fatal and the
+        // 5s run poll below will reconcile on its next tick.
+        void refreshRuns().catch(() => {});
+      }
+    }
+  }, [refreshRuns]);
+
+  // Fire one heartbeat immediately whenever the set of open windows changes,
+  // then keep them alive on an interval while the tab is visible.
   useEffect(() => {
     if (appWindows.length === 0) return;
-    let cancelled = false;
-
-    const heartbeat = async () => {
-      const records = appWindowsRef.current;
-      for (const record of records) {
-        if (!record.runId) continue;
-        try {
-          await client.heartbeatAppRun(record.runId);
-        } catch (err) {
-          if (cancelled || getApiStatus(err) !== 404) continue;
-          setAppWindows((current) =>
-            current.filter((item) => item.runId !== record.runId),
-          );
-          void refreshRuns().catch(() => {});
-        }
-      }
-    };
-
     void heartbeat();
-    const timer = window.setInterval(() => {
-      void heartbeat();
-    }, APP_WINDOW_HEARTBEAT_MS);
+  }, [appWindows.length, heartbeat]);
 
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [appWindows.length, refreshRuns]);
+  useIntervalWhenDocumentVisible(
+    () => void heartbeat(),
+    APP_WINDOW_HEARTBEAT_MS,
+    appWindows.length > 0,
+  );
 
   const loadApps = useCallback(async () => {
     setError(null);
@@ -446,23 +450,11 @@ export function AppsView() {
     void loadApps();
   }, [loadApps]);
 
-  useEffect(() => {
-    const refresh = async () => {
-      try {
-        await refreshRuns();
-      } catch {
-        // non-fatal: poll will retry on next interval
-      }
-    };
-
-    const timer = setInterval(() => {
-      void refresh();
-    }, 5_000);
-
-    return () => {
-      clearInterval(timer);
-    };
-  }, [refreshRuns]);
+  // Poll the run list while the tab is visible. A poll failure is non-fatal —
+  // the next tick retries — so it is suppressed rather than surfaced.
+  useIntervalWhenDocumentVisible(() => {
+    void refreshRuns().catch(() => {});
+  }, 5_000);
 
   useEffect(() => {
     if (appsSubTab !== "running") return;
