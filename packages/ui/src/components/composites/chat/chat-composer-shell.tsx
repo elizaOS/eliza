@@ -37,7 +37,7 @@ export function ChatComposerShell({
       <div
         ref={(node) => assignRef(shellRef, node)}
         className={cn(
-          "mt-auto pointer-events-auto px-1 max-[380px]:px-0.5",
+          "mt-auto shrink-0 pointer-events-auto px-1 max-[380px]:px-0.5",
           className,
         )}
         data-no-camera-drag="true"
@@ -63,7 +63,7 @@ export function ChatComposerShell({
     <div
       ref={(node) => assignRef(shellRef, node)}
       className={cn(
-        "relative min-w-0 bg-transparent px-2 pb-3 pt-3 sm:px-6 sm:pb-4 xl:px-14",
+        "relative shrink-0 min-w-0 bg-transparent px-2 pb-3 pt-3 sm:px-6 sm:pb-4 xl:px-14",
         className,
       )}
       style={{

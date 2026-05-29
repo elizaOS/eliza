@@ -1,0 +1,5 @@
+[test]
+skip = true
+
+[build]
+skip = true

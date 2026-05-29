@@ -1,0 +1,68 @@
+[[!meta title="Recording usability testing"]]
+
+[[!toc levels=2]]
+
+<a id="obs-studio"></a>
+
+Recording a screencast using *OBS Studio*
+-----------------------------------------
+
+Recording the screen with a screencast has the following advantages over
+recording with an external camera:
+
+- Better image quality
+- Lighter setup
+- Allows recording remove sessions
+
+[[*OBS Studio*|https://obsproject.com/]] is multi-platform, easy to use,
+reliable, and allows recording both your microphone and the system sound, which
+other screencast software do not.
+
+<a id="cheese"></a>
+
+Recording an external camera using *Cheese*
+-------------------------------------------
+
+Recording the screen with an external camera has the following
+advantages over recording with a screencast:
+
+- Recording a whole session, even if the user restarts Tails.
+- Saving the video directly to your computer and not relying on the
+  computer used for the tests.
+
+You can use a document camera. The [Ziggi-HD Plus by
+IPEVO](https://www.ipevo.com/) works fine from Tails.
+
+1. Move the **AF** switch of the camera to **C** to have continuous autofocus.
+
+1. Install *Cheese*:
+
+   <p class="pre command">apt install cheese ffmpegthumbnailer</p>
+
+1. In *Cheese*, choose **[[!img lib/open-menu.png alt="Menu" class=symbolic link=no]]</span>&nbsp;▸
+   Preferences** and adjust the video resolution to find a good trade-off
+   between resolution and fluidity.
+
+   On my ThinkPad X250, I use 1280 × 720.
+
+1. Adjust the orientation of the camera to capture as much of the screen as
+   possible while not obfuscating the light of sight of the participant.
+
+<a id="ffmpeg"></a>
+
+Recording an external camera using *FFmpeg*
+-------------------------------------------
+
+When *Cheese* is not reliable enough, *FFmpeg* can be an alternative.
+
+1. Check that you have enough disk space.
+
+   You need around 1.5 GB per hour of recording.
+
+1. Configure the sound settings of GNOME to record audio from the webcam.
+
+   Test and adjust the recording level. Around 75% should be fine.
+
+1. Execute the following command:
+
+       ffmpeg -f pulse -i default -f v4l2 -video_size 1280x720 -i /dev/video0 record-$(date +%F-%H%M%S).mp4

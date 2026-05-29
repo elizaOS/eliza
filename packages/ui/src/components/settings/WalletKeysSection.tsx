@@ -198,7 +198,7 @@ export function WalletKeysSection() {
         <Button
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 gap-1 rounded-md px-2"
+          className="h-8 shrink-0 gap-1 rounded-sm px-2"
           onClick={() => setShowAdd((v) => !v)}
           data-testid="wallet-keys-add-toggle"
         >
@@ -211,7 +211,7 @@ export function WalletKeysSection() {
         <div
           aria-live="polite"
           data-testid="wallet-keys-error"
-          className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+          className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
         >
           {error}
         </div>
@@ -220,7 +220,7 @@ export function WalletKeysSection() {
       {showAdd && (
         <form
           onSubmit={onAdd}
-          className="space-y-2 rounded-md border border-border/50 bg-card/30 p-2"
+          className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
           data-testid="wallet-keys-add-form"
         >
           <p className="text-2xs text-muted">
@@ -255,7 +255,7 @@ export function WalletKeysSection() {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 rounded-md px-3 text-xs"
+              className="h-7 rounded-sm px-3 text-xs"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -265,7 +265,7 @@ export function WalletKeysSection() {
               type="submit"
               variant="default"
               size="sm"
-              className="h-7 gap-1 rounded-md px-3 text-xs"
+              className="h-7 gap-1 rounded-sm px-3 text-xs"
               disabled={submitting || !addKey.trim() || !addValue.trim()}
             >
               {submitting ? (
@@ -288,7 +288,7 @@ export function WalletKeysSection() {
       ) : entries.length === 0 ? (
         <div
           data-testid="wallet-keys-empty"
-          className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
           No wallet keys yet. Add one with the button above, or generate one per
           agent from the Agents page.
@@ -296,7 +296,7 @@ export function WalletKeysSection() {
       ) : (
         <ul
           data-testid="wallet-keys-list"
-          className="space-y-1 rounded-md border border-border/40 bg-card/30 p-1"
+          className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1"
         >
           {entries.map((entry) => {
             const revealed = revealMap[entry.key];
@@ -305,7 +305,7 @@ export function WalletKeysSection() {
             return (
               <li
                 key={entry.key}
-                className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-muted/30"
+                className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium text-txt">
@@ -322,7 +322,7 @@ export function WalletKeysSection() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-txt"
+                  className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-txt"
                   aria-label={
                     revealed ? `Hide ${entry.key}` : `Reveal ${entry.key}`
                   }
@@ -343,7 +343,7 @@ export function WalletKeysSection() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+                  className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
                   aria-label={`Delete ${entry.key}`}
                   onClick={() => void onDelete(entry)}
                   data-testid={`wallet-keys-delete-${entry.key}`}

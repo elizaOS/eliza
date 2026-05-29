@@ -58,25 +58,47 @@ interface HoverFinding {
   violation: "orange→black" | "black→orange" | "blue-anywhere";
 }
 
-function isBrandOrange(rgb: string): boolean {
-  const m = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!m) return false;
-  const [, r, g, b] = m.map(Number);
-  return r > 200 && g >= 70 && g <= 130 && b < 50;
+// Parse both `rgb(...)` and `rgba(...)`; returns null for non-rgb values.
+function parseRgba(
+  color: string,
+): { r: number; g: number; b: number; a: number } | null {
+  const m = color.match(
+    /^rgba?\(\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)(?:\s*,\s*(\d+\.?\d*))?/,
+  );
+  if (!m) return null;
+  return {
+    r: Number(m[1]),
+    g: Number(m[2]),
+    b: Number(m[3]),
+    a: m[4] === undefined ? 1 : Number(m[4]),
+  };
 }
 
-function isBlackish(rgb: string): boolean {
-  const m = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!m) return false;
-  const [, r, g, b] = m.map(Number);
-  return r < 30 && g < 30 && b < 30;
+function isTransparent(color: string): boolean {
+  const c = parseRgba(color);
+  return !!c && c.a === 0;
 }
 
-function isBlue(rgb: string): boolean {
-  const m = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
-  if (!m) return false;
-  const [, r, g, b] = m.map(Number);
-  return b > r + 30 && b > g + 30 && b > 80;
+function isBrandOrange(color: string): boolean {
+  const c = parseRgba(color);
+  if (!c || c.a === 0) return false;
+  return c.r > 200 && c.g >= 70 && c.g <= 130 && c.b < 50;
+}
+
+// Treat a fully transparent background as "black" on the cloud's black theme:
+// an orange button whose hover collapses to transparent reveals the dark page
+// behind it — the same orange->black anti-pattern, just spelled differently.
+function isBlackish(color: string): boolean {
+  if (isTransparent(color)) return true;
+  const c = parseRgba(color);
+  if (!c) return false;
+  return c.r < 30 && c.g < 30 && c.b < 30;
+}
+
+function isBlue(color: string): boolean {
+  const c = parseRgba(color);
+  if (!c || c.a === 0) return false;
+  return c.b > c.r + 30 && c.b > c.g + 30 && c.b > 80;
 }
 
 test("cross-page hover audit — no orange↔black, no blue", async ({

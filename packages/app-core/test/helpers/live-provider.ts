@@ -95,6 +95,18 @@ export type LiveProviderConfig = {
   env: Record<string, string>;
 };
 
+export function getFirstRunProviderForLiveProvider(
+  provider: Pick<LiveProviderConfig, "name">,
+): string {
+  if (provider.name === "cerebras" || provider.name === "local-llama-cpp") {
+    return "openai";
+  }
+  if (provider.name === "google") {
+    return "gemini";
+  }
+  return provider.name;
+}
+
 export const LIVE_PROVIDER_ENV_KEYS = new Set<string>([
   "ELIZA_PROVIDER",
   "SMALL_MODEL",
@@ -196,8 +208,8 @@ const PROVIDERS: Array<{
     defaultLargeModel: "google/gemini-2.0-flash-001",
   },
   {
-    // Local OpenAI-compatible server (dflash llama-server fork or Ollama).
-    // The dflash fork at ~/.cache/eliza-dflash/eliza-llama-cpp is preferred
+    // Local OpenAI-compatible server (mtp llama-server fork or Ollama).
+    // The mtp fork at ~/.cache/eliza-mtp/eliza-llama-cpp is preferred
     // when present; otherwise ELIZA_OPENCODE_BASE_URL points at Ollama
     // (default http://localhost:11434/v1). No real API key is required, but
     // the selector requires a non-empty key string, so callers must set

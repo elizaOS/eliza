@@ -12,7 +12,7 @@
     "./k8s-service-account": "./src/k8s-service-account.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "echo 'no tests'",
     "lint": "biome check .",
     "lint:fix": "biome check --write ."

@@ -17,10 +17,10 @@ export const SnowflakeIdSchema = z
   });
 
 /**
- * User ID schema - accepts UUID, Privy DID, or username formats
+ * User ID schema - accepts UUID, Snowflake, or username formats
  * Examples:
  * - UUID: "550e8400-e29b-41d4-a716-446655440000"
- * - Privy DID: "did:privy:cm6sqq4og01qw9l70rbmyjn20"
+ * - Snowflake: "123456789012345678"
  * - Username: "eddy-snowjob" or "john_doe"
  */
 export const UserIdSchema = z.string().refine(
@@ -28,18 +28,17 @@ export const UserIdSchema = z.string().refine(
     // Check if it's a valid UUID
     const uuidRegex =
       /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
-    // Check if it's a valid Privy DID
-    const privyDidRegex = /^did:privy:[a-z0-9]+$/;
+    const snowflakeRegex = /^\d{15,19}$/;
     // Check if it's a valid username (3-30 chars, letters, numbers, underscores, hyphens)
     const usernameRegex = /^[a-zA-Z0-9_-]{3,30}$/;
 
     return (
-      uuidRegex.test(val) || privyDidRegex.test(val) || usernameRegex.test(val)
+      uuidRegex.test(val) || snowflakeRegex.test(val) || usernameRegex.test(val)
     );
   },
   {
     message:
-      "Invalid user identifier. Must be a UUID, Privy DID (did:privy:...), or username",
+      "Invalid user identifier. Must be a UUID, Snowflake ID, or username",
   },
 );
 

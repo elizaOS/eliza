@@ -1,0 +1,107 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-14 16:04+0000\n"
+"PO-Revision-Date: 2025-11-02 18:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+#, fuzzy
+#| msgid "[[!meta title=\"Dear Tails user,\"]]"
+msgid "[[!meta title=\"Welcome to Tails!\"]]"
+msgstr "[[!meta title=\"Querida pessoa usuária de Tails,\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]]"
+msgstr ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] "
+"[[!meta robots=\"noindex\"]] [[!meta script=\"home\"]]"
+
+#. type: Content of: <div>
+msgid "<a href=\"https://check.torproject.org/\">Tor check</a>"
+msgstr ""
+"<a href=\"https://check.torproject.org/?lang=pt_PT\">Verificação de Tor</a>"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"news\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"news.pt\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "The cryptographic parameters of LUKS from Tails 5.12 or earlier are weak "
+#~ "against a state-sponsored attacker with physical access to your device."
+#~ msgstr ""
+#~ "Os parâmetros criptográficos do LUKS nas versões 5.12 e anteriores do "
+#~ "Tails são considerados fracos contra atacantes com muitos recursos (por "
+#~ "exemplo, Estados-nação) e acesso físico ao seu dispositivo."
+
+#~ msgid ""
+#~ "<strong>We recommend you change the passphrase of your Persistent Storage "
+#~ "and other LUKS encrypted volumes unless you use a long passphrase of 5 "
+#~ "random words or more.</strong>"
+#~ msgstr ""
+#~ "<strong>Recomendamos que você altere a senha do seu Armazenamento "
+#~ "Persistente e outros dispositivos criptografados com LUKS, a menos que "
+#~ "você já use uma senha longa com 5 ou mais palavras aleatórias.</strong>"
+
+#~ msgid "[[Read our security advisory and upgrade guide.|security/argon2id]]"
+#~ msgstr ""
+#~ "[[Leia nosso aviso de segurança e guia de atualização.|security/argon2id]]"
+
+#~ msgid ""
+#~ "<a id=\"tor_check\" href=\"https://check.torproject.org/\"> [[!img lib/"
+#~ "onion.png link=\"no\" alt=\"\"]] <span>Tor check</span> </a>"
+#~ msgstr ""
+#~ "<a id=\"tor_check\" href=\"https://check.torproject.org/\"> [[!img lib/"
+#~ "onion.png link=\"no\" alt=\"\"]] <span>Checar Tor</span> </a>"
+
+#~ msgid "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"home/donate.inline.pt\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "Today, we are asking you to help Tails. Everybody can get Tails for free "
+#~ "because we believe that nobody should have to pay to be safe while using "
+#~ "computers. And we will keep it this way, with your support."
+#~ msgstr ""
+#~ "Hoje, estamos pedindo para que você ajude o Tails. Qualquer um pode obter "
+#~ "o Tails de graça porque acreditamos que ninguém deveria pagar para estar "
+#~ "segura ao usar um computador. E manteremos isso dessa forma, com sua "
+#~ "ajuda."
+
+#~ msgid ""
+#~ "<span class=\"highlight\">If everyone reading this gave $5, our "
+#~ "fundraiser would be done in one day.</span> The price of a USB stick is "
+#~ "all we need."
+#~ msgstr ""
+#~ "<span class=\"highlight\">Se todos lendo isso doarem $5, nossa "
+#~ "arrecadação estaria completa em um dia.</span> O preço de um pendrive USB "
+#~ "é tudo que precisamos."
+
+#~ msgid ""
+#~ "But, not everyone can donate. So when you do, you are offering to many "
+#~ "others who need it, this precious tool that is Tails."
+#~ msgstr ""
+#~ "Porém, nem todos podem doar. Então, quando você doar, você estará "
+#~ "oferecendo à muitas outras pessoas que precisam dessa ferramenta preciosa "
+#~ "que o Tails é."
+
+#~ msgid "[[Donate now to fight surveillance and censorship!|donate]]"
+#~ msgstr "[[Doe agora para lutar contra a vigilância e a censura!|donate]]"
+
+#~ msgid "[[!inline pages=\"home/tor_check\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/tor_check.pt\" raw=\"yes\" sort=\"age\"]]"

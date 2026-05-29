@@ -5,11 +5,6 @@
     "declarationMap": false,
     "noEmit": true,
     "rootDir": "../..",
-    "sourceMap": false,
-    "paths": {
-      "@elizaos/workflows": [
-        "../../packages/workflows/src/index.ts"
-      ]
-    }
+    "sourceMap": false
   }
 }

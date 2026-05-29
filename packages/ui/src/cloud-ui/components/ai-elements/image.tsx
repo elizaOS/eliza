@@ -22,7 +22,7 @@ export const Image = ({ base64, mediaType, ...props }: ImageProps) => {
       {...props}
       alt={props.alt || "Generated image"}
       className={cn(
-        "h-auto max-w-full overflow-hidden rounded-md",
+        "h-auto max-w-full overflow-hidden rounded-sm",
         props.className,
       )}
       src={`data:${mediaType};base64,${base64}`}

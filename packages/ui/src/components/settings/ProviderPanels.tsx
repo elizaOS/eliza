@@ -51,7 +51,7 @@ function ProviderPanelHeader({
       title={description}
     >
       <div className="flex min-w-0 items-center gap-2.5">
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/50 text-muted">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-muted">
           <Icon className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0">
@@ -82,7 +82,7 @@ export function LocalProviderPanel({
         <Button
           type="button"
           variant={cloudCallsDisabled ? "default" : "outline"}
-          className="h-8 rounded-lg px-2.5 text-xs"
+          className="h-8 rounded-sm px-2.5 text-xs"
           disabled={routingModeSaving}
           aria-label={
             cloudCallsDisabled ? "Local only active" : "Use local only"
@@ -144,7 +144,7 @@ export function CloudPanel({
         <Button
           type="button"
           variant={cloudActive ? "default" : "outline"}
-          className="h-8 rounded-lg px-2.5 text-xs"
+          className="h-8 rounded-sm px-2.5 text-xs"
           disabled={routingModeSaving}
           aria-label={cloudActive ? "Cloud active" : "Use Eliza Cloud"}
           onClick={onSelectCloud}
@@ -219,7 +219,7 @@ export function SubscriptionPanel({
           <Button
             type="button"
             variant="outline"
-            className="h-8 rounded-lg px-2.5 text-xs"
+            className="h-8 rounded-sm px-2.5 text-xs"
             onClick={() => void onSelectSubscription(selection.id)}
           >
             Use subscription
@@ -228,7 +228,7 @@ export function SubscriptionPanel({
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
         {cloudCallsDisabled ? (
-          <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
             Local-only active. Remote subscription routing is paused.
           </div>
         ) : null}
@@ -292,7 +292,7 @@ export function ApiKeyPanel({
           <Button
             type="button"
             variant="outline"
-            className="h-8 rounded-lg px-2.5 text-xs"
+            className="h-8 rounded-sm px-2.5 text-xs"
             onClick={() => onSwitchProvider(visibleProviderPanelId)}
           >
             Use provider
@@ -301,7 +301,7 @@ export function ApiKeyPanel({
       </ProviderPanelHeader>
       <div className="px-3 py-3 sm:px-4">
         {cloudCallsDisabled ? (
-          <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
+          <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
             Local-only active. Remote API routing is paused.
           </div>
         ) : null}

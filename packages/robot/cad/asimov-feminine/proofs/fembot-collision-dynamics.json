@@ -1,0 +1,2335 @@
+{
+  "accepted": false,
+  "body_groups": [
+    {
+      "accepted": false,
+      "collision_samples": 82,
+      "generated_link_count": 2,
+      "group": "torso",
+      "links": [
+        "IMU_ORIGIN",
+        "WAIST_YAW"
+      ]
+    },
+    {
+      "accepted": false,
+      "collision_samples": 82,
+      "generated_link_count": 2,
+      "group": "head",
+      "links": [
+        "NECK_YAW",
+        "NECK_PITCH"
+      ]
+    },
+    {
+      "accepted": false,
+      "collision_samples": 82,
+      "generated_link_count": 10,
+      "group": "arm",
+      "links": [
+        "LEFT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "RIGHT_SHOULDER_YAW",
+        "LEFT_ELBOW",
+        "RIGHT_ELBOW",
+        "LEFT_WRIST_YAW",
+        "RIGHT_WRIST_YAW"
+      ]
+    },
+    {
+      "accepted": false,
+      "collision_samples": 82,
+      "generated_link_count": 12,
+      "group": "leg",
+      "links": [
+        "LEFT_HIP_PITCH",
+        "RIGHT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "RIGHT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "RIGHT_HIP_YAW",
+        "LEFT_KNEE",
+        "RIGHT_KNEE",
+        "LEFT_ANKLE_A",
+        "RIGHT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "RIGHT_ANKLE_B"
+      ]
+    },
+    {
+      "accepted": false,
+      "collision_samples": 82,
+      "generated_link_count": 2,
+      "group": "foot",
+      "links": [
+        "LEFT_TOE",
+        "RIGHT_TOE"
+      ]
+    }
+  ],
+  "contact_pairs": [],
+  "contact_tuning": {
+    "accepted": false,
+    "best_strategy": "physical_visual_remediation",
+    "clears_sampled_cross_leg_contacts_with_motion_limit": true,
+    "clears_sampled_self_contacts_and_visual_fit": true,
+    "contact_clean_and_visual_fit_scale_count": 1,
+    "contact_clean_scale_count": 7,
+    "first_hip_roll_limit_contact_clean_rad": 0.25,
+    "hip_roll_limit_best_contact_pair_count": 0,
+    "hip_roll_limit_best_unapproved_contact_count": 0,
+    "hip_roll_limit_contact_clean_count": 2,
+    "ok": true,
+    "physical_visual_remediation_best_worst_mean_outside_margin_m": 0.03282405299866911,
+    "physical_visual_remediation_best_worst_outside_fraction": 0.8188,
+    "physical_visual_remediation_contact_clean_count": 1,
+    "physical_visual_remediation_geom_count": 5,
+    "physical_visual_remediation_visual_fit_clean_count": 1,
+    "schema": "asimov-fembot-contact-tuning-proof-v1",
+    "visual_fit_remediation_geom_count": 0
+  },
+  "controller_validation": {
+    "accepted": false,
+    "contract": {
+      "checks": {
+        "rejects_nonfinite_trajectory_target": true,
+        "rejects_unknown_trajectory_joint": true,
+        "rejects_velocity_in_damp": true,
+        "trajectory_mode_entered": true,
+        "trajectory_watchdog_expires": true,
+        "trajectory_watchdog_holds_before_timeout": true,
+        "velocity_clamped_in_stand": true
+      },
+      "details": {
+        "clamped_velocity": {
+          "vx_mps": 2.0,
+          "vy_mps": -1.0,
+          "yaw_rad_s": 2.0
+        },
+        "firmware_joint_order": [
+          "left_hip_pitch_joint",
+          "left_hip_roll_joint",
+          "left_hip_yaw_joint",
+          "left_knee_joint",
+          "left_ankle_pitch_joint",
+          "left_ankle_roll_joint",
+          "right_hip_pitch_joint",
+          "right_hip_roll_joint",
+          "right_hip_yaw_joint",
+          "right_knee_joint",
+          "right_ankle_pitch_joint",
+          "right_ankle_roll_joint",
+          "left_shoulder_pitch_joint",
+          "left_shoulder_roll_joint",
+          "left_shoulder_yaw_joint",
+          "left_elbow_joint",
+          "left_wrist_yaw_joint",
+          "right_shoulder_pitch_joint",
+          "right_shoulder_roll_joint",
+          "right_shoulder_yaw_joint",
+          "right_elbow_joint",
+          "right_wrist_yaw_joint",
+          "waist_yaw_joint",
+          "neck_pitch_joint",
+          "neck_yaw_joint"
+        ],
+        "trajectory_watchdog_s": 0.2
+      },
+      "ok": true
+    },
+    "hardware_controller": null,
+    "ok": true,
+    "rollout": {
+      "actuator_joint_order": [
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_joint",
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_joint",
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint",
+        "left_shoulder_pitch_joint",
+        "left_shoulder_roll_joint",
+        "left_shoulder_yaw_joint",
+        "left_elbow_joint",
+        "left_wrist_yaw_joint",
+        "right_shoulder_pitch_joint",
+        "right_shoulder_roll_joint",
+        "right_shoulder_yaw_joint",
+        "right_elbow_joint",
+        "right_wrist_yaw_joint",
+        "waist_yaw_joint",
+        "neck_pitch_joint",
+        "neck_yaw_joint"
+      ],
+      "actuator_order_ok": true,
+      "actuators": [
+        {
+          "actuator_index": 0,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.014536589699881867,
+          "final_rad": 0.03453658969988187,
+          "joint": "left_hip_pitch_joint",
+          "joint_id": 1,
+          "qpos_adr": 7,
+          "response_fraction": 1.7268294849940933,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 1,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.05161912222176343,
+          "final_rad": -0.07161912222176343,
+          "joint": "left_hip_roll_joint",
+          "joint_id": 2,
+          "qpos_adr": 8,
+          "response_fraction": 3.5809561110881716,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 2,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.003482246257589895,
+          "final_rad": 0.016517753742410105,
+          "joint": "left_hip_yaw_joint",
+          "joint_id": 3,
+          "qpos_adr": 9,
+          "response_fraction": 0.8258876871205052,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 3,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.03795359899567488,
+          "final_rad": 0.057953598995674885,
+          "joint": "left_knee_joint",
+          "joint_id": 4,
+          "qpos_adr": 10,
+          "response_fraction": 2.897679949783744,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 4,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.04444419940923296,
+          "final_rad": 0.06444419940923296,
+          "joint": "left_ankle_pitch_joint",
+          "joint_id": 5,
+          "qpos_adr": 11,
+          "response_fraction": 3.222209970461648,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 5,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.03465032625494535,
+          "final_rad": -0.05465032625494535,
+          "joint": "left_ankle_roll_joint",
+          "joint_id": 6,
+          "qpos_adr": 12,
+          "response_fraction": 2.7325163127472676,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 6,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.050441636493396905,
+          "final_rad": -0.0304416364933969,
+          "joint": "right_hip_pitch_joint",
+          "joint_id": 8,
+          "qpos_adr": 14,
+          "response_fraction": -1.522081824669845,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 7,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.05015199286560272,
+          "final_rad": -0.07015199286560272,
+          "joint": "right_hip_roll_joint",
+          "joint_id": 9,
+          "qpos_adr": 15,
+          "response_fraction": 3.507599643280136,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 8,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.005851292149752238,
+          "final_rad": 0.014148707850247763,
+          "joint": "right_hip_yaw_joint",
+          "joint_id": 10,
+          "qpos_adr": 16,
+          "response_fraction": 0.7074353925123881,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 9,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.0593125910163434,
+          "final_rad": -0.0793125910163434,
+          "joint": "right_knee_joint",
+          "joint_id": 11,
+          "qpos_adr": 17,
+          "response_fraction": 3.96562955081717,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 10,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.056730906094029726,
+          "final_rad": -0.03673090609402973,
+          "joint": "right_ankle_pitch_joint",
+          "joint_id": 12,
+          "qpos_adr": 18,
+          "response_fraction": -1.8365453047014864,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 11,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.015842114578243863,
+          "final_rad": -0.035842114578243864,
+          "joint": "right_ankle_roll_joint",
+          "joint_id": 13,
+          "qpos_adr": 19,
+          "response_fraction": 1.792105728912193,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 12,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.009132227100651855,
+          "final_rad": 0.029132227100651855,
+          "joint": "left_shoulder_pitch_joint",
+          "joint_id": 23,
+          "qpos_adr": 29,
+          "response_fraction": 1.4566113550325928,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 13,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.00013253226016675043,
+          "final_rad": -0.02013253226016675,
+          "joint": "left_shoulder_roll_joint",
+          "joint_id": 24,
+          "qpos_adr": 30,
+          "response_fraction": 1.0066266130083374,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 14,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 2.017110329191954e-05,
+          "final_rad": 0.01997982889670808,
+          "joint": "left_shoulder_yaw_joint",
+          "joint_id": 25,
+          "qpos_adr": 31,
+          "response_fraction": 0.998991444835404,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 15,
+          "baseline_rad": 0.785398,
+          "final_abs_error_rad": 0.005125086815004898,
+          "final_rad": 0.7602729131849951,
+          "joint": "left_elbow_joint",
+          "joint_id": 26,
+          "qpos_adr": 32,
+          "response_fraction": 1.2562543407502447,
+          "target_delta_rad": -0.020000000000000018,
+          "target_rad": 0.765398
+        },
+        {
+          "actuator_index": 16,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 6.034630080711811e-08,
+          "final_rad": 0.019999939653699193,
+          "joint": "left_wrist_yaw_joint",
+          "joint_id": 27,
+          "qpos_adr": 33,
+          "response_fraction": 0.9999969826849596,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 17,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.007027607651879798,
+          "final_rad": -0.0270276076518798,
+          "joint": "right_shoulder_pitch_joint",
+          "joint_id": 18,
+          "qpos_adr": 24,
+          "response_fraction": 1.3513803825939898,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 18,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.0018467120471489101,
+          "final_rad": 0.01815328795285109,
+          "joint": "right_shoulder_roll_joint",
+          "joint_id": 19,
+          "qpos_adr": 25,
+          "response_fraction": 0.9076643976425545,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 19,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.0002238302959071438,
+          "final_rad": -0.020223830295907144,
+          "joint": "right_shoulder_yaw_joint",
+          "joint_id": 20,
+          "qpos_adr": 26,
+          "response_fraction": 1.0111915147953572,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 20,
+          "baseline_rad": -0.785398,
+          "final_abs_error_rad": 0.004981191862649004,
+          "final_rad": -0.760416808137351,
+          "joint": "right_elbow_joint",
+          "joint_id": 21,
+          "qpos_adr": 27,
+          "response_fraction": 1.24905959313245,
+          "target_delta_rad": 0.020000000000000018,
+          "target_rad": -0.765398
+        },
+        {
+          "actuator_index": 21,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 5.070631161827044e-08,
+          "final_rad": -0.02000005070631162,
+          "joint": "right_wrist_yaw_joint",
+          "joint_id": 22,
+          "qpos_adr": 28,
+          "response_fraction": 1.0000025353155808,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 22,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.0025137786644574486,
+          "final_rad": 0.02251377866445745,
+          "joint": "waist_yaw_joint",
+          "joint_id": 15,
+          "qpos_adr": 21,
+          "response_fraction": 1.1256889332228723,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        },
+        {
+          "actuator_index": 23,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.010274396038909145,
+          "final_rad": -0.009725603961090856,
+          "joint": "neck_pitch_joint",
+          "joint_id": 17,
+          "qpos_adr": 23,
+          "response_fraction": 0.48628019805454276,
+          "target_delta_rad": -0.02,
+          "target_rad": -0.02
+        },
+        {
+          "actuator_index": 24,
+          "baseline_rad": 0.0,
+          "final_abs_error_rad": 0.009998562717236174,
+          "final_rad": 0.010001437282763826,
+          "joint": "neck_yaw_joint",
+          "joint_id": 16,
+          "qpos_adr": 22,
+          "response_fraction": 0.5000718641381913,
+          "target_delta_rad": 0.02,
+          "target_rad": 0.02
+        }
+      ],
+      "actuators_commanded": 25,
+      "control_range_ok": true,
+      "control_range_violations": [],
+      "duration_s": 0.75,
+      "early_median_response_fraction": 0.13974732480169222,
+      "early_response_time_s": 0.02,
+      "final_max_abs_error_rad": 0.0593125910163434,
+      "final_median_abs_error_rad": 0.009132227100651855,
+      "final_median_response_fraction": 1.1256889332228723,
+      "finite_state_ok": true,
+      "joint_limit_ok": true,
+      "joint_limit_tolerance_rad": 0.01,
+      "joint_limit_violations": [],
+      "max_abs_qvel_rad_s": 1.3900546051209848,
+      "max_final_abs_error_tolerance_rad": 0.1,
+      "max_final_median_abs_error_tolerance_rad": 0.02,
+      "max_final_response_fraction": 3.96562955081717,
+      "max_response_overshoot_fraction": 4.0,
+      "min_final_response_fraction": -1.8365453047014864,
+      "motor_response_profile_ok": true,
+      "ok": true,
+      "response_overshoot_count": 0,
+      "samples": [
+        {
+          "max_abs_error_rad": 0.03351102834042689,
+          "median_abs_error_rad": 0.017205053503966155,
+          "median_response_fraction": 0.13974732480169222,
+          "time_s": 0.02
+        },
+        {
+          "max_abs_error_rad": 0.036083370426096974,
+          "median_abs_error_rad": 0.009906529307173364,
+          "median_response_fraction": 0.928898596154036,
+          "time_s": 0.1
+        },
+        {
+          "max_abs_error_rad": 0.026843807737028727,
+          "median_abs_error_rad": 0.004783790558163425,
+          "median_response_fraction": 0.9633045442705795,
+          "time_s": 0.25
+        },
+        {
+          "max_abs_error_rad": 0.03120045578447157,
+          "median_abs_error_rad": 0.005104073104017863,
+          "median_response_fraction": 1.0000102616828872,
+          "time_s": 0.5
+        },
+        {
+          "max_abs_error_rad": 0.0593125910163434,
+          "median_abs_error_rad": 0.009132227100651855,
+          "median_response_fraction": 1.1256889332228723,
+          "time_s": 0.75
+        }
+      ],
+      "settled_median_response_fraction": 0.9633045442705795,
+      "settled_response_time_s": 0.25,
+      "target_step_rad": 0.02
+    },
+    "schema": "asimov-fembot-controller-validation-proof-v1",
+    "source": {
+      "fembot_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+      "fembot_mjcf_schema": "asimov-fembot-mjcf-v1",
+      "hardware_controller_schema": null,
+      "source_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml"
+    },
+    "summary": {
+      "acceptance_blocker": "simulated controller contract, command order, bounded controls, joint limits, and finite MuJoCo rollout pass; production acceptance still needs hardware motor-controller telemetry and bring-up validation",
+      "accepted": false,
+      "actuator_order_ok": true,
+      "actuators_commanded": 25,
+      "control_range_ok": true,
+      "finite_state_ok": true,
+      "hardware_controller_validated": false,
+      "joint_limit_ok": true,
+      "local_controller_contract_ok": true,
+      "max_abs_qvel_rad_s": 1.3900546051209848,
+      "motor_response_profile_ok": true,
+      "mujoco_controller_rollout_ok": true,
+      "trajectory_early_median_response_fraction": 0.13974732480169222,
+      "trajectory_final_max_abs_error_rad": 0.0593125910163434,
+      "trajectory_final_median_abs_error_rad": 0.009132227100651855,
+      "trajectory_final_median_response_fraction": 1.1256889332228723,
+      "trajectory_max_final_response_fraction": 3.96562955081717,
+      "trajectory_min_final_response_fraction": -1.8365453047014864,
+      "trajectory_response_overshoot_count": 0,
+      "trajectory_settled_median_response_fraction": 0.9633045442705795
+    }
+  },
+  "foot_handling": {
+    "accepted": true,
+    "floor_contact": {
+      "accepted": true,
+      "approved_floor_contact_count": 1460,
+      "approved_floor_prefixes": [
+        "left_foot",
+        "left_toe",
+        "right_foot",
+        "right_toe"
+      ],
+      "floor_contact_count": 1460,
+      "neutral_floor_contact_count": 20,
+      "non_foot_floor_contact_count": 0,
+      "non_foot_floor_contacts": []
+    },
+    "foot_plates": [
+      {
+        "accepted": true,
+        "flatness_error_m": 0.0,
+        "generated_surface_check_ok": true,
+        "link": "LEFT_TOE",
+        "manufacturing_adjusted_height_delta_m": 0.0,
+        "manufacturing_adjusted_process_floor_satisfied": true,
+        "manufacturing_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/manufacturing-adjusted-plate-step/left_toe.step",
+        "manufacturing_adjusted_wall_thickness_ok": true,
+        "material_class": "ALU_7075",
+        "nominal_wall_thickness_ok": false,
+        "shape_family": "flat_plate_envelope",
+        "surface_intent": "flat"
+      },
+      {
+        "accepted": true,
+        "flatness_error_m": 0.0,
+        "generated_surface_check_ok": true,
+        "link": "RIGHT_TOE",
+        "manufacturing_adjusted_height_delta_m": 0.0,
+        "manufacturing_adjusted_process_floor_satisfied": true,
+        "manufacturing_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/manufacturing-adjusted-plate-step/right_toe.step",
+        "manufacturing_adjusted_wall_thickness_ok": true,
+        "material_class": "ALU_7075",
+        "nominal_wall_thickness_ok": false,
+        "shape_family": "flat_plate_envelope",
+        "surface_intent": "flat"
+      }
+    ],
+    "geom_preservation": {
+      "added_geoms": [],
+      "changed_geoms": [],
+      "fembot_geom_count": 20,
+      "fembot_geoms": [
+        {
+          "body": "left_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_foot1_collision",
+          "pos": [
+            0.075,
+            -0.0325,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.01520690632574555,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_foot2_collision",
+          "pos": [
+            0.027499999999999997,
+            -0.015,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.0625,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_foot3_collision",
+          "pos": [
+            0.027499999999999997,
+            0.0,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.0625,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_foot4_collision",
+          "pos": [
+            0.027499999999999997,
+            0.015,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.0625,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_foot6_collision",
+          "pos": [
+            0.045,
+            0.0325,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.04506939094329987,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_toe1_collision",
+          "pos": [
+            0.025,
+            -0.03,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.015,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_toe2_collision",
+          "pos": [
+            0.0325,
+            -0.015,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.0225,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_toe3_collision",
+          "pos": [
+            0.034999999999999996,
+            0.0,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.024999999999999998,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_toe4_collision",
+          "pos": [
+            0.0325,
+            0.02,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.0225,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "left_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "left_toe5_collision",
+          "pos": [
+            0.025,
+            0.04,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.015,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_foot1_collision",
+          "pos": [
+            0.045,
+            -0.0325,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.04506939094329987,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_foot2_collision",
+          "pos": [
+            0.027499999999999997,
+            -0.015,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.0625,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_foot3_collision",
+          "pos": [
+            0.027499999999999997,
+            0.0,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.0625,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_foot4_collision",
+          "pos": [
+            0.027499999999999997,
+            0.015,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.0625,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_ankle_roll_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_foot5_collision",
+          "pos": [
+            0.075,
+            0.0325,
+            -0.022
+          ],
+          "size": [
+            0.01,
+            0.01520690632574555,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_toe1_collision",
+          "pos": [
+            0.025,
+            -0.04,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.015,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_toe2_collision",
+          "pos": [
+            0.0325,
+            -0.02,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.0225,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_toe3_collision",
+          "pos": [
+            0.034999999999999996,
+            0.0,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.024999999999999998,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_toe4_collision",
+          "pos": [
+            0.0325,
+            0.015,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.0225,
+            0.0
+          ],
+          "type": 3
+        },
+        {
+          "body": "right_toe_link",
+          "conaffinity": 1,
+          "contype": 1,
+          "name": "right_toe5_collision",
+          "pos": [
+            0.025,
+            0.03,
+            -0.018
+          ],
+          "size": [
+            0.01,
+            0.015,
+            0.0
+          ],
+          "type": 3
+        }
+      ],
+      "missing_geoms": [],
+      "preserved": true,
+      "source_geom_count": 20
+    },
+    "ok": true,
+    "schema": "asimov-fembot-foot-handling-proof-v1",
+    "source": {
+      "collision_schema": "asimov-1-collision-sweep-proof-v1",
+      "fembot_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+      "fembot_mjcf_schema": "asimov-fembot-mjcf-v1",
+      "generated_cad_schema": "asimov-fembot-generated-cad-parametric-v1",
+      "material_schema": "asimov-fembot-material-manufacturing-proof-v1",
+      "source_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+      "surface_schema": "asimov-fembot-surface-quality-proof-v1"
+    },
+    "summary": {
+      "acceptance_blocker": null,
+      "accepted": true,
+      "approved_floor_contact_count": 1460,
+      "collision_sweep_accepted": true,
+      "fembot_foot_collision_geoms": 20,
+      "flat_foot_plate_count": 2,
+      "floor_contact_count": 1460,
+      "foot_collision_geoms_preserved": true,
+      "foot_flatness_ok_count": 2,
+      "foot_links": [
+        "LEFT_TOE",
+        "RIGHT_TOE"
+      ],
+      "manufacturing_adjusted_foot_plate_count": 2,
+      "neutral_floor_contact_count": 20,
+      "non_foot_floor_contact_count": 0
+    }
+  },
+  "inertia_calibration": {
+    "accepted": false,
+    "link_inertia_records": [
+      {
+        "accepted": false,
+        "body": "pelvis_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.0003054409384786722,
+          0.0002209810247990674,
+          0.00012961190017964818
+        ],
+        "cad_material_mass_estimate_kg": 0.070476119416645,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.006266716212703865,
+          0.005534349922557774,
+          0.0050340729707201
+        ],
+        "compiled_mass_kg": 3.50691251175897,
+        "group": "torso",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          19.516949181458354,
+          24.044457674997307,
+          37.83958929498479
+        ],
+        "inertia_scale_to_compiled": [
+          20.516949181458354,
+          25.044457674997307,
+          38.83958929498479
+        ],
+        "inertia_within_tolerance": false,
+        "link": "IMU_ORIGIN",
+        "mass_relative_delta_vs_cad": 48.76029527146056,
+        "mass_scale_to_compiled": 49.76029527146056,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 3.4364363923423253
+      },
+      {
+        "accepted": false,
+        "body": "waist_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.0024420244275928336,
+          0.001920664633245543,
+          0.0005556325689251156
+        ],
+        "cad_material_mass_estimate_kg": 0.15680898673994034,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.05037256365407073,
+          0.03970239000659056,
+          0.031568117234592886
+        ],
+        "compiled_mass_kg": 8.20850158063177,
+        "group": "torso",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          19.62737910600029,
+          19.671172530261767,
+          55.81473513271938
+        ],
+        "inertia_scale_to_compiled": [
+          20.627379106000287,
+          20.671172530261767,
+          56.81473513271938
+        ],
+        "inertia_within_tolerance": false,
+        "link": "WAIST_YAW",
+        "mass_relative_delta_vs_cad": 51.34713743954706,
+        "mass_scale_to_compiled": 52.34713743954706,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 8.05169259389183
+      },
+      {
+        "accepted": false,
+        "body": "neck_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          1.3113309472188803e-06,
+          1.3113305380314438e-06,
+          6.603811623961801e-08
+        ],
+        "cad_material_mass_estimate_kg": 0.002751482372517997,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0002666203556642202,
+          0.0002487715643078905,
+          0.00019965780707883508
+        ],
+        "compiled_mass_kg": 0.53278930532821,
+        "group": "head",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          202.32041749619242,
+          188.70927397248283,
+          3022.3722348223964
+        ],
+        "inertia_scale_to_compiled": [
+          203.32041749619242,
+          189.70927397248283,
+          3023.3722348223964
+        ],
+        "inertia_within_tolerance": false,
+        "link": "NECK_YAW",
+        "mass_relative_delta_vs_cad": 192.6371865034455,
+        "mass_scale_to_compiled": 193.63718650344546,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.530037822955692
+      },
+      {
+        "accepted": false,
+        "body": "neck_pitch_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          4.335313353684691e-05,
+          4.521047570862323e-05,
+          2.2247429589001523e-06
+        ],
+        "cad_material_mass_estimate_kg": 0.01530768264256284,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0017308713376780033,
+          0.0015338632866787937,
+          0.0012048573483066445
+        ],
+        "compiled_mass_kg": 0.394055609177456,
+        "group": "head",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          38.92494190084075,
+          32.9271653889329,
+          540.5714851401488
+        ],
+        "inertia_scale_to_compiled": [
+          39.92494190084075,
+          33.9271653889329,
+          541.5714851401488
+        ],
+        "inertia_within_tolerance": false,
+        "link": "NECK_PITCH",
+        "mass_relative_delta_vs_cad": 24.74234248114008,
+        "mass_scale_to_compiled": 25.74234248114008,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.3787479265348932
+      },
+      {
+        "accepted": false,
+        "body": "left_shoulder_pitch_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          1.107030212172239e-05,
+          4.374590515130111e-06,
+          6.969978861329078e-06
+        ],
+        "cad_material_mass_estimate_kg": 0.011427422706866142,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0004213792018908906,
+          0.0004185185056477438,
+          0.0003303152376942022
+        ],
+        "compiled_mass_kg": 0.599157136550892,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          37.06392971552701,
+          94.67032713124603,
+          46.39113909324191
+        ],
+        "inertia_scale_to_compiled": [
+          38.06392971552701,
+          95.67032713124603,
+          47.39113909324191
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_SHOULDER_PITCH",
+        "mass_relative_delta_vs_cad": 51.431519505346536,
+        "mass_scale_to_compiled": 52.431519505346536,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.5877297138440258
+      },
+      {
+        "accepted": false,
+        "body": "right_shoulder_pitch_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          1.6204034170549222e-05,
+          8.078358183262121e-06,
+          8.458516912473326e-06
+        ],
+        "cad_material_mass_estimate_kg": 0.013867911245538454,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.00042138414376810226,
+          0.00041851401055695905,
+          0.0003303174025521971
+        ],
+        "compiled_mass_kg": 0.599156105726411,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          25.004891086564513,
+          50.80681532840364,
+          38.05145617964014
+        ],
+        "inertia_scale_to_compiled": [
+          26.004891086564513,
+          51.806815328403644,
+          39.05145617964014
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_SHOULDER_PITCH",
+        "mass_relative_delta_vs_cad": 42.20449526378169,
+        "mass_scale_to_compiled": 43.20449526378169,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.5852881944808725
+      },
+      {
+        "accepted": false,
+        "body": "left_shoulder_roll_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          2.929785083231865e-05,
+          2.8927825791966325e-05,
+          6.167179586246009e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.010278412663844686,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0016328159323109016,
+          0.0014914862011387627,
+          0.0007407961976608055
+        ],
+        "compiled_mass_kg": 1.3132281302001,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          54.73159415876784,
+          50.55887662850106,
+          1200.1912208830806
+        ],
+        "inertia_scale_to_compiled": [
+          55.73159415876784,
+          51.55887662850106,
+          1201.1912208830806
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_SHOULDER_ROLL",
+        "mass_relative_delta_vs_cad": 126.76565537395744,
+        "mass_scale_to_compiled": 127.76565537395744,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 1.3029497175362554
+      },
+      {
+        "accepted": false,
+        "body": "right_shoulder_roll_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          2.929785083231865e-05,
+          2.8927825791966325e-05,
+          6.167179586246009e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.010278412663844686,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0016328069612248856,
+          0.0014914960901704897,
+          0.0007407717148199214
+        ],
+        "compiled_mass_kg": 1.31322237625579,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          54.73128795589763,
+          50.55921848038437,
+          1200.151522280921
+        ],
+        "inertia_scale_to_compiled": [
+          55.73128795589763,
+          51.55921848038437,
+          1201.151522280921
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_SHOULDER_ROLL",
+        "mass_relative_delta_vs_cad": 126.76509556530816,
+        "mass_scale_to_compiled": 127.76509556530816,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 1.3029439635919453
+      },
+      {
+        "accepted": false,
+        "body": "left_shoulder_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          7.439584767752875e-06,
+          7.439584045530159e-06,
+          1.1655838675983226e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.004856412702250364,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0005146382685089992,
+          0.0005013958191151101,
+          0.00031027149690356277
+        ],
+        "compiled_mass_kg": 0.712261755331765,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          68.17567103203335,
+          66.39567911950105,
+          2660.9405563914934
+        ],
+        "inertia_scale_to_compiled": [
+          69.17567103203336,
+          67.39567911950105,
+          2661.9405563914934
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_SHOULDER_YAW",
+        "mass_relative_delta_vs_cad": 145.6641735373349,
+        "mass_scale_to_compiled": 146.6641735373349,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.7074053426295146
+      },
+      {
+        "accepted": false,
+        "body": "right_shoulder_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          7.488506017001855e-06,
+          7.488505293223913e-06,
+          1.1680938172333185e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.004866870423593416,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0005162644551727996,
+          0.0005026643488606178,
+          0.0003106730376686851
+        ],
+        "compiled_mass_kg": 0.712261755331765,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          67.94091478335947,
+          66.12479048595469,
+          2658.6582661872812
+        ],
+        "inertia_scale_to_compiled": [
+          68.94091478335949,
+          67.12479048595468,
+          2659.6582661872812
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_SHOULDER_YAW",
+        "mass_relative_delta_vs_cad": 145.34902788430352,
+        "mass_scale_to_compiled": 146.34902788430352,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.7073948849081715
+      },
+      {
+        "accepted": false,
+        "body": "left_elbow_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          4.785112673988783e-05,
+          7.845615045685627e-05,
+          3.366089801827388e-05
+        ],
+        "cad_material_mass_estimate_kg": 0.031831497186913846,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.00041843048604553966,
+          0.00040848157552027096,
+          0.00029104559927576186
+        ],
+        "compiled_mass_kg": 0.662317601299901,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          7.744422849645119,
+          4.206495260622029,
+          7.6464003164074414
+        ],
+        "inertia_scale_to_compiled": [
+          8.744422849645119,
+          5.206495260622029,
+          8.64640031640744
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_ELBOW",
+        "mass_relative_delta_vs_cad": 19.806988669454874,
+        "mass_scale_to_compiled": 20.80698866945487,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.6304861041129872
+      },
+      {
+        "accepted": false,
+        "body": "right_elbow_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          4.7733046545307686e-05,
+          7.826125636019162e-05,
+          3.358055790581407e-05
+        ],
+        "cad_material_mass_estimate_kg": 0.03179476643670134,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.00041843306796428026,
+          0.00040847851377129985,
+          0.00029104819665929044
+        ],
+        "compiled_mass_kg": 0.662314258886328,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          7.766108561017746,
+          4.2194218795991185,
+          7.667163823651034
+        ],
+        "inertia_scale_to_compiled": [
+          8.766108561017747,
+          5.2194218795991185,
+          8.667163823651034
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_ELBOW",
+        "mass_relative_delta_vs_cad": 19.830920717876555,
+        "mass_scale_to_compiled": 20.830920717876555,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.6305194924496267
+      },
+      {
+        "accepted": false,
+        "body": "left_wrist_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          2.2922864998882657e-07,
+          2.292284188466373e-07,
+          3.7303673356476614e-08
+        ],
+        "cad_material_mass_estimate_kg": 0.0015542599564482254,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          1.4450685760391175e-05,
+          8.859918022775751e-06,
+          8.223930911279796e-06
+        ],
+        "compiled_mass_kg": 0.058058790654763,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          62.04048713411502,
+          37.65104539548117,
+          219.45901036853166
+        ],
+        "inertia_scale_to_compiled": [
+          63.04048713411501,
+          38.65104539548118,
+          220.45901036853166
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_WRIST_YAW",
+        "mass_relative_delta_vs_cad": 36.35462038630796,
+        "mass_scale_to_compiled": 37.35462038630796,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.05650453069831477
+      },
+      {
+        "accepted": false,
+        "body": "right_wrist_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          2.3002706150302553e-07,
+          2.300268300956002e-07,
+          3.7346479822597866e-08
+        ],
+        "cad_material_mass_estimate_kg": 0.0015560434906200554,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          1.4450840377852102e-05,
+          8.859970255226702e-06,
+          8.224036750559984e-06
+        ],
+        "compiled_mass_kg": 0.0580595106779709,
+        "group": "arm",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          61.82234917678167,
+          37.51711668392968,
+          219.2091546412288
+        ],
+        "inertia_scale_to_compiled": [
+          62.82234917678167,
+          38.517116683929686,
+          220.20915464122876
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_WRIST_YAW",
+        "mass_relative_delta_vs_cad": 36.31226731640722,
+        "mass_scale_to_compiled": 37.31226731640722,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.056503467187350845
+      },
+      {
+        "accepted": false,
+        "body": "left_hip_pitch_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          4.5435118126148994e-05,
+          2.9756123313571994e-05,
+          2.9279547544249296e-05
+        ],
+        "cad_material_mass_estimate_kg": 0.029890300650510876,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.00082416096276676,
+          0.0007519886919467078,
+          0.0006821474423780943
+        ],
+        "compiled_mass_kg": 1.05630112217695,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          17.139293937313123,
+          24.27172925122676,
+          22.2977453407429
+        ],
+        "inertia_scale_to_compiled": [
+          18.139293937313123,
+          25.271729251226756,
+          23.2977453407429
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_HIP_PITCH",
+        "mass_relative_delta_vs_cad": 34.33926053563787,
+        "mass_scale_to_compiled": 35.33926053563788,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 1.0264108215264391
+      },
+      {
+        "accepted": false,
+        "body": "right_hip_pitch_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          4.5312437875794606e-05,
+          2.9721451081123455e-05,
+          2.9175651865444013e-05
+        ],
+        "cad_material_mass_estimate_kg": 0.02985549818935701,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0008241575540911512,
+          0.0007519915082817052,
+          0.0006821467411252871
+        ],
+        "compiled_mass_kg": 1.05629742879001,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          17.188329578519696,
+          24.30130531746838,
+          22.38068552062858
+        ],
+        "inertia_scale_to_compiled": [
+          18.188329578519696,
+          25.30130531746838,
+          23.38068552062858
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_HIP_PITCH",
+        "mass_relative_delta_vs_cad": 34.38033169269178,
+        "mass_scale_to_compiled": 35.38033169269178,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 1.026441930600653
+      },
+      {
+        "accepted": false,
+        "body": "left_hip_roll_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          5.11241679536552e-06,
+          7.495519058454657e-06,
+          2.6081048198817167e-06
+        ],
+        "cad_material_mass_estimate_kg": 0.009374795139370215,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0003667524425203498,
+          0.00035750536396855125,
+          0.00013306434218703997
+        ],
+        "compiled_mass_kg": 0.414368139397033,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          70.73758658582302,
+          46.69587818808879,
+          50.019553038161526
+        ],
+        "inertia_scale_to_compiled": [
+          71.73758658582302,
+          47.695878188088784,
+          51.01955303816153
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_HIP_ROLL",
+        "mass_relative_delta_vs_cad": 43.20023405704731,
+        "mass_scale_to_compiled": 44.20023405704731,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.40499334425766276
+      },
+      {
+        "accepted": false,
+        "body": "right_hip_roll_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          5.112416795366126e-06,
+          7.495519058455538e-06,
+          2.6081048198820293e-06
+        ],
+        "cad_material_mass_estimate_kg": 0.009374795139371317,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.00036728520271254734,
+          0.0003577901927634585,
+          0.0001333565059716289
+        ],
+        "compiled_mass_kg": 0.414825000619808,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          70.84179565434751,
+          46.73387806410056,
+          50.13157452684779
+        ],
+        "inertia_scale_to_compiled": [
+          71.84179565434751,
+          47.733878064100566,
+          51.13157452684779
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_HIP_ROLL",
+        "mass_relative_delta_vs_cad": 43.248966985707014,
+        "mass_scale_to_compiled": 44.248966985707014,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.40545020548043664
+      },
+      {
+        "accepted": false,
+        "body": "left_hip_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.00010247262654171631,
+          0.00010258719548224995,
+          4.2372497637796075e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.012880926360515882,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.003567327360551446,
+          0.0034161310801159328,
+          0.0013682724260147083
+        ],
+        "compiled_mass_kg": 1.86657016436158,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          33.81249072013585,
+          32.29978038737793,
+          3228.1521677830374
+        ],
+        "inertia_scale_to_compiled": [
+          34.81249072013585,
+          33.29978038737793,
+          3229.1521677830374
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_HIP_YAW",
+        "mass_relative_delta_vs_cad": 143.90962156908284,
+        "mass_scale_to_compiled": 144.90962156908284,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 1.853689238001064
+      },
+      {
+        "accepted": false,
+        "body": "right_hip_yaw_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.00010247264128421767,
+          0.00010258721023019158,
+          4.237249964983139e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.012880926972160417,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0035671239490203677,
+          0.003415637098151978,
+          0.0013682791743694724
+        ],
+        "compiled_mass_kg": 1.86647220449567,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          33.8105006791677,
+          32.294960360923724,
+          3228.1679407091983
+        ],
+        "inertia_scale_to_compiled": [
+          34.8105006791677,
+          33.294960360923724,
+          3229.1679407091983
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_HIP_YAW",
+        "mass_relative_delta_vs_cad": 143.90200965580206,
+        "mass_scale_to_compiled": 144.90200965580206,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 1.8535912775235097
+      },
+      {
+        "accepted": false,
+        "body": "left_knee_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.0001485658064545556,
+          0.00014856580451620927,
+          3.128266673973397e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.013033943274125775,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.009754605474815919,
+          0.009676911880300862,
+          0.002274299181790974
+        ],
+        "compiled_mass_kg": 2.39114151033076,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          64.65848298208329,
+          64.1355263871981,
+          7269.157626626669
+        ],
+        "inertia_scale_to_compiled": [
+          65.65848298208329,
+          65.13552638719808,
+          7270.157626626669
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_KNEE",
+        "mass_relative_delta_vs_cad": 182.4549575704779,
+        "mass_scale_to_compiled": 183.45495757047792,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 2.378107567056634
+      },
+      {
+        "accepted": false,
+        "body": "right_knee_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.00014856580645456304,
+          0.0001485658045162167,
+          3.1282666739739716e-07
+        ],
+        "cad_material_mass_estimate_kg": 0.013033943274126427,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.009754335573131812,
+          0.009676665766434566,
+          0.0022742567615978955
+        ],
+        "compiled_mass_kg": 2.39110172735043,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          64.65666626738268,
+          64.13386978884706,
+          7269.022023757998
+        ],
+        "inertia_scale_to_compiled": [
+          65.65666626738268,
+          65.13386978884706,
+          7270.022023757998
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_KNEE",
+        "mass_relative_delta_vs_cad": 182.4519053107271,
+        "mass_scale_to_compiled": 183.4519053107271,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 2.3780677840763036
+      },
+      {
+        "accepted": false,
+        "body": "left_ankle_pitch_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          4.4069373540813087e-07,
+          4.4069344890641046e-07,
+          4.623806025311321e-08
+        ],
+        "cad_material_mass_estimate_kg": 0.0019265117627559817,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          8.09944211442467e-05,
+          6.433359477695617e-05,
+          4.712532132845196e-05
+        ],
+        "compiled_mass_kg": 0.273090119400173,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          182.78845587454737,
+          144.98264380058578,
+          1018.1889770133471
+        ],
+        "inertia_scale_to_compiled": [
+          183.78845587454734,
+          145.98264380058578,
+          1019.1889770133471
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_ANKLE_A",
+        "mass_relative_delta_vs_cad": 140.75367349405772,
+        "mass_scale_to_compiled": 141.75367349405772,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.27116360763741704
+      },
+      {
+        "accepted": false,
+        "body": "right_ankle_pitch_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          4.4069373540813087e-07,
+          4.4069344890641046e-07,
+          4.623806025311321e-08
+        ],
+        "cad_material_mass_estimate_kg": 0.0019265117627559817,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          8.099443484057898e-05,
+          6.433343835045117e-05,
+          4.712510813643184e-05
+        ],
+        "compiled_mass_kg": 0.27308917159726,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          182.78848695357385,
+          144.98228884521853,
+          1018.18436626586
+        ],
+        "inertia_scale_to_compiled": [
+          183.78848695357385,
+          145.98228884521856,
+          1019.1843662658601
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_ANKLE_A",
+        "mass_relative_delta_vs_cad": 140.75318151527443,
+        "mass_scale_to_compiled": 141.75318151527443,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.271162659834504
+      },
+      {
+        "accepted": false,
+        "body": "left_ankle_roll_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          3.785254420204923e-05,
+          9.186789749478274e-05,
+          9.901334362961964e-05
+        ],
+        "cad_material_mass_estimate_kg": 0.04218540997284888,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0005326200947678351,
+          0.00041381480366162166,
+          0.00017529194976838585
+        ],
+        "compiled_mass_kg": 0.405640437504617,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          13.070919300029523,
+          3.50445492872113,
+          0.7703871351330429
+        ],
+        "inertia_scale_to_compiled": [
+          14.070919300029521,
+          4.50445492872113,
+          1.770387135133043
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_ANKLE_B",
+        "mass_relative_delta_vs_cad": 8.615657113814773,
+        "mass_scale_to_compiled": 9.615657113814773,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.3634550275317681
+      },
+      {
+        "accepted": false,
+        "body": "right_ankle_roll_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          3.7849424782706944e-05,
+          9.179026359554944e-05,
+          9.892857827898149e-05
+        ],
+        "cad_material_mass_estimate_kg": 0.04217579982844413,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          0.0005390139413463916,
+          0.0004166649480282576,
+          0.0001852139482946503
+        ],
+        "compiled_mass_kg": 0.405640437504617,
+        "group": "leg",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          13.241007477415145,
+          3.539315301067074,
+          0.8721986256826771
+        ],
+        "inertia_scale_to_compiled": [
+          14.241007477415144,
+          4.539315301067074,
+          1.872198625682677
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_ANKLE_B",
+        "mass_relative_delta_vs_cad": 8.617848129842594,
+        "mass_scale_to_compiled": 9.617848129842594,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.3634646376761729
+      },
+      {
+        "accepted": false,
+        "body": "left_toe_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.0005554674138426502,
+          0.0003897289829494809,
+          0.000749325493848196
+        ],
+        "cad_material_mass_estimate_kg": 0.7084002100081165,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          5.5351925218088e-05,
+          3.65130809524718e-05,
+          8.54029969529202e-05
+        ],
+        "compiled_mass_kg": 0.112221237946844,
+        "group": "foot",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          -0.9003507247433818,
+          -0.9063116099907693,
+          -0.8860268365962979
+        ],
+        "inertia_scale_to_compiled": [
+          0.09964927525661801,
+          0.09368839000923072,
+          0.11397316340370207
+        ],
+        "inertia_within_tolerance": false,
+        "link": "LEFT_TOE",
+        "mass_relative_delta_vs_cad": -0.8415849736329719,
+        "mass_scale_to_compiled": 0.15841502636702806,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.0
+      },
+      {
+        "accepted": false,
+        "body": "right_toe_link",
+        "cad_bbox_diagonal_inertia_kg_m2": [
+          0.0005554550445712545,
+          0.0003897193422449431,
+          0.0007493131576344563
+        ],
+        "cad_material_mass_estimate_kg": 0.708388547551046,
+        "calibration_action": "hardware_measurement_required",
+        "compiled_diagonal_inertia_kg_m2": [
+          5.5358948695321e-05,
+          3.65052769951383e-05,
+          8.54017357052965e-05
+        ],
+        "compiled_mass_kg": 0.112221754054884,
+        "group": "foot",
+        "hardware_measurement": null,
+        "hardware_measurement_missing_count": null,
+        "hardware_measurement_present": false,
+        "hardware_measurement_requirement_count": null,
+        "inertia_relative_delta_vs_cad": [
+          -0.900335861135168,
+          -0.9063293169262451,
+          -0.8860266434198146
+        ],
+        "inertia_scale_to_compiled": [
+          0.09966413886483208,
+          0.09367068307375494,
+          0.11397335658018533
+        ],
+        "inertia_within_tolerance": false,
+        "link": "RIGHT_TOE",
+        "mass_relative_delta_vs_cad": -0.8415816370227281,
+        "mass_scale_to_compiled": 0.15841836297727185,
+        "mass_within_tolerance": false,
+        "required_added_mass_to_match_compiled_kg": 0.0
+      }
+    ],
+    "ok": true,
+    "schema": "asimov-fembot-inertia-calibration-proof-v1",
+    "source": {
+      "fembot_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+      "fembot_mjcf_schema": "asimov-fembot-mjcf-v1",
+      "generated_cad_schema": "asimov-fembot-generated-cad-parametric-v1",
+      "hardware_measurement_schema": null,
+      "material_schema": "asimov-fembot-material-manufacturing-proof-v1",
+      "source_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml"
+    },
+    "summary": {
+      "acceptance_blocker": "compiled MuJoCo inertias are mapped to generated CAD/material estimates, but hardware-identified mass/inertia measurements are missing",
+      "accepted": false,
+      "cad_mass_estimate_kg": 2.002984400533793,
+      "calibration_ready": true,
+      "compiled_body_records": 28,
+      "compiled_total_mass_kg": 32.37127688334273,
+      "hardware_measured_links": 0,
+      "hardware_measurement_required_links": 0,
+      "hardware_measurement_schema": null,
+      "inertia_out_of_tolerance_count": 28,
+      "inertia_out_of_tolerance_links": [
+        "IMU_ORIGIN",
+        "LEFT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "LEFT_ELBOW",
+        "LEFT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "LEFT_KNEE",
+        "LEFT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "LEFT_TOE",
+        "LEFT_WRIST_YAW",
+        "NECK_PITCH",
+        "NECK_YAW",
+        "RIGHT_ANKLE_A",
+        "RIGHT_ANKLE_B",
+        "RIGHT_ELBOW",
+        "RIGHT_HIP_PITCH",
+        "RIGHT_HIP_ROLL",
+        "RIGHT_HIP_YAW",
+        "RIGHT_KNEE",
+        "RIGHT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_YAW",
+        "RIGHT_TOE",
+        "RIGHT_WRIST_YAW",
+        "WAIST_YAW"
+      ],
+      "inertia_relative_delta_tolerance": 0.25,
+      "links": 28,
+      "mass_out_of_tolerance_count": 28,
+      "mass_out_of_tolerance_links": [
+        "IMU_ORIGIN",
+        "LEFT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "LEFT_ELBOW",
+        "LEFT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "LEFT_KNEE",
+        "LEFT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "LEFT_TOE",
+        "LEFT_WRIST_YAW",
+        "NECK_PITCH",
+        "NECK_YAW",
+        "RIGHT_ANKLE_A",
+        "RIGHT_ANKLE_B",
+        "RIGHT_ELBOW",
+        "RIGHT_HIP_PITCH",
+        "RIGHT_HIP_ROLL",
+        "RIGHT_HIP_YAW",
+        "RIGHT_KNEE",
+        "RIGHT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_YAW",
+        "RIGHT_TOE",
+        "RIGHT_WRIST_YAW",
+        "WAIST_YAW"
+      ],
+      "mass_relative_delta_tolerance": 0.1,
+      "max_abs_inertia_relative_delta_vs_cad": 7269.157626626669,
+      "max_abs_mass_relative_delta_vs_cad": 192.6371865034455,
+      "max_inertia_scale_to_compiled": 7270.157626626669,
+      "max_mass_scale_to_compiled": 193.63718650344546,
+      "max_required_added_mass_to_match_compiled_kg": 8.05169259389183,
+      "missing_compiled_links": [],
+      "missing_hardware_links": [
+        "IMU_ORIGIN",
+        "LEFT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "LEFT_ELBOW",
+        "LEFT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "LEFT_KNEE",
+        "LEFT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "LEFT_TOE",
+        "LEFT_WRIST_YAW",
+        "NECK_PITCH",
+        "NECK_YAW",
+        "RIGHT_ANKLE_A",
+        "RIGHT_ANKLE_B",
+        "RIGHT_ELBOW",
+        "RIGHT_HIP_PITCH",
+        "RIGHT_HIP_ROLL",
+        "RIGHT_HIP_YAW",
+        "RIGHT_KNEE",
+        "RIGHT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_YAW",
+        "RIGHT_TOE",
+        "RIGHT_WRIST_YAW",
+        "WAIST_YAW"
+      ],
+      "missing_material_links": [],
+      "total_required_added_mass_to_match_compiled_kg": 31.56063824836637
+    }
+  },
+  "joint_sweep_visual": {
+    "accepted": false,
+    "contact_clean": true,
+    "contact_clean_dense_range_applied": true,
+    "contact_clean_dense_range_changed_joints": 5,
+    "contact_sheet": "evidence/asimov_1_joint_sweep_contact_clean/asimov1_constrained_joint_sweep_contact_sheet.jpg",
+    "frame_count": 298,
+    "hip_roll_inward_limit_rad": 0.25,
+    "hip_roll_limited_joint_count": 2,
+    "limited_hinge_joints": 27,
+    "manual_visual_review_required": true,
+    "max_unapproved_contacts": 0,
+    "ok": true,
+    "samples": 298,
+    "schema": "asimov-1-constrained-joint-sweep-visual-evidence-v1",
+    "screenshot_count": 82,
+    "screenshots_recorded": true,
+    "standing_height_gate": true,
+    "unapproved_contact_samples": 0,
+    "video": "evidence/asimov_1_joint_sweep_contact_clean/asimov1_constrained_joint_sweep.mp4",
+    "video_recorded": true
+  },
+  "ok": true,
+  "schema": "asimov-fembot-collision-dynamics-proof-v1",
+  "source": {
+    "contact_tuning_schema": "asimov-fembot-contact-tuning-proof-v1",
+    "controller_validation_schema": "asimov-fembot-controller-validation-proof-v1",
+    "fembot_collision_schema": "asimov-1-collision-sweep-proof-v1",
+    "fembot_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "fembot_mjcf_schema": "asimov-fembot-mjcf-v1",
+    "foot_handling_schema": "asimov-fembot-foot-handling-proof-v1",
+    "generated_cad_schema": "asimov-fembot-generated-cad-parametric-v1",
+    "inertia_calibration_schema": "asimov-fembot-inertia-calibration-proof-v1",
+    "joint_sweep_visual_schema": "asimov-1-constrained-joint-sweep-visual-evidence-v1",
+    "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+    "mujoco_schema": "asimov-1-mujoco-load-proof-v1"
+  },
+  "summary": {
+    "acceptance_blocker": "generated fembot geometry is substituted into a MuJoCo MJCF and dynamic stepping, compiled mass/inertia, and actuator lag response are measured; the promoted tuned physical collider clears sampled generated-MJCF self-contacts and the visual-fit gate, foot handling preserves floor contacts and flat toe plates, CAD-vs-MJCF inertia records are mapped, and a diagnostic inward hip-roll limit clears sampled cross-leg envelope contacts, but production acceptance still needs hardware mass/inertia measurements and hardware motor-controller telemetry",
+    "accepted": false,
+    "baseline_collision_samples": 82,
+    "baseline_unapproved_contact_count": 0,
+    "baseline_unapproved_contact_samples": 0,
+    "baseline_worst_sample": null,
+    "contact_tuning_accepted": false,
+    "contact_tuning_best_strategy": "physical_visual_remediation",
+    "contact_tuning_clears_sampled_cross_leg_contacts_with_motion_limit": true,
+    "contact_tuning_clears_sampled_self_contacts_and_visual_fit": true,
+    "contact_tuning_contact_clean_and_visual_fit_scale_count": 1,
+    "contact_tuning_contact_clean_scale_count": 7,
+    "contact_tuning_first_hip_roll_limit_contact_clean_rad": 0.25,
+    "contact_tuning_hip_roll_limit_best_contact_pair_count": 0,
+    "contact_tuning_hip_roll_limit_best_unapproved_contact_count": 0,
+    "contact_tuning_hip_roll_limit_contact_clean_count": 2,
+    "contact_tuning_ok": true,
+    "contact_tuning_physical_visual_remediation_best_worst_mean_outside_margin_m": 0.03282405299866911,
+    "contact_tuning_physical_visual_remediation_best_worst_outside_fraction": 0.8188,
+    "contact_tuning_physical_visual_remediation_contact_clean_count": 1,
+    "contact_tuning_physical_visual_remediation_geom_count": 5,
+    "contact_tuning_physical_visual_remediation_visual_fit_clean_count": 1,
+    "contact_tuning_visual_fit_remediation_geom_count": 0,
+    "controller_actuator_order_ok": true,
+    "controller_actuators_commanded": 25,
+    "controller_hardware_validated": false,
+    "controller_motor_response_profile_ok": true,
+    "controller_simulation_validated": true,
+    "controller_trajectory_early_median_response_fraction": 0.13974732480169222,
+    "controller_trajectory_final_max_abs_error_rad": 0.0593125910163434,
+    "controller_trajectory_final_median_abs_error_rad": 0.009132227100651855,
+    "controller_trajectory_max_final_response_fraction": 3.96562955081717,
+    "controller_trajectory_min_final_response_fraction": -1.8365453047014864,
+    "controller_trajectory_response_overshoot_count": 0,
+    "controller_trajectory_settled_median_response_fraction": 0.9633045442705795,
+    "controller_validation_accepted": false,
+    "controller_validation_ok": true,
+    "fembot_actuator_lag_duration_s": 0.25,
+    "fembot_actuator_lag_ok": true,
+    "fembot_actuators_tracked": 25,
+    "fembot_collision_samples": 82,
+    "fembot_contact_pair_count": 0,
+    "fembot_contact_tuned_collider_fit_geom_count": 15,
+    "fembot_contact_tuned_collider_physical_visual_remediation_geom_count": 5,
+    "fembot_contact_tuned_collider_scaled_geom_count": 19,
+    "fembot_contact_tuned_collider_strategy": "physical_visual_remediation_promoted",
+    "fembot_contact_tuned_colliders_promoted": true,
+    "fembot_geometry_substituted_in_mjcf": true,
+    "fembot_hip_spacing_ratio": 0.9599999999999999,
+    "fembot_mass_inertia_ok": true,
+    "fembot_minimum_unapproved_distance_m": null,
+    "fembot_mjcf_ok": true,
+    "fembot_promoted_contact_tuned_collider_contact_clean": true,
+    "fembot_total_mass_kg": 32.37127688334273,
+    "fembot_unapproved_contact_count": 0,
+    "fembot_unapproved_contact_samples": 0,
+    "fembot_worst_contact_pair": null,
+    "fembot_worst_sample": null,
+    "foot_collision_geoms_preserved": true,
+    "foot_flat_plate_count": 2,
+    "foot_flatness_ok_count": 2,
+    "foot_floor_contact_count": 1460,
+    "foot_handling_accepted": true,
+    "foot_handling_ok": true,
+    "foot_manufacturing_adjusted_plate_count": 2,
+    "foot_neutral_floor_contact_count": 20,
+    "foot_non_foot_floor_contact_count": 0,
+    "generated_links": 28,
+    "inertia_cad_mass_estimate_kg": 2.002984400533793,
+    "inertia_calibration_accepted": false,
+    "inertia_calibration_ok": true,
+    "inertia_calibration_ready": true,
+    "inertia_compiled_total_mass_kg": 32.37127688334273,
+    "inertia_hardware_measured_links": 0,
+    "inertia_inertia_out_of_tolerance_count": 28,
+    "inertia_mass_out_of_tolerance_count": 28,
+    "inertia_max_abs_inertia_relative_delta_vs_cad": 7269.157626626669,
+    "inertia_max_abs_mass_relative_delta_vs_cad": 192.6371865034455,
+    "inertia_max_inertia_scale_to_compiled": 7270.157626626669,
+    "inertia_max_mass_scale_to_compiled": 193.63718650344546,
+    "inertia_max_required_added_mass_to_match_compiled_kg": 8.05169259389183,
+    "inertia_missing_hardware_links": 28,
+    "inertia_total_required_added_mass_to_match_compiled_kg": 31.56063824836637,
+    "joint_sweep_visual_contact_clean": true,
+    "joint_sweep_visual_contact_clean_dense_range_applied": true,
+    "joint_sweep_visual_contact_clean_dense_range_changed_joints": 5,
+    "joint_sweep_visual_frame_count": 298,
+    "joint_sweep_visual_hip_roll_inward_limit_rad": 0.25,
+    "joint_sweep_visual_hip_roll_limited_joint_count": 2,
+    "joint_sweep_visual_limited_hinge_joints": 27,
+    "joint_sweep_visual_max_unapproved_contacts": 0,
+    "joint_sweep_visual_ok": true,
+    "joint_sweep_visual_screenshot_count": 82,
+    "joint_sweep_visual_screenshots_recorded": true,
+    "joint_sweep_visual_standing_height_gate": true,
+    "joint_sweep_visual_unapproved_contact_samples": 0,
+    "joint_sweep_visual_video_recorded": true,
+    "missing_generated_links": [],
+    "mujoco_dynamic_step_ok": true,
+    "neutral_sample_accepted": true,
+    "structural_remediation_contact_risk_link_names": [],
+    "structural_remediation_contact_risk_links": 0,
+    "structural_remediation_contact_risk_pairs": 0,
+    "structural_remediation_contact_worsened_pairs": 0,
+    "structural_remediation_no_current_contact_links": [
+      "LEFT_HIP_YAW",
+      "LEFT_KNEE",
+      "LEFT_SHOULDER_YAW",
+      "RIGHT_HIP_YAW",
+      "RIGHT_KNEE",
+      "RIGHT_SHOULDER_YAW"
+    ],
+    "structural_remediation_worst_estimated_distance_after_growth_m": null
+  }
+}

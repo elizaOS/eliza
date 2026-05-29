@@ -269,6 +269,11 @@ export type AgentDefaultsConfig = {
   advancedMemory?: boolean;
   /** Enable built-in agent orchestrator (PTY / coding task agents) by default. */
   agentOrchestrator?: boolean;
+  /**
+   * Enable @elizaos/plugin-gitpathologist (forensic git-history analysis) by default.
+   * Unset = auto-on when the workspace has a `.git` directory.
+   */
+  gitpathologist?: boolean;
   /** Default thinking level when no /think directive is present. */
   thinkingDefault?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   /** Default verbose level when no /verbose directive is present. */

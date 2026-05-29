@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -e
+
+echo "Setting the root's bash environment"
+
+# ... so we have the expected environment in the Root Terminal
+
+# shellcheck disable=SC2016
+echo '
+for dir in /usr/local/sbin /usr/local/bin; do
+    if ! echo "${PATH}" | grep -q --extended-regexp "(^|:)${dir}($|:)"; then
+        PATH="${dir}:${PATH}"
+    fi
+done
+' >> /root/.bashrc

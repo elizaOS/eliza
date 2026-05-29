@@ -84,7 +84,7 @@ export function RotationStrategyPicker({
       >
         <SelectTrigger
           id={`rotation-strategy-${providerId}`}
-          className="h-8 w-[160px] rounded-lg border border-border bg-card text-xs"
+          className="h-8 w-[160px] rounded-sm border border-border bg-card text-xs"
         >
           <SelectValue
             placeholder={t("accounts.strategy.choose", {

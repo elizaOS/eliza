@@ -548,7 +548,7 @@ function SearchableSelectInner({
             ref={dropdownRef}
             data-floating-layer={CONFIG_SELECT_FLOATING_LAYER_NAME}
             style={dropdownStyle}
-            className="border border-border bg-card shadow-lg rounded-sm"
+            className="border border-border bg-card rounded-sm"
           >
             {/* Search input */}
             <div className="p-1.5">
@@ -1504,7 +1504,7 @@ function processInline(text: string): React.ReactNode {
       parts.push(
         <code
           key={key++}
-          className="bg-bg-hover px-1 py-0.5 rounded font-mono text-xs"
+          className="bg-bg-hover px-1 py-0.5 rounded-sm font-mono text-xs"
         >
           {codeMatch[1]}
         </code>,

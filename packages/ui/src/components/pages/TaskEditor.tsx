@@ -122,7 +122,7 @@ export function TaskEditor({
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
           {error}
         </div>
       )}
@@ -214,7 +214,7 @@ export function TaskEditor({
           <select
             value={eventName}
             onChange={(e) => setEventName(e.target.value)}
-            className="w-full rounded-md border border-border/40 bg-bg px-3 py-2 text-sm text-txt"
+            className="w-full rounded-sm border border-border/40 bg-bg px-3 py-2 text-sm text-txt"
             data-testid="task-editor-event"
           >
             {availableEvents.map((event) => (
@@ -265,7 +265,7 @@ function ScheduleRadio({
   return (
     <label
       htmlFor={id}
-      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
+      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs transition-colors ${
         disabled
           ? "cursor-not-allowed border-border/30 text-muted opacity-60"
           : checked

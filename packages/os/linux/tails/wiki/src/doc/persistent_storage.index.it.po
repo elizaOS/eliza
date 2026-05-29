@@ -1,0 +1,108 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-25 11:32+0200\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: la_r_go* <largo@tracciabi.li>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Bullet: '- '
+msgid "[[Introduction to the Persistent Storage|persistent_storage]]"
+msgstr "[[Introduzione all'Archivio Persistente|persistent_storage]]"
+
+#. type: Bullet: '  * '
+msgid "[[Creating the Persistent Storage|persistent_storage/create]]"
+msgstr "[[Creare l'Archivio Persistente|persistent_storage/create]]"
+
+#. type: Bullet: '  * '
+msgid "[[Configuring the Persistent Storage|persistent_storage/configure]]"
+msgstr "[[Configurare l'Archivio Persistente|persistent_storage/configure]]"
+
+#. type: Bullet: '  * '
+msgid "[[Unlocking and using the Persistent Storage|persistent_storage/use]]"
+msgstr ""
+"[[Sblocco e utilizzo dell'Archivio Persistente|persistent_storage/use]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Making a backup of your Persistent Storage|persistent_storage/backup]]"
+msgstr ""
+"[[Fare un backup del tuo Archivio Persistente|persistent_storage/backup]]"
+
+#. type: Bullet: '  * '
+msgid "[[Deleting the Persistent Storage|persistent_storage/delete]]"
+msgstr "[[Cancellare l'Archivio Persistente|persistent_storage/delete]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Installing additional software|persistent_storage/additional_software]]"
+msgstr ""
+"[[Installare software supplementare|persistent_storage/additional_software]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Converting dangerous documents to safe PDFs using *Dangerzone*|"
+"persistent_storage/additional_software/dangerzone]]"
+msgstr ""
+"[[Convertire documenti pericolosi in PDF sicuri usando *Dangerzone*|"
+"persistent_storage/additional_software/dangerzone]]"
+
+#. type: Bullet: '- '
+msgid "[[Installing additional fonts|persistent_storage/additional_fonts]]"
+msgstr "[[Installare dialtri caratteri|persistent_storage/additional_fonts]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Changing the passphrase of the Persistent Storage|persistent_storage/"
+"passphrase]]"
+msgstr ""
+"[[Modificare la passphrase dell'Archivio Persistente|persistent_storage/"
+"passphrase]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Opening your Persistent Storage from another operating system|"
+"persistent_storage/open]]"
+msgstr ""
+"[[Aprire il tuo Archivio Persistente da un altro sistema operativo|"
+"persistent_storage/open]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Recovering data from the Persistent Storage when Tails doesn't start|"
+"persistent_storage/recover]]"
+msgstr ""
+"[[Recuperare i dati dall'Archivio Persistente quando Tails non si avvia|"
+"persistent_storage/recover]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Recovering data from the Persistent Storage when it has file system errors|"
+"persistent_storage/fsck]]"
+msgstr ""
+"[[Recupero dei dati dall'Archivio Persistente quando presenta errori del "
+"file system|persistent_storage/fsck]]"
+
+#, fuzzy
+#~| msgid "- Advanced topics on the Persistent Storage"
+#~ msgid "Advanced topics on the Persistent Storage"
+#~ msgstr "- Approfondimenti sull'Archivio Persistente"
+
+#, fuzzy
+#~| msgid "[[Creating the Persistent Storage|persistent_storage/create]]"
+#~ msgid ""
+#~ "- [[Advanced topics on the Persistent Storage|persistent_storage/"
+#~ "advanced_topics]]"
+#~ msgstr "[[Creare l'Archivio Persistente|persistent_storage/create]]"

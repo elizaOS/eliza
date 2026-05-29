@@ -18,7 +18,7 @@ export function AdminDialogContent({
   return (
     <DialogContent
       className={cn(
-        "flex w-full flex-col overflow-hidden rounded-sm border border-border bg-card p-0 shadow-sm",
+        "flex w-full flex-col overflow-hidden rounded-sm border border-border bg-card p-0 ",
         className,
       )}
       {...props}
@@ -104,7 +104,7 @@ export function AdminInput({ className, ...props }: AdminInputProps) {
   return (
     <Input
       className={cn(
-        "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt shadow-inner transition-colors placeholder:text-muted/60 focus-visible:ring-accent",
+        "h-10 w-full rounded-sm border border-border bg-card px-3 text-sm font-mono text-txt transition-colors placeholder:text-muted/60 focus-visible:ring-accent",
         className,
       )}
       {...props}

@@ -41,15 +41,20 @@ export type AgentConfig = {
   advancedMemory?: boolean;
   /** Enable built-in agent orchestrator (PTY / coding task agents) for this agent. */
   agentOrchestrator?: boolean;
+  /**
+   * Enable @elizaos/plugin-gitpathologist (forensic git-history analysis) for this agent.
+   * Unset = auto-on when the workspace has a `.git` directory.
+   */
+  gitpathologist?: boolean;
 
-  // ── Personality fields (set during onboarding from style presets) ──────
-  /** Agent bio lines. Set during onboarding from the chosen style preset. */
+  // ── Personality fields (set during first-run setup from style presets) ──────
+  /** Agent bio lines. Set during first-run setup from the chosen style preset. */
   bio?: string[];
-  /** System prompt. Set during onboarding from the chosen style preset. */
+  /** System prompt. Set during first-run setup from the chosen style preset. */
   system?: string;
-  /** Communication style rules. Set during onboarding from the chosen style preset. */
+  /** Communication style rules. Set during first-run setup from the chosen style preset. */
   style?: { all?: string[]; chat?: string[]; post?: string[] };
-  /** Personality adjectives. Set during onboarding from the chosen style preset. */
+  /** Personality adjectives. Set during first-run setup from the chosen style preset. */
   adjectives?: string[];
   /** Conversation topics the agent is knowledgeable about. */
   topics?: string[];

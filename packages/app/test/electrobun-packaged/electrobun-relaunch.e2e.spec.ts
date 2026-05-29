@@ -9,7 +9,7 @@ import {
 } from "./packaged-app-helpers";
 
 /**
- * Cloud onboarding ends with a "Restart Eliza" CTA whose path ultimately
+ * Cloud first-run ends with a "Restart Eliza" CTA whose path ultimately
  * lands in `DesktopManager.relaunch()` (see
  * `eliza/packages/app-core/platforms/electrobun/src/native/desktop.ts:1439`).
  * That handler calls `Bun.spawn([process.execPath, ...process.argv.slice(1)])`
@@ -74,7 +74,7 @@ function combinedLogs(harness: PackagedDesktopHarness): string {
   return `${stdout}\n${stderr}`;
 }
 
-test.describe("Electrobun relaunch after cloud onboarding", () => {
+test.describe("Electrobun relaunch after cloud first-run", () => {
   test("relaunch menu action triggers native restart without crash", async () => {
     test.skip(
       !isPackagedPlatform(),
@@ -96,7 +96,7 @@ test.describe("Electrobun relaunch after cloud onboarding", () => {
     let harness: PackagedDesktopHarness | null = null;
 
     try {
-      api = await startLiveApiServer({ onboardingComplete: true, port: 0 });
+      api = await startLiveApiServer({ firstRunComplete: true, port: 0 });
       harness = new PackagedDesktopHarness({
         tempRoot,
         launcherPath: launcherPath as string,
@@ -183,8 +183,5 @@ test.describe("Electrobun relaunch after cloud onboarding", () => {
   // `process.execPath` (or the launcher's `argv[0]`) to a bad value. No such
   // override exists today — `DesktopManager.relaunch()` reads `process.execPath`
   // directly with no indirection. Adding the override is non-trivial because
-  // Electrobun's launcher controls argv before Bun starts. Until that hook
-  // exists, the regression must be covered at the unit level by mocking
-  // `Bun.spawn` in a future native/desktop.test.ts. Tracked under item 13 of
-  // `docs/QA-onboarding-followups.md`.
+  // Electrobun's launcher controls argv before Bun starts.
 });

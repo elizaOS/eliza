@@ -1,0 +1,103 @@
+#!/usr/bin/python3 -I
+
+import atexit
+import re
+import sys
+from signal import SIGTERM, signal
+
+from pyinotify import (
+    IN_ACCESS,
+    IN_CREATE,
+    IN_MOVED_TO,
+    IN_OPEN,
+    Notifier,
+    ProcessEvent,
+    WatchManager,
+)
+
+# Ignore files matching this regular expression
+IGNORE_RE = "^/(tmp|sys|proc|dev|live/cow)"
+
+# Remove the following prefix (except the last /) from all paths
+IGNORE_PREFIX = "/usr/lib/live/mount/rootfs/filesystem.squashfs/"
+
+
+class ProfileProcessor(ProcessEvent):
+    def __init__(self, profile_path):
+        self.priority = 32767
+        self.files = {}
+        self.ignored_files = {}
+        self.ignore_re = re.compile(IGNORE_RE)
+        self.profile_path = profile_path
+
+    def add_file(self, path):
+        if " " in path:
+            # Skip path with white spaces: mksquashfs -sort does not
+            # handle them!  fscanf(fd, "%s %d", ...)
+            return
+        if path.startswith(IGNORE_PREFIX):
+            path = path[len(IGNORE_PREFIX) - 1 :]
+        if path not in self.files:
+            self.files[path] = self.priority
+            self.priority -= 1
+
+    def ignore_file(self, path):
+        if path.startswith(IGNORE_PREFIX):
+            path = path[len(IGNORE_PREFIX) - 1 :]
+        self.ignored_files[path] = None
+
+    def process_IN_OPEN(self, event):
+        if not event.dir:
+            self.add_file(event.pathname)
+
+    def process_IN_ACCESS(self, event):
+        if not event.dir:
+            self.add_file(event.pathname)
+
+    def process_IN_CREATE(self, event):
+        self.ignore_file(event.pathname)
+
+    def process_IN_MOVED_TO(self, event):
+        self.ignore_file(event.pathname)
+
+    def is_excluded(self, path):
+        if path.startswith(IGNORE_PREFIX):
+            path = path[len(IGNORE_PREFIX) - 1 :]
+        return self.ignore_re.match(path)
+
+    def end_profiling(self):
+        profile = open(self.profile_path, "w")
+        priorities = {}
+        for path, priority in self.files.items():
+            if path not in self.ignored_files:
+                priorities[priority] = path
+        keys = list(priorities.keys())
+        keys.sort(reverse=True)
+        for key in keys:
+            profile.write("%-68s %s\n" % (priorities[key][1:], key))
+        profile.close()
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: %s <new-profile>" % sys.argv[0], file=sys.stderr)
+        sys.exit(0)
+
+    wm = WatchManager()
+    profiler = ProfileProcessor(sys.argv[1])
+
+    atexit.register(profiler.end_profiling)
+    signal(SIGTERM, lambda signum, stack_frame: sys.exit(0))
+
+    notifier = Notifier(wm, profiler)
+    wm.add_watch(
+        "/",
+        IN_OPEN | IN_ACCESS | IN_CREATE | IN_MOVED_TO,
+        rec=True,
+        exclude_filter=profiler.is_excluded,
+    )
+    notifier.loop(daemonize=True, pid_file="/boot-profile.pid")
+
+
+if __name__ == "__main__":
+    main()

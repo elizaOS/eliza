@@ -20,9 +20,11 @@ from eliza_robot.rl.skills.base import SkillParams
 
 # Default command magnitudes. Chosen to sit inside the playground joystick
 # training ranges so the policy is queried in-distribution. Actual env ranges:
-# H1 lin_vel_x [-1.5,1.5], G1 lin_vel_x [-1.0,1.0], both ang_vel_yaw [-1.0,1.0].
-# 1.0 is a conservative forward default in-range for every supported robot.
+# H1 lin_vel_x [-1.5,1.5] lin_vel_y [-0.5,0.5] ang_vel_yaw [-1.0,1.0];
+# G1 lin_vel_x [-1.0,1.0]. These defaults are conservative in-range values for
+# every supported robot.
 MAX_FORWARD_SPEED_M_S = 1.0
+MAX_LATERAL_SPEED_M_S = 0.5
 MAX_YAW_RATE_RAD_S = 1.0
 # direction (radians) within this of pi is treated as "backward".
 _BACKWARD_CONE_RAD = 1.0
@@ -60,6 +62,12 @@ def velocity_from_parse(result: ParseResult) -> VelocityCommand:
         # Robot frame: +yaw is left, so invert the parser sign.
         turn_sign = -1.0 if float(p.direction) >= 0 else 1.0
         return VelocityCommand(vx=0.0, vy=0.0, vyaw=turn_sign * MAX_YAW_RATE_RAD_S)
+
+    if skill == "strafe":
+        # command_parser: strafe left -> direction +1.0, right -> -1.0.
+        # Robot frame: +y is the robot's left, so the signs already match.
+        lateral_sign = 1.0 if float(p.direction) >= 0 else -1.0
+        return VelocityCommand(vx=0.0, vy=lateral_sign * MAX_LATERAL_SPEED_M_S, vyaw=0.0)
 
     # stand / wave / bow / unknown -> hold position.
     return VelocityCommand(vx=0.0, vy=0.0, vyaw=0.0)

@@ -26,7 +26,7 @@ jobs:
       run:
         working-directory: packages/chip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Build tool image
         run: docker build -t eliza-soc-tools .
@@ -65,7 +65,7 @@ jobs:
         run: sudo chown -R "$(id -u):$(id -g)" build verify 2>/dev/null || true; sudo chmod -R a+rX build verify || true
 
       - name: Upload regression artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         continue-on-error: true
         with:

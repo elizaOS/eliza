@@ -1,0 +1,54 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-26 18:01+0000\n"
+"PO-Revision-Date: 2018-11-02 16:49+0000\n"
+"Last-Translator: Weblate Admin <admin@example.com>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.19.1\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Removing metadata from files|sensitive_documents/metadata]]"
+msgstr "[[!traillink 列印與掃描|sensitive_documents/printing_and_scanning]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Office suite|sensitive_documents/office_suite]]"
+msgstr "[[!traillink 辦公室軟體套件|sensitive_documents/office_suite]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Graphics|sensitive_documents/graphics]]"
+msgstr "[[!traillink 圖片|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Sound and video|sensitive_documents/sound_and_video]]"
+msgstr "[[!traillink 影音|sensitive_documents/sound_and_video]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Editing PDFs|sensitive_documents/pdf]]"
+msgstr "[[!traillink 圖片|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Printing and scanning|sensitive_documents/printing_and_scanning]]"
+msgstr "[[!traillink 列印與掃描|sensitive_documents/printing_and_scanning]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Screenshot and screencast|sensitive_documents/screenshot_and_screencast]]"
+msgstr "[[!traillink 列印與掃描|sensitive_documents/printing_and_scanning]]"

@@ -19,7 +19,6 @@ import {
   listLocalModelSearchProviders,
   searchLocalModelProvider,
 } from "./custom-search";
-import { getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
@@ -170,8 +169,7 @@ export class LocalInferenceService {
    * actually execute.
    */
   private installedBinaryKernels(): Partial<Record<string, boolean>> | null {
-    const caps = getDflashRuntimeStatus().capabilities;
-    return caps?.kernels ?? null;
+    return null;
   }
 
   async startDownload(

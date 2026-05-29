@@ -1098,7 +1098,7 @@ export function CharacterHubView({
     if (activeSection === "personality") {
       return (
         <div className="flex min-w-0 flex-col gap-8">
-          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
+          <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-txt">Personality</h2>
               <p className="text-sm text-muted">
@@ -1152,7 +1152,7 @@ export function CharacterHubView({
             t={t}
           />
 
-          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
+          <section className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
             <CharacterExamplesPanel
               d={d}
               normalizedMessageExamples={normalizedMessageExamples}
@@ -1189,7 +1189,7 @@ export function CharacterHubView({
       return (
         <div className="flex min-w-0 flex-col gap-4">
           {experienceError ? (
-            <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
               {experienceError}
             </div>
           ) : null}

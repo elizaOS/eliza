@@ -567,7 +567,7 @@ class CachedDatabaseService {
     // after user updates (e.g., profile changes that affect cached user object)
     await invalidateCache(`id:${user.id}`, { namespace });
 
-    // Some users have their did:privy:… value stored as users.id rather than
+    // Some users have their steward:test:… value stored as users.id rather than
     // users.privyId. Lookups for those users cache under privy:${user.id}, so
     // we must invalidate that key too — otherwise stale/negative entries persist.
     if (resolveUserIdentifierKind(user.id) === "privyId") {

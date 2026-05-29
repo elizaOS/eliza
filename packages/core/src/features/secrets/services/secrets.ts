@@ -71,7 +71,6 @@ export class SecretsService extends Service {
 	private accessLogs: SecretAccessLog[] = [];
 	private changeCallbacks: Map<string, SecretChangeCallback[]> = new Map();
 	private globalChangeCallbacks: SecretChangeCallback[] = [];
-	private mirrorSecretsToProcessEnv = false;
 
 	constructor(runtime?: IAgentRuntime, config?: Partial<SecretsServiceConfig>) {
 		super(runtime);
@@ -80,11 +79,16 @@ export class SecretsService extends Service {
 		// Initialize encryption key manager
 		this.keyManager = new KeyManager();
 		if (runtime) {
-			this.keyManager.initializeFromAgentId(
-				runtime.agentId,
+			const encryptionSalt =
 				this.secretsConfig.encryptionSalt ??
-					(runtime.getSetting("ENCRYPTION_SALT") as string),
-			);
+				(runtime.getSetting("ENCRYPTION_SALT") as string | undefined);
+			if (!encryptionSalt) {
+				throw new SecretsError(
+					"ENCRYPTION_SALT is required for secrets encryption",
+					"ENCRYPTION_SALT_REQUIRED",
+				);
+			}
+			this.keyManager.initializeFromPassword(runtime.agentId, encryptionSalt);
 
 			// Initialize storage backends
 			this.globalStorage = new CharacterSettingsStorage(
@@ -123,40 +127,9 @@ export class SecretsService extends Service {
 
 		await this.storage.initialize();
 
-		// Migrate legacy env vars if needed
-		const migrated = await this.globalStorage.migrateFromEnvVars();
-		if (migrated > 0) {
-			logger.info(`[SecretsService] Migrated ${migrated} legacy env vars`);
-		}
-
-		const isSandboxMode = Boolean(
-			this.runtime && "sandboxMode" in this.runtime && this.runtime.sandboxMode,
+		logger.info(
+			"[SecretsService] Secrets must be read explicitly from the service",
 		);
-		this.mirrorSecretsToProcessEnv =
-			!isSandboxMode &&
-			["1", "true", "yes", "on"].includes(
-				String(process.env.ELIZA_ALLOW_SECRET_ENV_SYNC ?? "")
-					.trim()
-					.toLowerCase(),
-			);
-
-		if (isSandboxMode && this.mirrorSecretsToProcessEnv) {
-			throw new SecretsError(
-				"process.env secret mirroring is forbidden in sandbox mode",
-				"PROCESS_ENV_SYNC_FORBIDDEN",
-			);
-		}
-
-		if (this.mirrorSecretsToProcessEnv) {
-			const synced = await this.globalStorage.syncAllToEnv();
-			logger.warn(
-				`[SecretsService] Legacy process.env mirroring enabled; synced ${synced} secrets`,
-			);
-		} else {
-			logger.info(
-				"[SecretsService] process.env mirroring disabled; callers must read secrets explicitly",
-			);
-		}
 
 		logger.info("[SecretsService] Initialized");
 	}
@@ -234,10 +207,6 @@ export class SecretsService extends Service {
 		const success = await this.storage.set(key, value, context, config);
 
 		if (success) {
-			if (context.level === "global" && this.mirrorSecretsToProcessEnv) {
-				await this.globalStorage.syncToEnv(key);
-			}
-
 			await this.emitChangeEvent({
 				type: previousValue === null ? "created" : "updated",
 				key,
@@ -263,10 +232,6 @@ export class SecretsService extends Service {
 		const success = await this.storage.delete(key, context);
 
 		if (success) {
-			if (context.level === "global" && this.mirrorSecretsToProcessEnv) {
-				delete process.env[key];
-			}
-
 			await this.emitChangeEvent({
 				type: "deleted",
 				key,

@@ -1,34 +1,26 @@
 import {
-  isPrivyAlreadyLinkedError,
-  isPrivyLinkFlowCancellationError,
-} from "@/lib/privy-link-account-errors";
+  isAuthAlreadyLinkedError,
+  isAuthLinkFlowCancellationError,
+} from "@/lib/auth-link-account-errors";
 
 export function getLinkedEmail(
-  privyEmail?: string | null,
+  authEmail?: string | null,
   storedEmail?: string | null,
 ): string | null {
-  const normalizedPrivy = privyEmail?.trim() || "";
-  if (normalizedPrivy) return normalizedPrivy;
+  const normalizedAuthEmail = authEmail?.trim() || "";
+  if (normalizedAuthEmail) return normalizedAuthEmail;
 
   const normalizedStored = storedEmail?.trim() || "";
   return normalizedStored || null;
 }
 
 /**
- * Returns true when the Privy link-email flow was cancelled by the user.
- *
- * Delegates to the shared Privy link-account helper so the email flow stays
- * aligned with other social-linking flows. This treats the known cancellation
- * shapes observed from Privy as user intent, including raw string codes/messages
- * and Privy-like error objects.
+ * Returns true when the link-email flow was cancelled by the user.
  */
 export const isLinkEmailFlowCancellationError =
-  isPrivyLinkFlowCancellationError;
+  isAuthLinkFlowCancellationError;
 
 /**
- * Returns true when Privy reports that an email is already linked for the user.
- *
- * Delegates to the shared Privy link-account helper for the
- * `cannot_link_more_of_type` error code.
+ * Returns true when auth reports that an email is already linked for the user.
  */
-export const isLinkEmailAlreadyLinkedError = isPrivyAlreadyLinkedError;
+export const isLinkEmailAlreadyLinkedError = isAuthAlreadyLinkedError;

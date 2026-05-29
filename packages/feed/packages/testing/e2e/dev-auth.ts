@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 
 const PLAYWRIGHT_DEV_USERNAME = "playwright-dev-admin";
 const PLAYWRIGHT_DEV_DISPLAY_NAME = "Playwright Dev Admin";
-const PRIVY_TOKEN_COOKIE_NAME = "privy-token";
+const STEWARD_TOKEN_COOKIE_NAME = "steward-token";
 const DEV_USER_ID_COOKIE_NAME = "feed-dev-user-id";
 const DEV_ADMIN_TOKEN_COOKIE_NAME = "feed-dev-admin-token";
 export const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = "feed-playwright-dev-auth";
@@ -18,8 +18,8 @@ export interface BrowserDevAuthSession {
   displayName?: string;
 }
 
-function createPlaywrightTestPrivyToken(userId: string): string {
-  return `did:privy:test-${userId}`;
+function createPlaywrightTestStewardToken(userId: string): string {
+  return `steward:test:${userId}`;
 }
 
 function deriveSecret(seed: string, purpose: string): string {
@@ -73,6 +73,7 @@ async function ensurePlaywrightDevUser(): Promise<BrowserDevAuthSession> {
     profileComplete: true,
     hasUsername: true,
     hasBio: true,
+    stewardId: `steward:test:${userId}`,
     profileSetupCompletedAt: now,
     tosAccepted: true,
     tosAcceptedAt: now,
@@ -88,13 +89,12 @@ async function ensurePlaywrightDevUser(): Promise<BrowserDevAuthSession> {
     await db.insert(users).values({
       id: userId,
       ...userValues,
-      privyId: `did:privy:test-${userId}`,
     });
   }
 
   return {
     userId,
-    accessToken: createPlaywrightTestPrivyToken(userId),
+    accessToken: createPlaywrightTestStewardToken(userId),
     adminToken: creds.devAdminToken,
     displayName,
   };
@@ -108,7 +108,7 @@ export async function installPlaywrightDevAuth(
 
   await page.context().addCookies([
     {
-      name: PRIVY_TOKEN_COOKIE_NAME,
+      name: STEWARD_TOKEN_COOKIE_NAME,
       value: session.accessToken,
       url: baseURL,
       sameSite: "Lax",
@@ -131,8 +131,8 @@ export async function installPlaywrightDevAuth(
     ({ storageKey, authSession }) => {
       window.localStorage.setItem(storageKey, JSON.stringify(authSession));
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = authSession.accessToken;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = authSession.accessToken;
     },
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,
@@ -145,8 +145,8 @@ export async function installPlaywrightDevAuth(
     ({ storageKey, authSession }) => {
       window.localStorage.setItem(storageKey, JSON.stringify(authSession));
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = authSession.accessToken;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = authSession.accessToken;
     },
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,

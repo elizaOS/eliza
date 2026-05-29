@@ -3,8 +3,8 @@ import { logger } from "./logger";
 import type {
 	Character,
 	IAgentRuntime,
-	OnboardingConfig,
 	Setting,
+	SetupConfig,
 	World,
 	WorldSettings,
 } from "./types";
@@ -145,7 +145,7 @@ export function encryptStringValue(value: string, salt: string): string {
 		return value;
 	}
 
-	// If already encrypted (legacy v1 iv:ciphertext or v2:iv:ciphertext:tag), return as-is.
+	// If already encrypted, return as-is.
 	if (isEncryptedV1(value) || isEncryptedV2(value)) {
 		return value;
 	}
@@ -173,7 +173,7 @@ export function encryptStringValue(value: string, salt: string): string {
 
 /**
  * Common decryption function for string values
- * @param value - The encrypted value in 'iv:encrypted' format
+ * @param value - The encrypted value in 'v2:iv:ciphertext:tag' format
  * @param salt - The salt to use for decryption
  * @returns The decrypted string value, or original value if not encrypted
  */
@@ -181,18 +181,16 @@ export function decryptStringValue(value: string, salt: string): string {
 	try {
 		const parts = value.split(":");
 
-		// v2: AES-256-GCM with tag
+		const key = cryptoUtils
+			.createHash("sha256")
+			.update(salt)
+			.digest()
+			.slice(0, 32);
+
 		if (isEncryptedV2(value)) {
-			// v2:<ivHex>:<ciphertextHex>:<tagHex>
 			const iv = BufferUtils.fromHex(parts[1]);
 			const ciphertext = BufferUtils.fromHex(parts[2]);
 			const tag = BufferUtils.fromHex(parts[3]);
-
-			const key = cryptoUtils
-				.createHash("sha256")
-				.update(salt)
-				.digest()
-				.slice(0, 32);
 			const aad = new TextEncoder().encode("elizaos:settings:v2");
 			const plaintextBytes = cryptoUtils.decryptAes256Gcm(
 				key,
@@ -204,55 +202,21 @@ export function decryptStringValue(value: string, salt: string): string {
 			return BufferUtils.bufferToString(plaintextBytes, "utf8");
 		}
 
-		// v1 legacy: ivHex:ciphertextHex (AES-256-CBC)
-		if (!isEncryptedV1(value)) {
-			return value;
+		if (isEncryptedV1(value)) {
+			const iv = BufferUtils.fromHex(parts[0]);
+			const encryptedText = parts[1];
+			const decipher = cryptoUtils.createDecipheriv("aes-256-cbc", key, iv);
+			let decrypted = decipher.update(encryptedText, "hex", "utf8");
+			decrypted += decipher.final("utf8");
+			return decrypted;
 		}
 
-		const iv = BufferUtils.fromHex(parts[0]);
-		const encrypted = parts[1];
-
-		const key = cryptoUtils
-			.createHash("sha256")
-			.update(salt)
-			.digest()
-			.slice(0, 32);
-		const decipher = cryptoUtils.createDecipheriv("aes-256-cbc", key, iv);
-		let decrypted = decipher.update(encrypted, "hex", "utf8");
-		decrypted += decipher.final("utf8");
-		return decrypted;
+		return value;
 	} catch (error) {
 		logger.error({ src: "core:settings", error }, "Decryption failed");
 		// Return the original value on error
 		return value;
 	}
-}
-
-/**
- * Migrates an encrypted string from legacy v1 (AES-CBC) to v2 (AES-GCM).
- *
- * - v2 values are returned unchanged
- * - v1 values are decrypted then re-encrypted as v2
- * - non-encrypted values are returned unchanged
- */
-export function migrateEncryptedStringValue(
-	value: string,
-	salt: string,
-): string {
-	if (typeof value !== "string") {
-		return value;
-	}
-	if (isEncryptedV2(value)) {
-		return value;
-	}
-	if (!isEncryptedV1(value)) {
-		return value;
-	}
-	const decrypted = decryptStringValue(value, salt);
-	if (decrypted === value) {
-		return value;
-	}
-	return encryptStringValue(decrypted, salt);
 }
 
 /**
@@ -411,17 +375,17 @@ export async function getWorldSettings(
 /**
  * Initializes settings configuration for a server
  */
-export async function initializeOnboarding(
+export async function initializeSetup(
 	runtime: IAgentRuntime,
 	world: World,
-	config: OnboardingConfig,
+	config: SetupConfig,
 ): Promise<WorldSettings | null> {
 	// Check if settings state already exists
 	const existingSettings = world.metadata?.settings;
 	if (existingSettings) {
 		logger.debug(
 			{ src: "core:settings", serverId: world.messageServerId },
-			"Onboarding state already exists",
+			"Setup state already exists",
 		);
 		// Get settings from metadata and remove salt
 		const saltedSettings = existingSettings as WorldSettings;

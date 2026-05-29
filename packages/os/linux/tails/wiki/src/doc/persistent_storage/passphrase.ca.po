@@ -1,0 +1,96 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-10-10 13:19+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Changing the passphrase of the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Canviar la contrasenya de l'Emmagatzematge Persistent\"]]\n"
+
+#. type: Plain text
+msgid "To change the passphrase of your Persistent Storage:"
+msgstr "Per canviar la contrasenya del vostre Emmagatzematge Persistent:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the "
+"Persistent Storage settings."
+msgstr ""
+"Seleccioneu **Aplicacions&nbsp;▸ Tails&nbsp;▸ Emmagatzematge Persistent** "
+"per obrir la configuració de l'Emmagatzematge Persistent."
+
+#. type: Bullet: '1. '
+msgid "Click on the **Change Passphrase** button on the left of the title bar."
+msgstr ""
+"Feu clic al botó **Canvia la contrasenya** a l'esquerra de la barra de títol."
+
+#. type: Bullet: '1. '
+msgid "Enter the current passphrase in the **Current Passphrase** text box."
+msgstr ""
+"Introduïu la contrasenya actual al quadre de text **Contrasenya actual**."
+
+#. type: Bullet: '1. '
+msgid "Enter your new passphrase in the **New Passphrase** text box."
+msgstr "Introduïu la nova contrasenya al quadre de text **Contrasenya nova**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- Consider removing after #18736. -->\n"
+msgstr "   <!-- Consider removing after #18736. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+"   <div class=\"caution\">\n"
+"   <p>És impossible recuperar la contrasenya si l'oblideu!</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To help you remember your passphrase, you can write it on a piece of\n"
+"   paper, store it in your wallet for a few days, and destroy it once\n"
+"   you know it well.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <p>Per ajudar-vos a recordar la vostra contrasenya, podeu escriure-la en un tros de\n"
+"   paper, guardar-la a la cartera durant uns dies i destruir-la una vegada\n"
+"   la sabeu bé.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter your new passphrase again in the **Confirm New Passphrase** text box."
+msgstr ""
+"Torneu a introduir la vostra nova contrasenya al quadre de text **Confirma "
+"la nova contrasenya**."
+
+#. type: Bullet: '1. '
+msgid "Click **Change**."
+msgstr "Feu clic a **Canvia**."
+
+#. type: Plain text
+msgid ""
+"You can now restart Tails and try to unlock the Persistent Storage with the "
+"new passphrase."
+msgstr ""
+"Ara podeu reiniciar Tails i provar de desbloquejar l'Emmagatzematge "
+"Persistent amb la nova contrasenya."

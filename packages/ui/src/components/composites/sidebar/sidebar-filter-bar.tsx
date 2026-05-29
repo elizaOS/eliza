@@ -24,7 +24,7 @@ const sidebarFilterPrimaryClassName = "min-w-0 flex-1";
 const sidebarFilterActionsClassName = "flex shrink-0 items-center gap-2";
 
 const sidebarFilterButtonClassName =
-  "h-10 w-10 shrink-0 rounded-sm border-border/60 bg-card/88 shadow-sm";
+  "h-10 w-10 shrink-0 rounded-sm border-border/60 bg-card/88 ";
 
 export function SidebarFilterBar({
   className,
@@ -57,7 +57,7 @@ export function SidebarFilterBar({
           <SelectTrigger
             data-testid={selectTestId}
             aria-label={selectAriaLabel}
-            className="h-10 min-w-0 flex-1 rounded-sm border border-border/60 bg-card/88 px-3 text-sm text-txt shadow-sm"
+            className="h-10 min-w-0 flex-1 rounded-sm border border-border/60 bg-card/88 px-3 text-sm text-txt "
           >
             <SelectValue />
           </SelectTrigger>

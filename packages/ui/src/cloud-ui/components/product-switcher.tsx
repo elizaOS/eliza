@@ -28,7 +28,7 @@ export function ProductSwitcher({
     <nav
       aria-label={ariaLabel}
       className={cn(
-        "flex flex-wrap items-center justify-end gap-1 rounded-full border border-border/70 bg-card/82 p-1 text-sm text-muted-strong shadow-sm backdrop-blur-md",
+        "flex flex-wrap items-center justify-end gap-1 rounded-full border border-border/70 bg-card/82 p-1 text-sm text-muted-strong backdrop-blur-md",
         className,
       )}
     >
@@ -38,7 +38,7 @@ export function ProductSwitcher({
           className={cn(
             "rounded-full px-3 py-1.5 font-medium transition-colors",
             item.active
-              ? "bg-primary text-primary-foreground shadow-sm"
+              ? "bg-primary text-primary-foreground "
               : "hover:bg-bg-accent hover:text-txt",
             item.active ? activeClassName : inactiveClassName,
             linkClassName,

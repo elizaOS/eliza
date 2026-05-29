@@ -49,7 +49,7 @@ export interface NormalizedTriggerDraft {
   cronExpression?: string;
   eventKind?: string;
   maxRuns?: number;
-  kind?: import("@elizaos/core").TriggerKind;
-  workflowId?: string;
+  kind: import("@elizaos/core").TriggerKind;
+  workflowId: string;
   workflowName?: string;
 }

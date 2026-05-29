@@ -10,7 +10,7 @@
     "dev": "PORT=3002 bun run --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target node",
     "start": "PORT=3002 bun run src/index.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "docker:build": "docker build -t gateway-webhook:local ."
   },

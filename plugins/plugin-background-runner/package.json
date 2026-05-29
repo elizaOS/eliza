@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-background-runner",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "Background task runner for elizaOS — drives core TaskService.runDueTasks() from OS-level wake-ups (BGTaskScheduler on iOS, WorkManager on Android via @capacitor/background-runner). Falls back to a setInterval poll when no native scheduler is available.",
   "type": "module",
   "main": "dist/index.js",
@@ -28,7 +28,7 @@
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

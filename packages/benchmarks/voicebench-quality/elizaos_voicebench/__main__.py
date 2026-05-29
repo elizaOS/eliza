@@ -26,7 +26,7 @@ from .types import SUITES
 
 _AGENT_CHOICES = ("eliza", "hermes", "openclaw", "echo")
 _SUITE_CHOICES = ("all",) + SUITES
-_STT_CHOICES = ("groq", "eliza-runtime", "faster-whisper", "local-whisper")
+_STT_CHOICES = ("groq", "eliza-runtime", "eliza1", "faster-whisper", "local-whisper")
 
 
 def _default_stt_provider() -> str:
@@ -37,6 +37,10 @@ def _default_stt_provider() -> str:
     ).strip()
     if explicit:
         return explicit
+    from .clients.eliza1_asr import resolve_binary, resolve_model
+
+    if resolve_binary().is_file() and resolve_model().is_file():
+        return "eliza1"
     if os.environ.get("GROQ_API_KEY"):
         return "groq"
     if importlib.util.find_spec("faster_whisper") is not None:

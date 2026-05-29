@@ -42,7 +42,7 @@ export function ConnectorAccountSetupScope({
   return (
     <>
       {accounts.accounts.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border/45 bg-bg-accent/35 px-3 py-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-sm border border-border/45 bg-bg-accent/35 px-3 py-2">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted">
             Setup account
           </span>
@@ -56,7 +56,7 @@ export function ConnectorAccountSetupScope({
               accounts.setSelectedAccountId(accountId);
             }}
           >
-            <SelectTrigger className="h-8 min-w-[180px] rounded-lg border border-border bg-card text-xs">
+            <SelectTrigger className="h-8 min-w-[180px] rounded-sm border border-border bg-card text-xs">
               <SelectValue placeholder="Choose account" />
             </SelectTrigger>
             <SelectContent>

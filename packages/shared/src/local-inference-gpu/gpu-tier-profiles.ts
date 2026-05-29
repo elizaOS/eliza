@@ -53,8 +53,8 @@ export interface GpuProfile {
     use_mmap: boolean;
     numa: boolean;
   };
-  /** DFlash speculative-decoding settings. */
-  dflash: {
+  /** MTP speculative-decoding settings. */
+  mtp: {
     enabled: boolean;
     drafter_tier: string;
     speculative_window: number;
@@ -87,14 +87,14 @@ const RTX_3090: GpuProfile = {
     use_mmap: true,
     numa: false,
   },
-  dflash: {
+  mtp: {
     enabled: true,
     drafter_tier: "eliza-1-0_8b",
     speculative_window: 5,
   },
   ctx_size_tokens: 32768,
   notes:
-    "24 GB GDDR6X. Best fit is Eliza-1 9B with 4B/2B/0.8B fallbacks. DFlash enabled with the 0.8B drafter.",
+    "24 GB GDDR6X. Best fit is Eliza-1 9B with 4B/2B/0.8B fallbacks. MTP enabled with the 0.8B drafter.",
 };
 
 const RTX_4090: GpuProfile = {
@@ -115,7 +115,7 @@ const RTX_4090: GpuProfile = {
     use_mmap: true,
     numa: false,
   },
-  dflash: {
+  mtp: {
     enabled: true,
     drafter_tier: "eliza-1-2b",
     speculative_window: 6,
@@ -143,7 +143,7 @@ const RTX_5090: GpuProfile = {
     use_mmap: true,
     numa: false,
   },
-  dflash: {
+  mtp: {
     enabled: true,
     drafter_tier: "eliza-1-2b",
     speculative_window: 8,
@@ -171,14 +171,14 @@ const H200: GpuProfile = {
     use_mmap: false,
     numa: true,
   },
-  dflash: {
+  mtp: {
     enabled: true,
     drafter_tier: "eliza-1-4b",
     speculative_window: 10,
   },
   ctx_size_tokens: 262144,
   notes:
-    "141 GB HBM3e. SXM5 form factor. Best fit is the 27B 256k bundle (262k natural context). DFlash uses the 4B drafter for high throughput.",
+    "141 GB HBM3e. SXM5 form factor. Best fit is the 27B 256k bundle (262k natural context). MTP uses the 4B drafter for high throughput.",
 };
 
 // ---------------------------------------------------------------------------

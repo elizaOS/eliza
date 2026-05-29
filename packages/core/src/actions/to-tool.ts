@@ -286,7 +286,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
  *
  * Tool description is composed from (in order):
  *   - the action's `routingHint` (if present, on its own line)
- *   - `descriptionCompressed ?? compressedDescription ?? description`
+ *   - `descriptionCompressed ?? description`
  *
  * The order of `actions` is preserved in the output (callers control
  * tool ordering by ordering the input). Names are validated against

@@ -1,20 +1,14 @@
-import { Mic, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import type * as React from "react";
 import { useMemo, useState } from "react";
 
 import { CloudVideoBackground } from "../../backgrounds/CloudVideoBackground";
 import { cn } from "../../lib/utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { VoiceWaveform } from "../voice/VoiceWaveform";
 
-/**
- * Default landing surface — the "home" assistant view.
- *
- * Renders the clouds backdrop with a centered voice-avatar waveform as the
- * assistant's presence. Home suppresses the global assistant pill and exposes
- * its own composer/mic controls; the waveform mode is driven by the shared
- * shell controller phase.
- */
 export function HomeView(): React.JSX.Element {
   const controller = useShellControllerContext();
   const mode = controller?.waveformMode ?? "idle";
@@ -47,22 +41,18 @@ export function HomeView(): React.JSX.Element {
   const draftPreview = draft.trim();
 
   return (
-    <CloudVideoBackground
-      speed="8x"
-      basePath="/clouds"
-      poster="/clouds/poster-960.jpg"
-      posterSrcSet="/clouds/poster-640.jpg 640w, /clouds/poster-960.jpg 960w"
-      posterSizes="100vw"
-      scrim={0.08}
-      style={{ height: "100%" }}
-    >
+    <CloudVideoBackground scrim={0.08} style={{ height: "100%" }}>
       <div
         data-testid="home-view"
         className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden px-4 py-8 text-txt"
       >
         <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
           <div className="relative grid h-[min(42vh,280px)] min-h-44 w-full place-items-center">
-            <VoiceWaveform mode={mode} size={240} />
+            <VoiceWaveform
+              mode={mode}
+              analyser={controller?.analyser ?? null}
+              size={240}
+            />
           </div>
           <p
             className="min-h-6 max-w-xl text-center text-sm text-muted"
@@ -85,7 +75,7 @@ export function HomeView(): React.JSX.Element {
                 <li
                   key={message.id}
                   className={cn(
-                    "truncate rounded-md border border-border/30 bg-bg/45 px-3 py-1.5 text-xs backdrop-blur",
+                    "truncate rounded-sm border border-border/30 bg-bg/45 px-3 py-1.5 text-xs backdrop-blur",
                     message.role === "user"
                       ? "ml-auto max-w-[82%]"
                       : "mr-auto max-w-[82%]",
@@ -95,15 +85,32 @@ export function HomeView(): React.JSX.Element {
                 </li>
               ))}
               {draftPreview.length > 0 ? (
-                <li className="ml-auto max-w-[82%] truncate rounded-md border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs text-txt backdrop-blur">
+                <li className="ml-auto max-w-[82%] truncate rounded-sm border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs text-txt backdrop-blur">
                   {draftPreview}
                 </li>
               ) : null}
             </ol>
           ) : null}
 
-          <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white/60 p-2 text-slate-800 shadow-lg backdrop-blur-md">
-            <input
+          <div className="mb-2 flex justify-center">
+            <button
+              type="button"
+              aria-label={
+                controller?.recording ? "Stop voice input" : "Start voice input"
+              }
+              aria-pressed={controller?.recording ?? false}
+              onClick={() => controller?.toggleRecording()}
+              className={cn(
+                "min-h-8 bg-transparent px-2 text-xs font-semibold text-white transition-colors [text-shadow:0_2px_10px_rgba(0,0,0,0.75),0_1px_4px_rgba(0,0,0,0.65)] hover:text-white focus-visible:outline-none focus-visible:underline",
+                controller?.recording && "animate-pulse",
+              )}
+            >
+              {controller?.recording ? "Listening" : "Not listening"}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card/80 p-2 text-txt backdrop-blur-md">
+            <Input
               type="text"
               value={draft}
               onFocus={() => setFocused(true)}
@@ -118,32 +125,18 @@ export function HomeView(): React.JSX.Element {
               placeholder="Ask Eliza..."
               aria-label="Message Eliza"
               data-testid="home-chat-input"
-              className="min-w-0 flex-1 bg-transparent px-3 text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none"
+              className="min-w-0 flex-1 border-0 bg-transparent px-3 text-txt placeholder:text-muted focus-visible:ring-0 focus-visible:ring-offset-0"
             />
-            <button
+            <Button
               type="button"
-              aria-label={
-                controller?.recording ? "Stop voice input" : "Start voice input"
-              }
-              aria-pressed={controller?.recording ?? false}
-              onClick={() => controller?.toggleRecording()}
-              className={cn(
-                "grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                controller?.recording &&
-                  "bg-warn/25 text-slate-900 animate-pulse",
-              )}
-            >
-              <Mic className="h-4 w-4" aria-hidden />
-            </button>
-            <button
-              type="button"
+              size="icon"
               aria-label="Send message"
               disabled={!canSend}
               onClick={sendDraft}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-bg transition-opacity disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="shrink-0 rounded-full text-bg disabled:opacity-45"
             >
               <Send className="h-4 w-4" aria-hidden />
-            </button>
+            </Button>
           </div>
         </div>
       </div>

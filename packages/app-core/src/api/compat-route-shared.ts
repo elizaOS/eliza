@@ -4,7 +4,7 @@ import { type ElizaConfig, loadElizaConfig } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   isLoopbackBindHost,
-  normalizeOnboardingProviderId,
+  normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
@@ -207,6 +207,12 @@ function isCloudProvisionedByEnv(): boolean {
 }
 
 function isLocalAuthRequiredByEnv(): boolean {
+  if (
+    process.env.ELIZA_DEV_AUTH_BYPASS === "1" &&
+    (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "dev")
+  ) {
+    return false;
+  }
   return process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1";
 }
 
@@ -313,10 +319,8 @@ export async function readCompatJsonBody(
   }
 }
 
-export function hasCompatPersistedOnboardingState(
-  config: ElizaConfig,
-): boolean {
-  if ((config.meta as Record<string, unknown>)?.onboardingComplete === true) {
+export function hasCompatPersistedFirstRunState(config: ElizaConfig): boolean {
+  if ((config.meta as Record<string, unknown>)?.firstRunComplete === true) {
     return true;
   }
 
@@ -326,7 +330,7 @@ export function hasCompatPersistedOnboardingState(
   const llmText = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   )?.llmText;
-  const backend = normalizeOnboardingProviderId(llmText?.backend);
+  const backend = normalizeFirstRunProviderId(llmText?.backend);
   const remoteApiBase =
     llmText?.remoteApiBase?.trim() ?? deploymentTarget.remoteApiBase?.trim();
   const hasCompleteCanonicalRouting =

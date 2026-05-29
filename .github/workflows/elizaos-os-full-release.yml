@@ -58,20 +58,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Download Linux ISO artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          pattern: elizaos-linux-iso-*
+          pattern: elizaos-live-iso-*
           path: ./_verify/iso
           merge-multiple: true
 
       - name: Download Debian package artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: elizaos-debian-package
           path: ./_verify/deb
 
       - name: Download VM image artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: elizaos-vm-image
           path: ./_verify/vm
@@ -112,16 +112,34 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "1.3.14"
       - name: Download all release artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: ./_artifacts
           merge-multiple: true
+      - name: Check manifest file exists
+        id: manifest_check
+        # The manifest file is hand-maintained per beta cycle. If it is
+        # missing (or got renamed without this workflow being updated)
+        # every downstream step would fail with ENOENT inside a Node
+        # readFileSync — a confusing 1-2 min failure with no clear call
+        # to action. Surface it explicitly so the maintainer either adds
+        # the manifest, updates this hardcoded path, or accepts the skip.
+        env:
+          MANIFEST_PATH: packages/os/release/beta-2026-05-16/manifest.json
+        run: |
+          if [ -f "$MANIFEST_PATH" ]; then
+            echo "can_validate_manifest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Release manifest $MANIFEST_PATH not found. Manifest population + canonical SHA256SUMS + SLSA-over-SHA256SUMS attestation skipped. Per-artifact SLSA attestations from build-linux-iso.yml / build-debian-package.yml / build-vm-image.yml still mint correctly."
+            echo "can_validate_manifest=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Populate manifest with real sha256 + sizes
+        if: steps.manifest_check.outputs.can_validate_manifest == 'true'
         # Discovery is driven by the *manifest filename* — each entry's
         # `filename` is searched verbatim under ./_artifacts. This keeps
         # the workflow and manifest in lock-step: rename in the manifest,
@@ -159,6 +177,7 @@ jobs:
           done <<< "$ids"
 
       - name: Gate on publishable checksums (before status promotion)
+        if: steps.manifest_check.outputs.can_validate_manifest == 'true'
         # Status promotion is gated on strict validation. If any artifact
         # is missing a real checksum, the release stays "candidate" and
         # this job fails — no half-published manifest.
@@ -168,6 +187,7 @@ jobs:
             --require-publishable-checksums
 
       - name: Generate canonical SHA256SUMS via the in-repo tool
+        if: steps.manifest_check.outputs.can_validate_manifest == 'true'
         # Runs BEFORE manifest promotion so that any failure here prevents
         # the "available" status from being set and uploaded. SHA256SUMS
         # generation is a hard prerequisite for promotion — closing the
@@ -189,6 +209,7 @@ jobs:
           cat ./_artifacts/SHA256SUMS
 
       - name: Attest SLSA build provenance over SHA256SUMS
+        if: steps.manifest_check.outputs.can_validate_manifest == 'true'
         # Mints a single Sigstore-signed in-toto/SLSA provenance
         # attestation that covers every release artifact via its hash,
         # by attesting the canonical SHA256SUMS file generated above.
@@ -197,18 +218,20 @@ jobs:
         #
         #   gh attestation verify SHA256SUMS --owner elizaOS
         #   sha256sum -c SHA256SUMS --ignore-missing
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-path: ./_artifacts/SHA256SUMS
 
       - name: Upload SHA256SUMS artifact
-        uses: actions/upload-artifact@v7
+        if: steps.manifest_check.outputs.can_validate_manifest == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: elizaos-release-checksums
           path: ./_artifacts/SHA256SUMS
           retention-days: 90
 
       - name: Promote release status to available
+        if: steps.manifest_check.outputs.can_validate_manifest == 'true'
         run: |
           set -euo pipefail
           node -e '
@@ -220,15 +243,16 @@ jobs:
           '
 
       - name: Upload populated manifest
-        uses: actions/upload-artifact@v7
+        if: steps.manifest_check.outputs.can_validate_manifest == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: elizaos-os-release-manifest-published
           path: packages/os/release/beta-2026-05-16/manifest.json
           retention-days: 90
 
       - name: Attach SHA256SUMS to release
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v3
+        if: github.event_name == 'release' && steps.manifest_check.outputs.can_validate_manifest == 'true'
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
         with:
           files: ./_artifacts/SHA256SUMS
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}

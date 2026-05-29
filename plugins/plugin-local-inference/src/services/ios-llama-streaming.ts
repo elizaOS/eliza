@@ -9,7 +9,7 @@
  * Status (2026-05-12): the XCFramework currently ships as a shim — it
  * compiles a header-only `llama.h` and exports a `dlopen`-safe stub for
  * the bridge.  The real Swift implementation against
- * `libelizainference.dylib` (built by `build-llama-cpp-dflash.mjs` with
+ * `libelizainference.dylib` (built by `build-llama-cpp-mtp.mjs` with
  * the `darwin-arm64-metal-fused` target) is the gating item; until then
  * `loadIosStreamingLlmBinding` returns `null` and the runtime falls
  * back to the cloud route.
@@ -61,7 +61,7 @@ export interface IosLlmStreamConfig {
 	promptCacheKey: string | null;
 	draftMin: number;
 	draftMax: number;
-	dflashDrafterPath: string | null;
+	mtpDrafterPath: string | null;
 	disableThinking: boolean;
 }
 
@@ -235,7 +235,7 @@ export interface IosInferenceCapabilities {
 	/** True only when the iOS Swift bridge is present AND reports streaming-LLM. */
 	streamingLlm: boolean;
 	/** Always false on iOS until the drafter weights ship in the bundle. */
-	dflashSupported: boolean;
+	mtpSupported: boolean;
 	/** Whether the XCFramework reports omnivoice streaming. */
 	omnivoiceStreaming: boolean;
 	/** Phone-tier iOS devices rarely have headroom for mmproj. */

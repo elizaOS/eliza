@@ -606,7 +606,7 @@ function GraphIconButton({
 function GraphLegend() {
   const items: Array<{ icon: ReactNode; label: string }> = [
     {
-      icon: <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />,
+      icon: <Crown className="h-3.5 w-3.5 text-accent" />,
       label: "Owner",
     },
     {
@@ -664,11 +664,11 @@ function GraphTooltip({ state }: { state: TooltipState }) {
     return (
       <div
         style={style}
-        className="rounded-xl border border-border/40 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur-md"
+        className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5 backdrop-blur-md"
       >
         <div className="flex items-center gap-1.5 text-sm font-semibold text-txt">
           {person.isOwner ? (
-            <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />
+            <Crown className="h-3.5 w-3.5 text-accent" />
           ) : null}
           {person.displayName}
         </div>
@@ -700,7 +700,7 @@ function GraphTooltip({ state }: { state: TooltipState }) {
   return (
     <div
       style={style}
-      className="rounded-xl border border-border/40 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur-md"
+      className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5 backdrop-blur-md"
     >
       <div className="text-sm font-semibold text-txt">
         {edge.sourcePersonName} / {edge.targetPersonName}
@@ -1036,7 +1036,7 @@ export function RelationshipsGraphPanel({
         {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
         <div
           ref={containerRef}
-          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-2xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
+          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-sm border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
           data-graph-container
           onMouseLeave={hideTooltip}
           onPointerDown={beginPan}
@@ -1069,8 +1069,8 @@ export function RelationshipsGraphPanel({
                 cy="35%"
                 r="70%"
               >
-                <stop offset="0%" stopColor="rgba(199,210,255,0.98)" />
-                <stop offset="100%" stopColor="rgba(99,102,241,0.86)" />
+                <stop offset="0%" stopColor="var(--accent-hover)" />
+                <stop offset="100%" stopColor="var(--accent)" />
               </radialGradient>
             </defs>
 
@@ -1153,7 +1153,7 @@ export function RelationshipsGraphPanel({
                       <circle
                         r={radius + 11}
                         fill="transparent"
-                        stroke="rgba(99,102,241,0.56)"
+                        stroke="var(--accent)"
                         strokeWidth={2}
                         strokeDasharray="5 4"
                       />
@@ -1169,7 +1169,7 @@ export function RelationshipsGraphPanel({
                         selected
                           ? "rgba(255,255,255,0.96)"
                           : isOwner
-                            ? "rgba(99,102,241,0.78)"
+                            ? "var(--accent)"
                             : "rgba(28,34,43,0.56)"
                       }
                       strokeWidth={selected ? 3.5 : isOwner ? 2.5 : 1.5}
@@ -1217,7 +1217,7 @@ export function RelationshipsGraphPanel({
                       }
                       onMouseMove={(event) => showTooltipForNode(person, event)}
                       onMouseLeave={hideTooltip}
-                      className="h-full w-full rounded-2xl bg-transparent"
+                      className="h-full w-full rounded-sm bg-transparent"
                       aria-label={`Select ${person.displayName}`}
                     />
                   </foreignObject>

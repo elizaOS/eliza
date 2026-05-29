@@ -1,16 +1,16 @@
 /**
- * Config redaction, onboarding, and skill validation helpers extracted from server.ts.
+ * Config redaction, first-run, and skill validation helpers extracted from server.ts.
  */
 
 import type http from "node:http";
 import path from "node:path";
 import { logger, sendJsonError } from "@elizaos/core";
 import {
+  FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
+  FIRST_RUN_PROVIDER_CATALOG,
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
-  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
-  ONBOARDING_PROVIDER_CATALOG,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.ts";
@@ -122,7 +122,7 @@ export function validateSkillId(
 }
 
 // ---------------------------------------------------------------------------
-// Onboarding helpers
+// First-run helpers
 // ---------------------------------------------------------------------------
 
 const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
@@ -180,7 +180,7 @@ export function resolveConfiguredCharacterLanguage(
   return normalizeCharacterLanguage(uiLanguage);
 }
 
-export function resolveOnboardingStylePreset(
+export function resolveFirstRunStylePreset(
   body: Record<string, unknown>,
   language: string,
 ) {
@@ -211,7 +211,7 @@ export function resolveOnboardingStylePreset(
   return getDefaultStylePreset(language);
 }
 
-export function applyOnboardingVoicePreset(
+export function applyFirstRunVoicePreset(
   config: ElizaConfig,
   body: Record<string, unknown>,
   language: string,
@@ -221,7 +221,7 @@ export function applyOnboardingVoicePreset(
     return;
   }
 
-  const stylePreset = resolveOnboardingStylePreset(body, language);
+  const stylePreset = resolveFirstRunStylePreset(body, language);
   const voicePresetId = stylePreset.voicePresetId.trim();
   if (!voicePresetId) {
     return;
@@ -284,7 +284,7 @@ export function getProviderOptions(): Array<{
   keyPrefix: string | null;
   description: string;
 }> {
-  return ONBOARDING_PROVIDER_CATALOG.map((provider) => ({
+  return FIRST_RUN_PROVIDER_CATALOG.map((provider) => ({
     id: provider.id,
     name: provider.name,
     envKey: provider.envKey,
@@ -299,7 +299,7 @@ export function getCloudProviderOptions(): Array<{
   name: string;
   description: string;
 }> {
-  return ONBOARDING_CLOUD_PROVIDER_OPTIONS.map((provider) => ({
+  return FIRST_RUN_CLOUD_PROVIDER_OPTIONS.map((provider) => ({
     id: provider.id,
     name: provider.name,
     description: provider.description,
@@ -356,12 +356,7 @@ export function ensureWalletKeysInEnvAndConfig(config: ElizaConfig): boolean {
 // State dir safety
 // ---------------------------------------------------------------------------
 
-const RESET_STATE_ALLOWED_SEGMENTS = new Set([
-  ".eliza",
-  "eliza",
-  ".eliza",
-  "eliza",
-]);
+const RESET_STATE_ALLOWED_SEGMENTS = new Set(["eliza", "milady"]);
 
 function hasAllowedResetSegment(resolvedState: string): boolean {
   return resolvedState

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -eu -o pipefail
+
+NOSYMFOLLOW_MOUNTPOINT='/run/nosymfollow'
+
+install \
+    --directory \
+    --owner root --group amnesia --mode 0710 \
+    "${NOSYMFOLLOW_MOUNTPOINT}/live/persistence/TailsData_unlocked/.tails"

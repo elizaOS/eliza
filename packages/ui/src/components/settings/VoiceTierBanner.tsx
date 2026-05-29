@@ -1,5 +1,5 @@
 /**
- * VoiceTierBanner — device-tier card (R10 §7) used in onboarding step 2 and
+ * VoiceTierBanner — device-tier card (R10 §7) used in first-run step 2 and
  * at the top of the Settings → Voice section.
  *
  * Renders the four-tier hardware classification (MAX / GOOD / OKAY / POOR)
@@ -7,7 +7,7 @@
  * HardwareProbe); R10 just shows it.
  *
  * Defensive default: when the caller can't compute a tier yet, we render
- * the "GOOD" copy. The onboarding step composes this with a "Continue" /
+ * the "GOOD" copy. The first-run step composes this with a "Continue" /
  * "Use cloud" CTA group depending on the tier.
  */
 
@@ -106,7 +106,7 @@ export function VoiceTierBanner({
       data-tier={tier}
       data-tone={copy.tone}
       className={cn(
-        "flex items-start gap-3 rounded-lg border px-3 py-3",
+        "flex items-start gap-3 rounded-sm border px-3 py-3",
         TONE_CLASS[copy.tone],
         compact && "py-2 text-xs",
         className,
@@ -114,7 +114,7 @@ export function VoiceTierBanner({
     >
       <span
         className={cn(
-          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
           TONE_BADGE_CLASS[copy.tone],
         )}
         aria-hidden="true"

@@ -38,7 +38,23 @@ const TEST_AGENT_ID = `e2e-autonomous-agent-${Date.now()}`;
 const TEST_AGENT_ADDRESS = `0x${"1".repeat(40)}`;
 const TEST_TOKEN_ID = 999999;
 
-describe("Autonomous Agent - Complete E2E Test", () => {
+// Top-level await: evaluated before describe.skipIf() so the skip condition is correct
+const serverAvailable = await (async () => {
+  try {
+    const r = await fetch(`${SERVER_URL}/api/health`);
+    return r.ok;
+  } catch {
+    return false;
+  }
+})();
+
+if (!serverAvailable) {
+  console.log(
+    `⚠️  Feed server not running on ${SERVER_URL} — complete E2E tests will be skipped`,
+  );
+}
+
+describe.skipIf(!serverAvailable)("Autonomous Agent - Complete E2E Test", () => {
   let agentUserId: string;
   let a2aClient: FeedA2AClient;
   let testMarketId: string | null = null;

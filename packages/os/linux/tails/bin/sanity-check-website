@@ -1,0 +1,99 @@
+#!/usr/bin/env ruby
+require 'date'
+require 'English'
+
+require 'test/unit'
+Test::Unit.run = true
+# Make all the assert_* methods easily accessible.
+include Test::Unit::Assertions # rubocop:disable Style/MixinUsage
+
+# Force UTF-8. Ruby will default to the system locale, and if it is
+# non-UTF-8, String-methods will fail when operating on non-ASCII
+# strings.
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = Encoding::UTF_8
+
+GIT_DIR = `git rev-parse --show-toplevel`.freeze
+assert_equal(
+  0, $CHILD_STATUS.exitstatus,
+  "Failed to find Tails' Git root; this command must be run " \
+  'inside Tails Git repo'
+)
+
+def rfc2822_date?(date)
+  !DateTime.rfc2822(date).nil?
+rescue ArgumentError
+  false
+end
+
+def page_meta_date_is_ok?(path)
+  meta_date_post_re = /^\[\[!meta\s+date="(?<date>.*)"\]\]$/
+  success = true
+  content_lines = File.new(path).read.split("\n")
+  matches = content_lines.grep(meta_date_post_re)
+  if matches.size != 1
+    warn "#{path}: has #{matches.size} well-formed 'meta date' " \
+         'directives (must be 1)'
+    success = false
+  else
+    meta_date_line = matches.first
+    m = meta_date_post_re.match(meta_date_line)
+    meta_date = m['date']
+    unless rfc2822_date?(meta_date)
+      warn "#{path}: 'meta date' directive contains non-rfc2822 " \
+           "date: #{meta_date}"
+      success = false
+    end
+  end
+  success
+end
+
+def po_file_meta_date_is_ok?(path)
+  meta_date_po_re_str = '\[\[!meta\s+date=\\\"(?<date>.*)\\\"\]\]\\\n'
+  success = true
+  content_lines = File.new(path).read.split("\n")
+  matches = content_lines.grep(Regexp.new("^msgid \"#{meta_date_po_re_str}\"$"))
+  if matches.size != 1
+    warn "#{path}: has #{matches.size} 'meta date' msgid:s (must be 1)"
+    success = false
+  else
+    msgid = matches.first
+    msgid_index = content_lines.find_index(msgid)
+    msgstr_index = msgid_index + 1
+    msgstr_line = content_lines[msgstr_index]
+    m = Regexp.new("^msgstr \"(?:#{meta_date_po_re_str})?\"$")
+              .match(msgstr_line)
+    if m.nil?
+      warn "#{path}: the 'meta date' msgid is not followed by a msgstr"
+      success = false
+    elsif m['date']
+      meta_date = m['date']
+      unless rfc2822_date?(meta_date)
+        warn "#{path}: 'meta date' msgstr contains non-rfc2822 " \
+             "date: #{meta_date}"
+        success = false
+      end
+    end
+  end
+  success
+end
+
+# Main
+
+success = true
+
+meta_date_sorted_pages =
+  Dir.glob('wiki/src/{news,security,security/audits}/*.{mdwn,html}') - [
+    'wiki/src/security/audits.mdwn',
+    'wiki/src/security/fixed.mdwn',
+  ]
+
+meta_date_sorted_pages.each do |post_path|
+  success = false unless page_meta_date_is_ok?(post_path)
+  basename = post_path.sub(/.(html|mdwn)$/, '')
+  Dir.glob("#{basename}.*.po").each do |po_path|
+    success = false unless po_file_meta_date_is_ok?(po_path)
+  end
+end
+
+exit(success)

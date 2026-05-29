@@ -101,9 +101,7 @@ def _replace_voice_emotion_entry(
         raise RuntimeError("unbalanced braces walking voice-emotion entry")
 
     f1 = float(test_metrics.get("macro_f1", 0.0))
-    f1_aux = float(test_metrics.get("macro_f1_aux", 0.0))
     mse = float(test_metrics.get("mse_vad", 0.0))
-    acc = float(test_metrics.get("accuracy", 0.0))
     changelog_line = (
         "Initial release — Wav2Small acoustic V-A-D classifier "
         f"(macro-F1={f1:.3f} on RAVDESS test split, mse_vad={mse:.4f})."

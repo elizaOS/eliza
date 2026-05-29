@@ -30,9 +30,9 @@ fail_closed_policy:
 summary:
   supplier_lane_or_function_count: 13
   required_supplier_return_evidence_count: 221
-  present_supplier_return_evidence_count: 221
-  missing_supplier_return_evidence_count: 0
-  all_required_supplier_return_evidence_present: true
+  present_supplier_return_evidence_count: 130
+  missing_supplier_return_evidence_count: 91
+  all_required_supplier_return_evidence_present: false
   all_rows_fail_closed: true
   release_allowed: false
 acceptance_matrix:
@@ -114,32 +114,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -149,25 +149,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
     resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact FPC pin count, pin-1 datum, DSI lane order and polarity
   - mating connector MPN, connector height, cover-lens datums, FPC bend keepout
@@ -182,14 +182,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -206,8 +206,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -218,44 +218,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
     resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: rear_camera
@@ -336,32 +336,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -371,25 +371,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
     resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact selected module MPN, lens-axis datum, barrel height, FPC tail geometry
   - CSI lane order, MCLK/I2C/reset/PWDN/AF rail pinout, mating connector MPN
@@ -404,14 +404,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -428,8 +428,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -440,44 +440,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/camera-capture-log.json
     resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: front_camera
@@ -558,32 +558,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -593,25 +593,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
     resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact front camera variant, lens height, cover glass clearance, FPC exit
   - CSI lane order, power sequence, mating connector MPN and land pattern
@@ -626,14 +626,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -650,8 +650,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -662,44 +662,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/camera-capture-log.json
     resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: cellular
@@ -780,32 +780,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -815,25 +815,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
     resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact region SKU and band matrix, LGA or M.2 branch decision, reserved pin policy
   - hardware design guide, reference layout, RF keepouts, SIM/eSIM and USB2/PCIe binding
@@ -848,14 +848,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -872,8 +872,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -884,44 +884,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
     resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: wifi_bluetooth
@@ -1002,32 +1002,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -1037,25 +1037,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
     resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact module MPN and lifecycle, hardware design guide, reference land pattern and layout
   - firmware/NVRAM/CLM pack, host bus voltage binding, certified antenna rules
@@ -1070,14 +1070,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -1094,8 +1094,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -1106,44 +1106,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
     resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: usb_c_receptacle_evt0
@@ -1224,32 +1224,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -1259,25 +1259,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
     resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact connector variant, shell stake drawing, shell load path, insertion and extraction force
   - recommended footprint, paste mask, courtyard, keepout, aperture and plug sweep guidance
@@ -1292,14 +1292,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -1316,8 +1316,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -1328,44 +1328,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
     resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: charger_pd
@@ -1447,32 +1447,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/usb_pd_controller.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/usb_pd_controller.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/usb_pd_controller.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_pd_controller.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -1482,25 +1482,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
     resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - lifecycle and stock statement for TPS65987DDH or approved replacement branch
   - reference schematic, configuration image, dead-battery and CC attach policy
@@ -1515,14 +1515,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -1539,8 +1539,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -1551,44 +1551,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/usb_pd_controller.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/usb_pd_controller.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/usb_pd_controller.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_pd_controller.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_pd_controller.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
     resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_lifecycle_replacement_decision_supplier_response_pack_drawing_land_pattern_step_sample_and_pd_kicad_release_evidence
   source_release_allowed: false
 - lane: charger_pd
@@ -1670,32 +1670,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/charger_power_path.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/charger_power_path.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/charger_power_path.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/charger_power_path.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -1705,25 +1705,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
     resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact package and thermal land pattern, exposed-pad guidance, power-path reference layout
   - battery NTC and pack-ID policy, charge-current/JEITA limits, I2C register configuration
@@ -1738,14 +1738,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -1762,8 +1762,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -1774,44 +1774,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/charger_power_path.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/charger_power_path.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/charger_power_path.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/charger_power_path.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/charger_power_path.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
     resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_charger_kicad_release_evidence
   source_release_allowed: false
 - lane: side_buttons
@@ -1892,32 +1892,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -1927,25 +1927,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
     resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact EVQ MPNs and operating force, force-travel curve, life-cycle data
   - recommended footprint, actuator rib geometry, enclosure load-path drawing
@@ -1960,14 +1960,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -1984,8 +1984,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -1996,44 +1996,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
     resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: battery
@@ -2114,32 +2114,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -2149,25 +2149,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/power/battery-pack-inspection-and-charge-limits.yaml
     resolved_path: board/kicad/e1-phone/production/reports/power/battery-pack-inspection-and-charge-limits.yaml
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - signed pouch, PCM tail, swelling envelope, connector polarity and pinout drawing
   - NTC curve, pack-ID policy, protection limits, safety and shipping documentation
@@ -2182,14 +2182,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -2206,8 +2206,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -2218,44 +2218,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/power/battery-pack-inspection-and-charge-limits.yaml
     resolved_path: board/kicad/e1-phone/production/reports/power/battery-pack-inspection-and-charge-limits.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_safety_and_kicad_release_evidence
   source_release_allowed: false
 - lane: split_interconnect
@@ -2336,32 +2336,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -2371,25 +2371,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/split-interconnect-continuity-si.yaml
     resolved_path: board/kicad/e1-phone/production/reports/split-interconnect-continuity-si.yaml
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact mating connector or flex-stack MPNs, stack height, retention and assembly process
   - full pinout, FPC stackup, impedance, bend life, current and temperature rise data
@@ -2404,14 +2404,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -2428,8 +2428,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -2440,44 +2440,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/split-interconnect-continuity-si.yaml
     resolved_path: board/kicad/e1-phone/production/reports/split-interconnect-continuity-si.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawing_land_pattern_step_sample_lifecycle_stock_and_kicad_release_evidence
   source_release_allowed: false
 - lane: audio_haptics
@@ -2558,32 +2558,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -2593,25 +2593,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/audio-haptic-functional-measurements.yaml
     resolved_path: board/kicad/e1-phone/production/reports/audio-haptic-functional-measurements.yaml
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact codec, smart amp, PDM microphone, speaker, receiver, flex, gasket and mesh drawings
   - speaker box, receiver slot, microphone port, haptic pocket and acoustic chamber STEP/B-rep
@@ -2626,14 +2626,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -2650,8 +2650,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -2662,44 +2662,44 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/audio-haptic-functional-measurements.yaml
     resolved_path: board/kicad/e1-phone/production/reports/audio-haptic-functional-measurements.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
-  next_unblock_action: Required files are present only as paths; verify specialized supplier returns,
-    signatures, freshness, sample lot identity, inspection results, lifecycle/stock approval, and downstream
-    KiCad/release review gates before any acceptance claim.
+  next_unblock_action: Receive and archive the supplier-signed response pack plus every missing required
+    return file at the listed local intake paths; then run supplier, sample, lifecycle, pinout, symbol,
+    footprint, 3D, ERC, DRC, routed, and first-article review gates.
   source_gap_status: blocked_missing_supplier_response_pack_drawings_land_patterns_step_samples_lifecycle_stock_acoustic_and_kicad_release_evidence
   source_release_allowed: false
 - lane: null
@@ -2775,32 +2775,32 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: pinout_review_signoff
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/pinout-review/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/pmic.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: symbol_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/symbol-review/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/pmic.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_review
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-review/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/pmic.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: footprint_3d_binding
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/pmic.yaml
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: production_schematic_capture
     required_return_file: null
     current_presence: true
@@ -2810,25 +2810,25 @@ acceptance_matrix:
     artifact_kind: file
   - evidence_class: erc_after_capture
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: drc_after_footprint_replacement
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    artifact_kind: file
+    artifact_kind: missing
   - evidence_class: routed_clearance_or_functional_release
     required_return_file: null
-    current_presence: true
-    acceptance_state: blocked_present_but_unvalidated_fail_closed
+    current_presence: false
+    acceptance_state: blocked_missing_required_supplier_return
     expected_local_intake_path: board/kicad/e1-phone/production/reports/power/rail-bringup-sequence.yaml
     resolved_path: board/kicad/e1-phone/production/reports/power/rail-bringup-sequence.yaml
-    artifact_kind: file
+    artifact_kind: missing
   required_specialized_returns:
   - exact PMIC package, land pattern, reference schematic and rail sequencing configuration
   - reset, RTC, AON and power-good policy, regulator current and thermal evidence
@@ -2843,14 +2843,14 @@ acceptance_matrix:
   - release_evidence_class: erc_after_capture
     path: board/kicad/e1-phone/production/reports/erc/production-root.json
     resolved_path: board/kicad/e1-phone/production/reports/erc/production-root.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: drc_after_footprint_replacement
     path: board/kicad/e1-phone/production/reports/drc.json
     resolved_path: board/kicad/e1-phone/production/reports/drc.json
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: routed_pcb
     path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
@@ -2867,8 +2867,8 @@ acceptance_matrix:
   - release_evidence_class: routed_clearance_release
     path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
     resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: first_article_transcript
     path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
@@ -2879,39 +2879,39 @@ acceptance_matrix:
   - release_evidence_class: pinout_review
     path: board/kicad/e1-phone/production/reports/pinout-review/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/pinout-review/pmic.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: symbol_review
     path: board/kicad/e1-phone/production/reports/symbol-review/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/symbol-review/pmic.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_review
     path: board/kicad/e1-phone/production/reports/footprint-review/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-review/pmic.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: footprint_3d_binding
     path: board/kicad/e1-phone/production/reports/footprint-3d-binding/pmic.yaml
     resolved_path: board/kicad/e1-phone/production/reports/footprint-3d-binding/pmic.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   - release_evidence_class: functional_release
     path: board/kicad/e1-phone/production/reports/power/rail-bringup-sequence.yaml
     resolved_path: board/kicad/e1-phone/production/reports/power/rail-bringup-sequence.yaml
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
     release_allowed_by_presence: false
   summary:
     required_supplier_return_evidence_count: 17
-    present_supplier_return_evidence_count: 17
-    missing_supplier_return_evidence_count: 0
-    kicad_release_evidence_present_count: 12
-    all_required_supplier_return_evidence_present: true
+    present_supplier_return_evidence_count: 10
+    missing_supplier_return_evidence_count: 7
+    kicad_release_evidence_present_count: 4
+    all_required_supplier_return_evidence_present: false
     acceptance_state: blocked_fail_closed
     release_allowed: false
   next_unblock_action: Create an outbound intake template for this gap-map-only supplier function, then

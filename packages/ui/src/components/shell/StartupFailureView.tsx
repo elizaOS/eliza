@@ -44,7 +44,7 @@ function startupReasonLabel(
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#F7F9FF] px-4 py-6 font-body text-[#0B35F1] sm:px-6";
 const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[720px] overflow-hidden border border-[#0B35F1]/20 bg-white/95 text-[#0B35F1] shadow-[0_30px_120px_rgba(11,53,241,0.16)]";
+  "relative z-10 w-full max-w-[720px] overflow-hidden border border-[#0B35F1]/20 bg-white/95 text-[#0B35F1] ";
 
 interface StartupFailureViewProps {
   error: StartupErrorState;
@@ -204,7 +204,7 @@ export function StartupFailureView({
             </Banner>
           ) : null}
           {error.detail ? (
-            <section className="space-y-2 rounded border border-[#0B35F1]/16 bg-[#F7F9FF] p-4 shadow-sm">
+            <section className="space-y-2 rounded-sm border border-[#0B35F1]/16 bg-[#F7F9FF] p-4 ">
               <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-[#0B35F1]/75">
                 {t("common.details", {
                   defaultValue: "Details",

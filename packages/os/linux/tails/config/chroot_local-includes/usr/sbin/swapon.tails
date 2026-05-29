@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -eu
+
+cd /
+
+for param in "$@"; do
+  if echo "${param}" | grep -v '^/dev/zram' | grep -q /; then
+    echo >&2 "Setting up swap is only allowed for zram devices"
+    exit 1
+  fi
+done
+
+exec /sbin/swapon.distrib "$@"
+

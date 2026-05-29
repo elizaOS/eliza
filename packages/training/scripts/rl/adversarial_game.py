@@ -600,13 +600,13 @@ async def evaluate_adversarial(
         "defender_detection_rate": sum(1 for a in attacks if a["detected"]) / max(len(attacks), 1),
         "defender_avg_reward_attack": sum(a["defender_reward"] for a in attacks)
         / max(len(attacks), 1),
-        "defender_false_positive_rate": sum(1 for l in legits if l["false_positive"])
+        "defender_false_positive_rate": sum(1 for legit in legits if legit["false_positive"])
         / max(len(legits), 1),
-        "defender_avg_reward_legit": sum(l["defender_reward"] for l in legits)
+        "defender_avg_reward_legit": sum(legit["defender_reward"] for legit in legits)
         / max(len(legits), 1),
         # Combined
         "defender_overall": (
-            (sum(a["defender_reward"] for a in attacks) + sum(l["defender_reward"] for l in legits))
+            (sum(a["defender_reward"] for a in attacks) + sum(legit["defender_reward"] for legit in legits))
             / max(len(attacks) + len(legits), 1)
         ),
     }

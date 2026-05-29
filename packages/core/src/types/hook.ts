@@ -5,7 +5,7 @@
  * event-driven hooks across the Eliza agent runtime.
  */
 
-import { type EventPayload, EventType } from "./events";
+import type { EventPayload, EventType } from "./events";
 import type { Service } from "./service";
 
 // ============================================================================
@@ -17,7 +17,7 @@ import type { Service } from "./service";
  */
 export type HookSource =
 	| "bundled" // Built-in hooks from @elizaos/core
-	| "managed" // User-installed hooks (~/.elizaos/hooks/)
+	| "managed" // User-installed hooks (<stateDir>/hooks/)
 	| "workspace" // Project-local hooks (./hooks/)
 	| "plugin" // Plugin-registered hooks
 	| "runtime"; // Programmatic registration via API
@@ -389,70 +389,4 @@ export interface IHookService extends Service {
 		requirements: HookRequirements,
 		config?: Record<string, unknown>,
 	): HookEligibilityResult;
-}
-
-// ============================================================================
-// Legacy Compatibility Types (for Otto migration)
-// ============================================================================
-
-/**
- * Legacy hook event type mapping for Otto compatibility.
- * Maps old event strings to new EventType enum values.
- */
-export const LEGACY_EVENT_MAP: Record<string, EventType> = {
-	"command:new": EventType.HOOK_COMMAND_NEW,
-	"command:reset": EventType.HOOK_COMMAND_RESET,
-	"command:stop": EventType.HOOK_COMMAND_STOP,
-	"session:start": EventType.HOOK_SESSION_START,
-	"session:end": EventType.HOOK_SESSION_END,
-	"agent:basic-capabilities": EventType.HOOK_AGENT_BASIC_CAPABILITIES,
-	"gateway:startup": EventType.HOOK_GATEWAY_START,
-	"gateway:stop": EventType.HOOK_GATEWAY_STOP,
-	// Plugin lifecycle hooks
-	before_agent_start: EventType.HOOK_AGENT_START,
-	agent_end: EventType.HOOK_AGENT_END,
-	before_compaction: EventType.HOOK_COMPACTION_BEFORE,
-	after_compaction: EventType.HOOK_COMPACTION_AFTER,
-	message_sending: EventType.HOOK_MESSAGE_SENDING,
-	before_tool_call: EventType.HOOK_TOOL_BEFORE,
-	after_tool_call: EventType.HOOK_TOOL_AFTER,
-	tool_result_persist: EventType.HOOK_TOOL_PERSIST,
-	session_start: EventType.HOOK_SESSION_START,
-	session_end: EventType.HOOK_SESSION_END,
-	gateway_start: EventType.HOOK_GATEWAY_START,
-	gateway_stop: EventType.HOOK_GATEWAY_STOP,
-};
-
-/**
- * Maps legacy event type strings to the canonical type.
- * Handles both old format ("command:new") and new format ("HOOK_COMMAND_NEW").
- *
- * @param legacyEvent - Legacy event string
- * @returns The canonical EventType or undefined if not mapped
- */
-export function mapLegacyEvent(legacyEvent: string): EventType | undefined {
-	// Check if it's already a valid EventType
-	if (Object.values(EventType).includes(legacyEvent as EventType)) {
-		return legacyEvent as EventType;
-	}
-	// Check legacy mapping
-	return LEGACY_EVENT_MAP[legacyEvent];
-}
-
-/**
- * Maps an array of legacy event strings to EventType values.
- * Filters out any events that cannot be mapped.
- *
- * @param legacyEvents - Array of legacy event strings
- * @returns Array of mapped EventType values
- */
-export function mapLegacyEvents(legacyEvents: string[]): EventType[] {
-	const mapped: EventType[] = [];
-	for (const event of legacyEvents) {
-		const mappedEvent = mapLegacyEvent(event);
-		if (mappedEvent) {
-			mapped.push(mappedEvent);
-		}
-	}
-	return mapped;
 }

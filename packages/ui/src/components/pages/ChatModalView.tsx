@@ -1,27 +1,23 @@
-import { ChatPanelLayout } from "../../layouts/chat-panel-layout/chat-panel-layout";
+import { memo } from "react";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { useTranslation } from "../../state";
+import { ConversationsSidebar } from "../conversations/ConversationsSidebar";
 import {
   DrawerSheet,
   DrawerSheetContent,
   DrawerSheetHeader,
   DrawerSheetTitle,
 } from "../ui/drawer-sheet";
-
-import "../chat/chat-source-registration.js";
-
-import { memo } from "react";
-import { useRenderGuard } from "../../hooks/useRenderGuard";
-import { useTranslation } from "../../state";
-import { ConversationsSidebar } from "../conversations/ConversationsSidebar.js";
-import { ChatView } from "./ChatView.js";
+import { ChatPanelLayout } from "./ChatPanelLayout";
+import { ChatView } from "./ChatView";
 
 type ChatModalLayoutVariant = "full-overlay" | "companion-dock";
 
 interface ChatModalViewProps {
   variant?: ChatModalLayoutVariant;
-  onRequestClose?: () => void;
   showSidebar?: boolean;
   onSidebarClose?: () => void;
-  /** Override click handler for agent activity box sessions (e.g. open side panel in companion). */
+  /** Override click handler for agent activity box sessions. */
   onPtySessionClick?: (sessionId: string) => void;
 }
 
@@ -49,7 +45,7 @@ export const ChatModalView = memo(function ChatModalView({
           <DrawerSheetContent
             aria-describedby={undefined}
             className="!inset-0 !left-0 !right-0 !bottom-0 !top-0 !h-[100dvh] !max-h-none !rounded-none !border-0 p-0"
-            data-chat-game-sidebar-overlay
+            data-chat-sidebar-overlay
             showCloseButton={false}
           >
             <DrawerSheetHeader className="sr-only">

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +14,7 @@ REPORT = ROOT / "build/reports/product_release_status.json"
 
 def run_product_check(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["python3", "scripts/product_check.py", *args],
+        [sys.executable, "scripts/product_check.py", *args],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -322,6 +323,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
     assert "scripts/check_e1_phone_first_article_content.py" in scripts
     assert "scripts/check_e1_phone_enclosure_mechanical_content.py" in scripts
     assert "scripts/check_phone_runtime_readiness_contract.py" in scripts
+    assert "scripts/check_android_release_readiness_contract.py" in scripts
 
     if release_mode:
         preflight_checks = report["preflight_checks"]
@@ -344,6 +346,45 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
             blocker == "product preflight check failed: scripts/check_antenna_metadata.py"
             for blocker in report["release_blockers"]
         )
+        preflight_commands = {
+            tuple(check["command"])
+            for check in preflight_checks
+            if isinstance(check, dict) and isinstance(check.get("command"), list)
+        }
+        for command in (
+            (sys.executable, "scripts/check_package_cross_probe.py", "--release"),
+            (sys.executable, "scripts/check_kicad_artifacts.py", "--release"),
+            (sys.executable, "scripts/check_fpga_release.py", "--release"),
+            (sys.executable, "scripts/check_openlane_run_preflight.py", "--release"),
+            (sys.executable, "scripts/check_manufacturing_artifacts.py", "--release"),
+        ):
+            assert command in preflight_commands
+            row = next(check for check in preflight_checks if tuple(check["command"]) == command)
+            assert row["blocked_status"] is True
+            assert not any(
+                blocker == f"product preflight check failed: {' '.join(command[1:])}"
+                for blocker in report["release_blockers"]
+            )
+
+        make_dry_run = subprocess.run(
+            ["make", "-n", "product-release-check", f"PYTHON={sys.executable}"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        assert make_dry_run.returncode == 0, make_dry_run.stdout[-4000:]
+        for expected in (
+            "scripts/check_fpga_release.py --release",
+            "scripts/check_package_cross_probe.py --release",
+            "scripts/check_kicad_artifacts.py --release",
+            "scripts/check_openlane_run_preflight.py --release",
+            "scripts/check_antenna_metadata.py --release",
+            "scripts/check_manufacturing_artifacts.py --release",
+            "scripts/product_check.py --release",
+        ):
+            assert expected in make_dry_run.stdout
 
 
 def main() -> int:

@@ -10,8 +10,7 @@
  * Error responses follow `{ error: { code, message } }` — never bare strings.
  *
  * This contract is pinned by `eliza/plugins/__tests__/setup-routes-contract.test.ts`.
- * See `docs/QA-onboarding-followups.md` item 18 for the migration plan and
- * `docs/onboarding-contracts.md` §5 for the historical drift across connectors.
+ * `docs/first-run-contracts.md` covers the connector setup surface.
  */
 
 /** Setup lifecycle states a connector can be in. */

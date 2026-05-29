@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 export interface StewardSidecarConfig {
-  /** Directory for Steward data (PGLite storage, config, secrets). Default: ~/.eliza/steward/ */
+  /** Directory for Steward data (PGLite storage, config, secrets). */
   dataDir: string;
   /** Port for the local Steward API. Default: 3200 */
   port?: number;

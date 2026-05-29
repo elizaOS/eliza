@@ -1,0 +1,377 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-03-26 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Modifying the boot options using the Boot Loader\"]]\n"
+msgstr "[[!meta title=\"Modifier les options de démarrage en utilisant le chargeur d'amorçage\"]]\n"
+
+#. type: Plain text
+msgid "The Boot Loader is the first screen that appears when Tails starts."
+msgstr ""
+"Le chargeur d'amorçage est le premier écran qui apparaît quand Tails démarre."
+
+#. type: Plain text
+msgid ""
+"You can use the Boot Loader to modify the *boot options*. Boot options are "
+"special parameters used to troubleshoot or work around hardware support "
+"problems.  For example, our [[list of known issues with graphics cards|"
+"support/known_issues/graphics]] documents boot options for different "
+"graphics cards."
+msgstr ""
+"Vous pouvez utiliser le chargeur d'amorçage pour modifier les *options de "
+"démarrage*. Les options de démarrage sont des paramètres spéciaux utilisés "
+"pour résoudre ou contourner des problèmes de compatibilité du matériel. Par "
+"exemple, notre [[liste des problèmes connus avec les cartes graphiques|"
+"support/known_issues/graphics]] documente les options de démarrage pour les "
+"différentes cartes graphiques."
+
+#. type: Plain text
+msgid ""
+"Depending on the computer, the Boot Loader might be either *GRUB* or "
+"*SYSLINUX*."
+msgstr ""
+"Selon votre ordinateur, le chargeur d'amorçage peut être *GRUB* ou "
+"*SYSLINUX*."
+
+#. type: Plain text
+msgid ""
+"In both *GRUB* and *SYSLINUX*, the keyboard layout of the Boot Menu is set "
+"to English (US)."
+msgstr ""
+"Dans *GRUB* et *SYSLINUX*, la disposition du clavier du menu de démarrage "
+"est réglée sur English (US)."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img english_us_keyboard.png alt=\"\"]]\n"
+msgstr "[[!img english_us_keyboard.png alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"syslinux\"></a>\n"
+msgstr "<a id=\"syslinux\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Using *SYSLINUX*"
+msgstr "Utiliser *SYSLINUX*"
+
+#. type: Plain text
+msgid "This is what *SYSLINUX* looks like:"
+msgstr "Voici ce à quoi *SYSLINUX* ressemble :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!img install/inc/screenshots/syslinux.png class=\"screenshot\" alt=\"Black screen ('SYSLINUX') with Tails\n"
+"logo and 2 options: 'Tails' and 'Tails (Troubleshooting Mode)'.\"]]\n"
+msgstr ""
+"[[!img install/inc/screenshots/syslinux.png class=\"screenshot\" alt=\"Écran noir ('SYSLINUX') avec le logo\n"
+"Tails et deux options : 'Tails' et 'Tails (Troubleshooting Mode)'.\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If your Boot Loader looks different, refer to our instructions below on\n"
+"modifying the boot options [[using GRUB|boot_options#grub]].</p>\n"
+msgstr ""
+"<p>Si votre chargeur d'amorçage semble différent, suivez nos instructions ci-dessous\n"
+"sur la modification des options de démarrage en [[utilisant GRUB|boot_options#grub]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "To modify the boot options in *SYSLINUX*:"
+msgstr "Pour modifier les options de démarrage dans *SYSLINUX* :"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Keep in sync with install/inc/steps/restart_first_time.inline.mdwn. -->\n"
+msgstr "<!-- Keep in sync with install/inc/steps/restart_first_time.inline.mdwn. -->\n"
+
+#. type: Bullet: '1. '
+msgid "Press **Tab** when *SYSLINUX* appears."
+msgstr "Appuyez sur **Tab** lorsque *SYSLINUX* apparaît."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   A command line with a list\n"
+"   of boot options appears at the bottom of the screen.\n"
+msgstr ""
+"   Une ligne de commande avec une liste\n"
+"   d'options de démarrage apparaît en bas de l'écran.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   [[!img syslinux-with-options.png class=\"screenshot\" alt=\"SYSLINUX with\n"
+"   a list of options starting with '/live/vmlinuz' at the bottom\"]]\n"
+msgstr ""
+"   [[!img syslinux-with-options.png class=\"screenshot\" alt=\"SYSLINUX avec\n"
+"   une liste d'options en bas qui commence par '/live/vmlinuz'\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Modify the boot options as needed."
+msgstr "Modifiez les options de démarrage selon les besoins."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   To add a boot option, press **Space** and type the boot option that you\n"
+"   want to add.\n"
+msgstr ""
+"   Pour ajouter une option de démarrage, appuyez sur **Espace** et écrivez l'option de démarrage que vous\n"
+"   voulez ajouter.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you want to add more than one boot option, type them one after the\n"
+"   other and separate them with a **Space**.\n"
+msgstr ""
+"   Si vous voulez ajouter plus d'une option, écrivez-les les unes après les\n"
+"   autres en les séparant avec un **Espace**.\n"
+
+#. type: Bullet: '1. '
+msgid "Press **Enter** to start Tails."
+msgstr "Appuyez sur **Entrée** pour démarrer Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"grub\"></a>\n"
+msgstr "<a id=\"grub\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Using *GRUB*"
+msgstr "Utiliser *GRUB*"
+
+#. type: Plain text
+msgid "This is what *GRUB* looks like:"
+msgstr "Voici ce à quoi ressemble *GRUB* :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black screen ('GNU GRUB') with Tails\n"
+"logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]\n"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Écran noir ('GNU GRUB') avec le logo\n"
+"Tails et 3 options : 'Tails' et 'Tails (Troubleshooting Mode)' et 'Tails (External Hard Disk)'.\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If your Boot Loader looks different, refer to our instructions on\n"
+"modifying the boot options [[using SYSLINUX|boot_options#syslinux]] above.</p>\n"
+msgstr ""
+"<p>Si votre chargeur de démarrage semble différent, consultez nos instructions ci-dessus\n"
+"sur les modifications des options de démarrage [[en utilisant SYSLINUX|boot_options#syslinux]].</p>\n"
+
+#. type: Plain text
+msgid "To modify the boot options in *GRUB*:"
+msgstr "Pour modifier les options de démarrage dans *GRUB* :"
+
+#. type: Bullet: '1. '
+msgid "Press **e** when GRUB appears."
+msgstr "Appuyez sur **e** lorsque GRUB apparaît."
+
+#. type: Plain text
+#, no-wrap
+msgid "   A new screen appears with more options.\n"
+msgstr "   Un nouvel écran apparaît avec plus d'options.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   [[!img grub-with-options.png class=\"screenshot\" alt=\"GRUB with a list of\n"
+"   options starting with 'setparams Tails'\"]]\n"
+msgstr ""
+"   [[!img grub-with-options.png class=\"screenshot\" alt=\"GRUB avec une liste\n"
+"   d'options qui commence avec 'setparams Tails'\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   To add a boot option, navigate with the arrows of the keyboard to the end of the line that\n"
+"   starts with `linux`.\n"
+"   Type the boot option that you want to add. The line is most likely\n"
+"   wrapped and displayed on several lines but it is a single configuration line.\n"
+msgstr ""
+"   Pour ajouter une option de démarrage, naviguez à la fin de la ligne qui commence\n"
+"   par `linux` avec les flèches du clavier.\n"
+"   Tapez l'option de démarrage que vous voulez ajouter. La ligne s'affiche très probablement\n"
+"   sur plusieurs lignes mais il s'agit d'une seule ligne de configuration.\n"
+
+#. type: Bullet: '1. '
+msgid "Press **Ctrl+X**, **F10**, or **Fn+F10** to start Tails."
+msgstr "Appuyez sur **Ctrl+X**, **F10** ou **Fn+F10** pour démarrer Tails."
+
+#. type: Title =
+#, no-wrap
+msgid "Modify the boot options on the USB stick"
+msgstr "Modifier les options de démarrage sur la clé USB"
+
+#. type: Plain text
+msgid ""
+"To use modified boot options automatically when restarting Tails, you can "
+"save these changes to your Tails USB stick."
+msgstr ""
+"Pour utiliser automatiquement les options de démarrage modifiées lors du "
+"redémarrage de Tails, vous pouvez enregistrer ces modifications sur votre "
+"clé USB Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>These modifications are deleted each time you upgrade Tails. ([[!tails_ticket 18268]])</p>\n"
+msgstr "<p>Ces modifications sont supprimées à chaque fois que vous mettez à jour Tails. ([[!tails_ticket 18268]])</p>\n"
+
+#. type: Plain text
+msgid "To do so:"
+msgstr "Pour ce faire :"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Lors du démarrage de Tails, [[définissez un mot de passe d'administration|"
+"doc/first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid "Open a *Console*."
+msgstr "Ouvrez une *Console*."
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute to following command to allow modifying the content of the Tails "
+"partition on the USB stick."
+msgstr ""
+"Exécutez la commande suivante pour permettre la modification du contenu de "
+"la partition Tails sur la clé USB."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo mount -o remount,rw /usr/lib/live/mount/medium/</p>\n"
+msgstr "   <p class=\"command\">sudo mount -o remount,rw /usr/lib/live/mount/medium/</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command to edit the configuration of the Boot Loader."
+msgstr ""
+"Exécutez la commande suivante pour modifier la configuration du chargeur "
+"d’amorçage."
+
+#. type: Bullet: '   - '
+msgid "If your computer uses *SYSLINUX*:"
+msgstr "Si votre ordinateur utilise *SYSLINUX* :"
+
+#. type: Plain text
+#, no-wrap
+msgid "     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/syslinux/live64.cfg</p>\n"
+msgstr ""
+"     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/"
+"syslinux/live64.cfg</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     The section `label live` corresponds to the default boot options.\n"
+msgstr "     La section `label live` correspond aux options de démarrage par défaut.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     The section `label livefailsafe` corresponds to the troubleshooting mode.\n"
+msgstr "     La section `label livefailsafe` correspond au mode sans échec.\n"
+
+#. type: Bullet: '   - '
+msgid "If your computer uses *GRUB*:"
+msgstr "Si votre ordinateur utilise *GRUB* :"
+
+#. type: Plain text
+#, no-wrap
+msgid "     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/EFI/debian/grub.cfg</p>\n"
+msgstr ""
+"     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/"
+"EFI/debian/grub.cfg</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     The section `menuentry 'Tails 6.11'` corresponds to the default boot\n"
+"     options.\n"
+msgstr ""
+"     La section `menuentry 'Tails 6.11'` correspond aux options de démarrage.\n"
+"     par défaut.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     The section `menuentry 'Tails 6.11 (Troubleshooting Mode)'` corresponds to\n"
+"     the troubleshoot mode.\n"
+msgstr ""
+"     La section `menuentry 'Tails 6.11 (Troubleshooting Mode)'` correspond au\n"
+"     mode sans échec.\n"
+
+#. type: Bullet: '1. '
+msgid "Save your changes."
+msgstr "Sauvegardez vos modifications."
+
+#. type: Bullet: '1. '
+msgid "Restart to test your changes."
+msgstr "Redémarrez pour tester vos modifications."
+
+#, no-wrap
+#~ msgid "<p>It is currently impossible to change boot options permanently.</p>\n"
+#~ msgstr "<p>Il est actuellement impossible de changer les options de démarrage de façon permanente.</p>\n"
+
+#, no-wrap
+#~ msgid "<p>See [[!tails_ticket 18268]] for workarounds.</p>\n"
+#~ msgstr "<p>Voir [[!tails_ticket 18268]] pour les contournements.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The **Troubleshooting Mode** of the Boot Loader disables some features of the\n"
+#~ "Linux kernel and might work better on some computers. You can try this option if you\n"
+#~ "think you are experiencing hardware compatibility errors while\n"
+#~ "starting Tails.</p>\n"
+#~ msgstr ""
+#~ "<p>Le **Mode sans échec** du chargeur d'amorçage désactive des fonctionnalités du\n"
+#~ "noyau Linux et peut mieux fonctionner sur certains ordinateurs. Vous pouvez essayer cette option si vous\n"
+#~ "pensez que vous rencontrez des erreurs de compatibilité matérielle au\n"
+#~ "démarrage de Tails.</p>\n"

@@ -1,0 +1,47 @@
+[[!meta title="Tails report for June, 2021"]]
+[[!meta date="Mon, 12 Jul 2021 17:00:00 -0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Highlights
+==========
+
+- We entirely rewrote and redesigned our [very old warnings
+  page](https://web.archive.org/web/20210531191605/https://tails.boum.org/doc/about/warning/).
+
+  The [[new warnings page|doc/about/warnings]] is shorter, easier to understand
+  by less technical people, less scary, more helpful, and visually attractive.
+  We also integrated it in our [[download page|install/download]] so that
+  people can learn more about tails while waiting for their download.
+
+  [[!img warnings.png link="no"]]
+
+  Read our articles on:
+
+  - [[Protecting your identity|doc/about/warnings/identity]]
+  - [[Limitations of Tor|doc/about/warnings/tor]]
+  - [[Using untrusted computers|doc/about/warnings/computer]]
+
+- We finished making Tails ready for the deprecation of onion services v2 by
+  upgrading to OnionShare 2.2.
+
+- We explained that users can [[reduce the size of the
+  download|doc/upgrade#reduce]] of future automatic upgrades by doing a manual
+  upgrade to the latest version.
+
+- We published our finances for 2020.
+
+- We documented better [[MAT and metadata|doc/sensitive_documents/metadata]].
+
+- We documented how to use [[Dino in Tails|doc/advanced_topics/dino]].
+
+  Dino is being considered as an option to replace Pidgin in Tails.
+  
+  Please report your findings!
+
+Metrics
+=======
+
+* Tails has been started more than 629 659 times this month. This makes 20 989 boots a day on average.
+

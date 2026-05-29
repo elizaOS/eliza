@@ -30,7 +30,7 @@ export function LoadedPacksList({
               key={pack.manifest.id}
               type="button"
               onClick={() => onToggle(pack)}
-              className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+              className={`flex items-center gap-3 rounded-sm border px-3 py-2 text-left transition-colors ${
                 isActive
                   ? "border-accent bg-accent/8"
                   : "border-border/50 hover:border-accent/40 hover:bg-bg-hover"
@@ -40,7 +40,7 @@ export function LoadedPacksList({
                 <img
                   src={pack.vrmPreviewUrl}
                   alt=""
-                  className="h-9 w-9 shrink-0 rounded object-cover"
+                  className="h-9 w-9 shrink-0 rounded-sm object-cover"
                 />
               )}
               <div className="min-w-0 flex-1">

@@ -18,13 +18,12 @@ import { executeBrowserAutofillLogin } from "./browser-autofill-login.js";
 
 /**
  * Targets are the registered browser backends. The agent uses what is
- * available; specifying a target overrides the default. `workspace` is the
- * current default (electrobun-embedded BrowserView with JSDOM fallback).
- * `bridge` (Chrome/Safari companion) and `computeruse` (puppeteer Chromium)
- * are reserved for the BrowserService target-registry refactor — see
- * follow-up work.
+ * available; specifying a target overrides automatic routing. `workspace`
+ * is the app-owned browser surface, `bridge` is the paired Chrome/Safari
+ * companion, `stagehand` is the Playwright/Stagehand fallback, and other
+ * plugins may register additional target ids.
  */
-export type BrowserTarget = "workspace" | "bridge" | "computeruse";
+export type BrowserTarget = string;
 
 type BrowserWorkspaceSubaction =
   | "back"
@@ -79,7 +78,7 @@ type NormalizedBrowserAction =
 type BrowserActionParameters = {
   /**
    * Optional target override. Default: the BrowserService active target
-   * (currently always `workspace`). Forces a specific backend when set.
+   * selected from registered targets. Forces a specific backend when set.
    */
   target?: BrowserTarget;
   id?: string;
@@ -346,7 +345,7 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "BROWSER action. Control registered target: workspace default, bridge Chrome/Safari, computeruse Chromium. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+    "BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
   descriptionCompressed:
     "Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
   validate: async () => true,
@@ -423,6 +422,13 @@ export const browserAction: Action = {
     }
   },
   parameters: [
+    {
+      name: "target",
+      description:
+        "Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+      required: false,
+      schema: { type: "string" as const },
+    },
     {
       name: "action",
       description:

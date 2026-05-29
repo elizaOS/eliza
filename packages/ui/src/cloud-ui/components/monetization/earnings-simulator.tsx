@@ -63,7 +63,7 @@ export function EarningsSimulator({
   }, [users, spendPerUser, markupPercentage, purchaseSharePercentage]);
 
   return (
-    <div className={cn("bg-neutral-900 rounded-xl p-4", className)}>
+    <div className={cn("bg-neutral-900 rounded-sm p-4", className)}>
       {/* Header */}
       <h3 className="text-sm font-medium text-white flex items-center gap-2 mb-4">
         <Calculator className="h-4 w-4 text-purple-400" />

@@ -31,7 +31,7 @@ import {
 import { localInferenceService } from "./services/service.js";
 import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
-type ModelRole = "chat" | "embedding" | "drafter";
+type ModelRole = "chat" | "embedding";
 type DownloadState =
 	| "queued"
 	| "downloading"
@@ -203,9 +203,6 @@ export function getLocalInferenceActiveModelId(): string | undefined {
 }
 
 function catalogRole(model: SharedCatalogModel): ModelRole {
-	if (model.runtimeRole === "dflash-drafter" || model.category === "drafter") {
-		return "drafter";
-	}
 	if ((model.category as string) === "embedding") return "embedding";
 	return "chat";
 }
@@ -592,17 +589,6 @@ async function downloadModel(
 			lastVerifiedAt: new Date().toISOString(),
 		});
 		await ensureDefaultAssignment(model);
-		for (const companionId of model.companionModelIds ?? []) {
-			if (!activeDownloads.has(companionId)) {
-				void startDownload(companionId).catch((error) => {
-					logger.warn(
-						`[local-inference] Companion download failed for ${companionId}: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
-				});
-			}
-		}
 
 		record.state = "completed";
 		record.received = stat.size;
@@ -745,14 +731,7 @@ function recommendedChatModel(): CatalogModel | null {
 	const totalRamGb = os.totalmem() / 1024 ** 3;
 	const candidates = chatModels()
 		.filter((model) => totalRamGb >= model.minRamGb)
-		.sort((left, right) => {
-			const leftDflash = left.companionModelIds?.length ? 1 : 0;
-			const rightDflash = right.companionModelIds?.length ? 1 : 0;
-			if (leftDflash !== rightDflash && totalRamGb >= 6) {
-				return rightDflash - leftDflash;
-			}
-			return right.sizeGb - left.sizeGb;
-		});
+		.sort((left, right) => right.sizeGb - left.sizeGb);
 	return (
 		candidates[0] ?? chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0] ?? null
 	);
@@ -1184,17 +1163,17 @@ export async function handleLocalInferenceRoutes(
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
-	// Co-located voice-onboarding namespace — runs alongside local-inference
+	// Co-located voice-first-run namespace — runs alongside local-inference
 	// so the existing /api/local-inference/* mount point in server.ts also
-	// catches /api/voice/onboarding/* without a second wire-up.
-	if (pathname.startsWith("/api/voice/onboarding/")) {
-		const { handleVoiceOnboardingRoutes } = await import(
-			"./routes/voice-onboarding-routes.js"
+	// catches /api/voice/first-run/* without a second wire-up.
+	if (pathname.startsWith("/api/voice/first-run/")) {
+		const { handleVoiceFirstRunRoutes } = await import(
+			"./routes/voice-first-run-routes.js"
 		);
-		if (await handleVoiceOnboardingRoutes(req, res)) return true;
+		if (await handleVoiceFirstRunRoutes(req, res)) return true;
 	}
-	// Family-member capture route lives under /v1/voice/onboarding/family-member.
-	if (pathname === "/v1/voice/onboarding/family-member") {
+	// Family-member capture route lives under /v1/voice/first-run/family-member.
+	if (pathname === "/v1/voice/first-run/family-member") {
 		const { handleFamilyMemberRoute } = await import(
 			"./routes/family-member-route.js"
 		);

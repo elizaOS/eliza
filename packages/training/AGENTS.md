@@ -34,7 +34,7 @@ contract.
 
 - Text fine-tuning of the Qwen3.5 0.8B / 2B / 4B / 9B / 27B
   backbones used by the current Eliza-1 release line.
-- Drafter training for DFlash speculative decoding.
+- Drafter training for MTP speculative decoding.
 - Voice handling (freeze, cache, evaluate — see §4; we do not retrain
   voice weights right now).
 - Quantization recipes that produce shippable Eliza-1 artifacts:
@@ -50,7 +50,7 @@ This package does NOT own:
   `packages/app-core/src/services/local-inference/`.
 - Kernels — those are `packages/inference/`.
 - The build hook or kernel patches — that is
-  `packages/app-core/scripts/build-llama-cpp-dflash.mjs`.
+  `packages/app-core/scripts/build-llama-cpp-mtp.mjs`.
 
 ---
 
@@ -62,7 +62,7 @@ unchanged for now):
 | Component       | Status                                        | Why                                  |
 | --------------- | --------------------------------------------- | ------------------------------------ |
 | Text backbone   | **Fine-tune** (Qwen3.5 0.8B / 2B / 4B)        | This is the primary product loop.    |
-| DFlash drafter  | **Fine-tune to match the text checkpoint**    | Acceptance rate depends on alignment.|
+| MTP drafter  | **Fine-tune to match the text checkpoint**    | Acceptance rate depends on alignment.|
 | OmniVoice TTS   | **Frozen**                                    | No license to retrain; no eval lift. |
 | ASR             | **Frozen**                                    | Same.                                |
 | Vision (mmproj) | **Frozen** unless the text backbone moves     | Tied to backbone visual layers.      |
@@ -253,7 +253,7 @@ training pipeline:
 - **End-to-end voice loop.** Mic → ASR → text → TTS round trip,
   measuring first-token latency, first-audio latency, barge-in cancel
   latency, and 30-turn endurance.
-- **DFlash acceptance rate.** Drafter token acceptance against the
+- **MTP acceptance rate.** Drafter token acceptance against the
   shipped target. A drafter whose acceptance rate drops below the
   tier's gate is publish-blocking.
 - **Memory + thermal (mobile only).** Peak RSS under the bundle's

@@ -39,11 +39,11 @@ describe("migrateAuthStoreState", () => {
     const migrated = migrateAuthStoreState(
       {
         user: {
-          id: "did:privy:test-user",
+          id: "steward:test:test-user",
           displayName: "Test User",
           username: "test-user",
         },
-        loadedUserId: "did:privy:test-user",
+        loadedUserId: "steward:test:test-user",
         isLoadingProfile: true,
         needsOnboarding: true,
       },
@@ -53,11 +53,11 @@ describe("migrateAuthStoreState", () => {
     // isLoadingProfile and needsOnboarding are ephemeral — not persisted
     expect(migrated).toEqual({
       user: {
-        id: "did:privy:test-user",
+        id: "steward:test:test-user",
         displayName: "Test User",
         username: "test-user",
       },
-      loadedUserId: "did:privy:test-user",
+      loadedUserId: "steward:test:test-user",
     });
   });
 
@@ -72,7 +72,7 @@ describe("migrateAuthStoreState", () => {
     const migrated = migrateAuthStoreState(
       {
         user: {
-          id: "did:privy:test-user",
+          id: "steward:test:test-user",
           displayName: "Test User",
         },
         needsOnboarding: true,
@@ -82,7 +82,7 @@ describe("migrateAuthStoreState", () => {
 
     expect(migrated).toEqual({
       user: {
-        id: "did:privy:test-user",
+        id: "steward:test:test-user",
         displayName: "Test User",
       },
       loadedUserId: null,
@@ -94,11 +94,11 @@ describe("migrateAuthStoreState", () => {
       const migrated = migrateAuthStoreState(
         {
           user: {
-            id: "did:privy:test-user",
+            id: "steward:test:test-user",
             displayName: "Test User",
             username: "test-user",
           },
-          loadedUserId: "did:privy:test-user",
+          loadedUserId: "steward:test:test-user",
           isLoadingProfile: true,
           needsOnboarding: true,
         },
@@ -107,11 +107,11 @@ describe("migrateAuthStoreState", () => {
 
       expect(migrated).toEqual({
         user: {
-          id: "did:privy:test-user",
+          id: "steward:test:test-user",
           displayName: "Test User",
           username: "test-user",
         },
-        loadedUserId: "did:privy:test-user",
+        loadedUserId: "steward:test:test-user",
       });
     }
   });
@@ -119,7 +119,7 @@ describe("migrateAuthStoreState", () => {
   test("drops partial user objects that do not satisfy the persisted user guard", () => {
     const migrated = migrateAuthStoreState(
       {
-        user: { id: "did:privy:test-user" },
+        user: { id: "steward:test:test-user" },
       },
       1,
     );
@@ -131,7 +131,7 @@ describe("migrateAuthStoreState", () => {
     const migrated = migrateAuthStoreState(
       {
         user: {
-          id: "did:privy:test-user",
+          id: "steward:test:test-user",
           displayName: "Test User",
         },
         needsOnboarding: true,

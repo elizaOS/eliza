@@ -18,9 +18,11 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT = ROOT / "docs/evidence/android/eliza_launcher_runtime_evidence.json"
@@ -390,7 +392,9 @@ def write_transcript(path: Path, commands: list[dict[str, object]], health_body:
         f"eliza-evidence: claim_boundary={CLAIM_BOUNDARY}",
     ]
     for item in commands:
-        lines.append(f"$ {' '.join(str(part) for part in item['command'])}")
+        lines.append(
+            f"$ {' '.join(str(part) for part in cast('Iterable[object]', item['command']))}"
+        )
         lines.append(str(item["output"]).rstrip())
         lines.append(f"[ok={item['ok']}]")
     lines.append("$ host-http /api/health")
@@ -711,7 +715,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(f"{report['status']}: android.launcher_runtime ({rel(args.output)})")
     if report["status"] != "PASS":
-        missing = report.get("observations", {}).get("missing_or_false", [])
+        missing = cast("dict[str, Any]", report.get("observations", {})).get("missing_or_false", [])
         print("missing_or_false=" + ",".join(str(item) for item in missing))
     return 0 if report["status"] == "PASS" else 2
 

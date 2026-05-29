@@ -22,11 +22,10 @@ import { BaseSecretStorage } from "./interface.ts";
 
 /**
  * Extended metadata with secrets support
- * Using index signature for compatibility with World.metadata
  */
 interface WorldMetadataWithSecrets {
 	[key: string]: unknown;
-	secrets?: Record<string, StoredSecret | string>;
+	secrets?: Record<string, StoredSecret>;
 }
 
 /**
@@ -74,7 +73,6 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			return null;
 		}
 
-		// Handle different storage formats
 		if (typeof stored === "string") {
 			return stored;
 		}
@@ -141,7 +139,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 		}
 
 		const secrets = worldMeta.secrets;
-		const existingStored = secrets[key] as StoredSecret | string | undefined;
+		const existingStored = secrets[key];
 		const existingConfig =
 			typeof existingStored === "object" ? existingStored.config : undefined;
 
@@ -240,8 +238,11 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 					metadata[key] = { ...storedSecret.config };
 				}
 			} else {
-				// Legacy string format
-				metadata[key] = this.createDefaultConfig(key, context);
+				metadata[key] = this.createDefaultConfig(key, {
+					level: "world",
+					agentId: this.runtime.agentId,
+					worldId: context.worldId,
+				});
 			}
 		}
 
@@ -267,7 +268,11 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			return { ...(stored as StoredSecret).config };
 		}
 
-		return this.createDefaultConfig(key, context);
+		return this.createDefaultConfig(key, {
+			level: "world",
+			agentId: this.runtime.agentId,
+			worldId: context.worldId,
+		});
 	}
 
 	async updateConfig(
@@ -306,22 +311,16 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			return false;
 		}
 
-		if (typeof stored === "object" && "config" in stored) {
-			const storedSecret = stored as StoredSecret;
-			storedSecret.config = {
-				...storedSecret.config,
-				...config,
-			};
-			secrets[key] = storedSecret;
-		} else {
-			// Upgrade legacy format
-			const defaultConfig = this.createDefaultConfig(key, context);
-			const storedSecret: StoredSecret = {
-				value: stored as string,
-				config: { ...defaultConfig, ...config },
-			};
-			secrets[key] = storedSecret;
+		if (!(typeof stored === "object" && "config" in stored)) {
+			return false;
 		}
+
+		const storedSecret = stored as StoredSecret;
+		storedSecret.config = {
+			...storedSecret.config,
+			...config,
+		};
+		secrets[key] = storedSecret;
 
 		metadata.secrets = secrets;
 		await this.runtime.updateWorld(world);
@@ -354,7 +353,7 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 	 */
 	private async getWorldSecrets(
 		worldId: string,
-	): Promise<Record<string, StoredSecret | string>> {
+	): Promise<Record<string, StoredSecret>> {
 		const world = await this.getWorld(worldId);
 		const metadata = world?.metadata as WorldMetadataWithSecrets | undefined;
 		if (!metadata?.secrets) {

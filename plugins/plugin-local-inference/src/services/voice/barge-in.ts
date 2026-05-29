@@ -16,7 +16,7 @@
  *                      → emit `resume-tts`. The agent keeps talking.
  *   - `onWordsDetected({wordCount ≥ 1})` → emit `hard-stop` with a fresh
  *                        `BargeInCancelToken`. Hard-stop means: cancel TTS
- *                        *and* abort the in-flight LLM / DFlash drafter
+ *                        *and* abort the in-flight LLM / MTP drafter
  *                        generation. The engine layer (W9) threads
  *                        `token.signal` into `dispatcher.generate` and polls
  *                        `token.cancelled` at kernel boundaries.

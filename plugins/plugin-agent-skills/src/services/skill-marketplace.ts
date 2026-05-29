@@ -7,7 +7,6 @@ import { logger, resolveStateDir } from "@elizaos/core";
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_SKILLS_MARKETPLACE_URL = "https://clawhub.ai";
-const LEGACY_SKILLSMP_HOST = "skillsmp.com";
 const VALID_NAME = /^[a-zA-Z0-9._-]+$/;
 const VALID_GIT_REF = /^[a-zA-Z0-9][\w./-]*$/;
 /** Timeout for git clone/sparse-checkout (shallow + sparse should be fast). */
@@ -189,7 +188,7 @@ export interface SkillsMarketplaceSearchItem {
   path: string | null;
   tags: string[];
   score: number | null;
-  source: "clawhub" | "skillsmp";
+  source: "clawhub";
 }
 
 export interface InstalledMarketplaceSkill {
@@ -201,7 +200,7 @@ export interface InstalledMarketplaceSkill {
   path: string;
   installPath: string;
   installedAt: string;
-  source: "clawhub" | "skillsmp" | "manual";
+  source: "clawhub" | "manual";
   /** Security scan status, set after installation scan */
   scanStatus?: "clean" | "warning" | "critical" | "blocked";
 }
@@ -213,7 +212,7 @@ export interface InstallSkillInput {
   path?: string;
   name?: string;
   description?: string;
-  source?: "clawhub" | "skillsmp" | "manual";
+  source?: "clawhub" | "manual";
 }
 
 function stateDirBase(): string {
@@ -515,28 +514,12 @@ function resolveMarketplaceBaseUrl(): string {
   return configured || DEFAULT_SKILLS_MARKETPLACE_URL;
 }
 
-function isLegacySkillsmp(baseUrl: string): boolean {
-  try {
-    const hostname = new URL(baseUrl).hostname.toLowerCase();
-    return (
-      hostname === LEGACY_SKILLSMP_HOST || hostname.endsWith(".skillsmp.com")
-    );
-  } catch {
-    return false;
-  }
-}
-
 export async function searchSkillsMarketplace(
   query: string,
   opts?: { limit?: number; aiSearch?: boolean },
 ): Promise<SkillsMarketplaceSearchItem[]> {
   const baseUrl = resolveMarketplaceBaseUrl();
-  const legacySkillsmp = isLegacySkillsmp(baseUrl);
-  const endpoint = legacySkillsmp
-    ? opts?.aiSearch
-      ? "/api/v1/skills/ai-search"
-      : "/api/v1/skills/search"
-    : "/api/v1/search";
+  const endpoint = "/api/v1/search";
   const url = new URL(`${baseUrl}${endpoint}`);
   if (query.trim()) url.searchParams.set("q", query.trim());
   url.searchParams.set(
@@ -547,16 +530,6 @@ export async function searchSkillsMarketplace(
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
-
-  if (legacySkillsmp) {
-    const apiKey = process.env.SKILLSMP_API_KEY?.trim();
-    if (!apiKey) {
-      throw new Error(
-        "SKILLSMP_API_KEY is not set. Add it to enable Skills marketplace search.",
-      );
-    }
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
 
   const searchSpan = createIntegrationTelemetrySpan({
     boundary: "marketplace",
@@ -652,7 +625,7 @@ export async function searchSkillsMarketplace(
       path: skillPath,
       tags: normalizeTags(skill.tags ?? skill.topics),
       score,
-      source: legacySkillsmp ? "skillsmp" : "clawhub",
+      source: "clawhub",
     });
   }
 

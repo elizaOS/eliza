@@ -211,11 +211,11 @@ export class MetricsCollector {
     if (bargeInTrigger !== undefined && bargeInStop !== undefined) {
       result.bargeInResponseMs = round1(bargeInStop - bargeInTrigger);
     }
-    if (driverResult.dflashAccepted !== undefined) {
-      result.dflashAccepted = driverResult.dflashAccepted;
+    if (driverResult.mtpAccepted !== undefined) {
+      result.mtpAccepted = driverResult.mtpAccepted;
     }
-    if (driverResult.dflashDrafted !== undefined) {
-      result.dflashDrafted = driverResult.dflashDrafted;
+    if (driverResult.mtpDrafted !== undefined) {
+      result.mtpDrafted = driverResult.mtpDrafted;
     }
     const peakGpu = this.resourceUsage().peakGpuPct;
     if (peakGpu !== undefined) result.peakGpuPct = peakGpu;

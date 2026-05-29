@@ -16,16 +16,16 @@ describe("readRuntimeModeEnvOverride", () => {
 		).toBeNull();
 	});
 
-	it("recognises spawn aliases", () => {
+	it("ignores removed spawn aliases", () => {
 		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "spawn" })).toBe(
-			"spawn",
+			null,
 		);
 		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "HTTP" })).toBe(
-			"spawn",
+			null,
 		);
 		expect(
 			readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "http-server" }),
-		).toBe("spawn");
+		).toBe(null);
 	});
 
 	it("recognises ffi aliases", () => {
@@ -62,11 +62,11 @@ describe("inferenceRuntimeMode", () => {
 
 		expect(
 			inferenceRuntimeMode({
-				env: { ELIZA_INFERENCE_MODE: "spawn" },
-				platform: "ios",
-				isCapacitorNative: true,
+				env: { ELIZA_INFERENCE_MODE: "native-bridge" },
+				platform: "linux",
+				isCapacitorNative: false,
 			}),
-		).toBe("spawn");
+		).toBe("native-bridge");
 	});
 
 	it("Capacitor native marker forces ffi when no env override", () => {
@@ -96,7 +96,7 @@ describe("inferenceRuntimeMode", () => {
 		).toBe("ffi");
 	});
 
-	it("darwin / linux / win32 map to spawn", () => {
+	it("darwin / linux / win32 map to ffi", () => {
 		for (const platform of ["darwin", "linux", "win32"] as NodeJS.Platform[]) {
 			expect(
 				inferenceRuntimeMode({
@@ -104,25 +104,25 @@ describe("inferenceRuntimeMode", () => {
 					platform,
 					isCapacitorNative: false,
 				}),
-			).toBe("spawn");
+			).toBe("ffi");
 		}
 	});
 
-	it("exotic platforms default to spawn", () => {
+	it("exotic platforms default to ffi", () => {
 		expect(
 			inferenceRuntimeMode({
 				env: {},
 				platform: "freebsd" as NodeJS.Platform,
 				isCapacitorNative: false,
 			}),
-		).toBe("spawn");
+		).toBe("ffi");
 		expect(
 			inferenceRuntimeMode({
 				env: {},
 				platform: "aix" as NodeJS.Platform,
 				isCapacitorNative: false,
 			}),
-		).toBe("spawn");
+		).toBe("ffi");
 	});
 
 	it("unknown override values are ignored (fall back to platform)", () => {
@@ -132,17 +132,13 @@ describe("inferenceRuntimeMode", () => {
 				platform: "linux",
 				isCapacitorNative: false,
 			}),
-		).toBe("spawn");
+		).toBe("ffi");
 	});
 });
 
 describe("inferencePlatformClass", () => {
-	it("spawn → desktop", () => {
-		expect(inferencePlatformClass("spawn")).toBe("desktop");
-	});
-
-	it("ffi → mobile", () => {
-		expect(inferencePlatformClass("ffi")).toBe("mobile");
+	it("ffi → desktop", () => {
+		expect(inferencePlatformClass("ffi")).toBe("desktop");
 	});
 
 	it("native-bridge → mobile", () => {

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+Set_root_password ()
+{
+	echo "- setting root password"
+	echo "root:root" | chpasswd
+	touch /var/lib/live/config/rootpassword
+}
+
+if grep -qw "debug=root" /proc/cmdline
+then
+	Set_root_password
+fi

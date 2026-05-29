@@ -2,12 +2,12 @@ import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import { cn } from "../../lib/utils";
 import {
-  OnboardingStepDivider,
-  onboardingBodyTextShadowStyle,
-  onboardingDescriptionClass,
-  onboardingEyebrowClass,
-  onboardingTitleClass,
-} from "../onboarding/onboarding-step-chrome";
+  SetupStepDivider,
+  setupBodyTextShadowStyle,
+  setupDescriptionClass,
+  setupEyebrowClass,
+  setupTitleClass,
+} from "../setup/setup-step-chrome";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
@@ -146,7 +146,7 @@ function PasswordTab({
             checked={rememberDevice}
             onChange={(e) => setRememberDevice(e.target.checked)}
             disabled={isSubmitting}
-            className="h-4 w-4 rounded border-border accent-primary"
+            className="h-4 w-4 rounded-sm border-border accent-primary"
           />
           Remember this device for 30 days
         </label>
@@ -155,7 +155,7 @@ function PasswordTab({
       {submitState.phase === "error" && (
         <p
           role="alert"
-          className="rounded-lg border border-[color:color-mix(in_srgb,var(--danger)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-3 text-sm text-danger"
+          className="rounded-sm border border-[color:color-mix(in_srgb,var(--danger)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--danger)_12%,transparent)] px-4 py-3 text-sm text-danger"
         >
           {submitState.message}
         </p>
@@ -177,7 +177,7 @@ function PasswordTab({
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
 const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-xl";
+  "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95 backdrop-blur-xl";
 
 export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
   const remotePasswordMissing = reason === "remote_password_not_configured";
@@ -191,22 +191,19 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
       <Card className={SCREEN_CARD_CLASS}>
         <CardHeader className="pb-2 pt-6 px-6">
           <div className="mb-1">
-            <p
-              className={onboardingEyebrowClass}
-              style={onboardingBodyTextShadowStyle}
-            >
+            <p className={setupEyebrowClass} style={setupBodyTextShadowStyle}>
               Eliza
             </p>
-            <OnboardingStepDivider />
+            <SetupStepDivider />
             <CardTitle
-              className={cn(onboardingTitleClass, "mt-2")}
-              style={{ textShadow: "var(--onboarding-text-shadow-strong)" }}
+              className={cn(setupTitleClass, "mt-2")}
+              style={{ textShadow: "var(--first-run-text-shadow-strong)" }}
             >
               {remotePasswordMissing ? "Remote access blocked" : "Sign in"}
             </CardTitle>
             <p
-              className={cn(onboardingDescriptionClass, "mt-2")}
-              style={onboardingBodyTextShadowStyle}
+              className={cn(setupDescriptionClass, "mt-2")}
+              style={setupBodyTextShadowStyle}
             >
               {remotePasswordMissing
                 ? "A remote password is required before this instance can accept browser logins from another machine."
@@ -219,7 +216,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
           {remotePasswordMissing ? (
             <div
               role="alert"
-              className="space-y-3 rounded-lg border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
+              className="space-y-3 rounded-sm border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
             >
               <p>
                 The remote agent has no owner password configured yet, so it
@@ -235,7 +232,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                     From a browser on the host machine, open this URL then go to
                     Settings → Security:
                   </p>
-                  <code className="block break-all rounded bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
                     http://localhost:31337/
                   </code>
                 </div>
@@ -243,7 +240,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                   <p className="text-xs text-muted-foreground/80">
                     Or via SSH (replace YOURNAME and YOURPASS with your own):
                   </p>
-                  <code className="block break-all rounded bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
                     {`curl -X POST http://127.0.0.1:31337/api/auth/setup -H "Content-Type: application/json" -d '{"displayName":"YOURNAME","password":"YOURPASS"}'`}
                   </code>
                 </div>

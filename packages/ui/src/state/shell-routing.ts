@@ -1,5 +1,5 @@
 import type { Tab } from "../navigation";
-import type { ShellView } from "./types";
+import type { FirstRunMode, ShellView } from "./types";
 import type { UiShellMode } from "./ui-preferences";
 
 export function deriveUiShellModeForTab(tab: Tab): UiShellMode {
@@ -23,4 +23,13 @@ export function getTabForShellView(view: ShellView, lastNativeTab: Tab): Tab {
   }
 
   return lastNativeTab;
+}
+
+export function shouldStartAtCharacterSelectOnLaunch(_params: {
+  firstRunNeedsOptions: boolean;
+  firstRunMode: FirstRunMode;
+  navPath: string;
+  urlTab: Tab | null;
+}): boolean {
+  return false;
 }

@@ -7,6 +7,7 @@ import re
 import uuid
 from collections import Counter
 from pathlib import Path
+from typing import SupportsInt, cast
 
 import yaml
 
@@ -117,6 +118,10 @@ def clean_label(value: str) -> str:
         .replace("PLACEHOLDER", "DEVELOPMENT_PATTERN")
         .replace("placeholder", "development pattern")
     )
+
+
+def record_int(value: object) -> int:
+    return int(cast(SupportsInt, value))
 
 
 def net_ids(text: str) -> dict[str, int]:
@@ -974,7 +979,7 @@ def build_net_map(
 
 def format_library_block(
     old_block: str, old_name: str, new_name: str, ids: dict[str, int]
-) -> tuple[str, dict[str, int]]:
+) -> tuple[str, dict[str, object]]:
     lib_text = (LIB / f"{new_name}.kicad_mod").read_text().rstrip()
     lib_lines = lib_text.splitlines()
     ref = first_match(r'\(fp_text reference "([^"]+)"', old_block, old_name)
@@ -1330,12 +1335,14 @@ def main() -> int:
         "remaining_placeholder_marker_count": output.count("placeholder_not_fabrication_footprint"),
         "development_bound_marker_count": output.count("development_footprint_bound_not_release"),
         "embedded_library_body_count": sum(
-            int(item.get("embedded_library_body", 0)) for item in records
+            record_int(item.get("embedded_library_body", 0)) for item in records
         ),
         "assigned_pad_net_count": sum(
-            int(item.get("assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("assigned_pad_net_count", 0)) for item in records
         ),
-        "unassigned_pad_count": sum(int(item.get("unassigned_pad_count", 0)) for item in records),
+        "unassigned_pad_count": sum(
+            record_int(item.get("unassigned_pad_count", 0)) for item in records
+        ),
         "unassigned_pad_disposition_counts": dict(
             sorted(
                 sum(
@@ -1343,8 +1350,9 @@ def main() -> int:
                         Counter(
                             {
                                 str(key): int(value)
-                                for key, value in item.get(
-                                    "unassigned_pad_disposition_counts", {}
+                                for key, value in cast(
+                                    "dict[object, int]",
+                                    item.get("unassigned_pad_disposition_counts", {}),
                                 ).items()
                             }
                         )
@@ -1355,16 +1363,16 @@ def main() -> int:
             )
         ),
         "contract_sequence_assigned_pad_net_count": sum(
-            int(item.get("contract_sequence_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("contract_sequence_assigned_pad_net_count", 0)) for item in records
         ),
         "split_interconnect_assigned_pad_net_count": sum(
-            int(item.get("split_interconnect_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("split_interconnect_assigned_pad_net_count", 0)) for item in records
         ),
         "support_pattern_assigned_pad_net_count": sum(
-            int(item.get("support_pattern_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("support_pattern_assigned_pad_net_count", 0)) for item in records
         ),
         "compute_som_assigned_pad_net_count": sum(
-            int(item.get("compute_som_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("compute_som_assigned_pad_net_count", 0)) for item in records
         ),
         "segment_count": len(re.findall(r"\n\s*\(segment\b", output)),
         "via_count": len(re.findall(r"\n\s*\(via\b", output)),

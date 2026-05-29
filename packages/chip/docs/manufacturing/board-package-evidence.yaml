@@ -60,8 +60,8 @@ placeholder_blockers:
     file: docs/board/kicad/e1-demo/fab-notes.md
     required_text:
       - "Evidence class: `non_release_demo_planning`"
-      - Footprint is not derived from a package vendor drawing
-      - No SI/PI analysis has been performed
+      - not derived from an approved package-vendor drawing
+      - "SI/PI and PDN review approval: `missing`"
 artifact_groups:
   package_vendor:
     owner: package_closure

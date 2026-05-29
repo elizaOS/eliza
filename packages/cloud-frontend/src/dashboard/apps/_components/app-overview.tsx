@@ -374,7 +374,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-[#FF5800] hover:bg-[#FF5800]/80"
+                    className="bg-[#FF5800] hover:bg-black hover:text-white"
                   >
                     {t("cloud.apps.overview.regenerate", {
                       defaultValue: "Regenerate",
@@ -584,7 +584,7 @@ function InfoRow({
           href={href}
           target={href.startsWith("mailto:") ? undefined : "_blank"}
           rel={href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
-          className="text-sm text-white hover:text-[#FF5800] transition-colors flex items-center gap-1 mt-0.5"
+          className="text-sm text-white hover:opacity-75 transition-opacity flex items-center gap-1 mt-0.5"
         >
           {icon}
           <span className="truncate">{value}</span>

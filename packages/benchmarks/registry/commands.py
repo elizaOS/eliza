@@ -254,7 +254,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
         # caller asks for the eliza agent or any LLM-backed provider.
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--provider", agent])
         elif provider_name in {
             "eliza",
@@ -283,7 +283,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--provider", agent])
             if model.model:
                 args.extend(["--model", model.model])
@@ -363,7 +363,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--no-docker")
         # Agent runtime selection
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"hermes", "openclaw"}:
+        if agent in {"hermes", "openclaw", "smithers"}:
             args.extend(["--runtime", agent])
         elif agent == "eliza" or extra.get("elizaos") is True:
             args.extend(["--runtime", "bridge"])
@@ -407,7 +407,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         harness = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
-        if harness in {"eliza", "hermes", "openclaw"}:
+        if harness in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--harness", harness])
         quick = extra.get("quick")
         if quick is True:
@@ -447,7 +447,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # use that Python bridge surface, but their delegate clients must keep
         # the real provider/model from the orchestrator environment.
         bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--agent-harness", str(agent)])
             if model.model:
                 args.extend(["--model", model.model])
@@ -512,7 +512,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--agent-harness", agent])
             args.extend(["--agent-provider", model.provider or "cerebras"])
             if model.model:
@@ -621,7 +621,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _swe_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.swe_bench.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--harness", agent])
         if model.model:
             args.extend(["--model", model.model])
@@ -653,7 +653,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--harness", agent])
         if model.model:
             args.extend(["--model", model.model])
@@ -824,11 +824,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        provider_name = (model.provider or "").strip().lower()
+        provider_name = str(extra.get("model_provider") or model.provider or "").strip().lower()
+        local_eliza_providers = {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}
         if extra.get("mock") is True or provider_name == "mock":
             args.append("--mock")
             if model.model:
                 args.extend(["--model", model.model])
+        elif provider_name in local_eliza_providers:
+            # Local eliza-1 VLM via llama-mtmd-cli — no agent server / API.
+            args.extend(["--provider", provider_name])
+            tier = str(extra.get("tier") or model.model or "eliza-1-9b").strip() or "eliza-1-9b"
+            args.extend(["--model", tier])
         elif agent == "eliza" or provider_name in {
             "cerebras",
             "openai",
@@ -1169,7 +1175,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
         scenario = extra.get("scenario")
         scenario_name = scenario.strip() if isinstance(scenario, str) and scenario.strip() else "inbox_triage"
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             output_path = output_dir / f"trajectory_{scenario_name}.json"
             args = [
                 python,
@@ -1302,10 +1308,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             profile = "elevenlabs"
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs", "mock", "local-cerebras"}:
+        if profile not in {"groq", "elevenlabs", "mock", "local-cerebras", "local-eliza1"}:
             raise ValueError(
                 f"voicebench: unsupported profile '{profile}' "
-                "(expected groq, elevenlabs, local-cerebras, or mock)"
+                "(expected groq, elevenlabs, local-cerebras, local-eliza1, or mock)"
             )
         args.append(f"--profile={profile}")
         iterations = extra.get("iterations")
@@ -1616,7 +1622,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         payment_mode = extra.get("payment") is True or extra.get("payments") is True
         if agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
             args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
-        elif agent in {"eliza", "hermes", "openclaw"}:
+        elif agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--agent", agent])
         else:
             args.extend(["--agent", "eliza"])

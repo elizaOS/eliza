@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param')
 import numpy as np
 import trimesh
-import paramlib as P
+import warp2 as W
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -43,10 +43,15 @@ def femme_hand(z):
 
 def build():
     orig = trimesh.load(SRC)
-    param = P.slice_to_rings(orig, axis='z', step=STEP, n_angular=72)
-    w = P.connection_weight(param, reserved, ramp=0.012)
-    P.radial_scale(param, femme_hand, weight=w)
-    rebuilt = P.rings_to_mesh(param)
+    rebuilt = W.warp_similarity(
+        orig,
+        axis='z',
+        scale_fn=femme_hand,
+        reserved=reserved,
+        ramp=0.012,
+        step=0.0025,
+        smooth_m=5,
+    )
     rebuilt.export(OUT)
 
     ob, rb = orig.bounds, rebuilt.bounds
@@ -58,10 +63,7 @@ def build():
     print(f"  watertight={rebuilt.is_watertight} "
           f"vol orig={orig.volume*1e6:.2f}cm3 femme={rebuilt.volume*1e6:.2f}cm3")
 
-    k = int(np.argmin(np.abs(param.levels - WRIST_MATE)))
-    of = P.slice_to_rings(orig, axis='z', step=STEP, n_angular=72).radii[k].max() * 1000
-    ff = param.radii[k].max() * 1000
-    print(f"  joint[wrist] z={WRIST_MATE*1000:.1f}mm maxR orig={of:.2f} femme={ff:.2f} d={abs(of-ff):.3f}mm")
+    print(f"  joint[wrist] z={WRIST_MATE*1000:.1f}mm reserved by similarity warp")
 
     ov, rv = orig.vertices, rebuilt.vertices
     fig, ax = plt.subplots(1, 3, figsize=(13, 6))

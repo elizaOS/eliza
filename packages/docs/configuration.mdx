@@ -13,11 +13,11 @@ canonical runtime routing fields that now drive hosting and provider selection.
 By default, Eliza stores its configuration at:
 
 ```
-~/.eliza/eliza.json
+~/.local/state/eliza/eliza.json
 ```
 
 <Info>
-The config directory is `~/.eliza` and the config file is `eliza.json` inside it. The CLI binary is `eliza` and the npm package name is `elizaai`.
+The config directory is `~/.local/state/eliza` and the config file is `eliza.json` inside it. The CLI binary is `eliza` and the npm package name is `elizaai`.
 </Info>
 
 ### Overriding the Location
@@ -26,10 +26,10 @@ Two environment variables control where Eliza looks for configuration:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `ELIZA_STATE_DIR` | Override the entire state directory | `~/.eliza` |
-| `ELIZA_CONFIG_PATH` | Override the config file path directly | `~/.eliza/eliza.json` |
+| `ELIZA_STATE_DIR` | Override the entire state directory | `~/.local/state/eliza` |
+| `ELIZA_CONFIG_PATH` | Override the config file path directly | `~/.local/state/eliza/eliza.json` |
 
-`ELIZA_CONFIG_PATH` takes precedence over `ELIZA_STATE_DIR`. Both support `~` expansion for the home directory. For backwards compatibility, the legacy names `ELIZA_STATE_DIR` and `ELIZA_CONFIG_PATH` are also accepted as fallbacks.
+`ELIZA_CONFIG_PATH` takes precedence over `ELIZA_STATE_DIR`. Both support `~` expansion for the home directory. Branded builds may also provide `MILADY_STATE_DIR` and `MILADY_CONFIG_PATH` as aliases.
 
 ```bash
 # Use a custom state directory (config lives at /opt/eliza/eliza.json)
@@ -45,9 +45,9 @@ The state directory also contains:
 
 | Path | Purpose |
 |------|---------|
-| `~/.eliza/models/` | Cached model provider lists (per-provider JSON files) |
-| `~/.eliza/credentials/` | OAuth credentials (overridable via `ELIZA_OAUTH_DIR`) |
-| `~/.eliza/credentials/oauth.json` | OAuth token storage |
+| `~/.local/state/eliza/models/` | Cached model provider lists (per-provider JSON files) |
+| `~/.local/state/eliza/credentials/` | OAuth credentials (overridable via `ELIZA_OAUTH_DIR`) |
+| `~/.local/state/eliza/credentials/oauth.json` | OAuth token storage |
 
 ## Canonical Runtime Routing
 
@@ -177,7 +177,7 @@ Eliza loads environment variables from two sources:
 </Tabs>
 
 <Warning>
-The config file is written with mode `0o600` (owner read+write only) because the `env` section may contain API keys. Keep secrets in the `env` section or use a separate `~/.eliza/.env` file.
+The config file is written with mode `0o600` (owner read+write only) because the `env` section may contain API keys. Keep secrets in the `env` section or use a separate `~/.local/state/eliza/.env` file.
 </Warning>
 
 ## Top-Level Structure
@@ -564,7 +564,7 @@ Connectors integrate Eliza with messaging platforms. Configure them under `conne
     },
     whatsapp: {
       enabled: true,
-      authDir: "~/.eliza/whatsapp-auth",
+      authDir: "~/.local/state/eliza/whatsapp-auth",
     },
   },
 }
@@ -780,7 +780,7 @@ Eliza supports two database backends:
       database: {
         provider: "pglite",
         pglite: {
-          dataDir: "~/.eliza/workspace/.eliza/.elizadb",
+          dataDir: "~/.local/state/eliza/workspace/.elizadb",
         },
       },
     }
@@ -825,7 +825,7 @@ Eliza supports two database backends:
       ],
       sessions: {
         enabled: true,
-        exportDir: "~/.eliza/qmd-sessions",
+        exportDir: "~/.local/state/eliza/qmd-sessions",
         retentionDays: 30,
       },
       update: {
@@ -1093,7 +1093,7 @@ Configure Model Context Protocol (MCP) servers:
 {
   cron: {
     enabled: true,
-    store: "~/.eliza/cron-store.json",
+    store: "~/.local/state/eliza/cron-store.json",
     maxConcurrentRuns: 3,
   },
 }
@@ -1246,7 +1246,7 @@ Key environment variables that affect Eliza behavior:
 
 | Variable | Purpose |
 |----------|---------|
-| `ELIZA_STATE_DIR` | Override state directory (`~/.eliza`) |
+| `ELIZA_STATE_DIR` | Override state directory (`~/.local/state/eliza`) |
 | `ELIZA_CONFIG_PATH` | Override config file path directly |
 | `ELIZA_OAUTH_DIR` | Override OAuth credentials directory |
 
@@ -1291,7 +1291,7 @@ See the [Model Providers](/model-providers) page for a full list of supported pr
 
 ## Editing config
 
-To change values, edit `~/.eliza/eliza.json` directly. It supports JSON5 (comments, trailing commas, etc.). `ELIZA_STATE_DIR` and `ELIZA_CONFIG_PATH` redirect that location.
+To change values, edit `~/.local/state/eliza/eliza.json` directly. It supports JSON5 (comments, trailing commas, etc.). `ELIZA_STATE_DIR` and `ELIZA_CONFIG_PATH` redirect that location.
 
 The CLI does not provide config get/set/show commands — read or write the JSON file with your editor, or pipe it through `jq` for scripted access.
 

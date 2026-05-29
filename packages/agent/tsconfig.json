@@ -44,6 +44,9 @@
         "../../plugins/plugin-elizamaker/src/index.ts"
       ],
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
@@ -53,15 +56,11 @@
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/src/index.ts"
       ],
-      "@elizaos/plugin-remote-manifest/*": [
-        "../plugin-remote-manifest/src/*"
-      ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
       "@elizaos/plugin-worker-runtime": [
         "../plugin-worker-runtime/src/index.ts"
       ],
-      "@elizaos/plugin-worker-runtime/*": [
-        "../plugin-worker-runtime/src/*"
-      ],
+      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
       "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
@@ -93,6 +92,7 @@
         "../../plugins/plugin-contacts/src/index.ts"
       ],
       "@elizaos/agent": ["./src/index.ts"],
+      "@elizaos/agent/*": ["./src/*"],
       "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
@@ -110,7 +110,6 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/workflows": ["../workflows/src/index.ts"],
       "@elizaos/agent/api": ["./src/api/index.ts"],
       "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
@@ -119,6 +118,8 @@
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],

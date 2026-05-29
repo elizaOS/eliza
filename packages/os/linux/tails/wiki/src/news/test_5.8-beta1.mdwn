@@ -1,0 +1,147 @@
+[[!meta title="Test the new Persistent Storage and Wayland support"]]
+[[!meta date="Thu, 03 Nov 2022 20:00:00 -0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+We are extremely proud to present you a beta of 2 new major features of Tails:
+a complete redesign of the Persistent Storage and the migration to Wayland,
+which brings a better *Unsafe Browser*.
+
+This beta also includes an easier way to enter Tor bridges in Tails by scanning
+a QR code.
+
+This work has been made possible by donations from users like you. If you like
+these changes and want more, donate now to fund our work in 2023.
+
+We will only release these features officially in Tails 5.8 (December 20), but
+you can try Tails 5.8~beta1 already!
+
+[[!toc levels=1]]
+
+# New Persistent Storage
+
+Since January 2021, we have been working on a complete redesign of the
+Persistent Storage.
+
+The Persistent Storage hasn't changed much since its first release in 2012
+because the code was hard to modify and improve. But, we learned from users
+that the Persistent Storage could do a lot more for you if it had more features
+and was easier to use.
+
+We've worked hard since 2021 to implement a [new
+design](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/Persistent-Storage-redesign)
+and completely rewrite the code in Python.
+
+The new Persistent Storage doesn't require restarting after creating it or each
+time you activate a new feature.
+
+It will also make it easier for us to persist more settings in the future.
+
+And finally, it's looks so much better!
+
+[[!img create.png link="no" alt=""]]
+
+[[!img features.png link="no" alt=""]]
+
+# Wayland and better Unsafe Browser
+
+Tails 5.8~beta1 replaces the deprecated X.Org display system with Wayland.
+
+Wayland brings more security in depth to Tails by making it harder for a
+compromised application in Tails to compromise or misuse another application.
+
+For example, since [[Tails 4.8|news/version_4.8]], the *Unsafe Browser* is
+disabled by default because a security vulnerability in another application in
+Tails could start an invisible *Unsafe Browser*, reveal your IP address, and
+[[deanonymize you|doc/anonymous_internet/unsafe_browser#security]].
+
+Wayland fixes this vulnerability and makes it safe to re-enable the *Unsafe Browser*
+by default.
+
+Wayland also brings in other features that were not working yet in the *Unsafe
+Browser*:
+
+- Sound
+- Uploads and downloads
+- Alternative input methods for Chinese and other non-Latin languages
+- Accessibility features like the screen reader and virtual keyboard
+
+Enjoy!
+
+# QR code scanning for Tor bridges
+
+Tails 5.8~beta1 makes it easier to enter new Tor bridges in Tails by scanning a
+QR code.
+
+To get a QR code, you can either:
+
+- Send an empty email to <bridges@torproject.org> from a Gmail or Riseup email
+  address.
+
+- Get bridges from <https://bridges.torproject.org/> and print the QR code on
+  paper.
+
+We are aware that the QR codes that are currently provided are too big to be
+easy to scan. We are [working with
+Tor](https://gitlab.torproject.org/tpo/anti-censorship/bridgedb/-/issues/40052)
+to make them smaller and easier to scan.
+
+[[!img qr_code.png link="no" alt=""]]
+
+# How to test Tails 5.8~beta1?
+
+You can either install Tails 5.8~beta1 on a new USB stick or upgrade your Tails
+USB stick with an existing Persistent Storage to Tails 5.8~beta1.
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem to <tails-testers@boum.org> (public mailing
+list).
+
+# Get Tails 5.8~beta1
+
+## To download 5.8~beta1
+
+### Direct download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+1. Make a backup a your current
+   Persistent Storage in case something goes wrong.
+
+1. We don't provide automatic an update to 5.8~beta1, but you can do a [[manual
+   upgrade|doc/upgrade/#manual]] to 5.8~beta1 and keep your current Persistent
+   Storage.
+
+1. If you want to stop using 5.8~beta1, you can do a manual upgrade to [[Tails
+   5.6|news/version_5.6]].
+
+   Once Tails 5.7 is out on November 22, you will have to do a manual
+   upgrade from Tails 5.8~beta1 to 5.7.
+
+This work has been made possible by donations from users like you. If you like
+these changes and want more, donate now to fund our work in 2023.

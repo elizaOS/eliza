@@ -235,7 +235,7 @@ export const ToolsWebSchema = z
 
 /**
  * Top-level cross-tool cache config. Drives the two-tier `ToolCallCache`
- * (in-memory LRU + on-disk persistent under ~/.eliza/tool-cache).
+ * (in-memory LRU + on-disk persistent under <stateDir>/tool-cache).
  *
  * Per-tool TTL overrides live under `perTool` keyed by tool name; values
  * are minutes for parity with the existing web search/fetch knobs. The
@@ -494,6 +494,7 @@ export const AgentEntrySchema = z
     memorySearch: MemorySearchSchema,
     advancedMemory: z.boolean().optional(),
     agentOrchestrator: z.boolean().optional(),
+    gitpathologist: z.boolean().optional(),
     humanDelay: HumanDelaySchema.optional(),
     heartbeat: HeartbeatSchema,
     identity: IdentitySchema,
@@ -731,6 +732,7 @@ export const AgentDefaultsSchema = z
     memorySearch: MemorySearchSchema,
     advancedMemory: z.boolean().optional(),
     agentOrchestrator: z.boolean().optional(),
+    gitpathologist: z.boolean().optional(),
     contextPruning: z
       .object({
         mode: z.union([z.literal("off"), z.literal("cache-ttl")]).optional(),

@@ -3,8 +3,8 @@
 This is the **server-side** local-inference service used by the agent
 runtime (`@elizaos/app-core`). It owns:
 
-- KV-cache slot management (`cache-bridge.ts`, `dflash-cache-flow.test.ts`).
-- llama-server lifecycle (`dflash-server.ts`, `dflash-doctor.ts`,
+- KV-cache slot management (`cache-bridge.ts`, `mtp-cache-flow.test.ts`).
+- llama-server lifecycle (`ffi-streaming-backend.ts`, `mtp-doctor.ts`,
   `llama-server-metrics.ts`, `session-pool.ts`).
 - Conversation registry (`conversation-registry.ts`).
 - Backend dispatch (`backend.ts`, `engine.ts`, `handler-registry.ts`,
@@ -37,7 +37,7 @@ and the local files in this directory are thin re-exports:
   `@elizaos/shared`.
 - `types.ts` — re-exports `AgentModelSlot`, `InstalledModel`,
   `ModelAssignments`, `TextGenerationSlot`, and `AGENT_MODEL_SLOTS` from
-  `@elizaos/shared`. Server-only types (DFlash kernel metadata,
+  `@elizaos/shared`. Server-only types (MTP kernel metadata,
   `LocalRuntimeOptimizations`, `loadedCacheTypeK`/`...V`/`GpuLayers`,
   etc.) remain declared in this file because the UI public client has
   no consumer for them.
@@ -48,17 +48,17 @@ These files exist in both `packages/app-core` and `packages/ui` and are
 intentionally **not bundled:
 
 - `catalog.ts` — server adds `contextLength`, `optimizations.requiresKernel`,
-  and DFlash drafter variants that the UI public catalog does not surface.
+  and MTP drafter variants that the UI public catalog does not surface.
 - `recommendation.ts` — server has kernel-availability filtering
-  (`recommendation.test.ts` covers DFlash gating) that depends on
+  (`recommendation.test.ts` covers MTP gating) that depends on
   server-only `LocalRuntimeOptimizations.requiresKernel`.
 - `active-model.ts` — server resolves load args against the loader's
   KV-cache type / GPU-layer overrides (server-only types).
 - `device-bridge.ts` — server forwards `promptCacheKey` from the runtime
   cache plan.
-- `dflash-server.ts` — server owns the full llama-server lifecycle, the
+- `ffi-streaming-backend.ts` — server owns the full llama-server lifecycle, the
   in-process binding fallback, and metrics scraping.
-- `dflash-doctor.ts` — uses tokenizer parity catalog metadata that only
+- `mtp-doctor.ts` — uses tokenizer parity catalog metadata that only
   the server catalog declares.
 - `engine.ts`, `handler-registry.ts`, `hardware.ts`, `index.ts`,
   `providers.ts`, `router-handler.ts`, `service.ts` — server-side

@@ -14,9 +14,6 @@ import type {
   TriggerTaskMetadata,
 } from "./types.ts";
 
-// Triggers always dispatch through the workflow service. Any stale `kind: "text"`
-// record encountered at dispatch time is logged and skipped.
-
 export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
 export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
 const HEARTBEAT_TASK_TAGS = ["queue", "repeat", "heartbeat"] as const;
@@ -260,10 +257,6 @@ export async function executeTriggerTask(
     };
   }
 
-  // Phase 2E: every trigger that reaches dispatch is `kind: "workflow"`.
-  // Stale on-disk text triggers are migrated by the boot migration; if we
-  // encounter one before that runs, log a warning and skip — re-dispatch
-  // will pick it up after migration without crashing the loop.
   if (trigger.kind !== "workflow") {
     runtime.logger.warn(
       {
@@ -272,7 +265,7 @@ export async function executeTriggerTask(
         triggerId: trigger.triggerId,
         kind: trigger.kind,
       },
-      "Trigger is not workflow-kind; skipping (boot migration will convert it)",
+      "Trigger is not workflow-kind; skipping",
     );
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
     return { status: "skipped", taskDeleted: false };

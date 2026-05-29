@@ -37,6 +37,7 @@ import type {
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
@@ -163,7 +164,12 @@ function requestsDeferredUserReply(text: string): boolean {
 }
 
 function readOp(params: Record<string, unknown>): TaskOp | null {
-  const raw = typeof params.action === "string" ? params.action : undefined;
+  const raw = [
+    params.action,
+    params.op,
+    params.subaction,
+    params.operation,
+  ].find((value): value is string => typeof value === "string");
   if (!raw) return null;
   const normalized = raw.toLowerCase().replace(/-/g, "_");
   return (SUPPORTED_OPS as readonly string[]).includes(normalized)
@@ -376,8 +382,8 @@ function taskWithResolvedRoute(
     rooms
       ? `Known swarm rooms:\n${rooms}`
       : "Known swarm rooms: task room only.",
-    "If you are blocked, need user input, or must ask the task creator a question, report it with routing kind QUESTION_FOR_TASK_CREATOR.",
-    "If you may conflict with another agent, are editing shared files, or need to share progress with peer agents, report it with routing kind AGENT_COORDINATION.",
+    "If you are blocked, need user input, or must ask the task creator a question, write the question as your reply text and stop. Do not prefix the reply with routing-kind labels (no QUESTION_FOR_TASK_CREATOR / AGENT_COORDINATION headers, no markdown banners) — the orchestrator classifies routing from the session event, not your prose.",
+    "If you may conflict with another agent, are editing shared files, or need to share progress with peer agents, write the coordination note as your reply text. Same rule: no routing-kind labels or banners in the text itself.",
     "When you finish, include what changed, tests run, remaining risks, and whether any peer coordination is still needed.",
     "--- User Task ---",
     task,
@@ -1573,11 +1579,18 @@ async function runShare(
 
 // ── action: provision_workspace (CREATE_WORKSPACE) ─────────────────────────
 
+function readOptionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
 async function runProvisionWorkspace(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  _params: Record<string, unknown>,
+  params: Record<string, unknown>,
   _content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
@@ -1603,7 +1616,16 @@ async function runProvisionWorkspace(
     parentWorkspaceId?: string;
   };
 
-  let repo = content.repo;
+  const paramRepo = typeof params.repo === "string" ? params.repo : undefined;
+  const paramBaseBranch =
+    typeof params.baseBranch === "string" ? params.baseBranch : undefined;
+  const paramUseWorktree = readOptionalBoolean(params.useWorktree);
+  const paramParentWorkspaceId =
+    typeof params.parentWorkspaceId === "string"
+      ? params.parentWorkspaceId
+      : undefined;
+
+  let repo = paramRepo ?? content.repo;
   if (!repo && content.text) {
     const urlMatch = content.text.match(
       /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
@@ -1613,7 +1635,8 @@ async function runProvisionWorkspace(
     }
   }
 
-  if (!repo && !content.useWorktree) {
+  const useWorktree = paramUseWorktree ?? content.useWorktree === true;
+  if (!repo && !useWorktree) {
     if (callback)
       await callback({
         text: "Please specify a repository URL or use worktree mode with a parent workspace.",
@@ -1622,6 +1645,7 @@ async function runProvisionWorkspace(
   }
 
   if (repo) {
+    repo = normalizeRepositoryInput(repo);
     const ALLOWED_DOMAINS =
       /^https?:\/\/(github\.com|gitlab\.com|bitbucket\.org)\//i;
     if (!ALLOWED_DOMAINS.test(repo)) {
@@ -1633,8 +1657,8 @@ async function runProvisionWorkspace(
     }
   }
 
-  let parentWorkspaceId = content.parentWorkspaceId;
-  if (content.useWorktree && !parentWorkspaceId) {
+  let parentWorkspaceId = paramParentWorkspaceId ?? content.parentWorkspaceId;
+  if (useWorktree && !parentWorkspaceId) {
     if (state?.codingWorkspace) {
       parentWorkspaceId = (state.codingWorkspace as { id: string }).id;
     } else {
@@ -1645,13 +1669,24 @@ async function runProvisionWorkspace(
       return { success: false, error: "MISSING_PARENT" };
     }
   }
+  if (useWorktree && !repo && parentWorkspaceId) {
+    const parentWorkspace = workspaceService.getWorkspace(parentWorkspaceId);
+    if (!parentWorkspace) {
+      if (callback)
+        await callback({
+          text: `Parent workspace ${parentWorkspaceId} not found.`,
+        });
+      return { success: false, error: "WORKSPACE_NOT_FOUND" };
+    }
+    repo = parentWorkspace.repo;
+  }
 
   try {
     const workspace: WorkspaceResult = await Promise.race([
       workspaceService.provisionWorkspace({
         repo: repo ?? "",
-        baseBranch: content.baseBranch,
-        useWorktree: content.useWorktree,
+        baseBranch: paramBaseBranch ?? content.baseBranch,
+        useWorktree,
         parentWorkspaceId,
       }),
       new Promise<never>((_, reject) =>
@@ -1705,7 +1740,7 @@ async function runSubmitWorkspace(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  _params: Record<string, unknown>,
+  params: Record<string, unknown>,
   _content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
@@ -1733,7 +1768,20 @@ async function runSubmitWorkspace(
     skipPR?: boolean;
   };
 
-  let workspaceId = content.workspaceId;
+  const paramWorkspaceId =
+    typeof params.workspaceId === "string" ? params.workspaceId : undefined;
+  const paramCommitMessage =
+    typeof params.commitMessage === "string" ? params.commitMessage : undefined;
+  const paramPrTitle =
+    typeof params.prTitle === "string" ? params.prTitle : undefined;
+  const paramPrBody =
+    typeof params.prBody === "string" ? params.prBody : undefined;
+  const paramBaseBranch =
+    typeof params.baseBranch === "string" ? params.baseBranch : undefined;
+  const paramDraft = readOptionalBoolean(params.draft);
+  const paramSkipPR = readOptionalBoolean(params.skipPR);
+
+  let workspaceId = paramWorkspaceId ?? content.workspaceId;
   if (!workspaceId && state?.codingWorkspace) {
     workspaceId = (state.codingWorkspace as { id: string }).id;
   }
@@ -1771,6 +1819,7 @@ async function runSubmitWorkspace(
     }
 
     const commitMessage =
+      paramCommitMessage ??
       content.commitMessage ??
       `feat: automated changes from task agent\n\nGenerated by Eliza task-agent plugin.`;
 
@@ -1782,9 +1831,12 @@ async function runSubmitWorkspace(
     await workspaceService.push(workspaceId, { setUpstream: true });
 
     let prInfo: PullRequestInfo | null = null;
-    if (!content.skipPR) {
-      const prTitle = content.prTitle ?? `[Eliza] ${workspace.branch}`;
+    const skipPR = paramSkipPR ?? content.skipPR === true;
+    if (!skipPR) {
+      const prTitle =
+        paramPrTitle ?? content.prTitle ?? `[Eliza] ${workspace.branch}`;
       const prBody =
+        paramPrBody ??
         content.prBody ??
         `## Summary\n\nAutomated changes generated by Eliza task agent.\n\n` +
           `**Branch:** ${workspace.branch}\n` +
@@ -1794,8 +1846,8 @@ async function runSubmitWorkspace(
       prInfo = await workspaceService.createPR(workspaceId, {
         title: prTitle,
         body: prBody,
-        base: content.baseBranch,
-        draft: content.draft,
+        base: paramBaseBranch ?? content.baseBranch,
+        draft: paramDraft ?? content.draft,
       });
     }
 
@@ -2399,6 +2451,24 @@ export const tasksAction: Action & {
       name: "action",
       description:
         "Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
+      required: false,
+      schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "op",
+      description: "Planner alias for action.",
+      required: false,
+      schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "subaction",
+      description: "Planner alias for action.",
+      required: false,
+      schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "operation",
+      description: "Planner alias for action.",
       required: false,
       schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
     },

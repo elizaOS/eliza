@@ -27,7 +27,7 @@ vi.mock("@elizaos/shared", async (importOriginal) => {
     resolveDesktopApiPort: () => 31337,
     resolveDesktopUiPort: () => 2138,
     isLoopbackBindHost: () => true,
-    normalizeOnboardingProviderId: (v: unknown) =>
+    normalizeFirstRunProviderId: (v: unknown) =>
       typeof v === "string" ? v.trim().toLowerCase() : null,
     resolveDeploymentTargetInConfig: () => ({}),
     resolveServiceRoutingInConfig: () => ({}),

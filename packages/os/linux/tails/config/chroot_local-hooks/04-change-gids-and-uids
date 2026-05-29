@@ -1,0 +1,193 @@
+#!/bin/sh
+
+### Ensure GIDs are stable across releases
+#   ... otherwise, things such as tor@service are broken
+#   after applying an automatic upgrade (#15695, #15424, #13426, #15407)
+
+# When installing packages apt may variate the order of package installations.
+# That leads to different GID/UID for the created groups and users. This
+# variation of GID/UID leads to problems, when we want to ship diffs for a
+# smoother upgrade process. There are many different solutions flying around to
+# fix this issue, but they were not elaborate for Tails and may have other nasty
+# side-effects, as the maintainer scripts, may react differently, if they are
+# not in charge of creating group/user themselves.
+
+# We may be able to get rid of this script with the switch from aufs to overlayfs
+# (#17256).
+
+set -e
+
+echo "Set fixed GIDs and UIDs"
+
+Debug_gids_and_uids() {
+    # Print content of /etc/{passwd, group}, if a difference against
+    # the expected content is detected. Otherwise only the content of
+    # those files is printed
+
+    for file in passwd group; do
+        diff -Naur "/usr/share/tails/build/${file}" "/etc/${file}" >&2 || :
+        echo >&2
+        echo "Content of '/etc/${file}':" >&2
+        cat "/etc/${file}" >&2
+        echo >&2
+    done
+}
+
+Change_uid() {
+    # Change_uid(NAME, NEW)
+    # change UID for $NAME to $NEW
+    # and update UID for all files, that were owned by the old UID
+
+    NAME="$1"
+    NEW="$2"
+    old="$(getent passwd "${NAME}" | awk -F ':' '{print $3}')"
+
+    if [ -n "${old}" ]; then
+        echo "Changing UID for ${NAME} (${old} -> ${NEW})"
+        if ! usermod --uid "${NEW}" "${NAME}"; then
+            Debug_gids_and_uids
+            exit 1
+        fi
+        # chown(1) and chgrp(1) clear the setuid and setgid bits;
+        # let's preserve them.
+        #
+        # Using "-exec CMD +", find builds command lines incrementally,
+        # before executing chown. Which is why the operation below is
+        # not the "if a file has the setuid bit, then give it the setuid
+        # bit" no-op, but rather "if a file had the setuid bit before
+        # chown was run, then set it back".
+        find / -wholename /proc -prune -o \( \
+            \! -type l -uid "${old}" \
+            -exec chown "${NEW}" '{}' + \
+            \( \
+            -perm -6000 -exec chmod gu+s '{}' + \
+            -o -perm -4000 -exec chmod u+s '{}' + \
+            -o -perm -2000 -exec chmod g+s '{}' + \
+            \) \
+            \)
+    fi
+}
+
+Change_gid() {
+    # Change_gid(NAME, NEW)
+    # change the GID for $NAME to $NEW
+    # and update GID for all files, that were owned by the old GID
+
+    NAME="$1"
+    NEW="$2"
+    old="$(getent group "${NAME}" | awk -F ':' '{print $3}')"
+
+    if [ -n "${old}" ]; then
+        echo "Changing GID for ${NAME} (${old} -> ${NEW})"
+        if ! groupmod --gid "${NEW}" "${NAME}"; then
+            Debug_gids_and_uids
+            exit 1
+        fi
+        # See comments in Change_uid().
+        find / -wholename /proc -prune -o \( \
+            \! -type l -gid "${old}" \
+            -exec chgrp "${NEW}" '{}' + \
+            \( \
+            -perm -6000 -exec chmod gu+s '{}' + \
+            -o -perm -4000 -exec chmod u+s '{}' + \
+            -o -perm -2000 -exec chmod g+s '{}' + \
+            \) \
+            \)
+    fi
+}
+
+# Temporarily give these users and groups a UID/GID that's out of the way,
+# to avoid collisions
+Change_uid systemd-timesync 1010
+Change_uid systemd-network 1020
+Change_uid systemd-resolve 1030
+Change_uid memlockd 1040
+Change_uid messagebus 1050
+Change_uid debian-tor 1060
+Change_uid speech-dispatcher 1080
+Change_uid saned 1090
+Change_uid colord 1100
+Change_uid hplip 1110
+Change_uid Debian-gdm 1120
+Change_uid usbmux 1500
+Change_uid tcpdump 1510
+Change_uid avahi 1520
+Change_uid _flatpak 1530
+Change_uid rtkit 1540
+Change_uid systemd-oom 9970
+Change_uid cups-pk-helper 9980
+Change_gid systemd-journal 1010
+Change_gid systemd-timesync 1020
+Change_gid systemd-network 1030
+Change_gid systemd-resolve 1040
+Change_gid input 1050
+Change_gid kvm 1060
+Change_gid render 1070
+Change_gid crontab 1080
+Change_gid netdev 1090
+Change_gid memlockd 1100
+Change_gid messagebus 1110
+Change_gid debian-tor 1120
+Change_gid ssl-cert 1130
+Change_gid _ssh 1140
+Change_gid lpadmin 1150
+Change_gid scanner 1160
+Change_gid saned 1200
+Change_gid colord 1210
+Change_gid tcpdump 1290
+Change_gid avahi 1520
+Change_gid _flatpak 1530
+Change_gid rtkit 1540
+Change_gid sgx 1600
+Change_gid pipewire 1610
+Change_gid Debian-gdm 2000
+Change_gid systemd-oom 9970
+
+# Finally, give these users and groups the desired UID/GID
+Change_uid systemd-timesync 101
+Change_uid systemd-network 102
+Change_uid systemd-resolve 103
+Change_uid memlockd 104
+Change_uid messagebus 105
+Change_uid debian-tor 106
+Change_uid speech-dispatcher 108
+Change_uid saned 109
+Change_uid colord 110
+Change_uid hplip 111
+Change_uid Debian-gdm 112
+Change_uid usbmux 150
+Change_uid tcpdump 151
+Change_uid avahi 152
+Change_uid _flatpak 153
+Change_uid rtkit 154
+Change_uid polkitd 996
+Change_uid systemd-oom 997
+Change_uid cups-pk-helper 998
+Change_gid systemd-journal 101
+Change_gid systemd-timesync 102
+Change_gid systemd-network 103
+Change_gid systemd-resolve 104
+Change_gid input 105
+Change_gid kvm 106
+Change_gid render 107
+Change_gid crontab 108
+Change_gid netdev 109
+Change_gid memlockd 110
+Change_gid messagebus 111
+Change_gid debian-tor 112
+Change_gid ssl-cert 113
+Change_gid _ssh 114
+Change_gid lpadmin 115
+Change_gid scanner 116
+Change_gid saned 120
+Change_gid colord 121
+# GIDs 122-128 are assigned to groups created by later hooks
+Change_gid tcpdump 129
+Change_gid avahi 152
+Change_gid _flatpak 153
+Change_gid rtkit 154
+Change_gid sgx 160
+Change_gid pipewire 161
+Change_gid Debian-gdm 200
+Change_gid polkitd 996
+Change_gid systemd-oom 997

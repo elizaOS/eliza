@@ -150,7 +150,7 @@ function ReactionStrip({
             key={`${reaction.emoji}:${reaction.count}`}
             data-testid="chat-reaction-badge"
             title={title}
-            className="inline-flex items-center gap-1 rounded-sm border border-border bg-bg px-2 py-1 text-xs-tight font-medium text-txt-strong shadow-xs"
+            className="inline-flex items-center gap-1 rounded-sm border border-border bg-bg px-2 py-1 text-xs-tight font-medium text-txt-strong "
           >
             <ReactionEmoji emoji={reaction.emoji} />
             {reaction.count > 1 ? <span>{reaction.count}</span> : null}
@@ -545,7 +545,7 @@ export const ChatMessage = memo(function ChatMessage({
                 value={draftText}
                 onChange={(event) => setDraftText(event.target.value)}
                 onKeyDown={handleEditKeyDown}
-                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none shadow-xs focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
+                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30"
                 style={{ fontFamily: "var(--font-chat)" }}
                 aria-label={labels.edit ?? "Edit message"}
                 disabled={savingEdit}
@@ -556,7 +556,7 @@ export const ChatMessage = memo(function ChatMessage({
                   size="sm"
                   onClick={handleCancelEditing}
                   disabled={savingEdit}
-                  className="h-8 rounded-lg px-3 text-xs"
+                  className="h-8 rounded-sm px-3 text-xs"
                 >
                   {labels.cancel ?? "Cancel"}
                 </Button>
@@ -569,7 +569,7 @@ export const ChatMessage = memo(function ChatMessage({
                     !draftText.trim() ||
                     draftText.trim() === message.text.trim()
                   }
-                  className="h-8 rounded-lg px-3 text-xs disabled:border-border/20 disabled:bg-bg-accent disabled:text-muted-strong"
+                  className="h-8 rounded-sm px-3 text-xs disabled:border-border/20 disabled:bg-bg-accent disabled:text-muted-strong"
                 >
                   {savingEdit
                     ? (labels.saving ?? "Saving...")

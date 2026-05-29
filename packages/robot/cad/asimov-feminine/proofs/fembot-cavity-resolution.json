@@ -1,0 +1,885 @@
+{
+  "accepted": false,
+  "links": [
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.14317283331843433,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.02649034450784285,
+      "group": "torso",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "site": 1
+      },
+      "internal_cavity_violation_count": 3,
+      "link": "IMU_ORIGIN",
+      "minimum_projected_clearance_m": -0.030127043642848732,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.12548583347387465,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.006399801549719988,
+      "group": "leg",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_ANKLE_A",
+      "minimum_projected_clearance_m": -0.016699999314546583,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.0,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 1
+      },
+      "internal_cavity_violation_count": 1,
+      "link": "LEFT_ANKLE_B",
+      "minimum_projected_clearance_m": -0.004923667770624163,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.5154861074334331,
+      "full_cavity_xy_area_increase_fraction": 0.41283371958448867,
+      "full_cavity_z_expansion_m": 0.009601505217360029,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 3,
+      "link": "LEFT_ELBOW",
+      "minimum_projected_clearance_m": -0.031200000000000006,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.4531381552498055,
+      "full_cavity_xy_area_increase_fraction": 0.397793711090912,
+      "full_cavity_z_expansion_m": 0.003812766123933206,
+      "group": "leg",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_HIP_PITCH",
+      "minimum_projected_clearance_m": -0.02344948980743885,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.30472533372864397,
+      "full_cavity_xy_area_increase_fraction": 0.30472533372864374,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_HIP_ROLL",
+      "minimum_projected_clearance_m": -0.019199999999999995,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.0,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_HIP_YAW",
+      "minimum_projected_clearance_m": -0.0412,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.0,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_KNEE",
+      "minimum_projected_clearance_m": -0.03988073566257954,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.054836683314557266,
+      "full_cavity_xy_area_increase_fraction": 0.054836683314557266,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "arm",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_SHOULDER_PITCH",
+      "minimum_projected_clearance_m": -0.019199999999999995,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.1786728588153348,
+      "full_cavity_xy_area_increase_fraction": 0.015805370794615747,
+      "full_cavity_z_expansion_m": 0.029402313648000028,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_SHOULDER_ROLL",
+      "minimum_projected_clearance_m": -0.0362,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.23990700041927182,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.032399800223518044,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_SHOULDER_YAW",
+      "minimum_projected_clearance_m": -0.016200000111758713,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance"
+      ],
+      "full_cavity_clearance_cleared": false,
+      "full_cavity_clearance_required": false,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": null,
+      "full_cavity_xy_area_increase_fraction": null,
+      "full_cavity_z_expansion_m": null,
+      "group": "foot",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": false,
+      "internal_cavity_violation_component_counts": {},
+      "internal_cavity_violation_count": 0,
+      "link": "LEFT_TOE",
+      "minimum_projected_clearance_m": null,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "already_clear",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.793052086211727,
+      "full_cavity_xy_area_increase_fraction": 0.4806725757414396,
+      "full_cavity_z_expansion_m": 0.008506628302139996,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_WRIST_YAW",
+      "minimum_projected_clearance_m": -0.01909243522658944,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.0233508844931396,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.004295635340020004,
+      "group": "head",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "NECK_PITCH",
+      "minimum_projected_clearance_m": -0.05044285140633583,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.5142843697396484,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.03839979981001,
+      "group": "head",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "NECK_YAW",
+      "minimum_projected_clearance_m": -0.019199999905005094,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.12548583347387465,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.006399801549719988,
+      "group": "leg",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_ANKLE_A",
+      "minimum_projected_clearance_m": -0.016699999314546583,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.0,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 1
+      },
+      "internal_cavity_violation_count": 1,
+      "link": "RIGHT_ANKLE_B",
+      "minimum_projected_clearance_m": -0.0049269218116998695,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.5216793105004243,
+      "full_cavity_xy_area_increase_fraction": 0.41674585945062526,
+      "full_cavity_z_expansion_m": 0.009781108913240022,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 3,
+      "link": "RIGHT_ELBOW",
+      "minimum_projected_clearance_m": -0.031200000000000006,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.4464181397423419,
+      "full_cavity_xy_area_increase_fraction": 0.39827355196932857,
+      "full_cavity_z_expansion_m": 0.0033241843930589265,
+      "group": "leg",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_HIP_PITCH",
+      "minimum_projected_clearance_m": -0.023449947726726532,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.30435315412611175,
+      "full_cavity_xy_area_increase_fraction": 0.3043531541261115,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_HIP_ROLL",
+      "minimum_projected_clearance_m": -0.019199999999999995,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.0,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_HIP_YAW",
+      "minimum_projected_clearance_m": -0.0412,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.0,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "leg",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_KNEE",
+      "minimum_projected_clearance_m": -0.03970519253313542,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": true
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": true,
+      "full_cavity_volume_increase_fraction": 0.054836683314557044,
+      "full_cavity_xy_area_increase_fraction": 0.054836683314557044,
+      "full_cavity_z_expansion_m": 0.0,
+      "group": "arm",
+      "height_preserving_resolution_ready": true,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_SHOULDER_PITCH",
+      "minimum_projected_clearance_m": -0.019199999999999995,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "height_preserving_full_cavity_clearance",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.17850356844864557,
+      "full_cavity_xy_area_increase_fraction": 0.015659472751388126,
+      "full_cavity_z_expansion_m": 0.029402313648000028,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_SHOULDER_ROLL",
+      "minimum_projected_clearance_m": -0.0362,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.2393752492693404,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.032399800223518044,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_SHOULDER_YAW",
+      "minimum_projected_clearance_m": -0.016200000111758713,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance"
+      ],
+      "full_cavity_clearance_cleared": false,
+      "full_cavity_clearance_required": false,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": null,
+      "full_cavity_xy_area_increase_fraction": null,
+      "full_cavity_z_expansion_m": null,
+      "group": "foot",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": false,
+      "internal_cavity_violation_component_counts": {},
+      "internal_cavity_violation_count": 0,
+      "link": "RIGHT_TOE",
+      "minimum_projected_clearance_m": null,
+      "requires_component_or_packaging_redesign": false,
+      "resolution_strategy": "already_clear",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.7949418131684551,
+      "full_cavity_xy_area_increase_fraction": 0.48411388011777556,
+      "full_cavity_z_expansion_m": 0.008455465165179997,
+      "group": "arm",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_WRIST_YAW",
+      "minimum_projected_clearance_m": -0.019091863860189913,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "full_cavity_clearance_cleared": true,
+      "full_cavity_clearance_required": true,
+      "full_cavity_height_preserved": false,
+      "full_cavity_volume_increase_fraction": 0.0927507434753414,
+      "full_cavity_xy_area_increase_fraction": 0.0,
+      "full_cavity_z_expansion_m": 0.035399914336609994,
+      "group": "torso",
+      "height_preserving_resolution_ready": false,
+      "internal_cavity_required": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
+      "internal_cavity_violation_count": 4,
+      "link": "WAIST_YAW",
+      "minimum_projected_clearance_m": -0.052892124935303014,
+      "requires_component_or_packaging_redesign": true,
+      "resolution_strategy": "component_or_packaging_redesign_required_for_height_preservation",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_fitted": true,
+      "supplier_vendor_limited": false
+    }
+  ],
+  "ok": true,
+  "schema": "asimov-fembot-cavity-resolution-plan-v1",
+  "source": {
+    "generated_cad_schema": "asimov-fembot-generated-cad-parametric-v1",
+    "thinness_frontier_schema": "asimov-fembot-thinness-frontier-proof-v1"
+  },
+  "summary": {
+    "acceptance_blocker": "cavity clearance is classified for all source-fitted links, but 16 links still require component/package redesign to preserve robot height while clearing actuator, joint, and collision keepouts",
+    "accepted": false,
+    "component_or_packaging_redesign_required_link_names": [
+      "IMU_ORIGIN",
+      "LEFT_ANKLE_A",
+      "LEFT_ELBOW",
+      "LEFT_HIP_PITCH",
+      "LEFT_SHOULDER_ROLL",
+      "LEFT_SHOULDER_YAW",
+      "LEFT_WRIST_YAW",
+      "NECK_PITCH",
+      "NECK_YAW",
+      "RIGHT_ANKLE_A",
+      "RIGHT_ELBOW",
+      "RIGHT_HIP_PITCH",
+      "RIGHT_SHOULDER_ROLL",
+      "RIGHT_SHOULDER_YAW",
+      "RIGHT_WRIST_YAW",
+      "WAIST_YAW"
+    ],
+    "component_or_packaging_redesign_required_links": 16,
+    "full_cavity_clearance_cleared_links": 26,
+    "height_preserving_resolution_link_names": [
+      "LEFT_ANKLE_B",
+      "LEFT_HIP_ROLL",
+      "LEFT_HIP_YAW",
+      "LEFT_KNEE",
+      "LEFT_SHOULDER_PITCH",
+      "RIGHT_ANKLE_B",
+      "RIGHT_HIP_ROLL",
+      "RIGHT_HIP_YAW",
+      "RIGHT_KNEE",
+      "RIGHT_SHOULDER_PITCH"
+    ],
+    "height_preserving_resolution_links": 10,
+    "internal_cavity_violation_component_counts": {
+      "collision_keepout": 28,
+      "joint_axis": 21,
+      "motor_actuator": 23,
+      "site": 1
+    },
+    "internal_cavity_violation_links": 26,
+    "internal_cavity_violation_points": 73,
+    "links": 28,
+    "missing_links": [],
+    "source_fitted_links": 28,
+    "unresolved_geometry_or_keepout_link_names": [],
+    "unresolved_geometry_or_keepout_links": 0
+  }
+}

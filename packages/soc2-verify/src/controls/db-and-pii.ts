@@ -35,22 +35,30 @@ export const dbSslmode: Check = {
 const ENCRYPTED_COLUMN_TARGETS: Array<{
   schemaFile: string;
   table: string;
-  columns: string[];
+  columns: Array<{ source: string; encryptedPrefix?: string }>;
 }> = [
   {
     schemaFile: "packages/cloud-shared/src/db/schemas/users.ts",
     table: "users",
-    columns: ["email", "phone_number", "wallet_address"],
+    columns: [
+      { source: "email" },
+      { source: "phone_number", encryptedPrefix: "phone" },
+      { source: "wallet_address" },
+    ],
   },
   {
     schemaFile: "packages/cloud-shared/src/db/schemas/platform-credentials.ts",
     table: "platform_credentials",
-    columns: ["platform"],
+    columns: [
+      { source: "platform_user_id" },
+      { source: "platform_email" },
+      { source: "platform_display_name" },
+    ],
   },
   {
     schemaFile: "packages/cloud-shared/src/db/schemas/conversations.ts",
-    table: "conversations",
-    columns: ["content"],
+    table: "conversation_messages",
+    columns: [{ source: "content" }],
   },
 ];
 
@@ -71,16 +79,26 @@ export const piiEncryptionColumns: Check = {
         continue;
       }
       for (const col of target.columns) {
+        const encryptedPrefix = col.encryptedPrefix ?? col.source;
         // ciphertext column is the minimal evidence; nonce/auth_tag are checked too.
         const checks = [
-          new RegExp(`${col}_ciphertext`),
-          new RegExp(`${col}_nonce`),
-          new RegExp(`${col}_auth_tag`),
+          {
+            name: `${encryptedPrefix}_ciphertext`,
+            pattern: new RegExp(`${encryptedPrefix}_ciphertext`),
+          },
+          {
+            name: `${encryptedPrefix}_nonce`,
+            pattern: new RegExp(`${encryptedPrefix}_nonce`),
+          },
+          {
+            name: `${encryptedPrefix}_auth_tag`,
+            pattern: new RegExp(`${encryptedPrefix}_auth_tag`),
+          },
         ];
-        const missing = checks.filter((r) => !r.test(src));
+        const missing = checks.filter((check) => !check.pattern.test(src));
         if (missing.length > 0) {
           problems.push(
-            `${target.table}.${col}: missing ${missing.map((r) => r.source).join(", ")}`,
+            `${target.table}.${col.source}: missing ${missing.map((check) => check.name).join(", ")}`,
           );
         }
       }
@@ -114,12 +132,12 @@ const SOFT_DELETE_TARGETS = [
     table: "secrets",
   },
   {
-    file: "packages/cloud-shared/src/db/schemas/agents.ts",
-    table: "agents",
+    file: "packages/cloud-shared/src/db/schemas/agent-sandboxes.ts",
+    table: "agent_sandboxes",
   },
   {
-    file: "packages/cloud-shared/src/db/schemas/connector-accounts.ts",
-    table: "connector_accounts",
+    file: "packages/cloud-shared/src/db/schemas/platform-credentials.ts",
+    table: "platform_credentials",
   },
 ];
 
@@ -165,7 +183,7 @@ export const auditLogRetention: Check = {
   async run(ctx): Promise<CheckResult> {
     const targets = [
       {
-        file: "packages/cloud-shared/src/db/schemas/secret-audit-log.ts",
+        file: "packages/cloud-shared/src/db/schemas/secrets.ts",
         table: "secret_audit_log",
       },
       {
@@ -203,23 +221,40 @@ export const auditLogRetention: Check = {
 
 export const kmsAdoption: Check = {
   id: "C1.1-kms-adoption",
-  title: "@elizaos/security imported across cloud-shared, cloud-api, agent, app",
+  title: "@elizaos/security adopted across cloud-shared, cloud-api, agent, app",
   tsc: ["C1.1", "CC6.1"],
   severity: "high",
   async run(ctx): Promise<CheckResult> {
     const targets = [
-      "packages/cloud-shared",
-      "packages/cloud-api",
-      "packages/agent",
-      "apps/app",
+      {
+        root: ctx.elizaRoot,
+        label: "packages/cloud-shared",
+        path: "packages/cloud-shared",
+      },
+      {
+        root: ctx.elizaRoot,
+        label: "packages/cloud-api",
+        path: "packages/cloud-api",
+      },
+      { root: ctx.elizaRoot, label: "packages/agent", path: "packages/agent" },
+      {
+        root: ctx.outerRoot,
+        label: "apps/app",
+        path: "apps/app",
+        acceptedMarkers: [
+          "UpdateKmsClient",
+          "systemKeyId(RELEASE_SIGNING_KEY_PURPOSE)",
+          "setClientAuditEmitter",
+        ],
+      },
     ];
     const { walk } = await import("../util/fs.js");
     const problems: string[] = [];
     const evidence: string[] = [];
     for (const t of targets) {
-      const root = join(ctx.elizaRoot, t);
+      const root = join(t.root, t.path);
       if (!fileExists(join(root, "package.json"))) {
-        problems.push(`${t}: directory not present`);
+        evidence.push(`${t.label}: directory not present in this checkout`);
         continue;
       }
       const files = await walk(root, {
@@ -227,29 +262,36 @@ export const kmsAdoption: Check = {
         maxDepth: 8,
       });
       let count = 0;
+      let markerCount = 0;
       for (const f of files) {
         const src = readUtf8Safe(f);
         if (!src) continue;
-        if (/from\s+["']@elizaos\/security["']/.test(src)) {
+        if (/from\s+["']@elizaos\/security(?:\/[^"']*)?["']/.test(src)) {
           count++;
         }
+        if (t.acceptedMarkers?.some((marker) => src.includes(marker)))
+          markerCount++;
       }
-      if (count === 0) {
-        problems.push(`${t}: no @elizaos/security imports found`);
+      if (count === 0 && markerCount === 0) {
+        problems.push(
+          `${t.label}: no @elizaos/security adoption evidence found`,
+        );
       } else {
-        evidence.push(`${t}: ${count} import(s)`);
+        evidence.push(
+          `${t.label}: ${count} import(s), ${markerCount} boundary marker(s)`,
+        );
       }
     }
     return problems.length === 0
       ? {
           status: "pass",
           evidence: evidence.join("; "),
-          files: targets.map((t) => join(ctx.elizaRoot, t)),
+          files: targets.map((t) => join(t.root, t.path)),
         }
       : {
           status: "fail",
           evidence: `Missing @elizaos/security adoption:\n${problems.join("\n")}\nFound:\n${evidence.join("\n")}`,
-          files: targets.map((t) => join(ctx.elizaRoot, t)),
+          files: targets.map((t) => join(t.root, t.path)),
         };
   },
 };

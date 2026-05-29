@@ -11,7 +11,7 @@ import type { Tab } from "../navigation";
 import type {
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
-  OnboardingStep,
+  SetupStep,
 } from "./types";
 import type { UiShellMode, UiTheme } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
@@ -275,99 +275,71 @@ export function applyUiTheme(theme: UiTheme): void {
 const UI_LANGUAGE_STORAGE_KEY = "eliza:ui-language";
 const UI_SHELL_MODE_STORAGE_KEY = "eliza:ui-shell-mode";
 const LAST_NATIVE_TAB_STORAGE_KEY = "eliza:last-native-tab";
-const ONBOARDING_STEP_STORAGE_KEY = "eliza:onboarding:step";
+const SETUP_STEP_STORAGE_KEY = "eliza:setup:step";
 
-function normalizeOnboardingStep(value: unknown): OnboardingStep | null {
+function normalizeSetupStep(value: unknown): SetupStep | null {
   switch (value) {
-    case "deployment":
-    case "providers":
-    case "features":
-      return value;
-    case "identity":
-      // Identity/character selection was removed; restart at the setup step.
-      return "deployment";
-    case "permissions":
-    case "launch":
-      // permissions/launch removed — resume at providers
-      return "providers";
-    // Legacy step ID migration — map old persisted values to new equivalents
-    case "cloud_login":
-    case "welcome":
-      // cloud_login is now part of deployment step; resume at deployment
-      return "deployment";
-    case "hosting":
     case "connection":
-      // hosting is now part of deployment step; resume at providers
-      return "providers";
-    case "cloudLogin":
-    case "rpc":
-      return "providers";
-    case "voice":
-    case "senses":
-      // voice/permissions removed from onboarding; resume at providers
-      return "providers";
-    case "activate":
-      return "providers";
+    case "model":
+    case "capabilities":
+      return value;
     default:
       return null;
   }
 }
 
-export function loadPersistedOnboardingStep(): OnboardingStep | null {
+export function loadPersistedSetupStep(): SetupStep | null {
   return tryLocalStorage(
-    () =>
-      normalizeOnboardingStep(
-        localStorage.getItem(ONBOARDING_STEP_STORAGE_KEY),
-      ),
+    () => normalizeSetupStep(localStorage.getItem(SETUP_STEP_STORAGE_KEY)),
     null,
   );
 }
 
-export function saveOnboardingStep(step: OnboardingStep): void {
+export function saveSetupStep(step: SetupStep): void {
   tryLocalStorage(() => {
-    localStorage.setItem(ONBOARDING_STEP_STORAGE_KEY, step);
+    localStorage.setItem(SETUP_STEP_STORAGE_KEY, step);
   }, undefined);
 }
 
-export function clearPersistedOnboardingStep(): void {
+export function clearPersistedSetupStep(): void {
   tryLocalStorage(() => {
-    localStorage.removeItem(ONBOARDING_STEP_STORAGE_KEY);
+    localStorage.removeItem(SETUP_STEP_STORAGE_KEY);
   }, undefined);
 }
 
-/* ── Onboarding completion persistence ────────────────────────────────── */
+/* ── First-run completion persistence ────────────────────────────────── */
 
-const ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
+const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";
 
-export function loadPersistedOnboardingComplete(): boolean {
+export function loadPersistedFirstRunComplete(): boolean {
   if (typeof localStorage === "undefined") {
     return false;
   }
 
   try {
-    return localStorage.getItem(ONBOARDING_COMPLETE_STORAGE_KEY) === "1";
+    return localStorage.getItem(FIRST_RUN_COMPLETE_STORAGE_KEY) === "1";
   } catch (err) {
     logger.warn(
-      `[persistence] failed to load onboarding completion flag: ${describePersistenceError(err)}`,
+      `[persistence] failed to load first-run completion flag: ${describePersistenceError(err)}`,
     );
     return false;
   }
 }
 
-export function savePersistedOnboardingComplete(complete: boolean): void {
+export function savePersistedFirstRunComplete(complete: boolean): void {
   if (typeof localStorage === "undefined") {
     return;
   }
 
   try {
     if (complete) {
-      localStorage.setItem(ONBOARDING_COMPLETE_STORAGE_KEY, "1");
+      localStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
     } else {
-      localStorage.removeItem(ONBOARDING_COMPLETE_STORAGE_KEY);
+      localStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
     }
   } catch (err) {
     logger.warn(
-      `[persistence] failed to save onboarding completion flag: ${describePersistenceError(err)}`,
+      `[persistence] failed to save first-run completion flag: ${describePersistenceError(err)}`,
     );
   }
 }
@@ -710,26 +682,6 @@ export function loadContinuousChatMode(): ContinuousChatModeValue {
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
   tryLocalStorage(() => {
     localStorage.setItem(CONTINUOUS_CHAT_MODE_KEY, mode);
-  }, undefined);
-}
-
-/* ── Voice prefix done persistence ─────────────────────────────────────── */
-const VOICE_PREFIX_DONE_KEY = "eliza:voice:prefix-done";
-
-export function loadVoicePrefixDone(): boolean {
-  return tryLocalStorage(
-    () => localStorage.getItem(VOICE_PREFIX_DONE_KEY) === "1",
-    false,
-  );
-}
-
-export function saveVoicePrefixDone(done: boolean): void {
-  tryLocalStorage(() => {
-    if (done) {
-      localStorage.setItem(VOICE_PREFIX_DONE_KEY, "1");
-    } else {
-      localStorage.removeItem(VOICE_PREFIX_DONE_KEY);
-    }
   }, undefined);
 }
 

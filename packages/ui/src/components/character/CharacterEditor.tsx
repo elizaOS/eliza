@@ -30,8 +30,8 @@ import {
 } from "./CharacterRoster";
 import {
   buildCharacterDraftFromPreset,
-  getOnboardingPresetStyles,
-  type OnboardingPreset,
+  type FirstRunPreset,
+  getFirstRunPresetStyles,
   shouldApplyPresetDefaults,
 } from "./character-editor-helpers";
 import { resolveCharacterGreetingAnimation } from "./character-greeting";
@@ -176,7 +176,7 @@ export function CharacterEditor({
     handleSaveCharacter,
     loadCharacter,
     setState,
-    onboardingOptions,
+    firstRunOptions,
     selectedVrmIndex,
     customVrmUrl: _customVrmUrl,
     customVrmPreviewUrl,
@@ -276,12 +276,12 @@ export function CharacterEditor({
     catchphrase: string;
     animationPath: string | null;
   } | null>(null);
-  const onboardingPresetStyles = useMemo(
-    () => getOnboardingPresetStyles(onboardingOptions),
-    [onboardingOptions],
+  const firstRunPresetStyles = useMemo(
+    () => getFirstRunPresetStyles(firstRunOptions),
+    [firstRunOptions],
   );
-  const [rosterStyles, setRosterStyles] = useState<OnboardingPreset[]>([
-    ...onboardingPresetStyles,
+  const [rosterStyles, setRosterStyles] = useState<FirstRunPreset[]>([
+    ...firstRunPresetStyles,
   ]);
 
   /* ── Voice config state ─────────────────────────────────────────── */
@@ -318,11 +318,11 @@ export function CharacterEditor({
 
   /* ── Load roster ────────────────────────────────────────────────── */
   // Use static STYLE_PRESETS shipped in the frontend bundle — no API call
-  // needed. If the server provides styles via onboardingOptions, prefer those.
+  // needed. If the server provides styles via firstRunOptions, prefer those.
   useEffect(() => {
     const localizedPresets = getStylePresets(uiLanguage);
-    if (onboardingPresetStyles.length) {
-      const merged = onboardingPresetStyles.map((serverPreset) => {
+    if (firstRunPresetStyles.length) {
+      const merged = firstRunPresetStyles.map((serverPreset) => {
         const localMeta = localizedPresets.find(
           (p) =>
             p.id === serverPreset.id ||
@@ -336,25 +336,25 @@ export function CharacterEditor({
           avatarIndex: localMeta?.avatarIndex,
           voicePresetId: localMeta?.voicePresetId,
           greetingAnimation: localMeta?.greetingAnimation,
-        } as OnboardingPreset;
+        } as FirstRunPreset;
       });
       setRosterStyles(merged);
     } else {
       setRosterStyles(localizedPresets);
     }
-  }, [onboardingPresetStyles, uiLanguage]);
+  }, [firstRunPresetStyles, uiLanguage]);
 
   const baseRosterEntries = useMemo(() => {
     const base = resolveRosterEntries(rosterStyles);
     if (activePackId && _customVrmUrl) {
-      const customOnboardingName =
+      const customFirstRunName =
         typeof characterData?.name === "string" && characterData.name.trim()
           ? characterData.name
           : "Custom";
       base.unshift(
         createCustomPackRosterEntry({
           id: activePackId,
-          name: customOnboardingName,
+          name: customFirstRunName,
           previewUrl: customVrmPreviewUrl || undefined,
           catchphrase: customCatchphrase || undefined,
           voicePresetId: customVoicePresetId || undefined,
@@ -951,7 +951,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-xl"
+        className="h-9 w-9 rounded-sm"
         onClick={() => document.getElementById(uploadInputId)?.click()}
         title={t("aria.upload", {
           defaultValue: "Upload VRM",
@@ -966,7 +966,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-xl"
+        className="h-9 w-9 rounded-sm"
         onClick={handleExportCharacter}
         disabled={!currentCharacter}
         title={t("charactereditor.ExportJSON", {
@@ -982,7 +982,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="sm"
-        className="h-9 rounded-xl px-4 text-xs-tight font-semibold"
+        className="h-9 rounded-sm px-4 text-xs-tight font-semibold"
         onClick={handleResetToDefaults}
         disabled={!activeCharacterRosterEntry || !currentCharacter}
         title={t("charactereditor.ResetToDefaults", {
@@ -993,7 +993,7 @@ export function CharacterEditor({
       </Button>
       <Button
         size="sm"
-        className="h-9 rounded-xl px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+        className="h-9 rounded-sm px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
         style={hasPendingChanges ? accentGradientStyle : idleSaveBtnStyle}
         disabled={
           characterSaving ||
@@ -1141,7 +1141,7 @@ export function CharacterEditor({
           >
             <div className="flex flex-wrap items-center gap-3 shrink-0">
               <div
-                className="flex shrink-0 items-center gap-1 rounded-lg border border-border bg-elevated p-1"
+                className="flex shrink-0 items-center gap-1 rounded-sm border border-border bg-elevated p-1"
                 style={{ boxShadow: pageTabsBoxShadow }}
                 role="tablist"
                 aria-label={t("charactereditor.TabbedEditorGroupLabel", {
@@ -1157,7 +1157,7 @@ export function CharacterEditor({
                     aria-selected={activePage === page}
                     aria-controls={`character-editor-panel-${page}`}
                     tabIndex={activePage === page ? 0 : -1}
-                    className="flex-initial cursor-pointer rounded-md border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
+                    className="flex-initial cursor-pointer rounded-sm border border-transparent bg-transparent px-[0.6rem] py-1.5 text-center text-2xs font-bold uppercase tracking-[0.1em] text-txt transition-[background,border-color,color,box-shadow] duration-150 hover:border-border hover:bg-bg-hover hover:text-txt-strong"
                     style={
                       activePage === page ? accentGradientStyle : undefined
                     }
@@ -1311,12 +1311,12 @@ export function CharacterEditor({
           {(characterSaveSuccess || combinedSaveError) && (
             <div className="flex flex-wrap items-center justify-center gap-2">
               {characterSaveSuccess && (
-                <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
+                <span className="rounded-sm border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
                   {characterSaveSuccess}
                 </span>
               )}
               {combinedSaveError && (
-                <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
+                <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
                   {combinedSaveError}
                 </span>
               )}
@@ -1342,7 +1342,7 @@ export function CharacterEditor({
               type="button"
               variant="default"
               size="sm"
-              className="h-9 rounded-xl px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
+              className="h-9 rounded-sm px-6 text-sm font-bold tracking-[0.05em] transition-[background-color,border-color,color,box-shadow,transform] duration-200 disabled:opacity-50"
               style={accentGradientStyle}
               onClick={() => {
                 if (customizing) {
@@ -1370,7 +1370,7 @@ export function CharacterEditor({
           if (!open) setPendingNavigation(null);
         }}
       >
-        <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
+        <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
           <DialogHeader className="gap-3">
             <DialogTitle>
               {t("charactereditor.UnsavedChangesTitle", {
@@ -1445,7 +1445,7 @@ export function CharacterEditor({
           if (!open) setResetConfirmOpen(false);
         }}
       >
-        <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
+        <DialogContent className="max-w-md rounded-sm border-border/60 bg-bg backdrop-blur-xl">
           <DialogHeader className="gap-3">
             <DialogTitle>
               {t("charactereditor.ResetToDefaults", {

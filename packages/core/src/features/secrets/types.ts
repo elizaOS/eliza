@@ -186,7 +186,7 @@ export interface EncryptedSecret {
 	/** Authentication tag for GCM mode (base64) */
 	authTag?: string;
 	/** Encryption algorithm used */
-	algorithm: "aes-256-gcm" | "aes-256-cbc";
+	algorithm: "aes-256-gcm";
 	/** Key identifier for key rotation */
 	keyId: string;
 }
@@ -221,7 +221,7 @@ export interface PluginSecretRequirement {
 	required: boolean;
 	/** Validation method to use */
 	validationMethod?: ValidationStrategy;
-	/** Environment variable name (for backward compatibility) */
+	/** Environment variable name shown in setup guidance */
 	envVar?: string;
 	/** Whether this secret can be auto-generated */
 	canGenerate?: boolean;

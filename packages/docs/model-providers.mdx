@@ -62,14 +62,14 @@ Provider plugins are still auto-enabled from the server environment when appropr
 
 ### Auto-enable flow
 
-1. On startup, Eliza scans your environment variables (from `~/.eliza/.env`, shell environment, or `eliza.json`).
+1. On startup, Eliza scans your environment variables (from `~/.local/state/eliza/.env`, shell environment, or `eliza.json`).
 2. If a recognized API key is found (e.g., `ANTHROPIC_API_KEY`), the corresponding provider plugin is automatically added to the plugin allowlist.
-3. The plugin is installed on demand if not already present (installed to `~/.eliza/plugins/installed/`).
+3. The plugin is installed on demand if not already present (installed to `~/.local/state/eliza/plugins/installed/`).
 4. The provider becomes available for model selection.
 
 ### Explicit plugin configuration
 
-You can also enable providers manually in `~/.eliza/eliza.json` under the `plugins` key:
+You can also enable providers manually in `~/.local/state/eliza/eliza.json` under the `plugins` key:
 
 ```json5
 {
@@ -116,7 +116,7 @@ Providers can also be activated through auth profiles in your config:
 
 ### Option 1: Environment file (recommended)
 
-Create or edit `~/.eliza/.env`:
+Create or edit `~/.local/state/eliza/.env`:
 
 ```bash
 # Primary provider
@@ -130,7 +130,7 @@ GROQ_API_KEY=gsk_...
 
 ### Option 2: Config file
 
-Add keys directly in `~/.eliza/eliza.json`:
+Add keys directly in `~/.local/state/eliza/eliza.json`:
 
 ```json5
 {
@@ -149,7 +149,7 @@ When using the config file approach, your API keys are stored in plaintext in `e
 
 ### Setting the default model
 
-In `~/.eliza/eliza.json`, specify the model using `provider/model` format:
+In `~/.local/state/eliza/eliza.json`, specify the model using `provider/model` format:
 
 ```json5
 {
@@ -202,7 +202,7 @@ You can have multiple providers active simultaneously. Every provider whose API 
 A common setup:
 
 ```bash
-# ~/.eliza/.env
+# ~/.local/state/eliza/.env
 
 # Primary — high-quality reasoning
 ANTHROPIC_API_KEY=sk-ant-api03-...
@@ -255,14 +255,14 @@ Ollama lets you run models locally with no API key and full privacy. It does not
     ```
   </Step>
   <Step title="Set the endpoint URL">
-    Add to `~/.eliza/.env`:
+    Add to `~/.local/state/eliza/.env`:
     ```bash
     OLLAMA_API_ENDPOINT=http://127.0.0.1:11434
     ```
     (`OLLAMA_BASE_URL` also works as an alias.)
   </Step>
   <Step title="Select the model">
-    In `~/.eliza/eliza.json`:
+    In `~/.local/state/eliza/eliza.json`:
     ```json5
     {
       agents: {

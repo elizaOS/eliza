@@ -1,5 +1,5 @@
 /**
- * Custom provider that apps can inject into the onboarding flow.
+ * Custom provider that apps can inject into the first-run setup flow.
  * Uses `string` for id/family so apps aren't restricted to the built-in union.
  */
 export interface CustomProviderOption {
@@ -39,7 +39,7 @@ export interface BrandingConfig {
   fileExtension: string;
   /** npm package scope ("elizaos" | "elizaos") */
   packageScope: string;
-  /** Custom providers injected by the app into the onboarding flow */
+  /** Custom providers injected by the app into the first-run setup flow */
   customProviders?: CustomProviderOption[];
   /** When true, the app requires Eliza Cloud — local backend mode is disabled. */
   cloudOnly?: boolean;

@@ -29,7 +29,7 @@ import {
 } from "@/hooks/useChatMessages";
 import { useSSEChannel } from "@/hooks/useSSE";
 import { useToggleReaction } from "@/hooks/useToggleReaction";
-import { getPrivyAccessTokenSafely } from "@/lib/auth/privyAccessToken";
+import { getAccessTokenSafely } from "@/lib/auth/accessToken";
 import { getUserDisplayName } from "@/lib/user-display";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -267,7 +267,7 @@ export function useTeamChat(): UseTeamChatReturn {
 
   const getSafeAccessToken = useCallback(
     () =>
-      getPrivyAccessTokenSafely(getAccessToken, {
+      getAccessTokenSafely(getAccessToken, {
         onError: (error) => {
           logger.warn(
             "Failed to retrieve team chat access token",

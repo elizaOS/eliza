@@ -32,7 +32,7 @@ export function DevicesPanel({
         {status.devices.map((device) => (
           <div
             key={device.deviceId}
-            className={`rounded-xl border p-3 flex items-center gap-3 text-sm ${
+            className={`rounded-sm border p-3 flex items-center gap-3 text-sm ${
               device.isPrimary
                 ? "border-primary/50 bg-primary/5"
                 : "border-border bg-card"

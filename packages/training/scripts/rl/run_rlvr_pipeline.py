@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import importlib.util
 import json
 import logging
 import os
@@ -205,12 +206,8 @@ def compute_budget(config: RLVRConfig) -> dict[str, Any]:
 
 def detect_backend() -> str:
     """Detect available training backend."""
-    try:
-        import mlx.core
-
+    if importlib.util.find_spec("mlx.core") is not None:
         return "mlx"
-    except ImportError:
-        pass
     try:
         import torch
 

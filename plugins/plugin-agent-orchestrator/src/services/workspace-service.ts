@@ -39,6 +39,19 @@ const {
   "git-workspace-service",
 ) as typeof import("git-workspace-service");
 
+type CloneOverrideWorkspace = {
+  path: string;
+  repo: string;
+  branch: { baseBranch: string };
+};
+
+type WorkspaceServiceWithCloneOverride = {
+  cloneRepo?: (
+    workspace: CloneOverrideWorkspace,
+    token?: string,
+  ) => Promise<void>;
+};
+
 import type { AuthPromptCallback } from "./workspace-github.js";
 import {
   type GitHubContext,
@@ -120,12 +133,19 @@ export interface ScratchWorkspaceRecord {
  */
 const defaultBranchCache = new Map<string, Promise<string>>();
 
-function lookupDefaultBranch(repoUrl: string): Promise<string | null> {
+function lookupDefaultBranch(
+  repoUrl: string,
+  token?: string,
+): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(
       "git",
       ["ls-remote", "--symref", repoUrl, "HEAD"],
-      { timeout: 10_000, encoding: "utf-8" },
+      {
+        timeout: 10_000,
+        encoding: "utf-8",
+        env: gitHubTokenEnv(repoUrl, token),
+      },
       (err, stdout) => {
         if (err) {
           // Network failure, private repo without creds, etc.
@@ -139,25 +159,48 @@ function lookupDefaultBranch(repoUrl: string): Promise<string | null> {
   });
 }
 
-export function resolveDefaultBranch(repoUrl: string): Promise<string> {
-  const cached = defaultBranchCache.get(repoUrl);
+export function resolveDefaultBranch(
+  repoUrl: string,
+  token?: string,
+): Promise<string> {
+  const cacheKey = token ? `${repoUrl}#credentialed` : repoUrl;
+  const cached = defaultBranchCache.get(cacheKey);
   if (cached) return cached;
-  const pending = lookupDefaultBranch(repoUrl).then((branch) => {
+  const pending = lookupDefaultBranch(repoUrl, token).then((branch) => {
     if (branch === null) {
       // Don't cache failures — a transient network blip shouldn't poison
       // subsequent calls. Drop the cache slot so a retry hits the network.
-      defaultBranchCache.delete(repoUrl);
+      defaultBranchCache.delete(cacheKey);
       return "main";
     }
     return branch;
   });
-  defaultBranchCache.set(repoUrl, pending);
+  defaultBranchCache.set(cacheKey, pending);
   return pending;
 }
 
 /** Test hook: drop the per-repo cache so each test starts clean. */
 export function _clearDefaultBranchCache(): void {
   defaultBranchCache.clear();
+}
+
+function isGitHubRepository(repo: string): boolean {
+  const trimmed = repo.trim();
+  if (/^https?:\/\/github\.com\//i.test(trimmed)) return true;
+  if (/^[^@\s]+@github\.com:/i.test(trimmed)) return true;
+  return false;
+}
+
+function gitHubTokenEnv(repo: string, token?: string): NodeJS.ProcessEnv {
+  if (!token || !isGitHubRepository(repo)) return process.env;
+  return {
+    ...process.env,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+    GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(
+      `x-access-token:${token}`,
+    ).toString("base64")}`,
+  };
 }
 
 /**
@@ -206,6 +249,7 @@ export class CodingWorkspaceService {
   private githubAuthInProgress: Promise<GitHubPatClientInstance> | null = null;
   private serviceConfig: CodingWorkspaceConfig;
   private workspaces: Map<string, WorkspaceResult> = new Map();
+  private ambientCredentialWorkspaceIds = new Set<string>();
   private labels: Map<string, string> = new Map(); // label -> workspaceId
   private scratchBySession: Map<string, ScratchWorkspaceRecord> = new Map();
   private scratchCleanupTimers: Map<string, ReturnType<typeof setTimeout>> =
@@ -274,6 +318,8 @@ export class CodingWorkspaceService {
         : undefined,
     });
 
+    this.installCredentialSafeClone();
+
     await this.workspaceService.initialize();
 
     const githubToken = this.runtime.getSetting("GITHUB_TOKEN") as
@@ -302,6 +348,40 @@ export class CodingWorkspaceService {
         }`,
       );
     });
+  }
+
+  private installCredentialSafeClone(): void {
+    const service = this
+      .workspaceService as unknown as WorkspaceServiceWithCloneOverride;
+    service.cloneRepo = async (
+      workspace: CloneOverrideWorkspace,
+      token?: string,
+    ) => {
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          "git",
+          [
+            "clone",
+            "--branch",
+            workspace.branch.baseBranch,
+            normalizeRepositoryInput(workspace.repo),
+            ".",
+          ],
+          {
+            cwd: workspace.path,
+            env: gitHubTokenEnv(workspace.repo, token),
+            timeout: 120_000,
+          },
+          (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve();
+          },
+        );
+      });
+    };
   }
 
   async stop(): Promise<void> {
@@ -336,7 +416,23 @@ export class CodingWorkspaceService {
     const repo = normalizeRepositoryInput(options.repo);
     const executionId = options.execution?.id ?? `exec-${Date.now()}`;
     const taskId = options.task?.id ?? `task-${Date.now()}`;
-    const baseBranch = options.baseBranch ?? (await resolveDefaultBranch(repo));
+    const userCredentials = this.resolveUserCredentials(
+      repo,
+      options.userCredentials,
+    );
+    const usesAmbientGitHubToken =
+      !options.userCredentials &&
+      userCredentials?.provider === "github" &&
+      userCredentials.type !== "ssh" &&
+      typeof userCredentials.token === "string" &&
+      userCredentials.token.length > 0;
+    const defaultBranchToken =
+      userCredentials?.type === "pat" || userCredentials?.type === "oauth"
+        ? userCredentials.token
+        : undefined;
+    const baseBranch =
+      options.baseBranch ??
+      (await resolveDefaultBranch(repo, defaultBranchToken));
 
     const workspaceConfig: WorkspaceConfig = {
       repo,
@@ -354,16 +450,14 @@ export class CodingWorkspaceService {
         role: options.task?.role ?? "coding-agent",
         slug: options.task?.slug,
       },
-      userCredentials: options.userCredentials
-        ? {
-            type: options.userCredentials.type,
-            token: options.userCredentials.token ?? "",
-            provider: "github",
-          }
-        : undefined,
+      userCredentials,
     };
 
     const workspace = await this.workspaceService.provision(workspaceConfig);
+    if (usesAmbientGitHubToken) {
+      await this.removeAmbientCredentialHelper(workspace.path);
+      this.ambientCredentialWorkspaceIds.add(workspace.id);
+    }
     const result: WorkspaceResult = {
       id: workspace.id,
       path: workspace.path,
@@ -448,8 +542,21 @@ export class CodingWorkspaceService {
     if (!workspace) {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
-    await gitPush(workspace.path, workspace.branch, options, (msg) =>
-      this.log(msg),
+    const ambientCredentials = this.ambientCredentialWorkspaceIds.has(
+      workspaceId,
+    )
+      ? this.resolveUserCredentials(workspace.repo, undefined)
+      : undefined;
+    const ambientToken =
+      ambientCredentials?.type === "pat" || ambientCredentials?.type === "oauth"
+        ? ambientCredentials.token
+        : undefined;
+    await gitPush(
+      workspace.path,
+      workspace.branch,
+      options,
+      (msg) => this.log(msg),
+      gitHubTokenEnv(workspace.repo, ambientToken),
     );
     this.log(`Pushed workspace ${workspaceId}`);
   }
@@ -764,6 +871,45 @@ export class CodingWorkspaceService {
     if (this.serviceConfig.debug) {
       logger.debug(`[CodingWorkspaceService] ${message}`);
     }
+  }
+
+  private resolveUserCredentials(
+    repo: string,
+    userCredentials: ProvisionWorkspaceOptions["userCredentials"],
+  ): WorkspaceConfig["userCredentials"] {
+    if (userCredentials) {
+      return {
+        type: userCredentials.type,
+        token: userCredentials.token ?? "",
+        provider: "github",
+      };
+    }
+
+    if (!isGitHubRepository(repo)) {
+      return undefined;
+    }
+
+    const githubToken =
+      (this.runtime.getSetting("GITHUB_TOKEN") as string | undefined) ??
+      this.readConfigEnvKey("GITHUB_TOKEN") ??
+      process.env.GITHUB_TOKEN;
+    if (githubToken && githubToken.length > 0) {
+      return { type: "pat", token: githubToken, provider: "github" };
+    }
+    return undefined;
+  }
+
+  private async removeAmbientCredentialHelper(workspacePath: string) {
+    const helperDir = path.join(workspacePath, ".git-workspace");
+    await fs.rm(helperDir, { recursive: true, force: true }).catch(() => {});
+    await new Promise<void>((resolve) => {
+      execFile(
+        "git",
+        ["config", "--unset-all", "credential.helper"],
+        { cwd: workspacePath, timeout: 10_000 },
+        () => resolve(),
+      );
+    });
   }
 
   /** Read a key from the config file's env section (live, no restart needed). */

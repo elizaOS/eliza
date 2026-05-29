@@ -82,13 +82,13 @@ export function ShortcutsOverlay() {
                 {shortcuts.map((shortcut) => (
                   <div
                     key={`${shortcut.key}-${shortcut.description}`}
-                    className="flex items-center justify-between py-1.5 px-2 rounded"
+                    className="flex items-center justify-between py-1.5 px-2 rounded-sm"
                   >
                     <span className="text-sm" style={{ color: "var(--text)" }}>
                       {shortcut.description}
                     </span>
                     <kbd
-                      className="inline-flex items-center gap-0.5 px-2 py-0.5 text-xs-tight font-mono rounded"
+                      className="inline-flex items-center gap-0.5 px-2 py-0.5 text-xs-tight font-mono rounded-sm"
                       style={{
                         background: "var(--bg-hover)",
                         border: "1px solid var(--border)",

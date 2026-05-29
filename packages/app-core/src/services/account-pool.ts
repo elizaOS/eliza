@@ -8,12 +8,11 @@
  * The pool never reads OAuth credentials directly — callers resolve them
  * via `getAccessToken(providerId, accountId)` from `@elizaos/agent` once
  * the pool returns an account. Health, priority, and usage live in this
- * layer; the OAuth blob lives under `~/.eliza/auth/` (see `account-storage.ts`
- * in `@elizaos/agent`).
+ * layer; the OAuth blob lives under the active state-dir auth directory.
  *
  * Persistence: the pool layers rich metadata (priority, enabled, health,
  * usage) on top of the credential records from `@elizaos/agent`. The
- * metadata is written to `<ELIZA_HOME>/auth/_pool-metadata.json` atomically
+ * metadata is written to `<stateDir>/auth/_pool-metadata.json` atomically
  * so it survives process restarts.
  */
 
@@ -24,7 +23,6 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { AccountCredentialRecord } from "@elizaos/agent/auth/account-storage";
 import {
@@ -39,7 +37,7 @@ import {
   isSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/agent/auth/types";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
@@ -491,10 +489,7 @@ interface PoolMetaFields {
 type PoolMetaStore = Record<PoolProviderId, Record<string, PoolMetaFields>>;
 
 function authRoot(): string {
-  return path.join(
-    process.env.ELIZA_HOME || path.join(os.homedir(), ".eliza"),
-    "auth",
-  );
+  return path.join(process.env.ELIZA_HOME || resolveStateDir(), "auth");
 }
 
 function metadataFile(): string {

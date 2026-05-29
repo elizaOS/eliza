@@ -543,7 +543,7 @@ export class ReputationService {
           referrer.walletAddress &&
           referredUser.walletAddress &&
           referrer.walletAddress !== referredUser.walletAddress;
-        const hasDifferentPrivyId =
+        const hasDifferentHistoricalAuthId =
           referrer.privyId &&
           referredUser.privyId &&
           referrer.privyId !== referredUser.privyId;
@@ -558,7 +558,7 @@ export class ReputationService {
 
         const hasDifferentIdentifiers =
           hasDifferentWallet ||
-          hasDifferentPrivyId ||
+          hasDifferentHistoricalAuthId ||
           hasDifferentFarcaster ||
           hasDifferentTwitter;
 
@@ -576,8 +576,8 @@ export class ReputationService {
               timeDiffMs: timeDiff,
               referrerWallet: referrer.walletAddress,
               referredWallet: referredUser.walletAddress,
-              referrerPrivyId: referrer.privyId,
-              referredPrivyId: referredUser.privyId,
+              referrerHistoricalAuthId: referrer.privyId,
+              referredHistoricalAuthId: referredUser.privyId,
             },
             "ReputationService",
           );
@@ -614,7 +614,7 @@ export class ReputationService {
               referredUserId,
               timeDiffMs: timeDiff,
               hasDifferentWallet,
-              hasDifferentPrivyId,
+              hasDifferentHistoricalAuthId,
               hasDifferentFarcaster,
               hasDifferentTwitter,
             },

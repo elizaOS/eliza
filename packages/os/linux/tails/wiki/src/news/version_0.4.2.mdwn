@@ -1,0 +1,22 @@
+[[!meta date="Sun, 07 Feb 2010 20:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Amnesia 0.4.2 released
+
+This new release is mainly aimed at fixing a live-initramfs [[security
+issue|security/use_of_untrusted_Live_system_found_on_local_hard-disk]],
+with an additional set of small enhancements as a bonus:
+
+* Vidalia: bring back our UI customizations (0.2.7-1~lenny+amnesia1)
+* APT: consistently use the GeoIP-powered cdn.debian.net
+* Boot
+  - explicitly disable persistence, better safe than sorry
+  - removed the compulsory 15s timeout, live-initramfs knows how to
+    wait for the Live media to be ready
+
+See the online
+Changelog
+for details.
+
+[[Download it, seed it!|install]]

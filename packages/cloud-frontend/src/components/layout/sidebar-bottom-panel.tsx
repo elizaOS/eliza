@@ -67,7 +67,7 @@ export function SidebarBottomPanel({
 
             <Link
               to={loginHref}
-              className="flex w-full items-center justify-center gap-1.5 bg-[#FF5800] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#FF5800]/90"
+              className="flex w-full items-center justify-center gap-1.5 bg-[#FF5800] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-black hover:text-white"
             >
               <UserPlus className="h-3.5 w-3.5" />
               <span>Sign Up</span>

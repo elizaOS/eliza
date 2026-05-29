@@ -8,6 +8,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { totalmem } from "node:os";
 import { join as pathJoin } from "node:path";
 import {
 	type AgentRuntime,
@@ -21,9 +22,7 @@ import {
 } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
-import type { CacheStatsEntry } from "./cache-bridge";
 import { MODEL_CATALOG } from "./catalog";
-import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
@@ -52,6 +51,7 @@ import {
 	type MemoryPressureSource,
 	nodeOsPressureSource,
 } from "./memory-pressure";
+import { ramHeadroomReserveMb } from "./ram-budget";
 import { buildTextGenerationReadiness } from "./readiness";
 import {
 	chooseSmallerFallbackModel,
@@ -64,6 +64,11 @@ import {
 	removeElizaModel,
 	upsertElizaModel,
 } from "./registry";
+import {
+	type RoutingPreferences,
+	readRoutingPreferences,
+	writeRoutingPreferences,
+} from "./routing-preferences";
 import type {
 	ActiveModelState,
 	AgentModelSlot,
@@ -87,6 +92,52 @@ import type {
 import { prewarmLocalVoiceStackForModel } from "./voice-prewarm";
 
 const SYSTEM_PREFIX_CONVERSATION_ID = "__system_prefix__";
+const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
+const ACTIVATED_TEXT_ROUTING_SLOTS: AgentModelSlot[] = [
+	"TEXT_SMALL",
+	"TEXT_LARGE",
+];
+const LEGACY_LOCAL_ROUTING_PROVIDERS = new Set([
+	"capacitor-llama",
+	"eliza-device-bridge",
+	"eliza-aosp-llama",
+]);
+
+function shouldRouteActivatedModelToLocal(
+	provider: string | undefined,
+): boolean {
+	return (
+		!provider ||
+		provider === LOCAL_INFERENCE_PROVIDER_ID ||
+		LEGACY_LOCAL_ROUTING_PROVIDERS.has(provider)
+	);
+}
+
+async function routeActivatedModelToLocalText(): Promise<void> {
+	const current = await readRoutingPreferences();
+	const next: RoutingPreferences = {
+		preferredProvider: { ...current.preferredProvider },
+		policy: { ...current.policy },
+	};
+	let changed = false;
+
+	for (const slot of ACTIVATED_TEXT_ROUTING_SLOTS) {
+		const provider = next.preferredProvider[slot];
+		if (!shouldRouteActivatedModelToLocal(provider)) continue;
+		if (provider !== LOCAL_INFERENCE_PROVIDER_ID) {
+			next.preferredProvider[slot] = LOCAL_INFERENCE_PROVIDER_ID;
+			changed = true;
+		}
+		if (next.policy[slot] !== "manual") {
+			next.policy[slot] = "manual";
+			changed = true;
+		}
+	}
+
+	if (changed) {
+		await writeRoutingPreferences(next);
+	}
+}
 
 export class LocalInferenceService {
 	// The downloader runs the engine-backed on-device verify pass
@@ -227,14 +278,12 @@ export class LocalInferenceService {
 	}
 
 	/**
-	 * Pull the kernels map from CAPABILITIES.json next to the installed
-	 * llama-server binary. Null when the file is absent or when DFlash isn't
-	 * enabled. Surfaces to the recommender so we don't recommend a model the
-	 * installed binary can't actually run.
+	 * Kernel capability probing is now owned by the native FFI runtime. Null
+	 * means "no static CAPABILITIES.json probe"; the dispatcher still enforces
+	 * runtime-required kernels at load time.
 	 */
 	private installedBinaryKernels(): Partial<Record<string, boolean>> | null {
-		const caps = getDflashRuntimeStatus().capabilities;
-		return caps?.kernels ?? null;
+		return null;
 	}
 
 	async startDownload(
@@ -343,6 +392,9 @@ export class LocalInferenceService {
 			installed,
 			overrides,
 		);
+		if (state.status === "ready") {
+			await routeActivatedModelToLocalText();
+		}
 		if (runtime && state.status === "ready") {
 			void (async () => {
 				await this.prewarmActiveVoice(modelId);
@@ -369,7 +421,7 @@ export class LocalInferenceService {
 	 */
 	async prewarmSystemPrefix(runtime: AgentRuntime): Promise<boolean> {
 		if (!localInferenceEngine.hasLoadedModel()) return false;
-		if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+		if (localInferenceEngine.activeBackendId() !== "llama-cpp") return false;
 		try {
 			const fixedRoomId = (runtime.agentId ??
 				SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
@@ -397,22 +449,13 @@ export class LocalInferenceService {
 
 	/**
 	 * Diagnostic snapshot of the local prefix-cache state. Returns:
-	 *   - `dflash`: per-slot files persisted by the out-of-process
-	 *     llama-server (size + mtime + age in ms).
 	 *   - `engine`: in-process session-pool size and live cache keys.
 	 * Used by the API layer to render a "local cache" debug panel.
 	 */
 	async getLocalCacheStats(): Promise<{
-		dflash: {
-			modelHash: string | null;
-			slotDir: string | null;
-			parallel: number;
-			files: CacheStatsEntry[];
-		};
 		engine: { size: number; maxSize: number; keys: string[] } | null;
 	}> {
 		return {
-			dflash: await dflashLlamaServer.describeCache(),
 			engine: localInferenceEngine.describeSessionPool(),
 		};
 	}
@@ -446,6 +489,15 @@ export class LocalInferenceService {
 		const arbiter = new MemoryArbiter({
 			registry: localInferenceEngine.getSharedResources(),
 			pressureSource: composite,
+			// Usable RAM for the proactive fit-to-budget LRU path: host RAM
+			// minus the OS/runtime headroom reserve. On mobile the OS-pressure
+			// bridge is the primary signal; this is the desktop multi-model
+			// backstop that evicts the coldest model before an overcommit.
+			budgetMb: () =>
+				Math.max(
+					0,
+					Math.floor(totalmem() / (1024 * 1024)) - ramHeadroomReserveMb(),
+				),
 		});
 		arbiter.start();
 		setMemoryArbiter(arbiter);

@@ -1,7 +1,7 @@
 # Nightly per-GPU voice-bench smoke run.
 #
-# STATUS: stub. Gated `if: false` until a self-hosted CUDA GPU runner is
-# wired. L4 (the cheapest GitHub-hosted GPU runner) is a reasonable
+# STATUS: stub. Gated by workflow_dispatch input until a self-hosted CUDA GPU
+# runner is wired. L4 (the cheapest GitHub-hosted GPU runner) is a reasonable
 # starting target; for the full matrix (3090 / 4090 / 5090 / H200) we
 # need a self-hosted pool.
 #
@@ -24,6 +24,11 @@ on:
         description: "Bundle id (e.g. eliza-1-9b)"
         required: false
         default: "eliza-1-9b"
+      enable_gpu_bench:
+        description: "Run the scaffold GPU bench jobs"
+        required: false
+        type: boolean
+        default: false
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -32,11 +37,11 @@ permissions:
 jobs:
   detect:
     name: detect host GPU
-    if: false # stub — flip to true when a GPU runner is online
-    runs-on: [self-hosted, linux, gpu, cuda]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.enable_gpu_bench == true }}
+    runs-on: [self-hosted, gpu-cuda-12.6]
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: latest
       - name: install
@@ -47,7 +52,7 @@ jobs:
             --bundle "${{ github.event.inputs.bundle || 'eliza-1-9b' }}" \
             | tee gpu-plan.json
       - name: upload plan
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: gpu-plan
           path: gpu-plan.json
@@ -55,12 +60,12 @@ jobs:
   bench:
     name: voice-bench (cuda)
     needs: detect
-    if: false # stub — needs a real cuda PipelineDriver wired in voice-bench/bin/voice-bench
-    runs-on: [self-hosted, linux, gpu, cuda]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.enable_gpu_bench == true }}
+    runs-on: [self-hosted, gpu-cuda-12.6]
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: latest
       - name: install
@@ -74,7 +79,7 @@ jobs:
             --runs 5 \
             --output bench.json
       - name: upload bench result
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: bench-${{ github.run_id }}
           path: bench.json

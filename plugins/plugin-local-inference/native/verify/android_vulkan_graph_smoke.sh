@@ -6,18 +6,18 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$SCRIPT_DIR"
 
 ANDROID_API="${ANDROID_API:-28}"
-TARGET="${ELIZA_DFLASH_TARGET:-android-arm64-vulkan}"
+TARGET="${ELIZA_MTP_TARGET:-android-arm64-vulkan}"
 STATE_DIR="${ELIZA_STATE_DIR:-$HOME/.eliza}"
-OUT_DIR="${ELIZA_DFLASH_TARGET_OUT_DIR:-$STATE_DIR/local-inference/bin/dflash/$TARGET}"
-LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-$HOME/.cache/eliza-dflash/android-vulkan-graph-llama-cpp}"
-BIN_DIR="${ELIZA_DFLASH_VULKAN_BIN_DIR:-$OUT_DIR}"
+OUT_DIR="${ELIZA_MTP_TARGET_OUT_DIR:-$STATE_DIR/local-inference/bin/mtp/$TARGET}"
+LLAMA_DIR="${ELIZA_MTP_LLAMA_DIR:-$HOME/.cache/eliza-mtp/android-vulkan-graph-llama-cpp}"
+BIN_DIR="${ELIZA_MTP_VULKAN_BIN_DIR:-$OUT_DIR}"
 REMOTE_DIR="${ELIZA_ANDROID_VULKAN_GRAPH_REMOTE_DIR:-/data/local/tmp/eliza-vulkan-graph}"
 BUILD_DIR="${ELIZA_ANDROID_VULKAN_GRAPH_BUILD_DIR:-android-vulkan-graph-smoke}"
-DFLASH_BUILD_JOBS="${ELIZA_DFLASH_JOBS:-1}"
+MTP_BUILD_JOBS="${ELIZA_MTP_JOBS:-1}"
 ADB_HINT="${ADB:-adb}"
 ALLOW_EMULATOR="${ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN:-0}"
 ALLOW_SOFTWARE="${ELIZA_ALLOW_SOFTWARE_VULKAN:-0}"
-REPORT_DIR="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$SCRIPT_DIR/hardware-results}"
+REPORT_DIR="${ELIZA_MTP_HARDWARE_REPORT_DIR:-$SCRIPT_DIR/hardware-results}"
 EVIDENCE_PATH="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE_OUT:-$SCRIPT_DIR/vulkan-runtime-dispatch-evidence.json}"
 mkdir -p "$REPORT_DIR"
 REPORT_PATH="$REPORT_DIR/android-vulkan-graph-smoke-$(date -u +%Y%m%dT%H%M%SZ).log"
@@ -83,7 +83,7 @@ echo "[android-vulkan-graph-smoke] evidence log: $REPORT_PATH"
 echo "[android-vulkan-graph-smoke] host=$(uname -a)"
 
 if [[ "$TARGET" != "android-arm64-vulkan" ]]; then
-  fail 2 "expected ELIZA_DFLASH_TARGET=android-arm64-vulkan, got $TARGET"
+  fail 2 "expected ELIZA_MTP_TARGET=android-arm64-vulkan, got $TARGET"
 fi
 
 NDK="$(resolve_ndk || true)"
@@ -118,7 +118,7 @@ echo "[android-vulkan-graph-smoke] ndk=${NDK} host_tag=${HOST_TAG}"
 echo "[android-vulkan-graph-smoke] target=${TARGET}"
 echo "[android-vulkan-graph-smoke] llama_dir=${LLAMA_DIR}"
 echo "[android-vulkan-graph-smoke] out_dir=${OUT_DIR}"
-echo "[android-vulkan-graph-smoke] dflash_build_jobs=${DFLASH_BUILD_JOBS}"
+echo "[android-vulkan-graph-smoke] mtp_build_jobs=${MTP_BUILD_JOBS}"
 
 ADB_DEVICES=()
 ADB_LIST="$("$ADB" devices -l || true)"
@@ -168,18 +168,18 @@ if [[ -n "$VKJSON" ]] && [[ "$ALLOW_SOFTWARE" != "1" ]] && echo "$VKJSON" | grep
   fail 3 "refusing software Vulkan device. Set ELIZA_ALLOW_SOFTWARE_VULKAN=1 for diagnostics only"
 fi
 
-if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[android-vulkan-graph-smoke] building patched fork target=${TARGET}"
   rm -rf "$LLAMA_DIR/build/$TARGET"
-  ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
-  ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH=1 \
-    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" \
+  ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
+  ELIZA_MTP_SKIP_DRAFTER_ARCH_PATCH=1 \
+    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-mtp.mjs" \
       --target "$TARGET" \
       --cache-dir "$LLAMA_DIR" \
-      --jobs "$DFLASH_BUILD_JOBS"
+      --jobs "$MTP_BUILD_JOBS"
 else
-  [[ "${ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE:-0}" == "1" ]] || \
-    fail 5 "ELIZA_DFLASH_SKIP_BUILD=1 requires ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE=1"
+  [[ "${ELIZA_MTP_ALLOW_PREBUILT_VULKAN_SMOKE:-0}" == "1" ]] || \
+    fail 5 "ELIZA_MTP_SKIP_BUILD=1 requires ELIZA_MTP_ALLOW_PREBUILT_VULKAN_SMOKE=1"
 fi
 
 CAPABILITIES="$OUT_DIR/CAPABILITIES.json"
@@ -334,15 +334,15 @@ console.log(`[android-vulkan-graph-smoke] wrote per-run evidence: ${jsonReportPa
 console.log(`[android-vulkan-graph-smoke] updated runtime dispatch evidence: ${evidencePath}`);
 NODE
 
-if [[ "${ELIZA_DFLASH_SKIP_REBUILD_WITH_EVIDENCE:-0}" != "1" && "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "${ELIZA_MTP_SKIP_REBUILD_WITH_EVIDENCE:-0}" != "1" && "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[android-vulkan-graph-smoke] rebuilding target=${TARGET} with Android Vulkan runtime evidence recorded"
   rm -rf "$LLAMA_DIR/build/$TARGET"
-  ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
-  ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH=1 \
-    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" \
+  ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
+  ELIZA_MTP_SKIP_DRAFTER_ARCH_PATCH=1 \
+    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-mtp.mjs" \
     --target "$TARGET" \
     --cache-dir "$LLAMA_DIR" \
-    --jobs "$DFLASH_BUILD_JOBS"
+    --jobs "$MTP_BUILD_JOBS"
 fi
 
 echo "[android-vulkan-graph-smoke] PASS Android Vulkan built-fork graph dispatch"

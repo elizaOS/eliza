@@ -36,6 +36,10 @@ export function LogsView({
 
 function LogsViewBody() {
   const [searchQuery, setSearchQuery] = useState("");
+  // The logs store does not track load progress, so gate the initial load
+  // locally: until the first loadLogs() settles we show a loading state
+  // instead of the "no entries yet" empty state (which is misleading mid-load).
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const {
     logs,
@@ -51,7 +55,13 @@ function LogsViewBody() {
   } = useApp();
 
   useEffect(() => {
-    void loadLogs();
+    let cancelled = false;
+    void loadLogs().finally(() => {
+      if (!cancelled) setInitialLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [loadLogs]);
 
   const handleClearFilters = () => {
@@ -106,7 +116,7 @@ function LogsViewBody() {
         <div className="flex flex-wrap items-center gap-2">
           <Input
             type="text"
-            className="min-w-[15rem] flex-1 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm"
+            className="min-w-[15rem] flex-1 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt "
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t("logsview.SearchLogs")}
@@ -119,7 +129,7 @@ function LogsViewBody() {
               setState("logLevelFilter", val === "all" ? "" : val);
             }}
           >
-            <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
+            <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
               <SelectValue placeholder={t("logsview.AllLevels")} />
             </SelectTrigger>
             <SelectContent>
@@ -137,7 +147,7 @@ function LogsViewBody() {
               setState("logSourceFilter", val === "all" ? "" : val);
             }}
           >
-            <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
+            <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
               <SelectValue placeholder={t("logsview.AllSources")} />
             </SelectTrigger>
             <SelectContent>
@@ -157,7 +167,7 @@ function LogsViewBody() {
                 setState("logTagFilter", val === "all" ? "" : val);
               }}
             >
-              <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
+              <SelectTrigger className="w-40 h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ">
                 <SelectValue placeholder={t("logsview.AllTags")} />
               </SelectTrigger>
               <SelectContent>
@@ -212,7 +222,7 @@ function LogsViewBody() {
         {logLoadError ? (
           <div
             role="alert"
-            className="rounded-2xl border border-danger/35 bg-danger/8 px-3 py-2 text-xs text-danger"
+            className="rounded-sm border border-danger/35 bg-danger/8 px-3 py-2 text-xs text-danger"
           >
             {t("logsview.LoadFailed", {
               defaultValue: "Failed to load logs: {{message}}",
@@ -227,11 +237,19 @@ function LogsViewBody() {
         variant="surface"
         className="flex-1 min-h-0 overflow-y-auto p-2 font-mono text-sm"
       >
-        {filteredLogs.length === 0 ? (
+        {initialLoading && filteredLogs.length === 0 && !logLoadError ? (
+          <PagePanel.Loading
+            variant="panel"
+            className="m-1 min-h-[16rem] rounded-sm border-border/35 bg-bg-hover/60"
+            heading={t("logsview.LoadingLogs", {
+              defaultValue: "Loading logs…",
+            })}
+          />
+        ) : filteredLogs.length === 0 ? (
           <PagePanel.Empty
             variant="panel"
             role="status"
-            className="m-1 min-h-[16rem] rounded-xl border-border/35 bg-bg-hover/60 px-6 py-10"
+            className="m-1 min-h-[16rem] rounded-sm border-border/35 bg-bg-hover/60 px-6 py-10"
             description={
               hasActiveFilters
                 ? t("logsview.NoLogEntriesMatchingFiltersDescription")
@@ -244,7 +262,7 @@ function LogsViewBody() {
             )}
           />
         ) : (
-          <PagePanel variant="inset" className="overflow-hidden rounded-2xl">
+          <PagePanel variant="inset" className="overflow-hidden rounded-sm">
             <div className="hidden grid-cols-[5.75rem_3.5rem_5rem_14rem_minmax(0,1fr)] gap-3 px-3 py-2 text-xs-tight font-medium uppercase tracking-[0.08em] text-muted md:grid">
               <span>{t("logsview.Time")}</span>
               <span>{t("logsview.Level")}</span>

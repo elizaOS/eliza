@@ -27,7 +27,7 @@ export function RevenueFlowDiagram({
   return (
     <div
       className={cn(
-        "bg-neutral-900 rounded-xl p-4 flex flex-col h-full",
+        "bg-neutral-900 rounded-sm p-4 flex flex-col h-full",
         className,
       )}
     >
@@ -159,7 +159,7 @@ function FlowNode({
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-2 p-3 rounded-xl border transition-colors w-[90px]",
+        "flex flex-col items-center gap-2 p-3 rounded-sm border transition-colors w-[90px]",
         highlight ? "border-[#FF5800]/30" : "border-white/10",
         bgColor,
       )}
@@ -219,7 +219,7 @@ function FlowNodeMobile({
   return (
     <div
       className={cn(
-        "flex items-center justify-between p-3 rounded-xl border",
+        "flex items-center justify-between p-3 rounded-sm border",
         highlight
           ? "border-[#FF5800]/30 bg-[#FF5800]/10"
           : "border-white/10 bg-black/30",

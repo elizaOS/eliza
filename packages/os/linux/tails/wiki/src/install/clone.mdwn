@@ -1,0 +1,5 @@
+[[!meta title="Install by cloning"]]
+
+- [[Install by cloning from another Tails on PC|install/clone/pc]]
+
+- [[Install by cloning from another Tails on Mac|install/clone/mac]]

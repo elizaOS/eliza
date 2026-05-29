@@ -1,0 +1,49 @@
+#!/bin/sh
+
+set -eu
+
+FAILURE=no
+for dir in config/APT_snapshots.d vagrant/definitions/tails-builder/config/APT_snapshots.d; do
+    echo "${dir:?}:"
+    cd "$(git rev-parse --show-toplevel)/${dir:?}"
+    for ARCHIVE in *; do
+        SERIAL="$(cat "${ARCHIVE:?}/serial")"
+        if [ "${SERIAL:?}" = 'latest' ]; then
+            EXPIRY='never'
+            if [ "${ARCHIVE:?}" != 'debian-security' ]; then
+                echo "Warning: origin '${ARCHIVE:?}' is using the 'latest' snapshot, which is unexpected" >&2
+            fi
+        else
+            case "${ARCHIVE:?}" in
+            'debian-security')
+                DIST='trixie-security'
+                ;;
+            'torproject')
+                DIST='trixie'
+                ;;
+            *)
+                DIST='stable'
+                ;;
+            esac
+            EXPIRY="$(curl --silent "https://time-based.snapshots.deb.tails.boum.org/${ARCHIVE:?}/dists/${DIST:?}/snapshots/${SERIAL:?}/Release" | sed -n 's/^Valid-Until:\s\+\(.*\)$/\1/p')"
+            if [ -z "${EXPIRY:-}" ]; then
+                FAILURE=yes
+                echo "FAIL: archive '${ARCHIVE:?}' has no snapshot '${SERIAL}'!"
+                continue
+            fi
+        fi
+        STATUS="archive '${ARCHIVE:?}' uses snapshot '${SERIAL:?}' which expires on: ${EXPIRY:?}"
+        if [ "${EXPIRY}" = 'never' ] ||
+            [ "$(date -d "${EXPIRY}" +%s)" -ge "$(date -d "now + 1 month" +%s)" ]; then
+            echo "OK:   ${STATUS}"
+        else
+            FAILURE=yes
+            echo "FAIL: ${STATUS}, which is within one month!" >&2
+        fi
+    done
+    echo ---
+done
+
+if [ "${FAILURE}" = yes ]; then
+    exit 1
+fi

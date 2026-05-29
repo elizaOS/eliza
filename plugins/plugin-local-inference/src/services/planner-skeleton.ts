@@ -14,9 +14,8 @@
  * contract the response handler uses:
  *
  *   1. `buildPlanActionsSkeleton(actions)` — top-level envelope skeleton
- *      `{"action": <enum>, "parameters": <free-json>, "thought": <free-string>}`
- *      matching the bare-JSON form `plan-actions-extractor.ts` parses.
- *      `action` is pinned to the alternation of registered action names;
+ *      `{"action": <enum>, "parameters": <free-json>, "thought": <free-string>}`.
+ *      `action` is pinned to the alternation of registered action names and
  *      collapses to a literal when only one action is exposed.
  *
  *   2. `buildPlannerGuidedDecode(actions)` — the full bundle: the skeleton
@@ -114,11 +113,6 @@ export interface PlannerGuidedDecode {
  *
  * Shape:
  *   `{"action": <enum>, "parameters": <free-json>, "thought": <free-string>}`
- *
- * Matches `plan-actions-extractor.ts`'s bare-JSON expectation:
- *   `parsed.action` is read as a string; `parameters` / `params` is read as
- *   an object; `thought` is optional. The skeleton's key order
- *   (`action, parameters, thought`) matches the parser exactly.
  *
  * Returns `null` when no actions are exposed (caller should skip
  * structure-forcing — there is nothing to constrain `action` to).

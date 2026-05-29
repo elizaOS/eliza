@@ -46,6 +46,27 @@ export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+/**
+ * Idempotent, race-safe shell command that guarantees the shared agent bridge
+ * network exists on a node before a container is attached to it.
+ *
+ * `node-bootstrap.ts` creates this network in cloud-init, but only for nodes
+ * provisioned through the Hetzner Cloud autoscaler. Hetzner Robot cores (and
+ * any node whose network was removed out-of-band) never run that bootstrap, so
+ * `docker create --network <net>` fails with an opaque "network <net> not
+ * found" and the provision retries forever. Running this first lets the
+ * provisioner self-heal that drift.
+ *
+ * The final `inspect` covers the create-create race when two provisions land on
+ * the same node simultaneously: the loser's `create` fails ("already exists"),
+ * then the re-`inspect` confirms the winner's network and the command still
+ * exits 0.
+ */
+export function buildEnsureNetworkCmd(network: string): string {
+  const net = shellQuote(network);
+  return `docker network inspect ${net} >/dev/null 2>&1 || docker network create --driver bridge ${net} >/dev/null 2>&1 || docker network inspect ${net} >/dev/null`;
+}
+
 // ---------------------------------------------------------------------------
 // Platform / Architecture helpers
 // ---------------------------------------------------------------------------

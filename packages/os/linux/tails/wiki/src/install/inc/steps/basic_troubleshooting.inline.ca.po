@@ -1,0 +1,144 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-03-12 09:15+0000\n"
+"PO-Revision-Date: 2025-07-01 17:37+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Wait 2&ndash;3 minutes and try again. Some USB sticks need some rest after "
+"installing."
+msgstr ""
+"Espereu 2&ndash;3 minuts i torneu-ho a intentar. Alguns llapis USB "
+"necessiten una mica de descans després de la instal·lació."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Try all other USB ports on the computer. Some USB ports cannot be used to "
+"start from."
+msgstr ""
+"Proveu tots els altres ports USB de l'ordinador. Alguns ports USB no es "
+"poden utilitzar per arrencar."
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr "Assegureu-vos d'haver instal·lat Tails mitjançant:"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr "[[<i>Rufus</i> des de Windows|install/windows#rufus]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr "[[<i>balenaEtcher</i> des de macOS|install/mac#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr "[[<i>Discs de GNOME</i> des de Linux|install/linux#install]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr "[[la línia d'ordres de Linux|install/expert#install]]"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Make sure that you have [[verified your download of Tails|install/download]]."
+msgstr ""
+"Assegureu-vos que heu [[verificat la baixada de Tails|install/download]]."
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have <a href=\"#verify\">verified your download</a>."
+msgstr "Assegureu-vos que heu <a href=\"#verify\">verificat la baixada</a>."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/windows#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|install/windows#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/mac#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|install/mac#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/linux#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|install/linux#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install/expert#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|install/expert#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|clone/pc#install]] on the same USB stick."
+msgstr "Proveu d'[[instal·lar de nou|clone/pc#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|clone/mac#install]] on the same USB stick."
+msgstr "Proveu d'[[instal·lar de nou|clone/mac#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to [[install again|install]] on the same USB stick."
+msgstr "Proveu d'[[instal·lar de nou|install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "Try to [[install again|upgrade/tails#install]] on the same USB stick."
+msgid ""
+"Try to [[install again|doc/upgrade/tails#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|upgrade/tails#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "Try to [[install again|upgrade/windows#install]] on the same USB stick."
+msgid ""
+"Try to [[install again|doc/upgrade/windows#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|upgrade/windows#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid "Try to [[install again|upgrade/mac#install]] on the same USB stick."
+msgid "Try to [[install again|doc/upgrade/mac#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|upgrade/mac#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "Try to [[install again|upgrade/linux#install]] on the same USB stick."
+msgid ""
+"Try to [[install again|doc/upgrade/linux#install]] on the same USB stick."
+msgstr ""
+"Proveu d'[[instal·lar de nou|upgrade/linux#install]] al mateix llapis USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to install on a different USB stick."
+msgstr "Proveu d'instal·lar-lo en un llapis USB diferent."
+
+#. type: Content of: <ol><li><p>
+msgid "Try to use the same USB stick to start on a different computer."
+msgstr ""
+"Proveu d'utilitzar el mateix llapis USB per començar en un ordinador "
+"diferent."

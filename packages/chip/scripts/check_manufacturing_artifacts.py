@@ -7,6 +7,7 @@ from argparse import ArgumentParser
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -21,6 +22,7 @@ DEFAULT_MANIFESTS = [
     "board/kicad/e1-demo/artifact-manifest.yaml",
     "board/kicad/e1-phone/artifact-manifest.yaml",
     "board/fpga/artifact-manifest.yaml",
+    "pd/signoff/manifest.yaml",
 ]
 MANIFEST_OWNER_PATHS = {
     "manufacturing_physical_evidence": "docs/manufacturing/artifact-manifest.yaml",
@@ -28,6 +30,7 @@ MANIFEST_OWNER_PATHS = {
     "e1_demo_kicad_board_evidence": "board/kicad/e1-demo/artifact-manifest.yaml",
     "board/kicad/e1-phone/artifact-manifest.yaml": "board/kicad/e1-phone/artifact-manifest.yaml",
     "e1_demo_fpga_bitstream_evidence": "board/fpga/artifact-manifest.yaml",
+    "e1_chip_top_pd": "pd/signoff/manifest.yaml",
 }
 MANIFEST_GENERATION_GUIDANCE = {
     "manufacturing_physical_evidence": {
@@ -95,13 +98,28 @@ MANIFEST_GENERATION_GUIDANCE = {
             "python3 scripts/check_manufacturing_artifacts.py --release",
         ],
     },
+    "e1_chip_top_pd": {
+        "primary_paths": [
+            "pd/signoff/manifest.yaml",
+            "pd/openlane/config.json",
+            "pd/openlane/config.sky130.json",
+            "pd/openlane/config.gf180.json",
+            "build/reports/pd_signoff.json",
+            "build/reports/openlane_run_release_preflight.json",
+        ],
+        "generation_commands": [
+            "python3 scripts/check_pd_signoff.py",
+            "python3 scripts/check_openlane_run_preflight.py --release",
+            "python3 scripts/check_manufacturing_artifacts.py --release",
+        ],
+    },
 }
 TRUE_MISSING_STATES = {
     "true_missing_generated_file",
     "true_missing_release_output",
     "true_missing_checksum_manifest",
 }
-PHONE_RELEASE_OUTPUT_GENERATION_PLAN = {
+PHONE_RELEASE_OUTPUT_GENERATION_PLAN: dict[str, dict[str, object]] = {
     "schematic_erc_report": {
         "generation_status": "blocked_by_schematic_release_gate",
         "can_generate_from_repo_now": False,
@@ -381,6 +399,16 @@ ALLOWED_MANIFEST_STATUS = {
     "release_blocked",
     "complete",
 }
+
+_YAML_CACHE: dict[Path, object] = {}
+_ARTIFACT_CONTEXT_CACHE: dict[str, dict[str, object]] = {}
+
+
+def load_yaml_cached(path: Path) -> object:
+    resolved = path.resolve()
+    if resolved not in _YAML_CACHE:
+        _YAML_CACHE[resolved] = yaml.safe_load(resolved.read_text(encoding="utf-8"))
+    return _YAML_CACHE[resolved]
 
 
 def write_report(
@@ -704,13 +732,16 @@ def generation_plan_for_missing_finding(finding: str) -> dict[str, object]:
                 ),
                 "can_generate_from_repo_now": output_plan.get("can_generate_from_repo_now", False),
                 "required_before_generation": list(
-                    output_plan.get(
-                        "required_before_generation",
-                        ["approved phone release source package"],
+                    cast(
+                        "list[str]",
+                        output_plan.get(
+                            "required_before_generation",
+                            ["approved phone release source package"],
+                        ),
                     )
                 ),
                 "generation_commands": _dedupe_commands(
-                    list(output_plan.get("generation_commands", []))
+                    list(cast("list[str]", output_plan.get("generation_commands", [])))
                     + blocker_next_commands(finding)
                 ),
             }
@@ -866,11 +897,19 @@ def manifest_unblock_matrix(findings: list[str]) -> list[dict[str, object]]:
                 ),
             },
         )
-        row["blocker_count"] = int(row["blocker_count"]) + 1
-        row["bucket_counts"][bucket] += 1
-        row["artifact_state_counts"][artifact_state_for_finding(finding)] += 1
-        if len(row["sample_findings"]) < 6:
-            row["sample_findings"].append(finding)
+        blocker_count = row["blocker_count"]
+        assert isinstance(blocker_count, int)
+        row["blocker_count"] = blocker_count + 1
+        bucket_counts = row["bucket_counts"]
+        assert isinstance(bucket_counts, Counter)
+        bucket_counts[bucket] += 1
+        artifact_state_counts = row["artifact_state_counts"]
+        assert isinstance(artifact_state_counts, Counter)
+        artifact_state_counts[artifact_state_for_finding(finding)] += 1
+        sample_findings = row["sample_findings"]
+        assert isinstance(sample_findings, list)
+        if len(sample_findings) < 6:
+            sample_findings.append(finding)
 
     rows: list[dict[str, object]] = []
     for row in grouped.values():
@@ -903,7 +942,10 @@ def manifest_unblock_matrix(findings: list[str]) -> list[dict[str, object]]:
                 ],
             }
         )
-    return sorted(rows, key=lambda row: (-int(row["blocker_count"]), str(row["manifest"])))
+    return sorted(
+        rows,
+        key=lambda row: (-int(cast("int", row["blocker_count"])), str(row["manifest"])),
+    )
 
 
 def blocker_source_selector(finding: str) -> str:
@@ -964,29 +1006,38 @@ def _string_list(value: object) -> list[str]:
 
 
 def artifact_context_for_selector(selector: str) -> dict[str, object]:
+    if selector in _ARTIFACT_CONTEXT_CACHE:
+        return _ARTIFACT_CONTEXT_CACHE[selector]
     parts = selector.split(".")
+    result: dict[str, object]
     if len(parts) < 3:
-        return {"selector": selector, "kind": "manifest_or_group"}
+        result = {"selector": selector, "kind": "manifest_or_group"}
+        _ARTIFACT_CONTEXT_CACHE[selector] = result
+        return result
     manifest_name, group_name, artifact_name = parts[0], parts[1], parts[2]
     manifest_path = manifest_path_for_owner(manifest_name)
     if manifest_path is None or not manifest_path.is_file():
-        return {
+        result = {
             "selector": selector,
             "kind": "artifact",
             "manifest_path": str(manifest_path) if manifest_path else None,
             "files_present": False,
             "file_paths": [],
         }
+        _ARTIFACT_CONTEXT_CACHE[selector] = result
+        return result
     try:
-        manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        manifest = load_yaml_cached(manifest_path)
     except yaml.YAMLError:
-        return {
+        result = {
             "selector": selector,
             "kind": "artifact",
             "manifest_path": manifest_path.relative_to(ROOT).as_posix(),
             "files_present": False,
             "file_paths": [],
         }
+        _ARTIFACT_CONTEXT_CACHE[selector] = result
+        return result
     groups = manifest.get("artifact_groups", {}) if isinstance(manifest, dict) else {}
     group = groups.get(group_name, {}) if isinstance(groups, dict) else {}
     artifacts = group.get("artifacts", []) if isinstance(group, dict) else []
@@ -996,7 +1047,7 @@ def artifact_context_for_selector(selector: str) -> dict[str, object]:
         files = []
         for pattern in _string_list(artifact.get("globs")):
             files.extend(sorted(path for path in ROOT.glob(pattern) if path.is_file()))
-        return {
+        result = {
             "selector": selector,
             "kind": "artifact",
             "manifest_path": manifest_path.relative_to(ROOT).as_posix(),
@@ -1008,7 +1059,9 @@ def artifact_context_for_selector(selector: str) -> dict[str, object]:
             "required_metadata": _string_list(artifact.get("required_metadata")),
             "checksum_manifest": artifact.get("checksum_manifest"),
         }
-    return {
+        _ARTIFACT_CONTEXT_CACHE[selector] = result
+        return result
+    result = {
         "selector": selector,
         "kind": "artifact",
         "manifest_path": manifest_path.relative_to(ROOT).as_posix(),
@@ -1017,6 +1070,8 @@ def artifact_context_for_selector(selector: str) -> dict[str, object]:
         "files_present": False,
         "file_paths": [],
     }
+    _ARTIFACT_CONTEXT_CACHE[selector] = result
+    return result
 
 
 def release_blocker_class(finding: str) -> str:
@@ -1053,7 +1108,7 @@ def blocker_execution_packets(findings: list[str]) -> list[dict[str, object]]:
         selector = blocker_source_selector(finding)
         repo_generation_plan = generation_plan_for_missing_finding(finding)
         generation_commands = (
-            list(repo_generation_plan["generation_commands"])
+            list(cast("list[str]", repo_generation_plan["generation_commands"]))
             if artifact_state_for_finding(finding) in TRUE_MISSING_STATES
             else list(guidance.get("generation_commands", blocker_next_commands(finding)))
         )
@@ -1438,7 +1493,7 @@ def resolved_manifest(manifest_paths: list[str]) -> dict:
         if not path.is_file():
             manifests.append({"path": manifest, "exists": False, "artifact_groups": []})
             continue
-        data = yaml.safe_load(path.read_text())
+        data = load_yaml_cached(path)
         if not isinstance(data, dict):
             manifests.append(
                 {
@@ -1543,7 +1598,7 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
     failures: list[str] = []
     rel_manifest = path.relative_to(ROOT).as_posix()
     try:
-        manifest = yaml.safe_load(path.read_text())
+        manifest = load_yaml_cached(path)
     except yaml.YAMLError as exc:
         return [f"{rel_manifest}: invalid YAML: {exc}"]
     if not isinstance(manifest, dict):
@@ -1614,7 +1669,7 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
             continue
         if path_obj.suffix in {".yaml", ".yml"}:
             try:
-                yaml.safe_load(path_obj.read_text())
+                load_yaml_cached(path_obj)
             except yaml.YAMLError as exc:
                 failures.append(f"{rel_manifest}: current artifact YAML invalid {rel_path}: {exc}")
 
@@ -1652,7 +1707,10 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
 
     routed_plan_path = repo_path("board/kicad/e1-phone/routed-release-plan.yaml")
     if routed_plan_path.is_file():
-        routed_plan = yaml.safe_load(routed_plan_path.read_text())
+        routed_plan = load_yaml_cached(routed_plan_path)
+        if not isinstance(routed_plan, dict):
+            failures.append(f"{rel_manifest}: routed release plan must be a mapping")
+            routed_plan = {}
         if (
             routed_plan.get("status")
             != "blocked_routed_release_requires_real_route_and_supplier_outputs"
@@ -1698,13 +1756,15 @@ def validate_e1_phone_manifest(path: Path, release: bool) -> list[str]:
 def validate_manifest(path: Path, release: bool) -> list[str]:
     failures: list[str] = []
     try:
-        manifest = yaml.safe_load(path.read_text())
+        manifest = load_yaml_cached(path)
     except yaml.YAMLError as exc:
         return [f"{path.relative_to(ROOT)}: invalid YAML: {exc}"]
     if not isinstance(manifest, dict):
         return [f"{path.relative_to(ROOT)}: manifest must be a mapping"]
     if manifest.get("schema") == "eliza.e1_phone_board_artifact_manifest.v1":
         return validate_e1_phone_manifest(path, release)
+    if manifest.get("schema") == "eliza.pd_signoff_manifest.v1":
+        return validate_pd_signoff_manifest(path, manifest, release)
 
     manifest_name = str(manifest.get("manifest") or path.relative_to(ROOT))
     release_gate = manifest.get("release_gate")
@@ -1812,6 +1872,72 @@ def validate_manifest(path: Path, release: bool) -> list[str]:
         for artifact in artifacts:
             validate_artifact(manifest_name, str(group_name), artifact, release, failures)
 
+    return failures
+
+
+def validate_pd_signoff_manifest(path: Path, manifest: dict, release: bool) -> list[str]:
+    manifest_name = str(manifest.get("signoff") or path.relative_to(ROOT))
+    failures: list[str] = []
+    if manifest.get("status") != "required_for_pd_release":
+        failures.append(f"{manifest_name}: status must be required_for_pd_release")
+
+    runner = manifest.get("runner", {})
+    if not isinstance(runner, dict):
+        failures.append(f"{manifest_name}: runner must be a mapping")
+    else:
+        if runner.get("require_pinned_runner_for_release") is not True:
+            failures.append(f"{manifest_name}: release requires require_pinned_runner_for_release")
+        digest = runner.get("openlane_image_digest")
+        if not isinstance(digest, str) or not digest.startswith("sha256:"):
+            failures.append(f"{manifest_name}: missing pinned OpenLane image digest")
+
+    run_roots = manifest.get("run_roots", [])
+    if not isinstance(run_roots, list) or not run_roots:
+        failures.append(f"{manifest_name}: missing run_roots")
+
+    required_artifacts = manifest.get("required_artifacts", {})
+    if not isinstance(required_artifacts, dict) or not required_artifacts:
+        failures.append(f"{manifest_name}: missing required_artifacts")
+    elif release:
+        for artifact_name, artifact in required_artifacts.items():
+            if not isinstance(artifact, dict):
+                failures.append(f"{manifest_name}.{artifact_name}: artifact must be a mapping")
+                continue
+            globs = artifact.get("globs", [])
+            min_bytes = int(artifact.get("min_bytes", 1))
+            files = (
+                [
+                    candidate
+                    for pattern in globs
+                    for candidate in ROOT.glob(str(pattern))
+                    if candidate.is_file() and candidate.stat().st_size >= min_bytes
+                ]
+                if isinstance(globs, list)
+                else []
+            )
+            if not files:
+                failures.append(
+                    f"{manifest_name}.{artifact_name}: release artifact files are missing"
+                )
+
+    blocked_gates = manifest.get("blocked_gates", {})
+    if not isinstance(blocked_gates, dict) or not blocked_gates:
+        failures.append(f"{manifest_name}: missing blocked_gates")
+    else:
+        for gate_name, gate in blocked_gates.items():
+            if not isinstance(gate, dict):
+                failures.append(
+                    f"{manifest_name}.blocked_gates.{gate_name}: gate must be a mapping"
+                )
+                continue
+            if gate.get("blocked") is not True:
+                failures.append(f"{manifest_name}.blocked_gates.{gate_name}: blocked must be true")
+            if not isinstance(gate.get("reason"), str) or not gate["reason"]:
+                failures.append(f"{manifest_name}.blocked_gates.{gate_name}: missing reason")
+            if release:
+                failures.append(
+                    f"{manifest_name}.blocked_gates.{gate_name}: release gate remains blocked"
+                )
     return failures
 
 

@@ -91,7 +91,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     );
   }
 
-  // Verify auth via Privy JWT — returns null for unauthenticated/invalid tokens
+  // Verify auth via Steward JWT — returns null for unauthenticated/invalid tokens
   const authUser = await optionalAuth(request);
 
   if (!authUser?.dbUserId) {

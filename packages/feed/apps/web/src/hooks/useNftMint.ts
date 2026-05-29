@@ -59,7 +59,7 @@ export function useNftMint(): UseNftMintResult {
       setError(null);
 
       try {
-        // In production we may rely on Privy's HttpOnly cookie auth. In that setup,
+        // In production we may rely on Steward's HttpOnly cookie auth. In that setup,
         // `getAccessToken()` can be unavailable/undefined in the browser, but the
         // cookie still authenticates same-origin requests.
         const token = await getAccessToken().catch(() => null);
@@ -151,10 +151,10 @@ export function useNftMint(): UseNftMintResult {
     try {
       setFlowState("minting");
 
-      // Per Privy cookie best practices, always refresh the session before
+      // Refresh the Steward session before
       // triggering a privileged server-side action.
       //
-      // This avoids relying on a potentially-missing/stale `privy-token` cookie
+      // This avoids relying on a potentially-missing/stale auth cookie
       // on the first request after the user returns to the app.
       let userJwt: string | null;
       try {

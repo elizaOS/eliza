@@ -15,7 +15,7 @@ const runtimeRemote = {
 			run: true,
 			worker: true,
 		},
-		isolation: "isolated-process",
+		isolation: "shared-worker",
 	},
 	view: {
 		relativePath: "src/web/index.html",

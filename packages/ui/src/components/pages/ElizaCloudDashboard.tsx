@@ -15,7 +15,7 @@ import {
   isRateLimitedError,
 } from "../../api";
 import { useBranding } from "../../config/branding";
-import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode";
+import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
@@ -55,6 +55,7 @@ export function CloudDashboard() {
     elizaCloudStatusReason,
     cloudDashboardView,
     elizaCloudLoginBusy,
+    elizaCloudLoginFallbackUrl,
     handleCloudLogin,
     handleCloudDisconnect,
     elizaCloudDisconnecting: cloudDisconnecting,
@@ -585,30 +586,35 @@ export function CloudDashboard() {
 
   if (!elizaCloudConnected) {
     return (
-      <div className="mx-auto flex max-w-sm flex-wrap items-center justify-center gap-2 px-3 py-5 text-center">
-        <Button
-          variant="default"
-          size="sm"
-          className="h-8 rounded-lg px-3 text-xs font-semibold"
-          onClick={() => void handleCloudLogin(preOpenWindow())}
-          disabled={elizaCloudLoginBusy}
-        >
-          {elizaCloudLoginBusy ? (
-            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Zap className="mr-2 h-4 w-4" />
-          )}
-          {elizaCloudLoginBusy
-            ? t("game.connecting")
-            : t("elizaclouddashboard.ConnectElizaCloud")}
-        </Button>
-        <Button
-          variant="link"
-          className="h-8 px-2 text-xs text-muted"
-          onClick={() => void openExternalUrl(ELIZA_CLOUD_WEB_URL)}
-        >
-          {t("elizaclouddashboard.LearnMore")}
-        </Button>
+      <div className="mx-auto flex max-w-sm flex-col items-center justify-center gap-2 px-3 py-5 text-center">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 rounded-sm px-3 text-xs font-semibold"
+            onClick={() => void handleCloudLogin(preOpenWindow())}
+            disabled={elizaCloudLoginBusy}
+          >
+            {elizaCloudLoginBusy ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Zap className="mr-2 h-4 w-4" />
+            )}
+            {elizaCloudLoginBusy
+              ? t("game.connecting")
+              : t("elizaclouddashboard.ConnectElizaCloud")}
+          </Button>
+          <Button
+            variant="link"
+            className="h-8 px-2 text-xs text-muted"
+            onClick={() => void openExternalUrl(ELIZA_CLOUD_WEB_URL)}
+          >
+            {t("elizaclouddashboard.LearnMore")}
+          </Button>
+        </div>
+        {elizaCloudLoginBusy && elizaCloudLoginFallbackUrl ? (
+          <CloudLoginFallbackLink browserUrl={elizaCloudLoginFallbackUrl} />
+        ) : null}
       </div>
     );
   }
@@ -639,7 +645,7 @@ export function CloudDashboard() {
           <Button
             variant="default"
             size="sm"
-            className="h-8 rounded-lg px-2.5 text-xs font-semibold"
+            className="h-8 rounded-sm px-2.5 text-xs font-semibold"
             onClick={goBilling}
           >
             <CreditCard className="mr-1.5 h-3.5 w-3.5" />
@@ -650,7 +656,7 @@ export function CloudDashboard() {
           <Button
             variant="outline"
             size="icon"
-            className="h-8 w-8 rounded-lg"
+            className="h-8 w-8 rounded-sm"
             onClick={handleRefresh}
             disabled={refreshing || billingLoading || isRateLimited}
             aria-label={t("common.refresh")}
@@ -669,7 +675,7 @@ export function CloudDashboard() {
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 rounded-lg border-danger/30 px-2.5 text-danger text-xs hover:bg-danger/10"
+              className="h-8 rounded-sm border-danger/30 px-2.5 text-danger text-xs hover:bg-danger/10"
               onClick={() => void handleCloudDisconnect()}
               disabled={cloudDisconnecting}
             >
@@ -684,7 +690,7 @@ export function CloudDashboard() {
       {elizaCloudAuthRejected && (
         <div
           role="alert"
-          className="mt-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+          className="mt-2 rounded-sm border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
           {t("notice.elizaCloudAuthRejected")}
         </div>
@@ -693,7 +699,7 @@ export function CloudDashboard() {
       {rateLimitMessage && (
         <div
           role="status"
-          className="mt-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
+          className="mt-2 rounded-sm border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
         >
           {rateLimitMessage}
         </div>
@@ -702,7 +708,7 @@ export function CloudDashboard() {
       {!rateLimitMessage && billingError && (
         <div
           role="alert"
-          className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+          className="mt-2 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
           {billingError}
         </div>
@@ -710,7 +716,7 @@ export function CloudDashboard() {
 
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         <span
-          className="inline-flex max-w-full items-center rounded-md border border-border/50 bg-bg/55 px-2 py-1 text-muted"
+          className="inline-flex max-w-full items-center rounded-sm border border-border/50 bg-bg/55 px-2 py-1 text-muted"
           title={t("common.account", { defaultValue: "Account" })}
         >
           {accountIdDisplay.mono ? (
@@ -722,7 +728,7 @@ export function CloudDashboard() {
           )}
         </span>
         <span
-          className="inline-flex items-center rounded-md border border-border/50 bg-bg/55 px-2 py-1 text-muted"
+          className="inline-flex items-center rounded-sm border border-border/50 bg-bg/55 px-2 py-1 text-muted"
           title={t("elizaclouddashboard.AutoTopUp", {
             defaultValue: "Auto top-up",
           })}
@@ -748,7 +754,7 @@ export function CloudDashboard() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 rounded-lg px-2 text-muted hover:text-txt"
+          className="h-8 rounded-sm px-2 text-muted hover:text-txt"
           onClick={goOverview}
           aria-label={t("common.back", { defaultValue: "Back" })}
         >
@@ -768,7 +774,7 @@ export function CloudDashboard() {
       {rateLimitMessage && (
         <div
           role="status"
-          className="mb-4 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
+          className="mb-4 rounded-sm border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn"
         >
           {rateLimitMessage}
         </div>
@@ -777,7 +783,7 @@ export function CloudDashboard() {
       {!rateLimitMessage && billingError && (
         <div
           role="alert"
-          className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+          className="mb-4 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
           {billingError}
         </div>
@@ -796,7 +802,7 @@ export function CloudDashboard() {
                 key={amount}
                 variant={active ? "default" : "outline"}
                 size="sm"
-                className="h-8 rounded-lg px-3 text-xs font-medium"
+                className="h-8 rounded-sm px-3 text-xs font-medium"
                 onClick={() => setBillingAmount(String(amount))}
               >
                 ${amount}
@@ -812,7 +818,7 @@ export function CloudDashboard() {
             step="1"
             value={billingAmount}
             onChange={(e) => setBillingAmount(e.target.value)}
-            className="h-9 flex-1 rounded-lg bg-bg text-sm"
+            className="h-9 flex-1 rounded-sm bg-bg text-sm"
             placeholder={t("elizaclouddashboard.MinAmountPlaceholder", {
               defaultValue: "Min $" + "{{amount}}",
               amount: minimumTopUp.toFixed(2),
@@ -821,7 +827,7 @@ export function CloudDashboard() {
           <Button
             variant="default"
             size="sm"
-            className="h-9 rounded-lg px-4 font-semibold"
+            className="h-9 rounded-sm px-4 font-semibold"
             disabled={checkoutBusy || billingLoading}
             onClick={() => void handleStartCheckout()}
           >
@@ -882,7 +888,7 @@ export function CloudDashboard() {
                   value: e.target.value,
                 })
               }
-              className="h-9 rounded-lg bg-bg"
+              className="h-9 rounded-sm bg-bg"
             />
           </div>
           <div className="flex-1 space-y-1">
@@ -907,13 +913,13 @@ export function CloudDashboard() {
                   value: e.target.value,
                 })
               }
-              className="h-9 rounded-lg bg-bg"
+              className="h-9 rounded-sm bg-bg"
             />
           </div>
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-lg px-4 sm:self-end"
+            className="h-9 rounded-sm px-4 sm:self-end"
             disabled={
               billingSettingsBusy || billingLoading || !autoTopUpForm.dirty
             }
@@ -962,12 +968,29 @@ export function CloudDashboard() {
               clientSecret={checkoutSession.clientSecret}
             />
           ) : (
-            <div className="rounded-2xl border border-border/40 bg-bg/25 px-4 py-5 text-sm text-muted">
+            <div className="rounded-sm border border-border/40 bg-bg/25 px-4 py-5 text-sm text-muted">
               {t("elizaclouddashboard.CheckoutProviderNote")}
             </div>
           )}
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
+  return (
+    <div className="w-full rounded-sm border border-border bg-bg/70 p-2 text-left">
+      <p className="mb-1 text-2xs font-semibold uppercase text-muted">
+        Sign-in window did not open?
+      </p>
+      <button
+        type="button"
+        className="block w-full break-all text-left text-xs text-accent underline-offset-2 hover:underline"
+        onClick={() => void openExternalUrl(browserUrl)}
+      >
+        {browserUrl}
+      </button>
+    </div>
   );
 }

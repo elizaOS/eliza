@@ -3,7 +3,7 @@
 #
 # Usage on a Linux box that has nvcc + an NVIDIA GPU and a smoke GGUF model:
 #   cd packages/inference/verify
-#   ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh
+#   ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh
 #
 # Usage from a non-CUDA dev box (e.g. M4 Max) — drive a remote CUDA host
 # over ssh:
@@ -20,13 +20,13 @@
 #                              cuda-runtime-dispatch-evidence.json entry
 #                              derived from this report; CAPABILITIES.json
 #                              fails closed when that evidence is absent.
-#   ELIZA_DFLASH_CMAKE_FLAGS   extra target CMake flags passed to the build hook
-#   ELIZA_DFLASH_HARDWARE_REPORT_DIR
+#   ELIZA_MTP_CMAKE_FLAGS   extra target CMake flags passed to the build hook
+#   ELIZA_MTP_HARDWARE_REPORT_DIR
 #                              graph-smoke log directory, default verify/hardware-results
-#   ELIZA_DFLASH_LLAMA_DIR     default ~/.cache/eliza-dflash/eliza-llama-cpp
-#   ELIZA_DFLASH_LIBGGML_CUDA  default $ELIZA_DFLASH_LLAMA_DIR/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
-#   ELIZA_DFLASH_SMOKE_MODEL   required unless CUDA_SKIP_GRAPH_SMOKE=1
-#   ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
+#   ELIZA_MTP_LLAMA_DIR     default ~/.cache/eliza-mtp/eliza-llama-cpp
+#   ELIZA_MTP_LIBGGML_CUDA  default $ELIZA_MTP_LLAMA_DIR/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
+#   ELIZA_MTP_SMOKE_MODEL   required unless CUDA_SKIP_GRAPH_SMOKE=1
+#   ELIZA_MTP_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
 #                              forwarded to runtime_graph_smoke.sh
 
 set -euo pipefail
@@ -35,7 +35,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 cd "$HERE"
 
-REPORT_PATH="${ELIZA_DFLASH_HARDWARE_REPORT:-}"
+REPORT_PATH="${ELIZA_MTP_HARDWARE_REPORT:-}"
 STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 FAIL_REASON=""
 GPU_INFO=""
@@ -82,7 +82,7 @@ on_error() {
 }
 
 model_sha256() {
-    local model="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+    local model="${ELIZA_MTP_SMOKE_MODEL:-}"
     [[ -n "$model" && -f "$model" ]] || return 0
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum "$model" | awk '{print $1}'
@@ -108,8 +108,8 @@ write_report() {
     TARGET="${CUDA_TARGET:-}" \
     GPU_INFO="$GPU_INFO" \
     TOOLCHAIN_INFO="$TOOLCHAIN_INFO" \
-    CMAKE_FLAGS="${ELIZA_DFLASH_CMAKE_FLAGS:-}" \
-    MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}" \
+    CMAKE_FLAGS="${ELIZA_MTP_CMAKE_FLAGS:-}" \
+    MODEL="${ELIZA_MTP_SMOKE_MODEL:-}" \
     MODEL_SHA256="$(model_sha256)" \
     GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
     REMOTE_DELEGATED="$REMOTE_DELEGATED" \
@@ -167,7 +167,7 @@ host_arch_target() {
 if [[ -n "${CUDA_REMOTE:-}" ]]; then
     REMOTE_DELEGATED="true"
     REMOTE_DIR="${CUDA_REMOTE_DIR:-~/eliza/plugins/plugin-local-inference/native/verify}"
-    REMOTE_LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-\$HOME/.cache/eliza-dflash/eliza-llama-cpp}"
+    REMOTE_LLAMA_DIR="${ELIZA_MTP_LLAMA_DIR:-\$HOME/.cache/eliza-mtp/eliza-llama-cpp}"
     REMOTE_REPORT_PATH="${CUDA_REMOTE_REPORT:-}"
     if [[ -n "$REPORT_PATH" && -z "$REMOTE_REPORT_PATH" ]]; then
         REMOTE_REPORT_PATH="hardware-results/$(basename "$REPORT_PATH")"
@@ -183,16 +183,16 @@ if [[ -n "${CUDA_REMOTE:-}" ]]; then
         CUDA_TARGET='${CUDA_TARGET:-}' \
         CUDA_BUILD_FORK='${CUDA_BUILD_FORK:-1}' \
         CUDA_SKIP_GRAPH_SMOKE='${CUDA_SKIP_GRAPH_SMOKE:-0}' \
-        ELIZA_DFLASH_CMAKE_FLAGS='${ELIZA_DFLASH_CMAKE_FLAGS:-}' \
-        ELIZA_DFLASH_HARDWARE_REPORT_DIR='${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-}' \
-        ELIZA_DFLASH_LLAMA_DIR=$REMOTE_LLAMA_DIR \
-        ELIZA_DFLASH_LIBGGML_CUDA='${ELIZA_DFLASH_LIBGGML_CUDA:-}' \
-        ELIZA_DFLASH_SMOKE_MODEL='${ELIZA_DFLASH_SMOKE_MODEL:-}' \
-        ELIZA_DFLASH_SMOKE_CACHE_TYPES='${ELIZA_DFLASH_SMOKE_CACHE_TYPES:-}' \
-        ELIZA_DFLASH_SMOKE_TOKENS='${ELIZA_DFLASH_SMOKE_TOKENS:-}' \
-        ELIZA_DFLASH_SMOKE_NGL='${ELIZA_DFLASH_SMOKE_NGL:-}' \
-        ELIZA_DFLASH_SMOKE_PROMPT='${ELIZA_DFLASH_SMOKE_PROMPT:-}' \
-        ELIZA_DFLASH_SMOKE_EXTRA_ARGS='${ELIZA_DFLASH_SMOKE_EXTRA_ARGS:-}' \
+        ELIZA_MTP_CMAKE_FLAGS='${ELIZA_MTP_CMAKE_FLAGS:-}' \
+        ELIZA_MTP_HARDWARE_REPORT_DIR='${ELIZA_MTP_HARDWARE_REPORT_DIR:-}' \
+        ELIZA_MTP_LLAMA_DIR=$REMOTE_LLAMA_DIR \
+        ELIZA_MTP_LIBGGML_CUDA='${ELIZA_MTP_LIBGGML_CUDA:-}' \
+        ELIZA_MTP_SMOKE_MODEL='${ELIZA_MTP_SMOKE_MODEL:-}' \
+        ELIZA_MTP_SMOKE_CACHE_TYPES='${ELIZA_MTP_SMOKE_CACHE_TYPES:-}' \
+        ELIZA_MTP_SMOKE_TOKENS='${ELIZA_MTP_SMOKE_TOKENS:-}' \
+        ELIZA_MTP_SMOKE_NGL='${ELIZA_MTP_SMOKE_NGL:-}' \
+        ELIZA_MTP_SMOKE_PROMPT='${ELIZA_MTP_SMOKE_PROMPT:-}' \
+        ELIZA_MTP_SMOKE_EXTRA_ARGS='${ELIZA_MTP_SMOKE_EXTRA_ARGS:-}' \
         ./cuda_runner.sh $REMOTE_REPORT_ARG"; then
         fail "remote CUDA verification failed on $CUDA_REMOTE"
     fi
@@ -239,7 +239,7 @@ printf '%s\n' "$GPU_INFO"
 printf '%s\n' "$TOOLCHAIN_INFO"
 
 if [[ "${CUDA_BUILD_FORK:-1}" != "0" ]]; then
-    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" --target "$CUDA_TARGET"
+    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-mtp.mjs" --target "$CUDA_TARGET"
 fi
 
 make cuda-verify

@@ -40,7 +40,7 @@ const DEFAULT_BIN = path.join(
   process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza"),
   "local-inference",
   "bin",
-  "dflash",
+  "mtp",
   "darwin-arm64-metal",
   "llama-speculative-simple",
 );

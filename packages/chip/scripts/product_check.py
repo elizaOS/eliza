@@ -1,11 +1,20 @@
+from __future__ import annotations
+
 import argparse
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+if Path.cwd() != ROOT:
+    import os
+
+    os.chdir(ROOT)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -23,8 +32,8 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-REPORT = Path("build/reports/product_release_status.json")
-MANUFACTURING_REPORT = Path("build/reports/manufacturing_artifacts.json")
+REPORT = ROOT / "build/reports/product_release_status.json"
+MANUFACTURING_REPORT = ROOT / "build/reports/manufacturing_artifacts.json"
 REPO_GENERATION_BUCKETS = (
     "repo_generatable_now",
     "blocked_by_external_evidence",
@@ -85,7 +94,7 @@ def manufacturing_release_blocker_message() -> str:
 
     def bucket_count(item: tuple[object, object]) -> int:
         try:
-            return int(item[1])
+            return int(cast(int, item[1]))
         except (TypeError, ValueError):
             return 0
 
@@ -508,6 +517,18 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
             "python3 scripts/product_check.py --release",
         ],
     },
+    "python3 scripts/check_android_release_readiness_contract.py": {
+        "family": "android_release_readiness_contract",
+        "primary_paths": [
+            "build/reports/android_release_readiness_contract.json",
+            "docs/evidence/android/",
+        ],
+        "generation_commands": [
+            "python3 scripts/check_android_release_readiness_contract.py",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope phone",
+            "python3 scripts/product_check.py --release",
+        ],
+    },
     "python3 scripts/product_check.py --release": {
         "family": "product_release_triage",
         "primary_paths": [
@@ -884,6 +905,7 @@ RELEASE_EXECUTION_PHASES = [
         ],
         "commands": {
             "python3 scripts/check_phone_runtime_readiness_contract.py",
+            "python3 scripts/check_android_release_readiness_contract.py",
         },
         "acceptance_commands": [
             "python3 scripts/check_phone_runtime_readiness_contract.py",
@@ -1101,13 +1123,13 @@ for command in [
     [sys.executable, "scripts/check_wifi_interface.py"],
     [sys.executable, "scripts/check_padframe_contract.py"],
     [sys.executable, "scripts/check_physical_closure_work_order.py"],
-    [sys.executable, "scripts/check_package_cross_probe.py"],
-    [sys.executable, "scripts/check_kicad_artifacts.py"],
-    [sys.executable, "scripts/check_fpga_release.py"],
-    [sys.executable, "scripts/check_openlane_run_preflight.py"],
+    [sys.executable, "scripts/check_package_cross_probe.py", "--release"],
+    [sys.executable, "scripts/check_kicad_artifacts.py", "--release"],
+    [sys.executable, "scripts/check_fpga_release.py", "--release"],
+    [sys.executable, "scripts/check_openlane_run_preflight.py", "--release"],
     [sys.executable, "scripts/check_antenna_metadata.py"],
     [sys.executable, "scripts/check_pd_signoff.py", "--manifest-only"],
-    [sys.executable, "scripts/check_manufacturing_artifacts.py"],
+    [sys.executable, "scripts/check_manufacturing_artifacts.py", "--release"],
     [sys.executable, "scripts/check_real_world_gates.py"],
     [sys.executable, "scripts/check_product_feature_gates.py"],
     [sys.executable, "scripts/check_product_architecture_optimization.py"],
@@ -1236,6 +1258,7 @@ release_check_commands = [
     [sys.executable, "scripts/check_e1_phone_first_article_content.py"],
     [sys.executable, "scripts/check_e1_phone_enclosure_mechanical_content.py"],
     [sys.executable, "scripts/check_phone_runtime_readiness_contract.py"],
+    [sys.executable, "scripts/check_android_release_readiness_contract.py"],
 ]
 for release_check in release_check_commands:
     result = subprocess.run(

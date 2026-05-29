@@ -82,6 +82,15 @@ function readStewardTokenParams(
   };
 }
 
+function hasStewardTokenParams(params: URLSearchParams): boolean {
+  return (
+    params.has("token") ||
+    params.has("access_token") ||
+    params.has("refreshToken") ||
+    params.has("refresh_token")
+  );
+}
+
 function removeStewardTokenParams(params: URLSearchParams): void {
   params.delete("token");
   params.delete("access_token");
@@ -117,8 +126,8 @@ function consumeStewardTokensFromHash(): {
   if (!hash || hash.length < 2) return null;
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   const tokens = readStewardTokenParams(params);
-  if (!tokens) return null;
-  if (!snapshotted) {
+  if (!tokens && !hasStewardTokenParams(params)) return null;
+  if (!snapshotted || !tokens) {
     window.history.replaceState(
       null,
       "",
@@ -262,9 +271,21 @@ export function CheckoutPage() {
     const fromHash = consumeStewardTokensFromHash();
     const params = new URLSearchParams(window.location.search);
     const fromQuery = readStewardTokenParams(params);
+    const hadQueryTokenParams = hasStewardTokenParams(params);
     const token = fromHash?.token ?? fromQuery?.token;
     const refreshToken = fromHash?.refreshToken ?? fromQuery?.refreshToken;
     if (!token) {
+      if (hadQueryTokenParams) {
+        removeStewardTokenParams(params);
+        const query = params.toString();
+        window.history.replaceState(
+          null,
+          "",
+          query
+            ? `${window.location.pathname}?${query}`
+            : window.location.pathname,
+        );
+      }
       setIsAuthed(Boolean(getStoredStewardToken()) || hasStewardAuthedCookie());
       return;
     }
@@ -277,7 +298,7 @@ export function CheckoutPage() {
     })
       .then(() => {
         setIsAuthed(true);
-        if (fromQuery) {
+        if (hadQueryTokenParams) {
           removeStewardTokenParams(params);
           const query = params.toString();
           window.history.replaceState(
@@ -466,7 +487,11 @@ export function CheckoutPage() {
               {status === "email-sent" ? (
                 <p className="checkout-message">Check your inbox.</p>
               ) : null}
-              {message ? <p className="checkout-message">{message}</p> : null}
+              {message ? (
+                <p className="checkout-message" role="alert">
+                  {message}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>

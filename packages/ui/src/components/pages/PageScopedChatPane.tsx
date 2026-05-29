@@ -806,7 +806,7 @@ export function PageScopedChatPane({
   const introCard = (
     <div
       data-testid={`page-scoped-chat-intro-${scope}`}
-      className="rounded-2xl bg-card/50 p-3"
+      className="rounded-sm bg-card/50 p-3"
     >
       <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
         <Sparkles className="h-3.5 w-3.5 text-accent" />
@@ -843,7 +843,7 @@ export function PageScopedChatPane({
         className="flex flex-1 flex-col gap-2 overflow-y-auto px-3 py-3"
       >
         {loadError ? (
-          <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
+          <div className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">
             {loadError}
           </div>
         ) : null}
@@ -853,7 +853,7 @@ export function PageScopedChatPane({
         {messages.map((message) => (
           <article
             key={message.id}
-            className={`rounded-lg px-3 py-2 text-sm leading-relaxed ${
+            className={`rounded-sm px-3 py-2 text-sm leading-relaxed ${
               message.role === "user"
                 ? "ml-8 self-end bg-accent/10 text-txt"
                 : "mr-8 bg-bg/40 text-txt"
@@ -869,7 +869,7 @@ export function PageScopedChatPane({
                     key={`${image.name}:${image.mimeType}:${image.data.length}:${image.data.slice(0, 24)}`}
                     src={`data:${image.mimeType};base64,${image.data}`}
                     alt={image.name}
-                    className="h-16 w-16 rounded-md border border-border/40 object-cover"
+                    className="h-16 w-16 rounded-sm border border-border/40 object-cover"
                   />
                 ))}
               </div>
@@ -887,7 +887,7 @@ export function PageScopedChatPane({
         ))}
 
         {sending && !firstTokenReceived ? (
-          <div className="mr-8 flex items-center gap-1.5 rounded-lg bg-bg/40 px-3 py-2">
+          <div className="mr-8 flex items-center gap-1.5 rounded-sm bg-bg/40 px-3 py-2">
             <Spinner size={12} className="text-accent/70" />
             <span className="text-[11px] text-muted">Thinking…</span>
           </div>

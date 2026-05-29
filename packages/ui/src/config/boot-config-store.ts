@@ -66,8 +66,8 @@ export interface ResolvedInjectedCharacter extends InjectedCharacterEntry {
 
 /** Client middleware flags — replaces the 4 monkey-patches. */
 export interface ClientMiddleware {
-  /** Force fresh onboarding (e.g. on ?reset). */
-  forceFreshOnboarding?: boolean;
+  /** Force fresh first-run setup (e.g. on ?reset). */
+  forceFreshFirstRun?: boolean;
   /** Mask cloud status when a local provider is active. */
   preferLocalProvider?: boolean;
   /** Bridge permissions to native desktop layer. */
@@ -239,8 +239,8 @@ export interface AppBootConfig {
   cloudApiBase?: string;
   /** VRM avatar assets — replaces window.__APP_VRM_ASSETS__. */
   vrmAssets?: BundledVrmAsset[];
-  /** Onboarding style presets — replaces window.__APP_ONBOARDING_STYLES__. */
-  onboardingStyles?: unknown[];
+  /** First-run style presets — replaces window.__APP_FIRST_RUN_STYLES__. */
+  firstRunStyles?: unknown[];
   /** Character editor component — replaces window.__ELIZAOS_CHARACTER_EDITOR__. */
   characterEditor?: ComponentType<Record<string, unknown>>;
   /** Companion shell implementation provided by the host app. */

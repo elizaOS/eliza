@@ -85,8 +85,8 @@ def _passing_eval_blob(tier: str = "4b") -> dict[str, Any]:
             "thirty_turn_ok": True,
             "e2e_loop_ok": True,
             "format_ok": True,
-            "dflash_acceptance": 0.71,
-            "dflash_speedup": 1.8,
+            "mtp_acceptance": 0.71,
+            "mtp_speedup": 1.8,
             "expressive_tag_faithfulness": 0.90,
             "expressive_mos": 4.10,
             "expressive_tag_leakage": 0.01,
@@ -123,11 +123,11 @@ def _build_fixture_bundle(
     _write(bundle / "vad" / "silero-vad-v5.gguf", b"\x00vad\x00")
     _write(bundle / "imagegen" / "sd-1.5-Q5_0.gguf", b"\x00imagegen\x00")
     _write(bundle / "vision" / f"mmproj-{tier}.gguf", b"\x00mmproj\x00")
-    _write(bundle / "dflash" / f"drafter-{tier}.gguf", b"\x00drafter\x00")
+    _write(bundle / "mtp" / f"drafter-{tier}.gguf", b"\x00drafter\x00")
     text_sha = _sha256(bundle / "text" / f"eliza-1-{tier}-256k.gguf")
-    drafter_sha = _sha256(bundle / "dflash" / f"drafter-{tier}.gguf")
+    drafter_sha = _sha256(bundle / "mtp" / f"drafter-{tier}.gguf")
     _write(
-        bundle / "dflash" / "target-meta.json",
+        bundle / "mtp" / "target-meta.json",
         json.dumps(
             {
                 "schemaVersion": 2,
@@ -140,7 +140,7 @@ def _build_fixture_bundle(
                     "finalElizaWeights": True,
                 },
                 "drafter": {
-                    "path": f"dflash/drafter-{tier}.gguf",
+                    "path": f"mtp/drafter-{tier}.gguf",
                     "sha256": drafter_sha,
                     "targetCheckpointSha256": text_sha,
                     "matchesTargetCheckpoint": True,
@@ -202,7 +202,7 @@ def _build_fixture_bundle(
 
     write_bundle_licenses(
         bundle / "licenses",
-        ["text", "voice", "asr", "vad", "dflash", "vision"],
+        ["text", "voice", "asr", "vad", "mtp", "vision"],
     )
     if skip_license is not None:
         (bundle / "licenses" / skip_license).unlink(missing_ok=True)
@@ -214,11 +214,11 @@ def _build_fixture_bundle(
         json.dumps(blob, indent=2),
     )
     _write(
-        bundle / "evals" / "dflash-accept.json",
+        bundle / "evals" / "mtp-accept.json",
         json.dumps(
             {
                 "schemaVersion": 1,
-                "metric": "dflash_acceptance",
+                "metric": "mtp_acceptance",
                 "status": "ok",
                 "acceptanceRate": 0.71,
                 "speedup": 1.8,
@@ -228,11 +228,11 @@ def _build_fixture_bundle(
         ),
     )
     _write(
-        bundle / "dflash" / "validation-real.json",
+        bundle / "mtp" / "validation-real.json",
         json.dumps(
             {
                 "schemaVersion": 1,
-                "kind": "dflash-drafter-validation",
+                "kind": "mtp-drafter-validation",
                 "tier": tier,
                 "pass": True,
                 "checks": {
@@ -252,7 +252,7 @@ def _build_fixture_bundle(
         ),
     )
     _write(
-        bundle / "dflash" / "runtime-smoke-native.json",
+        bundle / "mtp" / "runtime-smoke-native.json",
         json.dumps(
             {
                 "schemaVersion": 1,
@@ -267,7 +267,7 @@ def _build_fixture_bundle(
                 "runtime": [
                     {
                         "status": 0,
-                        "dflash": {
+                        "mtp": {
                             "requiresTrueDrafting": True,
                             "drafted": 2,
                             "accepted": 1,
@@ -285,7 +285,7 @@ def _build_fixture_bundle(
                     "speedup": 1.2,
                     "summary": {
                         "status": "pass",
-                        "dflashDraftingActive": True,
+                        "mtpDraftingActive": True,
                     },
                 },
             },
@@ -293,11 +293,11 @@ def _build_fixture_bundle(
         ),
     )
     _write(
-        bundle / "evals" / "dflash-tuning-report.json",
+        bundle / "evals" / "mtp-tuning-report.json",
         json.dumps(
             {
                 "schemaVersion": 1,
-                "kind": "dflash-tuning-report",
+                "kind": "mtp-tuning-report",
                 "tier": tier,
                 "status": "publishable",
                 "publishEligible": True,
@@ -453,7 +453,7 @@ def _build_fixture_bundle(
                 "text": {"base": "eliza-1-4b", "license": "apache-2.0"},
                 "voice": {"base": "kokoro-82m", "license": "apache-2.0"},
                 "drafter": {
-                    "base": "dflash-4b-drafter",
+                    "base": "mtp-4b-drafter",
                     "license": "apache-2.0",
                 },
             }
@@ -476,7 +476,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {
             "repo": ELIZA_1_HF_REPO,
-            "file": "bundles/4b/dflash/drafter-4b.gguf",
+            "file": "bundles/4b/mtp/drafter-4b.gguf",
         },
         "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
@@ -516,14 +516,14 @@ def _write_release_evidence(
             *rels("asr"),
             *rels("vad"),
             *rels("vision"),
-            *rels("dflash"),
+            *rels("mtp"),
         ],
         "checksumManifest": "checksums/SHA256SUMS",
         "evalReports": rels("evals"),
         "licenseFiles": [
             "licenses/LICENSE.text",
             "licenses/LICENSE.voice",
-            "licenses/LICENSE.dflash",
+            "licenses/LICENSE.mtp",
             "licenses/LICENSE.eliza-1",
             "licenses/LICENSE.asr",
             "licenses/LICENSE.vision",
@@ -583,8 +583,8 @@ def _write_checksums(bundle: Path) -> None:
     _write(bundle / "checksums" / "SHA256SUMS", "\n".join(entries) + "\n")
 
 
-def _rewrite_dflash_target_meta(bundle: Path, **updates: Any) -> None:
-    path = bundle / "dflash" / "target-meta.json"
+def _rewrite_mtp_target_meta(bundle: Path, **updates: Any) -> None:
+    path = bundle / "mtp" / "target-meta.json"
     data = json.loads(path.read_text())
     data.update(updates)
     path.write_text(json.dumps(data, indent=2) + "\n")
@@ -625,18 +625,18 @@ def _ctx(
     )
 
 
-def _disable_dflash_for_tier(bundle: Path, tier: str) -> None:
+def _disable_mtp_for_tier(bundle: Path, tier: str) -> None:
     from scripts.manifest.eliza1_licenses import write_bundle_licenses
 
-    drafter = bundle / "dflash" / f"drafter-{tier}.gguf"
+    drafter = bundle / "mtp" / f"drafter-{tier}.gguf"
     drafter.unlink(missing_ok=True)
-    policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"
+    policy_rel = f"mtp/mtp-disabled-{tier}.release-policy.json"
     _write(
         bundle / policy_rel,
         json.dumps(
             {
                 "schemaVersion": 1,
-                "kind": "dflash-release-policy",
+                "kind": "mtp-release-policy",
                 "tier": tier,
                 "status": "disabled",
                 "releaseMode": "fail-open-no-drafter",
@@ -647,22 +647,22 @@ def _disable_dflash_for_tier(bundle: Path, tier: str) -> None:
     )
     write_bundle_licenses(
         bundle / "licenses",
-        ["text", "voice", "asr", "vad", "dflash", "vision"],
+        ["text", "voice", "asr", "vad", "mtp", "vision"],
     )
     text_rel = f"text/eliza-1-{tier}-128k.gguf"
     text_sha = _sha256(bundle / text_rel)
     policy_sha = _sha256(bundle / policy_rel)
     _write(
-        bundle / "dflash" / "target-meta.json",
+        bundle / "mtp" / "target-meta.json",
         json.dumps(
             {
                 "schemaVersion": 2,
                 "tier": tier,
                 "status": "disabled",
-                "dflashEnabled": False,
+                "mtpEnabled": False,
                 "publishEligible": False,
                 "releaseMode": "fail-open-no-drafter",
-                "reason": "DFlash is disabled for this tier.",
+                "reason": "MTP is disabled for this tier.",
                 "acceptanceRate": None,
                 "acceptanceWindow": None,
                 "drafter": None,
@@ -688,19 +688,19 @@ def _disable_dflash_for_tier(bundle: Path, tier: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_layout_accepts_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
+def test_layout_accepts_0_8b_mtp_disabled_policy(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(
         tmp_path,
         tier="0_8b",
         eval_blob=_passing_eval_blob("0_8b"),
     )
-    _disable_dflash_for_tier(bundle, "0_8b")
+    _disable_mtp_for_tier(bundle, "0_8b")
 
     with pytest.raises(OrchestratorError) as exc:
         validate_bundle_layout(_ctx("0_8b", bundle))
 
     assert exc.value.exit_code == EXIT_BUNDLE_LAYOUT_FAIL
-    assert "dflash/ must contain at least one .gguf" in str(exc.value)
+    assert "mtp/ must contain at least one .gguf" in str(exc.value)
 
 
 def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
@@ -718,7 +718,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     manifest = json.loads(manifest_path.read_text())
     assert manifest["tier"] == "4b"
     assert manifest["defaultEligible"] is True
-    assert manifest["evals"]["dflash"] == {
+    assert manifest["evals"]["mtp"] == {
         "acceptanceRate": 0.71,
         "speedup": 1.8,
         "passed": True,
@@ -746,9 +746,9 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     assert "manifest preview" in log_text
 
 
-def test_dflash_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
+def test_mtp_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
     blob = _passing_eval_blob()
-    blob["results"].pop("dflash_speedup")
+    blob["results"].pop("mtp_speedup")
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
 
@@ -757,18 +757,18 @@ def test_dflash_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
     assert rc == EXIT_OK
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["defaultEligible"] is True
-    assert manifest["evals"]["dflash"] == {
+    assert manifest["evals"]["mtp"] == {
         "acceptanceRate": 0.71,
         "speedup": 1.8,
         "passed": True,
     }
 
 
-def test_dflash_target_meta_tokenizer_mismatch_fails_release(
+def test_mtp_target_meta_tokenizer_mismatch_fails_release(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    _rewrite_dflash_target_meta(
+    _rewrite_mtp_target_meta(
         bundle,
         tokenizerCompatibility={
             "compatible": False,
@@ -782,13 +782,13 @@ def test_dflash_target_meta_tokenizer_mismatch_fails_release(
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_dflash_target_meta_rejects_unloadable_dflash_draft_architecture(
+def test_mtp_target_meta_rejects_unloadable_mtp_draft_architecture(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    data = json.loads((bundle / "dflash" / "target-meta.json").read_text())
-    data["drafter"]["architecture"] = "dflash-draft"
-    (bundle / "dflash" / "target-meta.json").write_text(json.dumps(data) + "\n")
+    data = json.loads((bundle / "mtp" / "target-meta.json").read_text())
+    data["drafter"]["architecture"] = "mtp-draft"
+    (bundle / "mtp" / "target-meta.json").write_text(json.dumps(data) + "\n")
     metal = _metal_report(tmp_path)
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
@@ -796,16 +796,16 @@ def test_dflash_target_meta_rejects_unloadable_dflash_draft_architecture(
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_dflash_target_meta_rejects_same_weight_drafter(
+def test_mtp_target_meta_rejects_same_weight_drafter(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     target = bundle / "text" / "eliza-1-4b-128k.gguf"
-    drafter = bundle / "dflash" / "drafter-4b.gguf"
+    drafter = bundle / "mtp" / "drafter-4b.gguf"
     drafter.write_bytes(target.read_bytes())
-    data = json.loads((bundle / "dflash" / "target-meta.json").read_text())
+    data = json.loads((bundle / "mtp" / "target-meta.json").read_text())
     data["drafter"]["sha256"] = _sha256(drafter)
-    (bundle / "dflash" / "target-meta.json").write_text(json.dumps(data) + "\n")
+    (bundle / "mtp" / "target-meta.json").write_text(json.dumps(data) + "\n")
     metal = _metal_report(tmp_path)
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
@@ -813,9 +813,9 @@ def test_dflash_target_meta_rejects_same_weight_drafter(
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_dflash_release_requires_real_validation_report(tmp_path: Path) -> None:
+def test_mtp_release_requires_real_validation_report(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    (bundle / "dflash" / "validation-real.json").unlink()
+    (bundle / "mtp" / "validation-real.json").unlink()
     metal = _metal_report(tmp_path)
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
@@ -823,9 +823,9 @@ def test_dflash_release_requires_real_validation_report(tmp_path: Path) -> None:
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_dflash_release_rejects_failed_real_validation_report(tmp_path: Path) -> None:
+def test_mtp_release_rejects_failed_real_validation_report(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    report_path = bundle / "dflash" / "validation-real.json"
+    report_path = bundle / "mtp" / "validation-real.json"
     report = json.loads(report_path.read_text())
     report["pass"] = False
     report["checks"]["acceptanceRollout"]["pass"] = False
@@ -838,9 +838,9 @@ def test_dflash_release_rejects_failed_real_validation_report(tmp_path: Path) ->
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_dflash_release_requires_native_runtime_smoke_report(tmp_path: Path) -> None:
+def test_mtp_release_requires_native_runtime_smoke_report(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    (bundle / "dflash" / "runtime-smoke-native.json").unlink()
+    (bundle / "mtp" / "runtime-smoke-native.json").unlink()
     metal = _metal_report(tmp_path)
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
@@ -848,13 +848,13 @@ def test_dflash_release_requires_native_runtime_smoke_report(tmp_path: Path) -> 
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_dflash_release_rejects_failed_native_runtime_smoke_report(tmp_path: Path) -> None:
+def test_mtp_release_rejects_failed_native_runtime_smoke_report(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    report_path = bundle / "dflash" / "runtime-smoke-native.json"
+    report_path = bundle / "mtp" / "runtime-smoke-native.json"
     report = json.loads(report_path.read_text())
     report["metadataStatus"] = "metadata_invalid"
     report["metadataFailures"] = ["drafter.matchesTargetCheckpoint=false"]
-    report["runtime"][0]["dflash"]["accepted"] = 0
+    report["runtime"][0]["mtp"]["accepted"] = 0
     report["bench"]["acceptanceRate"] = 0.1
     report["bench"]["speedup"] = 0.95
     report_path.write_text(json.dumps(report) + "\n")
@@ -865,17 +865,17 @@ def test_dflash_release_rejects_failed_native_runtime_smoke_report(tmp_path: Pat
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
-def test_dflash_release_allows_structural_validation_with_native_acceptance_report(
+def test_mtp_release_allows_structural_validation_with_native_acceptance_report(
     tmp_path: Path,
 ) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    report_path = bundle / "dflash" / "validation-real.json"
+    report_path = bundle / "mtp" / "validation-real.json"
     report = json.loads(report_path.read_text())
     report["checks"]["acceptanceRollout"] = {
         "pass": True,
         "acceptanceRate": None,
         "gate": 0.48,
-        "detail": "skipped (--skip-acceptance-rollout); native acceptance is in evals/dflash-accept.json",
+        "detail": "skipped (--skip-acceptance-rollout); native acceptance is in evals/mtp-accept.json",
     }
     report_path.write_text(json.dumps(report) + "\n")
     _write_checksums(bundle)
@@ -892,7 +892,7 @@ def test_dflash_release_allows_structural_validation_with_native_acceptance_repo
 
 
 def test_missing_license_fails(tmp_path: Path) -> None:
-    bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.dflash")
+    bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.mtp")
     metal = _metal_report(tmp_path)
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE

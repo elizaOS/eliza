@@ -1,0 +1,44 @@
+[[!meta date="Mon, 13 Jun 2011 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.7.2, is out.
+
+This is a bugfix-only release mainly aimed at fixing serious security
+issues in bundled software. All users must upgrade as soon as
+possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Iceweasel
+  - Disable Torbutton's external application launch warning.
+    ... which advises using Tails. Tails *is* running Tails.
+  - FoxyProxy: install from Debian instead of the older one we previously
+    shipped.
+
+* Software
+  - Upgrade Linux kernel to Debian's 2.6.32-34squeeze1: fixes tons of
+    bugs, closes a few security holes as well.
+  - haveged: install an official Debian backport instead of a custom backport.
+  - unrar: install the version from Debian's non-free repository.
+    Users report unrar-free does not work well enough.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

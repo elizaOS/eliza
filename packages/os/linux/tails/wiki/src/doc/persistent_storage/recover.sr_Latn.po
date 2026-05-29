@@ -1,0 +1,318 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-12-09 23:58+0000\n"
+"PO-Revision-Date: 2023-03-13 17:37+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Recovering data from the Persistent Storage when Tails doesn't start\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If your Tails becomes broken, for example, if it no longer starts, follow "
+"these instructions to recover data from your Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If instead, your Tails USB stick does start but the Persistent Storage fails\n"
+"to unlock, refer to our instructions on [[recovering data from the Persistent\n"
+"Storage when it has file system errors|fsck]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We recommend you always keep a current backup of your Persistent Storage. To learn\n"
+"how to create a backup of your Persistent Storage, see our [[instructions on\n"
+"how to back up your Persistent Storage to another Tails USB\n"
+"stick|backup]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We are presenting here 3 recovery techniques that work in different cases. "
+"We recommend that you try the 3 techniques one after the other."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Doing a manual upgrade|recover#upgrade]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Doing a manual upgrade of your broken Tails might allow you to start your\n"
+"   USB stick again and use your Persistent Storage like before.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Unlocking from another Tails and copying using `rsync`|recover#rsync]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If doing a manual upgrade doesn't work, you might be able to unlock your\n"
+"   Persistent Storage from another Tails USB stick and copy its content using\n"
+"   `rsync` on the command line.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Recovering from a partition image using forensics tools|recover#image]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If unlocking your Persistent Storage from another Tails USB stick fails, you\n"
+"   might be able to recover some or most of your data from a partition image\n"
+"   using advanced forensics tools.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"upgrade\">Doing a manual upgrade</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Indented to deduplicate with same sentence earlier. -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Doing a manual upgrade of your broken Tails might allow you to start your USB\n"
+"   stick again and use your Persistent Storage like before.\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Refer to our instructions on how to do a manual upgrade, either:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Downloading and upgrading from Windows|upgrade/windows]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Downloading and upgrading from macOS|upgrade/mac]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Downloading and upgrading from Linux|upgrade/linux]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Upgrading by cloning from another Tails|doc/upgrade/#clone]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"rsync\">Unlocking from another Tails and copying using <span class=\"code\">rsync</span></h1>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Install Tails on a new USB stick onto which you want to recover your "
+"Persistent Storage. Make sure that this new USB stick is at least as large "
+"as the USB stick that has your broken Tails on it."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Create a Persistent Storage.|persistent_storage/create]]"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Close the Persistent Storage settings after creation, when the list of "
+"features is displayed."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The process described below overwrites the contents and configuration of the new Persistent\n"
+"   Storage. So, it does not matter which features you turn on after creating\n"
+"   the Persistent Storage.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>Make sure that all applications are closed before continuing with these\n"
+"   instructions. Otherwise, the Persistent Storage might not be properly\n"
+"   recovered from your broken Tails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files** to open the *Files* browser."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Plug in the USB stick that has your broken Tails on it."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the Persistent Storage of your broken Tails is recognized,\n"
+"   a new encrypted volume appears in the sidebar of the\n"
+"   *Files* browser. Click on it and enter the\n"
+"   passphrase of your broken Tails to unlock the volume.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The Persistent Storage of your broken Tails shows up as\n"
+"   **TailsData**.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If no encrypted volume appears, try [[recovering from a partition image\n"
+"   using forensics tools|recover#image]].</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command to recover the Persistent Storage of your "
+"broken Tails to your new Tails:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo rsync -PaSHAXv --del /media/amnesia/TailsData/ /live/persistence/TailsData_unlocked</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"When the command finishes, it displays a summary of the data that was "
+"copied. For example:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       sent 32.32M bytes  received 1.69K bytes  21.55M bytes/sec\n"
+"       total size is 32.30M  speedup is 1.00\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   You can now eject the **TailsData** volume in the\n"
+"   *Files* browser and unplug the USB stick that\n"
+"   has your broken Tails on it.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can also explore the content of the Persistent Storage on your broken "
+"Tails from the *Files* browser. To do so, execute the following command from "
+"the *Console*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">nautilus admin:/media/amnesia/TailsData/</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"image\">Recovering from a partition image using forensics tools</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We are not providing step-by-step instructions, but you can adapt our "
+"instructions on [[recovering data from the Persistent Storage when it has "
+"file system errors|fsck]]:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Start on your new Tails and save a partition image of the Persistent Storage "
+"of your broken Tails to an external hard disk."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Try the technique using the [[*Disks* utility|fsck#disks]] first, then the\n"
+"   technique using [[`ddrescue`|fsck#ddrescue]] if needed.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "After you create the partition image, try to recover your data."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Try the technique to [[copy the partition image to a new USB\n"
+"   stick|fsck#copy]] first, then the technique using\n"
+"   [[*Autopsy*|fsck#autopsy]].\n"
+msgstr ""

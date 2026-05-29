@@ -51,7 +51,7 @@ export function FirstRunOffer({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-warn/40 bg-warn/10 px-2.5 py-2"
+      className="flex flex-wrap items-center gap-2 rounded-sm border border-warn/40 bg-warn/10 px-2.5 py-2"
       role="alert"
       title={recommended?.blurb}
     >
@@ -62,7 +62,7 @@ export function FirstRunOffer({
       {recommended ? (
         <Button
           size="sm"
-          className="h-7 rounded-md px-2 text-xs"
+          className="h-7 rounded-sm px-2 text-xs"
           onClick={() => onDownload(recommended.id)}
           disabled={busy || Boolean(defaultDownload)}
         >

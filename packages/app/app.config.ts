@@ -36,8 +36,8 @@ const config = {
 
   web: {
     shortName: "Eliza",
-    // Eliza brand orange — used by manifest theme_color, <meta name="theme-color">,
-    // and (via build placeholders) the splash/launch surfaces.
+    // Eliza brand orange used by manifest theme_color, <meta name="theme-color">,
+    // and native launch surfaces.
     themeColor: "#FF5800",
     backgroundColor: "#FF5800",
     shareImagePath: "/brand/ogembeds/eliza_ogembed.svg",

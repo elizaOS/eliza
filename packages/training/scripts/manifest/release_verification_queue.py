@@ -157,28 +157,28 @@ def _backend_command(bundle_root: str, verify_dir: str, tier: str, backend: str,
     if backend == "metal":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal && "
+            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal && "
             f"make -C {verify_dir} metal-verify dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}",
         )
     if backend == "vulkan":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan && "
+            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-vulkan && "
             f"make -C {verify_dir} vulkan_verify vulkan-dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}",
         )
     if backend == "cuda":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda && "
+            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda && "
             f"{verify_dir}/cuda_runner.sh && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}",
         )
     if backend == "rocm":
         return _guarded(
             eval_python,
-            "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-rocm && "
+            "node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-rocm && "
             f"make -C {verify_dir} rocm_verify rocm-dispatch-smoke && "
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}",
         )

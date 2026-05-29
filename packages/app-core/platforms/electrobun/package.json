@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/electrobun",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "files": [
     "assets",
@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
     "build": "cd ../../../.. && node packages/app-core/scripts/desktop-build.mjs stage && cd packages/app-core/platforms/electrobun && ELECTROBUN_SKIP_CODESIGN=1 PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
     "lint": "bunx @biomejs/biome check $(find src -type f \\( -name '*.ts' -o -name '*.tsx' \\) ! -name '*.d.ts' -print)",
     "voice:validate": "bun src/voice/voice-live-validation.ts",

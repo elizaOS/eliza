@@ -7,7 +7,7 @@
  * NSURLBookmark that MUST be re-resolved on every launch — a bare path
  * string is unusable across launches.
  *
- * This module persists the picker result so first-run onboarding records
+ * This module persists the picker result so first-run setup records
  * `{path, bookmark}` once and boot-time agent setup reads it back. The
  * matching shared JSON config lives at `<stateDir>/workspace-folder.json`
  * and is written by the Electrobun bun-side RPC handler; that file is what

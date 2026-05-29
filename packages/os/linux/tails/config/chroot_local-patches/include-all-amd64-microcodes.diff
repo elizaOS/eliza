@@ -1,0 +1,9 @@
+--- a/etc/default/amd64-microcode.orig	2016-11-21 17:10:46.318154305 +0100
++++ b/etc/default/amd64-microcode	2016-11-21 17:10:59.514253779 +0100
+@@ -9,5 +9,5 @@
+ # Set this to "early" to always install microcode updates to the early initramfs
+ # Set this to "auto" to autodetect mode for current system (default);
+ #
+-#AMD64UCODE_INITRAMFS=auto
++AMD64UCODE_INITRAMFS=early
+ 

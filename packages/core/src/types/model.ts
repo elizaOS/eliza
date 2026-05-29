@@ -378,7 +378,7 @@ export interface ResponseSkeletonSpan {
  * equivalent (unforced) contract for them.
  *
  * Producer: `@elizaos/core` `buildResponseGrammar` (W8).
- * Consumer: local-inference `dflash-server.ts` (W4).
+ * Consumer: local-inference `ffi-streaming-backend.ts` (W4).
  */
 export interface ResponseSkeleton {
 	/**

@@ -34,7 +34,7 @@ export async function createTestUser(username: string): Promise<TestUser> {
   });
 
   // For load testing, we'll use a simple mock token
-  // In production, this would come from Privy
+  // In production, this would come from Steward
   const authToken = `test-token-${userId}`;
 
   return {

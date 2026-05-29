@@ -83,8 +83,8 @@ interface CharacterRosterProps {
   entries: CharacterRosterEntry[];
   selectedId: string | null;
   onSelect: (entry: CharacterRosterEntry) => void;
-  /** "onboarding" always uses translucent white borders; "editor" uses theme-aware borders. */
-  variant?: "onboarding" | "editor";
+  /** "first-run" always uses translucent white borders; "editor" uses theme-aware borders. */
+  variant?: "first-run" | "editor";
   testIdPrefix?: string;
 }
 
@@ -96,7 +96,7 @@ export function CharacterRoster({
   testIdPrefix = "character",
 }: CharacterRosterProps) {
   const { t } = useApp();
-  const useWhiteBorders = variant === "onboarding";
+  const useWhiteBorders = variant === "first-run";
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -114,9 +114,9 @@ export function CharacterRoster({
   if (entries.length === 0) {
     return (
       <div
-        className={`rounded-2xl border p-4 text-sm ${
+        className={`rounded-sm border p-4 text-sm ${
           useWhiteBorders
-            ? "border-[var(--onboarding-card-border)] bg-[var(--onboarding-card-bg)] text-[var(--onboarding-text-faint)]"
+            ? "border-[var(--first-run-card-border)] bg-[var(--first-run-card-bg)] text-[var(--first-run-text-faint)]"
             : "border-border/40 bg-black/10 text-muted"
         }`}
       >
@@ -213,7 +213,7 @@ export function CharacterRoster({
                   <div
                     className={`py-1 pr-9 pl-2.5 text-[clamp(9px,1.22vw,12px)] font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-right tracking-[0.01em] ${
                       useWhiteBorders
-                        ? "text-[var(--onboarding-text-strong)]"
+                        ? "text-[var(--first-run-text-strong)]"
                         : "text-white"
                     }${isSelected ? (useWhiteBorders ? " bg-[rgba(7,11,15,0.9)]" : " bg-black/[0.82]") : useWhiteBorders ? " bg-[rgba(7,11,15,0.8)]" : " bg-black/[0.72]"}`}
                     style={{

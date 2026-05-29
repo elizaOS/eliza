@@ -8,10 +8,15 @@ const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const fullPrepare =
   args.has("--full-prepare") || process.env.DEV_ALL_FULL_PREPARE === "1";
+const forcePrepare =
+  args.has("--force-prepare") || process.env.DEV_ALL_FORCE_PREPARE === "1";
 const skipPrepare =
   args.has("--no-prepare") || process.env.DEV_ALL_SKIP_PREPARE === "1";
 const skipCloudDb =
   args.has("--no-cloud-db") || process.env.DEV_ALL_SKIP_CLOUD_DB === "1";
+const buildNativePlugins =
+  args.has("--build-native-plugins") ||
+  process.env.DEV_ALL_BUILD_NATIVE_PLUGINS === "1";
 const enableTestAuth =
   args.has("--test-auth") || process.env.DEV_ALL_ENABLE_TEST_AUTH !== "0";
 
@@ -25,14 +30,18 @@ const bunBin =
     ? `${process.env.BUN_INSTALL}/bin/bun`
     : undefined) ||
   "bun";
+const bunBinDir = bunBin.includes("/")
+  ? bunBin.slice(0, bunBin.lastIndexOf("/"))
+  : "";
+const childPath = [bunBinDir, process.env.PATH].filter(Boolean).join(":");
 
 function envDefault(key, value) {
   return process.env[key]?.trim() || value;
 }
 
 const ports = {
-  agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "2138"),
-  frontend: envDefault("DEV_ALL_FRONTEND_PORT", "5173"),
+  agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
+  frontend: envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
   homepage: envDefault("DEV_ALL_HOMEPAGE_PORT", "4444"),
   osHomepage: envDefault("DEV_ALL_OS_HOMEPAGE_PORT", "4455"),
   cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
@@ -62,7 +71,13 @@ const packagedCloudAvailable =
   existsSync(`${repoRoot}/packages/cloud-api/package.json`) &&
   existsSync(`${repoRoot}/packages/cloud-frontend/package.json`);
 const cloudMode = packagedCloudAvailable ? "packages" : "legacy";
-const commonEnv = { ...process.env, NODE_ENV: "development" };
+const commonEnv = {
+  ...process.env,
+  NODE_ENV: "development",
+  PATH: childPath,
+  ELIZA_DEV_SOURCE: envDefault("ELIZA_DEV_SOURCE", "1"),
+  ELIZA_DEV_NO_WATCH: envDefault("ELIZA_DEV_NO_WATCH", "0"),
+};
 const cloudSharedEnv = {
   ...commonEnv,
   API_DEV_PORT: ports.cloudApi,
@@ -146,6 +161,7 @@ const frontendEnv = {
   VITE_ELIZA_APP_URL: urls.homepage,
   VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
   VITE_ELIZA_OS_URL: urls.osHomepage,
+  ELIZA_APP_VITE_NO_DISCOVERY: envDefault("ELIZA_APP_VITE_NO_DISCOVERY", "1"),
   ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
 const homepageEnv = {
@@ -186,6 +202,7 @@ const cloudWebService = packagedCloudAvailable
         "0.0.0.0",
         "--port",
         ports.cloudWeb,
+        "--strictPort",
       ],
     }
   : {
@@ -199,6 +216,7 @@ const cloudWebService = packagedCloudAvailable
         "0.0.0.0",
         "--port",
         ports.cloudWeb,
+        "--strictPort",
       ],
     };
 
@@ -218,7 +236,7 @@ const services = [
   {
     name: "agent",
     cwd: ".",
-    command: [bunBin, "run", "--cwd", "packages/agent", "start"],
+    command: ["node", "packages/scripts/dev-agent-watch.mjs"],
     env: agentEnv,
   },
   {
@@ -233,6 +251,7 @@ const services = [
       "0.0.0.0",
       "--port",
       ports.frontend,
+      "--strictPort",
     ],
     env: frontendEnv,
   },
@@ -248,6 +267,7 @@ const services = [
       "0.0.0.0",
       "--port",
       ports.homepage,
+      "--strictPort",
     ],
     env: homepageEnv,
   },
@@ -263,6 +283,7 @@ const services = [
       "0.0.0.0",
       "--port",
       ports.osHomepage,
+      "--strictPort",
     ],
     env: osHomepageEnv,
   },
@@ -271,37 +292,85 @@ const services = [
 const cloudDevVarsCommand = packagedCloudAvailable
   ? [bunBin, "run", "packages/scripts/cloud/admin/sync-api-dev-vars.ts"]
   : [bunBin, "run", "--cwd", "cloud", "packages/scripts/sync-api-dev-vars.ts"];
-const defaultPrepareCommands = [
-  [
-    "shared package build",
-    "packages/shared",
-    [bunBin, "run", "build:dist"],
-    commonEnv,
-  ],
-  ["ui package build", "packages/ui", [bunBin, "run", "build:dist"], commonEnv],
-  [
-    "wallet plugin build",
-    "plugins/plugin-wallet",
-    [bunBin, "run", "build"],
-    commonEnv,
-  ],
-  [
-    "local inference plugin build",
-    "plugins/plugin-local-inference",
-    [bunBin, "run", "build"],
-    commonEnv,
-  ],
-  [
-    "app plugin build",
-    "packages/app",
-    [bunBin, "run", "plugin:build"],
-    frontendEnv,
-  ],
-  ["cloud dev vars", ".", cloudDevVarsCommand, cloudSharedEnv],
-];
+
+function packageDistReady(packageDir, requiredFiles) {
+  if (forcePrepare) return false;
+  return requiredFiles.every((file) =>
+    existsSync(`${repoRoot}/${packageDir}/${file}`),
+  );
+}
+
+function buildDefaultPrepareCommands() {
+  const generateCommands = [
+    {
+      label: "shared i18n keywords",
+      cwd: "packages/shared",
+      command: [bunBin, "run", "build:i18n"],
+      env: commonEnv,
+    },
+    {
+      label: "ui css string modules",
+      cwd: "packages/ui",
+      command: [bunBin, "run", "generate:css-strings"],
+      env: commonEnv,
+    },
+    {
+      label: "cloud dev vars",
+      cwd: ".",
+      command: cloudDevVarsCommand,
+      env: cloudSharedEnv,
+    },
+  ];
+
+  const buildCommands = [];
+  if (!packageDistReady("packages/shared", ["dist/index.js"])) {
+    buildCommands.push({
+      label: "shared package build",
+      cwd: "packages/shared",
+      command: [bunBin, "run", "build:dist"],
+      env: commonEnv,
+    });
+  }
+  if (
+    !packageDistReady("packages/ui", [
+      "dist/index.js",
+      "dist/cloud-ui/index.css",
+    ])
+  ) {
+    buildCommands.push({
+      label: "ui package build",
+      cwd: "packages/ui",
+      command: [bunBin, "run", "build:dist"],
+      env: commonEnv,
+    });
+  }
+
+  const stages = [generateCommands, buildCommands];
+  if (buildNativePlugins) {
+    stages.push([
+      {
+        label: "app native plugin build",
+        cwd: "packages/app",
+        command: [bunBin, "run", "plugin:build"],
+        env: frontendEnv,
+      },
+    ]);
+  }
+  return stages.filter((stage) => stage.length > 0);
+}
+
 const prepareCommands = fullPrepare
-  ? [["dev:prepare", ".", [bunBin, "run", "dev:prepare"], commonEnv]]
-  : defaultPrepareCommands;
+  ? [
+      [
+        {
+          label: "dev:prepare",
+          cwd: ".",
+          command: [bunBin, "run", "dev:prepare"],
+          env: commonEnv,
+        },
+      ],
+    ]
+  : buildDefaultPrepareCommands();
 
 function printPlan() {
   console.log("[dev:all] local stack");
@@ -402,6 +471,14 @@ function runOnce(label, cwd, command, env) {
   });
 }
 
+async function runPrepareStage(stage) {
+  await Promise.all(
+    stage.map(({ label, cwd, command, env }) =>
+      runOnce(label, cwd, command, env),
+    ),
+  );
+}
+
 function prefixStream(stream, label, target) {
   let pending = "";
   stream.setEncoding("utf8");
@@ -424,6 +501,7 @@ function startService(service) {
   const child = spawn(service.command[0], service.command.slice(1), {
     cwd: service.cwd === "." ? repoRoot : `${repoRoot}/${service.cwd}`,
     env: service.env,
+    detached: true,
     stdio: ["inherit", "pipe", "pipe"],
   });
   child.serviceName = service.name;
@@ -439,25 +517,73 @@ function startService(service) {
 
 function stopChildren(children) {
   for (const child of children) {
-    if (child && !child.killed) child.kill("SIGTERM");
+    if (!child) continue;
+    signalProcessGroup(child.pid, "SIGTERM");
+  }
+}
+
+function signalProcessGroup(pid, signal) {
+  try {
+    process.kill(-pid, signal);
+    return;
+  } catch {
+    // Fall back to walking descendants when the process group is gone.
+  }
+  signalProcessTree(pid, signal);
+}
+
+function childPids(pid) {
+  try {
+    return execFileSync("pgrep", ["-P", String(pid)], {
+      encoding: "utf8",
+    })
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((value) => Number.parseInt(value, 10))
+      .filter(Number.isFinite);
+  } catch {
+    return [];
+  }
+}
+
+function signalProcessTree(pid, signal) {
+  for (const childPid of childPids(pid)) {
+    signalProcessTree(childPid, signal);
+  }
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // Process already exited.
   }
 }
 
 function stopChildrenAndExit(children, code) {
   stopChildren(children);
-  setTimeout(() => process.exit(code), 1500).unref();
+  setTimeout(() => {
+    for (const child of children) {
+      if (child) signalProcessGroup(child.pid, "SIGKILL");
+    }
+    process.exit(code);
+  }, 5000).unref();
 }
 
 async function main() {
   printPlan();
+  if (!dryRun) await assertPortsAvailable();
+
   if (!skipPrepare) {
     if (!fullPrepare) {
       console.log(
-        "[dev:all] using targeted prepare (pass --full-prepare for full Turbo build)",
+        "[dev:all] using fast source prepare (pass --force-prepare to refresh dist, --full-prepare for Turbo)",
       );
+      if (!buildNativePlugins) {
+        console.log(
+          "[dev:all] skipping native plugin prebuilds (pass --build-native-plugins if needed)",
+        );
+      }
     }
-    for (const [label, cwd, command, env] of prepareCommands) {
-      await runOnce(label, cwd, command, env);
+    for (const stage of prepareCommands) {
+      await runPrepareStage(stage);
     }
   } else {
     console.log("[dev:all] skipping prepare steps");
@@ -489,7 +615,12 @@ async function main() {
     shuttingDown = true;
     console.log(`[dev:all] ${signal} received; stopping services`);
     stopChildren(children);
-    setTimeout(() => process.exit(0), 1500).unref();
+    setTimeout(() => {
+      for (const child of children) {
+        if (child) signalProcessGroup(child.pid, "SIGKILL");
+      }
+      process.exit(0);
+    }, 5000).unref();
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));

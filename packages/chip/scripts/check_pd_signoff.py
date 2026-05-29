@@ -5,6 +5,7 @@ import sys
 from argparse import ArgumentParser
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import check_pd_closure
 import yaml
@@ -1058,7 +1059,13 @@ def closest_run_diagnostics(
                 "release_credit": False,
             }
         )
-    rows.sort(key=lambda item: (-item["present_count"], item["missing_count"], item["run"]))
+    rows.sort(
+        key=lambda item: (
+            -cast(int, item["present_count"]),
+            cast(int, item["missing_count"]),
+            cast(str, item["run"]),
+        )
+    )
     closest = rows[0] if rows else None
     return {
         "release_credit": False,

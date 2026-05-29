@@ -2,8 +2,8 @@
 	# The single canonical llama.cpp checkout for the whole repo. This is the
 	# elizaOS/llama.cpp fork (tracking main): the unified
 	# fork with the eliza kernels (Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0
-	# GGML types + Metal/Vulkan/CUDA kernels) and DFlash spec-decode. The
-	# host build (build-llama-cpp-dflash.mjs) + AOSP cross-compile
+	# GGML types + Metal/Vulkan/CUDA kernels). The host build
+	# (build-llama-cpp-desktop-dylib.mjs) + AOSP cross-compile
 	# (aosp/compile-libllama.mjs) default to this submodule; bun's postinstall
 	# (scripts/ensure-llama-cpp-submodule.mjs) initializes it. The fork is
 	# itself a llama.cpp fork, so it carries convert_hf_to_gguf.py /
@@ -27,7 +27,7 @@
 	# build (packages/app-core/scripts/omnivoice-fuse/) grafts sources from
 	# this tree into the llama.cpp fork at fuse time.
 	path = plugins/plugin-local-inference/native/omnivoice.cpp
-	url = http://github.com/elizaOS/omnivoice.cpp
+	url = https://github.com/elizaOS/omnivoice.cpp.git
 	branch = master
 
 [submodule "plugins/plugin-local-inference/native/whisper.cpp"]

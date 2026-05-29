@@ -22,10 +22,20 @@ def test_memory_axi4_check_runs_dram_controller_gate() -> None:
 
 def test_dram_controller_report_has_claim_boundary_fields() -> None:
     checker = (ROOT / "scripts/check_dram_controller.py").read_text(encoding="utf-8")
-    assert '"phone_claim_allowed": False' in checker
-    assert '"release_claim_allowed": False' in checker
-    assert "not phone-class memory evidence" in checker
-    assert '"cocotb_result": "verify/cocotb/memory/results.xml"' in checker
+    for field in (
+        '"phone_claim_allowed": False',
+        '"release_claim_allowed": False',
+        '"linux_memory_claim_allowed": False',
+        '"memory_bandwidth_claim_allowed": False',
+        '"lpddr_phy_claim_allowed": False',
+        '"silicon_capacity_claim_allowed": False',
+        '"uma_claim_allowed": False',
+    ):
+        assert field in checker
+    assert "not Linux " in checker
+    assert "memory-sizing evidence" in checker
+    assert "memory-bandwidth evidence" in checker
+    assert "derived_cocotb_summary" in checker
 
 
 if __name__ == "__main__":

@@ -22,23 +22,23 @@ jobs:
       SMOKE_PORT: "32138"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
           show-progress: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "24"
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache Bun install
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -74,6 +74,8 @@ jobs:
           smoke_log=".tmp/qa/docker-ci-smoke-step.log"
           setsid bash packages/app-core/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} > >(tee "$smoke_log") 2> >(tee -a "$smoke_log" >&2) &
           smoke_pid=$!
+          smoke_started_at=$SECONDS
+          last_heartbeat=$SECONDS
           deadline=$((SECONDS + 40 * 60))
 
           while kill -0 "$smoke_pid" 2>/dev/null; do
@@ -84,6 +86,10 @@ jobs:
               kill -KILL "-$smoke_pid" 2>/dev/null || kill -KILL "$smoke_pid" 2>/dev/null || true
               wait "$smoke_pid" || true
               exit 124
+            fi
+            if (( SECONDS - last_heartbeat >= 60 )); then
+              last_heartbeat=$SECONDS
+              echo "[docker-ci-smoke] still running after $((SECONDS - smoke_started_at))s; log: $smoke_log"
             fi
             sleep 10
           done
@@ -120,7 +126,7 @@ jobs:
 
       - name: Upload container logs + inspect
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: docker-ci-smoke-artifacts-${{ github.run_id }}
           path: |

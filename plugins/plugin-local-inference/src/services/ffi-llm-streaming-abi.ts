@@ -19,14 +19,14 @@
  * llama.cpp-only `libelizainference.so` (e.g. the Android AOSP bootstrap
  * before omnivoice ships) can implement it directly.
  *
- * DFlash phasing
+ * MTP phasing
  * ──────────────
  * Phase 1 — target model only. The `FfiLlmStreamingAbi` alone is
  * sufficient: open a single-model streaming session, prefill, generate,
  * cancel, close. No drafter weights required.
  *
  * Phase 2 — speculative decoding. When `MobileInferenceCapabilities.
- * dflashSupported` is `true`, swap to `FfiDflashStreamingAbi` which opens
+ * mtpSupported` is `true`, swap to `FfiMtpStreamingAbi` which opens
  * a paired drafter + verifier session and runs the speculative decode loop
  * on-device. The two ABI surfaces share the same `FfiLlmHandle` brand so
  * the dispatcher (`runtime-dispatcher.ts`) sees a uniform handle type.
@@ -60,7 +60,7 @@ export interface FfiLlmHandle {
 
 /**
  * Token callback fired from the generation background thread once per
- * decoded token (or once per speculative-accept batch in DFlash mode).
+ * decoded token (or once per speculative-accept batch in MTP mode).
  *
  * `isDone` is `true` on the *last* invocation for a given generate call.
  * After `isDone` the handle remains open but must not be passed to
@@ -209,17 +209,17 @@ export interface FfiLlmStreamingAbi {
 }
 
 // ---------------------------------------------------------------------------
-// DFlash (speculative decoding) streaming ABI — Phase 2
+// MTP (speculative decoding) streaming ABI — Phase 2
 // ---------------------------------------------------------------------------
 
 /**
  * C ABI surface for paired drafter + verifier speculative decoding.
  *
  * Phase 2 only — the mobile runtime enables this path when
- * `MobileInferenceCapabilities.dflashSupported` is `true`. Phase 1
+ * `MobileInferenceCapabilities.mtpSupported` is `true`. Phase 1
  * devices use `FfiLlmStreamingAbi` only (target model, no drafter).
  *
- * The DFlash session holds two model contexts internally:
+ * The MTP session holds two model contexts internally:
  *   1. The *drafter* — a small, fast model that proposes `speculativeWindowSize`
  *      candidate tokens per step.
  *   2. The *verifier* — the full target model that accepts or rejects the
@@ -236,7 +236,7 @@ export interface FfiLlmStreamingAbi {
  * keeps the dispatcher (`runtime-dispatcher.ts`) agnostic to which ABI is
  * in use.
  */
-export interface FfiDflashStreamingAbi {
+export interface FfiMtpStreamingAbi {
 	/**
 	 * Open a paired drafter + verifier streaming session.
 	 *
@@ -258,7 +258,7 @@ export interface FfiDflashStreamingAbi {
 	 *                             starting point for mobile).
 	 * @returns Opaque session handle, or `null` on failure.
 	 */
-	eliza_inference_dflash_stream_open(
+	eliza_inference_mtp_stream_open(
 		drafterModelPath: string,
 		verifierModelPath: string,
 		contextSizeTokens: number,
@@ -274,7 +274,7 @@ export interface FfiDflashStreamingAbi {
 	 *
 	 * Same contract as `FfiLlmStreamingAbi.eliza_inference_llm_stream_prefill`.
 	 */
-	eliza_inference_dflash_stream_prefill(
+	eliza_inference_mtp_stream_prefill(
 		handle: FfiLlmHandle,
 		promptTokens: Int32Array,
 		slotId: number,
@@ -286,7 +286,7 @@ export interface FfiDflashStreamingAbi {
 	 *
 	 * Same contract as `FfiLlmStreamingAbi.eliza_inference_llm_stream_generate`.
 	 */
-	eliza_inference_dflash_stream_generate(
+	eliza_inference_mtp_stream_generate(
 		handle: FfiLlmHandle,
 		maxNewTokens: number,
 		temperature: number,
@@ -295,16 +295,16 @@ export interface FfiDflashStreamingAbi {
 	): number | Promise<number>;
 
 	/**
-	 * Cancel an active DFlash generation at the next speculation boundary.
+	 * Cancel an active MTP generation at the next speculation boundary.
 	 * Same contract as `FfiLlmStreamingAbi.eliza_inference_llm_stream_cancel`.
 	 */
-	eliza_inference_dflash_stream_cancel(handle: FfiLlmHandle): void;
+	eliza_inference_mtp_stream_cancel(handle: FfiLlmHandle): void;
 
 	/**
 	 * Release both drafter and verifier sessions.
 	 * Same contract as `FfiLlmStreamingAbi.eliza_inference_llm_stream_close`.
 	 */
-	eliza_inference_dflash_stream_close(handle: FfiLlmHandle): void;
+	eliza_inference_mtp_stream_close(handle: FfiLlmHandle): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +332,7 @@ export type MobileInferenceCapabilities = {
 	 * the device's thermal state is below `serious`. Gate for Phase 2
 	 * speculative decoding.
 	 */
-	dflashSupported: boolean;
+	mtpSupported: boolean;
 
 	/**
 	 * True when the `eliza_inference_tts_synthesize_stream` symbol is
@@ -375,7 +375,7 @@ export type MobileInferenceCapabilities = {
  *
  * When `ffi` is non-null, the function:
  *   1. Calls `llmStreamSupported()` to set `streamingLlm`.
- *   2. Sets `dflashSupported = false` for Phase 1 (drafter support
+ *   2. Sets `mtpSupported = false` for Phase 1 (drafter support
  *      detection requires a platform-specific bundle probe that is NOT
  *      part of this function; callers that have done the probe should set
  *      the field themselves after receiving the snapshot).
@@ -394,7 +394,7 @@ export function detectMobileCapabilities(
 	if (ffi === null) {
 		return {
 			streamingLlm: false,
-			dflashSupported: false,
+			mtpSupported: false,
 			omnivoiceStreaming: false,
 			maxContextTokens: 0,
 			recommendedGpuLayers: 0,
@@ -421,10 +421,10 @@ export function detectMobileCapabilities(
 			? (anyFfi.ttsStreamSupported as () => boolean)()
 			: false;
 
-	// dflashSupported requires a drafter bundle probe that is not part of
+	// mtpSupported requires a drafter bundle probe that is not part of
 	// this function's responsibility. Phase 1 always returns false here;
 	// callers that have completed the bundle probe should OR in their result.
-	const dflashSupported = false;
+	const mtpSupported = false;
 
 	// Conservative defaults for Phase 1. Devices with more RAM will
 	// override these through the platform-specific capability probe once
@@ -434,7 +434,7 @@ export function detectMobileCapabilities(
 
 	return {
 		streamingLlm,
-		dflashSupported,
+		mtpSupported,
 		omnivoiceStreaming,
 		maxContextTokens,
 		recommendedGpuLayers,

@@ -1,0 +1,32 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2017-06-07 17:03+0000\n"
+"PO-Revision-Date: 2018-11-02 16:43+0000\n"
+"Last-Translator: Weblate Admin <admin@example.com>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.19.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Encryption and privacy\"]]\n"
+msgstr "[[!meta title=\"Encryption and privacy\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!inline pages=\"doc/encryption_and_privacy.index\" raw=\"yes\" "
+"sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"doc/encryption_and_privacy.index.zh_TW\" raw=\"yes\" sort="
+"\"age\"]]\n"

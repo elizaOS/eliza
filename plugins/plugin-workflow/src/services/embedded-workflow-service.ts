@@ -26,6 +26,7 @@ import type {
 } from '../types/index';
 import { WorkflowApiError } from '../types/index';
 import { detectHostCapabilities } from '../utils/host-capabilities';
+import { runWorkflowWithSmithers, type SmithersExecutionPlan } from './smithers-runtime';
 
 export const EMBEDDED_WORKFLOW_SERVICE_TYPE = 'embedded_workflow_service';
 
@@ -2196,21 +2197,51 @@ export class EmbeddedWorkflowService extends Service {
     return start;
   }
 
-  private collectInputData(
-    nodeName: string,
-    incoming: Map<string, IncomingConnection[]>,
-    nodeOutputs: Map<string, INodeExecutionData[][]>
-  ): INodeExecutionData[][] {
-    const inputData: INodeExecutionData[][] = [];
-    for (const connection of incoming.get(nodeName) ?? []) {
-      const sourceOutputs = nodeOutputs.get(connection.source) ?? [];
-      const sourceItems = sourceOutputs[connection.sourceOutputIndex] ?? [];
-      inputData[connection.destinationInputIndex] = [
-        ...(inputData[connection.destinationInputIndex] ?? []),
-        ...sourceItems,
-      ];
+  private resolveExecutionPlan(
+    workflowData: WorkflowDefinition,
+    mode: WorkflowExecuteMode
+  ): SmithersExecutionPlan {
+    const enabledNodes = workflowData.nodes.filter((node) => !node.disabled);
+    const nodeByName = new Map(enabledNodes.map((node) => [node.name, node]));
+    const incoming = this.buildIncomingConnections(workflowData);
+    const startNodes = this.resolveStartNodes(workflowData, mode, incoming);
+    const orderedNodes: WorkflowNode[] = [];
+    const executed = new Set<string>();
+
+    while (executed.size < enabledNodes.length) {
+      let progressed = false;
+
+      for (const node of enabledNodes) {
+        if (executed.has(node.name)) continue;
+
+        const incomingConnections =
+          incoming.get(node.name)?.filter((connection) => nodeByName.has(connection.source)) ?? [];
+        const isStartNode = startNodes.has(node.name);
+        const dependenciesComplete = incomingConnections.every((connection) =>
+          executed.has(connection.source)
+        );
+
+        if (!isStartNode && !dependenciesComplete) continue;
+
+        orderedNodes.push(node);
+        executed.add(node.name);
+        progressed = true;
+      }
+
+      if (!progressed) {
+        const unresolved = enabledNodes
+          .filter((node) => !executed.has(node.name))
+          .map((node) => node.name)
+          .join(', ');
+        throw new Error(`Unable to resolve workflow execution order for node(s): ${unresolved}`);
+      }
     }
-    return inputData.length > 0 ? inputData : [[]];
+
+    return {
+      enabledNodes: orderedNodes,
+      startNodes: [...startNodes],
+      incoming: Object.fromEntries(incoming.entries()),
+    };
   }
 
   private async executeNode(
@@ -2248,85 +2279,16 @@ export class EmbeddedWorkflowService extends Service {
     await this.saveExecution(pending, idempotencyKey);
 
     try {
-      const enabledNodes = workflowData.nodes.filter((node) => !node.disabled);
-      const nodeByName = new Map(enabledNodes.map((node) => [node.name, node]));
-      const incoming = this.buildIncomingConnections(workflowData);
-      const startNodes = this.resolveStartNodes(workflowData, mode, incoming);
-      const nodeOutputs = new Map<string, INodeExecutionData[][]>();
-      const executed = new Set<string>();
-      const runData: Record<string, unknown[]> = {};
-      let lastNodeExecuted: string | undefined;
-
-      while (executed.size < enabledNodes.length) {
-        let progressed = false;
-
-        for (const node of enabledNodes) {
-          if (executed.has(node.name)) continue;
-
-          const incomingConnections =
-            incoming.get(node.name)?.filter((connection) => nodeByName.has(connection.source)) ??
-            [];
-          const isStartNode = startNodes.has(node.name);
-          const dependenciesComplete = incomingConnections.every((connection) =>
-            executed.has(connection.source)
-          );
-
-          if (!isStartNode && !dependenciesComplete) continue;
-
-          const inputData =
-            isStartNode && incomingConnections.length === 0
-              ? triggerData && Object.keys(triggerData).length > 0
-                ? [[{ json: triggerData }]]
-                : [[]]
-              : this.collectInputData(node.name, incoming, nodeOutputs);
-          const hasInputItems = inputData.some((items) => items.length > 0);
-          const started = Date.now();
-
-          const outputData =
-            !isStartNode && incomingConnections.length > 0 && !hasInputItems
-              ? [[]]
-              : await this.executeNode(node, inputData, executionId);
-
-          nodeOutputs.set(node.name, outputData);
-          runData[node.name] = [
-            {
-              startTime: started,
-              executionTime: Date.now() - started,
-              data: { main: cloneJson(outputData) },
-              source: incomingConnections.map((connection) => ({
-                previousNode: connection.source,
-                previousNodeOutput: connection.sourceOutputIndex,
-                previousNodeRun: 0,
-              })),
-            },
-          ];
-          executed.add(node.name);
-          lastNodeExecuted = node.name;
-          progressed = true;
-        }
-
-        if (!progressed) {
-          const unresolved = enabledNodes
-            .filter((node) => !executed.has(node.name))
-            .map((node) => node.name)
-            .join(', ');
-          throw new Error(`Unable to resolve workflow execution order for node(s): ${unresolved}`);
-        }
-      }
-
-      const stoppedAt = new Date();
-      const execution: WorkflowExecution = {
-        ...pending,
-        finished: true,
-        status: 'success',
-        stoppedAt: stoppedAt.toISOString(),
-        data: {
-          resultData: {
-            runData,
-            lastNodeExecuted,
-          },
-        },
-      };
+      const plan = this.resolveExecutionPlan(workflowData, mode);
+      const execution = await runWorkflowWithSmithers({
+        workflow: workflowData,
+        executionId,
+        pending,
+        mode,
+        triggerData,
+        plan,
+        runNode: (node, inputData) => this.executeNode(node, inputData, executionId),
+      });
       await this.saveExecution(execution, idempotencyKey);
       return cloneJson(execution);
     } catch (error) {

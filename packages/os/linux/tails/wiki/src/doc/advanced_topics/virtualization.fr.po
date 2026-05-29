@@ -1,0 +1,581 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-12-07 18:29+0000\n"
+"Last-Translator: conan <conan@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Running Tails in a virtual machine\"]]\n"
+msgstr "[[!meta title=\"Utiliser Tails dans une machine virtuelle\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+msgid ""
+"It is sometimes convenient to be able to run Tails without having to restart "
+"your computer every time. This is possible using [[!wikipedia "
+"Virtual_machine desc=\"virtual machines\"]]."
+msgstr ""
+"Il peut être pratique de pouvoir lancer Tails sans avoir à redémarrer son "
+"ordinateur à chaque fois. C'est possible grâce aux [[!wikipedia_fr "
+"Machine_virtuelle desc=\"machines virtuelles\"]]."
+
+#. type: Plain text
+msgid ""
+"With virtual machines, it is possible to run Tails inside a *host* operating "
+"system. A virtual machine emulates a real computer and its operating system, "
+"called a *guest*, which appears in a window on the *host* operating system."
+msgstr ""
+"Grâce aux machines virtuelles, il est possible de faire tourner Tails à "
+"l'intérieur d'un système d'exploitation *hôte*. Une machine virtuelle émule "
+"un vrai ordinateur et son système d’exploitation, appelé un *invité*, qui "
+"apparaît dans une fenêtre du système d'exploitation *hôte*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Because, <i>VirtualBox</i> works pretty badly with Tails, we stopped\n"
+"advertising solutions for using virtual machines in Windows or macOS.</p>\n"
+msgstr ""
+"<p>Comme <i>VirtualBox</i> fonctionne assez mal avec Tails, nous avons cessé de\n"
+"promouvoir des solutions permettant d'utiliser des machines virtuelles sous Windows ou macOS.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only present below 2 solutions for Linux: <i>GNOME Boxes</i> and\n"
+"<i>virt-manager</i>.</p>\n"
+msgstr ""
+"<p>Nous ne présentons ci-dessous que 2 solutions pour Linux : <i> Machines de GNOME </i> et\n"
+"<i>virt-manager</i>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"When running Tails in a virtual machine, you can use most features of Tails "
+"from your usual operating system, and you can use both Tails and your usual "
+"operating system in parallel, without the need to restart the computer."
+msgstr ""
+"Lorsque vous utilisez Tails dans une machine virtuelle, vous pouvez utiliser "
+"la plupart des fonctionnalités de Tails depuis votre système d'exploitation "
+"habituel, et vous pouvez utiliser à la fois Tails et votre système "
+"d'exploitation habituel en parallèle, sans avoir besoin de redémarrer "
+"l'ordinateur."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We do not currently provide a solution for running a virtual machine\n"
+"inside a Tails host.</p>\n"
+msgstr ""
+"<p>Nous ne fournissons pas à l'heure actuelle de solution pour faire tourner\n"
+"une machine virtuelle dans un hôte Tails.</p>\n"
+
+#. type: Plain text
+msgid "This is how Tails looks when run in a virtual machine on a Debian host."
+msgstr ""
+"Voilà ce à quoi ressemble Tails dans une machine virtuelle sur un hôte "
+"Debian."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tails-in-vm.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img tails-in-vm.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"security\"></a>\n"
+msgstr "<a id=\"security\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Security considerations"
+msgstr "Remarques à propos de la sécurité"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Running Tails inside a virtual machine has various security\n"
+"implications. Depending on the host operating system and your security\n"
+"needs, running Tails in a virtual machine might be dangerous.</p>\n"
+msgstr ""
+"<p>Faire tourner Tails dans une machine virtuelle a de nombreuses conséquences\n"
+"en terme de sécurité. En fonction du système d’exploitation hôte et de vos besoins\n"
+"en terme de sécurité, faire tourner Tails dans une machine virtuelle peut être dangereux.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"trustworthy\"></a>\n"
+msgstr "<a id=\"trustworthy\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Both the host operating system and the [[virtualization software|"
+"virtualization#software]] are able to monitor what you are doing in Tails."
+msgstr ""
+"Le système d'exploitation hôte ainsi que le [[logiciel de virtualisation|"
+"virtualization#software]] sont capables d'observer et d'analyser ce que vous "
+"faites dans Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    If the host operating system is compromised with a software\n"
+"    keylogger or other malware, then it can break the security built into\n"
+"    Tails.\n"
+msgstr ""
+"    Si le système d'exploitation hôte est compromis par un enregistreur de "
+"frappe logiciel\n"
+"    ou autre logiciel malveillant, cela peut briser la sécurité de\n"
+"    Tails.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    <div class=\"caution\">\n"
+msgstr "    <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if both the host operating\n"
+"    system and the virtualization software are trustworthy.</p>\n"
+msgstr ""
+"    <p>N'utilisez Tails dans une machine virtuelle que si le système d’exploitation\n"
+"    hôte et le logiciel de virtualisation sont de confiance.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    </div>\n"
+msgstr "    </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    <div class=\"attack\">\n"
+msgstr "    <div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>For example, when using virtual machines in Windows, <a\n"
+"    href=\"https://support.microsoft.com/en-us/windows/retrace-your-steps-with-recall-aa03f8a0-a78b-4b3e-b0a1-2eb8ac48701c\"><i>Microsoft\n"
+"    Recall</i></a> might be taking regular screenshots of your activity.</p>\n"
+msgstr ""
+"    <p>Par exemple, lors de l'utilisation de machines virtuelles dans Windows, <a\n"
+"    href=\"https://support.microsoft.com/fr-fr/windows/revenir-sur-vos-pas-avec-retrouver-aa03f8a0-a78b-4b3e-b0a1-2eb8ac48701c\"><i>Microsoft\n"
+"    Recall</i></a> pourrait faire des captures d'écran régulières de votre activité.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"traces\"></a>\n"
+msgstr "<a id=\"traces\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Traces of your Tails session are likely to be left on the local hard disk. "
+"For example, host operating systems usually use swapping (or *paging*) which "
+"copies part of the RAM to the hard disk."
+msgstr ""
+"Des traces de votre session Tails sont susceptibles d'être laissées sur "
+"votre disque dur local. Par exemple, le système d'exploitation hôte utilise "
+"habituellement la mémoire virtuelle (swap ou *paging*) dans laquelle une "
+"partie de la RAM est copiée sur le disque dur."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if leaving traces on the hard disk\n"
+"    is not a concern for you.</p>\n"
+msgstr ""
+"    <p>N'utilisez Tails dans une machine virtuelle que si laisser des traces sur le\n"
+"    disque dur n'est pas un problème pour vous.</p>\n"
+
+#. type: Plain text
+msgid ""
+"This is why Tails warns you when it is running inside a virtual machine."
+msgstr ""
+"C'est pourquoi Tails vous avertit quand il est lancé dans une machine "
+"virtuelle."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The Tails virtual machine does not modify the behavior of the host\n"
+"operating system and the network traffic of the host is not anonymized. The MAC\n"
+"address of the computer is not modified by the [[MAC address\n"
+"anonymization|first_steps/welcome_screen/mac_spoofing]] feature of Tails\n"
+"when run in a virtual machine.</p>\n"
+msgstr ""
+"<p>La machine virtuelle Tails ne modifie pas le comportement du système\n"
+"d'exploitation hôte et le trafic réseau de l'hôte n'est pas anonymisé. "
+"L'adresse MAC\n"
+"de l'ordinateur n'est pas modifiée par la fonctionnalité d'[[anonymisation\n"
+"d'adresse MAC|first_steps/welcome_screen/mac_spoofing]] de Tails si\n"
+"celui-ci est lancé dans une machine virtuelle.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"software\"></a>\n"
+msgstr "<a id=\"software\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Virtualization solutions"
+msgstr "Solutions de virtualisation"
+
+#. type: Plain text
+msgid ""
+"To run Tails inside a virtual machine, you need to have virtualization "
+"software installed on the host operating system.  Different virtualization "
+"software exists for Linux, Windows, and macOS.  Unfortunately, we only know "
+"of virtualization solutions for Linux that work well with Tails."
+msgstr ""
+"Pour faire tourner Tails dans une machine virtuelle, vous avez besoin d'un "
+"logiciel de virtualisation installé sur le système d'exploitation hôte. "
+"Différents logiciels de virtualisation existent pour Linux, Windows, et "
+"macOS.  Malheureusement, nous ne connaissons que des solutions de "
+"virtualisation pour Linux qui fonctionnent bien avec Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only mention Free Software, because we believe that it is a necessary\n"
+"condition to be trustworthy. Proprietary virtualization software exist, such as\n"
+"<i>VMWare</i>, but is not listed here on purpose.</p>\n"
+msgstr ""
+"<p>Nous mentionnons uniquement des logiciels libres, parce que nous pensons que c'est une condition\n"
+"nécessaire pour être digne de confiance. Des logiciels de virtualisation propriétaires existent, comme par exemple\n"
+"<i>VMWare</i>, mais il n'est pas listé ici volontairement.</p>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"***GNOME Boxes*** is only available on Linux. It has a simpler user "
+"interface than *virt-manager* but does not allow to use a Persistent Storage."
+msgstr ""
+"***Machines de GNOME*** est seulement disponible sur Linux. Son interface "
+"d'utilisation est plus simple que *virt-manager* mais elle ne permet pas "
+"d'utiliser le stockage persistant."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *GNOME Boxes*|boxes]].\n"
+msgstr "    Voir [[utiliser Tails dans *Machines de GNOME*|boxes]].\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"***virt-manager*** is only available on Linux. It has a more complex user "
+"interface than *GNOME Boxes* but allows to use a Persistent Storage, either "
+"by:"
+msgstr ""
+"***virt-manager*** est seulement disponible sur Linux. Il a une interface "
+"d'utilisation plus complexe que *Machines de GNOME* mais permet d'utiliser "
+"le stockage persistant, soit en :"
+
+#. type: Bullet: '    - '
+msgid "Starting Tails from a USB stick."
+msgstr "Démarrant Tails depuis une clé USB."
+
+#. type: Bullet: '    - '
+msgid ""
+"Creating a virtual USB storage volume saved as a single file on the host "
+"operating system."
+msgstr ""
+"Créant un volume de stockage USB virtuel sauvegardé dans un unique fichier "
+"sur le système d'exploitation hôte."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *virt-manager*|virt-manager]].\n"
+msgstr "    Voir [[utiliser Tails dans *virt-manager*|virt-manager]].\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>We are not recommending <i>VirtualBox</i> anymore because only basic\n"
+#~ "functionalities of Tails work in <i>VirtualBox</i>, for example, the display\n"
+#~ "size is limited to 800×600 pixels.</p>\n"
+#~ msgstr ""
+#~ "<p>Nous ne recommandons plus <i>VirtualBox</i> car seules des fonctionnalités\n"
+#~ "basiques de Tails fonctionnent dans <i>VirtualBox</i>, par exemple, la taille de\n"
+#~ "l'affichage est limitée à 800×600 pixels.</p>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "**<em>VirtualBox</em>** is available on Linux, Windows, and Mac. Its "
+#~| "free software version does not include support for USB devices and does "
+#~| "not allow use of a Persistent Storage."
+#~ msgid ""
+#~ "***VirtualBox*** is available on Linux, Windows, and Mac. Its Free "
+#~ "Software version does not include support for USB devices and does not "
+#~ "allow to use a Persistent Storage."
+#~ msgstr ""
+#~ "**<em>VirtualBox</em>** est disponible pour Linux, Windows et Mac. Sa "
+#~ "version libre n'inclut pas la gestion des périphériques USB et ne permet "
+#~ "pas l’utilisation du stockage persistant."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The following list includes only free software as we believe that\n"
+#~ "this is a necessary condition for the software to be trustworthy. See the\n"
+#~ "[[previous warning|virtualization#trustworthy]] and our statement about\n"
+#~ "[[free software and public scrutiny|about/trust#free_software]].</p>\n"
+#~ msgstr ""
+#~ "<p>La liste suivante ne comprend que des logiciels libres car nous pensons\n"
+#~ "que c'est une condition nécessaire pour qu'un logiciel soit digne de confiance. Voir\n"
+#~ "l'[[avertissement précédent|virtualization#trustworthy]] et notre déclaration sur les\n"
+#~ "[[logiciels libres et l'examen publique|about/trust#free_software]].</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Proprietary virtualization software solutions exist such as <span\n"
+#~ "class=\"application\">VMWare</span> but are not listed here on\n"
+#~ "purpose.</p>\n"
+#~ msgstr ""
+#~ "<p>Des logiciels propriétaires de virtualisation existent, tels que <span\n"
+#~ "class=\"application\">VMWare</span>, mais ils ne sont pas listés ici\n"
+#~ "à dessein.</p>\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virtualbox]]\n"
+#~ msgstr "    [[Voir la documentation correspondante.|virtualbox]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|boxes]]\n"
+#~ msgstr "    [[Voir la documentation correspondante.|boxes]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virt-manager]]\n"
+#~ msgstr "    [[Voir la documentation correspondante.|virt-manager]]\n"
+
+#~ msgid ""
+#~ "Certain users might not want to restart the computer every time they wish "
+#~ "to use the Internet anonymously with Tails. For those, a so called "
+#~ "[virtual machine](http://en.wikipedia.org/wiki/Virtual_machine)  can be "
+#~ "used to run Tails inside the \"host\" operating system installed on the "
+#~ "computer (e.g. Microsoft Windows, macOS, etc.).  Essentially these "
+#~ "programs emulate real computers that you can run \"guest\" operating "
+#~ "systems (in this case Tails) in so they appear in a window within the "
+#~ "host operating system. Using one of these technologies allows for "
+#~ "convenient access to Tails's features in a protected environment while "
+#~ "you at the same time have access to your normal operation system."
+#~ msgstr ""
+#~ "Certains utilisateurs pourraient ne pas vouloir redémarrer l'ordinateur à "
+#~ "chaque fois qu'ils souhaitent utiliser internet anonymement avec Tails. "
+#~ "Pour ces personnes, une [machine virtuelle](http://fr.wikipedia.org/wiki/"
+#~ "machine_virtuelle) peut être utilisée pour démarrer Tails à l'intérieur "
+#~ "du système d'exploitation \"hôte\" installé dans l'ordinateur  (e.x. "
+#~ "Microsoft Windows, macOS, etc.). Globalement, ces programmes simulent des "
+#~ "ordinateurs réels à l'intérieur desquels vous pouvez démarrer des "
+#~ "systèmes d'exploitation \"invités\" (dans ce cas Tails). Ils apparaissent "
+#~ "alors dans une fenêtre à l'intérieur du système d'exploitation hôte. "
+#~ "Utiliser une de ces technologies permet un accès commode aux "
+#~ "fonctionnalités de Tails dans un environnement protégé tout en ayant "
+#~ "accès à votre système d'exploitation habituel."
+
+#~ msgid "There are a few security issues with this approach though."
+#~ msgstr ""
+#~ "Cependant, il y a certains problèmes de sécurité lorsque l'on choisit "
+#~ "cette technique."
+
+#~ msgid "Moreover traces are likely to be left on the local hard disk."
+#~ msgstr ""
+#~ "De plus, des traces pourront potentiellement être laissées sur votre "
+#~ "disque dur local."
+
+#~ msgid ""
+#~ "As such, this is only recommended when the other alternative is not an "
+#~ "option or when you are absolutely sure that your host system is clean."
+#~ msgstr ""
+#~ "Ainsi, cette pratique n'est recommandée que s'il n'y a pas d'alternative, "
+#~ "ou si vous êtes absolument certain que votre système hôte est sûr et "
+#~ "propre."
+
+#~ msgid ""
+#~ "That's why Tails warns you when you are running it inside a virtual "
+#~ "machine. Do not expect Tails to protect you if you run it in a virtual "
+#~ "machine if you do not trust the host computer, Tails is not magical!"
+#~ msgstr ""
+#~ "C'est pourquoi Tails tient à vous prévenir, si vous utilisez une machine "
+#~ "virtuelle. N'espérez pas que Tails vous protège si vous l'utilisez sur "
+#~ "une machine virtuelle et que vous ne faites pas confiance à l'ordinateur "
+#~ "hôte. Tails ne peut pas faire de miracle !"
+
+#~ msgid ""
+#~ "If you are unsure, and if you can afford it, run Tails from a DVD, USB "
+#~ "stick or SD card instead."
+#~ msgstr ""
+#~ "Si vous n'êtes pas sûr, et si vous pouvez vous le permettre, utilisez "
+#~ "Tails depuis un DVD, une clé USB ou un carte SD."
+
+#~ msgid "Tips and tricks\n"
+#~ msgstr "Astuces\n"
+
+#~ msgid ""
+#~ "In the future, it will be possible to easily start [[Tails within "
+#~ "Windows]]."
+#~ msgstr ""
+#~ "À l'avenir, il sera possible de lancer facilement [[Tails sous Windows|"
+#~ "tails_within_windows]]."
+
+#~ msgid ""
+#~ "There are a few security issues with this approach though. The main issue "
+#~ "is if the host operating system is compromised with a software keylogger "
+#~ "or virus, which Tails does not provide any protection against (in fact, "
+#~ "that is impossible). Secondly, performance is a usually a bit worse "
+#~ "compared to running it on its own. As such, this is only recommended when "
+#~ "the other alternative is not an option or when you are absolutely sure "
+#~ "that your host system is clean.  Additionally, some of these virtual "
+#~ "machines are closed-source, so it is very difficult to determine if they "
+#~ "do something that could break Tails's security. In conclusion, use "
+#~ "virtual machines with care."
+#~ msgstr ""
+#~ "Pourtant il ya beaucoups de problemes de sécurité avec cette approche.  "
+#~ "Le probleme principal est l'éventualitée que le systeme d'exploitation "
+#~ "hote soit compromis avec un logiciel de type keylogger ou un virus, "
+#~ "contre lesquels Tails ne fournit aucune protection (en effet c'est "
+#~ "impossible). En second lieu, la performence est un peu pire comparée au "
+#~ "démarrage d'incognito tout seul. D'ou, c'est seulement recommondé quand "
+#~ "l'autre alternative n'est pas une option ou quand vous etes absolument "
+#~ "surs que votre système hote n'est pas contaminé. En plus, certaines "
+#~ "machines virtuelles sont closed-source, donc c'est très difficile de "
+#~ "déterminer si elles font quequechose qui pourrait briser la sécurité "
+#~ "d'Tails.En conclusion, utilisez les machines virtuelles avec attention."
+
+#~ msgid ""
+#~ "The open source [QEMU](http://bellard.org/qemu/) processor emulator and "
+#~ "virtualizer handles Tails nicely. In fact, QEMU is included in the Tails "
+#~ "distribution for Microsoft Windows users (more about this [below]"
+#~ "(#windows)). In order to start it from the command-line, simply type "
+#~ "something like:"
+#~ msgstr ""
+#~ "L'émulateur de processeur et le virtualiseur open source [QEMU](http://"
+#~ "bellard.org/qemu/) gére Tails agréablement.  En effet, QEMU est incluse "
+#~ "dans la distribution Tails pour les utilisateurs de Microsoft Windows "
+#~ "(plus à propos de ça [en bas](#windows)). Afin de le démarrer à partir de "
+#~ "la ligne de commande, tapez simplement quelquechose comme ceci:"
+
+#~ msgid ""
+#~ "If you have severe performance problems you should look into KQEMU which "
+#~ "is an accelerator module for QEMU, granting a more direct access to the "
+#~ "systems hardware for additional speed. You will most likely need "
+#~ "administrator privileges for installing KQEMU."
+#~ msgstr ""
+#~ "Si vous avez de graves problèmes de performance vous devriez examiner "
+#~ "KQEMU qui est un module d'acceleration pour QEMU, garantissant un accès "
+#~ "plus direct au systèmes hardware pour plus de rapidité. Dans la majorité "
+#~ "des cas vous aurez besoin de priviléges administrateurs pour installer "
+#~ "KQEMU."
+
+#~ msgid ""
+#~ "Tails works very well in [VMWare](http://www.vmware.com/) with the "
+#~ "following [VMWare Virtual Appliance](http://files1.cjb.net/incognito/"
+#~ "incognito-vmware-1.0.zip)  ([signature](http://files1.cjb.net/incognito/"
+#~ "incognito-vmware-1.0.zip.asc))  devised by the Tails developers. Simply "
+#~ "unzip the file and follow the provided instructions in `README.txt` which "
+#~ "is provided within the archive. The free ([as in beer](http://"
+#~ "en.wikipedia.org/wiki/Gratis_versus_Libre)) [VMWare Player](http://"
+#~ "www.vmware.com/products/player/) might be useful for this. In order to "
+#~ "get good performance you will probably need administrator privileges in "
+#~ "the computer when you install VMWare. Note that VMWare is closed source, "
+#~ "so it might be hard to determine if it does anything that is bad for "
+#~ "anonymity, although it is unlikely."
+#~ msgstr ""
+#~ "Tails fonctionne très bien dans [VMWare](http://www.vmware.com/) avec "
+#~ "l'application suivane [VMWare Virtual Appliance](http://files1.cjb.net/"
+#~ "incognito/incognito-vmware-1.0.zip)  ([signature](http://files1.cjb.net/"
+#~ "incognito/incognito-vmware-1.0.zip.asc))  conçue par les développeurs "
+#~ "d'T(A)ILS. décompressez simplement le fichier et suivez les instructions "
+#~ "fournies dans le `README.txt` qui est fournit avec l'archive. "
+#~ "L'application gratuite ([as in beer](http://en.wikipedia.org/wiki/"
+#~ "Gratis_versus_Libre))  [VMWare Player](http://www.vmware.com/products/"
+#~ "player/) pourrait etre pratique pour ça. Afin d'avoir de bonnes "
+#~ "performances vous aurez probablement besoin de priviléges administrateurs "
+#~ "lors de l'installation de VMWare. Notez que VMWest closed source, d'ou ça "
+#~ "pourrai etre très difficile de déterminer si elle fait quoi que ce soit "
+#~ "de mauvais pour l'anonymat, bienque ça soit improbable."
+
+#~ msgid ""
+#~ "Tails runs in [VirtualBox](http://virtualbox.org) without needing any "
+#~ "major configuration. VirtualBox is distributed both as a closed-source "
+#~ "and as an open-source (the so called OSE or Open Source Edition), the "
+#~ "latter which the Tails developer's encourages (although it currently "
+#~ "lacks USB support compared to the closed-source version)."
+#~ msgstr ""
+#~ "Mlheureuseument Tails ne fonctionne pas encore parfaitement dans "
+#~ "[VirtualBox](http://virtualbox.org/) , mais on travaille dessus.Ceci ne "
+#~ "veut pas dire qu'il ne fonctionne pas du tout, juste que vous aurez a "
+#~ "l'ajuster un peu. Tout ira bien jusqu'a ce que le X server démarre, "
+#~ "puisque son installation échouera a cause de problèmes de pilotes "
+#~ "graphiques aut-détectés. FIXME"
+
+#~ msgid "<a id=\"windows\"></a>Running Tails from within Microsoft Windows"
+#~ msgstr ""
+#~ "<a id=\"windows\"></a>Démarrer Tails à l'intérieur de Microsoft Windows"
+
+#~ msgid ""
+#~ "Thanks to QEMU, [described above](#vm), Tails can be run within Microsoft "
+#~ "Windows without the need to restart the computer. QEMU ships with Tails, "
+#~ "and is set up so you only have to insert the media when Windows is "
+#~ "running and a menu should appear with the option to start Tails through "
+#~ "it. This is especially useful when you are using a computer you are not "
+#~ "allowed to shut-down, which can be the case for public computers in "
+#~ "certain Internet cafés, libraries or other public computers. Also, for "
+#~ "some some general remarks on QEMU and Tails, and some security concerns "
+#~ "about this mode of operation, see the above section on [Tails and "
+#~ "Virtualization](#vm)."
+#~ msgstr ""
+#~ "Grace a QEMU, presentée [en haut](#vm), Tails peut etre démarré à "
+#~ "l'interieur de Microsoft Windows sans devoir redémarrer l'ordinateur. "
+#~ "QEMU prend en charge Tails, et est pré-configurée , donc vous n'aurez "
+#~ "qu'a inserer le support amovible lorsque Windows est en marche et un menu "
+#~ "devrait apparaitre avec l'otion de démarrer Tails à travers. Ceci est "
+#~ "spécialement pratique quand vous utilisez un ordinateur dont vous n'avez "
+#~ "pas la permission de redémarrer, ce qui peut etre le cas d'ordinateurs "
+#~ "publiques dans certains cyber-caffés et certaines libraries. Aussi, pour "
+#~ "certaines remarques génerales sur QEMU et Tails, et pour certaines "
+#~ "préoccupation de sécurité à propos de ce mode d'opération, regardez la "
+#~ "section en haut sur  [T(A)ILS et la Virtualisation](#vm)."
+
+#~ msgid ""
+#~ "Since the Tails developers do not have access to any Windows computers at "
+#~ "the moment, any input if this actually works and how it performs etc. is "
+#~ "welcome."
+#~ msgstr ""
+#~ "Puisque les développeurs d'Tails n'ont accès a aucun ordinateur Windows "
+#~ "pour le moment, toute indication sur si ça fonctionne actuellement et sur "
+#~ "comment se présentent les performances etc. est la bienvenue."

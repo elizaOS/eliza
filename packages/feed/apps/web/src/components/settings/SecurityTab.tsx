@@ -7,7 +7,7 @@ import { useAuthStore } from "@/stores/authStore";
 /**
  * Security tab for account security settings.
  *
- * Phase 2: Wallet management removed (Privy embedded wallets deprecated).
+ * Phase 2: Wallet management removed (embedded wallets deprecated).
  * Displays authenticated session info from Steward.
  */
 export function SecurityTab() {

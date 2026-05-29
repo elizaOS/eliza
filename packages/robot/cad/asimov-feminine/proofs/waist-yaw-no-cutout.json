@@ -1,0 +1,301 @@
+{
+  "accepted": true,
+  "cutout_policy": "front M cutout and internal fragments are intentionally excluded from the outer hull rings",
+  "generated_sections": [
+    {
+      "bounds_m": [
+        [
+          -0.1061862422612207,
+          -0.11543992659220591,
+          0.18
+        ],
+        [
+          0.08367323579685484,
+          0.11544010205415846,
+          0.18
+        ]
+      ],
+      "front_loop_count": 1,
+      "loop_count": 1,
+      "max_closure_gap_m": 0.0,
+      "ok": true,
+      "z_m": 0.18
+    },
+    {
+      "bounds_m": [
+        [
+          -0.11283404217627922,
+          -0.12386999463101124,
+          0.21
+        ],
+        [
+          0.09721981915323577,
+          0.12386982028106858,
+          0.21
+        ]
+      ],
+      "front_loop_count": 1,
+      "loop_count": 1,
+      "max_closure_gap_m": 0.0,
+      "ok": true,
+      "z_m": 0.21
+    },
+    {
+      "bounds_m": [
+        [
+          -0.10639153420959513,
+          -0.12479970171338493,
+          0.24
+        ],
+        [
+          0.10069952817091293,
+          0.1247996953804296,
+          0.24
+        ]
+      ],
+      "front_loop_count": 1,
+      "loop_count": 1,
+      "max_closure_gap_m": 0.0,
+      "ok": true,
+      "z_m": 0.24
+    },
+    {
+      "bounds_m": [
+        [
+          -0.10240718338671717,
+          -0.12499767573815991,
+          0.261
+        ],
+        [
+          0.07574143471701124,
+          0.12499767573815991,
+          0.261
+        ]
+      ],
+      "front_loop_count": 1,
+      "loop_count": 1,
+      "max_closure_gap_m": 0.0,
+      "ok": true,
+      "z_m": 0.261
+    },
+    {
+      "bounds_m": [
+        [
+          -0.09499064339627925,
+          -0.12032632472990504,
+          0.285
+        ],
+        [
+          0.08223570757868673,
+          0.12040659886635571,
+          0.285
+        ]
+      ],
+      "front_loop_count": 1,
+      "loop_count": 1,
+      "max_closure_gap_m": 0.0,
+      "ok": true,
+      "z_m": 0.285
+    },
+    {
+      "bounds_m": [
+        [
+          -0.10960049111923476,
+          -0.1170120621487332,
+          0.31
+        ],
+        [
+          0.060090267308317215,
+          0.11701500399861849,
+          0.31
+        ]
+      ],
+      "front_loop_count": 1,
+      "loop_count": 1,
+      "max_closure_gap_m": 0.0,
+      "ok": true,
+      "z_m": 0.31
+    },
+    {
+      "bounds_m": [
+        [
+          -0.06836265047030299,
+          -0.07017980512684824,
+          0.34
+        ],
+        [
+          0.0368916406444284,
+          0.07017777038361497,
+          0.34
+        ]
+      ],
+      "front_loop_count": 1,
+      "loop_count": 1,
+      "max_closure_gap_m": 0.0,
+      "ok": true,
+      "z_m": 0.34
+    }
+  ],
+  "generated_sections_ok": true,
+  "generated_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/WAIST_YAW.STL",
+  "generated_stl_sha256": "3aa03b921c1f50fcdab16b54fc48817bc99c68aff5f29dde5ccb4c8ee97dfac9",
+  "link": "WAIST_YAW",
+  "method": "convex_hull_cross_section_rings_to_parametric_loft",
+  "schema": "asimov-fembot-waist-yaw-no-cutout-proof-v1",
+  "section_closure_tolerance_m": 1e-08,
+  "section_levels_m": [
+    0.18,
+    0.21,
+    0.24,
+    0.261,
+    0.285,
+    0.31,
+    0.34
+  ],
+  "source_fragmented_sections": 7,
+  "source_sections": [
+    {
+      "bounds_m": [
+        [
+          -0.09844289514760214,
+          -0.12235670349404865,
+          0.18
+        ],
+        [
+          0.10112717255891152,
+          0.12235670349404865,
+          0.18
+        ]
+      ],
+      "front_loop_count": 14,
+      "loop_count": 23,
+      "max_closure_gap_m": 0.0,
+      "ok": false,
+      "z_m": 0.18
+    },
+    {
+      "bounds_m": [
+        [
+          -0.10360491255936696,
+          -0.125,
+          0.21
+        ],
+        [
+          0.09753630239264302,
+          0.125,
+          0.21
+        ]
+      ],
+      "front_loop_count": 4,
+      "loop_count": 12,
+      "max_closure_gap_m": 0.0,
+      "ok": false,
+      "z_m": 0.21
+    },
+    {
+      "bounds_m": [
+        [
+          -0.10395625453911163,
+          -0.125,
+          0.24
+        ],
+        [
+          0.0860072891022364,
+          0.125,
+          0.24
+        ]
+      ],
+      "front_loop_count": 9,
+      "loop_count": 18,
+      "max_closure_gap_m": 0.0,
+      "ok": false,
+      "z_m": 0.24
+    },
+    {
+      "bounds_m": [
+        [
+          -0.102402668146883,
+          -0.125,
+          0.261
+        ],
+        [
+          0.07566512305670668,
+          0.125,
+          0.261
+        ]
+      ],
+      "front_loop_count": 10,
+      "loop_count": 19,
+      "max_closure_gap_m": 0.0,
+      "ok": false,
+      "z_m": 0.261
+    },
+    {
+      "bounds_m": [
+        [
+          -0.09754828155148108,
+          -0.125,
+          0.285
+        ],
+        [
+          0.05991856675779767,
+          0.125,
+          0.285
+        ]
+      ],
+      "front_loop_count": 6,
+      "loop_count": 14,
+      "max_closure_gap_m": 0.0,
+      "ok": false,
+      "z_m": 0.285
+    },
+    {
+      "bounds_m": [
+        [
+          -0.1161019418127344,
+          -0.125,
+          0.31
+        ],
+        [
+          0.040498304982035126,
+          0.125,
+          0.31
+        ]
+      ],
+      "front_loop_count": 5,
+      "loop_count": 13,
+      "max_closure_gap_m": 0.0,
+      "ok": false,
+      "z_m": 0.31
+    },
+    {
+      "bounds_m": [
+        [
+          -0.0687087562818642,
+          -0.07151793110642013,
+          0.34
+        ],
+        [
+          0.03258287147098647,
+          0.07151708833457054,
+          0.34
+        ]
+      ],
+      "front_loop_count": 5,
+      "loop_count": 9,
+      "max_closure_gap_m": 0.0,
+      "ok": false,
+      "z_m": 0.34
+    }
+  ],
+  "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/WAIST_YAW.STL",
+  "source_stl_sha256": "24d5000c0a90bc5b053c6734ce517d8d23e9957d3ee59994e1b65d3a1db52a7d",
+  "topology": {
+    "component_count": 1,
+    "euler_number": 2,
+    "face_count": 7872,
+    "ok": true,
+    "vertex_count": 3938,
+    "watertight": true
+  }
+}

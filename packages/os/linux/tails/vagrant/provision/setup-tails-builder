@@ -1,0 +1,122 @@
+#!/bin/sh
+# -*- mode: sh; sh-basic-offset: 4; indent-tabs-mode:nil; -*-
+
+set -e
+set -u
+set -o pipefail
+set -x
+
+export http_proxy="${TAILS_PROXY}"
+export DEBIAN_FRONTEND=noninteractive
+
+if [ ! -f /var/lib/vagrant_box_build_from ]; then
+    echo "${GIT_REF}" >/var/lib/vagrant_box_build_from
+else
+    if [ "$(cat /var/lib/vagrant_box_build_from)" != "${GIT_REF}" ]; then
+        echo "E: The current VM has been created to build $(cat /var/lib/vagrant_box_build_from)."
+        echo "E: Please first use rake vm:destroy before trying to build again."
+        exit 1
+    fi
+fi
+
+latest_serial() {
+    local archive="${1}"
+    (
+        set -x
+        cd /amnesia.git
+        auto/scripts/apt-snapshots-serials get-latest --print-serials-only "${archive}"
+    )
+}
+
+already_provisioned() {
+    [ -e /run/vagrant-already-provisioned ]
+}
+
+if [ "${TAILS_PROXY_TYPE}" = "vmproxy" ]; then
+    echo "I: Configuring HTTP proxy..."
+    # Ensure that the apt-cacher-ng cache disk is formatted and mounted
+    if [ ! -b /dev/vdb1 ]; then
+        echo '1,,83' | sfdisk /dev/vdb
+        mkfs.ext4 -m 0 /dev/vdb1
+    fi
+
+    if ! mountpoint -q /var/cache/apt-cacher-ng; then
+        e2fsck -f -p /dev/vdb1 || :
+        mount -o relatime,journal_checksum /dev/vdb1 /var/cache/apt-cacher-ng
+        chown -R apt-cacher-ng:apt-cacher-ng /var/cache/apt-cacher-ng
+    fi
+
+    # Install custom configuration for apt-cacher-ng and restart
+    install -o root -g root -m 644 /vagrant/provision/assets/acng.conf \
+        /etc/apt-cacher-ng/acng.conf
+    rm -f /etc/apt-cacher-ng/network.conf
+    echo "Offlinemode: ${TAILS_OFFLINE_MODE:-0}" >>/etc/apt-cacher-ng/network.conf
+    if [ -n "${TAILS_ACNG_PROXY:-}" ]; then
+        echo "Proxy: ${TAILS_ACNG_PROXY}" >>/etc/apt-cacher-ng/network.conf
+    fi
+    systemctl restart apt-cacher-ng.service
+fi
+
+if [ "$TAILS_WEBSITE_CACHE" = "yes" ]; then
+    echo "I: Configuring website cache directory..."
+    if [ "${TAILS_PROXY_TYPE}" = "vmproxy" ]; then
+        WEBSITE_CACHE_DISK=/dev/vdc
+    else
+        WEBSITE_CACHE_DISK=/dev/vdb
+    fi
+    WEBSITE_CACHE_PARTITION="${WEBSITE_CACHE_DISK}1"
+    WEBSITE_CACHE_MOUNTPOINT=/var/cache/tails-website
+    mkdir -p "$WEBSITE_CACHE_MOUNTPOINT"
+    if [ ! -b "$WEBSITE_CACHE_PARTITION" ]; then
+        echo '1,,83' | sfdisk "$WEBSITE_CACHE_DISK"
+        mkfs.ext4 -m 0 "$WEBSITE_CACHE_PARTITION"
+    fi
+    if ! mountpoint -q "$WEBSITE_CACHE_MOUNTPOINT"; then
+        e2fsck -f -p "$WEBSITE_CACHE_PARTITION" || :
+        mount -o relatime,journal_checksum \
+            "$WEBSITE_CACHE_PARTITION" "$WEBSITE_CACHE_MOUNTPOINT"
+        chown -R vagrant:vagrant "$WEBSITE_CACHE_MOUNTPOINT"
+    fi
+fi
+
+echo "I: Current APT sources are:"
+cat /etc/apt/sources.list /etc/apt/sources.list.d/*
+
+echo "I: Updating debian-security APT source..."
+# Always set the latest serial for debian-security
+current_security_serial="$(grep -Po '\d{10}' /etc/apt/sources.list.d/trixie-security.list)"
+latest_security_serial="$(latest_serial debian-security)"
+sed -i -e "s/${current_security_serial}/${latest_security_serial}/g" /etc/apt/sources.list.d/trixie-security.list
+
+echo "I: Current APT sources are:"
+cat /etc/apt/sources.list /etc/apt/sources.list.d/*
+
+if ! already_provisioned; then
+    # These packages are irrelevant since we'll never reboot, and can
+    # only cause potential issues and useless bandwidth usage.
+    echo "I: Hold boot-dependant packages..."
+    dpkg-query -W -f '${Package} hold\n' 'linux-image*' 'grub*' | dpkg --set-selections
+
+    echo "I: Upgrading system..."
+    /amnesia.git/auto/scripts/utils.sh \
+        pgp_flatten_keyring /amnesia.git/config/chroot_sources/tails.binary.gpg \
+        >/usr/share/keyrings/tails-archive-keyring.gpg
+    apt-get update
+    apt-get -y dist-upgrade
+
+    echo "I: Cleaning up..."
+    apt-get -y autoremove
+    apt-get -y clean
+
+    echo "I: Configuring Git..."
+    # Necessary so that vagrant can merge the base branch
+    git config --global user.name vagrant
+    git config --global user.email vagrant@tailsbuilder
+
+    echo "I: Installing build script..."
+    install -o root -g root -m 755 /vagrant/provision/assets/build-tails \
+        /usr/local/bin
+
+    echo "I: Recording the fact this box was provisioned during this boot"
+    touch /run/vagrant-already-provisioned
+fi

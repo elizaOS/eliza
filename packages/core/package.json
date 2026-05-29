@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/core",
-	"version": "2.0.3",
+	"version": "2.0.3-beta.0",
 	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
@@ -29,6 +29,11 @@
 		"./package.json": "./package.json",
 		".": {
 			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
 			"browser": {
 				"types": "./dist/index.browser.d.ts",
 				"import": "./dist/browser/index.browser.js",
@@ -48,11 +53,21 @@
 		},
 		"./node": {
 			"types": "./dist/index.node.d.ts",
+			"eliza-source": {
+				"types": "./src/index.node.ts",
+				"import": "./src/index.node.ts",
+				"default": "./src/index.node.ts"
+			},
 			"import": "./dist/node/index.node.js",
 			"default": "./dist/node/index.node.js"
 		},
 		"./browser": {
 			"types": "./dist/index.browser.d.ts",
+			"eliza-source": {
+				"types": "./src/index.browser.ts",
+				"import": "./src/index.browser.ts",
+				"default": "./src/index.browser.ts"
+			},
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},
@@ -98,7 +113,7 @@
 		"lint": "bunx @biomejs/biome check --write ./src",
 		"lint:check": "bunx @biomejs/biome check ./src",
 		"lint:fix": "bunx @biomejs/biome check --write ./src",
-		"typecheck": "tsc --noEmit -p ./tsconfig.json",
+		"typecheck": "tsgo --noEmit -p ./tsconfig.json",
 		"format": "bunx @biomejs/biome format --write ./src",
 		"format:check": "bunx @biomejs/biome format ./src"
 	},

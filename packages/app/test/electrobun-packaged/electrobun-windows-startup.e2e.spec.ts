@@ -24,7 +24,7 @@ test("packaged Windows app bootstraps the renderer against the external API over
   let harness: PackagedDesktopHarness | null = null;
 
   try {
-    api = await startMockApiServer({ onboardingComplete: true, port: 0 });
+    api = await startMockApiServer({ firstRunComplete: true, port: 0 });
     harness = new PackagedDesktopHarness({
       tempRoot,
       launcherPath,

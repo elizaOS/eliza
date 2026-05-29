@@ -44,6 +44,16 @@ VALID_CLAIM_LEVELS = {
 VALID_VERDICTS = {"win", "parity", "loss", "unproven"}
 
 
+def iter_evidence_paths(evidence: Any) -> Iterator[str]:
+    """Yield evidence paths from either a scalar path or a list of paths."""
+    if isinstance(evidence, str):
+        yield evidence
+    elif isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, str):
+                yield item
+
+
 def iter_cells(node: Any, path: str = "") -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (path, cell) for every mapping that carries a ``value`` key."""
     if isinstance(node, dict):
@@ -57,17 +67,6 @@ def iter_cells(node: Any, path: str = "") -> Iterator[tuple[str, dict[str, Any]]
             yield from iter_cells(child, f"{path}[{idx}]")
 
 
-def missing_evidence(evidence: Any) -> list[str]:
-    """Return evidence paths that do not exist on disk.
-
-    ``evidence`` may be a single path string or a list of path strings; both
-    forms appear in the dataset (an axis can be backed by more than one
-    artifact, e.g. a model run plus its RTL corroboration).
-    """
-    paths = evidence if isinstance(evidence, list) else [evidence]
-    return [str(p) for p in paths if not (ROOT / str(p)).exists()]
-
-
 def check_cell(path: str, cell: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     claim = cell.get("claim")
@@ -79,8 +78,12 @@ def check_cell(path: str, cell: dict[str, Any]) -> list[str]:
         if not evidence:
             errors.append(f"{path}: measured cell missing 'evidence'")
         else:
-            for miss in missing_evidence(evidence):
-                errors.append(f"{path}: evidence file not found: {miss}")
+            evidence_paths = list(iter_evidence_paths(evidence))
+            if not evidence_paths:
+                errors.append(f"{path}: evidence must be a path or list of paths")
+            for evidence_path in evidence_paths:
+                if not (ROOT / evidence_path).exists():
+                    errors.append(f"{path}: evidence file not found: {evidence_path}")
     elif claim == "published":
         if not str(cell.get("source", "")).strip():
             errors.append(f"{path}: published cell missing non-empty 'source'")
@@ -142,8 +145,12 @@ def check(comparison_path: Path) -> list[str]:
         if not str(v.get("reason", "")).strip():
             errors.append(f"axis '{axis}': missing 'reason'")
         if v.get("verdict") == "win" and v.get("evidence"):
-            for miss in missing_evidence(v["evidence"]):
-                errors.append(f"axis '{axis}': verdict evidence not found: {miss}")
+            evidence_paths = list(iter_evidence_paths(v["evidence"]))
+            if not evidence_paths:
+                errors.append(f"axis '{axis}': verdict evidence must be a path or list of paths")
+            for evidence_path in evidence_paths:
+                if not (ROOT / evidence_path).exists():
+                    errors.append(f"axis '{axis}': verdict evidence not found: {evidence_path}")
     for axis in sorted(set(verdicts) - axes):
         errors.append(f"verdict for unknown axis '{axis}' (not in comparison_axes)")
 

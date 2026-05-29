@@ -7,7 +7,7 @@
  * phrase chunker → TTS). Implements the brief's items A4 / A5 / A6:
  *
  *   - `speech-start`           → fire `prewarm(roomId)` immediately (the
- *                                response-handler stable prefix / DFlash
+ *                                response-handler stable prefix / MTP
  *                                slot KV-prefill) — before STT finishes.
  *   - `speech-pause(ms > thr)` → kick a SPECULATIVE response off W2's
  *                                current partial transcript. The generate

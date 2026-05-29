@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-rlm",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
   "type": "module",
   "main": "dist/index.js",
@@ -28,7 +28,7 @@
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:fix": "biome check --write .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

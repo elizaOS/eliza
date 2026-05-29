@@ -12,20 +12,24 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node", "bun-types"],
     "paths": {
+      "@elizaos/agent": ["../../../packages/agent/dist/index.d.ts"],
+      "@elizaos/agent/*": ["../../../packages/agent/dist/*"],
+      "@elizaos/app-core/agent-bridge": [
+        "../../../packages/app-core/src/agent-bridge.ts"
+      ],
       "@elizaos/plugin-capacitor-bridge": [
-        "../../../plugins/plugin-capacitor-bridge/src/index.ts"
+        "../../../plugins/plugin-capacitor-bridge/dist/index.d.ts"
       ],
       "@elizaos/plugin-inmemorydb": [
-        "../../../plugins/plugin-inmemorydb/index.ts"
+        "../../../plugins/plugin-inmemorydb/dist/index.d.ts"
       ],
-      "@elizaos/plugin-local-inference": [
-        "../../../plugins/plugin-local-inference/src/index.ts"
-      ],
+      "@elizaos/plugin-local-inference": ["./local-inference-plugin.d.ts"],
       "@elizaos/plugin-shell": ["../../../plugins/plugin-shell/dist/index.d.ts"]
     }
   },
   "include": [
     "*.ts",
+    "*.d.ts",
     "../../../plugins/plugin-local-inference/src/adapters/node-llama-cpp/declarations.d.ts"
   ],
   "exclude": ["node_modules", "dist"],

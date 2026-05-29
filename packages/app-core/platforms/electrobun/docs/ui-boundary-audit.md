@@ -164,8 +164,8 @@ These are real product/app surfaces, not generic UI primitives:
 - `packages/ui/src/App.tsx`
 - `packages/ui/src/components/pages`
 - `packages/ui/src/components/character`
-- `packages/ui/src/onboarding`
-- `packages/ui/src/components/onboarding`
+- `packages/ui/src/first-run`
+- `packages/ui/src/components/setup`
 - `packages/app/src/main.tsx`
 - `packages/app/src/components/AndroidVoicePill.tsx`
 - `packages/app-core/src/runtime/desktop/AppWindowRenderer.tsx`

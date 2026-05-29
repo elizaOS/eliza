@@ -53,7 +53,7 @@ export interface ImageGenRuntimeProfile {
 	 */
 	gpu?: "nvidia" | "amd" | "intel" | "apple" | "none";
 	/**
-	 * sd-cpp binary capability evidence gathered from the onboarding probe,
+	 * sd-cpp binary capability evidence gathered from the first-run probe,
 	 * bundle manifest, or a loader-side help/version check. GPU vendor alone
 	 * is not proof that the installed `sd` binary was built with CUDA.
 	 */
@@ -207,7 +207,7 @@ export function selectImageGenBackends(
 
 /**
  * Tier → default image-gen model id. Mirrors
- * `eliza/docs/ELIZA_1_BUNDLE_EXTRAS.json` and the WS10 golden test's
+ * `eliza/packages/chip/ELIZA_1_BUNDLE_EXTRAS.json` and the WS10 golden test's
  * `PER_TIER_DEFAULT` map. Used by the WS3 capability registration to
  * resolve the catalog's bare tier id into a concrete diffusion file.
  */

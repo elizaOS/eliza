@@ -1,0 +1,127 @@
+[[!meta title="Features and included software"]]
+
+[[!toc levels=2]]
+
+Tails is based on [[Debian|https://www.debian.org/]] 13 (Trixie).
+
+Included software
+=================
+
+- [GNOME](http://www.gnome.org), an intuitive and attractive desktop
+  environment ([[More...|doc/first_steps/desktop]])
+
+Networking
+----------
+
+- [Tor](https://www.torproject.org) with:
+
+  * [[stream isolation|contribute/design/stream_isolation]]
+
+  * the Onion Circuits graphical frontend ([[More...|doc/anonymous_internet/tor/circuits]])
+
+- [NetworkManager](https://networkmanager.dev/) for easy
+  network configuration ([[More...|doc/anonymous_internet/networkmanager]])
+
+- [Tor Browser](https://www.torproject.org) ([[More...|doc/anonymous_internet/Tor_Browser]]), a web
+  browser based on [Mozilla Firefox](https://www.firefox.com/) and modified to protect your anonymity with:
+
+  * [NoScript](http://noscript.net/), to have even more control over JavaScript
+
+  * [uBlock Origin](https://github.com/gorhill/uBlock/), to remove advertisements
+
+- [Pidgin](https://pidgin.im/) preconfigured with
+  [OTR](https://otr.cypherpunks.ca/index.php) for Off-the-Record
+  Messaging ([[More...|doc/anonymous_internet/pidgin]])
+
+- [OnionShare](https://onionshare.org/) for anonymous file sharing
+
+- [Thunderbird](https://www.thunderbird.net/) email client with support for OpenPGP and RSS and Atom news feeds ([[More...|doc/anonymous_internet/thunderbird]])
+
+- [Electrum](https://electrum.org/), an easy-to-use bitcoin client ([[More...|doc/anonymous_internet/electrum]])
+
+- [Wget](https://www.gnu.org/software/wget/) and [curl](https://curl.se)
+
+Desktop edition
+---------------
+
+- [LibreOffice](https://www.libreoffice.org/) ([[More...|doc/sensitive_documents/office_suite]])
+
+- [GIMP](https://www.gimp.org/) and
+  [Inkscape](https://inkscape.org/) to edit images ([[More...|doc/sensitive_documents/graphics]])
+
+- [GNOME Sound Recorder](https://wiki.gnome.org/Apps/SoundRecorder) for recording sound
+
+- [Audacity](https://www.audacityteam.org/) for recording and
+  editing sounds ([[More...|doc/sensitive_documents/sound_and_video]])
+
+- [Document Scanner](https://apps.gnome.org/SimpleScan/) to scan documents
+
+- [Brasero](https://wiki.gnome.org/Apps/Brasero) to burn CD/DVDs
+
+- [Sound Juicer](https://wiki.gnome.org/Apps/SoundJuicer) to rip audio
+  CDs
+
+- [BookletImposer](http://kjo.herbesfolles.org/bookletimposer/) to convert linear PDF documents into booklets, and vice-versa
+
+Encryption and privacy
+----------------------
+
+- Support for both [[!wikipedia Linux_Unified_Key_Setup desc="LUKS"]] and
+  [VeraCrypt](https://veracrypt.fr) encrypted volumes (like USB sticks) ([[More...|doc/encryption_and_privacy/encrypted_volumes]])
+
+- [GnuPG](http://gnupg.org/), the GNU implementation of OpenPGP for email and
+  data encryption and signing
+
+  * [Kleopatra](https://apps.kde.org/kleopatra/) provides a graphical interface to manage and use GnuPG on text and files
+
+  * [Thunderbird](https://www.thunderbird.net/) has an integrated OpenPGP feature for encrypted emails
+
+- [GNOME Screen Keyboard](https://help.gnome.org/gnome-help/keyboard-osk.html)
+  for accessibility and protection against hardware
+  [[!wikipedia Keystroke logging desc="keyloggers"]] ([[More...|doc/first_steps/accessibility#keyboard]])
+
+- [Metadata Cleaner](https://gitlab.com/rmnvgr/metadata-cleaner) and [mat2](https://0xacab.org/jvoisin/mat2) to remove metadata from files ([[More...|doc/sensitive_documents/metadata]])
+
+- [GNOME Secrets](https://apps.gnome.org//Secrets/) password manager ([[More...|doc/encryption_and_privacy/manage_passwords]])
+
+- [Tesseract OCR](https://tesseract-ocr.github.io/) to convert images containing text into a text document
+
+- [FFmpeg](https://ffmpeg.org/) to record and convert audio and video
+
+Additional software
+===================
+
+Additionally, you can install in Tails any other software available in
+Debian.
+
+To install additional software automatically when starting Tails, use the
+[[Additional Software|persistent_storage/additional_software]]
+feature of the Persistent Storage.
+
+Additional features
+===================
+
+- Automatic mechanism to [[upgrade a USB stick|doc/upgrade]] to newer versions
+
+- 64-bit PAE-enabled kernel with NX-bit and SMP support on hardware that supports it
+
+- Some basic [[doc/first_steps/accessibility]] features
+
+- Some [[contribute/design/application_isolation]] with AppArmor
+
+- To prevent cold boot attacks and various memory forensics, Tails
+  erases most memory on shutdown and when the boot media is physically
+  removed.
+
+Multilingual support
+====================
+
+When starting Tails, you can choose between a large number of languages,
+including Arabic, English, Farsi, French, German, Hindi, Indonesian, Italian,
+Portuguese, Russian, Simplified Chinese, Spanish, Turkish, and more.
+
+If you find an issue using one of these languages, please [[tell us about
+it|support]].
+
+To make it easier to use Tails in your own language, you can [[help with
+translations|contribute/how/translate]].

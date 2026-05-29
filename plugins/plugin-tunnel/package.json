@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tunnel",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "Tunnel plugin for elizaOS — local Tailscale CLI backend (serve/funnel). Pair with @elizaos/plugin-elizacloud for the hosted headscale backend.",
   "type": "module",
   "main": "dist/index.js",
@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "test:unit": "bun test src/__tests__/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

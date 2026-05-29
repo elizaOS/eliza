@@ -1223,9 +1223,6 @@ artifacts:
 - path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
   kind: json
   metadata: ''
-- path: board/kicad/e1-phone/production/reports/power-thermal/load-step.json
-  kind: json
-  metadata: ''
 - path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
   kind: json
   metadata: ''

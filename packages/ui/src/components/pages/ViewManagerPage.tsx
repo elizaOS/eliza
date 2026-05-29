@@ -60,7 +60,7 @@ function ViewCard({
 
   return (
     <div
-      className="group relative flex flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border"
+      className="group relative flex flex-col gap-2 rounded-sm border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border"
       data-testid={`view-card-${view.id}`}
     >
       {(showPinButton || showManagementButtons) && (
@@ -73,7 +73,7 @@ function ViewCard({
                 e.stopPropagation();
                 onPin(view);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`Pin ${view.label} as desktop tab`}
             >
               <Pin className="h-3 w-3" />
@@ -87,7 +87,7 @@ function ViewCard({
                 e.stopPropagation();
                 onEdit(view);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`Edit ${view.label}`}
             >
               <Pencil className="h-3 w-3" />
@@ -101,7 +101,7 @@ function ViewCard({
                 e.stopPropagation();
                 onDelete(view);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted hover:border-destructive hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted hover:border-destructive hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={`Delete ${view.label}`}
             >
               <Trash2 className="h-3 w-3" />
@@ -116,7 +116,7 @@ function ViewCard({
         className="flex flex-col gap-2 text-left focus:outline-none"
       >
         {view.heroImageUrl && !compact && (
-          <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
+          <div className="aspect-video w-full overflow-hidden rounded-sm bg-muted">
             <img
               src={view.heroImageUrl}
               alt={view.label}
@@ -128,7 +128,7 @@ function ViewCard({
 
         <div className="flex items-start gap-3">
           {view.icon && !view.heroImageUrl && (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-lg">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-accent/10 text-lg">
               {view.icon}
             </div>
           )}
@@ -189,7 +189,7 @@ function ViewsLoadingSkeleton() {
       {VIEW_LOADING_SKELETON_KEYS.map((key) => (
         <div
           key={key}
-          className="h-24 animate-pulse rounded-xl bg-muted/30"
+          className="h-24 animate-pulse rounded-sm bg-muted/30"
           aria-hidden
         />
       ))}
@@ -503,7 +503,7 @@ export function ViewManagerPage() {
             placeholder="Search views…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full rounded-lg border border-border bg-muted/20 py-2 pl-9 pr-3 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-sm border border-border bg-muted/20 py-2 pl-9 pr-3 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>
@@ -532,34 +532,34 @@ export function ViewManagerPage() {
               aria-label="Dynamic view ID"
               value={formViewId}
               onChange={(event) => setFormViewId(event.target.value)}
-              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="View ID"
             />
             <input
               aria-label="Dynamic view title"
               value={formTitle}
               onChange={(event) => setFormTitle(event.target.value)}
-              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="Title"
             />
             <input
               aria-label="Dynamic view entrypoint"
               value={formEntrypoint}
               onChange={(event) => setFormEntrypoint(event.target.value)}
-              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="/dynamic-views/view.js"
             />
             <input
               aria-label="Dynamic view description"
               value={formDescription}
               onChange={(event) => setFormDescription(event.target.value)}
-              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-sm border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="Description"
             />
             <button
               type="submit"
               disabled={formBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-sm border border-border bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus className="h-3.5 w-3.5" />
               Save
@@ -571,7 +571,7 @@ export function ViewManagerPage() {
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
         {error && (
-          <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <div className="mb-3 rounded-sm border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
             Failed to load views: {error.message}
           </div>
         )}

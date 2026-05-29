@@ -17,9 +17,6 @@
     "typecheck": "echo skip (feed) >&2"
   },
   "dependencies": {
-    "@feed/shared": "workspace:*",
-    "@feed/contracts": "workspace:*",
-    "@feed/core": "workspace:*",
     "@capacitor/app": "^7.0.0",
     "@capacitor/browser": "^7.0.0",
     "@capacitor/core": "^7.0.0",
@@ -31,9 +28,10 @@
     "@capacitor/splash-screen": "^7.0.0",
     "@capacitor/status-bar": "^7.0.0",
     "@farcaster/miniapp-sdk": "^0.2.1",
+    "@feed/contracts": "workspace:*",
+    "@feed/core": "workspace:*",
+    "@feed/shared": "workspace:*",
     "@hookform/resolvers": "^5.2.2",
-    "@privy-io/react-auth": "^3.13.1",
-    "@privy-io/wagmi": "^2.1.0",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",

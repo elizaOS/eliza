@@ -42,8 +42,9 @@ ARM64_QEMU_EVIDENCE ?= $(HERE)/evidence/arm64_qemu_virt_boot.json
 ARM64_QEMU_TRANSCRIPT ?= $(HERE)/evidence/arm64_qemu_virt_boot.transcript.log
 
 SUPPORTED_ARCHES := amd64 arm64 riscv64
+SUPPORTED_PROFILES := default gui secure secure-gui
 
-.PHONY: help build builder stage-agent-artifacts riscv64-agent-runtime-smoke riscv64-gui-kiosk-iso-check arm64-gui-kiosk-iso-check arm64-qemu-virt-boot qemu-boot release-check-strict release-check check-riscv64-release-arch brand-assets clean lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
+.PHONY: help build builder stage-agent-artifacts riscv64-agent-runtime-smoke riscv64-gui-kiosk-iso-check arm64-gui-kiosk-iso-check arm64-qemu-virt-boot qemu-boot release-check-strict release-check check-arch brand-assets clean lint mkosi-build mkosi-summary mkosi-lint mkosi-clean
 
 help:
 	@echo "elizaOS Linux build targets:"
@@ -64,129 +65,18 @@ help:
 	@echo "  make mkosi-clean                             # remove out/mkosi"
 	@echo "  make lint               # static smoke checks"
 	@echo "  make clean              # remove out/ and live-build state"
+	@echo
+	@echo "ARCH: $(SUPPORTED_ARCHES)"
+	@echo "PROFILE: $(SUPPORTED_PROFILES)"
+	@echo "default=headless, gui=graphical kiosk, secure=headless hardening, secure-gui=hardening+kiosk"
 
-builder:
-	docker build -t elizaos-linux-builder .
-
-# live-build writes chroot/, binary/, .build/ in place, so two concurrent
-# builds in this tree would corrupt each other. Serialize on a tree-level
-# lock; build.sh clears stale working state on entry (as root, inside the
-# container). Build a different arch on a separate checkout for true
-# parallelism.
-build: builder check-arch
-	mkdir -p "$(OUT)"
-	bash -o pipefail -c 'flock "$(HERE)/.build.lock" \
-	    docker run --rm --privileged \
-	        --network host \
-	        -e ELIZAOS_ARCH=$(ARCH) \
-	        -e ELIZAOS_PROFILE=$(PROFILE) \
-	        -e ELIZAOS_DEBIAN_MIRROR="$(DEBIAN_MIRROR)" \
-	        -e ELIZAOS_REQUIRE_AGENT_ARTIFACTS=$(REQUIRE_AGENT_ARTIFACTS) \
-	        -v "$(HERE):/src:ro" \
-	        -v "$(OUT):/out" \
-	        $(AGENT_ARTIFACTS_MOUNT) \
-	        --entrypoint bash \
-	        elizaos-linux-builder -lc "\
-	            rm -rf \"$(CONTAINER_BUILD_DIR)\" && \
-	            mkdir -p \"$(CONTAINER_BUILD_DIR)\" && \
-	            rsync -a \
-	                --exclude .build \
-	                --exclude .build.lock \
-	                --exclude .lock \
-	                --exclude binary \
-	                --exclude \"binary.*\" \
-	                --exclude cache \
-	                --exclude chroot \
-	                --exclude \"chroot.*\" \
-	                --exclude \"live-image-*\" \
-	                --exclude out \
-	                /src/ \"$(CONTAINER_BUILD_DIR)/\" && \
-	            cd \"$(CONTAINER_BUILD_DIR)\" && \
-	            ELIZAOS_OUT_DIR=/out bash ./build.sh" \
-	    2>&1 | tee "$(BUILD_LOG)"'
-
-stage-agent-artifacts: check-arch
-	@if [ "$(ARCH)" = "riscv64" ]; then \
-	    if [ "$(RISCV64_RUNTIME)" = "node" ]; then \
-	        scripts/stage-agent-artifacts.sh \
-	            --arch "$(ARCH)" \
-	            --skip-build \
-	            --out "$(AGENT_ARTIFACTS)"; \
-	    elif [ "$(RISCV64_RUNTIME)" = "bun" ]; then \
-	        scripts/stage-agent-artifacts.sh \
-	            --arch "$(ARCH)" \
-	            --skip-build \
-	            --riscv64-bun-zip "$(BUN_RISCV64_ZIP)" \
-	            --riscv64-musl-runtime "$(RISCV64_MUSL_RUNTIME)" \
-	            $(if $(RISCV64_ICU_DATA),--riscv64-icu-data "$(RISCV64_ICU_DATA)",) \
-	            --out "$(AGENT_ARTIFACTS)"; \
-	    else \
-	        echo "ERROR: RISCV64_RUNTIME must be bun or node, got $(RISCV64_RUNTIME)" >&2; \
-	        exit 64; \
-	    fi; \
-	else \
-	    if [ -z "$(BUN_SOURCE)" ]; then \
-	        echo "ERROR: BUN_SOURCE=<target bun path> is required for ARCH=$(ARCH)" >&2; \
-	        exit 66; \
-	    fi; \
-	    scripts/stage-agent-artifacts.sh \
-	        --arch "$(ARCH)" \
-	        --skip-build \
-	        --bun "$(BUN_SOURCE)" \
-	        --out "$(AGENT_ARTIFACTS)"; \
-	fi
-
-riscv64-agent-runtime-smoke:
-	scripts/check-riscv64-agent-runtime-artifact.sh \
-	    --artifacts "$(HERE)/artifacts/riscv64" \
-	    --report "$(RISCV64_AGENT_RUNTIME_REPORT)" \
-	    --transcript "$(RISCV64_AGENT_RUNTIME_TRANSCRIPT)"
-
-riscv64-gui-kiosk-iso-check:
-	scripts/check-riscv64-gui-kiosk-iso.py \
-	    --arch riscv64 \
-	    --out "$(RISCV64_GUI_KIOSK_REPORT)"
-
-arm64-gui-kiosk-iso-check:
-	scripts/check-riscv64-gui-kiosk-iso.py \
-	    --arch arm64 \
-	    $(if $(ISO),--iso "$(ISO)",) \
-	    --out "$(ARM64_GUI_KIOSK_REPORT)"
-
-arm64-qemu-virt-boot:
-	docker run --rm --privileged \
-	    -v "$(HERE):/work" \
-	    --entrypoint bash \
-	    elizaos-linux-builder -lc '\
-	        cd /work && \
-	        python3 scripts/qemu_virt_boot_arm64.py \
-	            --evidence "$(patsubst $(HERE)%,/work%,$(ARM64_QEMU_EVIDENCE))" \
-	            --transcript "$(patsubst $(HERE)%,/work%,$(ARM64_QEMU_TRANSCRIPT))" \
-	            --memory "$(QEMU_MEMORY)" \
-	            --cpus "$(QEMU_CPUS)" \
-	            --timeout "$(QEMU_TIMEOUT)" \
-	            $(if $(ISO),--iso "$(patsubst $(HERE)%,/work%,$(ISO))",)'
-
-qemu-boot: check-arch
-	scripts/boot-qemu.sh $(ARCH)
-
-release-check-strict: check-riscv64-release-arch
-	scripts/check_release_manifest.py --strict
-
-release-check: check-riscv64-release-arch
-	scripts/check_release_manifest.py
-
-check-riscv64-release-arch: check-arch
-	@if [ "$(ARCH)" != "riscv64" ]; then \
-	    echo "ERROR: release-check currently validates the riscv64 qemu-virt release manifest only; got ARCH=$(ARCH)" >&2; \
-	    exit 64; \
-	fi
-
-brand-assets:
-	scripts/generate-elizaos-brand-assets.sh
+build:
+	ELIZAOS_ARCH="$(or $(ARCH),amd64)" ELIZAOS_PROFILE="$(or $(PROFILE),default)" ./build.sh
 
 lint:
 	scripts/static-smoke.sh
+	python3 -m py_compile scripts/check-multiarch-boot-contract.py
+	python3 scripts/test_check_multiarch_boot_contract.py
 
 clean:
 	rm -rf $(OUT)

@@ -108,7 +108,7 @@ const ABI_TARGETS = [
 const NATIVE_LLAMA_ASSET_ENV_KEYS = [
   "ELIZA_ANDROID_AGENT_NATIVE_ASSET_DIR",
   "ELIZA_AOSP_LLAMA_ASSET_DIR",
-  "ELIZA_DFLASH_ANDROID_LIBDIR",
+  "ELIZA_MTP_ANDROID_LIBDIR",
 ];
 
 const APK_PACKAGES = [
@@ -130,8 +130,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const REQUIRED_KERNELS = ["dflash", "turbo3", "turbo4", "turbo3_tcq", "qjl_full", "polarquant"];
-const REQUIRED_HELP_NEEDLES = ["--spec-type", "dflash", "tbq3_0", "tbq4_0", "qjl1_256", "q4_polar"];
+const REQUIRED_KERNELS = ["mtp", "turbo3", "turbo4", "turbo3_tcq", "qjl_full", "polarquant"];
+const REQUIRED_HELP_NEEDLES = ["--spec-type", "mtp", "tbq3_0", "tbq4_0", "qjl1_256", "q4_polar"];
 const REQUIRED_FILES = [
   "CAPABILITIES.json",
   "libllama.so",
@@ -1030,7 +1030,7 @@ export async function stageAndroidAgentRuntime({
     // lands at <abiAssetsDir>/llama-server when that script ran successfully,
     // so we don't re-copy here — but we do ensure the bit is +x because some
     // file-copy paths (e.g. zip → unzip on Windows builders) lose the
-    // executable bit. The aosp-llama-adapter spawns it for DFlash decode;
+    // executable bit. The aosp-llama-adapter spawns it for MTP decode;
     // without +x exec fails with EACCES at runtime.
     const llamaServerStaged = path.join(abiAssetsDir, "llama-server");
     if (fs.existsSync(llamaServerStaged)) {
@@ -1042,7 +1042,7 @@ export async function stageAndroidAgentRuntime({
       }
     } else {
       tlog(
-        `No llama-server staged for ${androidAbi}; DFlash spec-decode on AOSP ` +
+        `No llama-server staged for ${androidAbi}; MTP spec-decode on AOSP ` +
           `will fall back to single-model decode. Run \`node ` +
           `packages/app-core/scripts/aosp/compile-libllama.mjs\` to build it.`,
       );

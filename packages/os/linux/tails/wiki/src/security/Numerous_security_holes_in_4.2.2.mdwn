@@ -1,0 +1,30 @@
+[[!meta date="Sun, 09 Feb 2020 17:00:00 +0100"]]
+[[!meta title="Numerous security holes in Tails 4.2.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.3|news/version_4.3]] fixes many security issues that affect
+Tails 4.2.2. You should [[upgrade to Tails 4.3|news/version_4.3]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-06]]
+ - Linux: [[!cve CVE-2019-19965]], [[!cve CVE-2019-18809]],
+          [[!cve CVE-2019-14901]], [[!cve CVE-2019-14895]],
+          [[!cve CVE-2019-19056]], [[!cve CVE-2019-19053]],
+          [[!cve CVE-2019-19066]], [[!cve CVE-2019-19068]],
+          [[!cve CVE-2019-19078]], [[!cve CVE-2019-14615]],
+          [[!cve CVE-2019-19063]], [[!cve CVE-2019-19057]],
+          [[!cve CVE-2019-18786]], [[!cve CVE-2019-19947]],
+          [[!cve CVE-2019-19037]], [[!cve CVE-2019-19071]],
+          [[!cve CVE-2019-19062]], [[!cve CVE-2019-19332]],
+          [[!cve CVE-2019-15099]], [[!cve CVE-2019-18683]],
+          [[!cve CVE-2019-15291]], [[!cve CVE-2019-18660]]
+ - thunderbird: [[!mfsa 2020-04]],  [[!debsa2020 4603]]
+ - tiff: [[!debsa2020 4608]]
+ - python-apt: [[!debsa2020 4609]]
+ - qtbase-opensource-src: [[!debsa2020 4617]]
+ - libexif: [[!debsa2020 4618]]
+ - sudo: [[!debsa2020 4614]]
+ - libidn2: [[!debsa2020 4613]]
+ - webkit2gtk: [[!debsa2020 4610]]

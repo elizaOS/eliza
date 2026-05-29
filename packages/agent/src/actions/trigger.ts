@@ -47,7 +47,6 @@ import {
   parseCronExpression,
   parseScheduledAtIso,
 } from "../triggers/scheduling.ts";
-import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.ts";
 import type { TriggerTaskMetadata } from "../triggers/types.ts";
 
 type AutonomyRoomService = {
@@ -81,6 +80,8 @@ interface TriggerParameters {
   cronExpression?: string;
   maxRuns?: string | number;
   enabled?: boolean | string;
+  workflowId?: string;
+  workflowName?: string;
 }
 
 function readParams(options?: HandlerOptions): TriggerParameters {
@@ -287,21 +288,11 @@ async function opCreate(
     });
   }
 
-  // Phase 2E: every trigger persisted to disk is `kind: "workflow"`.
-  // Materialize a single-node `respondToEvent` workflow that wraps the
-  // user's instructions, then bind the trigger to it.
-  const deployedWorkflow = await deployTextTriggerWorkflow(
-    runtime,
-    { displayName, instructions, wakeMode },
-    creatorId,
-  );
-  if (!deployedWorkflow) {
-    return failed(
-      "create",
-      "Workflow plugin is not loaded; cannot create text triggers.",
-      "WORKFLOW_SERVICE_UNAVAILABLE",
-    );
+  const workflowId = readString(params.workflowId);
+  if (!workflowId) {
+    return failed("create", "workflowId is required.", "MISSING_WORKFLOW_ID");
   }
+  const workflowName = readString(params.workflowName);
 
   const triggerId = stringToUuid(crypto.randomUUID());
   const triggerConfig: TriggerConfig = {
@@ -320,8 +311,8 @@ async function opCreate(
     maxRuns,
     dedupeKey,
     kind: "workflow",
-    workflowId: deployedWorkflow.id,
-    workflowName: deployedWorkflow.name,
+    workflowId,
+    workflowName,
   };
 
   const metadata = buildTriggerMetadata({
@@ -358,10 +349,10 @@ async function opCreate(
       wakeMode,
       dedupeKey,
       kind: "workflow",
-      workflowId: deployedWorkflow.id,
-      workflowName: deployedWorkflow.name,
+      workflowId,
+      workflowName,
     },
-    { triggerId, taskId, workflowId: deployedWorkflow.id },
+    { triggerId, taskId, workflowId },
   );
 }
 

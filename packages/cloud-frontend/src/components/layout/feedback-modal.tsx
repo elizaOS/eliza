@@ -146,7 +146,7 @@ export function FeedbackModal({
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="bg-[#FF5800] hover:bg-[#FF5800]/90 text-white"
+              className="bg-[#FF5800] hover:bg-black hover:text-white text-white"
             >
               {isSubmitting ? (
                 <>

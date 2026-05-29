@@ -335,10 +335,10 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 <PagePanel
                   data-testid="skills-empty-state"
                   variant="surface"
-                  className="grid min-h-[20rem] place-items-center rounded-3xl px-6 py-10"
+                  className="grid min-h-[20rem] place-items-center rounded-sm px-6 py-10"
                 >
                   <div className="w-full max-w-2xl text-center">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12 text-accent">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm border border-accent/25 bg-accent/12 text-accent">
                       <Brain className="h-7 w-7" />
                     </div>
                     <h2 className="mt-4 text-base font-semibold text-txt">
@@ -360,7 +360,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         return (
                           <div
                             key={item.label}
-                            className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3"
+                            className="rounded-sm border border-border/24 bg-bg/45 px-3 py-3"
                           >
                             <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
                             <div className="mt-2 text-xs font-semibold text-muted">
@@ -398,7 +398,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 <PagePanel.Empty
                   data-testid="skills-filter-empty"
                   variant="surface"
-                  className="min-h-[16rem] rounded-3xl px-6 py-12"
+                  className="min-h-[16rem] rounded-sm px-6 py-12"
                   title={t("skillsview.noMatchingSkills", {
                     defaultValue: "No matching skills",
                   })}
@@ -499,7 +499,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 >
                   <div className="flex items-start gap-3 px-4 py-4 sm:px-5">
                     <div className="mt-0.5 shrink-0">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-accent/30 bg-accent/18 p-2.5 text-base font-bold text-txt-strong">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-sm border border-accent/30 bg-accent/18 p-2.5 text-base font-bold text-txt-strong">
                         {selectedSkill.name.charAt(0).toUpperCase()}
                       </div>
                     </div>
@@ -600,8 +600,8 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       </Button>
                       <ConfirmDelete
                         triggerClassName="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] !bg-transparent text-danger hover:!bg-danger/15 hover:text-danger-foreground transition-colors border border-danger/30"
-                        confirmClassName="px-3 py-1 text-xs-tight font-bold bg-danger text-danger-foreground hover:bg-danger/90 transition-colors rounded-md shadow-sm"
-                        cancelClassName="px-3 py-1 text-xs-tight font-bold text-muted border border-border/40 hover:text-txt transition-colors rounded-md"
+                        confirmClassName="px-3 py-1 text-xs-tight font-bold bg-danger text-danger-foreground hover:bg-danger/90 transition-colors rounded-sm "
+                        cancelClassName="px-3 py-1 text-xs-tight font-bold text-muted border border-border/40 hover:text-txt transition-colors rounded-sm"
                         confirmLabel={t("common.yes")}
                         cancelLabel={t("common.no")}
                         onConfirm={() =>
@@ -629,7 +629,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                           </span>
                         </div>
                         {skillReviewReport.findings.length > 0 && (
-                          <div className="custom-scrollbar max-h-64 overflow-y-auto rounded-2xl border border-border/35 bg-card/30">
+                          <div className="custom-scrollbar max-h-64 overflow-y-auto rounded-sm border border-border/35 bg-card/30">
                             {skillReviewReport.findings.map((finding, _idx) => (
                               <div
                                 key={`${finding.file}:${finding.line}:${finding.message}`}
@@ -701,7 +701,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
               ) : (
                 <PagePanel.Empty
                   variant="surface"
-                  className="min-h-[16rem] rounded-3xl px-6 py-12"
+                  className="min-h-[16rem] rounded-sm px-6 py-12"
                   title={t("skillsview.SelectATalentToConf", {
                     defaultValue: "Select a talent to configure",
                   })}

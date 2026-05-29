@@ -8,6 +8,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import * as importPath from "node:path";
 import process from "node:process";
 import {
@@ -101,17 +102,29 @@ function shellArgsForCommand(shell: {
   args: string[];
 }): string[] {
   const basename = importPath.basename(shell.command).toLowerCase();
-  if (basename === "bash" || basename === "zsh") {
+  if (basename === "bash") {
     const commandFlagIndex = shell.args.lastIndexOf("-c");
+    const startupFlags = ["--noprofile", "--norc", "-o", "pipefail"];
     if (commandFlagIndex >= 0) {
       return [
-        "-o",
-        "pipefail",
+        ...startupFlags,
         ...shell.args.slice(0, commandFlagIndex),
         ...shell.args.slice(commandFlagIndex),
       ];
     }
-    return ["-o", "pipefail", ...shell.args];
+    return [...startupFlags, ...shell.args];
+  }
+  if (basename === "zsh") {
+    const commandFlagIndex = shell.args.lastIndexOf("-c");
+    const startupFlags = ["-f", "-o", "pipefail"];
+    if (commandFlagIndex >= 0) {
+      return [
+        ...startupFlags,
+        ...shell.args.slice(0, commandFlagIndex),
+        ...shell.args.slice(commandFlagIndex),
+      ];
+    }
+    return [...startupFlags, ...shell.args];
   }
   return shell.args;
 }
@@ -139,9 +152,55 @@ function runOnHost(opts: {
   timeoutMs: number;
   env: NodeJS.ProcessEnv;
 }): Promise<ShellResult> {
+  return runOnHostWithShell(opts, resolveHostShell()).then(async (result) => {
+    const shell = resolveHostShell();
+    const basename = importPath.basename(shell.command).toLowerCase();
+    if (
+      basename === "zsh" &&
+      result.exitCode !== 0 &&
+      result.stdout.length === 0 &&
+      result.stderr.length === 0
+    ) {
+      const bash = resolveExecutableForHost("bash", "/bin/bash");
+      if (bash && bash !== shell.command) {
+        return runOnHostWithShell(opts, {
+          command: bash,
+          args: ["-c"],
+          available: true,
+          source: "candidate",
+        });
+      }
+    }
+    return result;
+  });
+}
+
+function resolveExecutableForHost(
+  name: string,
+  fallback: string,
+): string | undefined {
+  const pathEntries = (process.env.PATH ?? "")
+    .split(importPath.delimiter)
+    .filter(Boolean);
+  for (const entry of pathEntries) {
+    const candidate = importPath.join(entry, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  if (existsSync(fallback)) return fallback;
+  return undefined;
+}
+
+function runOnHostWithShell(
+  opts: {
+    command: string;
+    cwd: string;
+    timeoutMs: number;
+    env: NodeJS.ProcessEnv;
+  },
+  shell: ReturnType<typeof resolveHostShell>,
+): Promise<ShellResult> {
   const start = Date.now();
   return new Promise<ShellResult>((resolve) => {
-    const shell = resolveHostShell();
     if (!shell.available) {
       resolve({
         exitCode: -1,

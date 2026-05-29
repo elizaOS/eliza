@@ -324,7 +324,7 @@ export default function ApprovalPage() {
                 type="button"
                 onClick={handleApprove}
                 disabled={submitting || signature.trim().length === 0}
-                className="inline-flex items-center gap-2 rounded bg-[#FF5800] hover:bg-[#FF5800]/85 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded bg-[#FF5800] hover:bg-black hover:text-white px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
               >
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

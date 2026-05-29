@@ -9,7 +9,7 @@ import pytest
 
 from scripts.manifest import eliza1_manifest as manifest_mod
 from scripts.manifest.eliza1_manifest import (
-    ELIZA_1_DFLASH_TIERS,
+    ELIZA_1_MTP_TIERS,
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
     ELIZA_1_TIERS,
     ELIZA_1_VISION_TIERS,
@@ -69,7 +69,7 @@ def base_kwargs(tier: str = "4b") -> dict:
             "voice": [FileEntry(path="tts/omnivoice-base-Q4_K_M.gguf", sha256=SHA)],
             "asr": [FileEntry(path="asr/asr.gguf", sha256=SHA)],
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
-            "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
+            "mtp": [FileEntry(path=f"mtp/drafter-{tier}.gguf", sha256=SHA)],
             "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
             "vad": [FileEntry(path="vad/silero-vad-v5.gguf", sha256=SHA)],
         },
@@ -89,22 +89,22 @@ def base_kwargs(tier: str = "4b") -> dict:
         vad_false_barge_in_rate=0.01,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
-        dflash_eval=True,
-        dflash_acceptance_rate=0.71,
-        dflash_speedup=1.8,
-        dflash_passed=True,
+        mtp_eval=True,
+        mtp_acceptance_rate=0.71,
+        mtp_speedup=1.8,
+        mtp_passed=True,
         ram_budget_min_mb=7000,
         ram_budget_recommended_mb=9500,
         default_eligible=True,
         kernel_manifest_fragments=quantization_kernel_fragments(),
     )
-    if tier not in ELIZA_1_DFLASH_TIERS:
+    if tier not in ELIZA_1_MTP_TIERS:
         kwargs["lineage"].pop("drafter", None)
-        kwargs["files"]["dflash"] = []
-        kwargs["dflash_eval"] = False
-        kwargs["dflash_acceptance_rate"] = None
-        kwargs["dflash_speedup"] = None
-        kwargs["dflash_passed"] = None
+        kwargs["files"]["mtp"] = []
+        kwargs["mtp_eval"] = False
+        kwargs["mtp_acceptance_rate"] = None
+        kwargs["mtp_speedup"] = None
+        kwargs["mtp_passed"] = None
     if tier not in ELIZA_1_VISION_TIERS:
         kwargs["lineage"].pop("vision", None)
         kwargs["files"]["vision"] = []
@@ -150,21 +150,21 @@ def test_eliza1_tier_ids_are_canonical():
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["4b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     )
     assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
@@ -187,7 +187,7 @@ def test_build_manifest_happy_path():
         "endpointMs": 80.0,
         "falseBargeInRate": 0.01,
     }
-    assert manifest["evals"]["dflash"] == {
+    assert manifest["evals"]["mtp"] == {
         "acceptanceRate": 0.71,
         "speedup": 1.8,
         "passed": True,
@@ -311,10 +311,10 @@ def test_every_tier_validates(tier: str):
 
 def test_missing_required_kernel_rejected():
     kwargs = base_kwargs("4b")
-    kwargs["kernels_required"] = ["turboquant_q4", "qjl", "polarquant"]  # no dflash
+    kwargs["kernels_required"] = ["turboquant_q4", "qjl", "polarquant"]  # no mtp
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
-    assert any("dflash" in e for e in exc.value.errors)
+    assert any("mtp" in e for e in exc.value.errors)
 
 
 def test_default_eligible_requires_recipe_manifest_for_quant_kernels():
@@ -337,13 +337,13 @@ def test_default_eligible_with_failing_eval_rejected():
     assert any("defaultEligible" in e for e in exc.value.errors)
 
 
-def test_default_eligible_requires_measured_dflash_eval():
+def test_default_eligible_requires_measured_mtp_eval():
     kwargs = base_kwargs("4b")
-    kwargs["dflash_speedup"] = None
-    kwargs["dflash_passed"] = False
+    kwargs["mtp_speedup"] = None
+    kwargs["mtp_passed"] = False
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
-    assert any("evals.dflash" in e for e in exc.value.errors)
+    assert any("evals.mtp" in e for e in exc.value.errors)
     assert any("defaultEligible" in e for e in exc.value.errors)
 
 
@@ -698,7 +698,7 @@ def test_parse_text_ctx_from_filename_finds_suffix_token():
 
 def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
     assert parse_text_ctx_from_filename(Path("text/eliza-1-2b.gguf")) is None
-    assert parse_text_ctx_from_filename(Path("dflash/drafter-4b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("mtp/drafter-4b.gguf")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -721,7 +721,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/mtp/drafter-4b.gguf"},
         },
     }
 
@@ -730,7 +730,7 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     kwargs = base_kwargs("4b")
     kwargs["provenance"] = _base_v1_provenance()
     # base-v1 evals are runnable on base weights: text perplexity vs the
-    # upstream GGUF passes, RTF / WER / VAD / dflash / e2e / 30-turn pass.
+    # upstream GGUF passes, RTF / WER / VAD / mtp / e2e / 30-turn pass.
     manifest = build_manifest(**kwargs)
     assert manifest["defaultEligible"] is True
     assert manifest["provenance"]["releaseState"] == "base-v1"

@@ -13,7 +13,10 @@ function isRealNodeExecutable(candidate) {
     return false;
   }
   const normalized = candidate.replace(/\\/g, "/");
-  return !/\/bun-node-[^/]+\/node$/.test(normalized);
+  return (
+    !/\/bun-node-[^/]+\/node$/.test(normalized) &&
+    !/\/Applications\/Codex\.app\/Contents\/Resources\/node$/.test(normalized)
+  );
 }
 
 function resolveNodeCmd() {
@@ -55,9 +58,22 @@ if (args.length === 0) {
   process.exit(1);
 }
 
+function withWorkspaceNodePath(env) {
+  const rootModules = path.join(process.cwd(), "node_modules");
+  const bunModules = path.join(rootModules, ".bun", "node_modules");
+  const modulePaths = [rootModules, bunModules];
+  return {
+    ...env,
+    NODE_PATH: env.NODE_PATH
+      ? `${modulePaths.join(path.delimiter)}${path.delimiter}${env.NODE_PATH}`
+      : modulePaths.join(path.delimiter),
+    PWD: process.cwd(),
+  };
+}
+
 const child = spawn(resolveNodeCmd(), ["--import", "tsx", ...args], {
   cwd: process.cwd(),
-  env: { ...process.env, PWD: process.cwd() },
+  env: withWorkspaceNodePath(process.env),
   stdio: "inherit",
 });
 

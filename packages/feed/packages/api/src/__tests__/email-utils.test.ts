@@ -17,7 +17,7 @@ mock.module("@feed/shared", () => ({
 }));
 
 mock.module("../auth-middleware", () => ({
-  // Phase 2: Privy removed; getPrivyClient no longer used
+  // Auth middleware is not needed for these email utility tests.
 }));
 
 describe("parseEmailAddress", () => {

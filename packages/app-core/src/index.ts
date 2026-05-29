@@ -5,7 +5,7 @@ export * from "./account-pool";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
-// === Desktop runtime + app-config + ios-local-agent-transport (moved from @elizaos/ui) ===
+// === Phase 5C: desktop runtime + app-config + first-run config + ios-local-agent-transport moved from @elizaos/ui ===
 export * from "./api/ios-local-agent-transport";
 export * from "./api/response";
 export * from "./api/secrets-inventory-routes";
@@ -16,6 +16,8 @@ export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
 export * from "./api/workbench-compat-routes";
 export * from "./config/app-config";
+export * from "./diagnostics/integration-observability";
+export * from "./first-run/first-run-config";
 export * from "./permissions/types";
 // `./platform/empty-node-module` is intentionally NOT re-exported here.
 // It exists as a tsconfig-paths target for browser builds — re-exporting it

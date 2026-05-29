@@ -8,7 +8,7 @@
 //        - required-kernel set per tier is satisfied,
 //        - long-context bundles (ctx > 64k) require `turbo3_tcq`,
 //        - structural bundle invariants (voice-preset cache present, lineage
-//          ↔ files consistency, base-v1 provenance coverage, no dflash lie),
+//          ↔ files consistency, base-v1 provenance coverage),
 //        - and — for a *production* release only (`base-v1` / `finetuned-v2` /
 //          `final`, or any `defaultEligible: true` manifest) — every supported
 //          backend kernel-verified `pass` and every eval green. A
@@ -72,7 +72,9 @@ export function validateManifest(input: unknown): ValidationResult {
 		};
 	}
 
-	const errors = collectContractErrors(parsed.data);
+	const errors = collectContractErrors(parsed.data, {
+		allowVersionStaging: true,
+	});
 	if (errors.length > 0) {
 		return { ok: false, errors };
 	}
@@ -106,17 +108,15 @@ export function parseManifestOrThrow(input: unknown): Eliza1Manifest {
  *
  * A `defaultEligible: true` manifest is the strict release: every supported
  * backend kernel-verified `pass`, every required eval green. A
- * `defaultEligible: false` manifest with `releaseState` in the candidate /
- * staging vocabulary (`base-v1-candidate`, `local-standin`,
- * `upload-candidate`) is still permitted to fill an empty default slot
- * **when this device can run it** — the recommender prefers a strict
- * release over a candidate when both are installed (see
- * `isStrictReleaseManifest`). This mirrors the install gate
- * (`downloader.assertBundleInstallable`): if the device can install + run
- * the bundle, it can also fall back to running it as the default. The
- * historic "candidate bundles must never be a default" rule produced the
- * worse outcome of installing a bundle but leaving the model slot empty,
- * forcing the user to manually pick the only model they had downloaded.
+ * `defaultEligible: false` manifest with an explicit candidate/staging
+ * `releaseState` (`base-v1-candidate`, `local-standin`, `upload-candidate`)
+ * is still permitted to fill an empty default slot **when this device can
+ * run it** — the recommender prefers a strict release over a candidate when
+ * both are installed (see `isStrictReleaseManifest`). Version-only staging
+ * stamps such as `1.0.0-weights-staged.2` are accepted by the install parser
+ * so QA bundles can be materialized, but they do not get this auto-default
+ * relaxation unless the manifest also carries an explicit staging
+ * `releaseState`.
  *
  * The device-caps check rejects "this device has Vulkan only but the
  * manifest only verified Metal/CUDA" — a manifest may be contract-valid
@@ -126,7 +126,11 @@ export function canSetAsDefault(
 	manifest: Eliza1Manifest,
 	device: Eliza1DeviceCaps,
 ): boolean {
-	if (collectContractErrors(manifest).length > 0) return false;
+	if (
+		collectContractErrors(manifest, { allowVersionStaging: false }).length > 0
+	) {
+		return false;
+	}
 	if (manifest.ramBudgetMb.min > device.ramMb) return false;
 
 	// The device must expose at least one backend that the manifest verified
@@ -175,7 +179,8 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 	"final",
 ]);
 
-const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"0_8b",
 	"2b",
 	"4b",
 	"9b",
@@ -183,7 +188,7 @@ const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"27b-256k",
 ]);
 
-const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+const MTP_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"0_8b",
 	"2b",
 	"4b",
@@ -194,14 +199,38 @@ const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 
 const MIN_TEXT_CONTEXT = 131072;
 
-function collectContractErrors(m: Eliza1Manifest): string[] {
+const STAGING_VERSION_TOKENS: ReadonlySet<string> = new Set([
+	"candidate",
+	"staged",
+	"dev",
+	"local",
+]);
+
+function isStagingManifestVersion(version: string): boolean {
+	const prerelease = version.match(
+		/^[0-9]+\.[0-9]+\.[0-9]+-([^+]+)(?:\+.*)?$/,
+	)?.[1];
+	if (!prerelease) return false;
+	return prerelease
+		.split(/[.-]/)
+		.some((token) => STAGING_VERSION_TOKENS.has(token.toLowerCase()));
+}
+
+function collectContractErrors(
+	m: Eliza1Manifest,
+	options: { allowVersionStaging?: boolean } = {},
+): string[] {
 	const errors: string[] = [];
 
 	const releaseState = m.provenance?.releaseState;
 	const strictRelease =
 		m.defaultEligible === true ||
-		releaseState === undefined ||
-		STRICT_RELEASE_STATES.has(releaseState);
+		(releaseState === undefined &&
+			!(
+				options.allowVersionStaging === true &&
+				isStagingManifestVersion(m.version)
+			)) ||
+		(releaseState !== undefined && STRICT_RELEASE_STATES.has(releaseState));
 
 	// Required-kernel coverage.
 	const declaredRequired = new Set<Eliza1Kernel>(m.kernels.required);
@@ -242,41 +271,40 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	}
 
-	const dflashEnabled = DFLASH_TIERS.has(m.tier);
 	const visionEnabled = VISION_TIERS.has(m.tier);
-	if (dflashEnabled) {
-		if (m.files.dflash.length === 0) {
-			errors.push(`files.dflash: required for DFlash-enabled tier ${m.tier}`);
-		}
-		if (m.files.dflash.length > 0 && !m.lineage.drafter) {
-			errors.push("lineage.drafter: required when files.dflash is non-empty");
-		}
-		if (m.lineage.drafter && m.files.dflash.length === 0) {
-			errors.push("files.dflash: required when lineage.drafter is present");
-		}
-	} else {
-		if (m.files.dflash.length > 0) {
-			errors.push(
-				`files.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (declaredRequired.has("dflash")) {
-			errors.push(
-				`kernels.required: dflash is unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (m.lineage.drafter) {
-			errors.push(
-				`lineage.drafter: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-	}
 	if (visionEnabled) {
 		if (m.files.vision.length === 0) {
 			errors.push(`files.vision: required for vision-enabled tier ${m.tier}`);
 		}
 	} else if (m.files.vision.length > 0) {
 		errors.push(`files.vision: unsupported for non-vision tier ${m.tier}`);
+	}
+
+	const mtpEnabled = MTP_TIERS.has(m.tier);
+	if (mtpEnabled) {
+		if (m.files.mtp.length === 0) {
+			errors.push(`files.mtp: required for MTP-enabled tier ${m.tier}`);
+		}
+		if (!m.lineage.drafter) {
+			errors.push(`lineage.drafter: required for MTP-enabled tier ${m.tier}`);
+		}
+		if (!m.evals.mtp) {
+			errors.push(`evals.mtp: required for MTP-enabled tier ${m.tier}`);
+		} else {
+			if (
+				m.evals.mtp.passed &&
+				(m.evals.mtp.acceptanceRate == null || m.evals.mtp.speedup == null)
+			) {
+				errors.push(
+					"evals.mtp.passed: cannot be true when acceptanceRate or speedup is null (needs-hardware bench)",
+				);
+			}
+			if (strictRelease && !m.evals.mtp.passed) {
+				errors.push("evals.mtp.passed: false");
+			}
+		}
+	} else if (m.files.mtp.length > 0) {
+		errors.push(`files.mtp: unsupported for non-MTP tier ${m.tier}`);
 	}
 
 	// Backend kernel-verify coverage. A production release must verify every
@@ -367,6 +395,9 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		if (lineage && files.length === 0) {
 			errors.push(`files.${slot}: required when lineage.${slot} is present`);
 		}
+	}
+	if (m.lineage.drafter && m.files.mtp.length === 0) {
+		errors.push("files.mtp: required when lineage.drafter is present");
 	}
 
 	if (m.files.asr.length > 0) {
@@ -478,9 +509,11 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 				"text",
 				"voice",
 			];
-			if (dflashEnabled) requiredSlots.push("drafter");
 			for (const slot of ["asr", "vad", "embedding", "vision"] as const) {
 				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
+			}
+			if (m.files.mtp.length > 0) {
+				requiredSlots.push("drafter");
 			}
 			if ((m.files.imagegen ?? []).length > 0) {
 				requiredSlots.push("imagegen");
@@ -495,44 +528,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	}
 
-	// DFlash bench. Staging manifests may record missing or failing DFlash
-	// measurements, but a default bundle is not eligible unless speculative
-	// decoding was actually measured and passed.
-	if (!m.evals.dflash) {
-		if (m.defaultEligible && dflashEnabled) {
-			errors.push("evals.dflash: required when defaultEligible=true");
-		}
-	} else {
-		if (!dflashEnabled) {
-			errors.push(
-				`evals.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (
-			m.evals.dflash.passed &&
-			(m.evals.dflash.acceptanceRate === null ||
-				m.evals.dflash.speedup === null)
-		) {
-			errors.push(
-				"evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
-			);
-		}
-		if (m.defaultEligible && dflashEnabled) {
-			if (!m.evals.dflash.passed) {
-				errors.push("evals.dflash.passed: false for defaultEligible manifest");
-			}
-			if (
-				m.evals.dflash.acceptanceRate === null ||
-				m.evals.dflash.speedup === null
-			) {
-				errors.push(
-					"evals.dflash: defaultEligible requires measured acceptanceRate and speedup",
-				);
-			}
-		}
-	}
-
-	// EAGLE3 bench metadata is always optional and independent from DFlash. When
+	// EAGLE3 bench metadata is always optional. When
 	// present, it may record a not-run/failure state; only a passing claim must
 	// include measured acceptance/speedup values.
 	if (m.evals.eagle3) {

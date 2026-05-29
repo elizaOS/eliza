@@ -127,10 +127,10 @@ export const GET = withErrorHandling(
     const { userId } = UserIdParamSchema.parse(params);
     const targetUser = await findUserByIdentifier(userId, { id: true });
 
-    // If user doesn't exist yet (new Privy user), return empty data
+    // If user doesn't exist yet (new Steward user), return empty data
     if (!targetUser) {
       logger.info(
-        "User not found - returning empty data (may be new Privy user)",
+        "User not found - returning empty data (may be new Steward user)",
         { userId },
         "GET /api/users/[userId]/posts",
       );

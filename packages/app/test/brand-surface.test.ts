@@ -1,6 +1,6 @@
 /**
  * Brand-surface smoke. Verifies the first-paint surfaces (FOUC HTML, native
- * splash configs, capacitor + Android/iOS resources) agree on the Eliza
+ * launch configs, capacitor + Android/iOS resources) agree on the Eliza
  * orange palette so the user never sees a foreign color before the React
  * tree mounts. The actual home / pre-agent screen lives in `@elizaos/ui`'s
  * <App /> (packages/ui/src/App.tsx) and `@elizaos/app-core` window
@@ -40,14 +40,14 @@ describe("brand surfaces", () => {
     expect(BRAND_ORANGE).toBe("#FF5800");
   });
 
-  it("capacitor config splash, ios and android backgrounds are brand orange", () => {
+  it("capacitor config and native backgrounds are brand orange", () => {
     const src = read("capacitor.config.ts");
     expect(src).toMatch(/SplashScreen:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
     expect(src).toMatch(/ios:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
     expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
   });
 
-  it("Android colors.xml + styles.xml use brand orange for splash + status bar", () => {
+  it("Android colors.xml + styles.xml use brand orange for launch + status bar", () => {
     const colors = readGeneratedOrTemplate(
       "android/app/src/main/res/values/colors.xml",
     );
@@ -129,14 +129,17 @@ describe("brand surfaces", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("desktop pill shell mounts the minimal voice pill instead of the full app", () => {
-    const src = read("src/main.tsx");
-    expect(src).toContain('getWindowUrlSearchParams().get("shell") === "pill"');
-    expect(src).toMatch(
-      /if \(isVoicePillShellMode\(\)\) \{[\s\S]*?<VoicePill[\s\S]*?return;[\s\S]*?\}/,
+  it("desktop OS pill uses the transparent chat-overlay shell", () => {
+    const mainSrc = read("src/main.tsx");
+    const stylesSrc = read("../ui/src/styles/styles.css");
+    const pillSrc = read("../app-core/platforms/electrobun/src/pill-window.ts");
+
+    expect(pillSrc).toContain('url.search = "?shellMode=chat-overlay"');
+    expect(mainSrc).toContain("isChatOverlayWindowShell");
+    expect(mainSrc).toContain(
+      'root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell)',
     );
-    expect(src).toMatch(
-      /if \(isVoicePillShellMode\(\)\) \{[\s\S]*?setupPlatformStyles\(\);[\s\S]*?mountReactApp\(\);[\s\S]*?return;[\s\S]*?\}/,
-    );
+    expect(stylesSrc).toContain("html.eliza-chat-overlay-shell #root");
+    expect(stylesSrc).toContain("background: transparent");
   });
 });

@@ -122,7 +122,7 @@ function SearchResultListItem({
       type="button"
       aria-current={active ? "page" : undefined}
       className={`group flex w-full items-start px-0 py-3 text-left transition-colors ${
-        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-bg-hover"
       }`}
     >
       <span
@@ -187,7 +187,7 @@ function DocumentListItem({
   return (
     <div
       className={`group relative flex w-full transition-colors ${
-        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-bg-hover"
       }`}
     >
       <button
@@ -202,7 +202,7 @@ function DocumentListItem({
         className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3 text-left"
       >
         <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border ${
             active
               ? "border-accent/30 bg-accent/10 text-accent"
               : "border-border/30 bg-bg-muted/20 text-muted"
@@ -242,9 +242,9 @@ function DocumentListItem({
       </button>
       <span className="absolute right-2 top-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100">
         <ConfirmDeleteControl
-          triggerClassName="h-7 rounded-lg border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
-          confirmClassName="h-7 rounded-lg border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
-          cancelClassName="h-7 rounded-lg border border-border/35 px-2 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
+          triggerClassName="h-7 rounded-sm border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
+          confirmClassName="h-7 rounded-sm border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
+          cancelClassName="h-7 rounded-sm border border-border/35 px-2 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
           disabled={deleting || !doc.canDelete}
           busyLabel="..."
           onConfirm={() => onDelete(doc.id)}
@@ -995,7 +995,7 @@ export function DocumentsView({
         }}
         autoComplete="off"
         spellCheck={false}
-        className="w-full rounded-lg border border-border/50 bg-bg px-3 py-2 pl-9 text-sm text-txt placeholder:text-muted/50 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
+        className="w-full rounded-sm border border-border/50 bg-bg px-3 py-2 pl-9 text-sm text-txt placeholder:text-muted/50 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
       />
       <Search
         className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted/50"
@@ -1165,7 +1165,7 @@ export function DocumentsView({
         {fileInputId ? (
           <label
             htmlFor={fileInputId}
-            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-3 text-xs font-semibold text-accent-fg transition hover:bg-accent/16 ${
+            className={`inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-sm border border-accent/35 bg-accent/10 px-3 text-xs font-semibold text-accent-fg transition hover:bg-accent/16 ${
               uploading ? "pointer-events-none opacity-60" : ""
             }`}
           >

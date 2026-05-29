@@ -9,6 +9,7 @@
 
 "use client";
 
+import { formatUsd } from "@elizaos/shared";
 import {
   Badge,
   Button,
@@ -105,12 +106,7 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
       return `${value.toFixed(1)}%`;
     }
     if (activeMetric === "cost") {
-      return new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(value);
+      return formatUsd(value);
     }
     return value.toLocaleString();
   };
@@ -215,12 +211,7 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
                     return `${numeric.toFixed(1)}%`;
                   }
                   if (activeMetric === "cost") {
-                    return new Intl.NumberFormat("en-US", {
-                      style: "currency",
-                      currency: "USD",
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    }).format(numeric);
+                    return formatUsd(numeric);
                   }
                   return numeric.toLocaleString();
                 }}

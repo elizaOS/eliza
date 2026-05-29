@@ -1,0 +1,169 @@
+[[!meta date="Tue, 19 Mar 2019 12:34:56 +0000"]]
+[[!meta title="Tails 3.13 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_3.12.1]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Add support for the Bopomofo input method for Chinese using the
+  *Chewing* library and improve support for the Pinyin input method.
+  ([[!tails_ticket 11292]])
+
+  [[!img bopomofo.png link="no"]]
+
+  If you still have problems typing in Bopomofo or Pinyin, please let us
+  know on <tails-testers@boum.org> (public mailing list) or
+  <tails-bugs@boum.org> (private email).
+
+- Save a backup of the configuration of the persistent storage every time it is
+  modified. ([[!tails_ticket 16461]])
+
+  This will help us understand and solve why sometimes all the settings of the
+  persistent storage disappear. ([[!tails_ticket 10976]])
+
+- Update *Tor Browser* to 8.0.7.
+
+- Update *Tor* to 0.3.5.8.
+
+- Update *Thunderbird* to 65.1.0.
+
+- Update *Linux* to 4.19.28.
+
+- Update the Intel microcode to 3.20180807a.2, which fixes more
+  variants of the Spectre, Meltdown, and Level 1 Terminal Fault (L1TF)
+  vulnerabilities.
+
+## Fixed problems
+
+- Prevent *Additional Software* from downloading packages that are already
+  saved in the persistent storage. ([[!tails_ticket 15957]])
+
+- Fix the localization of *Tor Launcher*, the application to configure a Tor
+  bridge or a local proxy.
+  ([[!tails_ticket 16338]])
+
+- Fix accessibility when opening *Tor Browser* from a desktop notification.
+  ([[!tails_ticket 16475]])
+
+- Fix *WhisperBack* crashing when additional APT repositories is configured.
+  ([[!tails_ticket 16563]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+### Electrum is outdated and cannot connect to servers
+
+<a id="electrum-phishing"></a>
+
+<p><b><i>Electrum</i> in Tails cannot connect
+anymore to Electrum servers.</b></p>
+
+<p>The version of <i>Electrum</i> in Tails is
+vulnerable to a <a href="https://github.com/spesmilo/electrum/issues/4968">phishing
+attack that tricks people in updating to a malicious version of
+<i>Electrum</i></a> which is not distributed from the
+official Electrum website.</p>
+
+<p><strong>You are safe unless you try to do the malicious update
+manually.</strong></p>
+
+<p>To prevent this phishing attack, all trustworthy
+<i>Electrum</i> servers now prevent
+older versions from connecting to them.</p>
+
+<p>Unfortunately, newer versions of <i>Electrum</i>
+are not available in Debian and cannot be integrated easily in Tails. Given the
+lack of maintenance of Electrum in Debian, we are still
+<a href="http://lists.autistici.org/message/20190319.170700.b3b5bf1f.en.html">assessing
+what is best to do in Tails</a>.</p>
+
+<p>Until then, your wallet is not lost and you can restore it from its seed
+using an <a href="https://electrum.org/#download">up-to-date version of
+Electrum</a> outside of Tails.</p>
+
+### Tails fails to start a second time on some computers ([[!tails_ticket 16389]])
+
+On some computers, after installing Tails to a USB stick,
+Tails starts a first time but fails to start a second time. In some
+cases, only BIOS (Legacy) was affected and the USB stick was not listed
+in the Boot Menu.
+
+We are still investigating the issue, so if it happens to you, please
+report your findings by email to <tails-testers@boum.org>. Mention the
+model of the computer and the USB stick. This mailing
+list is [archived publicly](https://lists.autistici.org/list/tails-testers.html).
+
+To fix this issue:
+
+1. Reinstall your USB stick using the same installation method.
+
+1. Start Tails for the first time and [[set up an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose
+   <b>Applications&nbsp;▸ System Tools&nbsp;▸ Root Terminal</b>
+   to open a <i>Root Terminal</i>.
+
+1. Execute the following command:
+
+   <p class="pre command">sgdisk --recompute-chs /dev/bilibop</p>
+
+You can also test an experimental image:
+
+1. Download the *.img* file from our development
+   server.
+
+1. Install it using the same installation methods.
+
+   We don't provide any OpenPGP signature or other verification technique
+   for this test image. Please only use it for testing.
+
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.13
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- [[Automatic upgrades|doc/upgrade]] are available from 3.11,
+  3.12~rc1, 3.12, and 3.12.1 to 3.13.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can directly download
+Tails 3.13:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 3.14 is [[scheduled|contribute/calendar]] for May 14.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.13">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

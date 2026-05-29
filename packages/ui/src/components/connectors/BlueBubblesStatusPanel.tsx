@@ -99,7 +99,7 @@ export function BlueBubblesStatusPanel() {
                 defaultValue: "Webhook target",
               })}
             </div>
-            <code className="block break-all rounded-lg border border-border/40 bg-bg/70 px-3 py-2 text-xs-tight text-muted-strong">
+            <code className="block break-all rounded-sm border border-border/40 bg-bg/70 px-3 py-2 text-xs-tight text-muted-strong">
               {webhookTarget}
             </code>
           </div>

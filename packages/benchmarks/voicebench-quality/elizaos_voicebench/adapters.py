@@ -189,6 +189,16 @@ def _build_stt(provider: str) -> SttFn:
 
         return _transcribe_groq
 
+    if provider in {"eliza1", "eliza-1", "eliza1-asr"}:
+        from .clients.eliza1_asr import Eliza1ASRClient  # noqa: WPS433
+
+        eliza1_client = Eliza1ASRClient()
+
+        async def _transcribe_eliza1(audio: bytes) -> str:
+            return await eliza1_client.transcribe(audio)
+
+        return _transcribe_eliza1
+
     if provider == "eliza-runtime":
         # POST audio bytes to the local Eliza runtime's STT endpoint.
         # The runtime must expose a compatible /v1/audio/transcriptions route
@@ -250,5 +260,6 @@ def _build_stt(provider: str) -> SttFn:
     raise ValueError(
         f"unsupported STT provider {provider!r}; "
         "supported: 'groq' (Groq Whisper API), 'eliza-runtime' "
-        "(local Eliza /v1/audio/transcriptions), or 'faster-whisper'"
+        "(local Eliza /v1/audio/transcriptions), 'eliza1' "
+        "(local eliza-1 llama.cpp ASR), or 'faster-whisper'"
     )

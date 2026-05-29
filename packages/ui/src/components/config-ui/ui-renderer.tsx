@@ -1021,10 +1021,10 @@ const RatingComponent: ComponentFn = (props) => {
 const SkeletonComponent: ComponentFn = (props) => {
   const w = props.width ? String(props.width) : "100%";
   const h = props.height ? String(props.height) : "20px";
-  const rounded = props.rounded ? "rounded" : "";
+  const roundedSm = props["rounded-sm"] ? "rounded-sm" : "";
   return (
     <div
-      className={`bg-[var(--bg-hover)] animate-pulse ${rounded}`}
+      className={`bg-[var(--bg-hover)] animate-pulse ${roundedSm}`}
       style={{ width: w, height: h }}
     />
   );
@@ -1117,7 +1117,7 @@ const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
         {String(props.label ?? "Menu")} ▾
       </Button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 min-w-[120px] border border-border bg-card shadow-md z-10">
+        <div className="absolute top-full left-0 mt-1 min-w-[120px] border border-border bg-card z-10">
           {items.map((item) => (
             <Button
               key={item.value}
@@ -1236,7 +1236,7 @@ const MetricComponent: ComponentFn = (props) => {
         ? "text-status-danger"
         : "text-muted";
   return (
-    <div className="flex flex-col gap-0.5 p-3 rounded-lg border border-border bg-card">
+    <div className="flex flex-col gap-0.5 p-3 rounded-sm border border-border bg-card">
       <div className="text-2xs text-muted uppercase tracking-wider font-medium">
         {String(props.label ?? "")}
       </div>
@@ -1385,7 +1385,7 @@ const PopoverComponent: ComponentFn = (props) => {
         {String(props.trigger ?? "Click")}
       </Button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 p-3 border border-border bg-card shadow-md z-10 min-w-[150px]">
+        <div className="absolute top-full left-0 mt-1 p-3 border border-border bg-card z-10 min-w-[150px]">
           <div className="text-xs">{String(props.content ?? "")}</div>
           <Button
             type="button"
@@ -1489,7 +1489,7 @@ const DialogComponent: ComponentFn = (props, children, ctx) => {
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-md border border-border bg-card p-5 shadow-lg">
+      <div className="w-full max-w-md border border-border bg-card p-5 ">
         <div className="flex items-center justify-between mb-3">
           <div>
             {props.title ? (
@@ -1539,7 +1539,7 @@ const DrawerComponent: ComponentFn = (props, children, ctx) => {
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-h-[80vh] bg-card p-5 shadow-lg overflow-y-auto animate-[slide-up_200ms_ease]">
+      <div className="w-full max-h-[80vh] bg-card p-5 overflow-y-auto animate-[slide-up_200ms_ease]">
         <div className="w-10 h-1 bg-border mx-auto mb-3 rounded-full" />
         {props.title ? (
           <div className="font-bold text-sm">{String(props.title)}</div>

@@ -32,6 +32,13 @@ article {
   border-radius: var(--radius-full, 9999px);
 }
 
+/* Visible keyboard-focus ring on every interactive element. Homepage is the
+   orange brand family, so the ring uses the orange accent token. */
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -266,11 +273,6 @@ article {
   color: var(--brand-black);
 }
 
-.brand-section--blue {
-  background: var(--brand-black);
-  color: var(--brand-white);
-}
-
 .brand-section--cloud {
   position: relative;
   overflow: hidden;
@@ -452,29 +454,9 @@ article {
   color: var(--brand-black);
 }
 
-.app-cta--orange-secondary {
-  background: rgba(255, 255, 255, 0.35);
-  color: var(--brand-black);
-}
-
-.app-cta--orange-secondary:hover {
-  background: var(--brand-black);
-  color: var(--brand-white);
-}
-
-.app-cta--orange {
-  background: var(--brand-orange);
-  color: var(--brand-black);
-}
-
-.app-cta--orange:hover {
-  background: var(--brand-black);
-  color: var(--brand-white);
-}
-
 .app-cta--white {
   background: var(--brand-white);
-  color: var(--brand-blue);
+  color: var(--brand-black);
 }
 
 .app-cta--white:hover {
@@ -490,58 +472,6 @@ article {
 .app-download-band {
   display: grid;
   gap: clamp(2rem, 5vw, 4rem);
-}
-
-.app-download-list {
-  display: grid;
-  gap: 0.35rem;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 720px) {
-  .app-download-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.app-download-row {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  min-height: 4.5rem;
-  padding: 1rem 0;
-  color: var(--brand-white);
-  text-decoration: none;
-}
-
-.app-download-row:hover {
-  opacity: 0.8;
-}
-
-.app-download-row span:first-child {
-  font-weight: 500;
-  font-size: 1.125rem;
-  flex: 1;
-}
-
-.app-download-row span:not(:first-child) {
-  font-size: 0.85rem;
-  opacity: 0.7;
-}
-
-.app-mini-grid,
-.app-action-band {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2rem;
-  align-items: center;
-}
-
-@media (min-width: 768px) {
-  .app-mini-grid,
-  .app-action-band {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
 }
 
 .app-side-copy {
@@ -636,15 +566,6 @@ article {
   .app-cta {
     width: 100%;
     justify-content: center;
-  }
-
-  .app-download-row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-  }
-
-  .app-download-row span:not(:first-child) {
-    grid-column: 1 / -1;
   }
 }
 
@@ -833,13 +754,14 @@ article {
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
-  color: var(--brand-blue);
+  color: var(--brand-black);
   font-weight: 500;
   text-decoration: none;
 }
 
 .app-release-link:hover,
 .app-checksum-row a:hover {
+  color: var(--brand-orange);
   text-decoration: underline;
 }
 
@@ -900,8 +822,8 @@ article {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-xs);
-  background: #eef3ff;
-  color: var(--brand-blue);
+  background: rgba(8, 9, 12, 0.05);
+  color: var(--brand-black);
 }
 
 .app-download-card-copy,

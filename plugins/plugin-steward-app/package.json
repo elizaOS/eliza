@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-steward-app",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -50,7 +50,7 @@
     "clean": "rm -rf dist",
     "test": "vitest run --config vitest.config.ts",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:views": "vite build --config vite.config.views.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.real.e2e.test.ts test/*.live.e2e.test.ts"
   },

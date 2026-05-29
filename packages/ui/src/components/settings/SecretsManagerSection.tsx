@@ -111,9 +111,9 @@ export function SecretsManagerSection() {
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/40 px-3 py-3">
+      <div className="flex items-center justify-between gap-3 rounded-sm border border-border/60 bg-card/40 px-3 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/50 text-muted">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg/50 text-muted">
             <KeyRound className="h-3.5 w-3.5" aria-hidden />
           </span>
           <div className="min-w-0">
@@ -141,7 +141,7 @@ export function SecretsManagerSection() {
         <Button
           variant="outline"
           size="sm"
-          className="h-9 shrink-0 rounded-lg"
+          className="h-9 shrink-0 rounded-sm"
           onClick={() => dispatchSecretsManagerOpen()}
         >
           Manage…
@@ -496,7 +496,7 @@ function VaultBody({
             <KeyRound className="h-4 w-4 text-muted" aria-hidden />
             Vault
           </span>
-          <span className="rounded-md border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted">
+          <span className="rounded-sm border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted">
             {getShortcutLabel()}
           </span>
         </DialogTitle>
@@ -517,7 +517,7 @@ function VaultBody({
               <div
                 aria-live="polite"
                 data-testid="vault-modal-error"
-                className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+                className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
               >
                 {error}
               </div>
@@ -619,7 +619,7 @@ function VaultBody({
           <Button
             variant="ghost"
             size="sm"
-            className="h-9 rounded-lg"
+            className="h-9 rounded-sm"
             onClick={() => onOpenChange(false)}
             disabled={saving}
           >

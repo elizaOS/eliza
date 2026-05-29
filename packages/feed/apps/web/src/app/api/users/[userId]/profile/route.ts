@@ -173,12 +173,12 @@ export const GET = withErrorHandling(
 
     // If user doesn't exist, findUserByIdentifierWithSelect returns null for non-existent users
     // WHY return { user: null } instead of throwing NotFoundError?
-    // - This route is public (no auth required) and handles new Privy users gracefully
-    // - New Privy users may authenticate before completing signup, so they won't exist in DB yet
+    // - This route is public (no auth required) and handles new users gracefully
+    // - New users may authenticate before completing signup, so they won't exist in DB yet
     // - Returning null allows frontend to handle "user not found" vs "user needs onboarding" states
     if (!dbUser) {
       logger.info(
-        "User not found - new Privy user who hasn't completed signup",
+        "User not found - new Steward user who hasn't completed signup",
         { userId },
         "GET /api/users/[userId]/profile",
       );

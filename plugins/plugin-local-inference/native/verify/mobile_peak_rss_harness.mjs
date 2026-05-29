@@ -109,7 +109,7 @@ function main() {
     console.log(`wrote ${args.report}`);
     console.log(`mobile-peak-rss: available=false — ${report.reason}`);
   }
-  // Exit 0: recording a needs-device entry is success, like the dflash bench.
+  // Exit 0: recording a needs-device entry is success, like the mtp bench.
   process.exit(0);
 }
 

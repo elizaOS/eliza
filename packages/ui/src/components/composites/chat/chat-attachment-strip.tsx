@@ -33,7 +33,7 @@ export function ChatAttachmentStrip({
           <img
             src={item.src}
             alt={item.alt}
-            className="h-16 w-16 rounded border border-border object-cover"
+            className="h-16 w-16 rounded-sm border border-border object-cover"
           />
           <Button
             variant={

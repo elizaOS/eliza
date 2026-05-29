@@ -1,0 +1,92 @@
+[[!meta date="Fri, 27 Apr 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.11 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.11, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Tails Greeter, the login screen which obsoletes the language
+  selection boot menu. Tails Greeter also adds some new options:
+  - Activating persistence (see below).
+  - Setting a sudo password. Unlike earlier Tails releases, full sudo
+    access via an empty password is not available any more. In fact,
+    full sudo access is disabled per default, but can be enabled by
+    setting this password.
+  See [[the
+  documentation|doc/first_steps/welcome_screen]]
+  for details.
+
+* Tails USB installer. This graphical user interface mostly obsoletes
+  our old instructions of cat'ing the .iso directly onto a block
+  device. All of the USB drive must be dedicated to Tails; a bit of
+  extra space is reserved so that future Tails releases will fit when
+  upgrading, and the rest can be used for persistence (see below) or
+  manually formatted if the user so wishes. See the USB installation
+  documentation for details.
+
+* Persistence can optionally be used when running Tails from a USB
+  drive. Application configurations and arbitrary directories can be
+  made persistent. See the persistence
+  documentation for details.
+
+* iceweasel
+  - Install iceweasel 10.0.4esr-1 (Extended Support Release).
+  - Search plugins: replace Debian-provided DuckDuckGo search plugin
+    with the "HTML SSL" one; add ixquick.com; remove Scroogle.
+  - Enable TLS false start.
+
+* Vidalia: upgrade to 0.2.17-1+tails1
+
+* Internationalization:
+  - Install all available iceweasel l10n packages.
+  - Add fonts for Hebrew, Thai, Khmer, Lao and Korean languages.
+  - Add bidi support.
+  - Don't purge locales anymore.
+  - Don't remove any Scribus translations anymore.
+
+* Hardware support
+  - Linux 3.2.15-1 (linux-image-3.2.0-2-amd64).
+  - Fix low sound level on MacBook5,2.
+  - Disable laptop-mode-tools automatic modules. This modules set often
+    needs some amount of hardware-specific tweaking to work properly.
+    This makes them rather not well suited for a Live system.
+
+* Software
+  - Install GNOME keyring.
+  - Install the Traverso multitrack audio recorder and editor.
+
+* Miscellaneous
+  - NetworkManager is now started at PostLogin time by tails-greeter,
+    rather than as a system service.
+  - Pidgin: don't use the OFTC hidden service anymore.
+    It proved to be quite unreliable, being sometimes down for days.
+  - Do not display storage volumes on Desktop. This workarounds
+    a usability issue when persistence is enabled, and paves the way
+    towards GNOME3's empty Desktop.
+  - Don't build hybrid ISO images anymore. They boot less reliably on
+    a variety of hardware, and are made less useful by us shipping
+    a USB installer from now on.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

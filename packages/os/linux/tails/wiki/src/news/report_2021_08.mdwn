@@ -1,0 +1,45 @@
+[[!meta title="Tails report for August, 2021"]]
+[[!meta date="Tue, 07 Sep 2021 14:46:53 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+
+Releases
+=========
+
+In august, we released 4.22~rc1 and [[4.22|news/version_4.22]]. Having a release candidate helped us gather
+feedback from users to build a more solid 4.22. Enjoy it!
+
+Tails 4.23 is [[scheduled for October 5|contribute/calendar]].
+
+Highlights of the month
+=======================
+
+ - We migrated our XMPP chat rooms to `disroot.org`. You do *not* need to have a
+   disroot.org account to join us on the talk chat, any XMPP account is fine.
+   XMPP chat room is only used for users' mutual help, and is not always monitored by our help desk. Write an
+   email if you want to talk with Tails' help desk.
+
+ - The Foundations Team met for
+   a sprint, which resulted in many bugs being fixed and features being added. You can taste some of them in
+   [[4.22|news/version_4.22]], but some of them haven't make it for the current release:
+
+   - Improving the time zone selection user interface ([[!tails_ticket 18514]]).
+
+   - Redesigning Persistent Storage setting ([[!tails_ticket 17803]]).
+
+ - Our joint proposal with Tor to DRL has been accepted.  This will help us do more user research and implement UX improvements.
+
+ - We added Word Solver as a sponsor.
+
+ - We are improving the speed of our Continuous Integration infrastructure. This is not immediately
+   visible to users, but helps making Tails' development more enjoyable and sustainable.
+
+
+
+Metrics
+=======
+
+* Tails has been started more than 675,177 times this month. This makes 22,505 boots a day on average.
+

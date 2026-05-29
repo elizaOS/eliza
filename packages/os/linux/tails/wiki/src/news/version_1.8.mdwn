@@ -1,0 +1,82 @@
+[[!meta date="Tue, 15 Dec 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.8 is out"]]
+[[!tag announce]]
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.7]]. All users must
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+- *Icedove* a
+  rebranded version of *Mozilla Thunderbird* is
+  now the official email client in Tails, replacing
+  *Claws Mail*.
+
+  *Claws Mail* will be removed from Tails in
+  version 2.0 (2016-01-26). If you have been using
+  *Claws Mail* and activated its persistence
+  feature, follow our instructions to migrate your data to
+  *Icedove*.
+
+## Upgrades and changes
+
+- Electrum from 1.9.8 to [2.5.4](https://github.com/spesmilo/electrum/blob/0d4de870a5159d491b604d29780f6bfb539c49f3/RELEASE-NOTES).
+  Now Electrum should work again in Tails.
+
+- Tor Browser to [5.0.5](https://gitweb.torproject.org/builders/tor-browser-bundle.git/tree/Bundle-Data/Docs/ChangeLog.txt?h=maint-5.0&id=tbb-5.0.5-build1).
+
+- Tor to [0.2.7.6](https://gitweb.torproject.org/tor.git/tree/ChangeLog?id=tor-0.2.7.6).
+
+- I2P to [0.9.23](https://geti2p.net/en/blog/post/2015/11/19/0.9.23-Release).
+
+- Icedove from 31.8 to 38.4.
+
+- Enigmail from 1.7.2 to 1.8.2.
+
+# Known issues
+
+* Automatic upgrades are much slower to apply than before.
+  Expect the upgrade to take around an hour *after* the download is
+  finished. See [[!tails_ticket 10757]] for details.
+
+* The Tor bridge mode fails if the
+  system clock is incorrect. To prevent this problem, correct the system
+  clock *before* connecting to the network. To do so:
+
+  1. [[Set up an administration password|doc/first_steps/welcome_screen/administration_password]]
+     when starting Tails.
+
+  1. Right-click on the system clock in the top navigation bar and
+     choose **Adjust Date & Time**.
+
+  1. Click the <strong>Unlock</strong> button and enter the
+     administration password from step 1.
+
+  1. Adjust the time to be the correct time in
+     [[!wikipedia Coordinated_Universal_Time desc="UTC"]] (use the
+     same difference with your local time as observed usually in Tails).
+
+See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] or [[upgrade|doc/upgrade/]] page.
+
+If your Tails does not
+boot after an automatic upgrade, please [[upgrade your Tails
+manually|doc/upgrade#manual]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for January 26.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -19,6 +19,7 @@ import {
   type IAgentRuntime,
   ModelType,
   observationExtractionTemplate,
+  resolveStateDir,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -667,8 +668,12 @@ export async function flushObservationBuffer(
     }
 
     return observations;
-  } catch {
-    // Non-critical — observations are best-effort
+  } catch (err) {
+    warnRuntime(
+      runtime,
+      "[trajectory-persistence] observation flush failed",
+      err,
+    );
     return [];
   } finally {
     delete runtimeRecord.__orchestratorTrajectoryCtx;
@@ -770,7 +775,12 @@ export async function computeBySource(
       if (src) bySource[src] = toNumber(r.cnt, 0);
     }
     return bySource;
-  } catch {
+  } catch (err) {
+    warnRuntime(
+      runtime,
+      "[trajectory-persistence] source aggregation failed",
+      err,
+    );
     return {};
   }
 }
@@ -947,8 +957,12 @@ export async function ensureTrajectoriesTable(
         runtime,
         `CREATE INDEX IF NOT EXISTS idx_trajectories_scenario_id ON trajectories(scenario_id)`,
       );
-    } catch {
-      // ignore if index creation fails
+    } catch (err) {
+      warnRuntime(
+        runtime,
+        "[trajectory-persistence] scenario index creation failed",
+        err,
+      );
     }
     try {
       await executeRawSql(
@@ -963,8 +977,12 @@ export async function ensureTrajectoriesTable(
         runtime,
         `CREATE INDEX IF NOT EXISTS idx_trajectories_batch_id ON trajectories(batch_id)`,
       );
-    } catch {
-      // ignore if index creation fails
+    } catch (err) {
+      warnRuntime(
+        runtime,
+        "[trajectory-persistence] batch index creation failed",
+        err,
+      );
     }
     try {
       await executeRawSql(
@@ -1004,16 +1022,24 @@ export async function ensureTrajectoriesTable(
         runtime,
         `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_trajectory_id ON trajectory_steps(trajectory_id)`,
       );
-    } catch {
-      // ignore if index creation fails
+    } catch (err) {
+      warnRuntime(
+        runtime,
+        "[trajectory-persistence] trajectory step index creation failed",
+        err,
+      );
     }
     try {
       await executeRawSql(
         runtime,
         `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_ordinal ON trajectory_steps(trajectory_id, ordinal)`,
       );
-    } catch {
-      // ignore if index creation fails
+    } catch (err) {
+      warnRuntime(
+        runtime,
+        "[trajectory-persistence] trajectory step ordinal index creation failed",
+        err,
+      );
     }
 
     // One-shot forward migration from steps_json into trajectory_steps.
@@ -2035,7 +2061,7 @@ export function resolvePreferredTrajectoryArchiveRoot(): string {
   const workspaceRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
   if (workspaceRoot) return workspaceRoot;
 
-  return path.join(os.homedir(), ".eliza", "workspace");
+  return path.join(resolveStateDir(), "workspace");
 }
 
 export async function ensureArchiveDirectory(dir: string): Promise<void> {

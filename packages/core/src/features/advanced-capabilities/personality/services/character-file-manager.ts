@@ -8,6 +8,7 @@ import type {
 	MessageExampleGroup,
 } from "../../../../types/index.ts";
 import { Service } from "../../../../types/service.ts";
+import { resolveStateDir } from "../../../../utils/state-dir";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";
 
@@ -67,7 +68,7 @@ export class CharacterFileManager extends Service {
 
 	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
-		this.backupDir = path.join(process.cwd(), ".eliza", "character-backups");
+		this.backupDir = path.join(resolveStateDir(), "character-backups");
 		this.setupValidationRules();
 	}
 

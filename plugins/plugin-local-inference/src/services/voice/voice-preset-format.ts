@@ -87,11 +87,6 @@ export const VOICE_PRESET_VERSION_V1 = 1;
 export const VOICE_PRESET_VERSION_V2 = 2;
 export const VOICE_PRESET_VERSION_CURRENT = VOICE_PRESET_VERSION_V2;
 
-/** Back-compat alias: legacy callers expect `VOICE_PRESET_VERSION` to exist. */
-export const VOICE_PRESET_VERSION = VOICE_PRESET_VERSION_V1;
-/** Back-compat alias for the v1 header size. */
-export const VOICE_PRESET_HEADER_BYTES = VOICE_PRESET_HEADER_BYTES_V1;
-
 export interface VoicePresetSeedPhrase {
 	/** Canonicalized text (lowercase, single-spaced, trimmed). */
 	text: string;

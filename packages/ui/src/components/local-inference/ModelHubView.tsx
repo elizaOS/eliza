@@ -9,6 +9,7 @@ import type {
   ModelBucket,
 } from "../../api/client-local-inference";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
@@ -19,9 +20,11 @@ import {
   findDownload,
   findInstalled,
   fitLabel,
-  formatBytes,
   groupByBucket,
 } from "./hub-utils";
+
+const formatBytes = (bytes: number): string =>
+  formatByteSize(bytes, { unknownLabel: "—" });
 
 interface ModelHubViewProps {
   catalog: CatalogModel[];
@@ -81,7 +84,7 @@ export function ModelHubView({
                 </span>
               )}
             </header>
-            <div className="overflow-hidden rounded-lg border border-border/50 bg-card/35">
+            <div className="overflow-hidden rounded-sm border border-border/50 bg-card/35">
               {models.map((model) => (
                 <ModelListRow
                   key={model.id}
@@ -197,7 +200,7 @@ function ModelListRow({
           {!installedEntry && !downloading ? (
             <Button
               size="sm"
-              className="h-7 rounded-md px-2 text-xs"
+              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onDownload(model.id)}
               disabled={busy || fit === "wontfit"}
             >
@@ -208,7 +211,7 @@ function ModelListRow({
             <Button
               size="sm"
               variant="outline"
-              className="h-7 rounded-md px-2 text-xs"
+              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onCancel(model.id)}
               disabled={busy}
             >
@@ -218,7 +221,7 @@ function ModelListRow({
           {installedEntry && !isActive ? (
             <Button
               size="sm"
-              className="h-7 rounded-md px-2 text-xs"
+              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onActivate(model.id)}
               disabled={busy || activating}
             >
@@ -229,7 +232,7 @@ function ModelListRow({
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 rounded-md px-2 text-xs"
+              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onVerify(installedEntry.id)}
               disabled={busy}
             >
@@ -240,7 +243,7 @@ function ModelListRow({
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 rounded-md px-2 text-xs"
+              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onRedownload(model.id)}
               disabled={busy}
             >
@@ -251,7 +254,7 @@ function ModelListRow({
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 rounded-md px-2 text-xs"
+              className="h-7 rounded-sm px-2 text-xs"
               onClick={() => onUninstall(model.id)}
               disabled={busy}
             >

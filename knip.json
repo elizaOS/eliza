@@ -213,11 +213,6 @@
       "project": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/workflows": {
-      "entry": ["src/index.ts", "__tests__/**/*.test.ts"],
-      "project": ["src/**/*.ts", "__tests__/**/*.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
     "plugins/plugin-2004scape": {
       "entry": ["src/index.ts", "vite.config.views.ts"],
       "project": ["src/**/*.{ts,tsx}", "vite.config.views.ts"],
@@ -282,7 +277,7 @@
     "plugins/plugin-aosp-local-inference": {
       "entry": [
         "src/index.ts",
-        "src/aosp-dflash-adapter.ts",
+        "src/aosp-mtp-adapter.ts",
         "src/aosp-llama-streaming.ts",
         "__tests__/**/*.test.ts"
       ],

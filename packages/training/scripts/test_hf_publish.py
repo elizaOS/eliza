@@ -544,8 +544,8 @@ def _make_eliza1_bundle(
             "weights": "Q4_POLAR",
             "kvK": "QJL1_256",
             "kvV": "TBQ4_0",
-            "speculativeDecode": "DFlash",
-            "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "dflash"],
+            "speculativeDecode": "MTP",
+            "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "mtp"],
             "requiresFork": "elizaOS/llama.cpp@v1.0.0-eliza",
         },
         "pipeline": {
@@ -792,13 +792,13 @@ def test_sync_catalog_selects_manifest_text_file(sync_catalog):
                 {"path": "text/eliza-1-4b-32k.gguf", "sha256": "a" * 64, "ctx": 32768},
                 {"path": "text/eliza-1-4b-64k.gguf", "sha256": "b" * 64, "ctx": 65536},
             ],
-            "dflash": [{"path": "dflash/drafter-4b.gguf", "sha256": "c" * 64}],
+            "mtp": [{"path": "mtp/drafter-4b.gguf", "sha256": "c" * 64}],
         },
     }
     file_index = {
         "text/eliza-1-4b-32k.gguf": ("a" * 64, 100),
         "text/eliza-1-4b-64k.gguf": ("b" * 64, 200),
-        "dflash/drafter-4b.gguf": ("c" * 64, 50),
+        "mtp/drafter-4b.gguf": ("c" * 64, 50),
     }
 
     selected = sync_catalog._primary_text_file_from_manifest(
@@ -819,12 +819,12 @@ def test_sync_catalog_selects_single_repo_bundle_paths(sync_catalog):
             "text": [
                 {"path": "text/eliza-1-9b-64k.gguf", "sha256": "d" * 64, "ctx": 65536},
             ],
-            "dflash": [{"path": "dflash/drafter-9b.gguf", "sha256": "e" * 64}],
+            "mtp": [{"path": "mtp/drafter-9b.gguf", "sha256": "e" * 64}],
         },
     }
     file_index = {
         "bundles/9b/text/eliza-1-9b-64k.gguf": ("d" * 64, 900),
-        "bundles/9b/dflash/drafter-9b.gguf": ("e" * 64, 90),
+        "bundles/9b/mtp/drafter-9b.gguf": ("e" * 64, 90),
     }
 
     selected = sync_catalog._primary_text_file_from_manifest(

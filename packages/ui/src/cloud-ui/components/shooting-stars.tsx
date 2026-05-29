@@ -55,9 +55,16 @@ export const ShootingStars: React.FC<ShootingStarsProps> = ({
 }) => {
   const [star, setStar] = useState<ShootingStar | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  // Mutable position lives in a ref so the animation runs in a single rAF loop
+  // instead of re-subscribing a new requestAnimationFrame on every state change.
+  const starRef = useRef<ShootingStar | null>(null);
 
   useEffect(() => {
-    const createStar = () => {
+    let spawnTimer: ReturnType<typeof setTimeout> | null = null;
+    let frame = 0;
+    let cancelled = false;
+
+    const spawnStar = () => {
       const { x, y, angle } = getRandomStartPoint();
       const newStar: ShootingStar = {
         id: Date.now(),
@@ -68,52 +75,54 @@ export const ShootingStars: React.FC<ShootingStarsProps> = ({
         speed: Math.random() * (maxSpeed - minSpeed) + minSpeed,
         distance: 0,
       };
+      starRef.current = newStar;
       setStar(newStar);
 
       const randomDelay = Math.random() * (maxDelay - minDelay) + minDelay;
-      setTimeout(createStar, randomDelay);
+      spawnTimer = setTimeout(spawnStar, randomDelay);
     };
 
-    createStar();
-
-    return () => {};
-  }, [minSpeed, maxSpeed, minDelay, maxDelay]);
-
-  useEffect(() => {
-    const moveStar = () => {
-      if (star) {
-        setStar((prevStar) => {
-          if (!prevStar) return null;
-          const newX =
-            prevStar.x +
-            prevStar.speed * Math.cos((prevStar.angle * Math.PI) / 180);
-          const newY =
-            prevStar.y +
-            prevStar.speed * Math.sin((prevStar.angle * Math.PI) / 180);
-          const newDistance = prevStar.distance + prevStar.speed;
-          const newScale = 1 + newDistance / 100;
-          if (
-            newX < -20 ||
-            newX > window.innerWidth + 20 ||
-            newY < -20 ||
-            newY > window.innerHeight + 20
-          ) {
-            return null;
-          }
-          return {
-            ...prevStar,
+    const tick = () => {
+      if (cancelled) return;
+      const prev = starRef.current;
+      if (prev) {
+        const newX =
+          prev.x + prev.speed * Math.cos((prev.angle * Math.PI) / 180);
+        const newY =
+          prev.y + prev.speed * Math.sin((prev.angle * Math.PI) / 180);
+        const newDistance = prev.distance + prev.speed;
+        if (
+          newX < -20 ||
+          newX > window.innerWidth + 20 ||
+          newY < -20 ||
+          newY > window.innerHeight + 20
+        ) {
+          starRef.current = null;
+          setStar(null);
+        } else {
+          const next: ShootingStar = {
+            ...prev,
             x: newX,
             y: newY,
             distance: newDistance,
-            scale: newScale,
+            scale: 1 + newDistance / 100,
           };
-        });
+          starRef.current = next;
+          setStar(next);
+        }
       }
+      frame = requestAnimationFrame(tick);
     };
 
-    const animationFrame = requestAnimationFrame(moveStar);
-    return () => cancelAnimationFrame(animationFrame);
-  }, [star]);
+    spawnStar();
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      cancelled = true;
+      if (spawnTimer) clearTimeout(spawnTimer);
+      cancelAnimationFrame(frame);
+    };
+  }, [minSpeed, maxSpeed, minDelay, maxDelay]);
 
   return (
     <svg

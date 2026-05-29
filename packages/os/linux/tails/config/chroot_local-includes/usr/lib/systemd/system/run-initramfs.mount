@@ -1,0 +1,17 @@
+# This allows systemd-shutdown to execute /run/initramfs/shutdown.
+# For context, see https://github.com/systemd/systemd/pull/9429.
+
+[Unit]
+Description=Extracted initrd directory
+ConditionPathIsSymbolicLink=!/run/initramfs
+DefaultDependencies=no
+Before=initramfs-shutdown.service local-fs.target
+
+[Mount]
+What=tmpfs
+Where=/run/initramfs
+Type=tmpfs
+Options=mode=755
+
+[Install]
+WantedBy=local-fs.target

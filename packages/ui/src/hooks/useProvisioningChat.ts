@@ -92,7 +92,15 @@ export function useProvisioningChat(
             }
           }
         }
-      } catch {}
+      } catch (error) {
+        if (!isCurrent()) return;
+        console.warn("[useProvisioningChat] provisioning poll failed", {
+          agentId,
+          error,
+        });
+        stopped = true;
+        setContainerStatus("error");
+      }
     };
 
     void poll();

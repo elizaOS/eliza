@@ -22,7 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"

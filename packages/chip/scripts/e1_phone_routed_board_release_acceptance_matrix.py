@@ -968,7 +968,8 @@ def route_domain_rows(
                 "current_blockers": current_blockers,
                 "current_presence": {
                     "nets_complete": not missing_nets,
-                    "required_outputs_complete": not missing_outputs,
+                    "candidate_required_outputs_complete": not missing_outputs,
+                    "release_required_outputs_complete": False,
                     "route_execution_ready": False,
                     "release_accepted": False,
                 },

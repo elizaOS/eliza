@@ -106,7 +106,7 @@ export const PagePanelCollapsibleSection = React.forwardRef<
       className={cn(
         expandOnCollapsedSurfaceClick &&
           !isExpanded &&
-          "cursor-pointer transition-[border-color,box-shadow,transform] hover:border-border/60 hover:shadow-[0_20px_36px_rgba(3,5,10,0.18)]",
+          "cursor-pointer transition-[border-color,box-shadow,transform] hover:border-border/60 ",
         className,
       )}
       onClick={handleSurfaceClick}

@@ -1,0 +1,100 @@
+[[!meta title="Translation platform maintainers"]]
+[[!meta robots="noindex"]]
+
+<div class="tip">
+<p>
+
+This documentation is outdated: it doesn't reflect the current state of affairs
+after the [[Tails merge with Tor|news/tails_tor]] and should be updated in the
+context of
+[[tpo/tpa/team#41986|https://gitlab.torproject.org/tpo/tpa/team/-/issues/41986]]
+
+</p>
+</div>
+
+The general mission of these maintainers is **to make sure that [[Tails
+translators|contribute/how/translate]] can translate our website easily,
+while not compromising the safety of the rest of the Tails ecosystem**.
+We maintain the translation platform, but **not the actual translations**.
+
+If you want to comment on a problem with a specific
+translation, please contact
+[[tails-l10n|https://tails.net/contribute/how/translate/#follow-up]].
+
+If you have a problem with the platform itself, we encourage you to check [the
+list of open
+issues](https://gitlab.tails.boum.org/groups/tails/-/issues?scope=all&state=opened&label_name[]=C%3ATranslation%20Platform)
+and open a new one if your problem is not already described there. Please make
+sure to add details such as the date and time you experienced the issue, the
+relevant URL, and other details that may help us find and/or reproduce your
+problem.
+
+**Responsibilities of the whole team**:
+
+* Manage the budget for this team.
+
+* Keep track of upcoming big changes (e.g. Weblate dropping support for the
+  database we are using, or gaining extra non-trivial dependencies) and plan
+  the work we will have to do to adjust.
+
+* Refine, update and document the translation workflow.
+
+* Report about the team to the rest of Tails.
+
+* Monitor error messages (Weblate, server, integrations).
+
+* Engage with translators in [[tails-l10n|doc/about/contact#tails-l10n]] (re.
+  translation-related issues) and [[tails-weblate|doc/about/contact#tails-weblate]]
+  (re. service-related issues).
+
+**Service maintenance responsibilities**:
+
+Since [[Tails merged with Tor|news/tails_tor]], the maintenance of the
+Translation Platform has become a responsibility of
+[[TPA|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/service#tails-services]],
+whose responsibilities are:
+
+* Maintain and upgrade Weblate.
+
+* Maintain and improve the integration with the Tails website.
+
+* Maintain and improve the generation of the staging website.
+
+* Make implementation and design decisions (proposals made by most active maintainers who committed to work on this on the long term should not be blocked by other folks).
+
+* Keep the [[technical design documentation|contribute/design/translation_platform]] up-to-date.
+
+* Implement backend changes needed for the translation workflow.
+
+* Fix crashes in the whole setup.
+
+* Give clear and quick feedback for questions about the service's
+  maintenance, technical improvements, etc, so that the whole team and
+  also the translators are properly informed about possibilities, decisions
+  and expected timeline.
+
+**Community management responsibilities**:
+
+* Act as an interface between translators and the rest of Tails, via public communication channels.
+
+* Facilitate the process of adding new languages for translation:
+
+  * Introduction of new language teams if no Tails translator takes the lead.
+
+  * Final, more technical review when new languages are deemed ready (make sure
+    that the new language does not break the website).
+
+* Drive the process to remove unmaintained languages if needed.
+
+* Hear feedback from translators, facilitate these discussions until they reach
+  a conclusion, and report to upstream when needed.
+
+* Grant reviewer permissions (following our [[documented process|contribute/how/translate/with_translation_platform/]]).
+
+* Maintain documentation for translators.
+
+# Resources
+
+ - [[design documentation|contribute/design/translation_platform]]
+ - [[operations documentation|translation_platform/operations]]
+ - [[documentation for translators|contribute/how/translate/with_translation_platform]]

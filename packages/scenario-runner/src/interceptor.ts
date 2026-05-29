@@ -440,7 +440,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
           content: memory.content,
           createdAt: new Date().toISOString(),
         });
-        return originalCreateMemory(memory, tableName, unique);
+        return originalCreateMemory.call(runtime, memory, tableName, unique);
       };
       Reflect.set(wrappedCreate, INTERCEPTOR_MARKER, true);
       Reflect.set(runtime, "createMemory", wrappedCreate);
@@ -455,7 +455,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   if (isCallable(originalCreateTask)) {
     if (Reflect.get(originalCreateTask, INTERCEPTOR_MARKER) !== true) {
       const wrappedCreateTask: CreateTaskFn = async (task: Task) => {
-        const createdTaskId = await originalCreateTask(task);
+        const createdTaskId = await originalCreateTask.call(runtime, task);
         if (typeof createdTaskId === "string") {
           const captured = inferApprovalRequest(createdTaskId, task);
           if (captured) {

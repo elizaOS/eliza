@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -26,8 +27,8 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
 
 class KicadReleaseDiagnosticsTest(unittest.TestCase):
     def test_release_report_keeps_diagnostics_out_of_release_credit(self) -> None:
-        run(["python3", "scripts/generate_e1_demo_kicad_blocked_cli_evidence.py"])
-        result = run(["python3", "scripts/check_kicad_artifacts.py", "--release"])
+        run([sys.executable, "scripts/generate_e1_demo_kicad_blocked_cli_evidence.py"])
+        result = run([sys.executable, "scripts/check_kicad_artifacts.py", "--release"])
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("STATUS: BLOCKED", result.stdout)
         self.assertIn("release_credit=false", result.stdout)
@@ -90,9 +91,9 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
         for label in ("command transcript", "KiCad tool versions"):
             inventory = report["release_evidence_inventory"][label]
             self.assertTrue(inventory["paths"])
-            self.assertTrue(inventory["release_credit_paths"])
-            self.assertTrue(inventory["release_credit_satisfied"])
-            self.assertFalse(inventory["missing_release_credit"])
+            self.assertFalse(inventory["release_credit_paths"])
+            self.assertFalse(inventory["release_credit_satisfied"])
+            self.assertTrue(inventory["missing_release_credit"])
 
         self.assertTrue(
             report["release_evidence_inventory"]["command transcript"]["diagnostic_only_paths"]
@@ -101,7 +102,7 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
             report["release_evidence_inventory"]["KiCad tool versions"]["diagnostic_only_paths"]
         )
 
-        self.assertFalse(report["blocker_groups"]["release_evidence"])
+        self.assertTrue(report["blocker_groups"]["release_evidence"])
         self.assertIn("toolchain", report["blocker_groups"])
         self.assertIn("non_destructive_local_unblock_commands", report["tool_availability"])
         messages = [finding["message"] for finding in report["findings"]]
@@ -135,18 +136,19 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, text.lower())
 
-    def test_native_erc_report_counts_as_release_credit(self) -> None:
-        result = run(["python3", "scripts/check_kicad_artifacts.py", "--release"])
+    def test_erc_transcript_requires_release_credit_source(self) -> None:
+        result = run([sys.executable, "scripts/check_kicad_artifacts.py", "--release"])
         self.assertEqual(result.returncode, 2, result.stdout)
 
         report = json.loads((ROOT / "build/reports/kicad_artifacts.json").read_text())
         inventory = report["release_evidence_inventory"]["erc transcript"]
         self.assertFalse(inventory["diagnostic_only_paths"])
-        self.assertTrue(inventory["release_credit_paths"])
-        self.assertTrue(inventory["release_credit_satisfied"])
+        self.assertFalse(inventory["release_credit_paths"])
+        self.assertFalse(inventory["release_credit_satisfied"])
+        self.assertTrue(inventory["missing_release_credit"])
 
-    def test_report_exposes_local_tmp_kicad_probe_when_present(self) -> None:
-        result = run(["python3", "scripts/check_kicad_artifacts.py", "--release"])
+    def test_report_exposes_kicad_probe_and_release_generation_boundary(self) -> None:
+        result = run([sys.executable, "scripts/check_kicad_artifacts.py", "--release"])
         self.assertEqual(result.returncode, 2, result.stdout)
 
         report = json.loads((ROOT / "build/reports/kicad_artifacts.json").read_text())
@@ -154,8 +156,8 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
         self.assertIn("probes", tool)
         self.assertIn("partial_artifact_generation_feasible", tool)
         self.assertIn("release_artifact_generation_feasible", tool)
-        self.assertTrue(tool["release_artifact_generation_feasible"])
-        self.assertEqual(tool["release_capable_source"], "local_tmp_appimage")
+        self.assertFalse(tool["release_artifact_generation_feasible"])
+        self.assertIsNone(tool["release_capable_source"])
         self.assertIn("non_destructive_local_unblock_commands", tool)
         for entry in report["blocker_groups"]["release_evidence"]:
             self.assertIn("generation_command", entry)
@@ -165,7 +167,7 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
         gerber.parent.mkdir(parents=True, exist_ok=True)
         gerber.write_text("G04 KiCad test gerber*\n", encoding="utf-8")
 
-        result = run(["python3", "scripts/check_kicad_artifacts.py", "--release"])
+        result = run([sys.executable, "scripts/check_kicad_artifacts.py", "--release"])
         self.assertEqual(result.returncode, 2, result.stdout)
 
         report = json.loads((ROOT / "build/reports/kicad_artifacts.json").read_text())
@@ -187,7 +189,7 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
         self.assertIn("fab_drawing", artifact_names)
 
     def test_diagnostic_generator_writes_machine_readable_non_release_inventory(self) -> None:
-        result = run(["python3", "scripts/generate_e1_demo_kicad_blocked_cli_evidence.py"])
+        result = run([sys.executable, "scripts/generate_e1_demo_kicad_blocked_cli_evidence.py"])
         self.assertEqual(result.returncode, 0, result.stdout)
 
         base = ROOT / "board/reports/fab/e1-demo-2026-05-17"

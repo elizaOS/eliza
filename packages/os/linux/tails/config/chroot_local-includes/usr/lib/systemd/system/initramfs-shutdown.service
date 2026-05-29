@@ -1,0 +1,12 @@
+[Unit]
+Description=Prepare /run/initramfs for shutdown
+Documentation=https://tails.net/contribute/design/memory_erasure/
+ConditionPathExists=!/run/initramfs/bin/sh
+
+[Service]
+RemainAfterExit=yes
+Type=oneshot
+ExecStart=/usr/local/lib/initramfs-restore
+
+[Install]
+WantedBy=multi-user.target

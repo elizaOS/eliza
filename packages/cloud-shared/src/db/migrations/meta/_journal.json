@@ -925,6 +925,27 @@
       "when": 1779408000000,
       "tag": "0132_legacy_milady_cores_disable",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1779408100000,
+      "tag": "0125_add_auth_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1779408200000,
+      "tag": "0133_add_agent_server_wallets_sandbox_agent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1779408300000,
+      "tag": "0134_auth_events_retention",
+      "breakpoints": true
     }
   ]
 }

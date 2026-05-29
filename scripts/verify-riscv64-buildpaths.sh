@@ -15,6 +15,8 @@
 #   bash scripts/verify-riscv64-buildpaths.sh --jobs 8                  # parallel
 #   bash scripts/verify-riscv64-buildpaths.sh --out reports/foo.md      # custom report path
 #   bash scripts/verify-riscv64-buildpaths.sh --keep-build              # don't rm build dirs at the end
+#   ELIZA_RISCV64_BOOTSTRAP_ZIG=0 bash scripts/verify-riscv64-buildpaths.sh
+#                                                                       # require zig on PATH/ZIG_BIN
 #
 # Exit code:
 #   0 — every package builds and every artifact validates rv64+lp64d
@@ -22,8 +24,8 @@
 #
 # Zig 0.13 vs 0.14:
 #   The Wave 1 RVV TUs (qjl_*_rvv.c, polar_*_rvv.c, tbq_*_rvv.c) expect
-#   `-march=rv64gcv1p0`, which Zig 0.14+'s clang accepts directly. On
-#   Zig 0.13 we drive the per-package escape hatches
+#   `-march=rv64gcv1p0`, which some Zig/LLVM releases accept directly.
+#   On releases that reject it, we drive the per-package escape hatches
 #   (QJL_RVV_COMPILE_OPTIONS / POLARQUANT_RVV_COMPILE_OPTIONS /
 #   TURBOQUANT_RVV_FLAGS) with a CPU name. TurboQuant uses
 #   `-mcpu=generic_rv64+v+m+a+f+d+c` rather than a named core
@@ -54,9 +56,110 @@ done
 
 mkdir -p "$(dirname "$OUT")"
 
+have_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+host_zig_platform() {
+    local os arch
+    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    arch="$(uname -m)"
+    case "$os:$arch" in
+        linux:x86_64|linux:amd64) echo "x86_64-linux";;
+        linux:aarch64|linux:arm64) echo "aarch64-linux";;
+        darwin:arm64|darwin:aarch64) echo "aarch64-macos";;
+        darwin:x86_64|darwin:amd64) echo "x86_64-macos";;
+        *)
+            echo ""
+            return 1
+            ;;
+    esac
+}
+
+sha256_file() {
+    if have_cmd sha256sum; then
+        sha256sum "$1" | awk '{ print $1 }'
+    else
+        shasum -a 256 "$1" | awk '{ print $1 }'
+    fi
+}
+
+bootstrap_zig() {
+    local version="${ELIZA_RISCV64_ZIG_VERSION:-0.14.1}"
+    local platform
+    platform="$(host_zig_platform)" || {
+        echo "[verify-riscv64] zig not on PATH and no bootstrap platform for $(uname -s)/$(uname -m)." >&2
+        return 1
+    }
+
+    if ! have_cmd curl || ! have_cmd python3; then
+        echo "[verify-riscv64] zig not on PATH; install Zig 0.13+ or provide curl+python3 for bootstrap." >&2
+        return 1
+    fi
+
+    local cache_dir="$repo_root/.tmp/riscv64-verify-zig"
+    local install_dir="$cache_dir/zig-$version-$platform"
+    local zig_bin="$install_dir/zig"
+    if [ -x "$zig_bin" ]; then
+        printf '%s\n' "$zig_bin"
+        return 0
+    fi
+
+    mkdir -p "$cache_dir"
+    local metadata archive expected actual top_dir
+    metadata="$(
+        python3 - "$version" "$platform" <<'PY'
+import json
+import sys
+import urllib.request
+
+version, platform = sys.argv[1], sys.argv[2]
+with urllib.request.urlopen("https://ziglang.org/download/index.json", timeout=30) as response:
+    index = json.load(response)
+try:
+    entry = index[version][platform]
+except KeyError:
+    raise SystemExit(f"missing Zig {version} metadata for {platform}")
+print(entry["tarball"])
+print(entry["shasum"])
+PY
+    )" || return 1
+    local tarball_url
+    tarball_url="$(printf '%s\n' "$metadata" | sed -n '1p')"
+    expected="$(printf '%s\n' "$metadata" | sed -n '2p')"
+    archive="$cache_dir/$(basename "$tarball_url")"
+
+    echo "[verify-riscv64] zig not on PATH; downloading Zig $version for $platform." >&2
+    curl -fsSL --retry 3 --retry-delay 2 -o "$archive" "$tarball_url"
+    actual="$(sha256_file "$archive")"
+    if [ "$actual" != "$expected" ]; then
+        echo "[verify-riscv64] Zig archive checksum mismatch: expected $expected got $actual" >&2
+        rm -f "$archive"
+        return 1
+    fi
+
+    rm -rf "$install_dir"
+    top_dir="$(tar -tf "$archive" | sed -n '1s#/.*##p')"
+    tar -xf "$archive" -C "$cache_dir"
+    if [ -z "$top_dir" ] || [ ! -x "$cache_dir/$top_dir/zig" ]; then
+        echo "[verify-riscv64] downloaded Zig archive did not contain an executable zig binary." >&2
+        return 1
+    fi
+    mv "$cache_dir/$top_dir" "$install_dir"
+    printf '%s\n' "$zig_bin"
+}
+
 # Probe toolchain.
-ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
-if [ -z "$ZIG_BIN" ]; then
+if [ -n "${ZIG_BIN:-}" ]; then
+    if [ ! -x "$ZIG_BIN" ]; then
+        echo "[verify-riscv64] ZIG_BIN is set but not executable: $ZIG_BIN" >&2
+        exit 1
+    fi
+elif have_cmd zig; then
+    ZIG_BIN="$(command -v zig)"
+elif [ "${ELIZA_RISCV64_BOOTSTRAP_ZIG:-1}" = "1" ]; then
+    ZIG_BIN="$(bootstrap_zig)"
+else
     echo "[verify-riscv64] zig not on PATH; install Zig 0.13+ and re-run." >&2
     exit 1
 fi
@@ -65,30 +168,33 @@ export ZIG_BIN
 ZIG_VERSION="$($ZIG_BIN version)"
 ZIG_MAJOR_MINOR="$(printf '%s' "$ZIG_VERSION" | awk -F. '{ print $1"."$2 }')"
 
-# Pick the right RVV recipe for the host Zig.
-# Zig 0.14+ accepts `-march=rv64gcv1p0` (default in each package's
-# CMakeLists). Zig 0.13 only accepts CPU names — sifive_x280 is the
-# smallest one with full RVV 1.0 support and runs the same intrinsics.
-case "$ZIG_MAJOR_MINOR" in
-    0.13)
-        RVV_OVERRIDE_REASON="Zig 0.13 (clang in 0.13 only accepts \`-mcpu=\`; using generic_rv64+v to avoid baked-in VLEN assumptions)"
-        QJL_RVV="-DQJL_RVV_COMPILE_OPTIONS=-mcpu=sifive_x280;-mabi=lp64d"
-        POLAR_RVV="-DPOLARQUANT_RVV_COMPILE_OPTIONS=-mcpu=sifive_x280;-mabi=lp64d"
-        # Use the generic rv64gc+V CPU rather than a named core: named cores
-        # (e.g. sifive_x280) advertise their VLEN (X280 = 512) via the
-        # zvl512b attribute, which makes LLVM's loop vectoriser emit
-        # unrolled m1/m2 sequences that silently truncate at VLEN=128
-        # (the spec minimum, and what qemu-user reports). The generic
-        # CPU has no zvl* attribute so vsetvli loops stay portable.
-        TBQ_RVV="-DTURBOQUANT_RVV_FLAGS=-mcpu=generic_rv64+v+m+a+f+d+c"
-        ;;
-    *)
-        RVV_OVERRIDE_REASON="Zig $ZIG_MAJOR_MINOR (default \`-march=rv64gcv1p0\` accepted)"
-        QJL_RVV=""
-        POLAR_RVV=""
-        TBQ_RVV=""
-        ;;
-esac
+# Pick the right RVV recipe for the host Zig. Several Zig/LLVM releases
+# disagree on whether `-march=rv64gcv1p0` or `-mcpu=...+v` is accepted, so
+# probe the installed compiler instead of assuming by version.
+if printf 'int main(void){return 0;}\n' \
+    | "$ZIG_BIN" cc -target riscv64-linux-musl -march=rv64gcv1p0 -mabi=lp64d -x c - -c -o /dev/null >/dev/null 2>&1; then
+    RVV_OVERRIDE_REASON="Zig $ZIG_MAJOR_MINOR accepts \`-march=rv64gcv1p0\`"
+    QJL_RVV=""
+    POLAR_RVV=""
+    TBQ_RVV=""
+else
+    RVV_OVERRIDE_REASON="Zig $ZIG_MAJOR_MINOR rejects \`-march=rv64gcv1p0\`; using \`-mcpu=generic_rv64+v\` RVV overrides"
+    QJL_RVV="-DQJL_RVV_COMPILE_OPTIONS=-mcpu=generic_rv64+v;-mabi=lp64d"
+    POLAR_RVV="-DELIZA_RISCV_RVV_FLAGS=-mcpu=generic_rv64+v;-mabi=lp64d"
+    TBQ_RVV="-DTURBOQUANT_RVV_FLAGS=-mcpu=generic_rv64+v+m+a+f+d+c"
+fi
+
+TOOL_WRAPPER_DIR="$repo_root/.tmp/riscv64-verify-tools"
+mkdir -p "$TOOL_WRAPPER_DIR"
+cat > "$TOOL_WRAPPER_DIR/zig-ar" <<EOF
+#!/usr/bin/env bash
+exec "$ZIG_BIN" ar "\$@"
+EOF
+cat > "$TOOL_WRAPPER_DIR/zig-ranlib" <<EOF
+#!/usr/bin/env bash
+exec "$ZIG_BIN" ranlib "\$@"
+EOF
+chmod +x "$TOOL_WRAPPER_DIR/zig-ar" "$TOOL_WRAPPER_DIR/zig-ranlib"
 
 QEMU_BIN="$(command -v qemu-riscv64-static 2>/dev/null || command -v qemu-riscv64 2>/dev/null || true)"
 
@@ -102,6 +208,7 @@ build_package() {
     local extra_flag="$2"
     local pkgdir="packages/native/plugins/$pkg"
     local builddir="$pkgdir/build/riscv64-verify"
+    local target
 
     if [ ! -f "$pkgdir/CMakeLists.txt" ]; then
         echo "fail: $pkgdir/CMakeLists.txt missing"
@@ -117,6 +224,8 @@ build_package() {
     if [ -n "$extra_flag" ]; then
         cmake -S "$pkgdir" -B "$builddir" \
             -DCMAKE_TOOLCHAIN_FILE="$repo_root/packages/native/cmake/toolchain-riscv64-linux-musl.cmake" \
+            -DCMAKE_AR="$TOOL_WRAPPER_DIR/zig-ar" \
+            -DCMAKE_RANLIB="$TOOL_WRAPPER_DIR/zig-ranlib" \
             "$extra_flag" > "$config_log" 2>&1 || {
             echo "fail: cmake configure (see $config_log)"
             return 1
@@ -124,15 +233,32 @@ build_package() {
     else
         cmake -S "$pkgdir" -B "$builddir" \
             -DCMAKE_TOOLCHAIN_FILE="$repo_root/packages/native/cmake/toolchain-riscv64-linux-musl.cmake" \
+            -DCMAKE_AR="$TOOL_WRAPPER_DIR/zig-ar" \
+            -DCMAKE_RANLIB="$TOOL_WRAPPER_DIR/zig-ranlib" \
             > "$config_log" 2>&1 || {
             echo "fail: cmake configure (see $config_log)"
             return 1
         }
     fi
-    cmake --build "$builddir" -j"$JOBS" > "$build_log" 2>&1 || {
-        echo "fail: cmake build (see $build_log)"
-        return 1
-    }
+    case "$pkg" in
+        qjl-cpu) target="qjl";;
+        polarquant-cpu) target="polarquant";;
+        turboquant-cpu) target="turboquant";;
+        silero-vad-cpp) target="silero_vad";;
+        *) target="";;
+    esac
+
+    if [ -n "$target" ]; then
+        cmake --build "$builddir" --target "$target" -j"$JOBS" > "$build_log" 2>&1 || {
+            echo "fail: cmake build (see $build_log)"
+            return 1
+        }
+    else
+        cmake --build "$builddir" -j"$JOBS" > "$build_log" 2>&1 || {
+            echo "fail: cmake build (see $build_log)"
+            return 1
+        }
+    fi
     echo "ok"
 }
 
@@ -147,7 +273,7 @@ inspect_artifacts() {
     # at both maxdepth-1 and maxdepth-2 is only counted once.
     {
         find "$builddir" -maxdepth 2 \( -name "*.a" -o -name "*.so" -o -name "*.so.*" \) -type f -print
-        find "$builddir" -maxdepth 1 -type f -executable \
+        find "$builddir" -maxdepth 1 -type f \( -perm -111 -o -perm -010 -o -perm -001 \) \
             ! -name "*.cmake" ! -name "Makefile" ! -name "*.txt" \
             ! -name "*.json" ! -name "*.log" ! -name "*.ninja" \
             -print
@@ -193,32 +319,69 @@ ar_members_are_rv64() {
     [ "$bad" -eq 0 ]
 }
 
+pkg_var_name() {
+    printf '%s_%s' "$1" "$(printf '%s' "$2" | tr '[:lower:]-' '[:upper:]_')"
+}
+
+set_pkg_value() {
+    local prefix="$1"
+    local pkg="$2"
+    local value="$3"
+    local name
+    name="$(pkg_var_name "$prefix" "$pkg")"
+    printf -v "$name" '%s' "$value"
+}
+
+get_pkg_value() {
+    local prefix="$1"
+    local pkg="$2"
+    local default="${3:-}"
+    local name
+    name="$(pkg_var_name "$prefix" "$pkg")"
+    eval "printf '%s' \"\${$name:-$default}\""
+}
+
+inc_pkg_value() {
+    local prefix="$1"
+    local pkg="$2"
+    local current
+    current="$(get_pkg_value "$prefix" "$pkg" 0)"
+    set_pkg_value "$prefix" "$pkg" "$((current + 1))"
+}
+
+smoke_name_for_pkg() {
+    case "$1" in
+        qjl-cpu) echo "qjl_int8_smoke";;
+        polarquant-cpu) echo "polar_simd_parity_test";;
+        turboquant-cpu) echo "turboquant_smoke";;
+        silero-vad-cpp) echo "silero_vad_stub_smoke";;
+        *) echo "";;
+    esac
+}
+
 # ── Build phase ───────────────────────────────────────────────────────
-declare -A BUILD_STATUS
 echo "[verify-riscv64] Zig: $ZIG_VERSION ($RVV_OVERRIDE_REASON)"
 echo "[verify-riscv64] Building qjl-cpu …"
-BUILD_STATUS[qjl-cpu]="$(build_package qjl-cpu "$QJL_RVV")"
-echo "[verify-riscv64]   $(echo "${BUILD_STATUS[qjl-cpu]}" | head -1)"
+set_pkg_value BUILD_STATUS qjl-cpu "$(build_package qjl-cpu "$QJL_RVV")"
+echo "[verify-riscv64]   $(get_pkg_value BUILD_STATUS qjl-cpu | head -1)"
 
 echo "[verify-riscv64] Building polarquant-cpu …"
-BUILD_STATUS[polarquant-cpu]="$(build_package polarquant-cpu "$POLAR_RVV")"
-echo "[verify-riscv64]   $(echo "${BUILD_STATUS[polarquant-cpu]}" | head -1)"
+set_pkg_value BUILD_STATUS polarquant-cpu "$(build_package polarquant-cpu "$POLAR_RVV")"
+echo "[verify-riscv64]   $(get_pkg_value BUILD_STATUS polarquant-cpu | head -1)"
 
 echo "[verify-riscv64] Building turboquant-cpu …"
-BUILD_STATUS[turboquant-cpu]="$(build_package turboquant-cpu "$TBQ_RVV")"
-echo "[verify-riscv64]   $(echo "${BUILD_STATUS[turboquant-cpu]}" | head -1)"
+set_pkg_value BUILD_STATUS turboquant-cpu "$(build_package turboquant-cpu "$TBQ_RVV")"
+echo "[verify-riscv64]   $(get_pkg_value BUILD_STATUS turboquant-cpu | head -1)"
 
 echo "[verify-riscv64] Building silero-vad-cpp …"
-BUILD_STATUS[silero-vad-cpp]="$(build_package silero-vad-cpp "")"
-echo "[verify-riscv64]   $(echo "${BUILD_STATUS[silero-vad-cpp]}" | head -1)"
+set_pkg_value BUILD_STATUS silero-vad-cpp "$(build_package silero-vad-cpp "")"
+echo "[verify-riscv64]   $(get_pkg_value BUILD_STATUS silero-vad-cpp | head -1)"
 
 # ── Inspect phase ─────────────────────────────────────────────────────
-declare -A ARTIFACT_OK
-declare -A ARTIFACT_BAD
 for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
-    ARTIFACT_OK[$pkg]=0
-    ARTIFACT_BAD[$pkg]=0
-    if [ "${BUILD_STATUS[$pkg]}" != "ok" ]; then continue; fi
+    set_pkg_value ARTIFACT_OK "$pkg" 0
+    set_pkg_value ARTIFACT_BAD "$pkg" 0
+    if [ "$(get_pkg_value BUILD_STATUS "$pkg")" != "ok" ]; then continue; fi
     while IFS= read -r f; do
         case "$f" in
             *CMakeFiles/*) continue;;
@@ -226,49 +389,42 @@ for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
         if [ -f "$f" ]; then
             if [[ "$f" == *.a ]]; then
                 if ar_members_are_rv64 "$f"; then
-                    ARTIFACT_OK[$pkg]=$((ARTIFACT_OK[$pkg]+1))
+                    inc_pkg_value ARTIFACT_OK "$pkg"
                 else
-                    ARTIFACT_BAD[$pkg]=$((ARTIFACT_BAD[$pkg]+1))
+                    inc_pkg_value ARTIFACT_BAD "$pkg"
                 fi
             elif is_riscv64_elf "$f"; then
-                ARTIFACT_OK[$pkg]=$((ARTIFACT_OK[$pkg]+1))
+                inc_pkg_value ARTIFACT_OK "$pkg"
             else
-                ARTIFACT_BAD[$pkg]=$((ARTIFACT_BAD[$pkg]+1))
+                inc_pkg_value ARTIFACT_BAD "$pkg"
             fi
         fi
     done < <(inspect_artifacts "$pkg")
 done
 
 # ── QEMU smoke phase (optional) ───────────────────────────────────────
-declare -A QEMU_RESULT
-declare -A QEMU_SMOKES
-QEMU_SMOKES[qjl-cpu]="qjl_int8_smoke"
-QEMU_SMOKES[polarquant-cpu]="polar_simd_parity_test"
-QEMU_SMOKES[turboquant-cpu]="turboquant_smoke"
-QEMU_SMOKES[silero-vad-cpp]="silero_vad_stub_smoke"
-
 run_smoke_under_qemu() {
     local pkg="$1"
     local smoke_name="$2"
     local smoke_path="packages/native/plugins/$pkg/build/riscv64-verify/$smoke_name"
     if [ -z "$QEMU_BIN" ]; then
-        QEMU_RESULT[$pkg]="skip-no-qemu"
+        set_pkg_value QEMU_RESULT "$pkg" "skip-no-qemu"
         return
     fi
     if [ ! -x "$smoke_path" ]; then
-        QEMU_RESULT[$pkg]="skip-no-smoke-binary"
+        set_pkg_value QEMU_RESULT "$pkg" "skip-no-smoke-binary"
         return
     fi
     local log="$smoke_path.qemu.log"
     if "$QEMU_BIN" "$smoke_path" > "$log" 2>&1; then
-        QEMU_RESULT[$pkg]="pass"
+        set_pkg_value QEMU_RESULT "$pkg" "pass"
     else
-        QEMU_RESULT[$pkg]="fail (exit $?; see $log)"
+        set_pkg_value QEMU_RESULT "$pkg" "fail (exit $?; see $log)"
     fi
 }
 
 for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
-    run_smoke_under_qemu "$pkg" "${QEMU_SMOKES[$pkg]}"
+    run_smoke_under_qemu "$pkg" "$(smoke_name_for_pkg "$pkg")"
 done
 
 # ── Report ────────────────────────────────────────────────────────────
@@ -286,10 +442,10 @@ done
     printf '%-20s | %-10s | %-15s | %s\n' "package" "build" "artifacts (ok/bad)" "qemu smoke"
     printf '%-20s | %-10s | %-15s | %s\n' "--------" "-----" "------------------" "-----------"
     for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
-        local_ok="${ARTIFACT_OK[$pkg]:-0}"
-        local_bad="${ARTIFACT_BAD[$pkg]:-0}"
+        local_ok="$(get_pkg_value ARTIFACT_OK "$pkg" 0)"
+        local_bad="$(get_pkg_value ARTIFACT_BAD "$pkg" 0)"
         printf '%-20s | %-10s | %3d / %-9d | %s\n' \
-            "$pkg" "${BUILD_STATUS[$pkg]}" "$local_ok" "$local_bad" "${QEMU_RESULT[$pkg]}"
+            "$pkg" "$(get_pkg_value BUILD_STATUS "$pkg")" "$local_ok" "$local_bad" "$(get_pkg_value QEMU_RESULT "$pkg")"
     done
     echo
     echo "## Per-package ELF inventory"
@@ -297,7 +453,7 @@ done
     for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
         echo "### $pkg"
         echo
-        if [ "${BUILD_STATUS[$pkg]}" != "ok" ]; then
+        if [ "$(get_pkg_value BUILD_STATUS "$pkg")" != "ok" ]; then
             echo "_Build did not succeed; see \`packages/native/plugins/$pkg/build/riscv64-verify.{config,build}.log\`._"
             echo
             continue
@@ -319,8 +475,8 @@ done
     echo
     verdict_fail=0
     for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
-        if [ "${BUILD_STATUS[$pkg]}" != "ok" ]; then verdict_fail=$((verdict_fail+1)); fi
-        if [ "${ARTIFACT_BAD[$pkg]:-0}" -gt 0 ]; then verdict_fail=$((verdict_fail+1)); fi
+        if [ "$(get_pkg_value BUILD_STATUS "$pkg")" != "ok" ]; then verdict_fail=$((verdict_fail+1)); fi
+        if [ "$(get_pkg_value ARTIFACT_BAD "$pkg" 0)" -gt 0 ]; then verdict_fail=$((verdict_fail+1)); fi
     done
     if [ "$verdict_fail" -eq 0 ]; then
         echo "All 4 native-plugin packages cross-compile to rv64gc / lp64d / RVC. RVV intrinsic TUs are included (gated behind \`*_HAVE_RVV=1\` at the dispatcher level). QEMU smoke status above is informational — without a \`qemu-riscv64-static\` binary the smoke phase is a clean SKIP."
@@ -349,7 +505,7 @@ fi
 # Exit code reflects the verdict.
 fail_count=0
 for pkg in qjl-cpu polarquant-cpu turboquant-cpu silero-vad-cpp; do
-    if [ "${BUILD_STATUS[$pkg]}" != "ok" ]; then fail_count=$((fail_count+1)); fi
-    if [ "${ARTIFACT_BAD[$pkg]:-0}" -gt 0 ]; then fail_count=$((fail_count+1)); fi
+    if [ "$(get_pkg_value BUILD_STATUS "$pkg")" != "ok" ]; then fail_count=$((fail_count+1)); fi
+    if [ "$(get_pkg_value ARTIFACT_BAD "$pkg" 0)" -gt 0 ]; then fail_count=$((fail_count+1)); fi
 done
 exit $fail_count

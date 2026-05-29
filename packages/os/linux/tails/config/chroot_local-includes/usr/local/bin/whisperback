@@ -1,0 +1,50 @@
+#!/usr/bin/python3 -I
+
+import os
+import subprocess
+import sys
+
+from tailslib import LIVE_USER_UID
+
+
+def assert_allowed_args(args):
+    """Ensure we only allow legit arguments and not e.g. --gtk-module,
+    as defense in depth.
+
+    As of the time I'm writing this, even without this check we're not
+    vulnerable to any known security issue, because we don't run
+    /usr/bin/whisperback with elevated privileges. However, we
+    commonly use this very same sudo+wrapper setup to run a GUI
+    program with elevated privileges, and we might end up doing the
+    same for WhisperBack at some point, for whatever reason. If we
+    ever do that, since we need to allow arbitrary arguments in the
+    sudo configuration, if we still allowed passing --gtk-module, then
+    this would be a LPE similar to #20709 and #20710. Let's
+    pro-actively avoid this.
+
+    Only legit argument is: the absolute path to a filename.
+
+    """
+    if len(args) == 0:
+        return
+    if len(args) > 1:
+        raise RuntimeError
+    if not args[0].startswith("/"):
+        raise RuntimeError
+
+
+def main():
+    args = sys.argv[1:]
+    assert_allowed_args(args)
+    if os.getuid() == LIVE_USER_UID:
+        os.execv("/usr/bin/sudo", ["sudo", "-n", "/usr/local/bin/whisperback", *args])
+    if os.getuid() != 0:
+        sys.exit(1)
+    debugging_info = subprocess.check_output(["/usr/local/sbin/tails-debugging-info"])
+    cmd = ["/usr/local/lib/run-with-user-env", "/usr/bin/whisperback", *args]
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    p.communicate(input=debugging_info)
+
+
+if __name__ == "__main__":
+    main()

@@ -15,7 +15,6 @@
     "tsBuildInfoFile": ".tsbuildinfo",
     "types": ["node"],
     "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
       "@/billing": ["./src/billing/index.ts"],
       "@/billing/*": ["./src/billing/*"],

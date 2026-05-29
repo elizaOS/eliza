@@ -21,7 +21,6 @@ const DEFAULT_SAFE_DOMAINS: ReadonlyArray<string> = [
 	"gist.githubusercontent.com",
 	"clawhub.ai",
 	"clawhub.com",
-	"skillsmp.com",
 	"agentskills.io",
 	"npmjs.com",
 	"npmjs.org",

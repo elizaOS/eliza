@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-mcp",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
   "type": "module",
   "main": "dist/node/index.js",
@@ -44,7 +44,7 @@
     "dev": "bun --hot build.ts",
     "clean": "rm -rf dist .turbo",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

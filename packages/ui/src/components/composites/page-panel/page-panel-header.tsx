@@ -16,7 +16,7 @@ export function MetaPill({
   return (
     <span
       className={cn(
-        "inline-flex min-h-6 items-center rounded-sm px-2.5 py-1 text-xs-tight shadow-xs",
+        "inline-flex min-h-6 items-center rounded-sm px-2.5 py-1 text-xs-tight ",
         tone === "accent"
           ? "border border-accent/55 bg-accent-subtle font-bold text-txt-strong"
           : tone === "strong"
@@ -108,7 +108,7 @@ export function SummaryCard({
   return (
     <div
       className={cn(
-        "rounded-sm border border-border bg-card p-4 shadow-xs",
+        "rounded-sm border border-border bg-card p-4 ",
         compact && "p-3.5",
         className,
       )}
@@ -121,7 +121,7 @@ export function PageActionRail({ className, ...props }: PageActionRailProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-card shadow-xs",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-border bg-card ",
         className,
       )}
       {...props}

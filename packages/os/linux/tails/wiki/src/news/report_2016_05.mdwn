@@ -1,0 +1,116 @@
+[[!meta title="Tails report for May, 2016"]]
+[[!meta date="Tue, 21 Jun 2016 17:17:51 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Code
+====
+
+- segfault sent his
+  first and
+  second
+  report on his GSoC on *Tails Server*.
+
+- We've prepared a patched version of Icedove and Torbirdy for
+  the next Tails release. Icedove users can now use the automatic
+  configuration wizard and by default, requests will be done only
+  over secure protocols.
+  Other Icedove improvements include using a hkps keyserver in Enigmail,
+  default to POP if persistence is enabled, IMAP if not. We've disabled remote
+  email account creation. All our patches are being upstreamed to Thunderbird
+  and Torbirdy.
+
+
+Documentation and website
+=========================
+
+- sajolida finished replacing the old installation instructions we had before
+  the installation assistant. This implied rewriting our instructions for
+  OpenPGP verification which now include a direct
+  download link. We are [[!tails_ticket 11024 desc="still discussing"]] how to
+  better link this page to make it easier to find.
+
+- emmapeel documented how to exchange files with I2P
+  Browser.
+
+- sajolida sent some statistics on the hits on our
+  website.
+
+User experience
+===============
+
+- We discussed the design of segfault's second prototype for *Tails
+  Server*.
+
+- We discussed the design of the **Unlock** and **Relock** widgets of the
+  new *Tails Greeter*.
+
+- kurono wrote a simplified interface for *Tails
+  Installer*
+  that would allow removing the splash screen and asked for reviews of
+  his design.
+
+Infrastructure
+==============
+
+- Our channel #tails for user support moved from IRC to [[XMPP|xmpp://tails@conference.riseup.net]]. For further details read our [[support page|support]].
+
+- The new mirror pool is now used by Tails Upgrader, by users who download Tails without using our Download And Verification Extension for Firefox (aka. DAVE), for any download that is not supported by DAVE (e.g. release candidates), and for downloads started from a web browser that has JavaScript disabled. So, in summary two of the use cases of this work are covered already, and only the "downloading with DAVE" use case is left to complete. As of May 31st we now have 36 active mirrors.
+
+Funding
+=======
+
+- [Mediapart](https://www.mediapart.fr/), a French online investigative journal
+  that uses Tails for their work, is the first media organization to answer
+  positively our call to support Tails financially. The terms of our
+  partnership are still being discussed.
+
+- We submitted a proposal to fund reproducible builds to the [Mozilla Open
+  Source Support](https://blog.mozilla.org/blog/2016/05/11/mozilla-open-source-support-moss-now-open-to-all-projects/).
+
+Outreach
+========
+
+Upcoming events
+---------------
+
+- jvoisin and fr33tux are going to give a talk on Tails at Nuit du Hack
+
+On-going discussions
+====================
+
+Press and testimonials
+======================
+
+Translation
+===========
+
+- The documentation is now also available in Italian language. We welcome the Italian translation team, thanks for all of the work done!
+
+**Overall translation of the website**
+
+* de: 50% (2648) strings translated, 4% strings fuzzy, 44% words translated
+* fa: 47% (2492) strings translated, 7% strings fuzzy, 54% words translated
+* fr: 64% (3376) strings translated, 4% strings fuzzy, 65% words translated
+* it: 17% (896) strings translated, 2% strings fuzzy, 17% words translated
+* pt: 31% (1660) strings translated, 6% strings fuzzy, 29% words translated
+
+Total original words: 53532
+
+**Core pages of the website**
+
+* de: 79% (1432) strings translated, 6% strings fuzzy, 79% words translated
+* fa: 40% (726) strings translated, 9% strings fuzzy, 42% words translated
+* fr: 74% (1341) strings translated, 5% strings fuzzy, 77% words translated
+* it: 49% (886) strings translated, 6% strings fuzzy, 56% words translated
+* pt: 55% (1001) strings translated, 9% strings fuzzy, 55% words translated
+
+Total original words: 16492
+
+Metrics
+=======
+
+* Tails has been started more than 541.950 times this month. This makes 17.482 boots a day on average.
+* 6359 downloads of the OpenPGP signature of Tails ISO from our website.
+* 112 bug reports were received through WhisperBack.

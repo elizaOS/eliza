@@ -38,8 +38,8 @@ done
 
 mkdir -p "${OUT_DIR}"
 
-if [[ "${PROFILE}" != "mock" && "${PROFILE}" != "groq" && "${PROFILE}" != "elevenlabs" && "${PROFILE}" != "local-cerebras" ]]; then
-  echo "[voicebench] Unsupported profile: ${PROFILE}. Expected mock, groq, elevenlabs, or local-cerebras." >&2
+if [[ "${PROFILE}" != "mock" && "${PROFILE}" != "groq" && "${PROFILE}" != "elevenlabs" && "${PROFILE}" != "local-cerebras" && "${PROFILE}" != "local-eliza1" ]]; then
+  echo "[voicebench] Unsupported profile: ${PROFILE}. Expected mock, groq, elevenlabs, local-cerebras, or local-eliza1." >&2
   exit 1
 fi
 
@@ -158,16 +158,26 @@ if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
   done
 fi
 
-if [[ "${PROFILE}" == "local-cerebras" && -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
+if [[ ( "${PROFILE}" == "local-cerebras" || "${PROFILE}" == "local-eliza1" ) && -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
   GENERATED_DIR="${SCRIPT_DIR}/shared/generated"
   GENERATED_DATASET="${GENERATED_DIR}/voiceagentbench-single.json"
   mkdir -p "${GENERATED_DIR}"
-  PYTHONPATH="${ROOT_DIR}/packages/benchmarks/voiceagentbench:${PYTHONPATH:-}" python3 - "${GENERATED_DIR}" "${GENERATED_DATASET}" <<'PY'
+  # For local-eliza1 the upstream HF dataset isn't required: synthesize audio
+  # from fixture transcripts via macOS `say`.
+  if [[ "${PROFILE}" == "local-eliza1" ]]; then
+    export VOICEAGENTBENCH_SYNTHESIZE_AUDIO="${VOICEAGENTBENCH_SYNTHESIZE_AUDIO:-1}"
+    export VOICEAGENTBENCH_DATA_PATH="${VOICEAGENTBENCH_DATA_PATH:-${ROOT_DIR}/packages/benchmarks/voiceagentbench/fixtures/test_tasks.jsonl}"
+  fi
+  PYTHONPATH="${ROOT_DIR}/packages/benchmarks/voiceagentbench:${ROOT_DIR}/packages/benchmarks/lifeops-bench:${PYTHONPATH:-}" python3 - "${GENERATED_DIR}" "${GENERATED_DATASET}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 from elizaos_voiceagentbench.dataset import Suite, load_tasks
+
+import re as _re
+
+_TOOL_RE = _re.compile(r"\s*\[tool:.*?\]\s*", _re.DOTALL)
 
 out_dir = Path(sys.argv[1])
 manifest = Path(sys.argv[2])
@@ -180,6 +190,9 @@ if query.audio_bytes is None:
     raise SystemExit(f"VoiceAgentBench task {task.task_id} has no audio bytes")
 audio_path = out_dir / f"{task.task_id}.wav"
 audio_path.write_bytes(query.audio_bytes)
+# Tool annotations like `[tool: ...]` are scoring hints, not spoken words, so
+# strip them from the expected transcript to keep the WER/accuracy metric fair.
+expected_text = _TOOL_RE.sub(" ", query.transcript).strip()
 manifest.write_text(
     json.dumps(
         {
@@ -188,7 +201,7 @@ manifest.write_text(
                 {
                     "id": task.task_id,
                     "audioPath": str(audio_path),
-                    "expectedText": query.transcript,
+                    "expectedText": expected_text,
                 }
             ],
         },
@@ -231,7 +244,23 @@ if [[ -n "${DATASET}" ]]; then
   COMMON_ARGS+=("--dataset=${DATASET}")
 fi
 
-if [[ "${PROFILE}" == "local-cerebras" ]]; then
+if [[ "${PROFILE}" == "local-eliza1" ]]; then
+  if [[ -z "${CEREBRAS_API_KEY:-}" ]]; then
+    echo "[voicebench] CEREBRAS_API_KEY is required for --profile=local-eliza1." >&2
+    exit 1
+  fi
+  ELIZA1_CLI="${ELIZA1_ASR_CLI:-${ELIZA1_LLAMA_BIN_DIR:-${HOME}/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused}/llama-mtmd-cli}"
+  ELIZA1_MODEL="${ELIZA1_ASR_MODEL:-${ELIZA1_ASR_DIR:-${HOME}/.eliza/local-inference/models/eliza-1-2b.bundle/asr}/eliza-1-asr.gguf}"
+  ELIZA1_MMPROJ="${ELIZA1_ASR_MMPROJ:-${ELIZA1_ASR_DIR:-${HOME}/.eliza/local-inference/models/eliza-1-2b.bundle/asr}/eliza-1-asr-mmproj.gguf}"
+  if [[ ! -x "${ELIZA1_CLI}" || ! -f "${ELIZA1_MODEL}" || ! -f "${ELIZA1_MMPROJ}" ]]; then
+    echo "[voicebench] eliza-1 llama-mtmd-cli + ASR model + mmproj are required for --profile=local-eliza1." >&2
+    exit 1
+  fi
+  if [[ ! -x "${VOICEBENCH_SAY_BIN:-/usr/bin/say}" ]]; then
+    echo "[voicebench] macOS say is required for --profile=local-eliza1." >&2
+    exit 1
+  fi
+elif [[ "${PROFILE}" == "local-cerebras" ]]; then
   if [[ -z "${CEREBRAS_API_KEY:-}" ]]; then
     echo "[voicebench] CEREBRAS_API_KEY is required for --profile=local-cerebras." >&2
     exit 1
@@ -271,6 +300,11 @@ echo "[voicebench] elevenlabs-model=${ELEVENLABS_MODEL_ID} voice=${ELEVENLABS_VO
 if [[ "${PROFILE}" == "local-cerebras" ]]; then
   echo "[voicebench] local-cerebras-model=${CEREBRAS_MODEL:-gpt-oss-120b}"
   echo "[voicebench] local-stt=faster-whisper model=${VOICEBENCH_FASTER_WHISPER_MODEL:-tiny.en}"
+  echo "[voicebench] local-tts=${VOICEBENCH_SAY_BIN:-/usr/bin/say}"
+fi
+if [[ "${PROFILE}" == "local-eliza1" ]]; then
+  echo "[voicebench] local-eliza1-model=${CEREBRAS_MODEL:-gpt-oss-120b}"
+  echo "[voicebench] local-stt=eliza-1-asr (llama-mtmd-cli)"
   echo "[voicebench] local-tts=${VOICEBENCH_SAY_BIN:-/usr/bin/say}"
 fi
 

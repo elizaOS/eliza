@@ -14,7 +14,6 @@ import numpy as np
 from eliza_robot.rl.meta.text_encoder import TextEncoder
 from eliza_robot.rl.skills.base import SkillParams
 
-
 # Regex pattern entries: ``(pattern, skill_name, default_params_factory)``.
 _REGEX_PATTERNS: list[tuple[str, str, dict]] = [
     # Walk commands.
@@ -27,6 +26,12 @@ _REGEX_PATTERNS: list[tuple[str, str, dict]] = [
     (r"walk", "walk", {"speed": 0.5}),
     (r"go\s+forward", "walk", {"speed": 0.5, "direction": 0.0}),
     (r"move\s+forward", "walk", {"speed": 0.5, "direction": 0.0}),
+    # Sidestep / strafe commands (lateral). direction: +1 = left, -1 = right
+    # (matches MuJoCo body frame where +y is the robot's left). These must
+    # precede the turn patterns so "step left" strafes rather than turns.
+    (r"(sidestep|strafe|shuffle|slide|step)\s+left", "strafe", {"direction": 1.0}),
+    (r"(sidestep|strafe|shuffle|slide|step)\s+right", "strafe", {"direction": -1.0}),
+    (r"sidestep", "strafe", {"direction": 1.0}),
     # Turn commands.
     (r"turn\s+left", "turn", {"direction": -1.0}),
     (r"turn\s+right", "turn", {"direction": 1.0}),
@@ -57,6 +62,7 @@ _COMPILED_PATTERNS = [
 SKILL_DESCRIPTIONS: dict[str, str] = {
     "walk": "walk forward, move, go, locomotion",
     "turn": "turn, rotate, spin, change direction",
+    "strafe": "sidestep, strafe, step sideways, shuffle left or right",
     "stand": "stop, stand still, halt, freeze",
     "wave": "wave hand, greet, say hello",
     "bow": "bow, bend forward",

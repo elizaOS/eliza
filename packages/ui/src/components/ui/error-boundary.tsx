@@ -42,7 +42,7 @@ export class ErrorBoundary extends React.Component<
         return this.props.fallback(this.state.error, this.resetErrorBoundary);
       }
       return (
-        <div className="flex flex-col items-center justify-center gap-3 p-6 text-center border border-destructive/30 bg-destructive/5 rounded-md">
+        <div className="flex flex-col items-center justify-center gap-3 p-6 text-center border border-destructive/30 bg-destructive/5 rounded-sm">
           <p className="text-sm font-semibold text-destructive">
             {this.props.errorLabel ?? "Something went wrong"}
           </p>
@@ -53,7 +53,7 @@ export class ErrorBoundary extends React.Component<
             type="button"
             variant="outline"
             size="sm"
-            className="rounded-md text-xs"
+            className="rounded-sm text-xs"
             onClick={this.resetErrorBoundary}
           >
             {this.props.retryLabel ?? "Try Again"}

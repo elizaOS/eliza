@@ -59,7 +59,13 @@ beforeAll(() => {
         return;
       }
 
-      const url = new URL(req.url!, "http://localhost");
+      if (!req.url) {
+        res.writeHead(400);
+        res.end("Missing request URL");
+        return;
+      }
+
+      const url = new URL(req.url, "http://localhost");
 
       // Route: GET /api/xr/view-host/:id
       const match = url.pathname.match(/^\/api\/xr\/view-host\/(.+)$/);

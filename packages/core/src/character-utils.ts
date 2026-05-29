@@ -4,9 +4,6 @@
  * Utilities for managing character secrets, plugins, and model provider detection.
  * These are immutable operations that return new character objects.
  *
- * Note: Secrets are stored in character.settings.secrets for compatibility
- * with the Eliza runtime and existing character files.
- *
  * @module character-utils
  */
 
@@ -28,46 +25,16 @@ export const MODEL_PROVIDER_SECRETS = _MODEL_PROVIDER_SECRETS;
 
 export { CHANNEL_SECRETS };
 
-/**
- * Common secret keys that are typically imported from environment variables.
- * These include API keys for various services the agent may use.
- * Based on CANONICAL_SECRET_KEYS but filtered to commonly used keys.
- */
-export const COMMON_SECRET_KEYS = [
-	"ANTHROPIC_API_KEY",
-	"OPENAI_API_KEY",
-	"GOOGLE_API_KEY",
-	"GOOGLE_GENERATIVE_AI_API_KEY",
-	"GROQ_API_KEY",
-	"OPENROUTER_API_KEY",
-	"XAI_API_KEY",
-	"MISTRAL_API_KEY",
-	"COHERE_API_KEY",
-	"TOGETHER_API_KEY",
-	"FIREWORKS_API_KEY",
-	"PERPLEXITY_API_KEY",
-	"DEEPSEEK_API_KEY",
-	"ZAI_API_KEY",
-	"MOONSHOT_API_KEY",
-	"DISCORD_BOT_TOKEN",
-	"DISCORD_APPLICATION_ID",
-	"TELEGRAM_BOT_TOKEN",
-	"SLACK_BOT_TOKEN",
-	"SLACK_APP_TOKEN",
-	"ELEVENLABS_API_KEY",
-	"ENCRYPTION_SALT",
-];
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECRET MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Get a secret value from character.settings.secrets, falling back to process.env.
+ * Get a secret value from character.settings.secrets.
  *
  * @param character - The character to get the secret from
  * @param key - The secret key to look up
- * @returns The secret value, or null if not found in either location
+ * @returns The secret value, or null if not found
  */
 export function getCharacterSecret(
 	character: Character,
@@ -82,8 +49,7 @@ export function getCharacterSecret(
 		return value;
 	}
 
-	// Fallback to process.env
-	return process.env[key] ?? null;
+	return null;
 }
 
 /**
@@ -115,7 +81,7 @@ export function setCharacterSecret(
 }
 
 /**
- * Check if a secret exists in character.settings.secrets or process.env.
+ * Check if a secret exists in character.settings.secrets.
  *
  * @param character - The character to check
  * @param key - The secret key to look for
@@ -160,51 +126,6 @@ export function listCharacterSecretKeys(character: Character): string[] {
 		| Record<string, string>
 		| undefined;
 	return Object.keys(secrets ?? {});
-}
-
-/**
- * Sync character secrets to process.env. Existing environment variables
- * are not overwritten.
- *
- * @param character - The character whose secrets to sync
- * @returns The number of secrets that were synced
- */
-export function syncCharacterSecretsToEnv(character: Character): number {
-	let synced = 0;
-	const secrets = (character.settings?.secrets as Record<string, string>) ?? {};
-
-	for (const [key, value] of Object.entries(secrets)) {
-		if (value && typeof value === "string" && !process.env[key]) {
-			process.env[key] = value;
-			synced++;
-		}
-	}
-
-	return synced;
-}
-
-/**
- * Import secrets from process.env into character.settings.secrets.
- * Existing character secrets take priority and are not overwritten.
- *
- * @param character - The character to import secrets into
- * @param keys - Array of environment variable keys to import
- * @returns A new character with the imported secrets
- */
-export function importSecretsFromEnv(
-	character: Character,
-	keys: string[],
-): Character {
-	const envSecrets: Record<string, string> = {};
-
-	for (const key of keys) {
-		const value = process.env[key];
-		if (value) {
-			envSecrets[key] = value;
-		}
-	}
-
-	return mergeCharacterSecrets(character, envSecrets);
 }
 
 /**
@@ -305,7 +226,6 @@ export function hasCharacterPlugin(
 
 /**
  * Detect which AI model provider is configured based on available API keys.
- * Checks character.secrets first, then falls back to process.env.
  *
  * @param character - The character to check
  * @returns The provider name (e.g., "anthropic", "openai") or null if none found

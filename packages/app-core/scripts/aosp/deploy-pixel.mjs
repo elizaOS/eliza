@@ -6,7 +6,7 @@
 //   1. Build the fused libllama + libelizainference for the target ABI
 //      (arm64-v8a by default — `android-arm64-vulkan-fused`), via
 //      compile-libllama.mjs (which carries the omnivoice-merged graft + the
-//      DFlash drafter-arch + the metal/vulkan/cpu kernel patches). x86_64 for
+//      MTP drafter-arch + the metal/vulkan/cpu kernel patches). x86_64 for
 //      a cvd target.
 //   2. Stage them + the bundled models into the AOSP vendor tree
 //      (sync-to-aosp / stage-default-models), build the privileged APK
@@ -18,7 +18,7 @@
 //      a real arm64 device per its header: cvd reachable, APK installed,
 //      service starts, /api/health, bearer token, chat round-trip, local-not-
 //      cloud). With --voice it additionally drives a voice-pipeline check
-//      (bargein-style mic→VAD→ASR→DFlash text→TTS round-trip via the
+//      (bargein-style mic→VAD→ASR→MTP text→TTS round-trip via the
 //      on-device /api/local-inference voice endpoint) and reports TTFT.
 //
 // HONESTY: this script orchestrates the existing primitives — it does not
@@ -326,7 +326,7 @@ async function main(argv = process.argv.slice(2)) {
     if (args.voice) {
       console.log(
         "[deploy-pixel] (dry-run) would run the on-device voice round-trip check " +
-          "(mic→VAD→Qwen3-ASR→DFlash text→OmniVoice TTS) via the local-inference voice endpoint, " +
+          "(mic→VAD→Qwen3-ASR→MTP text→OmniVoice TTS) via the local-inference voice endpoint, " +
           "reporting TTFT-from-utterance-end.",
       );
     }
@@ -341,7 +341,7 @@ async function main(argv = process.argv.slice(2)) {
   if (args.voice) {
     // The on-device voice round-trip: hit the app's local-inference voice
     // endpoint with a short PCM clip and assert it transcribes + replies +
-    // synthesizes (the in-process mic→VAD→ASR→DFlash text→TTS path). The
+    // synthesizes (the in-process mic→VAD→ASR→MTP text→TTS path). The
     // app exposes this under /api/local-inference/voice-smoke when ELIZA_-
     // LOCAL_VOICE_SMOKE=1; deploy-pixel sets it on launch via an am extra.
     // If the endpoint isn't present (older app build), this is a soft skip.

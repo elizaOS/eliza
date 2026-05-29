@@ -242,9 +242,9 @@ export function UploadZone({
         onChange={handleFileSelect}
       />
       <div
-        className={`rounded-xl border px-3 py-3 transition-colors ${
+        className={`rounded-sm border px-3 py-3 transition-colors ${
           dragOver
-            ? "border-accent/45 bg-accent/8 shadow-sm"
+            ? "border-accent/45 bg-accent/8 "
             : "border-border/35 bg-card/62"
         } ${uploading ? "opacity-60" : ""}`}
       >
@@ -253,7 +253,7 @@ export function UploadZone({
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9 rounded-lg"
+              className="h-9 w-9 rounded-sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               aria-label={t("documentsview.ChooseFiles", {
@@ -268,7 +268,7 @@ export function UploadZone({
             <Button
               variant="outline"
               size="icon"
-              className={`h-9 w-9 rounded-lg ${
+              className={`h-9 w-9 rounded-sm ${
                 showUrlInput ? "border-accent/45 bg-accent/12 text-txt" : ""
               }`}
               onClick={() => setShowUrlInput((current) => !current)}
@@ -285,7 +285,7 @@ export function UploadZone({
             <Button
               variant="outline"
               size="icon"
-              className={`h-9 w-9 rounded-lg ${
+              className={`h-9 w-9 rounded-sm ${
                 showTextInput ? "border-accent/45 bg-accent/12 text-txt" : ""
               }`}
               onClick={() => setShowTextInput((current) => !current)}

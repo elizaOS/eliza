@@ -46,7 +46,7 @@ class WidgetErrorBoundary extends Component<
     if (this.state.error) {
       return (
         <div
-          className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
+          className="rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
           data-testid={`widget-error-${this.props.widgetId}`}
         >
           Widget "{this.props.widgetId}" failed to render.
@@ -130,7 +130,7 @@ export function WidgetHost({
           return (
             <WidgetErrorBoundary key={widgetKey} widgetId={widgetKey}>
               <div
-                className="rounded-lg border border-border/60 bg-bg-accent/25 px-3 py-3 text-xs text-muted"
+                className="rounded-sm border border-border/60 bg-bg-accent/25 px-3 py-3 text-xs text-muted"
                 data-testid={`widget-uispec-${declaration.id}`}
               >
                 {declaration.label} (declarative widget)

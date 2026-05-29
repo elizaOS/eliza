@@ -67,7 +67,7 @@ export function SlotAssignments({
 
   if (installed.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+      <div className="rounded-sm border border-dashed border-border p-4 text-sm text-muted-foreground">
         Download or scan at least one model to use local inference.
       </div>
     );
@@ -90,7 +90,7 @@ export function SlotAssignments({
             return (
               <label
                 key={slot}
-                className="rounded-xl border border-border bg-card p-3 flex flex-col gap-1.5"
+                className="rounded-sm border border-border bg-card p-3 flex flex-col gap-1.5"
               >
                 <span className="text-sm font-medium">{label}</span>
                 <span className="text-xs text-muted-foreground">
@@ -102,7 +102,7 @@ export function SlotAssignments({
                   onChange={(e) =>
                     void handleChange(slot, e.target.value || null)
                   }
-                  className="mt-1 rounded-md border border-border bg-bg/50 px-2 py-1.5 text-sm"
+                  className="mt-1 rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm"
                 >
                   <option value="">Auto</option>
                   {installed.map((m) => (

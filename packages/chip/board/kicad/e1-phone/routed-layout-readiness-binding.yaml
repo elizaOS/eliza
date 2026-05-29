@@ -195,6 +195,7 @@ cross_checks:
   fail_closed_until_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance_exist: true
 
 release_blockers:
+  - routed KiCad PCB source is missing
   - production routed KiCad PCB source is present only as non-release local candidate evidence
   - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder scaffold
   - local routed KiCad candidate has copper segments but no release-approved zones, DRC, or signoff

@@ -1,0 +1,128 @@
+[[!meta title="Tails report for April, 2019"]]
+[[!meta date="Mon, 13 May 2019 16:25:15 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* Tails 3.14 is [[scheduled for May 21|contribute/calendar]].
+
+Code
+====
+
+- The Foundations
+  Team met for
+  a sprint focused on porting Tails to Debian 10 (Buster):
+  [report](https://lists.autistici.org/message/20190408.075929.1c2952c0.en.html),
+  [next
+  steps](https://lists.autistici.org/message/20190429.091241.82e34497.en.html).
+- We finalized our criteria for including dictionaries, fonts and language packs,
+  which will be reflected in Tails 3.14.
+- We prototyped a USB image with Secure Boot support and GRUB, in order
+  to better understand what implementation difficulties we should expect.
+- We
+  [submitted](https://ikiwiki.info/todo/_Add_ikiwiki_PO-Plugin_to_ignore_languages/)
+  to ikiwiki upstream a branch that makes it keep PO files up-to-date
+  for a set of languages that are not ready to be enabled and visible
+  on the live website yet. This will allow us to merge into our main
+  Git repository changes made via our upcoming Weblate-based
+  translation platform, which supports languages whose
+  work-in-progress translation is not ready for prime-time yet.
+- We
+  [uploaded](https://tracker.debian.org/news/1038188/accepted-gnome-shell-3302-6-source-into-unstable/)
+  to Debian a few fixes for regressions in the GNOME on-screen keyboard.
+
+Hot topics on our help desk
+===========================
+
+1. Some users reported losing the access to their persistent volume ([#10976](https://redmine.tails.boum.org/code/issues/10976))
+1. A few reported the "USB stick becomes unbootable boot after first boot" issue  
+([#16389](https://redmine.tails.boum.org/code/issues/16389))
+1. Some issues caused by partially applied incremental upgrades ([#14754](https://redmine.tails.boum.org/code/issues/14754))
+
+Infrastructure
+==============
+
+- The Foundations Team started experimenting with GitLab for
+  merge requests.
+- We started looking into how GitLab could work for our issues
+  tracking and drafted a rough plan.
+
+Funding
+=======
+
+- We started working on a proposal for [Mozilla Open Source Support
+  Awards](https://www.mozilla.org/en-US/moss/).
+
+Outreach
+========
+
+Past events
+-----------
+
+- sajolida, moire, and emmapeel were at the [Internet Freedom
+  Festival](https://internetfreedomfestival.org/) on April 1&ndash;5 in
+  Valencia, Spain.
+
+  There, sajolida presented a workshop on "Creating
+  usable tools from day one with paper
+  prototyping".
+
+- [carlosm2](https://twitter.com/dospesosinc) held 2 workshops about Tails in Mexico:
+
+  - On [April 13](https://twitter.com/dospesosinc/status/1115675448753573888) at the Colima Hacklab
+  - On April 25 at UNAM, Ciudad de Mexico
+
+- There was a [Tails workshop on April 27 in Vienna](https://abcfestvienna.noblogs.org/post/2019/04/11/tails-workshop-saturday-4-pm/) as part of the Anarchist Black Cross festival
+
+Upcoming events
+---------------
+
+- Jesús Marín García will present 2 workshops about Tails in May in the
+  Comunidad Valenciana, Spain:
+
+  - On [May 4](https://hackandbeers.es/events/hack-beers-castellon-vol-2/) at Hack and Beers in Castellón de la Plana
+  - On [May 11](https://vlctechfest.org/) at VLCTechFest in Valencia
+
+On-going discussions
+====================
+
+- We [studied and narrowed down our
+  options](https://lists.autistici.org/message/20190429.094536.22d3598f.en.html)
+  regarding the future of Electrum in Tails. It seems there will be
+  a way forward, although it's unclear at this point how much effort
+  it will require from us.
+
+Translations
+============
+
+## All the website
+
+  - de: 46% (2619) strings translated, 8% strings fuzzy, 43% words translated
+  - es: 53% (3010) strings translated, 4% strings fuzzy, 44% words translated
+  - fa: 33% (1875) strings translated, 10% strings fuzzy, 34% words translated
+  - fr: 93% (5259) strings translated, 1% strings fuzzy, 93% words translated
+  - it: 34% (1939) strings translated, 6% strings fuzzy, 30% words translated
+  - pt: 27% (1513) strings translated, 8% strings fuzzy, 22% words translated
+
+Total original words: 60175
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 70% (1248) strings translated, 12% strings fuzzy, 73% words translated
+  - es: 80% (1412) strings translated, 10% strings fuzzy, 81% words translated
+  - fa: 34% (615) strings translated, 13% strings fuzzy, 33% words translated
+  - fr: 98% (1753) strings translated, 1% strings fuzzy, 99% words translated
+  - it: 62% (1107) strings translated, 17% strings fuzzy, 65% words translated
+  - pt: 44% (794) strings translated, 14% strings fuzzy, 48% words translated
+
+Total original words: 1650
+
+Metrics
+=======
+
+* Tails has been started more than 733 234 times this month. This makes 24 441 boots a day on average.
+* 7 336 downloads of the OpenPGP signature of a Tails USB image or ISO from our website.
+

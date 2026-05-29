@@ -1,0 +1,22 @@
+[[!meta date="Sat, 4 May 2019 12:23:45 +0100"]]
+[[!meta title="Numerous security holes in Tails 3.13.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.13.1 are now fixed in Tails 3.13.2.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.13.2|news/version_3.13.2]] as soon as possible.
+
+ - Tor Browser: Armagadd-on-2.0 ([[!tails_ticket 16694]])
+ - thunderbird: [[!debsa2019 4420]]
+ - wget: [[!debsa2019 4425]]
+ - samba: [[!debsa2019 4427]]
+ - systemd: [[!debsa2019 4428]]
+ - wpa: [[!debsa2019 4430]]
+ - libssh2: [[!debsa2019 4431]]
+ - ghostscript: [[!debsa2019 4432]]
+ - libpng1.6: [[!debsa2019 4435]]
+ - imagemagick: [[!debsa2019 4436]]
+ - gst-plugins-base1.0: [[!debsa2019 4437]]

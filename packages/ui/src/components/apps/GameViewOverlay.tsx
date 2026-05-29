@@ -158,7 +158,7 @@ export function GameViewOverlay() {
     <div className="fixed inset-0 z-50 pointer-events-none">
       <div
         ref={containerRef}
-        className="absolute w-[480px] h-[360px] pointer-events-auto rounded-xl overflow-hidden flex flex-col"
+        className="absolute w-[480px] h-[360px] pointer-events-auto rounded-sm overflow-hidden flex flex-col"
         style={{
           resize: "both",
           background: "rgba(18, 22, 32, 0.96)",

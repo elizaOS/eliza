@@ -93,7 +93,7 @@ export interface TriggerFormState {
 export const emptyForm: TriggerFormState = {
   displayName: "",
   instructions: "",
-  kind: "text",
+  kind: "workflow",
   workflowId: "",
   workflowName: "",
   triggerType: "interval",
@@ -257,7 +257,7 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
   return {
     displayName: trigger.displayName,
     instructions: trigger.instructions,
-    kind: trigger.kind ?? "text",
+    kind: "workflow",
     workflowId: trigger.workflowId ?? "",
     workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
@@ -278,11 +278,10 @@ export function buildCreateRequest(
   const maxRuns = parsePositiveInteger(form.maxRuns);
   return {
     displayName: form.displayName.trim(),
-    instructions: form.kind === "text" ? form.instructions.trim() : undefined,
-    kind: form.kind,
-    workflowId: form.kind === "workflow" ? form.workflowId : undefined,
-    workflowName:
-      form.kind === "workflow" ? form.workflowName || undefined : undefined,
+    instructions: form.instructions.trim() || undefined,
+    kind: form.kind === "workflow" ? "workflow" : undefined,
+    workflowId: form.workflowId,
+    workflowName: form.workflowName || undefined,
     triggerType: form.triggerType,
     wakeMode: form.wakeMode,
     enabled: form.enabled,
@@ -372,23 +371,13 @@ export function nextRunsForCron(
   }
 }
 
-/**
- * Validates the kind-specific payload fields only (no schedule validation).
- * Returns an error message when invalid, null when valid.
- */
+/** Returns an error message when invalid, null when valid. */
 export function validateTriggerKind(
   form: TriggerFormState,
   t: TranslateFn,
 ): string | null {
-  if (form.kind === "workflow") {
-    if (!form.workflowId) {
-      return t("triggers.workflowPlaceholder");
-    }
-    return null;
-  }
-  // kind === "text"
-  if (!form.instructions.trim()) {
-    return t("heartbeatsview.validationInstructionsRequired");
+  if (!form.workflowId) {
+    return t("triggers.workflowPlaceholder");
   }
   return null;
 }

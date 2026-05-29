@@ -23,7 +23,7 @@ export function DeviceBridgeStatusBar({
 
   return (
     <div
-      className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-2 py-1.5 text-xs"
+      className="flex items-center gap-2 rounded-sm border border-border bg-card/60 px-2 py-1.5 text-xs"
       title={label}
     >
       <span

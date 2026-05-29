@@ -1,0 +1,15 @@
+[[!meta date="Sun, 24 Jun 2018 17:25:18 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.7.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.7.1 are now fixed in Tails 3.8.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.8|news/version_3.8]] as soon as possible.
+
+ - Tor Browser: [[!mfsa 2018-17]]
+ - Enigmail: [[!cve CVE-2018-12020]], [[!cve CVE-2018-12019]]
+ - libgcrypt [[!debsa2018 4231]]
+ - perl [[!debsa2018 4226]]

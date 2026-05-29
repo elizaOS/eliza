@@ -409,15 +409,28 @@ function extractText(raw: unknown): string {
 	if (raw && typeof raw === "object") {
 		const r = raw as {
 			text?: unknown;
-			toolCalls?: Array<{ arguments?: unknown }>;
+			toolCalls?: Array<{
+				arguments?: unknown;
+				args?: unknown;
+				input?: unknown;
+				params?: unknown;
+			}>;
 		};
 		if (typeof r.text === "string" && r.text.trim()) return r.text;
 		const tool = r.toolCalls?.[0];
-		if (tool && typeof tool.arguments === "object" && tool.arguments !== null) {
-			return JSON.stringify(tool.arguments);
+		// Tool-call args land under different keys across model providers /
+		// SDK versions: AI SDK v5 + Cerebras gpt-oss-120b use `input`, older
+		// shapes use `arguments`/`args`/`params`. Read all of them or the
+		// extracted facts get silently dropped (the validate model returns a
+		// proper tool call but `arguments` is undefined -> empty parse ->
+		// nothing persisted). Mirrors the accessor in services/message.ts.
+		const toolArgs =
+			tool?.arguments ?? tool?.args ?? tool?.input ?? tool?.params;
+		if (typeof toolArgs === "object" && toolArgs !== null) {
+			return JSON.stringify(toolArgs);
 		}
-		if (typeof tool?.arguments === "string") {
-			return tool.arguments;
+		if (typeof toolArgs === "string") {
+			return toolArgs;
 		}
 	}
 	return "";

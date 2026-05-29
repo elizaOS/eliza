@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "../ui/card";
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1001] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/80 px-4 py-6 font-body text-txt  sm:px-6";
 const OVERLAY_CARD_CLASS =
-  "relative z-10 w-full max-w-[640px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] ";
+  "relative z-10 w-full max-w-[640px] overflow-hidden border border-border/60 bg-card/95 ";
 
 export function ConnectionLostOverlay() {
   const { backendConnection, relaunchDesktop, retryBackendConnection, t } =
@@ -63,7 +63,7 @@ export function ConnectionLostOverlay() {
         </CardHeader>
 
         <CardContent className="flex flex-col gap-5 pt-6">
-          <div className="rounded border border-border/50 bg-bg/35 p-4 text-sm text-muted shadow-sm">
+          <div className="rounded-sm border border-border/50 bg-bg/35 p-4 text-sm text-muted ">
             {t("connectionlostoverlay.AttemptsExhausted", {
               defaultValue:
                 "Realtime reconnect attempts exhausted: {{attempts}}.",

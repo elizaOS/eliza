@@ -250,7 +250,7 @@ function AuthorizeAuthenticatedContent({
       <PermissionsList />
 
       {error && (
-        <div className="rounded-md border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
+        <div className="rounded-sm border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
           {error}
         </div>
       )}
@@ -329,11 +329,11 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
           alt={appInfo.name}
           width={64}
           height={64}
-          className="h-16 w-16 rounded-xl object-cover"
+          className="h-16 w-16 rounded-sm object-cover"
           unoptimized
         />
       ) : (
-        <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-[#FF5800] to-[#FF8800] flex items-center justify-center">
+        <div className="h-16 w-16 rounded-sm bg-gradient-to-br from-[#FF5800] to-[#FF8800] flex items-center justify-center">
           <span className="text-2xl font-bold text-white">
             {appInfo.name.charAt(0)}
           </span>
@@ -353,7 +353,7 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
 
 function PermissionsList() {
   return (
-    <div className="space-y-3 p-4 rounded-lg bg-white/5 border border-white/10 w-full">
+    <div className="space-y-3 p-4 rounded-sm bg-white/5 border border-white/10 w-full">
       <div className="flex items-center gap-2 text-white/80">
         <Shield className="h-4 w-4 text-[#FF5800]" />
         <span className="text-sm font-medium">This app wants to:</span>
@@ -383,7 +383,7 @@ function SignedInActions({
 }) {
   return (
     <div className="flex w-full flex-col gap-3">
-      <div className="flex items-center justify-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80">
+      <div className="flex items-center justify-center gap-2 rounded-sm border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80">
         <CheckCircle2 className="h-4 w-4 text-emerald-400" />
         <span>Signed in</span>
       </div>

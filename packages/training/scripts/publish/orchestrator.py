@@ -9,7 +9,7 @@ Stages, in order, with hard exits on failure:
 
 1. **Layout validation.** Walk the bundle directory and verify it
    conforms to the local inference bundle contract (text/, tts/, asr/,
-   vision/, dflash/, cache/, evals/, licenses/). Missing required files
+   vision/, mtp/, cache/, evals/, licenses/). Missing required files
    or sidecars are publish-blocking. The frozen voice artifacts and
    ``cache/voice-preset-default.bin`` must be present.
 2. **Kernel verification.** Run the
@@ -72,7 +72,7 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
-    ELIZA_1_DFLASH_TIERS,
+    ELIZA_1_MTP_TIERS,
     ELIZA_1_HF_REPO,
     ELIZA_1_PROVENANCE_SLOTS,
     ELIZA_1_VISION_TIERS,
@@ -124,7 +124,7 @@ REQUIRED_SUBDIRS: tuple[str, ...] = (
     "tts",
     "asr",
     "vad",
-    "dflash",
+    "mtp",
     "cache",
     "evals",
     "licenses",
@@ -136,7 +136,7 @@ REQUIRED_SUBDIRS: tuple[str, ...] = (
 REQUIRED_LICENSE_FILES: tuple[str, ...] = (
     "LICENSE.text",
     "LICENSE.voice",
-    "LICENSE.dflash",
+    "LICENSE.mtp",
     "LICENSE.eliza-1",
 )
 COMPONENT_LICENSE_FILES: Mapping[str, str] = {
@@ -301,7 +301,7 @@ def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
         for base in (
             bundle,
             bundle / "text",
-            bundle / "dflash",
+            bundle / "mtp",
             bundle / "evals",
             bundle / "quantization",
         ):
@@ -333,7 +333,7 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
                 raise OrchestratorError(
                     "bundle layout: missing quantization sidecar for "
                     f"{method}; expected {name} in bundle root, text/, "
-                    "dflash/, evals/, or quantization/",
+                    "mtp/, evals/, or quantization/",
                     EXIT_MISSING_FILE,
                 )
             data = _read_sidecar(sidecar)
@@ -433,7 +433,7 @@ def _license_components_for_layout(
     layout: Mapping[str, Sequence[Path]],
     bundle_dir: Path,
 ) -> list[str]:
-    components = ["text", "voice", "asr", "vad", "dflash"]
+    components = ["text", "voice", "asr", "vad", "mtp"]
     tts_rels = {
         path.relative_to(bundle_dir).as_posix()
         for path in layout.get("tts", [])
@@ -449,23 +449,23 @@ def _license_components_for_layout(
     return components
 
 
-def _validate_dflash_release_metadata(
+def _validate_mtp_release_metadata(
     ctx: PublishContext,
     layout: Mapping[str, Sequence[Path]],
 ) -> None:
-    """Validate dflash/target-meta.json before any release can be assembled.
+    """Validate mtp/target-meta.json before any release can be assembled.
 
-    The runtime can fail late with `unknown model architecture: 'dflash-draft'`
+    The runtime can fail late with `unknown model architecture: 'mtp-draft'`
     or silently draft zero tokens when tokenizer metadata differs. Release
     bundles therefore need a static sidecar proving the drafter belongs to the
     shipped target bytes, shares tokenizer metadata, and is loadable by the
     declared runtime shape.
     """
 
-    meta_path = ctx.bundle_dir / "dflash" / "target-meta.json"
+    meta_path = ctx.bundle_dir / "mtp" / "target-meta.json"
     if not meta_path.is_file():
         raise OrchestratorError(
-            "DFlash release metadata: missing dflash/target-meta.json",
+            "MTP release metadata: missing mtp/target-meta.json",
             EXIT_MISSING_FILE,
         )
     meta = _read_sidecar(meta_path)
@@ -483,9 +483,9 @@ def _validate_dflash_release_metadata(
         for path in layout.get("text", [])
         if path.is_file()
     }
-    dflash_paths = {
+    mtp_paths = {
         str(path.relative_to(ctx.bundle_dir)): path
-        for path in layout.get("dflash", [])
+        for path in layout.get("mtp", [])
         if path.is_file()
     }
 
@@ -514,10 +514,10 @@ def _validate_dflash_release_metadata(
         errors.append("drafter must be an object")
     else:
         drafter_path = drafter.get("path")
-        if not isinstance(drafter_path, str) or drafter_path not in dflash_paths:
-            errors.append("drafter.path must point at a shipped dflash/*.gguf")
+        if not isinstance(drafter_path, str) or drafter_path not in mtp_paths:
+            errors.append("drafter.path must point at a shipped mtp/*.gguf")
         else:
-            actual = _sha256_file(dflash_paths[drafter_path])
+            actual = _sha256_file(mtp_paths[drafter_path])
             recorded = drafter.get("sha256")
             if recorded != actual:
                 errors.append(
@@ -541,21 +541,21 @@ def _validate_dflash_release_metadata(
         ):
             errors.append(
                 "drafter sha256 equals target text sha256; a same-weight drafter "
-                "is not a release-valid DFlash artifact"
+                "is not a release-valid MTP artifact"
             )
 
         architecture = drafter.get("architecture")
         if not isinstance(architecture, str) or not architecture:
             errors.append("drafter.architecture must be recorded")
-        elif architecture == "dflash-draft":
+        elif architecture == "mtp-draft":
             runtime = meta.get("runtime")
             if (
                 not isinstance(runtime, dict)
-                or runtime.get("supportsDflashDraftArchitecture") is not True
+                or runtime.get("supportsMtpDraftArchitecture") is not True
             ):
                 errors.append(
-                    "drafter.architecture is 'dflash-draft' but "
-                    "runtime.supportsDflashDraftArchitecture is not true"
+                    "drafter.architecture is 'mtp-draft' but "
+                    "runtime.supportsMtpDraftArchitecture is not true"
                 )
 
     tokenizer = meta.get("tokenizerCompatibility")
@@ -586,13 +586,13 @@ def _validate_dflash_release_metadata(
     ):
         errors.append("acceptanceWindow must be [draftMin, draftMax]")
 
-    validation_path = ctx.bundle_dir / "dflash" / "validation-real.json"
+    validation_path = ctx.bundle_dir / "mtp" / "validation-real.json"
     if not validation_path.is_file():
-        errors.append("dflash/validation-real.json is required")
+        errors.append("mtp/validation-real.json is required")
     else:
         validation = _read_sidecar(validation_path)
         if validation.get("pass") is not True:
-            errors.append("dflash/validation-real.json pass must be true")
+            errors.append("mtp/validation-real.json pass must be true")
         checks = validation.get("checks")
         rollout = (
             checks.get("acceptanceRollout")
@@ -601,12 +601,12 @@ def _validate_dflash_release_metadata(
         )
         if not isinstance(rollout, dict):
             errors.append(
-                "dflash/validation-real.json checks.acceptanceRollout is required"
+                "mtp/validation-real.json checks.acceptanceRollout is required"
             )
         else:
             if rollout.get("pass") is not True:
                 errors.append(
-                    "dflash/validation-real.json acceptanceRollout.pass must be true"
+                    "mtp/validation-real.json acceptanceRollout.pass must be true"
                 )
             report_rate = _optional_float(rollout.get("acceptanceRate"))
             report_gate = _optional_float(rollout.get("gate"))
@@ -617,57 +617,57 @@ def _validate_dflash_release_metadata(
                 and report_rate < float(acceptance_rate)
             ):
                 errors.append(
-                    "dflash/validation-real.json acceptanceRate must be at least "
+                    "mtp/validation-real.json acceptanceRate must be at least "
                     "target-meta acceptanceRate"
                 )
             if report_gate is not None and report_rate is not None and report_rate < report_gate:
                 errors.append(
-                    "dflash/validation-real.json acceptanceRate is below its gate"
+                    "mtp/validation-real.json acceptanceRate is below its gate"
                 )
 
-    runtime_path = ctx.bundle_dir / "dflash" / "runtime-smoke-native.json"
+    runtime_path = ctx.bundle_dir / "mtp" / "runtime-smoke-native.json"
     if not runtime_path.is_file():
-        errors.append("dflash/runtime-smoke-native.json is required")
+        errors.append("mtp/runtime-smoke-native.json is required")
     else:
         runtime = _read_sidecar(runtime_path)
         if runtime.get("metadataStatus") != "metadata_loadable":
-            errors.append("dflash/runtime-smoke-native.json metadataStatus must be metadata_loadable")
+            errors.append("mtp/runtime-smoke-native.json metadataStatus must be metadata_loadable")
         if runtime.get("metadataFailures") not in (None, []):
-            errors.append("dflash/runtime-smoke-native.json metadataFailures must be empty")
+            errors.append("mtp/runtime-smoke-native.json metadataFailures must be empty")
         runs = runtime.get("runtime")
         accepted_run = False
         if isinstance(runs, list):
             for run in runs:
                 if not isinstance(run, dict) or run.get("status") != 0:
                     continue
-                dflash = run.get("dflash")
-                if not isinstance(dflash, dict):
+                mtp = run.get("mtp")
+                if not isinstance(mtp, dict):
                     continue
                 accepted_run = (
-                    dflash.get("requiresTrueDrafting") is True
-                    and dflash.get("draftingActive") is True
-                    and isinstance(dflash.get("drafted"), int)
-                    and dflash.get("drafted") > 0
-                    and isinstance(dflash.get("accepted"), int)
-                    and dflash.get("accepted") > 0
-                    and not dflash.get("dflashFailure")
+                    mtp.get("requiresTrueDrafting") is True
+                    and mtp.get("draftingActive") is True
+                    and isinstance(mtp.get("drafted"), int)
+                    and mtp.get("drafted") > 0
+                    and isinstance(mtp.get("accepted"), int)
+                    and mtp.get("accepted") > 0
+                    and not mtp.get("mtpFailure")
                 )
                 if accepted_run:
                     break
         if not accepted_run:
-            errors.append("dflash/runtime-smoke-native.json must include an accepted native DFlash run")
+            errors.append("mtp/runtime-smoke-native.json must include an accepted native MTP run")
         bench = runtime.get("bench")
         if not isinstance(bench, dict):
-            errors.append("dflash/runtime-smoke-native.json bench is required")
+            errors.append("mtp/runtime-smoke-native.json bench is required")
         else:
             if bench.get("available") is not True:
-                errors.append("dflash/runtime-smoke-native.json bench.available must be true")
+                errors.append("mtp/runtime-smoke-native.json bench.available must be true")
             if bench.get("status") != "pass":
-                errors.append("dflash/runtime-smoke-native.json bench.status must be pass")
+                errors.append("mtp/runtime-smoke-native.json bench.status must be pass")
             if not isinstance(bench.get("drafted"), int) or bench.get("drafted") <= 0:
-                errors.append("dflash/runtime-smoke-native.json bench.drafted must be positive")
+                errors.append("mtp/runtime-smoke-native.json bench.drafted must be positive")
             if not isinstance(bench.get("accepted"), int) or bench.get("accepted") <= 0:
-                errors.append("dflash/runtime-smoke-native.json bench.accepted must be positive")
+                errors.append("mtp/runtime-smoke-native.json bench.accepted must be positive")
             bench_rate = _optional_float(bench.get("acceptanceRate"))
             bench_gate = _optional_float(bench.get("gate"))
             if bench_gate is None:
@@ -678,7 +678,7 @@ def _validate_dflash_release_metadata(
                     else None
                 )
             if bench_gate is not None and bench_rate is not None and bench_rate < bench_gate:
-                errors.append("dflash/runtime-smoke-native.json bench.acceptanceRate is below gate")
+                errors.append("mtp/runtime-smoke-native.json bench.acceptanceRate is below gate")
             if (
                 bench_rate is not None
                 and isinstance(acceptance_rate, (int, float))
@@ -686,37 +686,37 @@ def _validate_dflash_release_metadata(
                 and bench_rate < float(acceptance_rate)
             ):
                 errors.append(
-                    "dflash/runtime-smoke-native.json bench.acceptanceRate must be at least target-meta acceptanceRate"
+                    "mtp/runtime-smoke-native.json bench.acceptanceRate must be at least target-meta acceptanceRate"
                 )
             speedup = _optional_float(bench.get("speedup"))
             if speedup is None or speedup <= 1.0:
-                errors.append("dflash/runtime-smoke-native.json bench.speedup must be greater than 1")
+                errors.append("mtp/runtime-smoke-native.json bench.speedup must be greater than 1")
             summary = bench.get("summary")
             if isinstance(summary, dict):
                 if summary.get("status") != "pass":
-                    errors.append("dflash/runtime-smoke-native.json bench.summary.status must be pass")
-                if summary.get("dflashDraftingActive") is not True:
+                    errors.append("mtp/runtime-smoke-native.json bench.summary.status must be pass")
+                if summary.get("mtpDraftingActive") is not True:
                     errors.append(
-                        "dflash/runtime-smoke-native.json bench.summary.dflashDraftingActive must be true"
+                        "mtp/runtime-smoke-native.json bench.summary.mtpDraftingActive must be true"
                     )
 
     if errors:
         raise OrchestratorError(
-            "DFlash release metadata invalid:\n  - " + "\n  - ".join(errors),
+            "MTP release metadata invalid:\n  - " + "\n  - ".join(errors),
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
 
-def _validate_dflash_disabled_metadata(
+def _validate_mtp_disabled_metadata(
     ctx: PublishContext,
     layout: Mapping[str, Sequence[Path]],
 ) -> None:
-    """Validate the explicit no-DFlash release policy for non-DFlash tiers."""
+    """Validate the explicit no-MTP release policy for non-MTP tiers."""
 
-    meta_path = ctx.bundle_dir / "dflash" / "target-meta.json"
+    meta_path = ctx.bundle_dir / "mtp" / "target-meta.json"
     if not meta_path.is_file():
         raise OrchestratorError(
-            "DFlash disabled metadata: missing dflash/target-meta.json",
+            "MTP disabled metadata: missing mtp/target-meta.json",
             EXIT_MISSING_FILE,
         )
     meta = _read_sidecar(meta_path)
@@ -728,26 +728,26 @@ def _validate_dflash_disabled_metadata(
         errors.append(f"tier must be {ctx.tier!r}")
     if meta.get("status") != "disabled":
         errors.append("status must be 'disabled'")
-    if meta.get("dflashEnabled") is not False:
-        errors.append("dflashEnabled must be false")
+    if meta.get("mtpEnabled") is not False:
+        errors.append("mtpEnabled must be false")
     if meta.get("publishEligible") is True:
-        errors.append("publishEligible must not be true when DFlash is disabled")
+        errors.append("publishEligible must not be true when MTP is disabled")
     if meta.get("drafter") is not None:
-        errors.append("drafter must be null when DFlash is disabled")
+        errors.append("drafter must be null when MTP is disabled")
     if meta.get("acceptanceRate") is not None:
-        errors.append("acceptanceRate must be null when DFlash is disabled")
+        errors.append("acceptanceRate must be null when MTP is disabled")
     if meta.get("acceptanceWindow") is not None:
-        errors.append("acceptanceWindow must be null when DFlash is disabled")
+        errors.append("acceptanceWindow must be null when MTP is disabled")
 
-    dflash_ggufs = sorted(
+    mtp_ggufs = sorted(
         str(path.relative_to(ctx.bundle_dir))
-        for path in layout.get("dflash", [])
+        for path in layout.get("mtp", [])
         if path.suffix == ".gguf"
     )
-    if dflash_ggufs:
+    if mtp_ggufs:
         errors.append(
-            "DFlash is disabled for this tier; remove shipped drafter GGUF(s): "
-            f"{dflash_ggufs}"
+            "MTP is disabled for this tier; remove shipped drafter GGUF(s): "
+            f"{mtp_ggufs}"
         )
 
     text_paths = {
@@ -790,9 +790,9 @@ def _validate_dflash_disabled_metadata(
                         f"recorded {recorded!r}, actual {actual}"
                     )
                 policy = _read_sidecar(policy_file)
-                if policy.get("kind") != "dflash-release-policy":
+                if policy.get("kind") != "mtp-release-policy":
                     errors.append(
-                        "disabledPolicy file kind must be 'dflash-release-policy'"
+                        "disabledPolicy file kind must be 'mtp-release-policy'"
                     )
                 if policy.get("tier") != ctx.tier:
                     errors.append(f"disabledPolicy file tier must be {ctx.tier!r}")
@@ -811,7 +811,7 @@ def _validate_dflash_disabled_metadata(
 
     if errors:
         raise OrchestratorError(
-            "DFlash disabled metadata invalid:\n  - " + "\n  - ".join(errors),
+            "MTP disabled metadata invalid:\n  - " + "\n  - ".join(errors),
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
@@ -860,16 +860,16 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             f"{missing_tts}",
             EXIT_MISSING_FILE,
         )
-    dflash_ggufs = [path for path in out["dflash"] if path.suffix == ".gguf"]
-    if ctx.tier in ELIZA_1_DFLASH_TIERS:
-        if not dflash_ggufs:
+    mtp_ggufs = [path for path in out["mtp"] if path.suffix == ".gguf"]
+    if ctx.tier in ELIZA_1_MTP_TIERS:
+        if not mtp_ggufs:
             raise OrchestratorError(
-                "bundle layout: dflash/ must contain at least one .gguf",
+                "bundle layout: mtp/ must contain at least one .gguf",
                 EXIT_BUNDLE_LAYOUT_FAIL,
             )
-        _validate_dflash_release_metadata(ctx, out)
+        _validate_mtp_release_metadata(ctx, out)
     else:
-        _validate_dflash_disabled_metadata(ctx, out)
+        _validate_mtp_disabled_metadata(ctx, out)
     if not out["asr"]:
         raise OrchestratorError(
             "bundle layout: asr/ must contain at least one model file",
@@ -1002,7 +1002,7 @@ def _expected_payload_paths(
         "tts",
         "asr",
         "vision",
-        "dflash",
+        "mtp",
         "cache",
         "embedding",
         "vad",
@@ -1423,9 +1423,9 @@ def validate_release_evidence(
         ]
         if ctx.tier in ELIZA_1_VISION_TIERS:
             shipped_weight_files.extend(layout.get("vision", []))
-        if ctx.tier in ELIZA_1_DFLASH_TIERS:
+        if ctx.tier in ELIZA_1_MTP_TIERS:
             shipped_weight_files.extend(
-                p for p in layout.get("dflash", []) if p.suffix == ".gguf"
+                p for p in layout.get("mtp", []) if p.suffix == ".gguf"
             )
         shipped_weight_paths = set(
             _relative_file_paths(shipped_weight_files, ctx.bundle_dir)
@@ -1816,18 +1816,18 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
         eval_blob = dict(eval_blob)
         eval_blob["results"] = results
     if isinstance(results, dict):
-        dflash_report = _dflash_report_eval(ctx)
+        mtp_report = _mtp_report_eval(ctx)
         enriched_results = dict(results)
         if (
-            _optional_float(enriched_results.get("dflash_acceptance")) is None
-            and _optional_float(dflash_report.get("acceptanceRate")) is not None
+            _optional_float(enriched_results.get("mtp_acceptance")) is None
+            and _optional_float(mtp_report.get("acceptanceRate")) is not None
         ):
-            enriched_results["dflash_acceptance"] = dflash_report["acceptanceRate"]
+            enriched_results["mtp_acceptance"] = mtp_report["acceptanceRate"]
         if (
-            _optional_float(enriched_results.get("dflash_speedup")) is None
-            and _optional_float(dflash_report.get("speedup")) is not None
+            _optional_float(enriched_results.get("mtp_speedup")) is None
+            and _optional_float(mtp_report.get("speedup")) is not None
         ):
-            enriched_results["dflash_speedup"] = dflash_report["speedup"]
+            enriched_results["mtp_speedup"] = mtp_report["speedup"]
         if enriched_results != results:
             eval_blob = dict(eval_blob)
             eval_blob["results"] = enriched_results
@@ -1911,7 +1911,7 @@ def _collect_files_for_manifest(
         "voice": [],
         "asr": [],
         "vision": [],
-        "dflash": [],
+        "mtp": [],
         "cache": [],
         "embedding": [],
         "vad": [],
@@ -1923,7 +1923,7 @@ def _collect_files_for_manifest(
         ("tts", "voice"),
         ("asr", "asr"),
         ("vision", "vision"),
-        ("dflash", "dflash"),
+        ("mtp", "mtp"),
         ("cache", "cache"),
         ("embedding", "embedding"),
         ("vad", "vad"),
@@ -1956,7 +1956,7 @@ def _build_lineage(
             base=f"omnivoice-gguf-{VOICE_QUANT_BY_TIER[tier]}",
             license="apache-2.0",
         ),
-        "drafter": LineageEntry(base=f"dflash-{tier}-drafter", license="apache-2.0"),
+        "drafter": LineageEntry(base=f"mtp-{tier}-drafter", license="apache-2.0"),
     }
     out = dict(defaults)
 
@@ -2048,8 +2048,8 @@ def _optional_float(value: Any) -> float | None:
     return None
 
 
-def _dflash_report_eval(ctx: PublishContext) -> Mapping[str, Any]:
-    report_path = ctx.bundle_dir / "evals" / "dflash-accept.json"
+def _mtp_report_eval(ctx: PublishContext) -> Mapping[str, Any]:
+    report_path = ctx.bundle_dir / "evals" / "mtp-accept.json"
     if not report_path.is_file():
         return {}
     data = json.loads(report_path.read_text())
@@ -2121,18 +2121,18 @@ def assemble_manifest(
         "e2e_loop_ok",
         opt_in_alias_for="thirty_turn_ok",
     )
-    dflash_report = _dflash_report_eval(ctx)
-    dflash_acceptance_rate = _optional_float(results.get("dflash_acceptance"))
-    if dflash_acceptance_rate is None:
-        dflash_acceptance_rate = _optional_float(dflash_report.get("acceptanceRate"))
-    dflash_speedup = _optional_float(results.get("dflash_speedup"))
-    if dflash_speedup is None:
-        dflash_speedup = _optional_float(dflash_report.get("speedup"))
-    dflash_passed = bool(
-        dflash_acceptance_rate is not None
-        and dflash_speedup is not None
-        and _gate_passed(gate_report, "dflash_acceptance")
-        and _gate_passed(gate_report, "dflash_speedup")
+    mtp_report = _mtp_report_eval(ctx)
+    mtp_acceptance_rate = _optional_float(results.get("mtp_acceptance"))
+    if mtp_acceptance_rate is None:
+        mtp_acceptance_rate = _optional_float(mtp_report.get("acceptanceRate"))
+    mtp_speedup = _optional_float(results.get("mtp_speedup"))
+    if mtp_speedup is None:
+        mtp_speedup = _optional_float(mtp_report.get("speedup"))
+    mtp_passed = bool(
+        mtp_acceptance_rate is not None
+        and mtp_speedup is not None
+        and _gate_passed(gate_report, "mtp_acceptance")
+        and _gate_passed(gate_report, "mtp_speedup")
     )
 
     required_kernels, optional_kernels = _required_kernels_for(ctx.tier, layout)
@@ -2149,7 +2149,7 @@ def assemble_manifest(
         and expressive_passed
         and e2e_loop_ok
         and thirty_turn_ok
-        and dflash_passed
+        and mtp_passed
     )
 
     try:
@@ -2181,10 +2181,10 @@ def assemble_manifest(
             expressive_mos=expressive_mos,
             expressive_tag_leakage=expressive_tag_leakage,
             expressive_passed=expressive_passed,
-            dflash_eval=bool(files_map.get("dflash")),
-            dflash_acceptance_rate=dflash_acceptance_rate,
-            dflash_speedup=dflash_speedup,
-            dflash_passed=dflash_passed,
+            mtp_eval=bool(files_map.get("mtp")),
+            mtp_acceptance_rate=mtp_acceptance_rate,
+            mtp_speedup=mtp_speedup,
+            mtp_passed=mtp_passed,
             voice_capabilities=DEFAULT_VOICE_CAPABILITIES,
             voice_version=ELIZA_1_VOICE_MANIFEST_VERSION,
             voice_frozen=True,
@@ -2366,7 +2366,7 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
             "vad",
             "vision",
             "embedding",
-            "dflash",
+            "mtp",
             "cache",
             "wakeword",
         )
@@ -2446,7 +2446,7 @@ def _build_upload_list(
         "tts",
         "asr",
         "vision",
-        "dflash",
+        "mtp",
         "cache",
         "embedding",
         "vad",

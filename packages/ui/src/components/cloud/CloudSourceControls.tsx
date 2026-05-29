@@ -18,12 +18,12 @@ export function CloudSourceModeToggle({
 }) {
   const resolvedCloudLabel = cloudLabel;
   return (
-    <div className="inline-flex overflow-hidden rounded-lg bg-bg-muted shadow-sm">
+    <div className="inline-flex overflow-hidden rounded-sm bg-bg-muted ">
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+        className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors ${
           mode === "cloud"
             ? "bg-accent text-accent-fg hover:bg-accent/90 hover:text-accent-fg"
             : "bg-transparent text-muted hover:bg-bg-hover hover:text-txt"
@@ -36,7 +36,7 @@ export function CloudSourceModeToggle({
         type="button"
         variant="ghost"
         size="sm"
-        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+        className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors ${
           mode === "own-key"
             ? "bg-accent text-accent-fg hover:bg-accent/90 hover:text-accent-fg"
             : "bg-transparent text-muted hover:bg-bg-hover hover:text-txt"
@@ -62,7 +62,7 @@ export function CloudConnectionStatus({
   const resolvedConnectedText = connectedText ?? "Connected to Eliza Cloud";
   return (
     <div
-      className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-bg-muted/90 px-3 py-2.5"
+      className="flex items-center justify-between gap-3 rounded-sm border border-border/70 bg-bg-muted/90 px-3 py-2.5"
       role="status"
       aria-live="polite"
     >

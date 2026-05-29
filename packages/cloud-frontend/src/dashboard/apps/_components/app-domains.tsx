@@ -259,7 +259,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 <Button
                   onClick={() => setShowAddForm(true)}
                   size="sm"
-                  className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white rounded-sm"
+                  className="bg-[#FF5800] hover:bg-black hover:text-white text-white rounded-sm"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Add Domain
@@ -391,7 +391,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                             className={`h-9 px-4 ${
                               isAdding || !newDomain.trim()
                                 ? "bg-neutral-700 text-neutral-400"
-                                : "bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+                                : "bg-[#FF5800] hover:bg-black hover:text-white text-white"
                             }`}
                           >
                             {isAdding ? (

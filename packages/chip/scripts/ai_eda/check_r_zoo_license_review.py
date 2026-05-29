@@ -42,9 +42,11 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def validate_artifact(item: Any, label: str) -> list[str]:
+def validate_artifact(item: Any, label: str, required: bool = True) -> list[str]:
     if not isinstance(item, dict):
         return [f"{label} must be a mapping"]
+    if not required and item.get("status") == "MISSING":
+        return []
     if item.get("status") != "PRESENT":
         return [f"{label}.status must be PRESENT"]
     path_value = item.get("path")
@@ -70,6 +72,12 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("status must be TRAINING_ONLY_REVIEW_COMPLETE")
     if report.get("legal_advice") is not False:
         errors.append("legal_advice must be false")
+    payload_evidence_status = report.get("payload_evidence_status")
+    if payload_evidence_status not in {
+        "FULL_EXTERNAL_PAYLOAD_PRESENT",
+        "METADATA_ONLY_EXTERNAL_PAYLOAD_ABSENT",
+    }:
+        errors.append("payload_evidence_status mismatch")
     findings = report.get("license_findings")
     if not isinstance(findings, dict):
         errors.append("license_findings must be a mapping")
@@ -99,14 +107,12 @@ def validate(report: dict[str, Any]) -> list[str]:
     if not isinstance(evidence, dict):
         errors.append("evidence must be a mapping")
     else:
-        for field in (
-            "root_license",
-            "root_readme",
-            "modeling_readme",
-            "evaluation_readme",
-            "intake_manifest",
-            "source_lock",
-        ):
+        payload_required = payload_evidence_status == "FULL_EXTERNAL_PAYLOAD_PRESENT"
+        for field in ("root_license", "root_readme", "modeling_readme", "evaluation_readme"):
+            errors.extend(
+                validate_artifact(evidence.get(field), f"evidence.{field}", payload_required)
+            )
+        for field in ("intake_manifest", "source_lock"):
             errors.extend(validate_artifact(evidence.get(field), f"evidence.{field}"))
     controls = report.get("required_controls")
     if not isinstance(controls, list) or len(controls) < 4:

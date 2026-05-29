@@ -1,7 +1,7 @@
 /**
  * Credential storage and token refresh for subscription providers.
  *
- * Credentials live under `~/.eliza/auth/{providerId}/{accountId}.json`
+ * Credentials live under `<stateDir>/auth/{providerId}/{accountId}.json`
  * (see `account-storage.ts` for the on-disk format and atomic-write
  * details). The `loadCredentials` / `saveCredentials` /
  * `deleteCredentials` / `hasValidCredentials` / `getAccessToken`
@@ -25,7 +25,6 @@ import {
   deleteAccount,
   listAccounts,
   loadAccount,
-  migrateLegacySingleAccount,
   saveAccount,
 } from "./account-storage.ts";
 import { refreshAnthropicToken } from "./anthropic.ts";
@@ -51,11 +50,6 @@ const DEFAULT_ACCOUNT_ID = "default";
 /** Buffer before expiry to trigger refresh (5 minutes) */
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const invalidClaudeCodeRefreshTokens = new Set<string>();
-
-// Run the legacy → per-account migration eagerly at module load. This
-// is cheap when there's nothing to migrate (one `existsSync` per
-// provider) and ensures every code path sees the per-account layout.
-migrateLegacySingleAccount();
 
 function recordToStored(record: AccountCredentialRecord): StoredCredentials {
   return {

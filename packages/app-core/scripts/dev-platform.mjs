@@ -135,17 +135,88 @@ const devServerEntry = isElizaMonorepo
 
 const appDir = resolveRendererAppDir();
 const electrobunDir = resolveElectrobunDir();
-const defaultElizaNamespace =
+const appIdentity = appIdentityEnv(appDir);
+const defaultElizaNamespace = appIdentity.ELIZA_NAMESPACE || "eliza";
+
+if (
   isElizaMonorepo &&
-  path
-    .resolve(appDir)
-    .startsWith(`${path.resolve(elizaRoot, "eliza")}${path.sep}`)
-    ? "eliza"
-    : isElizaMonorepo
-      ? "eliza"
-      : "eliza";
+  process.env.MILADY_SKIP_LOCAL_UPSTREAMS !== "1" &&
+  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1"
+) {
+  process.env.MILADY_FORCE_LOCAL_UPSTREAMS ??= "1";
+  process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ??= "1";
+}
+
+function resolveDevStateDir() {
+  const explicit =
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+  if (explicit)
+    return path.resolve(
+      explicit.replace(/^~(?=$|[\\/])/, process.env.HOME || process.cwd()),
+    );
+  const namespace =
+    process.env.ELIZA_NAMESPACE?.trim() || defaultElizaNamespace;
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const base = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(process.env.HOME || process.cwd(), xdgStateHome)
+    : path.join(process.env.HOME || process.cwd(), ".local", "state");
+  return path.join(base, namespace);
+}
 
 const BUN_EXECUTABLE = process.versions?.bun ? process.execPath : "bun";
+
+function resolveElizaPackageDir(packageName) {
+  return isElizaMonorepo
+    ? path.join(elizaRoot, "eliza", "packages", packageName)
+    : path.join(elizaRoot, "packages", packageName);
+}
+
+function buildWorkspacePackageAsync(packageName, packageDir) {
+  console.log(`[eliza] Building ${packageName} for desktop startup...`);
+  return new Promise((resolve, reject) => {
+    const child = spawn(BUN_EXECUTABLE, ["run", "build"], {
+      cwd: packageDir,
+      env: { ...process.env },
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`${packageName} build exited with code ${code}`)),
+    );
+  });
+}
+
+// These three runtime packages have no build interdependency among themselves,
+// so any that are missing their dist entry are built concurrently rather than
+// in series. Each existing dist is skipped (fast path), so a warm tree returns
+// immediately with no spawned processes.
+async function ensureDesktopRuntimePackagesBuilt() {
+  const targets = [
+    ["@elizaos/security", resolveElizaPackageDir("security")],
+    [
+      "@elizaos/plugin-remote-manifest",
+      resolveElizaPackageDir("plugin-remote-manifest"),
+    ],
+    [
+      "@elizaos/plugin-worker-runtime",
+      resolveElizaPackageDir("plugin-worker-runtime"),
+    ],
+  ];
+  const stale = [];
+  for (const [name, dir] of targets) {
+    if (!existsSync(path.join(dir, "package.json"))) {
+      throw new Error(`Missing ${name} package at ${dir}`);
+    }
+    if (!existsSync(path.join(dir, "dist/index.js"))) stale.push([name, dir]);
+  }
+  await Promise.all(
+    stale.map(([name, dir]) => buildWorkspacePackageAsync(name, dir)),
+  );
+}
 
 function syncRendererPublicAssets() {
   const syncScript = path.join(
@@ -159,7 +230,16 @@ function syncRendererPublicAssets() {
   }
   execFileSync(
     process.execPath,
-    [syncScript, path.join(appDir, "public"), "--clouds"],
+    [
+      syncScript,
+      path.join(appDir, "public"),
+      "--logos",
+      "--favicons",
+      "--concepts",
+      "--banners",
+      "--background",
+      "--background-videos",
+    ],
     {
       stdio: "inherit",
     },
@@ -256,7 +336,7 @@ const desktopDevLogOptOut = (() => {
 })();
 const desktopDevLogPath = desktopDevLogOptOut
   ? null
-  : path.resolve(bundleRoot, ".eliza", "desktop-dev-console.log");
+  : path.join(resolveDevStateDir(), "desktop-dev-console.log");
 const desktopCefWorkaroundEnv = (() => {
   if (process.platform !== "darwin") {
     return null;
@@ -329,7 +409,11 @@ let ranInitialViteBuild = false;
 if (needRendererBuild) {
   ranInitialViteBuild = true;
   console.log("\n[eliza] Building renderer (vite build)…");
-  execSync("bun run vite build", { cwd: appDir, stdio: "inherit" });
+  execFileSync(BUN_EXECUTABLE, ["run", "vite", "build"], {
+    cwd: appDir,
+    env: { ...process.env },
+    stdio: "inherit",
+  });
   console.log("[eliza] Renderer ready.\n");
 } else {
   console.log(
@@ -365,6 +449,7 @@ export * from ${JSON.stringify(entryTs)};
 }
 
 ensureBunRootPackageLink("jsdom");
+await ensureDesktopRuntimePackagesBuilt();
 
 async function allocateDistinctLoopbackPort(preferredPort, reservedPorts) {
   let candidate = preferredPort;
@@ -851,7 +936,7 @@ async function launch() {
       NODE_ENV: "development",
       ELECTROBUN_SKIP_CODESIGN: "1",
       ELIZA_ELECTROBUN_REPO_ROOT: bundleRoot,
-      ...appIdentityEnv(appDir),
+      ...appIdentity,
       ...(desktopCefWorkaroundEnv
         ? { ELIZA_DESKTOP_FORCE_CEF: desktopCefWorkaroundEnv }
         : {}),

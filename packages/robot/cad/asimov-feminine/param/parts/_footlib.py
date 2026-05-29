@@ -17,6 +17,7 @@ import trimesh
 
 import paramlib as P
 import connections as C
+import warp2 as W
 
 ROOT = '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot'
 ORIG_DIR = os.path.join(ROOT, 'assets/profiles/asimov-1/meshes')
@@ -31,12 +32,25 @@ def _load(name):
 
 
 def build_ankle_a(name):
-    """Ankle-pitch column. Uniform slim to 0.92, joints pinned."""
+    """Ankle-pitch column. Uniform slim to 0.92, joint slabs pinned.
+
+    The section-loft version changes the short reserved slabs enough to fail the
+    hash-bound interface proof. Use the constrained similarity warp here as a
+    preservation baseline: it keeps the original triangles/topology and blends
+    the scale to identity at both ankle-pitch connection levels.
+    """
     orig = _load(name)
     param = P.slice_to_rings(orig, axis='z', step=0.01, n_angular=96, pad=0.25)
-    w = P.connection_weight(param, C.reserved_levels(name), ramp=0.03)
-    P.radial_scale(param, lambda z: 0.92, weight=w)
-    return orig, P.rings_to_mesh(param), param
+    femme = W.warp_similarity(
+        orig,
+        axis='z',
+        scale_fn=lambda z: 0.92,
+        reserved=C.reserved_levels(name),
+        ramp=0.03,
+        step=0.0025,
+        smooth_m=5,
+    )
+    return orig, femme, param
 
 
 def build_ankle_b(name):
@@ -74,9 +88,36 @@ def build_toe(name):
     """
     orig = _load(name)
     param = P.slice_to_rings(orig, axis='x', step=0.01, n_angular=96, pad=0.25)
-    w = P.connection_weight(param, C.reserved_levels(name), ramp=0.03)
-    P.axis_scale(param, dim=1, fn=lambda x: 0.96, weight=w)
-    return orig, P.rings_to_mesh(param), param
+    femme = W.warp_similarity(
+        orig,
+        axis='x',
+        scale_fn=lambda _x: 0.96,
+        reserved=C.reserved_levels(name),
+        ramp=0.03,
+        step=0.0025,
+        smooth_m=5,
+    )
+    femme = W.separate_quantized_components(
+        femme,
+        axis='x',
+        epsilon=5e-4,
+        merge_tolerance=1e-6,
+    )
+    femme = W.cap_quantized_boundary_loops(
+        femme,
+        merge_tolerance=1e-6,
+        max_loop_vertices=32,
+    )
+    femme = W.remove_excess_quantized_nonmanifold_faces(
+        femme,
+        merge_tolerance=1e-6,
+    )
+    femme = W.cap_quantized_boundary_loops(
+        femme,
+        merge_tolerance=1e-6,
+        max_loop_vertices=64,
+    )
+    return orig, femme, param
 
 
 BUILDERS = {

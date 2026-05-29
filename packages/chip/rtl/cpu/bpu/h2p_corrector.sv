@@ -100,7 +100,7 @@ module h2p_corrector
             feature_idx++;
         end
         /* verilator lint_off UNSIGNED */
-        /* verilator lint_off UNUSEDLOOP */
+        /* verilator lint_off UNUSED */
         for (int unsigned hist_bit = 0; hist_bit < H2P_TARGET_HIST_LEN; hist_bit++) begin
             if (target_hist[hist_bit % ITTAGE_TARGET_HISTORY_BITS]) begin
                 total = total + h2p_score_t'(
@@ -121,7 +121,7 @@ module h2p_corrector
             end
             feature_idx++;
         end
-        /* verilator lint_on UNUSEDLOOP */
+        /* verilator lint_on UNUSED */
         /* verilator lint_on UNSIGNED */
         h2p_score = total;
     endfunction
@@ -169,14 +169,16 @@ module h2p_corrector
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            /* verilator lint_off UNUSEDLOOP */
+            /* verilator lint_off BLKSEQ */
+            /* verilator lint_off UNUSED */
             for (int unsigned i = 0; i < H2P_ENTRIES; i++) begin
                 for (int unsigned j = 0; j < H2P_FEATURES+1; j++) begin
                     weights_q[i][j] <= '0;
                     weight_parity_q[i][j] <= h2p_weight_parity('0);
                 end
             end
-            /* verilator lint_on UNUSEDLOOP */
+            /* verilator lint_on UNUSED */
+            /* verilator lint_on BLKSEQ */
         end else begin
             if (test_corrupt_parity_valid) begin
                 weight_parity_q[h2p_idx(test_corrupt_parity_pc)]

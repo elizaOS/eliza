@@ -249,7 +249,7 @@ export function DiscordLocalConnectorPanel() {
                 })}
           </div>
           {connectedUser ? (
-            <code className="rounded-md border border-border/40 bg-bg/60 px-2 py-1 text-xs-tight text-muted-strong">
+            <code className="rounded-sm border border-border/40 bg-bg/60 px-2 py-1 text-xs-tight text-muted-strong">
               {connectedUser}
             </code>
           ) : null}
@@ -389,13 +389,13 @@ export function DiscordLocalConnectorPanel() {
                     })}
                   </div>
                 ) : channels.length > 0 ? (
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-border/30 bg-bg/40 p-2">
+                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-sm border border-border/30 bg-bg/40 p-2">
                     {channels.map((channel) => {
                       const checked = selectedChannelIds.includes(channel.id);
                       return (
                         <label
                           key={channel.id}
-                          className="flex items-center gap-3 rounded-lg px-2 py-1 hover:bg-bg-hover"
+                          className="flex items-center gap-3 rounded-sm px-2 py-1 hover:bg-bg-hover"
                         >
                           <input
                             type="checkbox"

@@ -129,23 +129,23 @@ declare module "@elizaos/plugin-elizacloud" {
     [key: string]: unknown;
   }
 
-  export interface CloudOnboardingResult {
+  export interface CloudSetupResult {
     apiKey: string;
     agentId: string | undefined;
     baseUrl: string;
     bridgeUrl?: string;
   }
 
-  export interface CloudOnboardingObserver {
+  export interface CloudSetupObserver {
     [key: string]: unknown;
   }
 
-  export class ClackObserver implements CloudOnboardingObserver {
+  export class ClackObserver implements CloudSetupObserver {
     constructor(clack: unknown);
     [key: string]: unknown;
   }
 
-  export class NullCloudOnboardingObserver implements CloudOnboardingObserver {
+  export class NullCloudSetupObserver implements CloudSetupObserver {
     [key: string]: unknown;
   }
 
@@ -226,9 +226,9 @@ declare module "@elizaos/plugin-elizacloud" {
   export function resolveElevenLabsApiKeyForCloudMode(
     ...args: unknown[]
   ): string | undefined;
-  export function runCloudOnboarding(
+  export function runCloudSetup(
     ...args: unknown[]
-  ): Promise<CloudOnboardingResult | null>;
+  ): Promise<CloudSetupResult | null>;
 
   export function handleCloudBillingRoute(...args: unknown[]): Promise<boolean>;
   export function handleCloudCompatRoute(...args: unknown[]): Promise<boolean>;
@@ -769,7 +769,7 @@ declare module "@elizaos/ui" {
   export const registerOperatorSurface: AnyFunction;
   export const registerOverlayApp: AnyFunction;
   export const resolveWindowShellRoute: AnyFunction;
-  export const routeOnboardingDeepLink: AnyFunction;
+  export const routeFirstRunDeepLink: AnyFunction;
   export const selectLatestRunForApp: AnyFunction;
   export const setBootConfig: AnyFunction;
   export const shouldUseCloudOnlyBranding: AnyFunction;
@@ -780,15 +780,15 @@ declare module "@elizaos/ui" {
   export const toneForViewerAttachment: AnyFunction;
   export const useApp: AnyFunction;
 
-  export const applyForceFreshOnboardingReset: AnyFunction;
+  export const applyForceFreshFirstRunReset: AnyFunction;
   export const initializeCapacitorBridge: AnyFunction;
   export const initializeStorageBridge: AnyFunction;
   export const installDesktopPermissionsClientPatch: AnyFunction;
-  export const installForceFreshOnboardingClientPatch: AnyFunction;
+  export const installForceFreshFirstRunClientPatch: AnyFunction;
   export const installLocalProviderCloudPreferencePatch: AnyFunction;
   export const isElizaOS: AnyFunction;
   export const preSeedAndroidLocalRuntimeIfFresh: AnyFunction;
-  export const shouldInstallMainWindowOnboardingPatches: AnyFunction;
+  export const shouldInstallMainWindowFirstRunPatches: AnyFunction;
   export const primeIosFullBunRuntime: AnyFunction;
 }
 

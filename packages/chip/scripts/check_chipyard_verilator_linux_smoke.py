@@ -17,6 +17,7 @@ import stat
 import subprocess
 import time
 from pathlib import Path
+from typing import cast
 
 import locate_chipyard_linux_payload
 import repair_chipyard_generated_paths
@@ -2171,11 +2172,11 @@ def fdt_handoff_diagnosis(
     retired_raw = instruction_trace.get("retired_instruction_count")
     cycle_raw = instruction_trace.get("last_cycle")
     try:
-        retired_count = int(retired_raw) if retired_raw is not None else 0
+        retired_count = int(cast("str | float", retired_raw)) if retired_raw is not None else 0
     except (TypeError, ValueError):
         retired_count = 0
     try:
-        last_cycle = int(cycle_raw) if cycle_raw is not None else 0
+        last_cycle = int(cast("str | float", cycle_raw)) if cycle_raw is not None else 0
     except (TypeError, ValueError):
         last_cycle = 0
     in_fdt_symbol = last_symbol.startswith("fdt_") or last_symbol in FDT_LOOP_SYMBOLS
@@ -2658,7 +2659,7 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     fdt_audit = generated_fdt_audit()
     opensbi_fdt_handoff = parse_opensbi_domain_handoff(
         observable_boot_text(log_text),
-        fdt_audit.get("dtb_size_bytes")
+        cast("int | None", fdt_audit.get("dtb_size_bytes"))
         if isinstance(fdt_audit.get("dtb_size_bytes"), int)
         else None,
     )
@@ -2825,7 +2826,7 @@ def main() -> int:
     )
     opensbi_fdt_handoff = parse_opensbi_domain_handoff(
         handoff_observable_text,
-        fdt_audit.get("dtb_size_bytes")
+        cast("int | None", fdt_audit.get("dtb_size_bytes"))
         if isinstance(fdt_audit.get("dtb_size_bytes"), int)
         else None,
     )

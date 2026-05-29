@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,13 +30,13 @@
     "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs --target ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared",
+    "build:dist": "node ../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/shared",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "sync": "node scripts/sync-to-public.mjs"
   },
@@ -44,6 +44,11 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
@@ -72,10 +77,10 @@
       "import": "./dist/local-inference/index.js",
       "default": "./dist/local-inference/index.js"
     },
-    "./onboarding-presets": {
-      "types": "./dist/onboarding-presets.d.ts",
-      "import": "./dist/onboarding-presets.js",
-      "default": "./dist/onboarding-presets.js"
+    "./character-presets": {
+      "types": "./dist/character-presets.d.ts",
+      "import": "./dist/character-presets.js",
+      "default": "./dist/character-presets.js"
     },
     "./runtime-env": {
       "types": "./dist/runtime-env.d.ts",

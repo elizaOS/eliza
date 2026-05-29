@@ -55,7 +55,7 @@ function DeviceIcon({ userAgent }: { userAgent: string | null }) {
 }
 
 const SECTION_CLASS =
-  "rounded-lg border border-border/50 bg-bg/40 p-4 shadow-sm space-y-4 sm:p-5";
+  "rounded-sm border border-border/50 bg-bg/40 p-4 space-y-4 sm:p-5";
 const SECTION_TITLE_CLASS =
   "flex items-center gap-2 text-sm font-semibold text-foreground/90";
 const DIVIDER_CLASS = "border-t border-border/40";
@@ -368,7 +368,7 @@ function AccessModeSection({
           )}
         </StatusBadge>
       </div>
-      <div className="rounded-md border border-border/40 bg-bg/35 px-3">
+      <div className="rounded-sm border border-border/40 bg-bg/35 px-3">
         <AccessInfoRow
           label="Current browser"
           value={currentBrowserValue}

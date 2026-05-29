@@ -102,7 +102,9 @@ describe('buildAutomationListResponse', () => {
           createdBy: 'user-1',
           cronExpression: '0 7 * * *',
           runCount: 5,
-          kind: 'text',
+          kind: 'workflow',
+          workflowId,
+          workflowName: 'Daily standup poster',
         },
       },
     } as Task;

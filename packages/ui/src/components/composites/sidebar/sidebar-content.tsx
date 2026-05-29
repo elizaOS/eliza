@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { navActiveClassVertical } from "./nav-active";
 
 function assignRef<T>(ref: React.ForwardedRef<T>, value: T | null): void {
   if (typeof ref === "function") {
@@ -70,7 +71,7 @@ export function SidebarEmptyState({
       className={cn(
         "rounded-sm px-4 py-8 text-center text-sm",
         variant === "game-modal"
-          ? "bg-black/15 font-medium italic text-[color:var(--onboarding-text-muted)]"
+          ? "bg-black/15 font-medium italic text-[color:var(--first-run-text-muted)]"
           : "bg-bg-muted/50 text-muted",
         className,
       )}
@@ -169,7 +170,7 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     const sharedClassName = cn(
       "group flex h-auto w-full min-w-0 items-start justify-start gap-3 rounded-sm px-3.5 py-3 text-left transition-[background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35",
       active
-        ? "bg-accent/12 text-txt shadow-sm"
+        ? navActiveClassVertical
         : variant === "accent-soft"
           ? "bg-accent/5 text-muted hover:bg-accent/10 hover:text-txt"
           : variant === "dashed"
@@ -336,8 +337,8 @@ export const SidebarRailItem = React.forwardRef<
       className={cn(
         "relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-border/24 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35 active:scale-[0.98]",
         active
-          ? "border-accent/26 bg-accent/12 text-txt shadow-sm"
-          : "bg-card text-muted-strong shadow-xs hover:border-border/38 hover:text-txt hover:shadow-sm",
+          ? navActiveClassVertical
+          : "bg-card text-muted-strong hover:border-border/38 hover:text-txt ",
         className,
       )}
       {...props}
@@ -369,7 +370,7 @@ export function SidebarItemAction({
       type="button"
       data-sidebar-item-action
       className={cn(
-        "absolute right-1.5 top-1.5 rounded bg-bg/80 px-1.5 py-0.5 text-2xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger",
+        "absolute right-1.5 top-1.5 rounded-sm bg-bg/80 px-1.5 py-0.5 text-2xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger",
         className,
       )}
       {...props}

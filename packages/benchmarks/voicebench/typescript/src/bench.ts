@@ -221,6 +221,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const VOICEBENCH_DIR = resolve(__dirname, "../..");
 const SHARED_DIR = resolve(VOICEBENCH_DIR, "shared");
 const LOCAL_CEREBRAS_PROFILE = "local-cerebras";
+const LOCAL_ELIZA1_PROFILE = "local-eliza1";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000101" as UUID;
 const USER_ENTITY_ID = "00000000-0000-0000-0000-000000000102" as UUID;
@@ -451,6 +452,76 @@ print(" ".join(segment.text.strip() for segment in segments).strip())
   const text = proc.stdout.trim();
   if (!text) {
     throw new Error("faster-whisper returned an empty transcript");
+  }
+  return { text, latencyMs: nowMs() - startedAt };
+}
+
+function resolveEliza1AsrPaths(): {
+  binary: string;
+  model: string;
+  mmproj: string;
+} {
+  const home = process.env.HOME || "";
+  const binDir =
+    process.env.ELIZA1_LLAMA_BIN_DIR ||
+    `${home}/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused`;
+  const asrDir =
+    process.env.ELIZA1_ASR_DIR ||
+    `${home}/.eliza/local-inference/models/eliza-1-2b.bundle/asr`;
+  return {
+    binary: process.env.ELIZA1_ASR_CLI || `${binDir}/llama-mtmd-cli`,
+    model: process.env.ELIZA1_ASR_MODEL || `${asrDir}/eliza-1-asr.gguf`,
+    mmproj: process.env.ELIZA1_ASR_MMPROJ || `${asrDir}/eliza-1-asr-mmproj.gguf`,
+  };
+}
+
+function parseEliza1AsrOutput(stdout: string): string {
+  const match = /<asr_text>([\s\S]*?)(?:<\/asr_text>|$)/.exec(stdout);
+  return (match ? match[1] : stdout).trim();
+}
+
+function transcribeWithEliza1ASR(audioPath: string): {
+  text: string;
+  latencyMs: number;
+} {
+  const startedAt = nowMs();
+  const { binary, model, mmproj } = resolveEliza1AsrPaths();
+  const prompt = process.env.ELIZA1_ASR_PROMPT || "Transcribe the audio.";
+  const libDir = dirname(binary);
+  const proc = spawnSync(
+    binary,
+    [
+      "-m",
+      model,
+      "--mmproj",
+      mmproj,
+      "--audio",
+      audioPath,
+      "-p",
+      prompt,
+      "-n",
+      process.env.ELIZA1_ASR_N_PREDICT || "256",
+      "--no-perf",
+    ],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        DYLD_LIBRARY_PATH: process.env.DYLD_LIBRARY_PATH
+          ? `${libDir}:${process.env.DYLD_LIBRARY_PATH}`
+          : libDir,
+      },
+      maxBuffer: 10 * 1024 * 1024,
+    },
+  );
+  if (proc.status !== 0) {
+    throw new Error(
+      `eliza-1 ASR transcription failed: ${(proc.stderr || proc.stdout).trim()}`,
+    );
+  }
+  const text = parseEliza1AsrOutput(proc.stdout);
+  if (!text) {
+    throw new Error("eliza-1 ASR returned an empty transcript");
   }
   return { text, latencyMs: nowMs() - startedAt };
 }
@@ -816,13 +887,19 @@ async function main(): Promise<void> {
   const firstSentenceCache = new Map<string, Uint8Array>();
   let messageSequence = 0;
 
-  if (profile === LOCAL_CEREBRAS_PROFILE) {
+  if (profile === LOCAL_CEREBRAS_PROFILE || profile === LOCAL_ELIZA1_PROFILE) {
+    const localSttName =
+      profile === LOCAL_ELIZA1_PROFILE ? "eliza-1-asr" : "faster-whisper";
+    const transcribeLocal =
+      profile === LOCAL_ELIZA1_PROFILE
+        ? transcribeWithEliza1ASR
+        : transcribeWithFasterWhisper;
     for (const mode of config.modes) {
       for (const sample of samples) {
         for (let iteration = 1; iteration <= iterations; iteration++) {
           messageSequence += 1;
           const startedAt = nowMs();
-          const transcription = transcribeWithFasterWhisper(sample.audioPath);
+          const transcription = transcribeLocal(sample.audioPath);
           const transcriptText = transcription.text;
           const expectedTranscript = sample.expectedText;
           const transcriptionExactMatch =
@@ -954,7 +1031,7 @@ async function main(): Promise<void> {
               response: truncate(responseText),
               stateExcerpt: "",
               actions: [],
-              providers: ["faster-whisper", "cerebras", "say"],
+              providers: [localSttName, "cerebras", "say"],
               modelInput: truncate(generated.prompt, 900),
               modelOutputRaw: truncate(generated.raw, 900),
               modelOutputClean: truncate(modelOutputInspection.cleaned, 900),
@@ -974,7 +1051,7 @@ async function main(): Promise<void> {
                 },
               ],
               providerAccesses: [
-                { providerName: "faster-whisper", purpose: "transcription" },
+                { providerName: localSttName, purpose: "transcription" },
                 { providerName: "cerebras", purpose: "response" },
                 { providerName: "say", purpose: "text-to-speech" },
               ],

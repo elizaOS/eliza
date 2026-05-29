@@ -1,0 +1,70 @@
+#!/bin/sh
+
+# This scripts loads the environment variables that were stored by
+# dump-user-env in /run/user/1000/user-env and executes the specified
+# command and arguments as amnesia.
+#
+# If any environment variables from /run/user/1000/user-env are already
+# set in the current environment, those are *not* overwritten, so
+# environment variables set by the caller take precedence.
+
+set -eu
+
+USER_ENV_FILE=/run/user/1000/user-env
+DUMP_USER_ENV_SERVICE=tails-dump-user-env.service
+
+usage() {
+  echo "Usage: $0 [--systemd-run] command [args...]"
+}
+
+if [ "$#" -eq 0 ]; then
+  usage >&2
+  exit 1
+fi
+
+# Ensure that we're running as amnesia
+if [ "$(id -u)" -ne "1000"  ]; then
+  exec runuser -u amnesia -- "$0" "$@"
+fi
+
+if [ "$1" = "--transient-systemd-service" ]; then
+  shift
+  SERVICE_NAME="$1"
+  shift
+elif [ "$1" = "--transient-systemd-scope" ]; then
+  shift
+  UNIT_NAME="$1"
+  shift
+fi
+
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+export XDG_RUNTIME_DIR=/run/user/1000
+
+if [ ! -e "${USER_ENV_FILE}" ]; then
+  if [ ! -S "${DBUS_SESSION_BUS_ADDRESS#unix:path=}" ]; then
+    echo >&2 "File ${USER_ENV_FILE} does not exist and D-Bus session bus is not available,
+so we cannot run ${DUMP_USER_ENV_SERVICE} to create it."
+    exit 1
+  fi
+
+  # Start the service that dumps the environment variables to a file.
+  # This waits until the service is ready which means that the
+  # environment variables have been dumped.
+  systemctl --user start "${DUMP_USER_ENV_SERVICE}"
+fi
+
+if [ -n "${SERVICE_NAME:-}" ]; then
+  # Run the command as a transient systemd service.
+  exec systemd-run --user \
+    --unit="${SERVICE_NAME}" \
+    --property="SyslogIdentifier=$(basename "$1")" \
+    /usr/local/lib/run-with-env --env-file "${USER_ENV_FILE}" -- "$@"
+elif [ -n "${UNIT_NAME:-}" ]; then
+  # Run the command as a transient systemd scope.
+  exec systemd-run --user \
+    --scope \
+    --unit="${UNIT_NAME}" \
+    /usr/local/lib/run-with-env --env-file "${USER_ENV_FILE}" -- "$@"
+else
+  exec /usr/local/lib/run-with-env --env-file "${USER_ENV_FILE}" -- "$@"
+fi

@@ -76,7 +76,6 @@ export default function MobileRootLayout({
         className="overscroll-none bg-background font-sans antialiased"
         suppressHydrationWarning
       >
-        {/* Privy OAuth deep link handler — must be before PrivyProvider */}
         <AppUrlListener />
 
         {mounted ? (

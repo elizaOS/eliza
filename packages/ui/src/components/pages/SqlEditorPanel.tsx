@@ -40,7 +40,7 @@ export function SqlEditorPanel({
 
       <PagePanel variant="surface" className="mt-4 flex flex-col p-4">
         <div className="relative group">
-          <div className="absolute -inset-[1px] bg-gradient-to-r from-accent/0 via-accent/30 to-accent/0 rounded-2xl opacity-0 group-focus-within:opacity-100 blur transition-opacity duration-500" />
+          <div className="absolute -inset-[1px] bg-gradient-to-r from-accent/0 via-accent/30 to-accent/0 rounded-sm opacity-0 group-focus-within:opacity-100 blur transition-opacity duration-500" />
           <Textarea
             value={queryText}
             onChange={(e) => setQueryText(e.target.value)}
@@ -52,7 +52,7 @@ export function SqlEditorPanel({
             }}
             placeholder={t("databaseview.SELECTFROMMemori")}
             rows={6}
-            className="w-full relative bg-bg/80 backdrop-blur-md border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-xl focus-visible:ring-accent focus-visible:border-accent custom-scrollbar shadow-inner"
+            className="w-full relative bg-bg/80 backdrop-blur-md border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm focus-visible:ring-accent focus-visible:border-accent custom-scrollbar "
             spellCheck={false}
           />
         </div>
@@ -60,7 +60,7 @@ export function SqlEditorPanel({
           <Button
             variant="default"
             size="sm"
-            className="h-auto min-h-[2.25rem] whitespace-normal break-words rounded-xl bg-accent px-6 py-1.5 text-left text-xs font-bold text-accent-fg shadow-[0_0_15px_rgba(var(--accent-rgb),0.4)] transition-[opacity,transform,box-shadow] hover:scale-[1.02] hover:opacity-90 disabled:opacity-40"
+            className="h-auto min-h-[2.25rem] whitespace-normal break-words rounded-sm bg-accent px-6 py-1.5 text-left text-xs font-bold text-accent-fg transition-[opacity,transform,box-shadow] hover:scale-[1.02] hover:opacity-90 disabled:opacity-40"
             disabled={queryLoading || !queryText.trim()}
             onClick={runQuery}
           >
@@ -70,12 +70,12 @@ export function SqlEditorPanel({
                   defaultValue: "Run Query",
                 })}
           </Button>
-          <kbd className="text-2xs text-muted font-mono bg-bg/50 px-2 py-1 rounded-md border border-border/30 shadow-inner tracking-wider">
+          <kbd className="text-2xs text-muted font-mono bg-bg/50 px-2 py-1 rounded-sm border border-border/30 tracking-wider">
             {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}{" "}
-            {t("onboarding.enter")}
+            {t("common.enter")}
           </kbd>
           {queryResult && (
-            <div className="text-xs text-muted ml-auto bg-bg/50 px-3 py-1.5 rounded-lg border border-border/30 font-medium shadow-inner tracking-wide">
+            <div className="text-xs text-muted ml-auto bg-bg/50 px-3 py-1.5 rounded-sm border border-border/30 font-medium tracking-wide">
               <span className="text-txt">{queryResult.rowCount}</span>{" "}
               {queryResult.rowCount === 1
                 ? t("databaseview.row")
@@ -88,8 +88,8 @@ export function SqlEditorPanel({
 
       {/* Inline query history (standalone layout only) */}
       {showHistory && queryHistory.length > 0 && !queryResult && (
-        <div className="border border-border/40 bg-card/40 backdrop-blur-xl rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 text-2xs text-muted uppercase font-bold tracking-widest bg-bg/60 shadow-inner">
+        <div className="border border-border/40 bg-card/40 backdrop-blur-xl rounded-sm overflow-hidden">
+          <div className="px-4 py-2.5 text-2xs text-muted uppercase font-bold tracking-widest bg-bg/60 ">
             {t("databaseview.RecentQueries")}
           </div>
           <div className="flex flex-col">
@@ -97,7 +97,7 @@ export function SqlEditorPanel({
               <Button
                 variant="ghost"
                 key={q}
-                className="w-full px-4 py-3 h-auto justify-start text-xs-tight font-mono text-txt text-left rounded-none hover:bg-accent/10 hover:text-txt transition-colors truncate"
+                className="w-full px-4 py-3 h-auto justify-start text-xs-tight font-mono text-txt text-left rounded-none hover:bg-bg-hover hover:text-txt transition-colors truncate"
                 onClick={() => setQueryText(q)}
               >
                 <span className="truncate opacity-80 group-hover:opacity-100">

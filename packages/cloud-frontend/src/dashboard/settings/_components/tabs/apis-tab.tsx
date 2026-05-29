@@ -548,7 +548,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
             <button
               type="button"
               onClick={() => updateModal({ showCreateModal: false })}
-              className="px-4 py-2.5 border border-[#303030] text-white hover:bg-white/5 transition-colors"
+              className="px-4 py-2.5 text-white hover:bg-white/5 transition-colors"
               disabled={operationState.creating}
             >
               <span className="font-mono text-sm">Cancel</span>

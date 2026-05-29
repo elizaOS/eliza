@@ -106,7 +106,7 @@ export function ConnectorAccountPurposeSelector({
         >
           <SelectTrigger
             id={id}
-            className="h-8 w-[132px] rounded-lg border border-border bg-card text-xs"
+            className="h-8 w-[132px] rounded-sm border border-border bg-card text-xs"
           >
             <SelectValue />
           </SelectTrigger>
@@ -143,7 +143,7 @@ export function ConnectorAccountPurposeSelector({
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="rounded-lg border border-border/50 bg-bg-accent/40 px-3 py-2 text-xs text-muted">
+            <div className="rounded-sm border border-border/50 bg-bg-accent/40 px-3 py-2 text-xs text-muted">
               <span className="font-medium text-txt">
                 {accountLabel ?? "Connector account"}
               </span>{" "}

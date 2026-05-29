@@ -3376,8 +3376,19 @@ export const allActionsSpec = {
 		{
 			name: "BROWSER",
 			description:
-				"BROWSER action. Control registered target: workspace default, bridge Chrome/Safari, computeruse Chromium. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+				"BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
 			parameters: [
+				{
+					name: "target",
+					description:
+						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+				},
 				{
 					name: "action",
 					description:
@@ -3626,6 +3637,7 @@ export const allActionsSpec = {
 					actions: ["BROWSER"],
 					params: {
 						BROWSER: {
+							target: "example",
 							action: "back",
 							tabAction: "close",
 							domain: "example",
@@ -5156,6 +5168,95 @@ export const allActionsSpec = {
 					},
 				},
 			],
+		},
+		{
+			name: "GIT_PATHOLOGY",
+			description:
+				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Actions: report (default), list (show cached reports).",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Which gitpathologist action: report or list. Default: report.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["report", "list"],
+					},
+					descriptionCompressed:
+						"Which gitpathologist action: report or list. Default: report.",
+				},
+				{
+					name: "surface",
+					description:
+						"Path or glob to analyze (relative to repo root). Required for action=report.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Path or glob to analyze (relative to repo root). Required for action=report.",
+				},
+				{
+					name: "since",
+					description:
+						"Lookback window. ISO date or relative (e.g. '14d', '4w'). Default '14d'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Lookback window. ISO date or relative (e. g. '14d', '4w'). Default '14d'.",
+				},
+				{
+					name: "budget",
+					description: "Max LLM narration calls per analysis. Default 20.",
+					required: false,
+					schema: {
+						type: "integer",
+						minimum: 0,
+					},
+					descriptionCompressed:
+						"Max LLM narration calls per analysis. Default 20.",
+				},
+				{
+					name: "cache",
+					description:
+						"Cache policy: auto (default), force (recompute), read-only (fail on miss).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["auto", "force", "read-only"],
+					},
+					descriptionCompressed:
+						"Cache policy: auto (default), force (recompute), read-only (fail on miss).",
+				},
+			],
+			similes: [
+				"ANALYZE_GIT_PATHOLOGY",
+				"GIT_HEALTH",
+				"GIT_FORENSICS",
+				"PATHOLOGY_REPORT",
+				"CODE_HISTORY_HEALTH",
+				"WHERE_DID_ROT_START",
+			],
+			exampleCalls: [
+				{
+					user: "Use GIT_PATHOLOGY with the provided parameters.",
+					actions: ["GIT_PATHOLOGY"],
+					params: {
+						GIT_PATHOLOGY: {
+							action: "report",
+							surface: "example",
+							since: "example",
+							budget: "example",
+							cache: "auto",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem...",
 		},
 		{
 			name: "GITHUB",
@@ -7869,6 +7970,81 @@ export const allActionsSpec = {
 						"Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues...",
 				},
 				{
+					name: "op",
+					description: "Planner alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed: "Planner alias for action.",
+				},
+				{
+					name: "subaction",
+					description: "Planner alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed: "Planner alias for action.",
+				},
+				{
+					name: "operation",
+					description: "Planner alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed: "Planner alias for action.",
+				},
+				{
 					name: "task",
 					description:
 						"Task prompt for create / spawn_agent / send (as new task).",
@@ -8474,6 +8650,9 @@ export const allActionsSpec = {
 					params: {
 						TASKS: {
 							action: "create",
+							op: "create",
+							subaction: "create",
+							operation: "create",
 							task: "example",
 							agentType: "example",
 							agents: "example",

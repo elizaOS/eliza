@@ -1,0 +1,203 @@
+# This file (.rubocop.yml) encodes consciously chosen deviation from Rubocop's
+# default configuration. The jury is still out regarding other checks, which are
+# disabled or tweaked in .rubocop_todo.yml.
+
+inherit_from: .rubocop_todo.yml
+
+AllCops:
+  Exclude:
+    # Let's ignore this script until we start using it and maintaining
+    # the corresponding doc-source-relationships.yml
+    - 'bin/doc-impacted-by'
+    # Not our code
+    - 'lib/ruby/vendor/**/*'
+  TargetRubyVersion: 3.2
+
+Layout/HashAlignment:
+  EnforcedHashRocketStyle: table
+  EnforcedColonStyle: table
+
+Layout/LineLength:
+  Max: 88
+
+Lint/SuppressedException:
+  AllowComments: true
+
+Metrics/AbcSize:
+  Max: 40
+
+Metrics/BlockLength:
+  Max: 40
+  AllowedMethods:
+    # Rake
+    - 'namespace'
+    - 'task'
+    # Vagrant
+    - 'Vagrant.configure'
+
+Metrics/ClassLength:
+  Max: 250
+
+Metrics/CyclomaticComplexity:
+  Max: 12
+
+Metrics/MethodLength:
+  Max: 45
+
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+Metrics/PerceivedComplexity:
+  Max: 15
+
+Naming/BlockParameterName:
+  AllowedNames:
+    - expected_patterns_MiB
+    - size_MiB
+    - size_in_MiB_of_destination_disk
+
+Naming/MethodName:
+  AllowedPatterns:
+    # Cucumber
+    - \A(After|Before)Feature\z
+    # Case matters: bit vs. byte
+    - _(kB|MiB)\z
+    # Stay close to Dogtail's API
+    - \A(doubleClick|roleName)\z
+    # Stay close to OpenCV's API
+    - \AmatchTemplate\z
+    # Stay close to Dogtail's API
+    - \AchildLabelled\z
+    - \AchildNamed\z
+    - \AmenuItem\z
+    - \AdoActionNamed\z
+    - \AgrabFocus\z
+
+Naming/MethodParameterName:
+  AllowedNames:
+    - h
+    - to
+    - vm
+    - w
+    - x
+    - y
+
+Style/AccessModifierDeclarations:
+  EnforcedStyle: inline
+
+Style/AsciiComments:
+  Enabled: false
+
+Style/AutoResourceCleanup:
+  Enabled: true
+
+Style/ClassAndModuleChildren:
+  EnforcedStyle: compact
+
+Style/ClassVars:
+  Exclude:
+    - 'features/support/helpers/dogtail.rb'
+    - 'features/support/helpers/remote_shell.rb'
+
+Style/CollectionMethods:
+  Enabled: true
+
+Style/ConstantVisibility:
+  Enabled: true
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Style/GlobalVars:
+  Exclude:
+    - 'Rakefile'
+
+Style/GuardClause:
+  MinBodyLength: 3
+
+Style/HashEachMethods:
+  Enabled: true
+
+Style/HashTransformKeys:
+  Enabled: true
+
+Style/HashTransformValues:
+  Enabled: true
+
+Style/HashSyntax:
+  EnforcedStyle: ruby19_no_mixed_keys
+
+Style/IfUnlessModifier:
+  Enabled: false
+
+Style/MethodCallWithArgsParentheses:
+  Enabled: true
+  AllowedMethods:
+    - abort
+    - assert
+    - basename
+    - chdir
+    - debug_log
+    - define
+    - delete
+    - desc
+    - exist?
+    - exit
+    - fatal_system
+    - include
+    - include?
+    - mkdir
+    - mktmpdir
+    - puts
+    - raise
+    - remove_entry_secure
+    - require
+    - require_relative
+    - returncode
+    - separator
+    - should
+    - should_not
+    - sleep
+    - start_with?
+    - step
+    - task
+    - wait
+    - warn
+    - write
+    - yield
+
+Style/MethodCalledOnDoEndBlock:
+  Enabled: true
+
+Style/NumericLiterals:
+  MinDigits: 6
+
+Style/OptionHash:
+  Enabled: true
+
+Style/ReturnNil:
+  Enabled: true
+
+Style/Send:
+  Enabled: true
+
+Style/SingleLineBlockParams:
+  Enabled: true
+
+Style/StringMethods:
+  Enabled: true
+
+Style/SymbolArray:
+  EnforcedStyle: brackets
+
+Style/TrailingCommaInArguments:
+  EnforcedStyleForMultiline: no_comma
+
+Style/TrailingCommaInArrayLiteral:
+  EnforcedStyleForMultiline: consistent_comma
+
+Style/TrailingCommaInHashLiteral:
+  EnforcedStyleForMultiline: consistent_comma
+
+Style/WordArray:
+  EnforcedStyle: brackets

@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-web-search",
-    "version": "2.0.3",
+    "version": "2.0.3-beta.0",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -39,7 +39,7 @@
         "lint:fix": "biome check --write src/",
         "format": "biome format src/",
         "format:fix": "biome format --write src/",
-        "typecheck": "tsc --noEmit -p tsconfig.json"
+        "typecheck": "tsgo --noEmit -p tsconfig.json"
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",

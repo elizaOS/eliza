@@ -116,13 +116,13 @@ export function SocialConnectionHint({
           <button
             type="button"
             onClick={handleDismissDiscord}
-            className="absolute top-3 right-3 p-1 rounded-md hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
+            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
             aria-label="Dismiss Discord hint"
           >
             <X className="h-4 w-4" />
           </button>
           <div className="flex items-start gap-4 pr-8">
-            <div className="p-3 rounded-lg bg-[#5865F2]/20 shrink-0">
+            <div className="p-3 rounded-sm bg-[#5865F2]/20 shrink-0">
               <DiscordIcon className="h-6 w-6 text-[#5865F2]" />
             </div>
             <div className="flex-1 min-w-0">
@@ -161,13 +161,13 @@ export function SocialConnectionHint({
           <button
             type="button"
             onClick={handleDismissTelegram}
-            className="absolute top-3 right-3 p-1 rounded-md hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
+            className="absolute top-3 right-3 p-1 rounded-sm hover:bg-white/10 transition-colors text-white/40 hover:text-white/60"
             aria-label="Dismiss Telegram hint"
           >
             <X className="h-4 w-4" />
           </button>
           <div className="flex items-start gap-4 pr-8">
-            <div className="p-3 rounded-lg bg-[#0088cc]/20 shrink-0">
+            <div className="p-3 rounded-sm bg-[#0088cc]/20 shrink-0">
               <MessageSquare className="h-6 w-6 text-[#0088cc]" />
             </div>
             <div className="flex-1 min-w-0">

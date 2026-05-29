@@ -1,28 +1,20 @@
-# elizaOS Linux
+# elizaOS Linux live-build variant
 
-A single Debian-based live ISO build that targets **x86_64 (amd64), arm64,
-and riscv64** from one live-build configuration. It replaces the earlier
-per-arch trees with one config whose architecture-specific bits are
-selected at build time.
+This directory contains the source-controlled live-build variant used for the
+legacy multi-arch elizaOS Linux ISO checks.
 
-## How multi-arch works
+Profiles:
 
-There is one `auto/config`, one set of hooks, and one branding overlay.
-Architecture is chosen with `ELIZAOS_ARCH` (`amd64` | `arm64` | `riscv64`,
-default `amd64`) and drives `lb config --architecture/--linux-flavours`.
-Per-arch package differences are expressed with live-build's in-file
-`#if ARCHITECTURES` conditional. live-build only reads package lists whose
-names match `*.list`, `*.list.chroot`, or `*.list.chroot_<install|live>`;
-an arch suffix like `.amd64` matches none of those globs and is silently
-skipped (this previously dropped the entire desktop). So every list uses a
-plain `.list.chroot` name and gates its arch-specific body instead:
+- `default`: headless Debian live image with the elizaOS agent/runtime payload.
+- `gui`: default plus graphical kiosk/desktop packages and seat wiring.
+- `secure`: default plus secure profile overlays when present.
+- `secure-gui`: secure plus the GUI profile.
 
-```
-config/package-lists/
-  elizaos-common.list.chroot     # installed on every arch (no guard)
-  elizaos-amd64.list.chroot      # body wrapped in #if ARCHITECTURES amd64
-  elizaos-arm64.list.chroot      # body wrapped in #if ARCHITECTURES arm64
-  elizaos-riscv64.list.chroot    # body wrapped in #if ARCHITECTURES riscv64
+Examples:
+
+```bash
+ELIZAOS_ARCH=riscv64 ELIZAOS_PROFILE=default ./build.sh
+ELIZAOS_ARCH=riscv64 ELIZAOS_PROFILE=gui ./build.sh
 ```
 
 How the guard works (live-build's `Expand_packagelist`): a line
@@ -145,7 +137,11 @@ make -C packages/os/linux/elizaos arm64-gui-kiosk-iso-check
 ```
 
 The current riscv64 and arm64 GUI reports pass as static squashfs payload
-checks for previously built GUI-capable ISOs.
+checks for previously built GUI-capable ISOs. Capture GUI reference evidence
+against a fresh GUI artifact such as
+`out/elizaos-linux-riscv64-gui-<timestamp>.iso`; do not reuse the headless
+`out/elizaos-linux-riscv64-default-20260524T030430Z.iso` matrix entry for GUI
+kiosk validation.
 
 `make build` runs `lb config` → `lb build` → verify → checksum → manifest
 inside the builder container (`Dockerfile`). A clean build pulls multi-GB

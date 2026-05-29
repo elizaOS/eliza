@@ -2,7 +2,7 @@
 // Attestation-bound sealed state-volume mount hook (plan §3.5a; OS half of the
 // agent ↔ OS sealed-volume contract).
 //
-// The dm-crypt/LUKS2 state volume that backs MILADY_STATE_DIR / ~/.milady (the
+// The dm-crypt/LUKS2 state volume that backs MILADY_STATE_DIR (the
 // agent-session secret scope) must NOT be unlocked with a host-readable key
 // (dstack LUKS2 advisory GHSA-jxq2-hpw3-m5wf; agent plan §5.5). Its key is
 // released ONLY after a passing attestation and is bound to the measured
@@ -53,7 +53,7 @@ export const STATE_VOLUME_KEY_ID = "state-volume";
  * @param {string} config.mapperName
  *   dm-crypt mapping name; the unlocked device appears at /dev/mapper/<name>.
  * @param {string} config.mountPoint
- *   Where the unlocked volume is mounted (MILADY_STATE_DIR / ~/.milady).
+ *   Where the unlocked volume is mounted (MILADY_STATE_DIR).
  * @param {(args: { command: string, args: string[], keyMaterialHex: string }) => Promise<void>} [config.runCryptsetup]
  *   Injected runner for the privileged cryptsetup/mount commands. Defaults to a
  *   real spawn that pipes the key on stdin. Tests inject a recorder so no real

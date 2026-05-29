@@ -63,7 +63,7 @@ export function PageEmptyState({
       className={cn(
         variant === "inset"
           ? "min-h-[14rem] rounded-sm border border-dashed border-border bg-card px-5 py-10"
-          : "min-h-[18rem] rounded-sm border border-dashed border-border bg-card px-6 py-12 shadow-xs",
+          : "min-h-[18rem] rounded-sm border border-dashed border-border bg-card px-6 py-12 ",
         className,
       )}
       description={description}

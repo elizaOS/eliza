@@ -74,7 +74,7 @@ function writeBundle(
       vision: manifestVision
         ? [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }]
         : [],
-      dflash: [],
+      mtp: [],
       cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
     },
     kernels: {

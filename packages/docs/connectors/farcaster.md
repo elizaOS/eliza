@@ -28,7 +28,7 @@ Connect your agent to the Farcaster decentralized social protocol for casting, r
 | `ACTION_INTERVAL` | No | Minutes between action-processing cycles (default: `5`) |
 | `MAX_ACTIONS_PROCESSING` | No | Maximum actions per batch (default: `1`) |
 
-These can be set as environment variables or under the `connectors.farcaster` config in `~/.eliza/eliza.json`:
+These can be set as environment variables or under the `connectors.farcaster` config in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

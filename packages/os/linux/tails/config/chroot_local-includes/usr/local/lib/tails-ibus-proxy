@@ -1,0 +1,24 @@
+#!/usr/bin/python3 -I
+
+from pathlib import Path
+import subprocess
+
+PID_FILE = "/run/user/1000/.dbus-proxy/ibus-proxy.pid"
+SOCKET_FILE = "/run/user/1000/.dbus-proxy/ibus-proxy.sock"
+
+
+def main():
+    Path(PID_FILE).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    Path(SOCKET_FILE).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    output = subprocess.check_output(["/usr/bin/ibus", "address"]).decode().strip()
+    try:
+        address, guid = output.split(",")
+    except Exception as e:
+        raise RuntimeError(f"Failed to split output from `/usr/bin/ibus address`: '{output}'") from e
+    subprocess.run(["/usr/local/lib/tails-dbus-proxy", "--pid-file", PID_FILE,
+                    address, SOCKET_FILE])
+
+
+if __name__ == "__main__":
+    main()

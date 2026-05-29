@@ -3,7 +3,7 @@
 
 This is the bridge between the manifest-first runtime bundle layout and
 the current upstream asset locations on Hugging Face. It intentionally does
-not fabricate text or DFlash weights; it stages the non-text assets that are
+not fabricate text or MTP weights; it stages the non-text assets that are
 already externally available and writes evidence/provenance sidecars so the
 publish orchestrator can hash and validate the final bundle.
 
@@ -103,7 +103,7 @@ GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
 ASR_REQUANTIZE_BY_TIER: Final[dict[str, str]] = {
     # The upstream Qwen3-ASR-0.6B GGUF repo publishes Q8_0/BF16 only.
     # The 0.8B voice-loop memory gate needs the exact 752M ASR model
-    # requantized to Q4_K_M to keep ASR + mmproj + text + DFlash + Kokoro
+    # requantized to Q4_K_M to keep ASR + mmproj + text + MTP + Kokoro
     # resident under the 3.7 GB small-tier budget.
     "0_8b": "Q4_K_M",
 }
@@ -356,7 +356,7 @@ def merge_release_evidence_assets(
         hf.setdefault("pathPrefix", f"bundles/{evidence.get('tier', '')}")
 
     shipped: set[str] = set()
-    for subdir in ("text", "tts", "asr", "vad", "vision", "dflash", "turn"):
+    for subdir in ("text", "tts", "asr", "vad", "vision", "mtp", "turn"):
         root = bundle_dir / subdir
         if root.is_dir():
             shipped.update(

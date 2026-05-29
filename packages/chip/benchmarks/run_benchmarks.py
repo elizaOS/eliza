@@ -1556,7 +1556,7 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
     single_stream = by_name["SingleStream"]
     offline = by_name["Offline"]
     latency = single_stream.get("latency_percentiles_ns", {})
-    energy = summary.get("energy_joules_per_inference")
+    energy: Any = summary.get("energy_joules_per_inference")
     if not isinstance(latency, dict) or not is_json_number(latency.get("p90")):
         raise ValueError("MLPerf inference SingleStream scenario missing p90 latency")
     if not is_json_number(offline.get("throughput_samples_per_second")):

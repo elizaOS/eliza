@@ -1,0 +1,41 @@
+[[!meta title="Download and verify (for USB sticks)"]]
+[[!meta robots="noindex"]]
+[[!meta stylesheet="install/inc/stylesheets/download" rel="stylesheet" title=""]]
+[[!meta stylesheet="doc/about/warnings" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/steps" rel="stylesheet" title=""]]
+[[!meta stylesheet="install/inc/stylesheets/download-only-img" rel="stylesheet" title=""]]
+[[!meta script="install/inc/js/download"]]
+[[!meta script="install/inc/js/forge.min"]]
+
+[[!inline pages="install/inc/steps/download.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/verify.inline" raw="yes" sort="age"]]
+
+<h1 class="step">Continue installing or upgrading Tails</h1>
+
+With this USB image, you can either:
+
+- Upgrade your Tails USB stick and keep your Persistent Storage.
+
+  * [[Upgrade from your Tails|doc/upgrade/tails]]
+
+  * [[Upgrade from Windows|doc/upgrade/windows]]
+
+  * [[Upgrade from macOS|doc/upgrade/mac]]
+
+  * [[Upgrade from Linux|doc/upgrade/linux]]
+
+- Install a new Tails USB stick.
+
+  * <span class="button">[[Install from Windows|install/windows]]</span>
+
+  * <span class="button">[[Install from macOS|install/mac]]</span>
+
+  * <span class="button">[[Install from Linux|install/linux]]</span>
+
+  * <span class="button">[[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]</span>
+
+To burn a Tails DVD, download our [[ISO
+image|download-iso]] instead.
+
+[[!inline pages="install/inc/steps/warnings.inline" raw="yes" sort="age"]]

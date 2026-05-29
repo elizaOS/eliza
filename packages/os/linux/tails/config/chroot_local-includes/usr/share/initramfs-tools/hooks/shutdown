@@ -1,0 +1,33 @@
+#!/bin/sh
+
+set -e
+
+PREREQ=""
+
+prereqs () {
+	echo "${PREREQ}"
+}
+
+case "${1}" in
+	prereqs)
+		prereqs
+		exit 0
+		;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# systemd-shutdown itself
+copy_exec /lib/systemd/systemd-shutdown /shutdown
+
+# Our shutdown hook (run from inside the initramfs)
+mkdir -p "$DESTDIR/lib/systemd/system-shutdown"
+copy_file "regular file" \
+          /usr/local/lib/initramfs-pre-shutdown-hook \
+          /lib/systemd/system-shutdown/tails
+
+# Ensure systemd detects when we're in the initramfs on shutdown
+# (see the in_initrd function in the systemd source tree)
+touch "$DESTDIR/etc/initrd-release"
+
+exit 0

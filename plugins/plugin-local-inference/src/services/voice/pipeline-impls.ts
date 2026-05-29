@@ -11,17 +11,12 @@
  *     when no ASR backend is available (AGENTS.md §3 — no silent cloud
  *     fallback). The bridge's `resolveTranscriber()` returns this instead
  *     of throwing eagerly so the failure surfaces at turn time.
- *   - `LlamaServerDraftProposer` — the DFlash drafter, reached through
- *     the running `llama-server`'s `-md` drafter. GPU dispatch N=1 (no
- *     command-buffer batching for voice — ledger "Keep voice dispatch
- *     unbatched"); honours `cancel.cancelled` between kernel ticks.
- *   - `LlamaServerTargetVerifier` — the text model's autoregressive
- *     verify step against its own KV cache, also via `llama-server`. When
- *     the native fork emits exact verifier accept/reject ranges
- *     (`extractVerifierRejectRange` in `dflash-server.ts`), the verifier
- *     consumes them directly; until then it falls back to a plain
- *     autoregressive step that re-derives accept/reject by comparing the
- *     draft against the model's own next tokens.
+ *   - `MtpDraftProposer` — proposes a small MTP draft window from the
+ *     running in-process llama.cpp runtime; honours `cancel.cancelled`
+ *     between kernel ticks.
+ *   - `MtpTargetVerifier` — verifies against the text model's KV cache
+ *     and consumes exact verifier accept/reject events when the runtime
+ *     emits them.
  *
  * Hard-fail discipline (AGENTS.md §3 + §9): a missing fused ASR region in
  * voice mode is a thrown `VoiceStartupError`, never a silent cloud
@@ -29,11 +24,11 @@
  *
  * Why a separate file from `pipeline.ts`: `pipeline.ts` stays
  * dependency-light (it is the streaming contract, importable by text-only
- * callers). The runtime wiring — the llama-server backend — lives here so
+ * callers). The runtime wiring lives here so
  * the contract module does not drag it in.
  */
 
-import type { DflashGenerateArgs, DflashLlamaServer } from "../dflash-server";
+import type { GenerateArgs } from "../backend";
 import { VoiceStartupError } from "./errors";
 import {
 	type DraftProposer,
@@ -76,35 +71,39 @@ export class MissingAsrTranscriber implements StreamingTranscriber {
 }
 
 /* ------------------------------------------------------------------ */
-/* llama-server draft / verify                                        */
+/* MTP draft / verify                                                 */
 /* ------------------------------------------------------------------ */
 
 /**
- * Minimal surface of the running DFlash llama-server the draft/verify
+ * Minimal surface of the running MTP text runtime the draft/verify
  * adapters need. Kept structural so tests can pass a fake without
- * standing up a real server. `generateWithVerifierEvents` runs one
- * streamed completion and reports verifier-shaped accept/reject events
- * (synthesized from OpenAI deltas today, exact ranges once the native
- * fork emits them — `extractVerifierRejectRange`).
+ * standing up a real runtime.
  */
-export interface DflashTextRunner {
-	/** True only when a llama-server with a configured `-md` drafter is up. */
+export interface MtpTextRunner {
+	/** True when MTP speculative decoding is enabled. */
 	hasDrafter(): boolean;
 	generateWithVerifierEvents(
-		args: DflashGenerateArgs & {
+		args: GenerateArgs & {
 			onVerifierEvent: (event: VerifierStreamEvent) => void | Promise<void>;
 		},
 	): Promise<{ text: string }>;
 }
 
-/** Adapt the concrete `DflashLlamaServer` onto `DflashTextRunner`. */
-export function dflashTextRunner(server: DflashLlamaServer): DflashTextRunner {
+/** Adapt a local-inference backend onto `MtpTextRunner`. */
+export function mtpTextRunner(runner: {
+	mtpEnabled(): boolean;
+	generateWithUsage(
+		args: GenerateArgs & {
+			onVerifierEvent: (event: VerifierStreamEvent) => void | Promise<void>;
+		},
+	): Promise<{ text: string }>;
+}): MtpTextRunner {
 	return {
 		hasDrafter() {
-			return server.loadedDrafterModelPath() !== null;
+			return runner.mtpEnabled();
 		},
 		async generateWithVerifierEvents(args) {
-			const { text } = await server.generateWithUsage(args);
+			const { text } = await runner.generateWithUsage(args);
 			return { text };
 		},
 	};
@@ -122,8 +121,8 @@ function prefixToPrompt(prefix: ReadonlyArray<TextToken>): string {
 }
 
 /**
- * `DraftProposer` over the DFlash drafter via llama-server. The fork's
- * `--spec-draft-n-max` already bounds proposals; this adapter additionally
+ * `DraftProposer` over native MTP. The runtime draft window already bounds
+ * proposals; this adapter additionally
  * clamps to the pipeline's `maxDraft` and stops early on
  * `cancel.cancelled`. GPU dispatch is N=1 (the fork's voice profile
  * disables command-buffer batching — ledger §2 "Keep voice dispatch
@@ -136,10 +135,10 @@ function prefixToPrompt(prefix: ReadonlyArray<TextToken>): string {
  * standard speculative-decoding contract, just with the draft sourced
  * from the same server.
  */
-export class LlamaServerDraftProposer implements DraftProposer {
-	private readonly runner: DflashTextRunner;
+export class MtpDraftProposer implements DraftProposer {
+	private readonly runner: MtpTextRunner;
 
-	constructor(runner: DflashTextRunner) {
+	constructor(runner: MtpTextRunner) {
 		this.runner = runner;
 	}
 
@@ -152,8 +151,7 @@ export class LlamaServerDraftProposer implements DraftProposer {
 		if (!this.runner.hasDrafter()) {
 			// No drafter wired ⇒ no speculation this round. The verifier still
 			// produces one token per round (plain AR step), so generation
-			// continues; DFlash being mandatory is enforced at server-launch
-			// time, not here.
+			// continues; MTP being mandatory is enforced at model load time.
 			return [];
 		}
 		const accepted: TextToken[] = [];
@@ -180,8 +178,8 @@ export class LlamaServerDraftProposer implements DraftProposer {
 }
 
 /**
- * `TargetVerifier` over the text model via llama-server. Runs one
- * autoregressive verify step against the server's KV cache: it sends the
+ * `TargetVerifier` over the text model via MTP. Runs one
+ * autoregressive verify step against the runtime KV cache: it sends the
  * accepted prefix and reads back the model's own continuation. The
  * leading tokens that match the supplied `draft` are "accepted from
  * draft"; the first mismatch is the correction; the model's `done` /
@@ -192,11 +190,11 @@ export class LlamaServerDraftProposer implements DraftProposer {
  * the rejected token positions — this adapter records both and trusts the
  * server's accept/reject split rather than re-deriving it.
  */
-export class LlamaServerTargetVerifier implements TargetVerifier {
-	private readonly runner: DflashTextRunner;
+export class MtpTargetVerifier implements TargetVerifier {
+	private readonly runner: MtpTextRunner;
 	private readonly maxStep: number;
 
-	constructor(runner: DflashTextRunner, opts: { maxStep?: number } = {}) {
+	constructor(runner: MtpTextRunner, opts: { maxStep?: number } = {}) {
 		this.runner = runner;
 		this.maxStep = Math.max(1, Math.floor(opts.maxStep ?? 16));
 	}
@@ -257,7 +255,7 @@ export class LlamaServerTargetVerifier implements TargetVerifier {
 /**
  * Bridge a `{cancelled: boolean}` flag (the pipeline's cancellation
  * primitive — checked between kernel ticks) onto an `AbortSignal` so the
- * llama-server HTTP request aborts when a barge-in fires.
+ * local generation aborts when a barge-in fires.
  *
  * L6 — event-driven cancellation. The cancel token may expose an
  * `onCancel(listener)` hook (set by the scheduler / pipeline when it

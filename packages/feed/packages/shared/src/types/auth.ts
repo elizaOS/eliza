@@ -13,6 +13,7 @@
 export interface AuthenticatedUser {
   userId: string;
   dbUserId?: string;
+  stewardId?: string;
   privyId?: string;
   walletAddress?: string;
   email?: string;

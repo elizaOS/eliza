@@ -24,7 +24,7 @@ UI imports from this directory are limited to:
   values.
 - `packages/ui/src/api/ios-local-agent-kernel.ts` — catalog,
   recommendation, routing-preferences, types (incl. `AGENT_MODEL_SLOTS`).
-- `packages/ui/src/onboarding/auto-download-recommended.ts` — types only.
+- `packages/ui/src/first-run/auto-download-recommended.ts` — types only.
 
 Anything else in this directory exists to satisfy the local dependency
 graph for those files (e.g. `recommendation.ts` reaches into
@@ -51,16 +51,16 @@ are thin re-exports:
 ## What stays a twin (and why)
 
 The server-side counterparts of these files are strict supersets carrying
-server-only DFlash runtime metadata, llama-server lifecycle code, KV-cache
+server-only MTP runtime metadata, llama-server lifecycle code, KV-cache
 plumbing, etc. Forcing them to share would either leak server-only types
 into the UI bundle or cripple the server, so they remain split:
 
 - `catalog.ts` — UI carries the public subset of `MODEL_CATALOG`; the
-  server adds DFlash drafter variants and `optimizations.requiresKernel`.
+  server adds MTP drafter variants and `optimizations.requiresKernel`.
 - `recommendation.ts` — UI omits the server-only kernel-availability
   filter.
-- `active-model.ts`, `device-bridge.ts`, `dflash-server.ts`,
-  `dflash-doctor.ts`, `engine.ts`, `handler-registry.ts`, `hardware.ts`,
+- `active-model.ts`, `device-bridge.ts`, `ffi-streaming-backend.ts`,
+  `mtp-doctor.ts`, `engine.ts`, `handler-registry.ts`, `hardware.ts`,
   `index.ts`, `providers.ts`, `router-handler.ts`, `service.ts` — UI
   keeps a slimmer surface for type-only / catalog-only consumers.
 

@@ -18,7 +18,6 @@ Ship Feed (`apps/web`) — a Next.js 16 full-stack prediction market app — as 
 
 - ❌ Rewriting any React components
 - ❌ Abandoning the monorepo
-- ❌ Migrating away from Privy, wagmi, viem, or any existing dependency
 - ❌ Rewriting the API layer — it stays as Next.js API routes on Vercel
 
 ### What This DOES Require
@@ -29,7 +28,7 @@ Ship Feed (`apps/web`) — a Next.js 16 full-stack prediction market app — as 
 - ✅ Making server actions call the API instead of importing server packages directly (3 files)
 - ✅ Centralizing ALL fetch calls through a base-URL-aware utility (~190 calls across ~150 files)
 - ✅ Adding Capacitor's origin to the CORS allowlist on the API server
-- ✅ Integrating Privy's official Capacitor OAuth flow
+- ✅ Integrating Steward session handoff for Capacitor
 
 ---
 
@@ -43,7 +42,7 @@ Ship Feed (`apps/web`) — a Next.js 16 full-stack prediction market app — as 
 | **Mobile support** | First-class iOS + Android. This is its entire purpose |
 | **Rendering** | WebView-based. HTML/CSS/JS runs inside a native app shell |
 | **Plugin ecosystem** | 1700+ plugins. Push notifications, camera, biometrics, haptics, IAP, deep links, status bar, splash screen |
-| **Web3 compatibility** | WebView supports WalletConnect deep links, pure-JS crypto libs (viem, ethers). Privy embedded wallets **verified working** (Feb 13 2026) |
+| **Web3 compatibility** | WebView supports WalletConnect deep links and pure-JS crypto libs (viem, ethers). |
 | **Static export** | Requires static HTML/CSS/JS. Works with Next.js `output: 'export'` |
 | **Bundle size** | App shell ~2-5MB + web bundle. Typical total: 15-40MB |
 | **Performance** | Adequate for content/trading apps. Not for 60fps animation-heavy UIs |
@@ -91,4 +90,3 @@ Ship Feed (`apps/web`) — a Next.js 16 full-stack prediction market app — as 
 | OTA Updates | ✅ Capgo | ❌ | ✅ CodePush | ✅ |
 | Learning curve | **Low** | High (Rust) | High | **Lowest** |
 | Risk | Low-Medium | Medium | Low | High |
-

@@ -86,7 +86,12 @@ export * from "./types/message-service";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-export { addHeader, composePromptFromState, parseKeyValueXml } from "./utils";
+export {
+	addHeader,
+	composePromptFromState,
+	parseKeyValueXml,
+	parseToonKeyValue,
+} from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/description-compressed-lint";
@@ -131,9 +136,11 @@ export function resolveStateDir(
 		globalThis as { process?: { env?: Record<string, string | undefined> } }
 	).process?.env ?? {},
 ): string {
-	return (
-		readBrowserEnv(env, "ELIZA_STATE_DIR") ?? `/.${getElizaNamespace(env)}`
-	);
+	const explicit = readBrowserEnv(env, "ELIZA_STATE_DIR");
+	if (explicit) return explicit;
+	const namespace = getElizaNamespace(env);
+	const xdgStateHome = readBrowserEnv(env, "XDG_STATE_HOME");
+	return `${xdgStateHome ?? "/.local/state"}/${namespace}`;
 }
 
 // Browser stubs for Node-only path helpers. These exist on the Node entry
@@ -142,11 +149,7 @@ export function resolveStateDir(
 // by the renderer bundle's dep graph. The values returned are unused in the
 // browser; we just need named exports so Rollup's static analysis succeeds.
 export function resolveOAuthDir(): string {
-	return "/.eliza/oauth";
-}
-
-export function migrateLegacyStateDir(): { migrated: false } {
-	return { migrated: false };
+	return "/.local/state/eliza/credentials";
 }
 
 export async function runPluginMigrations(): Promise<void> {}

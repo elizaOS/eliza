@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+error () {
+    echo "error: ${*}" >&2
+    exit 1
+}
+
+USAGE="Usage: $(basename "$0") SUITE_TO_RESET DESIRED_NEW_STATE"
+
+[ $# -eq 2 ] || error "$USAGE"
+
+SUITE_TO_RESET="$1"
+DESIRED_NEW_STATE="$2"
+
+### Empty $SUITE_TO_RESET
+ssh reprepro@incoming.deb.tails.boum.org \
+    reprepro removematched "$SUITE_TO_RESET" '\*'
+
+### Merge $DESIRED_NEW_STATE into $SUITE_TO_RESET
+# shellcheck disable=SC2029
+ssh reprepro@incoming.deb.tails.boum.org \
+    tails-merge-suite "$DESIRED_NEW_STATE" "$SUITE_TO_RESET"

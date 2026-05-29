@@ -218,7 +218,7 @@ export function LoginsTab() {
         <Button
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 gap-1 rounded-md px-2"
+          className="h-8 shrink-0 gap-1 rounded-sm px-2"
           onClick={() => setShowAdd((v) => !v)}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
@@ -229,7 +229,7 @@ export function LoginsTab() {
       {error && (
         <div
           aria-live="polite"
-          className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+          className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
         >
           {error}
         </div>
@@ -244,7 +244,7 @@ export function LoginsTab() {
           {failures.map((f) => (
             <div
               key={f.source}
-              className="rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-2xs text-warn"
+              className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-1.5 text-2xs text-warn"
             >
               {SOURCE_LABEL[f.source]} failed to load: {f.message}
             </div>
@@ -255,7 +255,7 @@ export function LoginsTab() {
       {showAdd && (
         <form
           onSubmit={onAdd}
-          className="space-y-2 rounded-md border border-border/50 bg-card/30 p-2"
+          className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
           data-testid="saved-logins-add-form"
         >
           <p className="text-2xs text-muted">
@@ -302,7 +302,7 @@ export function LoginsTab() {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 rounded-md px-3 text-xs"
+              className="h-7 rounded-sm px-3 text-xs"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -312,7 +312,7 @@ export function LoginsTab() {
               type="submit"
               variant="default"
               size="sm"
-              className="h-7 gap-1 rounded-md px-3 text-xs"
+              className="h-7 gap-1 rounded-sm px-3 text-xs"
               disabled={
                 submitting || !addDomain.trim() || !addUsername || !addPassword
               }
@@ -348,7 +348,7 @@ export function LoginsTab() {
       ) : logins.length === 0 ? (
         <div
           data-testid="saved-logins-empty"
-          className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
           No saved logins yet. Add one here, or sign in to 1Password / Bitwarden
           on the Overview tab to surface their entries.
@@ -356,19 +356,19 @@ export function LoginsTab() {
       ) : filtered.length === 0 ? (
         <div
           data-testid="saved-logins-no-match"
-          className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
           No logins match "{filter}".
         </div>
       ) : (
         <ul
           data-testid="saved-logins-list"
-          className="space-y-1 rounded-md border border-border/40 bg-card/30 p-1"
+          className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1"
         >
           {filtered.map((login) => (
             <li
               key={`${login.source}:${login.identifier}`}
-              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-muted/30"
+              className="flex items-center gap-2 rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
             >
               <span
                 className={`shrink-0 rounded-full border px-1.5 py-0.5 text-2xs font-medium ${SOURCE_PILL_CLASS[login.source]}`}
@@ -399,7 +399,7 @@ export function LoginsTab() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+                  className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
                   aria-label={`Delete saved login for ${login.domain ?? login.username}`}
                   onClick={() => void onDelete(login)}
                 >
@@ -432,7 +432,7 @@ function AgentAutoallowToggle({
     <Button
       variant="ghost"
       size="sm"
-      className={`h-7 w-7 shrink-0 rounded-md p-0 ${
+      className={`h-7 w-7 shrink-0 rounded-sm p-0 ${
         allowed ? "text-accent hover:text-accent" : "text-muted hover:text-txt"
       }`}
       aria-label={label}
@@ -456,7 +456,7 @@ function ExternalRowAction({ login }: { login: SavedLogin }) {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-border/40 px-2 text-2xs text-muted hover:text-txt"
+      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-sm border border-border/40 px-2 text-2xs text-muted hover:text-txt"
       aria-label={`View in ${SOURCE_LABEL[login.source]}`}
       title={`View in ${SOURCE_LABEL[login.source]}`}
     >

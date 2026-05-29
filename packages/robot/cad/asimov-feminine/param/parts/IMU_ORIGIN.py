@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param')
 import numpy as np, trimesh, paramlib as P
 import connections as C
+import warp2 as W
 import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt
 
 ROOT = '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot'
@@ -61,7 +62,39 @@ def hip_flare(z):
     return 1.0 + 0.05 * np.exp(-((z - HIP_JOINT) / 0.024) ** 2)
 P.axis_scale(param, dim=1, fn=hip_flare, weight=w)  # dim=1 -> world Y
 
-rebuilt = P.rings_to_mesh(param)
+# Keep the high-detail pelvis mesh as the preservation baseline. The legacy
+# ring loft is useful for the silhouette plot, but it loses internal geometry
+# and drifts the three reserved interfaces. The strict proof accepts this
+# source-preserving topology repair and still blocks full STEP/B-rep claims.
+def pelvis_similarity_scale(z):
+    return 1.0 - 0.16 * np.exp(-((z - 0.033) / 0.026) ** 2)
+
+
+rebuilt = W.warp_similarity(
+    orig,
+    axis='z',
+    scale_fn=pelvis_similarity_scale,
+    shift_fn=None,
+    reserved=reserved,
+    ramp=0.018,
+    step=0.0025,
+    smooth_m=9,
+)
+rebuilt = W.separate_quantized_components(
+    rebuilt,
+    axis='z',
+    epsilon=1e-6,
+    merge_tolerance=1e-6,
+)
+rebuilt = W.remove_excess_quantized_nonmanifold_faces(
+    rebuilt,
+    merge_tolerance=1e-6,
+)
+rebuilt = W.cap_quantized_boundary_loops(
+    rebuilt,
+    merge_tolerance=1e-6,
+    max_loop_vertices=64,
+)
 rebuilt.export(STL_OUT)
 
 # ── Validation report ───────────────────────────────────────────────────────

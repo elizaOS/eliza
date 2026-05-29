@@ -118,7 +118,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   // Verify state and get user ID from it
-  // State format: "userId|timestamp|random" (using | to avoid conflicts with Privy DIDs)
+  // State format: "userId|timestamp|random" (using | to avoid conflicts with legacy provider IDs)
   const stateParts = state.split("|");
   if (stateParts.length < 2) {
     logger.warn(

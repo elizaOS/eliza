@@ -1,0 +1,41 @@
+[[!meta title="Uniting for Internet Freedom: Tor Project & Tails Join Forces"]]
+[[!meta date="Thu, 26 Sep 2024 09:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Today the Tor Project, a global nonprofit developing tools for online privacy and anonymity, and Tails, a portable operating system that uses Tor to protect users from digital surveillance, have joined forces and merged operations. Incorporating Tails into the Tor Project's structure allows for easier collaboration, better sustainability, reduced overhead, and expanded training and outreach programs to counter a larger number of digital threats. In short, coming together will strengthen both organizations' ability to protect people worldwide from surveillance and censorship.
+
+## Pooling resources to better serve a global community
+
+Countering the threat of global mass surveillance and censorship to a free Internet, Tor and Tails provide essential tools to help people around the world stay safe online. By joining forces, these two privacy advocates will pool their resources to focus on what matters most: ensuring that activists, journalists, other at-risk and everyday users will have access to improved digital security tools.
+
+In late 2023, Tails approached the Tor Project with the idea of merging operations. Tails had outgrown its existing structure. Rather than expanding Tails’s operational capacity on their own and putting more stress on Tails workers, merging with the Tor Project, with its larger and established operational framework, offered a solution. By joining forces, the Tails team can now focus on their core mission of maintaining and improving Tails OS, exploring more and complementary use cases while benefiting from the larger organizational structure of The Tor Project. 
+
+This solution is a natural outcome of the Tor Project and Tails' shared history of collaboration and solidarity. 15 years ago, Tails' first release was announced on a Tor mailing list, Tor and Tails developers have been collaborating closely since 2015, and more recently Tails has been a sub-grantee of Tor. For Tails, it felt obvious that if they were to approach a bigger organization with the possibility of merging, it would be the Tor Project. 
+
+> "Running Tails as an independent project for 15 years has been a huge effort, but not for the reasons you might expect. The toughest part wasn't the tech–it was handling critical tasks like fundraising, finances, and HR. After trying to manage those in different ways, I’m really relieved that Tails is now under the Tor Project’s wing. In a way, it feels like coming home." <p class="signature">–intrigeri, Team Lead Tails OS, The Tor Project</p>
+
+
+## Welcoming new users and partners into our communities
+
+Whether it’s someone seeking access to the open web or facing surveillance, Tor and Tails offer complementary protections. While Tor Browser anonymizes online activity, Tails secures the entire operating system–from files to browsing sessions. For journalists working in repressive regions or covering sensitive topics, Tor and Tails are often used as a set to protect their communications and safeguard their sources. The merger will lead to more robust treatment of these overlapping threat models and offer a comprehensive solution for those who need both network and system-level security in high-risk environments. 
+
+It will also open up broader training and outreach opportunities. Until now, Tor’s educational efforts have primarily focused on its browser. With Tails integrated into these programs, we can address a wider range of privacy needs and security scenarios.
+Lastly, this merger will lead to increased visibility for Tails. Many users familiar with Tor may not yet know about Tails OS. By bringing Tails within the Tor Project umbrella, we can introduce this powerful tool to more individuals and groups needing to remain anonymous while working in hostile environments.
+
+> "Joining Tor means we’ll finally have the capacity to reach more people who need Tails. We've known for a long time that we needed to ramp up our outreach, but we just didn’t have the resources to do so"
+> <p class="signature">–intrigeri</p>
+
+&nbsp;
+
+> "By bringing these two organizations together, we’re not just making things easier for our teams, but ensuring the sustainable development and advancement of these vital tools. Working together allows for faster, more efficient collaboration, enabling the quick integration of new features from one tool to the other. This collaboration strengthens our mission and accelerates our ability to respond to evolving threats."
+> <p class="signature">– Isabela Fernandes, Executive Director, The Tor Project</p>
+
+*************
+
+Your support will go a long way to support this merge. Please consider [making a donation to the Tor Project](https://donate.torproject.org/)
+
+If you'd like to earmark your donation specifically for Tails activities, you can continue to do so through [Tails' donation page](https://tails.net/donate/) until further notice.
+
+To learn more about how we are integrating our donation infrastructures and how your funds will be used, please refer to our updated [Donation FAQ](https://donate.torproject.org/faq/).
+

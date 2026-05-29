@@ -16,6 +16,7 @@ import math
 import re
 import shutil
 import sys
+from collections.abc import Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from io import StringIO
@@ -29,6 +30,7 @@ import yaml
 from matplotlib import pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from mpl_toolkits.mplot3d.axes3d import Axes3D
 
 matplotlib.use("Agg")
 
@@ -5866,13 +5868,13 @@ def write_solid_cad_handoff_artifacts(
     part_rows_by_name = {row["name"]: row for row in part_rows}
     connection_rows = []
     for contract in connection_contracts:
-        part = part_rows_by_name.get(contract["cad_part"], {})
+        part_row = part_rows_by_name.get(contract["cad_part"], {})
         endpoints_present = contract["from"] in solid_names and contract["to"] in solid_names
         endpoint_parts = {
             "from": part_rows_by_name.get(contract["from"], {}),
             "to": part_rows_by_name.get(contract["to"], {}),
         }
-        part_bbox = part.get("bbox_mm") if isinstance(part.get("bbox_mm"), dict) else {}
+        part_bbox = part_row.get("bbox_mm") if isinstance(part_row.get("bbox_mm"), dict) else {}
         part_span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
         from_terminal = f"{contract['id']}_from_terminal"
         to_terminal = f"{contract['id']}_to_terminal"
@@ -5912,7 +5914,9 @@ def write_solid_cad_handoff_artifacts(
                 ),
                 3,
             )
-        visual_route_span_mm = round(max([float(value) for value in part_span] or [0.0]), 3)
+        visual_route_span_mm = round(
+            max([float(value) for value in cast("list[Any]", part_span)] or [0.0]), 3
+        )
         routed_net_presence = {net: net in routed_nets for net in contract["nets"]}
         represented_nets = list(contract["nets"])
         represented_route_records: list[dict[str, Any]] = []
@@ -5996,8 +6000,8 @@ def write_solid_cad_handoff_artifacts(
             {
                 **contract,
                 "cad_part_present": contract["cad_part"] in solid_names,
-                "cad_step": part.get("step", ""),
-                "cad_step_bytes": part.get("bytes", 0),
+                "cad_step": part_row.get("step", ""),
+                "cad_step_bytes": part_row.get("bytes", 0),
                 "cad_part_bbox_mm": part_bbox,
                 "visual_route_span_mm": visual_route_span_mm,
                 "represented_nets": represented_nets,
@@ -6040,7 +6044,7 @@ def write_solid_cad_handoff_artifacts(
                 "solid_step_part_names": connection_step_part_names,
                 "solid_step_parts_present": connection_step_parts_present,
                 "solid_step_part_count": len(connection_step_part_names),
-                "solid_step_part_bytes_total": int(part.get("bytes", 0) or 0)
+                "solid_step_part_bytes_total": int(part_row.get("bytes", 0) or 0)
                 + terminal_step_bytes_total,
                 "from_endpoint_center_mm": from_center,
                 "to_endpoint_center_mm": to_center,
@@ -6053,7 +6057,7 @@ def write_solid_cad_handoff_artifacts(
                 "release_credit": False,
                 "pass": (
                     contract["cad_part"] in solid_names
-                    and int(part.get("bytes", 0)) > 1000
+                    and int(part_row.get("bytes", 0)) > 1000
                     and terminal_markers_present
                     and terminal_step_bytes_total > 1000
                     and connection_step_parts_present
@@ -6067,8 +6071,8 @@ def write_solid_cad_handoff_artifacts(
                 ),
             }
         )
-    physical_medium_counts = {}
-    electrical_class_counts = {}
+    physical_medium_counts: dict[Any, int] = {}
+    electrical_class_counts: dict[Any, int] = {}
     for row in connection_rows:
         physical_medium_counts[row["physical_medium"]] = (
             physical_medium_counts.get(row["physical_medium"], 0) + 1
@@ -6416,7 +6420,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
 def render(parts: list[Part], path: Path, title: str, elev: float, azim: float) -> None:
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
     fig = plt.figure(figsize=(9, 11), dpi=150)
-    ax = fig.add_subplot(111, projection="3d")
+    ax = cast(Axes3D, fig.add_subplot(111, projection="3d"))
     for part in parts:
         vertices = part.mesh.vertices
         faces = part.mesh.faces
@@ -6553,8 +6557,9 @@ def write_part_review_artifacts(
             }
         )
 
-    def rgb(color: tuple[float, float, float, float]) -> tuple[int, int, int]:
-        return tuple(int(max(0.0, min(channel, 1.0)) * 255) for channel in color[:3])
+    def rgb(color: Sequence[float]) -> tuple[int, int, int]:
+        scaled = [int(max(0.0, min(channel, 1.0)) * 255) for channel in color[:3]]
+        return (scaled[0], scaled[1], scaled[2])
 
     def label(draw: Any, xy: tuple[int, int], text: str, fill: tuple[int, int, int]) -> None:
         draw.text(xy, text.replace("_", " ")[:34], fill=fill)
@@ -6685,9 +6690,9 @@ def write_part_review_artifacts(
         "## Parts",
         "",
     ]
-    for row in rows:
+    for part_row in rows:
         lines.append(
-            f"- `{row['name']}`: role `{row['role']}`, span {row['span_mm']} mm, material {row['material']}"
+            f"- `{part_row['name']}`: role `{part_row['role']}`, span {part_row['span_mm']} mm, material {part_row['material']}"
         )
     (REVIEW_DIR / "part-review.md").write_text("\n".join(lines) + "\n")
     return report
@@ -16511,14 +16516,14 @@ def write_board_step_readiness_artifacts(
     detailed_routed_step_candidate_ready = bool(
         detailed_routed_step_candidate["present"]
         and detailed_routed_step_candidate["blocked_metadata"]
-        and detailed_routed_step_candidate["size_bytes"] > 1_000_000
+        and cast(int, detailed_routed_step_candidate["size_bytes"]) > 1_000_000
         and detailed_routed_step_candidate["candidate_matches_development_source"]
-        and detailed_routed_step_candidate["route_count"] > 0
-        and detailed_routed_step_candidate["segment_count"] > 0
+        and cast(int, detailed_routed_step_candidate["route_count"]) > 0
+        and cast(int, detailed_routed_step_candidate["segment_count"]) > 0
         and detailed_routed_step_candidate["footprint_envelope_count"]
         == int(development_step_intake.get("footprint_envelope_count") or 0)
-        and detailed_routed_step_candidate["pad_contact_visual_count"] > 0
-        and detailed_routed_step_candidate["route_segment_visual_count"] > 0
+        and cast(int, detailed_routed_step_candidate["pad_contact_visual_count"]) > 0
+        and cast(int, detailed_routed_step_candidate["route_segment_visual_count"]) > 0
         and detailed_routed_step_candidate["route_visual_record_count"] == 306
         and detailed_routed_step_candidate["via_visual_record_count"] == 24
         and detailed_routed_step_candidate["filled_copper_zone_record_count"]

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-facewear",
-  "version": "0.1.0",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "description": "Unified hearwear plugin — Meta Quest 3, XReal, Even Realities G1/G2, Apple Vision Pro. Bidirectional voice+camera streaming, smartglasses display, view panels, device management.",
   "main": "./dist/index.js",
@@ -29,7 +29,7 @@
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:types": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noCheck -p tsconfig.build.json",
-    "build:views": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vite@7.2.7 vite build --config vite.config.views.ts",
+    "build:views": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --bun --package vite@7.2.7 vite build --config vite.config.views.ts",
     "emulator:build": "cd emulator && bun install --force && bun run build",
     "emulator:watch": "cd emulator && bun run build:watch",
     "emulator:cli": "bun run --cwd emulator src/cli.ts",

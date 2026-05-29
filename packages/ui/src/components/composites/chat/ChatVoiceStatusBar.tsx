@@ -99,7 +99,7 @@ export function ChatVoiceStatusBar({
       role="status"
       aria-live="polite"
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-md border border-border/35 bg-card/40 px-3 py-1.5 text-xs",
+        "flex flex-wrap items-center gap-2 rounded-sm border border-border/35 bg-card/40 px-3 py-1.5 text-xs",
         className,
       )}
     >
@@ -148,7 +148,7 @@ export function ChatVoiceStatusBar({
 
       <span
         className={cn(
-          "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium",
+          "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-[10px] font-medium",
           TONE_CLASS[tone],
         )}
         data-testid="chat-voice-latency-badge"

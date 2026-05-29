@@ -3,26 +3,35 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 /**
- * Visual mode for the waveform.
+ * Visual mode for the voice avatar.
  *
- * - `idle`: no mic, no TTS. Gentle ambient breathing animation.
- * - `listening`: mic is open. Bars react to live microphone amplitude.
- * - `responding`: the agent is speaking (TTS). Bars react to playback
- *   amplitude when an analyser is supplied, otherwise an active animated
- *   "speaking" pattern.
+ * - `idle`: no mic, no TTS. The orb breathes with a slow organic wobble.
+ * - `listening`: mic is open. The blob deforms with live microphone amplitude.
+ * - `responding`: the agent is speaking (TTS). The blob deforms with playback
+ *   amplitude when an analyser is supplied, otherwise an animated active wobble.
  */
 export type VoiceWaveformMode = "idle" | "listening" | "responding";
+
+/** Minimal analyser surface — lets tests supply a fake without a DOM audio graph. */
+export type FrequencyAnalyser = Pick<
+  AnalyserNode,
+  "frequencyBinCount" | "getByteFrequencyData"
+>;
 
 export interface VoiceWaveformProps {
   mode: VoiceWaveformMode;
   /**
-   * Optional Web Audio analyser to read amplitude from. When provided in
-   * `responding` mode it drives the bars from the active TTS playback node.
-   * The waveform never mutates or disconnects the node — it only reads.
+   * Optional Web Audio analyser to read amplitude from. When provided it drives
+   * the blob from the active capture / playback node. The avatar never mutates
+   * or disconnects the node — it only reads.
    */
-  analyser?: AnalyserNode | null;
-  /** Bar count. Default 24. */
-  bars?: number;
+  analyser?: FrequencyAnalyser | null;
+  /**
+   * Open a private microphone analyser when listening and no analyser is
+   * supplied. Defaults to false so shells that already own voice capture do
+   * not create a second getUserMedia session just for visualization.
+   */
+  captureMic?: boolean;
   /** Diameter / square size in px. Default 220. */
   size?: number;
   className?: string;
@@ -30,8 +39,100 @@ export interface VoiceWaveformProps {
   ariaLabel?: string;
 }
 
-const DEFAULT_BARS = 24;
 const DEFAULT_SIZE = 220;
+/** Vertices around the blob outline. Higher = smoother, rounder curve. */
+const POINTS = 72;
+
+/**
+ * Average `analyser` frequency data into `count` normalized [0,1] buckets.
+ * Pure and DOM-free so it can be exercised with a fake analyser in tests.
+ */
+export function sampleFrequencyLevels(
+  analyser: FrequencyAnalyser | null | undefined,
+  count: number,
+): Float32Array {
+  const out = new Float32Array(count);
+  if (!analyser || count <= 0) return out;
+  const bins = analyser.frequencyBinCount;
+  if (bins <= 0) return out;
+  const buf = new Uint8Array(bins);
+  analyser.getByteFrequencyData(buf);
+  const step = Math.max(1, Math.floor(bins / count));
+  for (let i = 0; i < count; i += 1) {
+    let sum = 0;
+    for (let j = 0; j < step; j += 1) {
+      sum += buf[i * step + j] ?? 0;
+    }
+    out[i] = sum / step / 255;
+  }
+  return out;
+}
+
+/**
+ * Per-vertex blob radii. Pure: identical inputs yield identical output, which
+ * is what the reactivity tests assert.
+ *
+ * - `idle` ignores `levels` and breathes from `time` alone.
+ * - active modes blend an ambient organic wobble with the supplied amplitude,
+ *   so louder input always pushes the outline further out.
+ */
+export function computeBlobRadii(args: {
+  levels: Float32Array;
+  time: number;
+  mode: VoiceWaveformMode;
+  points: number;
+  baseRadius: number;
+  maxDeform: number;
+}): Float32Array {
+  const { levels, time, mode, points, baseRadius, maxDeform } = args;
+  const radii = new Float32Array(points);
+  const responding = mode === "responding";
+  for (let i = 0; i < points; i += 1) {
+    const angle = (i / points) * Math.PI * 2;
+    let deform: number;
+    if (mode === "idle") {
+      const breath = Math.sin(time * 0.9 + i * 0.35) * 0.5 + 0.5;
+      deform = maxDeform * (0.1 + 0.12 * breath);
+    } else {
+      const wobble =
+        (Math.sin(time * 1.6 + angle * 3) * 0.5 + 0.5) * 0.5 +
+        (Math.sin(time * 2.3 - angle * 5) * 0.5 + 0.5) * 0.5;
+      const ambient = maxDeform * (responding ? 0.26 : 0.2) * wobble;
+      const reactive = maxDeform * 0.78 * Math.min(1, levels[i] ?? 0);
+      deform = ambient + reactive;
+    }
+    radii[i] = baseRadius + deform;
+  }
+  return radii;
+}
+
+/** Brand orange fallback as an "r, g, b" triple (matches --accent-rgb). */
+const FALLBACK_ACCENT_RGB = "255, 88, 0";
+
+/**
+ * Resolve the `--accent-rgb` custom property to a concrete "r, g, b" string.
+ * Canvas color strings cannot contain `var()`, so this must be resolved before
+ * being handed to the 2D context. Returns the brand-orange fallback when the
+ * property is undefined, empty, or not a valid comma-separated RGB triple.
+ */
+function resolveAccentRgb(): string {
+  if (typeof window === "undefined" || typeof getComputedStyle !== "function") {
+    return FALLBACK_ACCENT_RGB;
+  }
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--accent-rgb")
+    .trim();
+  const channels = raw.split(",").map((part) => Number(part.trim()));
+  if (
+    channels.length !== 3 ||
+    channels.some(
+      (channel) => !Number.isInteger(channel) || channel < 0 || channel > 255,
+    )
+  ) {
+    return FALLBACK_ACCENT_RGB;
+  }
+  return channels.join(", ");
+}
 
 function prefersReducedMotion(): boolean {
   if (
@@ -45,7 +146,6 @@ function prefersReducedMotion(): boolean {
 
 type MicAnalyser = {
   analyser: AnalyserNode;
-  data: Uint8Array;
   stop: () => void;
 };
 
@@ -74,7 +174,6 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
   analyser.fftSize = 256;
   analyser.smoothingTimeConstant = 0.8;
   source.connect(analyser);
-  const data = new Uint8Array(analyser.frequencyBinCount);
 
   const stop = () => {
     try {
@@ -86,24 +185,53 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
     void context.close().catch(() => {});
   };
 
-  return { analyser, data, stop };
+  return { analyser, stop };
+}
+
+/** Draw a smooth closed curve through the radial vertices (Catmull-Rom). */
+function strokeBlobPath(
+  c: CanvasRenderingContext2D,
+  center: number,
+  radii: Float32Array,
+): void {
+  const count = radii.length;
+  const point = (index: number): [number, number] => {
+    const i = ((index % count) + count) % count;
+    const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+    const r = radii[i] ?? 0;
+    return [center + Math.cos(angle) * r, center + Math.sin(angle) * r];
+  };
+
+  c.beginPath();
+  const [startX, startY] = point(0);
+  c.moveTo(startX, startY);
+  for (let i = 0; i < count; i += 1) {
+    const [p0x, p0y] = point(i - 1);
+    const [p1x, p1y] = point(i);
+    const [p2x, p2y] = point(i + 1);
+    const [p3x, p3y] = point(i + 2);
+    const c1x = p1x + (p2x - p0x) / 6;
+    const c1y = p1y + (p2y - p0y) / 6;
+    const c2x = p2x - (p3x - p1x) / 6;
+    const c2y = p2y - (p3y - p1y) / 6;
+    c.bezierCurveTo(c1x, c1y, c2x, c2y, p2x, p2y);
+  }
+  c.closePath();
 }
 
 /**
- * Centered voice-avatar waveform. Canvas-based radial bars that respond to
- * the active mic capture (when `listening`) or TTS playback amplitude (when
- * `responding` with an analyser). Idle renders a calm breathing ring.
+ * Voice-reactive avatar — a sci-fi orb whose organic outline morphs with live
+ * audio. Reads amplitude from the supplied analyser (TTS playback in
+ * `responding`, mic in `listening`), or opens a private mic when `captureMic`
+ * is set. Idle breathes softly. Honors `prefers-reduced-motion`.
  *
- * Self-contained: in `listening` mode it opens its own mic analyser so the
- * visualizer works even when the capture pipeline does not expose one. The
- * node is released the moment the mode leaves `listening`.
- *
- * Honors `prefers-reduced-motion` by rendering a single static ring.
+ * Rendering lives in the canvas; the reactive math is factored into
+ * `sampleFrequencyLevels` and `computeBlobRadii`, which are unit-tested.
  */
 export function VoiceWaveform({
   mode,
   analyser,
-  bars = DEFAULT_BARS,
+  captureMic = false,
   size = DEFAULT_SIZE,
   className,
   ariaLabel = "Voice activity",
@@ -111,16 +239,15 @@ export function VoiceWaveform({
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const modeRef = React.useRef<VoiceWaveformMode>(mode);
   modeRef.current = mode;
-  const externalAnalyserRef = React.useRef<AnalyserNode | null>(
+  const externalAnalyserRef = React.useRef<FrequencyAnalyser | null>(
     analyser ?? null,
   );
   externalAnalyserRef.current = analyser ?? null;
   const micRef = React.useRef<MicAnalyser | null>(null);
 
-  // Open / close the mic analyser as the mode enters / leaves `listening`.
   React.useEffect(() => {
     let cancelled = false;
-    if (mode === "listening") {
+    if (mode === "listening" && captureMic && !externalAnalyserRef.current) {
       void openMicAnalyser().then((handle) => {
         if (cancelled || !handle) {
           handle?.stop();
@@ -134,7 +261,7 @@ export function VoiceWaveform({
       micRef.current?.stop();
       micRef.current = null;
     };
-  }, [mode]);
+  }, [captureMic, mode]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -151,107 +278,112 @@ export function VoiceWaveform({
     canvas.height = size * dpr;
     c.scale(dpr, dpr);
 
-    const reduced = prefersReducedMotion();
     const center = size / 2;
-    const innerRadius = size * 0.26;
-    const maxBar = size * 0.2;
-    const accent = "rgba(var(--accent-rgb, 255, 88, 0), 0.85)";
-    const accentDim = "rgba(var(--accent-rgb, 255, 88, 0), 0.35)";
+    const baseRadius = size * 0.3;
+    const maxDeform = size * 0.16;
+    // Canvas 2D cannot parse CSS `var()` in color strings — it throws on every
+    // addColorStop/fillStyle assignment. Resolve --accent-rgb to a concrete
+    // "r, g, b" triple once at paint-setup, falling back to brand orange.
+    const accentRgb = resolveAccentRgb();
+    const accent = (alpha: number) => `rgba(${accentRgb}, ${alpha})`;
 
-    const levels = new Float32Array(bars);
+    const smoothed = new Float32Array(POINTS).fill(baseRadius);
 
-    function readAmplitude(): Float32Array {
-      const active =
-        modeRef.current === "responding"
-          ? externalAnalyserRef.current
-          : modeRef.current === "listening"
-            ? (micRef.current?.analyser ?? null)
-            : null;
-      const out = new Float32Array(bars);
-      if (active) {
-        const bins = active.frequencyBinCount;
-        const buf = new Uint8Array(bins);
-        active.getByteFrequencyData(buf);
-        const step = Math.max(1, Math.floor(bins / bars));
-        for (let i = 0; i < bars; i += 1) {
-          let sum = 0;
-          for (let j = 0; j < step; j += 1) {
-            sum += buf[i * step + j] ?? 0;
-          }
-          out[i] = sum / step / 255;
-        }
+    function activeAnalyser(): FrequencyAnalyser | null {
+      const phase = modeRef.current;
+      if (phase === "responding") return externalAnalyserRef.current;
+      if (phase === "listening") {
+        return externalAnalyserRef.current ?? micRef.current?.analyser ?? null;
       }
-      return out;
+      return null;
     }
 
-    function drawStatic(): void {
+    function paint(radii: Float32Array, glow: number): void {
       c.clearRect(0, 0, size, size);
-      c.beginPath();
-      c.arc(center, center, innerRadius + maxBar * 0.35, 0, Math.PI * 2);
-      c.strokeStyle = accentDim;
-      c.lineWidth = 3;
+
+      const fill = c.createRadialGradient(
+        center,
+        center,
+        baseRadius * 0.1,
+        center,
+        center,
+        baseRadius + maxDeform,
+      );
+      fill.addColorStop(0, accent(0.32));
+      fill.addColorStop(0.6, accent(0.16));
+      fill.addColorStop(1, accent(0.04));
+
+      c.save();
+      c.shadowColor = accent(0.45);
+      c.shadowBlur = size * (0.06 + glow * 0.12);
+      strokeBlobPath(c, center, radii);
+      c.fillStyle = fill;
+      c.fill();
+      c.strokeStyle = accent(0.85);
+      c.lineWidth = Math.max(1.5, size * 0.006);
       c.stroke();
+      c.restore();
+
+      // Inner core that pulses with overall energy.
+      c.beginPath();
+      c.arc(center, center, baseRadius * (0.34 + glow * 0.16), 0, Math.PI * 2);
+      const core = c.createRadialGradient(
+        center,
+        center,
+        0,
+        center,
+        center,
+        baseRadius * 0.5,
+      );
+      core.addColorStop(0, accent(0.7 + glow * 0.3));
+      core.addColorStop(1, accent(0));
+      c.fillStyle = core;
+      c.fill();
+    }
+
+    if (prefersReducedMotion()) {
+      paint(
+        computeBlobRadii({
+          levels: new Float32Array(POINTS),
+          time: 0,
+          mode: "idle",
+          points: POINTS,
+          baseRadius,
+          maxDeform,
+        }),
+        0,
+      );
+      return undefined;
     }
 
     let raf = 0;
     let t = 0;
 
     function frame(): void {
-      t += 0.04;
-      const amp = readAmplitude();
-      const phase = modeRef.current;
-      c.clearRect(0, 0, size, size);
-
-      for (let i = 0; i < bars; i += 1) {
-        const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
-        let target: number;
-        if (phase === "idle") {
-          // Gentle breathing ripple.
-          target = 0.12 + 0.08 * (Math.sin(t + i * 0.5) * 0.5 + 0.5);
-        } else if (amp.some((v) => v > 0.001)) {
-          target = Math.min(1, amp[i] ?? 0);
-        } else {
-          // Active fallback animation (no analyser amplitude available).
-          const speed = phase === "responding" ? 2.2 : 1.4;
-          target = 0.2 + 0.55 * Math.abs(Math.sin(t * speed + i * 0.7));
-        }
-        // Smooth toward the target so bars don't jitter.
-        levels[i] = (levels[i] ?? 0) * 0.7 + target * 0.3;
-
-        const barLen = maxBar * levels[i];
-        const x1 = center + Math.cos(angle) * innerRadius;
-        const y1 = center + Math.sin(angle) * innerRadius;
-        const x2 = center + Math.cos(angle) * (innerRadius + barLen);
-        const y2 = center + Math.sin(angle) * (innerRadius + barLen);
-        c.beginPath();
-        c.moveTo(x1, y1);
-        c.lineTo(x2, y2);
-        c.strokeStyle = phase === "idle" ? accentDim : accent;
-        c.lineWidth = Math.max(2, size * 0.014);
-        c.lineCap = "round";
-        c.stroke();
+      t += 0.03;
+      const levels = sampleFrequencyLevels(activeAnalyser(), POINTS);
+      const target = computeBlobRadii({
+        levels,
+        time: t,
+        mode: modeRef.current,
+        points: POINTS,
+        baseRadius,
+        maxDeform,
+      });
+      let energy = 0;
+      for (let i = 0; i < POINTS; i += 1) {
+        smoothed[i] =
+          (smoothed[i] ?? baseRadius) * 0.78 + (target[i] ?? 0) * 0.22;
+        energy += (smoothed[i] - baseRadius) / maxDeform;
       }
-
-      // Center pulse ring.
-      const avg =
-        levels.reduce((acc, v) => acc + v, 0) / Math.max(1, levels.length);
-      c.beginPath();
-      c.arc(center, center, innerRadius * (0.82 + avg * 0.18), 0, Math.PI * 2);
-      c.strokeStyle = accentDim;
-      c.lineWidth = 2;
-      c.stroke();
-
+      const glow = Math.min(1, Math.max(0, energy / POINTS));
+      paint(smoothed, glow);
       raf = requestAnimationFrame(frame);
-    }
-
-    if (reduced) {
-      drawStatic();
-      return undefined;
     }
 
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [bars, size]);
+  }, [size]);
 
   return (
     <canvas

@@ -121,6 +121,19 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 
+  it("keeps plugin-local-inference when only local embeddings are disabled", () => {
+    process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
+
+    const config: ElizaConfig = {
+      deploymentTarget: { runtime: "local" },
+      cloud: { enabled: false },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+  });
+
   it("loads the agent orchestrator when a coding-agent default is configured", () => {
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
 

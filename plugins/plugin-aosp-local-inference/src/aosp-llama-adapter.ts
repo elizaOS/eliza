@@ -656,7 +656,7 @@ function envFlagDisabled(name: string): boolean {
   return raw === "0" || raw === "false" || raw === "no" || raw === "off";
 }
 
-type AospSpeculativeMode = "dflash" | "draft-mtp";
+type AospSpeculativeMode = "mtp" | "draft-mtp";
 
 function readAospSpeculativeMode(): AospSpeculativeMode {
   const raw = (
@@ -668,7 +668,7 @@ function readAospSpeculativeMode(): AospSpeculativeMode {
     .toLowerCase();
   if (raw === "mtp" || raw === "draft-mtp") return "draft-mtp";
   if (envFlagEnabled("ELIZA_MTP")) return "draft-mtp";
-  return "dflash";
+  return "mtp";
 }
 
 export function firstSentenceEndIndex(text: string, minChars = 12): number {
@@ -1244,7 +1244,7 @@ class AospLlamaAdapter implements AospLoader {
       const useMtp = specMode === "draft-mtp";
       if (!useMtp && !args.loadArgs.draftModelPath) return false;
       if (!this.speculativeShim) {
-        const message = `[aosp-llama] ${useMtp ? "MTP" : "DFlash"} requested but speculative shim is not bundled`;
+        const message = `[aosp-llama] ${useMtp ? "MTP" : "MTP"} requested but speculative shim is not bundled`;
         if (required) throw new Error(message);
         logger.warn(`${message}; using target-only decode`);
         return false;
@@ -1273,24 +1273,24 @@ class AospLlamaAdapter implements AospLoader {
         ? args.targetContextSize
         : (args.loadArgs.draftContextSize ??
           readEnvInt(
-            "ELIZA_DFLASH_DRAFT_N_CTX",
+            "ELIZA_MTP_DRAFT_N_CTX",
             Math.min(2048, args.targetContextSize),
           ));
-      const draftBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_BATCH", args.nBatch);
+      const draftBatch = readEnvInt("ELIZA_MTP_DRAFT_N_BATCH", args.nBatch);
       const draftUBatch = readEnvInt(
-        "ELIZA_DFLASH_DRAFT_N_UBATCH",
+        "ELIZA_MTP_DRAFT_N_UBATCH",
         args.nUBatch,
       );
       const draftMax =
-        args.loadArgs.draftMax ?? readEnvInt("ELIZA_DFLASH_DRAFT_MAX", 8);
-      // Mobile chat turns are short. The fork's DFlash draft-simple path clears
+        args.loadArgs.draftMax ?? readEnvInt("ELIZA_MTP_DRAFT_MAX", 8);
+      // Mobile chat turns are short. The fork's MTP draft-simple path clears
       // any draft shorter than n_min before target verification, so a default of
       // 4 often degenerates into target-only decode on Pixel. Keep the default
       // permissive and let the target model verify every drafted token.
       const draftMin =
-        args.loadArgs.draftMin ?? readEnvInt("ELIZA_DFLASH_DRAFT_MIN", 1);
-      const draftPMin = readEnvFloat("ELIZA_DFLASH_DRAFT_P_MIN", 0.25);
-      const phase = useMtp ? "loadModel:mtpDraft" : "loadModel:dflashDraft";
+        args.loadArgs.draftMin ?? readEnvInt("ELIZA_MTP_DRAFT_MIN", 1);
+      const draftPMin = readEnvFloat("ELIZA_MTP_DRAFT_P_MIN", 0.25);
+      const phase = useMtp ? "loadModel:mtpDraft" : "loadModel:mtpDraft";
       const draftModel = useMtp
         ? this.model
         : this.loadModelPointer(draftPath, args.gpuLayers, phase);
@@ -1336,10 +1336,10 @@ class AospLlamaAdapter implements AospLoader {
           throw err;
         }
         logger.warn(
-          `[aosp-llama] ${useMtp ? "MTP" : "DFlash"} speculative decode failed to initialize; using target-only decode: ${message}`,
+          `[aosp-llama] ${useMtp ? "MTP" : "MTP"} speculative decode failed to initialize; using target-only decode: ${message}`,
         );
         writeAospLlamaDebugLog(
-          useMtp ? "loadModel:mtp:fallback" : "loadModel:dflash:fallback",
+          useMtp ? "loadModel:mtp:fallback" : "loadModel:mtp:fallback",
           {
             target: path.basename(args.loadArgs.modelPath),
             draft: path.basename(draftPath),
@@ -1354,7 +1354,7 @@ class AospLlamaAdapter implements AospLoader {
       this.speculativeHandle = specHandle;
       this.loadedDraftPath = useMtp ? `${draftPath}#mtp` : draftPath;
       writeAospLlamaDebugLog(
-        useMtp ? "loadModel:mtp:ready" : "loadModel:dflash:ready",
+        useMtp ? "loadModel:mtp:ready" : "loadModel:mtp:ready",
         {
           target: path.basename(args.loadArgs.modelPath),
           draft: path.basename(draftPath),
@@ -1368,7 +1368,7 @@ class AospLlamaAdapter implements AospLoader {
         },
       );
       logger.info(
-        `[aosp-llama] in-process ${useMtp ? "MTP" : "DFlash"} ready (draft=${path.basename(draftPath)}, n_ctx=${draftContextSize}, n_draft=${draftMax})`,
+        `[aosp-llama] in-process ${useMtp ? "MTP" : "MTP"} ready (draft=${path.basename(draftPath)}, n_ctx=${draftContextSize}, n_draft=${draftMax})`,
       );
       return true;
     };
@@ -1380,15 +1380,15 @@ class AospLlamaAdapter implements AospLoader {
         envFlagEnabled("ELIZA_SPECULATIVE_REQUIRED");
       if (await tryConfigureSpeculativeMode("draft-mtp", mtpRequired)) return;
       if (mtpRequired || !args.loadArgs.draftModelPath) return;
-      writeAospLlamaDebugLog("loadModel:mtp:dflashFallback", {
+      writeAospLlamaDebugLog("loadModel:mtp:mtpFallback", {
         target: path.basename(args.loadArgs.modelPath),
         draft: path.basename(args.loadArgs.draftModelPath),
       });
     }
 
     await tryConfigureSpeculativeMode(
-      "dflash",
-      envFlagEnabled("ELIZA_DFLASH_REQUIRED"),
+      "mtp",
+      envFlagEnabled("ELIZA_MTP_REQUIRED"),
     );
   }
 
@@ -1623,11 +1623,11 @@ class AospLlamaAdapter implements AospLoader {
       gpuLayers,
       kvK: kvCacheType?.k ?? "f16",
       kvV: kvCacheType?.v ?? "f16",
-      dflash: this.speculativeHandle !== null,
+      mtp: this.speculativeHandle !== null,
       draft: this.loadedDraftPath ? path.basename(this.loadedDraftPath) : null,
     });
     logger.info(
-      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu_layers=${gpuLayers}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"}, dflash=${this.speculativeHandle !== null})`,
+      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu_layers=${gpuLayers}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"}, mtp=${this.speculativeHandle !== null})`,
     );
   }
 
@@ -1699,13 +1699,13 @@ class AospLlamaAdapter implements AospLoader {
     const promptBuf = encodeCString(args.prompt);
     const grammarBuf = encodeCString(args.grammar?.trim() ?? "");
     const outBuf = new Uint8Array(
-      Math.max(1024, readEnvInt("ELIZA_DFLASH_STREAM_CHUNK_BYTES", 16_384)),
+      Math.max(1024, readEnvInt("ELIZA_MTP_STREAM_CHUNK_BYTES", 16_384)),
     );
     const doneBuf = new Int32Array(1);
     const draftedBuf = new Int32Array(1);
     const acceptedBuf = new Int32Array(1);
     const startedAt = Date.now();
-    writeAospLlamaDebugLog("generate:dflash:start", {
+    writeAospLlamaDebugLog("generate:mtp:start", {
       promptChars: args.prompt.length,
       maxTokens,
       temperature: args.temperature ?? null,
@@ -1722,14 +1722,14 @@ class AospLlamaAdapter implements AospLoader {
     );
     if (!stream) {
       const statsText = this.readSpeculativeStats();
-      writeAospLlamaDebugLog("generate:dflash:error", {
+      writeAospLlamaDebugLog("generate:mtp:error", {
         rc: -1,
         latencyMs: Date.now() - startedAt,
         stats: statsText,
         phase: "stream_open",
       });
       throw new Error(
-        `[aosp-llama] in-process DFlash stream_open failed stats=${statsText}`,
+        `[aosp-llama] in-process MTP stream_open failed stats=${statsText}`,
       );
     }
     this.hasDecoded = true;
@@ -1777,14 +1777,14 @@ class AospLlamaAdapter implements AospLoader {
           } catch {
             // Keep the raw string in logs if native wrote a non-JSON value.
           }
-          writeAospLlamaDebugLog("generate:dflash:error", {
+          writeAospLlamaDebugLog("generate:mtp:error", {
             rc,
             latencyMs: Date.now() - startedAt,
             stats,
             phase: "stream_next",
           });
           throw new Error(
-            `[aosp-llama] in-process DFlash stream_next failed rc=${rc} stats=${statsText}`,
+            `[aosp-llama] in-process MTP stream_next failed rc=${rc} stats=${statsText}`,
           );
         }
         steps += 1;
@@ -1808,7 +1808,7 @@ class AospLlamaAdapter implements AospLoader {
             await args.onTextChunk?.(output.slice(emittedChars, emitUntil));
             emittedChars = emitUntil;
           }
-          writeAospLlamaDebugLog("generate:dflash:chunk", {
+          writeAospLlamaDebugLog("generate:mtp:chunk", {
             step: steps,
             chunkChars: chunk.length,
             outputChars: output.length,
@@ -1823,7 +1823,7 @@ class AospLlamaAdapter implements AospLoader {
           }
           if (sentenceEnd >= 0) {
             output = output.slice(0, sentenceEnd);
-            writeAospLlamaDebugLog("generate:dflash:early-stop", {
+            writeAospLlamaDebugLog("generate:mtp:early-stop", {
               reason: "first_sentence",
               step: steps,
               outputChars: output.length,
@@ -1845,7 +1845,7 @@ class AospLlamaAdapter implements AospLoader {
     } catch {
       // Keep the raw string in logs if the native side wrote a non-JSON value.
     }
-    writeAospLlamaDebugLog("generate:dflash:done", {
+    writeAospLlamaDebugLog("generate:mtp:done", {
       outputChars: output.length,
       rc: output.length,
       latencyMs: Date.now() - startedAt,
@@ -1860,7 +1860,7 @@ class AospLlamaAdapter implements AospLoader {
       ),
     });
     logger.info(
-      `[aosp-llama] DFlash stream done: ${output.length} chars in ${Date.now() - startedAt}ms firstChunkMs=${firstChunkMs ?? "none"} steps=${steps} drafted=${totalDrafted} accepted=${totalAccepted} stats=${statsText}`,
+      `[aosp-llama] MTP stream done: ${output.length} chars in ${Date.now() - startedAt}ms firstChunkMs=${firstChunkMs ?? "none"} steps=${steps} drafted=${totalDrafted} accepted=${totalAccepted} stats=${statsText}`,
     );
     return output;
   }
@@ -1909,45 +1909,45 @@ class AospLlamaAdapter implements AospLoader {
       Number.isFinite(args.maxTokens) && args.maxTokens != null
         ? Math.max(1, Math.floor(args.maxTokens))
         : readEnvInt("ELIZA_LLAMA_DEFAULT_MAX_TOKENS", 512);
-    const dflashMinTokens = Math.max(
+    const mtpMinTokens = Math.max(
       1,
-      readEnvInt("ELIZA_DFLASH_MIN_TOKENS", 64),
+      readEnvInt("ELIZA_MTP_MIN_TOKENS", 64),
     );
-    const dflashForced = envFlagEnabled("ELIZA_DFLASH_FORCE");
-    const dflashShortTurn = requestedMaxTokens < dflashMinTokens;
-    const useDflash =
+    const mtpForced = envFlagEnabled("ELIZA_MTP_FORCE");
+    const mtpShortTurn = requestedMaxTokens < mtpMinTokens;
+    const useMtp =
       this.speculativeHandle !== null &&
-      !envFlagDisabled("ELIZA_DFLASH") &&
-      (dflashForced || !dflashShortTurn);
+      !envFlagDisabled("ELIZA_MTP") &&
+      (mtpForced || !mtpShortTurn);
 
-    if (useDflash) {
+    if (useMtp) {
       try {
         return await this.generateWithSpeculativeShim({
           ...args,
           maxTokens: tokenBudget.maxTokens,
         });
       } catch (err) {
-        if (envFlagEnabled("ELIZA_DFLASH_REQUIRED")) {
+        if (envFlagEnabled("ELIZA_MTP_REQUIRED")) {
           throw err;
         }
         logger.warn(
-          `[aosp-llama] in-process DFlash failed; falling back to target-only decode: ${
+          `[aosp-llama] in-process MTP failed; falling back to target-only decode: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
-        writeAospLlamaDebugLog("generate:dflash:fallback", {
+        writeAospLlamaDebugLog("generate:mtp:fallback", {
           error: err instanceof Error ? err.message : String(err),
         });
       }
     } else if (
       this.speculativeHandle !== null &&
-      !envFlagDisabled("ELIZA_DFLASH")
+      !envFlagDisabled("ELIZA_MTP")
     ) {
-      writeAospLlamaDebugLog("generate:dflash:skip", {
+      writeAospLlamaDebugLog("generate:mtp:skip", {
         reason: "below_min_tokens",
         requestedMaxTokens,
-        minTokens: dflashMinTokens,
-        force: dflashForced,
+        minTokens: mtpMinTokens,
+        force: mtpForced,
       });
     }
 
@@ -2644,14 +2644,14 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
       );
     } catch (err) {
       logger.warn(
-        `[aosp-llama] speculative shim present but dlopen failed; DFlash will stay target-only: ${
+        `[aosp-llama] speculative shim present but dlopen failed; MTP will stay target-only: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
     }
   } else {
     logger.info(
-      "[aosp-llama] speculative shim not bundled; DFlash disabled for this APK",
+      "[aosp-llama] speculative shim not bundled; MTP disabled for this APK",
     );
   }
 
@@ -2665,9 +2665,8 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
  * registration so the caller can confirm precedence.
  *
  * When an in-process speculative shim and `draftModelPath` are available,
- * the regular FFI adapter loads target + drafter contexts and uses the
- * native DFlash draft/verify loop. The legacy llama-server adapter remains
- * reachable only through ELIZA_DFLASH_SERVER_SPAWN=1 for diagnostics.
+ * the regular FFI adapter loads target + MTP state and uses the native
+ * draft/verify loop.
  * `embed()` always stays on the target in-process FFI path.
  */
 export async function registerAospLlamaLoader(
@@ -2678,86 +2677,14 @@ export async function registerAospLlamaLoader(
   const adapter = await buildAdapter();
   if (!adapter) return false;
 
-  // Lazy-construct the legacy server-spawn adapter on first use. Production
-  // stock APK DFlash is in-process; this child-process adapter only runs when
-  // ELIZA_DFLASH_SERVER_SPAWN=1 is explicitly set.
-  const { buildDflashAdapter, shouldRouteViaDflash } = await import(
-    "./aosp-dflash-adapter.js"
-  );
-  let dflashAdapter: ReturnType<typeof buildDflashAdapter> = null;
-  let dflashProbed = false;
-  const getDflashAdapter = () => {
-    if (!dflashProbed) {
-      dflashProbed = true;
-      dflashAdapter = buildDflashAdapter();
-      if (dflashAdapter) {
-        logger.info(
-          "[aosp-llama] DFlash adapter ready (llama-server drafter+target)",
-        );
-      }
-    }
-    return dflashAdapter;
-  };
-  // Track which backend is active for currentModelPath() reporting.
-  let activeBackend: "ffi" | "dflash" = "ffi";
-
   runtime.registerService(SERVICE_NAME, {
     // Accept the shared LocalInferenceLoader shape (`{ modelPath }`) AND the
     // AOSP-specific extension (`{ modelPath, kvCacheType?, draftModelPath?, … }`).
-    // Only the explicit diagnostic server-spawn path bypasses the in-process
-    // adapter. Normal DFlash pairing goes through adapter.loadModel(a), where
-    // the speculative shim loads the drafter context in-process.
     loadModel: async (a: AospLlamaLoadOptions) => {
-      if (shouldRouteViaDflash(a) && a.draftModelPath) {
-        const df = getDflashAdapter();
-        if (df) {
-          try {
-            // Tear down any FFI model that was loaded so we don't double-occupy
-            // RAM with the server-side target weights.
-            if (adapter.currentModelPath() !== null) {
-              await adapter.unloadModel();
-            }
-            await df.loadModel({
-              modelPath: a.modelPath,
-              draftModelPath: a.draftModelPath,
-              contextSize: a.contextSize,
-              draftContextSize: a.draftContextSize,
-              draftMin: a.draftMin,
-              draftMax: a.draftMax,
-              cacheTypeK: a.cacheTypeK,
-              cacheTypeV: a.cacheTypeV,
-              disableThinking: a.disableThinking,
-            });
-            activeBackend = "dflash";
-            return;
-          } catch (err) {
-            if (envFlagEnabled("ELIZA_DFLASH_REQUIRED")) {
-              throw err;
-            }
-            logger.warn(
-              `[aosp-llama] DFlash load failed; falling back to single-model FFI decode: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
-        }
-        logger.warn(
-          "[aosp-llama] DFlash requested but llama-server binary missing; falling back to single-model FFI decode",
-        );
-      }
-      activeBackend = "ffi";
       return adapter.loadModel(a);
     },
-    unloadModel: async () => {
-      if (activeBackend === "dflash") {
-        const df = dflashAdapter;
-        if (df) await df.unloadModel();
-      } else {
-        await adapter.unloadModel();
-      }
-    },
-    currentModelPath: () =>
-      activeBackend === "dflash"
-        ? (dflashAdapter?.currentModelPath() ?? null)
-        : adapter.currentModelPath(),
+    unloadModel: () => adapter.unloadModel(),
+    currentModelPath: () => adapter.currentModelPath(),
     generate: async (a: {
       prompt: string;
       stopSequences?: string[];
@@ -2767,20 +2694,10 @@ export async function registerAospLlamaLoader(
       onTextChunk?: (chunk: string) => void | Promise<void>;
       signal?: AbortSignal;
     }) => {
-      if (activeBackend === "dflash") {
-        const df = dflashAdapter;
-        if (!df) {
-          throw new Error(
-            "[aosp-llama] DFlash adapter went away between loadModel and generate",
-          );
-        }
-        return df.generate(a);
-      }
       return adapter.generate(a);
     },
-    // Embeddings stay on the in-process FFI path. DFlash is target+drafter
-    // for token decode; llama-server's /embedding endpoint exists but the
-    // model usually configured for chat doesn't have pooling enabled.
+    // Embeddings stay on the in-process FFI path. MTP is target+drafter
+    // for token decode.
     embed: (a: { input: string }) => adapter.embed(a),
   });
   logger.info(

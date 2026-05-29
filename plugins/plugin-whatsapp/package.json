@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-whatsapp",
   "description": "WhatsApp plugin for ElizaOS (Cloud API + Baileys QR auth)",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -68,7 +68,7 @@
     "dev": "bun --hot build.ts",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --config-path ./biome.json .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "clean": "rm -rf dist .turbo",
     "lint:check": "bunx @biomejs/biome check --config-path ./biome.json .",
     "build": "bun run build.ts",

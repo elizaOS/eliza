@@ -215,7 +215,6 @@ export * from "./custom-actions/CustomActionsPanel";
 export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
-export * from "./pages/AutomationsChatPane";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ChatModalView";
 export * from "./pages/ChatView";
@@ -267,6 +266,7 @@ export * from "./shell/RestartBanner";
 export * from "./shell/ShellOverlays";
 export * from "./shell/ShortcutsOverlay";
 export * from "./shell/StartupFailureView";
+export * from "./shell/StartupScreen";
 export * from "./shell/StartupShell";
 export * from "./shell/SystemWarningBanner";
 export * from "./ui/accordion";

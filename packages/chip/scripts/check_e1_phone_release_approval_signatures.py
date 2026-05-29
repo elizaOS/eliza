@@ -8,7 +8,7 @@ import json
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -675,7 +675,7 @@ def write_report(
             "validation_command": VALIDATION_COMMAND,
         },
         "summary": {
-            **report["summary"],
+            **cast("dict[str, Any]", report["summary"]),
             "release_credit": False,
         },
         "blocker_buckets": (diagnostics or {}).get("next_unblock_groups", []),

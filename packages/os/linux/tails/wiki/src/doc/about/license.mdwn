@@ -1,0 +1,187 @@
+[[!meta title="License and source code distribution"]]
+
+Tails is [Free Software](https://www.gnu.org/philosophy/free-sw.html): you can download, use, and
+share it with no restrictions.
+
+The Tails source code is released under the GNU/GPL (version 3 or
+above) and is Copyright (C) Tails developers <foundations@tails.net>.
+Any exception to this rule is documented either below or in the
+affected source file.
+
+However, Tails, like Debian, includes closed source binary firmware in
+order to work on as much hardware as possible.
+
+Tails is a registered trademark of The Tor Project, Inc. See our [Trademark and Brand policy](https://www.torproject.org/about/trademark/).
+
+Source code
+===========
+
+Most of the software included in Tails is taken directly from upstream
+Debian packages and is neither modified nor recompiled by Tails.
+
+- The source code of software that is specific to Tails is available in
+  [[our Git repositories|contribute/git]].
+
+- The source code of the Debian packages included in Tails is available
+  in the [APT snapshot](https://tagged.snapshots.deb.tails.boum.org/)
+  that we created for that version of Tails.
+
+- The [[!tails_gitweb
+  config/chroot_local-includes/usr/share/tails/chroot-browsers/unsafe-browser/extensions/red-2.0-an+fx.xpi
+  desc="red theme"]] used by Tails' _Unsafe Browser_ was downloaded
+  from Mozilla add-ons website
+  (<https://addons.mozilla.org/en-US/firefox/addon/simplyred/>):
+  - license: Creative Commons Attribution 3.0
+  - author: [Firefox user 14030863](https://addons.mozilla.org/en-US/firefox/user/14030863/)
+
+- Icons copied from [[!debpts gnome-icon-theme]]:
+  - [[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-storage/icons/tps-NetworkConnections.png]]
+  - [[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-storage/icons/tps-WelcomeScreen.png]]
+  - license: GPL-2+
+  - Copyright:
+    - 2002-2008 Andreas Nilsson <nisses.mail@home.se>
+    - 2002-2008 Hylke Bons <h.bons@student.rug.nl>
+    - 2002-2008 Jakub Steiner <jimmac@novell.com>
+    - 2002-2008 Josef Vybíral <cornelius@vybiral.info>
+    - 2002-2008 Lapo Calamandrei <calamandrei@gmail.com>
+    - 2002-2008 Luca Ferretti <elle.uca@libero.it>
+    - 2002-2008 Ricardo González <rick@jinlabs.com>
+    - 2002-2008 Riccardo Buzzotta <raozuzu@yahoo.it>
+    - 2002-2008 Rodney Dawes <dobey@novell.com>
+    - 2002-2008 Tuomas Kuosmanen <tigert@gimp.org>
+    - 2002-2008 Ulisse Perusin <uli.peru@gmail.com>
+
+- Forge JS library
+  - license: <details><summary>New BSD License (3-clause)</summary><pre>
+        New BSD License (3-clause)
+        Copyright (c) 2010, Digital Bazaar, Inc.
+        All rights reserved.
+        Redistribution and use in source and binary forms, with or without
+        modification, are permitted provided that the following conditions are met:
+            * Redistributions of source code must retain the above copyright
+              notice, this list of conditions and the following disclaimer.
+            * Redistributions in binary form must reproduce the above copyright
+              notice, this list of conditions and the following disclaimer in the
+              documentation and/or other materials provided with the distribution.
+            * Neither the name of Digital Bazaar, Inc. nor the
+              names of its contributors may be used to endorse or promote products
+              derived from this software without specific prior written permission.
+        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+        ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+        WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+        DISCLAIMED. IN NO EVENT SHALL DIGITAL BAZAAR BE LIABLE FOR ANY
+        DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+        (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+        ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+        (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    </pre></details>
+  - Copyright:
+    - 2010 - present: Digital Bazaar, Inc.
+
+Website
+=======
+
+This website uses the following fonts:
+
+- [Source Sans 3](https://fonts.google.com/specimen/Source+Sans+3/license),
+  copyright 2010&ndash;2020 [Adobe Systems
+  Incorporated](http://www.adobe.com/), licensed under the [SIL
+  Open Font License, Version
+  1.1](https://openfontlicense.org/open-font-license-official-text/).
+
+- [Source Code Pro](https://fonts.google.com/specimen/Source+Code+Pro/license)
+  copyright 2010&ndash;2020 [Adobe Systems
+  Incorporated](http://www.adobe.com/), licensed under the [SIL Open Font
+  License, Version
+  1.1](https://openfontlicense.org/open-font-license-official-text/).
+
+This website uses several images with distinct copyright, licenses, trademarks
+and distribution terms:
+
+- The Tails logo is based on [[USB|http://thenounproject.com/term/usb/23873/]]
+  by Ilsur Aptukov from the Noun Project.
+
+- Debian logo: Copyright (c) 1999 Software in the Public Interest.
+
+- The drawings on our [[Home|index]], [[About|about]], and [[Warnings|doc/about/warnings]] pages are licensed under
+  the [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/),
+  copyright [Andrés Fernández Cordón](https://anhdres.com/)
+  ([[source|lib/drawings.zip]] for Adobe Illustrator).
+
+- All the [[drawings of our personas|contribute/personas]] are licensed under
+  the [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/),
+  copyright Thomas Verguet.
+
+- The [[Boot Menu animation|doc/first_steps/start/pc#animation]] is licensed
+  under the [Creative Commons Attribution-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/),
+  copyright [Odile Carabantes](https://studiomoare.com/) and Enso
+  Studio
+  ([source](https://gitlab.tails.boum.org/tails/ux/-/raw/master/boot%20menu%20key/animation.rar)
+  for Adobe Illustrator and Adobe Premiere).
+
+- Icons from [[The Noun Project|http://thenounproject.com/]]:
+
+  - [[Announcement|http://thenounproject.com/term/announcement/1186/]]:
+    Creative Commons - Attribution, by Olivier Guin.
+
+  - [[Code|http://thenounproject.com/term/code/18033/]]:
+    Creative Commons — Attribution, by Azis.
+
+  - [[Pen|http://thenounproject.com/term/pen/18907/]]:
+    Creative Commons — Attribution, by factor[e] design initiative.
+
+  - [[Loan|http://thenounproject.com/term/loan/19538/]]:
+    Public Domain, by Rohith M S.
+
+  - [[User|http://thenounproject.com/term/user/419/]]:
+    Creative Commons — Attribution, by Edward Boatman.
+
+  - [[Translation|http://thenounproject.com/term/translation/5735/]]:
+    Creative Commons — Attribution, by Joe Mortell.
+
+  - [[Gears|http://thenounproject.com/term/gears/8949/]]:
+    Creative Commons — Attribution, by Cris Dobbins.
+
+  - [[Graphic Design|http://thenounproject.com/term/graphic_design/9198/]]:
+    Creative Commons — Attribution, by Cornelius Danger.
+
+  - [[Check Mark|https://thenounproject.com/term/check/4489/]]:
+    Public Domain, by Julian Norton.
+
+  - [[Delete|https://thenounproject.com/term/delete/49691/]]:
+    Creative Commons — Attribution, by Kervin Markle.
+
+  - [[Play|https://thenounproject.com/term/play/152052]]:
+    Creative Commons — Attribution, by Zech Nelson.
+
+  - [[Pause|https://thenounproject.com/term/pause/152046]]:
+    Creative Commons — Attribution, by Zech Nelson.
+
+  - [[USB|https://thenounproject.com/term/usb/28901]]:
+    Creative Commons — Attribution, by Wilson Joseph.
+
+  - [[Time|https://thenounproject.com/term/time/6732]]:
+    Creative Commons — Attribution, by Richard de Vos.
+
+  - [[Printer|https://thenounproject.com/term/printer/146674]]:
+    Creative Commons — Attribution, by Diego Naive.
+
+  - [[Smart Phones|https://thenounproject.com/term/smartphone/25790]]:
+    Creative Commons — Attribution, by Pham Thi Dieu Linh.
+
+  - [[Laptop|https://thenounproject.com/term/laptop/6729]]:
+    Public Domain, by Jean Yashu.
+
+  - [[Love|https://thenounproject.com/term/love/218846/]]:
+    Creative Commons — Attribution, by Thomas Helbig.
+
+  - [[Survey|https://thenounproject.com/term/survey/1296072]]:
+    Creative Commons — Attribution, by unlimicon.
+
+  - [[Info|https://thenounproject.com/term/info/808461]]:
+    Creative Commons — Attribution, by icongeek.
+
+  - [[Command Line|https://thenounproject.com/icon/command-line-39108]]:
+    Public Domain, by Daniel Gamage.

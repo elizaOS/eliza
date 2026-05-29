@@ -19,6 +19,7 @@ import { dockerNodeManager } from "../../docker-node-manager";
 import { getUsedDockerHostPorts } from "../../docker-port-allocation";
 import {
   allocatePort,
+  buildEnsureNetworkCmd,
   shellQuote,
   WEBUI_PORT_MAX,
   WEBUI_PORT_MIN,
@@ -257,6 +258,7 @@ export class HetznerContainersClient {
           .join(" ");
 
         try {
+          await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
           await ssh.exec(dockerCreateCmd, 60_000);
           break;
         } catch (error) {
@@ -579,6 +581,7 @@ export class HetznerContainersClient {
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
 
+      await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
       await ssh.exec(
         [
           "docker create",

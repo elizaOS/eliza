@@ -30,7 +30,6 @@ import path from "node:path";
 
 import type { CharacterInput } from "./character";
 import { parseCharacter } from "./character";
-import { COMMON_SECRET_KEYS, importSecretsFromEnv } from "./character-utils";
 import { resolvePlugins } from "./plugin";
 import {
 	ensureAgentInfrastructure,
@@ -200,7 +199,7 @@ export function mergeSettingsInto(
  */
 function loadOneCharacterFromObject(input: CharacterInput): Character {
 	const character = parseCharacter(input);
-	let out = importSecretsFromEnv(character, COMMON_SECRET_KEYS);
+	let out = character;
 
 	if (!out.id) {
 		out = { ...out, id: stringToUuid(out.name ?? "eliza") as UUID };
@@ -219,7 +218,7 @@ export interface LoadCharactersOptions {
 
 /**
  * Load characters from file paths and/or inline character objects.
- * String entries are UTF-8 JSON files (`.json`). Uses `parseCharacter` and `importSecretsFromEnv`.
+ * String entries are UTF-8 JSON files (`.json`). Uses `parseCharacter`.
  *
  * **WHY accept mixed sources:** Daemons often load from files; programmatic hosts (e.g. cloud,
  * serverless) may build character config in code. One API supports both.

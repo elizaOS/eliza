@@ -43,8 +43,9 @@ export const actionStateProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	position: spec.position ?? 150,
-	contexts: ["general"],
-	contextGate: { anyOf: ["general"] },
+	// Previous action results are context-agnostic. Every planner turn that
+	// follows a tool execution needs to see what just ran, regardless of
+	// which context is engaged.
 	cacheStable: false,
 	cacheScope: "turn",
 	roleGate: { minRole: "USER" },

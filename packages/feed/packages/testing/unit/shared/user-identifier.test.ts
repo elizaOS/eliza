@@ -23,9 +23,9 @@ describe("resolveUserIdentifierKind", () => {
     expect(resolveUserIdentifierKind("1234567890123456789")).toBe("id");
   });
 
-  it("should classify privy DID as privyId", () => {
-    expect(resolveUserIdentifierKind("did:privy:abc123")).toBe("privyId");
-    expect(resolveUserIdentifierKind("did:privy:xyz789")).toBe("privyId");
+  it("should not special-case legacy auth-provider identifiers", () => {
+    expect(resolveUserIdentifierKind("steward:test:abc123")).toBe("username");
+    expect(resolveUserIdentifierKind("steward:test:xyz789")).toBe("username");
   });
 
   it("should classify username as username", () => {

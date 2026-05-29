@@ -2,7 +2,7 @@
  * Content pack application.
  *
  * Takes a ResolvedContentPack and applies its assets to the app state.
- * This is called from the splash page after the user selects a pack.
+ * This is called from first-run setup after the user selects a pack.
  */
 
 import type {
@@ -18,15 +18,15 @@ export interface ContentPackApplyDeps {
   setCustomBackgroundUrl: (url: string) => void;
   setCustomWorldUrl: (url: string) => void;
   setSelectedVrmIndex: (index: number) => void;
-  setOnboardingName: (name: string) => void;
-  setOnboardingStyle: (style: string) => void;
+  setFirstRunName: (name: string) => void;
+  setFirstRunStyle: (style: string) => void;
   setCustomCatchphrase: (phrase: string) => void;
   setCustomVoicePresetId: (id: string) => void;
 }
 
 /**
  * Apply a content pack to the app state.
- * Call this on the splash page after the user selects a pack.
+ * Call this from first-run setup after the user selects a pack.
  */
 export function applyContentPack(
   pack: ResolvedContentPack,
@@ -53,7 +53,7 @@ export function applyContentPack(
 
   // Personality
   if (pack.personality?.name) {
-    deps.setOnboardingName(pack.personality.name);
+    deps.setFirstRunName(pack.personality.name);
   }
   if (pack.personality?.catchphrase) {
     deps.setCustomCatchphrase(pack.personality.catchphrase);
@@ -62,7 +62,7 @@ export function applyContentPack(
     deps.setCustomVoicePresetId(pack.personality.voicePresetId);
   }
   if (pack.avatarIndex != null && pack.avatarIndex > 0 && pack.manifest.id) {
-    deps.setOnboardingStyle(pack.manifest.id);
+    deps.setFirstRunStyle(pack.manifest.id);
   }
 }
 

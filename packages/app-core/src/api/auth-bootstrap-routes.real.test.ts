@@ -10,7 +10,7 @@
  * runtime:
  *
  *   - The audited bypass at `auth-pairing-routes.ts:124,140` /
- *     `server-onboarding-helpers.ts` is closed: `GET /api/onboarding/status`
+ *     `server-first-run-helpers.ts` is closed: `GET /api/first-run/status`
  *     without auth returns 401 even when `ELIZA_CLOUD_PROVISIONED=1`.
  *   - `POST /api/auth/bootstrap/exchange` with a valid RS256 JWT signed by
  *     the cloud's JWKS returns `{ sessionId, identityId, expiresAt }`.
@@ -209,7 +209,7 @@ async function open(): Promise<Harness> {
   // Loopback bind doesn't strictly require a token, but the plan calls
   // for it to be set so the audited bypass cannot disguise itself
   // behind an open-auth fall-through. The token presence is what makes
-  // the unauthenticated `/api/onboarding/status` return 401 instead of
+  // the unauthenticated `/api/first-run/status` return 401 instead of
   // 200.
   process.env.ELIZA_API_TOKEN = crypto.randomBytes(24).toString("hex");
   process.env.ELIZA_STATE_DIR = stateDir;
@@ -280,8 +280,8 @@ describe("cloud-provisioned auth bootstrap smoke (real HTTP)", () => {
     await harness.cleanup();
   });
 
-  it("rejects unauthenticated /api/onboarding/status with 401 (audited bypass closed)", async () => {
-    const res = await fetch(`${harness.baseUrl}/api/onboarding/status`);
+  it("rejects unauthenticated /api/first-run/status with 401 (audited bypass closed)", async () => {
+    const res = await fetch(`${harness.baseUrl}/api/first-run/status`);
     // The whole point of P0: cloud-provisioned containers must NOT
     // skip auth on this route. A 200 here is a critical regression.
     expect(res.status).not.toBe(200);

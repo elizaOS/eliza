@@ -13,8 +13,8 @@
  * - `loadWalletConfig`       — from useWalletState, called after successful login
  * - `t`                      — translation function, used for auth-rejected notice key
  *
- * Note: `handleCloudOnboardingFinish` is kept in AppContext (one-liner that calls
- * `submitOnboardingAndComplete`, which is defined later in AppContext's render order).
+ * Note: `handleCloudFirstRunFinish` is kept in AppContext (one-liner that calls
+ * `submitFirstRunAndComplete`, which is defined later in AppContext's render order).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,7 +25,7 @@ import {
 } from "../bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
-import { isElizaCloudRuntimeLocked } from "../onboarding/mobile-runtime-mode";
+import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
 import {
   closeExternalBrowser,
   confirmDesktopAction,
@@ -201,6 +201,26 @@ export function useCloudState({
   const [elizaCloudLoginError, setElizaCloudLoginError] = useState<
     string | null
   >(null);
+  /**
+   * Verification URL returned by `POST /api/cloud/login`, shown to the user
+   * as a manual fallback while the device-code flow is awaiting completion.
+   *
+   * The renderer also tries to open this URL automatically via
+   * `openExternalUrl()` (Capacitor / Electrobun / window.open), but on some
+   * desktops the system handler is wired to a browser that silently fails
+   * to surface a window — e.g. Tails routes `xdg-open` through gtk-launch
+   * to the Tor Browser flatpak, and if Tor has not bootstrapped yet the
+   * browser hangs on its splash screen with no visible feedback in the
+   * renderer. Always exposing the URL as a copyable link lets the user
+   * complete sign-in on any device with internet access, matching the
+   * standard OAuth device-code UX (gh auth login, npm login, stripe login).
+   *
+   * Set to a string when the cloud-login session is created, cleared when
+   * polling stops (authenticated, errored, timed out, or user cancelled).
+   */
+  const [elizaCloudLoginFallbackUrl, setElizaCloudLoginFallbackUrl] = useState<
+    string | null
+  >(null);
   const [elizaCloudDisconnecting, setElizaCloudDisconnecting] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────
@@ -224,7 +244,7 @@ export function useCloudState({
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
   const elizaCloudAuthNoticeSentRef = useRef(false);
   /**
-   * Forward ref so handleOnboardingNext (defined earlier in AppContext) can call
+   * Forward ref so handleFirstRunNext (defined earlier in AppContext) can call
    * handleCloudLogin (defined later).
    */
   const handleCloudLoginRef = useRef<() => Promise<void>>(async () => {});
@@ -326,7 +346,7 @@ export function useCloudState({
     }
     lastElizaCloudPollConnectedRef.current = isConnected;
     // Self-manage the recurring poll interval: start when connected, stop when not.
-    // This covers login during onboarding (interval wasn't started at mount) and
+    // This covers login during first-run setup (interval wasn't started at mount) and
     // disconnect (interval should stop to avoid useless API calls).
     if (isConnected && !elizaCloudPollInterval.current) {
       elizaCloudPollInterval.current = window.setInterval(() => {
@@ -368,6 +388,7 @@ export function useCloudState({
       elizaCloudLoginBusyRef.current = true;
       setElizaCloudLoginBusy(true);
       setElizaCloudLoginError(null);
+      setElizaCloudLoginFallbackUrl(null);
       elizaCloudPreferDisconnectedUntilLoginRef.current = false;
 
       // Determine if we should use direct cloud auth (no local backend) or
@@ -429,7 +450,15 @@ export function useCloudState({
         // Open the login URL in the system browser. On Capacitor iOS the
         // pre-opened window preserves the user-gesture context so WKWebView
         // routes the URL out to Safari instead of dropping it silently.
+        //
+        // Regardless of whether the auto-open succeeds, expose the URL via
+        // `elizaCloudLoginFallbackUrl` so the renderer can render a
+        // copyable "didn't open? visit this link" panel. Some desktop
+        // handlers (e.g. Tails' Tor Browser flatpak when Tor has not
+        // bootstrapped, or any environment where xdg-open silently fails)
+        // open without crashing but never surface a usable window.
         if (resp.browserUrl) {
+          setElizaCloudLoginFallbackUrl(resp.browserUrl);
           if (prePoppedWindow) {
             navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl);
           } else {
@@ -463,6 +492,10 @@ export function useCloudState({
           }
           elizaCloudLoginBusyRef.current = false;
           setElizaCloudLoginBusy(false);
+          // Clear the manual-link fallback once the device-code session is
+          // no longer active — the URL is single-use and showing a stale
+          // link after timeout / cancellation is misleading.
+          setElizaCloudLoginFallbackUrl(null);
           if (error !== null) {
             setElizaCloudLoginError(error);
           }
@@ -576,6 +609,10 @@ export function useCloudState({
         setElizaCloudLoginError(
           err instanceof Error ? err.message : "Eliza Cloud login failed",
         );
+        // Drop the manual-link fallback on the outer failure path so we
+        // don't show a stale verification URL after the session has been
+        // abandoned.
+        setElizaCloudLoginFallbackUrl(null);
         elizaCloudLoginBusyRef.current = false;
         setElizaCloudLoginBusy(false);
       }
@@ -590,7 +627,7 @@ export function useCloudState({
     ],
   );
 
-  // Keep forward ref in sync so handleOnboardingNext can call it.
+  // Keep forward ref in sync so handleFirstRunNext can call it.
   handleCloudLoginRef.current = handleCloudLogin;
 
   const handleCloudDisconnect = useCallback(
@@ -806,6 +843,8 @@ export function useCloudState({
     setElizaCloudLoginBusy,
     elizaCloudLoginError,
     setElizaCloudLoginError,
+    elizaCloudLoginFallbackUrl,
+    setElizaCloudLoginFallbackUrl,
     elizaCloudDisconnecting,
     setElizaCloudDisconnecting,
     // Refs (exposed for cleanup in AppContext's startup effect and for forward ref)

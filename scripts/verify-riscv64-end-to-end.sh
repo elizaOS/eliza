@@ -140,7 +140,7 @@ fi
 # AOSP test suite.
 if timeout 90 bun test \
     "$repo_root/packages/app-core/scripts/aosp/compile-libllama-fused.test.mjs" \
-    "$repo_root/packages/app-core/scripts/build-llama-cpp-dflash-targets.test.mjs" \
+    "$repo_root/packages/app-core/scripts/build-llama-cpp-mtp-targets.test.mjs" \
     >"$tmp_log" 2>&1; then
     pass_count="$(grep -oE '[0-9]+ pass' "$tmp_log" | tail -1 || echo '0 pass')"
     record "aosp:test-suite" "PASS" "$pass_count"
@@ -198,34 +198,32 @@ fi
 # Real Pixel hardware (SKIP — needs an attached device).
 record "aosp:pixel-arm64-attached" "SKIP" "no \`adb devices\` in sandbox; deploy-pixel.mjs path is unit-tested at script-syntax + test-suite level above"
 
-# ── Debian fork — unified build skeleton + manifest ──────────────────
-echo "── Debian fork (Linux ISO, riscv64) ──"
-deb_dir="$repo_root/packages/os/linux/elizaos"
+# ── Canonical Linux live distro — riscv64 GUI contract ────────────────
+echo "── elizaOS Live (Linux ISO, riscv64 GUI contract) ──"
+deb_dir="$repo_root/packages/os/linux"
 if [ -d "$deb_dir" ]; then
-    for f in Dockerfile build.sh manifest.json.template README.md auto/config; do
+    for f in Dockerfile build.sh README.md tails/auto/config docs/riscv64-gui-support.md tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list; do
         if [ -f "$deb_dir/$f" ]; then
-            record "debian:variant/$f" "PASS" "present"
+            record "linux-live:distro/$f" "PASS" "present"
         else
-            record "debian:variant/$f" "FAIL" "missing"
+            record "linux-live:distro/$f" "FAIL" "missing"
         fi
     done
     if bash -n "$deb_dir/build.sh" 2>"$tmp_log"; then
-        record "debian:variant/build.sh-syntax" "PASS" "bash -n clean"
+        record "linux-live:distro/build.sh-syntax" "PASS" "bash -n clean"
     else
-        record "debian:variant/build.sh-syntax" "FAIL" "$(tail -1 "$tmp_log")"
+        record "linux-live:distro/build.sh-syntax" "FAIL" "$(tail -1 "$tmp_log")"
     fi
-    # The template's placeholders sit inside string literals (e.g.
-    # `"sha256": "@@SHA256@@"`), so we replace `@@TOKEN@@` with `x`
-    # (NOT `"x"`) — the surrounding quotes belong to the JSON string.
-    if node -e "JSON.parse(require('fs').readFileSync('$deb_dir/manifest.json.template','utf8').replace(/@@[A-Z_]+@@/g,'x'))" 2>"$tmp_log"; then
-        record "debian:variant/manifest-template-json" "PASS" "JSON valid after placeholder substitution"
+    if grep -qx "virtio-gpu-pci" "$deb_dir/docs/riscv64-gui-support.md" \
+        && grep -qx "linux-image-riscv64" "$deb_dir/tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list" \
+        && grep -qx "gnome-shell" "$deb_dir/tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list"; then
+        record "linux-live:riscv64-gui-contract" "PASS" "virtio GPU + riscv64 kernel + GNOME packages declared"
     else
-        record "debian:variant/manifest-template-json" "FAIL" "$(tail -1 "$tmp_log")"
+        record "linux-live:riscv64-gui-contract" "FAIL" "missing riscv64 GUI contract markers"
     fi
-    # The actual lb build is host-gated.
-    record "debian:variant/lb-build" "SKIP" "needs docker + ~10 GB disk + ~30 min; not run in sandbox (Wave 4)"
+    record "linux-live:distro/lb-build" "SKIP" "needs docker + Tails live-build host budget; not run in sandbox"
 else
-    record "debian:variant" "FAIL" "$deb_dir does not exist"
+    record "linux-live:distro" "FAIL" "$deb_dir does not exist"
 fi
 
 # ── Cloud Dockerfile BUN_BASE indirection ────────────────────────────

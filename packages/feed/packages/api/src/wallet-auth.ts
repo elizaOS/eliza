@@ -1,7 +1,7 @@
 /**
  * Wallet-specific auth utilities.
  *
- * - Token freshness check: verifies the Privy JWT was issued recently
+ * - Token freshness check: verifies the Steward JWT was issued recently
  *   (prevents using stale tokens for sensitive wallet operations).
  */
 
@@ -26,18 +26,18 @@ export interface TokenFreshnessResult {
 }
 
 /**
- * Check if a Privy JWT token was issued within the acceptable freshness window.
+ * Check if a Steward JWT token was issued within the acceptable freshness window.
  * Used for wallet mutation endpoints to ensure the user recently authenticated.
  *
- * @param privyToken - The raw Privy JWT string
+ * @param token - The raw Steward JWT string
  * @param maxAgeSeconds - Maximum allowed token age (default: 300 = 5 minutes)
  * @returns Object with `fresh` boolean and `ageSeconds`
  */
 export function requireFreshToken(
-  privyToken: string,
+  token: string,
   maxAgeSeconds = MAX_TOKEN_AGE_SECONDS,
 ): TokenFreshnessResult {
-  const payload = safeDecodeJwtPayload(privyToken);
+  const payload = safeDecodeJwtPayload(token);
   if (!payload?.iat) {
     return { fresh: false, ageSeconds: Infinity };
   }

@@ -41,7 +41,7 @@ export type LocalModelCapability =
 	| "text-embedding"
 	| "vision"
 	| "image-generation"
-	| "dflash"
+	| "mtp"
 	| "text-to-speech"
 	| "speech-to-text"
 	| "voice-activity-detection"

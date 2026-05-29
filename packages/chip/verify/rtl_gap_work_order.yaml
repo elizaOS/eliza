@@ -129,7 +129,7 @@ areas:
         partial_closure_evidence:
           - verify/cocotb/test_mmio_decode_error.py (unmapped-address DECERR sweep for reads/writes and post-DECERR liveness)
           - verify/cocotb/test_reset_domain_cleanup.py (post-reset register defaults and handshake-signal idle)
-        current_evidence: Debug-MMIO top routes fixed device windows and a small internal DRAM array; Linux contract fabric routes DRAM, interrupt-controller, DMA MMIO, NPU MMIO, and display MMIO windows. Unmapped-MMIO DECERR sweep, reset-domain idle checks, CPU-side NPU/display MMIO round trips, and DMA-to-NPU/display no-side-effect containment are covered by cocotb contract scaffolds. `make memory-interconnect-contract-check` now emits build/reports/memory_interconnect_contract.json with explicit phone/release/production-fabric claim denial, checked evidence paths, current 4 KiB SRAM-backed e1-chip debug DRAM capacity, separate 256 MiB Linux scaffold aperture, and a claim boundary that rejects production routing, ordering, coherency, IOMMU/SMMU, QoS, LPDDR, Android, and phone-class memory evidence.
+        current_evidence: Debug-MMIO top routes fixed device windows and a small internal DRAM array; Linux contract fabric routes DRAM, interrupt-controller, DMA MMIO, NPU MMIO, and display MMIO windows. Unmapped-MMIO DECERR sweep, reset-domain idle checks, CPU-side NPU/display MMIO round trips, and DMA-to-NPU/display no-side-effect containment are covered by cocotb contract scaffolds. `make memory-interconnect-contract-check` now emits build/reports/memory_interconnect_contract.json with explicit phone/release/production-fabric/coherency/IOMMU/QoS/Android/NPU-memory-fabric/display-framebuffer claim denial, checked evidence paths, current 4 KiB SRAM-backed e1-chip debug DRAM capacity, separate 256 MiB Linux scaffold aperture, Linux-contract NPU/display MMIO target bases, fail-closed NPU descriptor traffic, fail-closed display framebuffer reads, and a claim boundary that rejects production routing, ordering, coherency, IOMMU/SMMU, QoS, LPDDR, Android, and phone-class memory evidence.
         blocking_gate: Full SoC routing, ordering, coherency, and multi-master claims remain blocked.
         closure_evidence: Address map generated from the platform contract with protocol assertions, backpressure coverage, error response tests, and arbitration coverage across all masters.
         work_order: Add complete SoC address routing, ordering, and arbitration coverage beyond the current contract windows.
@@ -147,7 +147,7 @@ areas:
           - docs/arch/interconnect.md
           - scripts/check_platform_contract.py
           - scripts/test_platform_contract_linux_decode.py
-        current_evidence: Mitigated for Linux-contract MMIO exposure. The AXI-Lite scaffold decodes 0x1002_0000 NPU control and 0x1003_0000 display control windows, instantiates e1_npu/e1_display MMIO target wrappers, and covers both paths in verify/cocotb/test_cpu_mem_intc_contract.py (`linux_contract_npu_mmio`, `linux_contract_display_mmio`, `dma_npu_display_mmio_no_side_effect`). `make platform-contract-check` now also verifies the Linux AXI-Lite decoder bases against the generated CPU-variant platform contract and carries a stale-NPU-base regression. NPU descriptor-master traffic still fails closed and display framebuffer reads are not routed through production DRAM.
+        current_evidence: Mitigated for Linux-contract MMIO exposure. The AXI-Lite scaffold decodes 0x1002_0000 NPU control and 0x1003_0000 display control windows, instantiates e1_npu/e1_display MMIO target wrappers, and covers both paths in verify/cocotb/test_cpu_mem_intc_contract.py (`linux_contract_npu_mmio`, `linux_contract_display_mmio`, `dma_npu_display_mmio_no_side_effect`). `make platform-contract-check` verifies the Linux AXI-Lite decoder bases against the generated CPU-variant platform contract and carries a stale-NPU-base regression. `make memory-interconnect-contract-test` now regression-tests that build/reports/memory_interconnect_contract.json records the NPU/display MMIO bases, marks the NPU descriptor master as fail_closed_slverr, marks the display framebuffer path as not_routed, and keeps production device-memory-fabric/display-framebuffer claims denied. NPU descriptor-master traffic still fails closed and display framebuffer reads are not routed through production DRAM.
         blocking_gate: Full Linux device coverage still requires production NPU/display memory-fabric paths, IOMMU/coherency policy, and QoS/bandwidth evidence.
         closure_evidence: NPU and display AXI-Lite target wrappers are routed, tested for decode errors, and checked against generated software headers.
         work_order: Mitigated for AXI-Lite MMIO routing and generated-artifact address drift; keep production device coverage blocked until memory-fabric and IOMMU/coherency evidence lands.
@@ -530,6 +530,8 @@ areas:
           - fw/boot-rom/check_boot_rom.py
           - rtl/bootrom/e1_bootrom.sv
           - scripts/check_bootrom_sim_transcript.py
+          - scripts/check_bootrom_positive_handoff.py
+          - scripts/test_bootrom_positive_handoff.py
           - scripts/check_boot_security_chain_contract.py
           - sw/bootrom/e1_qemu_firmware.S
           - scripts/run_qemu.sh
@@ -550,13 +552,17 @@ areas:
           set. The broader boot security-chain contract now machine-checks that
           fail-closed negative evidence is not enough for firmware/OS readiness:
           scripts/check_bootrom_positive_handoff.py now generates
-          build/reports/gate-bootrom-positive-handoff-check.json and fails
-          closed until
+          build/reports/gate-bootrom-positive-handoff-check.json with explicit
+          false flags for phone, release, Linux boot, Android boot, and silicon
+          secure-boot claims, and fails closed until
           docs/boot-rom/transcripts/e1_secure_bootrom_positive_handoff_qemu_rv64.txt
           contains reset, verifier, authenticated-image, manifest-target, and
-          OpenSBI-entry markers. That positive authenticated handoff evidence is
-          still missing, and the contract also blocks on manufacturing
-          key-ceremony evidence.
+          OpenSBI-entry markers. scripts/check_boot_security_chain_contract.py
+          now blocks if that positive report is missing those explicit denial
+          flags, so simulator handoff evidence cannot be promoted to release or
+          silicon secure-boot readiness. That positive authenticated handoff
+          evidence is still missing, and the contract also blocks on
+          manufacturing key-ceremony evidence.
         blocking_gate: Firmware and OS boot gates remain blocked until a positive authenticated handoff transcript and closed secure-boot lifecycle evidence exist.
         closure_evidence: Executable reset ROM initializes machine state, validates/authenticates a signed handoff image, and is covered by RTL or emulator boot transcript checks that include the positive OpenSBI/Linux handoff path.
         work_order: >-
@@ -587,6 +593,7 @@ areas:
           - rtl/top/e1_soc_top.sv
           - rtl/interconnect/e1_linux_soc_contract.sv
           - scripts/check_dram_controller.py
+          - scripts/test_dram_controller_gate.py
           - scripts/test_dram_controller_make_target.py
           - Makefile
         current_evidence: >-
@@ -598,8 +605,11 @@ areas:
           scripts/check_dram_controller.py and `make memory-axi4-check` invokes
           that gate before the AXI4 cocotb suite, so the 2 GiB geometry,
           row-latency model, DECERR fail-closed path, and required cocotb tests
-          have a reproducible Make entry point. The LPDDR5X analog PHY and DFI
-          5.0 training remain closed-IP physical dependencies
+          have a reproducible Make entry point. The report carries explicit
+          false flags for phone, release, Linux-memory, bandwidth, LPDDR-PHY,
+          silicon-capacity, and UMA claims, regression-tested by
+          `make dram-controller-gate-test`. The LPDDR5X analog PHY and DFI 5.0
+          training remain closed-IP physical dependencies
           (docs/evidence/memory/lpddr-phy-procurement.yaml), so this is a
           verified large-memory model, not a silicon-ready PHY-attached
           controller; the legacy rtl/memory/e1_axi_lite_dram.sv aperture is
@@ -684,6 +694,10 @@ areas:
           boundary, while `scripts/test_release_archive_simulator_evidence.py`
           proves archives block if either simulator evidence boundary artifact
           is missing or the QEMU manifest boundary/status tokens are absent.
+          The release-archive report now separates
+          `archive_validation_passed` from `release_ready=false` and carries
+          explicit false flags for phone, release, hardware-boot,
+          silicon-evidence, and simulator-pass-as-release-evidence claims.
         blocking_gate: Boot/OS readiness must remain blocked without checked firmware image and serial transcript evidence.
         closure_evidence: Status reporting and release archives distinguish scaffold/preflight checks from real boot transcript evidence; real e1-chip boot closure still requires a contract-compatible model, firmware image, DTB, serial transcript, and exit-status checks.
         work_order: Mitigated for qemu-virt/Renode scaffold pass risk; keep e1-chip boot/OS readiness blocked until the real boot evidence exists.

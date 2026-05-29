@@ -1,0 +1,69 @@
+#!/bin/sh
+
+# This script is installed by /usr/share/initramfs-tools/hooks/shutdown
+# into the initramfs, as /lib/systemd/system-shutdown/tails. It's run by the
+# copy of systemd-shutdown that runs (as /shutdown) from inside
+# the unpacked initramfs, immediately before executing the requested action
+# (halt/poweroff/reboot).
+
+set -x
+
+### Store random seed in LBA 34
+dd bs=512 seek=34 count=1 oflag=direct if=/dev/urandom of=/dev/bilibop
+
+### Unmount relevant filesystems
+
+# Wait for lazy unmounts to finish
+sync
+
+# Debugging
+/bin/mount
+
+# Otherwise we can't drop caches.
+# This may also help for tracking remaining mounts.
+/bin/mount -o remount,rw /proc
+
+# Otherwise we can't create new mountpoints in /mnt
+/bin/mount -o remount,rw /
+
+# Move /oldroot/* mountpoints out of the way
+mkdir -p /mnt/live/squashfs
+/bin/mount --move \
+      /oldroot/lib/live/mount/rootfs/filesystem.squashfs \
+      /mnt/live/squashfs
+mkdir -p /mnt/live/medium
+/bin/mount --move \
+      /oldroot/usr/lib/live/mount/medium \
+      /mnt/live/medium
+mkdir -p /mnt/live/dev
+/bin/mount --move \
+      /oldroot/dev \
+      /mnt/live/dev
+mkdir -p /mnt/live/run
+/bin/mount --move \
+      /oldroot/run \
+      /mnt/live/run
+
+# Finally, really unmount relevant filesystems
+/bin/umount --recursive /oldroot
+/bin/umount /oldroot
+/bin/umount --recursive /mnt/live/medium
+/bin/umount /mnt/live/medium
+
+# Debugging
+/bin/mount
+
+### Ensure any remaining disk cache is erased by Linux' memory poisoning
+echo 3 > /proc/sys/vm/drop_caches
+
+### Pause if the test suite wants us to
+if [ -e /tails_shutdown_debugging ] ; then
+    echo "Going to sleep 2 minutes. Happy dumping!"
+    # Those extra "echo" avoid that the text is on the bottom, which can be easier for the test suite to
+    # recognize
+    echo
+    echo
+    echo
+    echo
+    sleep 120
+fi

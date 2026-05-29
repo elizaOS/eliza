@@ -16,18 +16,7 @@
  * instead of crashing the process.
  */
 
-import fs from "node:fs/promises";
-import path from "node:path";
-import { findCatalogModel } from "./catalog";
-import {
-  type DflashServerPlan,
-  dflashLlamaServer,
-  dflashRequired,
-  getDflashRuntimeStatus,
-} from "./dflash-server";
 import type { LocalInferenceLoadArgs } from "./load-args";
-import { listInstalledModels } from "./registry";
-import type { InstalledModel } from "./types";
 
 const NODE_LLAMA_CPP_MODULE_ID = "node-llama-cpp";
 
@@ -55,75 +44,6 @@ export function resolveGpuLayersForLoad(
   }
   if (resolved?.useGpu === false) return 0;
   return "auto";
-}
-
-function resolveDflashGpuLayersForLoad(
-  resolved: LocalInferenceLoadArgs | undefined,
-  fallback: number | "auto",
-): number | "auto" {
-  const mapped = resolveGpuLayersForLoad(resolved);
-  if (mapped === "max") return "auto";
-  if (mapped !== "auto") return mapped;
-  return fallback;
-}
-
-interface DflashTargetMeta {
-  publishEligible?: unknown;
-  drafter?: {
-    matchesTargetCheckpoint?: unknown;
-    provenance?: unknown;
-    sha256?: unknown;
-  };
-  targetText?: {
-    sha256?: unknown;
-  };
-}
-
-export function getDflashTargetMetaBlockReason(input: unknown): string | null {
-  if (!input || typeof input !== "object") return null;
-  const meta = input as DflashTargetMeta;
-  if (meta.publishEligible === false) return "target-meta is not publishable";
-  if (meta.drafter?.matchesTargetCheckpoint === false) {
-    return "drafter does not match the target checkpoint";
-  }
-  const provenance =
-    typeof meta.drafter?.provenance === "string" ? meta.drafter.provenance : "";
-  if (provenance.includes("stamp-only")) return "drafter is stamp-only";
-  const drafterSha =
-    typeof meta.drafter?.sha256 === "string" ? meta.drafter.sha256 : null;
-  const targetSha =
-    typeof meta.targetText?.sha256 === "string" ? meta.targetText.sha256 : null;
-  if (drafterSha && targetSha && drafterSha === targetSha) {
-    return "drafter bytes match the target model";
-  }
-  return null;
-}
-
-async function readDflashTargetMeta(
-  drafter: InstalledModel,
-): Promise<unknown | null> {
-  try {
-    const metaPath = path.join(path.dirname(drafter.path), "target-meta.json");
-    const raw = await fs.readFile(metaPath, "utf8");
-    return JSON.parse(raw) as unknown;
-  } catch (err) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "code" in err &&
-      (err as { code?: unknown }).code === "ENOENT"
-    ) {
-      return null;
-    }
-    return { publishEligible: false };
-  }
-}
-
-async function getDflashDrafterBlockReason(
-  drafter: InstalledModel,
-): Promise<string | null> {
-  const meta = await readDflashTargetMeta(drafter);
-  return getDflashTargetMetaBlockReason(meta);
 }
 
 export interface GenerateArgs {
@@ -215,18 +135,14 @@ export class LocalInferenceEngine {
   }
 
   currentModelPath(): string | null {
-    if (dflashLlamaServer.hasLoadedModel()) {
-      return dflashLlamaServer.currentModelPath();
-    }
     return this.loadedPath;
   }
 
   hasLoadedModel(): boolean {
-    return this.loadedModel !== null || dflashLlamaServer.hasLoadedModel();
+    return this.loadedModel !== null;
   }
 
   async unload(): Promise<void> {
-    await dflashLlamaServer.stop();
     if (!this.loadedModel) return;
     const session = this.loadedSession;
     const context = this.loadedContext;
@@ -255,19 +171,6 @@ export class LocalInferenceEngine {
     resolved?: LocalInferenceLoadArgs,
   ): Promise<void> {
     if (this.loadedPath === modelPath && this.loadedModel) return;
-    if (dflashLlamaServer.currentModelPath() === modelPath) return;
-
-    const dflashPlan = await this.resolveDflashPlan(modelPath, resolved);
-    if (dflashPlan) {
-      try {
-        await this.unload();
-        await dflashLlamaServer.start(dflashPlan);
-        return;
-      } catch (err) {
-        if (dflashRequired()) throw err;
-        // DFlash unavailable; falling back to node-llama-cpp
-      }
-    }
 
     if (!(await this.available()) || !this.bindingModule) {
       throw new Error(
@@ -317,9 +220,6 @@ export class LocalInferenceEngine {
    * stays consistent.
    */
   async generate(args: GenerateArgs): Promise<string> {
-    if (dflashLlamaServer.hasLoadedModel()) {
-      return dflashLlamaServer.generate(args);
-    }
     if (!this.loadedSession) {
       throw new Error(
         "No local model is active. Select one in Settings → Local models before using local inference.",
@@ -363,49 +263,6 @@ export class LocalInferenceEngine {
     } catch {
       return null;
     }
-  }
-
-  private async resolveDflashPlan(
-    modelPath: string,
-    resolved?: LocalInferenceLoadArgs,
-  ): Promise<DflashServerPlan | null> {
-    const installed = await listInstalledModels();
-    const target = installed.find((m) => m.path === modelPath);
-    if (!target) return null;
-    const catalog = findCatalogModel(target.id);
-    const dflash = catalog?.runtime?.dflash;
-    if (!dflash) return null;
-
-    const status = getDflashRuntimeStatus();
-    if (!status.enabled) {
-      if (status.required) throw new Error(`[dflash] ${status.reason}`);
-      return null;
-    }
-
-    const drafter = installed.find((m) => m.id === dflash.drafterModelId);
-    if (!drafter) {
-      const message = `[dflash] ${catalog.displayName} requires companion drafter ${dflash.drafterModelId}. Download the model again or start a download for the companion id.`;
-      if (status.required) throw new Error(message);
-      return null;
-    }
-    const drafterBlockReason = await getDflashDrafterBlockReason(drafter);
-    if (drafterBlockReason) {
-      const message = `[dflash] ${catalog.displayName} companion drafter ${dflash.drafterModelId} is not eligible for DFlash: ${drafterBlockReason}.`;
-      if (status.required) throw new Error(message);
-      return null;
-    }
-
-    return {
-      targetModelPath: target.path,
-      drafterModelPath: drafter.path,
-      contextSize: dflash.contextSize,
-      draftContextSize: dflash.draftContextSize,
-      draftMin: dflash.draftMin,
-      draftMax: dflash.draftMax,
-      gpuLayers: resolveDflashGpuLayersForLoad(resolved, dflash.gpuLayers),
-      draftGpuLayers: dflash.draftGpuLayers,
-      disableThinking: dflash.disableThinking,
-    };
   }
 }
 

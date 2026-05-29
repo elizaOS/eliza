@@ -88,7 +88,7 @@ export function ProviderRoutingPanel({
               >
                 <SelectTrigger
                   id="provider-switcher-primary-model"
-                  className="h-9 w-full rounded-lg border border-border bg-card text-sm sm:max-w-sm"
+                  className="h-9 w-full rounded-sm border border-border bg-card text-sm sm:max-w-sm"
                 >
                   <SelectValue
                     placeholder={t("providerswitcher.chooseModel", {

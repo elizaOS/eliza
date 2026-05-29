@@ -29,7 +29,7 @@ describe("VoiceProfilesClient.list", () => {
             firstHeardAtMs: 1,
             lastHeardAtMs: 2,
             cohort: "owner",
-            source: "onboarding",
+            source: "first-run",
           },
         ],
       };
@@ -44,7 +44,7 @@ describe("VoiceProfilesClient.list", () => {
     expect(owner.isOwner).toBe(true);
     expect(owner.entityId).toBe("ent-shaw");
     expect(owner.cohort).toBe("owner");
-    expect(owner.source).toBe("onboarding");
+    expect(owner.source).toBe("first-run");
   });
 
   it("surfaces failures instead of fabricating an empty list", async () => {
@@ -193,9 +193,7 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
       durationMs: 1000,
     });
 
-    expect(calls).toEqual([
-      "/api/voice/onboarding/profile/append?id=session-x",
-    ]);
+    expect(calls).toEqual(["/api/voice/first-run/profile/append?id=session-x"]);
   });
 
   it("surfaces a rejected capture body instead of swallowing it", async () => {
@@ -235,7 +233,7 @@ describe("VoiceProfilesClient.finalizeOwnerCapture", () => {
     expect(r.profileId).toBe("profile-x");
     expect(r.isOwner).toBe(true);
     expect(calls).toEqual([
-      "/api/voice/onboarding/profile/finalize?id=session-x",
+      "/api/voice/first-run/profile/finalize?id=session-x",
     ]);
   });
 
@@ -256,7 +254,7 @@ describe("VoiceProfilesClient.finalizeOwnerCapture", () => {
 describe("VoiceProfilesClient.captureFamilyMember", () => {
   it("returns the server result", async () => {
     const client = makeClient(async (path) => {
-      expect(path).toBe("/v1/voice/onboarding/family-member");
+      expect(path).toBe("/v1/voice/first-run/family-member");
       return {
         profileId: "vp_abc",
         entityId: "ent-fam",

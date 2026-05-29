@@ -1,0 +1,118 @@
+[[!meta title="Report on the 2013 Tails bounty program"]]
+[[!meta date="Thu, 06 Mar 2014 21:36:35 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Thanks to the [Knight Foundation](http://www.knightfoundation.org/)
+and to the [Tor project](https://www.torproject.org/), we have
+organized a bounty program to improve software upon which Tails
+is relying.
+
+The recruiting process was long and not exactly easy, some projects
+did not reach completion... but four of them were successful!
+
+[[!toc levels=1]]
+
+Removable USB in *libvirt*
+==========================
+
+Support for [marking emulated USB devices as
+removable](https://bugzilla.redhat.com/show_bug.cgi?id=922495) was
+added [libvirt](http://libvirt.org) and
+[virt-manager](http://virt-manager.org/).
+
+This was merged upstream by October 2013.
+
+Symmetric file encryption and signature verification in *Seahorse Nautilus*
+===========================================================================
+
+Support for symmetric encryption was added to the user interface which
+is presented by Seahorse Nautilus on right-click → Encrypt.
+Additionally, support for checking both detached signatures and text
+messages with cleartext signatures, as well reporting on their
+validity, was added to the Nautilus contextual menu.
+
+This involved patching seahorse-nautilus, shared-mime-info,
+and libcryptui.
+
+Relevant tickets:
+
+  - <https://bugs.debian.org/668221>
+  - [[!gnomebug 325803]]
+  - [[!gnomebug 699161]]
+  - <https://bugs.freedesktop.org/show_bug.cgi?id=65679>
+  - [[!gnomebug 708640]]
+
+The patches were merged upstream by December 2013.
+
+Packaging and improving *keyringer*
+===================================
+
+Various improvements to [keyringer](https://keyringer.pw/) were
+delivered, to make it more usable and easier to install:
+
+  - Debian packaging
+  - man page
+  - Bash and Zsh completion
+
+All the deliverables were approved by December 2013, and keyringer is
+now [[!debpkg keyringer desc="available in Debian"]].
+
+Exporting ikiwiki tickets to Redmine
+====================================
+
+A custom ikiwiki plugin was written to help importing from the old
+Tails task tracker to Redmine. This included exporting ticket name,
+tags, and parent/child relationships in a format suitable for
+importing into Redmine, and creating rewrite rules to redirect ikiwiki
+URLs to Redmine.
+
+All the deliverables were approved by August 2013. 887 tickets were
+imported in our new [Redmine
+project](https://labs.riseup.net/code/projects/tails/issues?query_id=108).
+
+Encrypted `/me` IRC messages in *Pidgin OTR*
+============================================
+
+The goal was to make it so /me messages in OTR conversations, when
+using IRC in Pidgin, are encrypted just like regular messages typed in
+this context.
+
+The person we contacted to work on this bounty was not able to finish
+the work in due time. Since then, someone else worked on a patch, that
+we have successfully tested, and that is now waiting for review in the
+upstream bug tracker.
+
+Ticket: <https://developer.pidgin.im/ticket/15750>
+
+Support for importing SSH keys with Seahorse
+============================================
+
+The goal was to allow [importing public and private SSH
+keys]([importing public and private SSH keys) with
+[Seahorse](https://wiki.gnome.org/Apps/Seahorse).
+
+The person we contacted to work on this bounty was not able to finish
+the work.
+
+Improve Vidalia
+===============
+
+The goals were to make Vidalia better adapted to Tails needs, and to
+turn some of our patches into options available in the upstream code.
+More specifically:
+
+  - Adapt Vidalia UI to allow users to avoid connecting to the public Tor
+    network.
+  - Support a HideSharing option in `vidalia.conf` to hide the
+    "Sharing" tab of the Vidalia preferences window
+  - Support a HideNewCircuit option in `vidalia.conf` to hide every
+    control that trigger the "New identity" feature of Vidalia.
+
+Tickets:
+
+  - <https://trac.torproject.org/projects/tor/attachment/ticket/2905/xxx-no-public-network.txt>
+  - [[!tor_bug 2905]]
+  - [[!tails_ticket 5305]]
+
+The person we contacted to work on this bounty disappeared before
+signing the contract.

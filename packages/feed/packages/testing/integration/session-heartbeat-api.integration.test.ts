@@ -184,7 +184,7 @@ describe("Session Heartbeat API", () => {
     test("silently accepts unauthenticated requests", async () => {
       requireServer();
 
-      // Without a privy-token cookie, should return success with reason
+      // Without an auth cookie, should return success with reason.
       const res = await heartbeatRequest({
         sessionId: "test-session-unauth",
         pageViews: 1,

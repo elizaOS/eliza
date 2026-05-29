@@ -40,7 +40,7 @@ const COMPONENT_ORDER = [
   "vision",
   "quantSidecars",
   "caches",
-  "dflashSidecars",
+  "mtpSidecars",
   "manifest",
   "licenses",
   "evals",
@@ -139,8 +139,8 @@ function componentFor(rel) {
   if (lower === "eliza-1.manifest.json") return "manifest";
   if (lower === "lineage.json") return "lineage";
   if (lower.startsWith("text/") && lower.endsWith(".gguf")) return "text";
-  if (lower.startsWith("dflash/") && lower.endsWith(".gguf")) return "drafter";
-  if (lower.startsWith("dflash/")) return "dflashSidecars";
+  if (lower.startsWith("mtp/") && lower.endsWith(".gguf")) return "drafter";
+  if (lower.startsWith("mtp/")) return "mtpSidecars";
   if (lower.startsWith("asr/") && lower.includes("mmproj") && lower.endsWith(".gguf")) return "asrMmproj";
   if (lower.startsWith("asr/")) return "asr";
   if (lower.startsWith("tts/") && /(base|model|lm)/.test(lower) && lower.endsWith(".gguf")) return "ttsBase";
@@ -229,7 +229,7 @@ function runtimeFootprint(grouped, manifest) {
     "vision",
     "quantSidecars",
     "caches",
-    "dflashSidecars",
+    "mtpSidecars",
   ]);
   const oneActiveContextBytes = oneTextBytes + sharedRuntimeBytes;
   const componentRuntimeBytes = textVariantsBytes + sharedRuntimeBytes;
@@ -291,8 +291,8 @@ function collectMetrics(bundleDir, tier, manifest) {
   const e2eBench = readJsonIfExists(path.join(evals, "e2e-loop-bench-30turn.json"));
   const voice = readJsonIfExists(path.join(evals, "voice-rtf.json"));
   const vad = readJsonIfExists(path.join(evals, "vad.json"));
-  const dflash = readJsonIfExists(path.join(evals, "dflash-accept.json"));
-  const dflashSmoke = readJsonIfExists(path.join(evals, "dflash-runtime-smoke.json"));
+  const mtp = readJsonIfExists(path.join(evals, "mtp-accept.json"));
+  const mtpSmoke = readJsonIfExists(path.join(evals, "mtp-runtime-smoke.json"));
   const embeddingBench = readJsonIfExists(path.join(evals, "embedding-bench.json"));
   const embeddingSummary = readJsonIfExists(path.join(evals, "embedding.json"));
   const asrBench = firstExistingJson([
@@ -318,10 +318,10 @@ function collectMetrics(bundleDir, tier, manifest) {
   const embeddingThroughput =
     bestEmbeddingThroughput(embeddingBench, "evals/embedding-bench.json") ??
     bestEmbeddingThroughput(embeddingSummary, "evals/embedding.json");
-  const dflashAcceptance =
-    metric(dflash?.acceptanceRate, "evals/dflash-accept.json", { speedup: dflash?.speedup }) ??
-    metric(dflashSmoke?.summary?.dflashAcceptanceRate, "evals/dflash-runtime-smoke.json", {
-      speedup: dflashSmoke?.summary?.dflashSpeedup,
+  const mtpAcceptance =
+    metric(mtp?.acceptanceRate, "evals/mtp-accept.json", { speedup: mtp?.speedup }) ??
+    metric(mtpSmoke?.summary?.mtpAcceptanceRate, "evals/mtp-runtime-smoke.json", {
+      speedup: mtpSmoke?.summary?.mtpSpeedup,
     });
 
   return {
@@ -330,10 +330,10 @@ function collectMetrics(bundleDir, tier, manifest) {
     ttsRtf,
     vadLatencyMs: vadLatency,
     embeddingThroughput,
-    dflashAcceptance,
+    mtpAcceptance,
     notes: {
       manifestVoiceRtf: manifest?.evals?.voiceRtf ?? null,
-      manifestDflash: manifest?.evals?.dflash ?? null,
+      manifestMtp: manifest?.evals?.mtp ?? null,
       textTpsFallback: textTps?.source?.includes("text_model_2026-05-11") ? "supplemental bench result" : null,
     },
   };
@@ -447,7 +447,7 @@ function renderMarkdown(report) {
   lines.push("");
   lines.push("## Summary");
   lines.push("");
-  lines.push("| Tier | Unique disk | Runtime files | One active mmap upper bound | RAM budget delta | Text TPS | ASR RTF | TTS RTF | VAD ms | Embed texts/s | DFlash accept |");
+  lines.push("| Tier | Unique disk | Runtime files | One active mmap upper bound | RAM budget delta | Text TPS | ASR RTF | TTS RTF | VAD ms | Embed texts/s | MTP accept |");
   lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
   for (const b of report.bundles) {
     lines.push(
@@ -462,7 +462,7 @@ function renderMarkdown(report) {
         fmtMetric(b.metrics.ttsRtf),
         fmtMetric(b.metrics.vadLatencyMs),
         fmtMetric(b.metrics.embeddingThroughput),
-        fmtMetric(b.metrics.dflashAcceptance),
+        fmtMetric(b.metrics.mtpAcceptance),
       ].join(" | ").replace(/^/, "| ").replace(/$/, " |"),
     );
   }

@@ -1,0 +1,127 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Office suite\"]]\n"
+msgstr "[[!meta title=\"Paquet ofimàtic\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails includes *[LibreOffice](https://www.libreoffice.org/)*, a powerful "
+"office suite which embeds several tools:"
+msgstr ""
+"Tails inclou el <span class=\"application\">[LibreOffice](https://"
+"ca.libreoffice.org/)</span>, un potent paquet ofimàtic que inclou diverses "
+"eines:"
+
+#. type: Bullet: '- '
+msgid "*Writer*, a word processor"
+msgstr "*Writer*, un processador de text"
+
+#. type: Bullet: '- '
+msgid "*Calc*, a spreadsheet application"
+msgstr "*Calc*, una aplicació de full de càlcul"
+
+#. type: Bullet: '- '
+msgid "*Impress*, a presentation engine"
+msgstr "*Impress*, un motor de presentacions"
+
+#. type: Bullet: '- '
+msgid "*Draw*, a drawing and flowcharting application"
+msgstr "*Draw*, una aplicació de dibuix i diagrames de flux"
+
+#. type: Plain text
+msgid ""
+"To open *LibreOffice*, choose **Apps&nbsp;▸ Office&nbsp;▸ LibreOffice**."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The *LibreOffice* website provides complete [user guides](https://"
+"wiki.documentfoundation.org/Documentation/Publications) for each of these "
+"tools, translated into several languages."
+msgstr ""
+"El lloc web del <span class=\"application\">LibreOffice</span> ofereix "
+"[guies d'usuari](https://wiki.documentfoundation.org/Documentation/"
+"Publications) per a cadascuna d'aquestes eines, traduïdes a diversos idiomes."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To use *LibreOffice* in your language, you can\n"
+"install the <code>libreoffice-l10n-<span class=\"command-placeholder\">lang</span></code>\n"
+"package using the [[Additional Software|persistent_storage/additional_software]]\n"
+"feature. Replace <span class=\"command-placeholder\">lang</span> with the code\n"
+"for your language. For example, `vi` for Vietnamese.\n"
+msgstr ""
+"Per utilitzar el *LibreOffice* en el vostre idioma, podeu\n"
+"instal·lar el paquet <code>libreoffice-l10n-<span class=\"command-placeholder\">lang</span></code>\n"
+"utilitzant la funcionalitat de [[Programari Addicional|persistent_storage/additional_software]].\n"
+"Substituïu <span class=\"command-placeholder\">lang</span> pel codi\n"
+"de la vostra llengua. Per exemple, `vi` per al vietnamita.\n"
+
+#. type: Plain text
+msgid ""
+"Tails already includes language packages for Arabic, German, Spanish, Farsi, "
+"French, Hindi, Bahasa Indonesia, Italian, Portuguese, Russian, Turkish, and "
+"Simplified Chinese."
+msgstr ""
+"Tails ja inclou paquets d'idiomes per a l'àrab, l'alemany, el castellà, el "
+"farsi, el francès, l'hindi, el bahasa Indonèsia, l'italià, el portuguès, el "
+"rus, el turc i el xinès simplificat."
+
+#. type: Plain text
+msgid ""
+"[List of available *LibreOffice* language packages](https://"
+"packages.debian.org/search?keywords=libreoffice-"
+"l10n&searchon=names&suite=stable&section=all)"
+msgstr ""
+"[Llista de paquets d'idiomes del *LibreOffice* disponibles](https://"
+"packages.debian.org/search?keywords=libreoffice-"
+"l10n&searchon=names&suite=stable&section=all)"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "To start <span class=\"application\">LibreOffice</span> choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "  <span class=\"guisubmenu\">Office</span>&nbsp;▸\n"
+#~ "  <span class=\"guimenuitem\">LibreOffice</span></span>.\n"
+#~ msgstr ""
+#~ "Per iniciar el <span class=\"application\">LibreOffice</span> trieu\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  <span class=\"guimenu\">Aplicacions</span>&nbsp;▸\n"
+#~ "  <span class=\"guisubmenu\">Ofimàtica</span>&nbsp;▸\n"
+#~ "  <span class=\"guimenuitem\">LibreOffice</span></span>.\n"
+
+#~ msgid "**<span class=\"application\">Writer</span>**, a word processor"
+#~ msgstr ""
+#~ "**<span class=\"application\">Writer</span>**, un processador de texts"

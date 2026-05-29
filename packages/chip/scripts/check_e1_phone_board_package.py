@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "board/kicad/e1-phone/artifact-manifest.yaml"
 REPORT = ROOT / "build/reports/e1_phone_board_package.json"
 PUBLIC_SOURCE_STATUS_RE = re.compile(r"^(public_listing|vendor_page)_observed_20\d{2}_\d{2}_\d{2}$")
+BOARD_PACKAGE_PATH_RE = re.compile(r"board/kicad/e1-phone/[^\"'\s),\]}]+")
 BLOCKED_CANDIDATE_INLINE_MARKERS = (
     "blocked local factory candidate, not release evidence",
     "blocked candidate, not release evidence",
@@ -14649,6 +14650,50 @@ NON_BOARD_PACKAGE_OWNED_FILES = {
 }
 
 
+def collect_board_package_paths(value: object) -> set[str]:
+    paths: set[str] = set()
+    if isinstance(value, dict):
+        for item in value.values():
+            paths.update(collect_board_package_paths(item))
+    elif isinstance(value, list):
+        for item in value:
+            paths.update(collect_board_package_paths(item))
+    elif isinstance(value, str) and value.startswith("board/kicad/e1-phone/"):
+        paths.add(value)
+    return paths
+
+
+def collect_referenced_board_paths(seed_paths: set[str]) -> set[str]:
+    consumed = set(seed_paths)
+    pending = list(sorted(consumed))
+    processed: set[str] = set()
+    while pending:
+        rel = pending.pop()
+        if rel in processed:
+            continue
+        processed.add(rel)
+        path = ROOT / rel
+        if path.is_dir():
+            release_manifest = path / "release-manifest.yaml"
+            if release_manifest.is_file():
+                candidate = str(release_manifest.relative_to(ROOT))
+                if candidate not in consumed:
+                    consumed.add(candidate)
+                    pending.append(candidate)
+            continue
+        if not path.is_file() or path.suffix not in {".yaml", ".yml", ".json"}:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        for candidate in BOARD_PACKAGE_PATH_RE.findall(text):
+            if candidate not in consumed:
+                consumed.add(candidate)
+                pending.append(candidate)
+    return consumed
+
+
 def check_no_orphaned_board_files() -> None:
     board_dir = ROOT / "board/kicad/e1-phone"
     manifest = load_yaml(MANIFEST)
@@ -14658,7 +14703,7 @@ def check_no_orphaned_board_files() -> None:
         consumed.update(paths)
 
     source = Path(__file__).read_text()
-    consumed.update(re.findall(r"board/kicad/e1-phone/[^\"'\s)]+", source))
+    consumed.update(BOARD_PACKAGE_PATH_RE.findall(source))
     consumed.update(NON_BOARD_PACKAGE_OWNED_FILES)
 
     # The RFQ transmittal drafts are addressed by computed paths, not string
@@ -14667,12 +14712,37 @@ def check_no_orphaned_board_files() -> None:
     drafts = load_yaml(ROOT / "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml")
     consumed.update(drafts["generated_draft_files"])
 
+    supplier_intake = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/sourcing/"
+        "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
+    )
+    consumed.add(
+        "board/kicad/e1-phone/production/sourcing/"
+        "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
+    )
+    for record in supplier_intake["template_records"]:
+        for key in ("template", "expected_return_archive"):
+            if key in record:
+                consumed.add(record[key])
+        for key in ("expected_return_archives",):
+            for archive in record.get(key, []):
+                consumed.add(archive)
+        archive_paths = []
+        if "expected_return_archive" in record:
+            archive_paths.append(record["expected_return_archive"])
+        archive_paths.extend(record.get("expected_return_archives", []))
+        for archive in archive_paths:
+            base_dir = Path(archive).parent
+            for filename in record["required_return_files"]:
+                consumed.add(str(base_dir / filename))
+
     pinout_manifest = load_yaml(
         ROOT / "board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml"
     )
     consumed.add("board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml")
     for entry in pinout_manifest["captured_pinouts"]:
         consumed.add(f"board/kicad/e1-phone/supplier-pinouts/{entry['file']}")
+    consumed = collect_referenced_board_paths(consumed)
 
     # Follow explicit file references from already-owned YAML/JSON artifacts.
     # This lets generated candidate manifests own their fail-closed placeholder
@@ -14698,6 +14768,8 @@ def check_no_orphaned_board_files() -> None:
             continue
         rel = str(path.relative_to(ROOT))
         if rel == str(MANIFEST.relative_to(ROOT)):
+            continue
+        if rel.endswith(".metadata.yaml") and rel.removesuffix(".metadata.yaml") in consumed:
             continue
         if rel not in consumed:
             orphans.append(rel)

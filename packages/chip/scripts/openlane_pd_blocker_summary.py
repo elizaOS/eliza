@@ -9,12 +9,18 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+
+
+def repo_root_for(chip_root: Path) -> Path:
+    return chip_root.parents[1] if len(chip_root.parents) > 1 else chip_root
+
+
+REPO_ROOT = repo_root_for(ROOT)
 RUN_ROOT = ROOT / "pd/openlane/runs"
 DEFAULT_REPORT = ROOT / "build/reports/openlane_pd_blocker_summary.json"
 SCHEMA = "eliza.openlane_pd_blocker_summary.v1"
@@ -997,10 +1003,12 @@ def antenna_repair_diagnostic(stage_dir: Path) -> dict[str, Any] | None:
                 "a targeted diagnostic segment, not release signoff evidence."
             )
         next_bounded_experiment["comparison_baseline"] = {
-            **next_bounded_experiment.get("comparison_baseline", {}),
+            **cast("dict[str, object]", next_bounded_experiment.get("comparison_baseline", {})),
             "residual_checkantennas_baseline": comparison,
         }
-        next_bounded_experiment["success_metric"] += (
+        next_bounded_experiment["success_metric"] = cast(
+            "str", next_bounded_experiment["success_metric"]
+        ) + (
             " The next experiment must reduce both the RepairAntennas loop count "
             "and bounded CheckAntennas residual net/row counts; otherwise treat "
             "the lower repair-loop count as a false optimization."
@@ -1183,7 +1191,7 @@ def manual_magic_drc_status(
         return None
     active = bool(active_processes)
     present_reports = [report for report in reports if report["present"]]
-    nonempty_reports = [report for report in present_reports if report["bytes"] > 0]
+    nonempty_reports = [report for report in present_reports if cast("int", report["bytes"]) > 0]
     if active:
         status = "active"
         diagnostic_complete = False
@@ -1241,7 +1249,7 @@ def incomplete_run_report(
         if run_dir is not None
         else f"no complete OpenLane manufacturability run found under {rel(run_root)}"
     )
-    finding = {
+    finding: dict[str, Any] = {
         "code": "openlane_incomplete_pd_run"
         if run_dir is not None
         else "openlane_no_complete_pd_run",
@@ -1356,7 +1364,7 @@ def signoff_blocker_matrix(run_dir: Path, metrics: dict[str, Any]) -> dict[str, 
         "classes": {
             name: {
                 **row,
-                "blocked": row["count"] > 0,
+                "blocked": cast("int", row["count"]) > 0,
                 "next_command": (
                     "scripts/run_openlane.sh --release && "
                     "python3 scripts/openlane_pd_blocker_summary.py --write-report && "

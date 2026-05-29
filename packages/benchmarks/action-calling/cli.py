@@ -39,7 +39,7 @@ OPENAI_COMPAT_BASE_URLS = {
 
 PLANNER_STAGES = {"planner", "message_handler", "agent_trace", "tool_call", "mcp_tool_call"}
 TERMINAL_TOOL_NAMES = {"REPLY", "IGNORE", "STOP", "NONE"}
-HARNESS_NAMES = {"eliza", "hermes", "openclaw"}
+HARNESS_NAMES = {"eliza", "hermes", "openclaw", "smithers"}
 
 
 @dataclass(frozen=True)
@@ -313,6 +313,13 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
             base_url=args.base_url,
             direct_openai_compatible=True,
         )
+        client.wait_until_ready(timeout=120)
+        return client
+    if harness == "smithers":
+        _ensure_adapter_path("smithers-adapter")
+        from smithers_adapter.client import SmithersClient  # noqa: WPS433
+
+        client = SmithersClient(provider=provider, model=model, base_url=args.base_url)
         client.wait_until_ready(timeout=120)
         return client
     raise SystemExit(f"unknown harness {harness!r}")

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-music",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -45,7 +45,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",

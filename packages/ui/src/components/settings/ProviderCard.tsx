@@ -72,14 +72,14 @@ export function ProviderCard({
       aria-label={`${label}, ${stateLabel}`}
       onClick={() => onSelect(id)}
       title={`${label} · ${stateLabel}`}
-      className={`flex h-11 w-full items-center gap-2 rounded-lg border px-2 text-left transition-colors ${
+      className={`flex h-11 w-full items-center gap-2 rounded-sm border px-2 text-left transition-colors ${
         selected
           ? "border-accent/45 bg-accent/10"
           : "border-border/45 bg-card/35 hover:border-border hover:bg-card/70"
       }`}
     >
       <span
-        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm ${
           current ? "bg-accent/10 text-accent" : "bg-bg/60 text-muted"
         }`}
       >

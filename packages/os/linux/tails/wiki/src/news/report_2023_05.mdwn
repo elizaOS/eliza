@@ -1,0 +1,28 @@
+[[!meta title="Tails report for May 2023"]]
+[[!meta date="Tue, 20 Jun 2023 14:33:23 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- We started serving the Tails website under the `tails.net` domain. Until now, we have been redirecting to`tails.boum.org`. The full migration will still take some time.
+
+- We have 2 new sponsors for this year! [ThinkPenguin](https://www.thinkpenguin.com/about) renewed their support, and another individual came on-board, but prefers to remain anoynomous. 
+
+- Between 2021 and 2023 we partnered with [Tor](https://www.torproject.org/), and the [Guardian Project](https://guardianproject.info/) to organise training and usability tests in Ecuador, Mexico, and Brazil. Drawing this work to a close, we organised an online workshop for digital security trainers at the request of [Sursiendo](https://sursiendo.org/quienes-somos/). We shared experiences about the training, and discussed past and future updates to Tails.
+
+Releases
+========
+
+[[Tails 5.13 was released on May 16|news/version_5.13]]
+
+- Tails now uses LUKS2 by default for all new Persistent Storage and LUKS encrypted volumes. LUKS2 provide stronger cryptography by default. A migration plan from LUKS1 to LUKS2 for the existing Persistent Storage is in [[Tails 5.14|news/version_5.14]].
+
+- You can now download files from the command-line interface using curl. curl's versatility can be useful for online investigations as an alternative to wget.
+
+Metrics
+=======
+
+Tails has been started more than 765,853 times this month. That's over 24,705 boots a day on average.

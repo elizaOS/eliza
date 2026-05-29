@@ -1,0 +1,108 @@
+[[!meta title="Tails report for June, 2019"]]
+[[!meta date="Wed, 24 Jul 2019 09:46:17 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.14.1 was released on June 20|news/version_3.14.1]] (emergency release)
+  to fix a critical security vulnerability in the JavaScript engine
+  of *Firefox* and *Tor Browser*.
+
+* [[Tails 3.14.2 was released on June 20|news/version_3.14.1]] (emergency release).
+  to fix a critical vulnerability in *Tor Browser*, a [[*sandbox escape*|news/version_3.14.1#sandbox-escape]],
+  that we couldn't fix in time for 3.14.1.
+
+* Tails 3.16 is [[scheduled for September 3|contribute/calendar]].
+
+Code
+====
+
+- We published a new version of the verification extension with a non-minified
+  Forge library, as per an updated Mozilla policy. ([[!tails_ticket 16686]])
+
+Documentation and website
+=========================
+
+- We tested all our documentation against the beta version of Tails 4.0, based
+  on Debian 10 (Buster) and started fixing it.
+
+Infrastructure
+==============
+
+- Our [web translation platform](https://translate.tails.net/)
+  reached an important milestone: translations done there will now
+  automatically appear on the Tails website within hours.
+  Expect a more detailed announcement and documentation for
+  translators soon! :)
+
+- As part of our ongoing effort to migrate to better maintained Puppet modules,
+  we [[!tails_ticket 15510 desc="ported our infrastructure to puppetlabs-apt"]].
+
+- We programmed an automated reminder to send our Code of
+  Conduct to all our public
+  mailing lists every 3 months.
+
+Funding
+=======
+
+- We applied to the [Mozilla Open Source Support](https://www.mozilla.org/en-US/moss/) to:
+
+  - Improve Upgrades ([[!tails_ticket 8415]] and [[!tails_ticket 15281]])
+  - Support Secure Boot ([[!tails_ticket 6560]])
+  - Migrate to GitLab ([[!tails_ticket 15878]])
+
+- We applied to the ISC Project to work on:
+
+  - Explain better what Tails is ([[!tails_ticket 9814]])
+
+- We improved the visibility of the "<em>Other ways to donate</em>" on our
+  donation page.
+
+Outreach
+========
+
+Past events
+-----------
+
+- Estrella Soria gave a workshop about Tails from a cyberfeminist
+  perspective on [June 18 in the Virgen de los Deseos](https://twitter.com/tecnochamana/status/1141018007281573889)
+  social center in La Paz, Bolivia.
+
+- Another Tails workshop was held in Guadalajara, Mexico on June 29, as part of
+  the ['Cuidarnos en red(es)' day of Digital self-defense at
+  Huizache](https://mastodon.social/@noticiasdeabajo/102279012433478653).
+
+Translations
+============
+
+## All the website
+
+  - fr: 90% (5054) strings translated, 2% strings fuzzy, 89% words translated
+  - es: 52% (2911) strings translated, 6% strings fuzzy, 45% words translated
+  - de: 41% (2303) strings translated, 9% strings fuzzy, 38% words translated
+  - it: 35% (1961) strings translated, 7% strings fuzzy, 31% words translated
+  - fa: 32% (1806) strings translated, 11% strings fuzzy, 34% words translated
+  - pt: 26% (1464) strings translated, 9% strings fuzzy, 22% words translated
+
+Total original words: 58995
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 97% (1736) strings translated, 1% strings fuzzy, 98% words translated
+  - es: 79% (1420) strings translated, 9% strings fuzzy, 82% words translated
+  - de: 68% (1228) strings translated, 13% strings fuzzy, 71% words translated
+  - it: 65% (1161) strings translated, 15% strings fuzzy, 66% words translated
+  - pt: 46% (820) strings translated, 13% strings fuzzy, 48% words translated
+  - fa: 35% (626) strings translated, 13% strings fuzzy, 32% words translated
+
+Total original words: 16629
+
+Metrics
+=======
+
+* Tails has been started more than 751 230 times this month. This makes 25 041 boots a day on average.
+* 8018 downloads of the OpenPGP signature of a Tails USB image or ISO from our website.
+

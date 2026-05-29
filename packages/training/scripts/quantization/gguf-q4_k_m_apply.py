@@ -56,15 +56,14 @@ QUANT_LEVEL = "Q4_K_M"
 
 # The in-repo llama.cpp fork submodule — the single canonical llama.cpp
 # checkout for the whole repo (.gitmodules: packages/inference/llama.cpp,
-# url=https://github.com/elizaOS/llama.cpp.git). `bun install` inits it via
-# scripts/ensure-llama-cpp-submodule.mjs. From this file
+# url=https://github.com/elizaOS/llama.cpp.git). From this file
 # (packages/training/scripts/quantization/) the repo root is four parents up.
 _REPO_ROOT = _HERE.parents[3]
 _FORK_LLAMA_CPP = _REPO_ROOT / "packages" / "inference" / "llama.cpp"
 
 _VENDOR_HINT = (
-    "The llama.cpp fork submodule should already be checked out by `bun "
-    "install` (scripts/ensure-llama-cpp-submodule.mjs). If it's missing:\n"
+    "The llama.cpp fork submodule should already be checked out. If it's "
+    "missing:\n"
     "  git submodule update --init packages/inference/llama.cpp\n"
     "Then build the llama-quantize + llama-cli binaries from it (one-shot, "
     "CPU-only is enough):\n"

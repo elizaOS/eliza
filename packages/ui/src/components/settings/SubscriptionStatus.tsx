@@ -182,7 +182,7 @@ function SubscriptionProviderPanel({
           <Button
             variant="outline"
             size="icon"
-            className="!mt-0 h-8 w-8 rounded-lg"
+            className="!mt-0 h-8 w-8 rounded-sm"
             onClick={onDisconnect}
             disabled={disconnecting}
             aria-label={t("common.disconnect")}
@@ -217,7 +217,7 @@ function SubscriptionProviderPanel({
             <Button
               variant="default"
               size="sm"
-              className="!mt-0 h-9 rounded-lg font-semibold"
+              className="!mt-0 h-9 rounded-sm font-semibold"
               onClick={onStartOauth}
             >
               {loginLabel}
@@ -232,7 +232,7 @@ function SubscriptionProviderPanel({
             {oauthInstructions}
             <Input
               type={oauthInputType}
-              className="h-9 rounded-lg bg-card text-xs"
+              className="h-9 rounded-sm bg-card text-xs"
               placeholder={oauthInputPlaceholder}
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}
@@ -244,7 +244,7 @@ function SubscriptionProviderPanel({
               <Button
                 variant="default"
                 size="sm"
-                className="!mt-0 h-9 rounded-lg font-semibold"
+                className="!mt-0 h-9 rounded-sm font-semibold"
                 disabled={oauthExchangeBusy || !oauthCode.trim()}
                 onClick={onExchange}
               >
@@ -253,10 +253,10 @@ function SubscriptionProviderPanel({
               <Button
                 variant="outline"
                 size="sm"
-                className="!mt-0 h-9 rounded-lg"
+                className="!mt-0 h-9 rounded-sm"
                 onClick={onResetFlow}
               >
-                {t("onboarding.startOver")}
+                {t("settings.subscription.startOver")}
               </Button>
             </div>
           </div>
@@ -399,10 +399,10 @@ export function SubscriptionStatus({
         setAnthropicOAuthStarted(true);
         return;
       }
-      setAnthropicError(t("onboarding.failedToGetAuthUrl"));
+      setAnthropicError(t("settings.subscription.failedToGetAuthUrl"));
     } catch (err) {
       setAnthropicError(
-        t("onboarding.failedToStartLogin", {
+        t("settings.subscription.failedToStartLogin", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -425,10 +425,12 @@ export function SubscriptionStatus({
         await client.restartAgent();
         return;
       }
-      setAnthropicError(result.error ?? t("onboarding.exchangeFailed"));
+      setAnthropicError(
+        result.error ?? t("settings.subscription.exchangeFailed"),
+      );
     } catch (err) {
       setAnthropicError(
-        t("onboarding.exchangeFailedWithMessage", {
+        t("settings.subscription.exchangeFailedWithMessage", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -454,10 +456,10 @@ export function SubscriptionStatus({
         setOpenaiOAuthStarted(true);
         return;
       }
-      setOpenaiError(t("onboarding.noAuthUrlReturned"));
+      setOpenaiError(t("settings.subscription.noAuthUrlReturned"));
     } catch (err) {
       setOpenaiError(
-        t("onboarding.failedToStartLogin", {
+        t("settings.subscription.failedToStartLogin", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -485,15 +487,15 @@ export function SubscriptionStatus({
         await client.restartAgent();
         return;
       }
-      const msg = data.error ?? t("onboarding.exchangeFailed");
+      const msg = data.error ?? t("settings.subscription.exchangeFailed");
       setOpenaiError(
         msg.includes("No active flow")
-          ? t("onboarding.loginSessionExpired")
+          ? t("settings.subscription.loginSessionExpired")
           : msg,
       );
     } catch (err) {
       setOpenaiError(
-        t("onboarding.exchangeFailedWithMessage", {
+        t("settings.subscription.exchangeFailedWithMessage", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -516,7 +518,7 @@ export function SubscriptionStatus({
         htmlFor="subscription-setup-token-input"
         className="text-xs font-semibold"
       >
-        {t("onboarding.setupToken")}
+        {t("settings.subscription.setupToken")}
       </Label>
       <Input
         id="subscription-setup-token-input"
@@ -528,10 +530,10 @@ export function SubscriptionStatus({
           setSetupTokenSuccess(false);
           setAnthropicError("");
         }}
-        className="h-9 rounded-lg bg-card font-mono text-xs"
+        className="h-9 rounded-sm bg-card font-mono text-xs"
       />
       <p className="whitespace-pre-line text-xs-tight text-muted">
-        {t("onboarding.setupTokenInstructions")}
+        {t("settings.subscription.setupTokenInstructions")}
       </p>
       {anthropicError && (
         <p className="text-xs-tight text-danger">{anthropicError}</p>
@@ -540,7 +542,7 @@ export function SubscriptionStatus({
         <Button
           variant="default"
           size="sm"
-          className="!mt-0 h-9 rounded-lg font-semibold"
+          className="!mt-0 h-9 rounded-sm font-semibold"
           disabled={setupTokenSaving || !setupTokenValue.trim()}
           onClick={() => void handleSaveSetupToken()}
         >
@@ -567,8 +569,8 @@ export function SubscriptionStatus({
     <div className="flex items-center gap-4 border-b border-border/40">
       {(
         [
-          ["token", t("onboarding.setupToken")],
-          ["oauth", t("onboarding.oauthLogin")],
+          ["token", t("settings.subscription.setupToken")],
+          ["oauth", t("settings.subscription.oauthLogin")],
         ] as const
       ).map(([id, label]) => {
         const active = subscriptionTab === id;
@@ -592,9 +594,9 @@ export function SubscriptionStatus({
 
   /* ── OpenAI callback instructions ──────────────────────────────── */
   const openaiInstructions = (
-    <div className="rounded-lg border border-border/40 bg-bg/40 px-3 py-2 text-xs-tight leading-relaxed text-muted">
+    <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2 text-xs-tight leading-relaxed text-muted">
       {t("subscriptionstatus.AfterLoggingInYo")}{" "}
-      <code className="rounded border border-border bg-card px-1 text-2xs">
+      <code className="rounded-sm border border-border bg-card px-1 text-2xs">
         {t("subscriptionstatus.localhost1455")}
       </code>
       {t("subscriptionstatus.CopyTheEntireU")}
@@ -625,7 +627,7 @@ export function SubscriptionStatus({
           canDisconnect={false}
           externalNotice={
             anthropicCliDetected && !anthropicConnected ? (
-              <div className="rounded-lg border border-border/40 bg-card/40 px-2.5 py-2 text-xs leading-relaxed">
+              <div className="rounded-sm border border-border/40 bg-card/40 px-2.5 py-2 text-xs leading-relaxed">
                 <div className="font-semibold">
                   {t("subscriptionstatus.ClaudeCodeCliDetectedTitle")}
                 </div>
@@ -644,12 +646,12 @@ export function SubscriptionStatus({
               ? t("subscriptionstatus.ClaudeCodeCliDetectedTitle")
               : t("subscriptionstatus.ClaudeSubscriptionTitle")
           }
-          loginLabel={t("onboarding.loginWithAnthropic")}
+          loginLabel={t("settings.subscription.loginWithAnthropic")}
           loginHint={t("subscriptionstatus.RequiresClaudePro")}
           connectedSummary={t("subscriptionstatus.YourClaudeSubscrip")}
           invalidWarning={t("subscriptionstatus.ClaudeSubscription")}
           warningBanner={
-            <div className="rounded-lg border border-warn/30 bg-warn/5 px-2.5 py-2 text-xs leading-relaxed">
+            <div className="rounded-sm border border-warn/30 bg-warn/5 px-2.5 py-2 text-xs leading-relaxed">
               <span className="font-semibold">
                 {t("subscriptionstatus.ClaudeTosWarningShort")}
               </span>
@@ -703,12 +705,12 @@ export function SubscriptionStatus({
             "subscriptionstatus.ConnectedToChatGPTSubscription",
           )}
           titleDisconnected={t("subscriptionstatus.ChatGPTSubscriptionTitle")}
-          loginLabel={t("onboarding.loginWithOpenAI")}
+          loginLabel={t("settings.subscription.loginWithOpenAI")}
           loginHint={t("subscriptionstatus.RequiresChatGPTPlu")}
           connectedSummary={t("subscriptionstatus.YourChatGPTSubscri")}
           invalidWarning={t("subscriptionstatus.ChatGPTSubscription")}
           noteWhenConnected={
-            <div className="rounded-lg border border-ok/30 bg-ok/5 px-2.5 py-2 text-xs leading-relaxed">
+            <div className="rounded-sm border border-ok/30 bg-ok/5 px-2.5 py-2 text-xs leading-relaxed">
               {t("subscriptionstatus.CodexAllAccess")}
             </div>
           }
@@ -722,7 +724,7 @@ export function SubscriptionStatus({
           oauthStarted={openaiOAuthStarted}
           oauthError={openaiError}
           oauthExchangeBusy={openaiExchangeBusy}
-          exchangeButtonLabel={t("onboarding.completeLogin")}
+          exchangeButtonLabel={t("settings.subscription.completeLogin")}
           exchangeBusyLabel={t("subscriptionstatus.Completing")}
           disconnecting={subscriptionDisconnecting === "openai-subscription"}
           onStartOauth={() => void handleOpenAIStart()}
@@ -739,7 +741,7 @@ export function SubscriptionStatus({
       )}
 
       {genericStoredProvider ? (
-        <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2 text-xs leading-relaxed">
+        <div className="rounded-sm border border-border/40 bg-card/40 px-3 py-2 text-xs leading-relaxed">
           <div className="font-semibold">
             {genericStatus?.available === false
               ? t("subscriptionstatus.ProviderUnavailable", {

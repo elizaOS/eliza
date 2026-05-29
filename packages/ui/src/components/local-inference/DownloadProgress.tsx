@@ -1,5 +1,9 @@
 import type { DownloadJob } from "../../api/client-local-inference";
-import { formatBytes, formatEta, progressPercent } from "./hub-utils";
+import { formatByteSize } from "../../utils/format";
+import { formatEta, progressPercent } from "./hub-utils";
+
+const formatBytes = (bytes: number): string =>
+  formatByteSize(bytes, { unknownLabel: "—" });
 
 interface DownloadProgressProps {
   job: DownloadJob;
@@ -13,7 +17,7 @@ export function DownloadProgress({ job }: DownloadProgressProps) {
   return (
     <div className="w-full">
       <div
-        className="h-2 w-full overflow-hidden rounded bg-muted"
+        className="h-2 w-full overflow-hidden rounded-sm bg-muted"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}

@@ -17,7 +17,7 @@ import {
   App,
   type AppBootConfig,
   AppProvider,
-  applyForceFreshOnboardingReset,
+  applyForceFreshFirstRunReset,
   applyLaunchConnectionFromUrl,
   applyUiTheme,
   type BrandingConfig,
@@ -31,7 +31,7 @@ import {
   initializeCapacitorBridge,
   initializeStorageBridge,
   installDesktopPermissionsClientPatch,
-  installForceFreshOnboardingClientPatch,
+  installForceFreshFirstRunClientPatch,
   installLocalProviderCloudPreferencePatch,
   isDetachedWindowShell,
   isElectrobunRuntime,
@@ -39,7 +39,7 @@ import {
   resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
   setBootConfig,
-  shouldInstallMainWindowOnboardingPatches,
+  shouldInstallMainWindowFirstRunPatches,
   shouldUseCloudOnlyBranding,
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
@@ -62,7 +62,7 @@ const ELIZA_BRANDING: Partial<BrandingConfig> = {
   packageScope: "__PACKAGE_SCOPE__",
   // The hosted web bundle stays cloud-only in production. Desktop shells and
   // other hosts inject an explicit API base before React boots, and that host
-  // backend should control onboarding capabilities instead.
+  // backend should control first-run capabilities instead.
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
@@ -127,11 +127,11 @@ if (shouldEnableElectrobunMacWindowDrag()) {
   document.documentElement.classList.add("eliza-electrobun-frameless");
 }
 
-// Dev escape hatch: ?reset forces a truly fresh onboarding session by clearing
+// Dev escape hatch: ?reset forces a truly fresh first-run session by clearing
 // persisted state and temporarily suppressing stale backend resume config.
-if (shouldInstallMainWindowOnboardingPatches(windowShellRoute)) {
-  applyForceFreshOnboardingReset();
-  installForceFreshOnboardingClientPatch(client as never);
+if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
+  applyForceFreshFirstRunReset();
+  installForceFreshFirstRunClientPatch(client as never);
 }
 installLocalProviderCloudPreferencePatch(client as never);
 installDesktopPermissionsClientPatch(client as never);
@@ -156,13 +156,13 @@ const elizaBootConfig: AppBootConfig = {
   cloudApiBase:
     (import.meta.env.VITE_CLOUD_BASE as string) ?? "https://www.elizacloud.ai",
   vrmAssets: ELIZA_VRM_ASSETS,
-  onboardingStyles: ELIZA_STYLE_PRESETS,
+  firstRunStyles: ELIZA_STYLE_PRESETS,
   characterEditor: CharacterEditor,
   characterCatalog: ELIZA_CHARACTER_CATALOG,
   envAliases: APP_ENV_ALIASES,
   clientMiddleware: {
-    forceFreshOnboarding:
-      shouldInstallMainWindowOnboardingPatches(windowShellRoute),
+    forceFreshFirstRun:
+      shouldInstallMainWindowFirstRunPatches(windowShellRoute),
     preferLocalProvider: true,
     desktopPermissions: isDesktopPlatform(),
   },

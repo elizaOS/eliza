@@ -24,7 +24,7 @@ Connect your agent to a self-hosted Mattermost server for channel and DM convers
 
 The connector auto-enables when `botToken` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

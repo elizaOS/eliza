@@ -1,0 +1,108 @@
+[[!meta title="Generating IUKs, UDFs, and testing the Upgrader"]]
+
+[[!toc levels=1]]
+
+Pre-requisites
+=============
+
+* a Debian Trixie (or newer) system
+* a user that has sudo credentials
+* [[Install perl5lib's dependencies|perl5lib#build-deps]]
+
+<a id="build-deps"></a>
+
+Install dependencies needed to generate IUKs, UDFs, and to run the test suite
+=============================================================================
+
+    cat $(git rev-parse --show-toplevel)/config/chroot_local-packageslists/tails-iuk.list \
+       | grep -E -v '^#' \
+       | xargs sudo apt --yes install && \
+    sudo apt install \
+       libdist-zilla-plugin-test-notabs-perl \
+       libdist-zilla-plugin-test-perl-critic-perl \
+       libdist-zilla-app-command-authordebs-perl \
+       libtest-lwp-useragent-perl && \
+    sudo apt update && \
+    cd "$(git rev-parse --show-toplevel)/config/chroot_local-includes/usr/src/iuk" && \
+    dzil authordebs --install && \
+    sudo apt install \
+       libarchive-tools \
+       libdevice-cdio-perl \
+       dosfstools \
+       faketime \
+       gdisk \
+       genisoimage \
+       gnutls-bin \
+       kpartx \
+       libdata-dumper-concise-perl \
+       libdatetime-perl \
+       libfile-copy-recursive-perl \
+       nginx \
+       python3-xattr \
+       squashfs-tools-ng=1.3.2-1 \
+       syslinux
+
+Run the test suite
+==================
+
+Prepare your environment (which includes getting a `sudo` authentication token,
+that's needed by the test suite, and setting a `umask` that runs the tests in
+conditions closer to production):
+
+    export SOURCE_DATE_EPOCH=$(date --utc +%s)
+    cd "$(git rev-parse --show-toplevel)/config/chroot_local-includes/usr/src/iuk" && \
+    export TORSOCKS_CONF_FILE=$PWD/torsocks.conf
+    sudo true
+    umask 077
+    
+Run the full test suite:
+
+    cd "$(git rev-parse --show-toplevel)/config/chroot_local-includes/usr/src/iuk" && \
+    TAILS_GIT_CHECKOUT="$(git rev-parse --show-toplevel)" \
+    PERL5LIB="${TAILS_GIT_CHECKOUT}/config/chroot_local-includes/usr/src/perl5lib/lib" \
+       LC_ALL=C.UTF-8 \
+       dzil test --all
+
+To run only BDD tests (ala Cucumber) defined under
+`config/chroot_local-includes/usr/src/iuk/features`, use `pherkin`.
+For example:
+
+    cd "$(git rev-parse --show-toplevel)/config/chroot_local-includes/usr/src/iuk" && \
+    TAILS_GIT_CHECKOUT="$(git rev-parse --show-toplevel)" \
+    PERL5LIB="${TAILS_GIT_CHECKOUT}/config/chroot_local-includes/usr/src/perl5lib/lib" \
+       LC_ALL=C.UTF-8 \
+       pherkin features/download_upgrade-description_file
+
+Test manually
+=============
+
+To test automatic upgrades on an image that includes changes to our _Upgrader_,
+typically you need to make the running Tails under test system believe
+it's running an older version of Tails, that can be upgraded.
+
+To do so:
+
+1. Install the Tails image you want to test on a USB drive.
+
+2. Start Tails from that USB drive.
+
+3. Set an Administration Password.
+
+4. Create a copy of the file that the _Upgrader_ uses to tell which
+   version of Tails was initially installed on this USB stick:
+
+        install -m 644 /lib/live/mount/rootfs/filesystem.squashfs/etc/os-release /tmp/
+
+5. Modify `/tmp/os-release`
+
+   Typically, you would set `VERSION` to the version of the
+   last-but-one Tails release.
+
+6. Mask the 2 real `os-release` files with your own:
+
+        sudo cp /tmp/os-release /etc/os-release && \
+        sudo mount -o bind /tmp/os-release /lib/live/mount/rootfs/filesystem.squashfs/etc/os-release
+
+7. Restart the _Upgrader_ service:
+
+        systemctl --user restart tails-upgrade-frontend.service

@@ -1,0 +1,83 @@
+#!/bin/bash
+
+set -eu
+
+# This script is used to create a pseudo flatpak runtime from the Tails
+# root filesystem.
+
+TARGETDIR=/var/lib/flatpak-tails/runtime/org.boum.tails.Platform/x86_64/stable/active/files
+RUNDIR=/run/tails-flatpak-runtime-overlay
+
+usage() {
+    cat <<EOF
+Usage: $0 [--create|--destroy|--help]
+
+--create: create the runtime
+--destroy: destroy the runtime
+--help: print help
+EOF
+}
+
+create() {
+    # Create an overlay filesystem from /usr and mount it into the
+    # org.boum.tails.Platform flatpak runtime directory. While it
+    # would be sufficient to bind-mount /usr to the runtime directory,
+    # this way we any changes made to /usr by a compromised flatpak
+    # using this runtime are isolated to just the runtime and not
+    # affecting the host system.
+
+    local lowerdir upperdir workdir
+
+    upperdir="${RUNDIR}/upper/usr"
+    workdir="${RUNDIR}/work/usr"
+    lowerdir="/usr"
+
+    install -d "${upperdir}" "${workdir}"
+
+    mount -t overlay overlay \
+        -o lowerdir="${lowerdir}",upperdir="${upperdir}",workdir="${workdir}" \
+        "${TARGETDIR}"
+
+    # Flatpak expects the .ref file to exist
+    install --mode=0644 /dev/null "${TARGETDIR}/.ref"
+}
+
+destroy() {
+    # Unmount the overlay filesystem
+    if mountpoint -q "${TARGETDIR}"; then
+        umount --recursive "${TARGETDIR}"
+    fi
+
+    # Unmount all mountpoints below the run directory
+    mountpoints=$(find "${RUNDIR}" -exec mountpoint -q {} \; -print)
+    for m in ${mountpoints}; do
+        umount --recursive "${m}"
+    done
+
+    # Remove the run directory
+    rm -rf "${RUNDIR}"
+}
+
+if [ $# -eq 1 ]; then
+    if [ "$1" = "--create" ]; then
+        # Create the runtime
+        create
+        exit 0
+    elif [ "$1" = "--destroy" ]; then
+        # destroy the runtime
+        destroy
+        exit 0
+    elif [ "$1" = "--help" ]; then
+        # Print help
+        usage
+        exit 0
+    else
+        echo "Unknown argument: $1" >&2
+        usage >&2
+        exit 1
+    fi
+elif [ $# -ne 0 ]; then
+    echo "Too many arguments" >&2
+    usage >&2
+    exit 1
+fi

@@ -22,6 +22,25 @@ CEREBRAS_PRICING: Final[Mapping[str, Mapping[str, float]]] = {
 }
 
 
+# Anthropic Claude per-million-token USD pricing (standard, non-batch). Opus
+# 4.x tiers share the $15 in / $75 out list price. Keyed by the model id the
+# provider returns. ``claude-opus-4-8`` is included for forward-looking Opus
+# cost projections used by the benchmark cost report.
+ANTHROPIC_PRICING: Final[Mapping[str, Mapping[str, float]]] = {
+    "claude-opus-4-8": {"input_per_million_usd": 15.0, "output_per_million_usd": 75.0},
+    "claude-opus-4-7": {"input_per_million_usd": 15.0, "output_per_million_usd": 75.0},
+    "claude-opus-4-1-20250805": {"input_per_million_usd": 15.0, "output_per_million_usd": 75.0},
+    "claude-opus-4-1": {"input_per_million_usd": 15.0, "output_per_million_usd": 75.0},
+}
+
+
+# Union of all priced models, for cost reports that mix providers.
+ALL_PRICING: Final[Mapping[str, Mapping[str, float]]] = {
+    **CEREBRAS_PRICING,
+    **ANTHROPIC_PRICING,
+}
+
+
 def compute_cost_usd(
     model: str | None,
     prompt_tokens: int,
@@ -48,4 +67,4 @@ def compute_cost_usd(
     )
 
 
-__all__ = ["CEREBRAS_PRICING", "compute_cost_usd"]
+__all__ = ["CEREBRAS_PRICING", "ANTHROPIC_PRICING", "ALL_PRICING", "compute_cost_usd"]

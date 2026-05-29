@@ -6,7 +6,6 @@ import {
   PostSkillCatalogInstallRequestSchema,
   PostSkillCatalogUninstallRequestSchema,
   PostSkillCreateRequestSchema,
-  PutMarketplaceConfigRequestSchema,
   PutSkillSourceRequestSchema,
 } from "./skills-routes.js";
 
@@ -257,33 +256,6 @@ describe("PostMarketplaceUninstallRequestSchema", () => {
   it("rejects extra fields", () => {
     expect(() =>
       PostMarketplaceUninstallRequestSchema.parse({ id: "x", soft: true }),
-    ).toThrow();
-  });
-});
-
-describe("PutMarketplaceConfigRequestSchema", () => {
-  it("trims apiKey", () => {
-    expect(
-      PutMarketplaceConfigRequestSchema.parse({ apiKey: "  secret  " }),
-    ).toEqual({ apiKey: "secret" });
-  });
-
-  it("rejects whitespace-only apiKey", () => {
-    expect(() =>
-      PutMarketplaceConfigRequestSchema.parse({ apiKey: "   " }),
-    ).toThrow(/apiKey is required/);
-  });
-
-  it("rejects missing apiKey", () => {
-    expect(() => PutMarketplaceConfigRequestSchema.parse({})).toThrow();
-  });
-
-  it("rejects extra fields", () => {
-    expect(() =>
-      PutMarketplaceConfigRequestSchema.parse({
-        apiKey: "x",
-        endpoint: "https://api.foo",
-      }),
     ).toThrow();
   });
 });

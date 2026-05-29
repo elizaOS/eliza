@@ -1,10 +1,10 @@
 # Memory map
 
-All addresses are byte addresses. The e1 chip uses a single-cycle MMIO request interface. Only word-aligned accesses in the first 256 bytes of each 4 KiB region are implemented in the current RTL. Nonzero `addr[11:8]`, unaligned accesses, and unknown regions return `0xDEAD_BEEF` at the top-level decode.
+All addresses are byte addresses. The e1 chip uses a single-cycle MMIO request interface. Peripheral regions implement only word-aligned accesses in the first 256 bytes of each 4 KiB control window in the current RTL. The boot ROM is a separate 64 KiB aperture. For peripheral control windows, nonzero `addr[11:8]`, unaligned accesses, and unknown regions return `0xDEAD_BEEF` at the top-level decode.
 
 | Region | Base | Size | Purpose |
 | --- | ---: | ---: | --- |
-| Boot ROM | `0x0000_0000` | `4 KiB` | Reset/identity words |
+| Boot ROM | `0x0000_0000` | `64 KiB` | Reset/identity words |
 | Peripheral control | `0x1000_0000` | `4 KiB` | ID, scratch, GPIO, timer |
 | DMA | `0x1001_0000` | `4 KiB` | DMA master contract model |
 | NPU | `0x1002_0000` | `4 KiB` | Small NPU datapath |

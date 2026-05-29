@@ -1,0 +1,95 @@
+[[!meta title="Interface between developers and Release Managers"]]
+
+Code changes merged into our release branches (`stable`, `testing`, `devel`) may
+impact the [[Release
+Managers|contribute/working_together/roles/release_manager]]' work: for example,
+the Release Manager on duty is on the frontline when manual testing done during
+the release process identifies critical breakage at the last minute before we
+publish a new version of Tails. This can disrupt the release schedule and lead
+to highly stressful situations.
+
+These guidelines are meant to decrease the risk of seeing such problems happen.
+
+[[!toc levels=2]]
+
+# Changes that may impact automatic upgrades
+
+For changes that may impact automatic upgrades, the responsible developers MUST
+put the Release Managers into the loop in advance, way before the code is
+merged. This allows the Release Managers to:
+
+ - Raise any concerns they may have about the design or implementation
+   of the proposed changes.
+
+ - Propose extra manual tests that could be done ahead of merging
+   and/or during the manual testing session of the release process,
+   in order to build confidence in the proposed changes.
+
+ - Make developers benefit from an independent "What can possibly go
+   wrong?" brainstorming.
+
+# During a code freeze
+
+We sometimes [[freeze|contribute/release_schedule]] one of our release branches,
+in order to stabilize it before a release.
+
+During such a code freeze, developers MUST notify the Release Manager on duty
+about freeze exceptions they intend to propose or merge. And then:
+
+ - If the proposed changes may impact automatic upgrades, as a developer, ensure
+   you get feedback from the Release Manager on duty, before you apply
+   a freeze exception.
+
+ - Else, that is in the general case, as a developer you don't need to block on
+   the Release Manager's feedback before you apply the freeze exception.
+
+<a id="beta-or-rc"></a>
+
+# Deciding whether to release a beta or a RC
+
+We use beta releases and/or release candidates to get risky changes tested by
+enthusiastic users, more broadly than what developers and automated tests can do.
+This allows us to identify problems before we release those changes in a stable
+Tails release, that we will recommend all users upgrade to.
+
+Compared to a release candidate (RC), in general a beta release:
+
+ - is prepared by someone else than Release Manager: most often, one of the
+   developers who worked on the feature announces a beta release;
+
+ - does not necessarily go through any, or all of, our
+   [[manual test suite|contribute/release_process/test]];
+
+ - is often published as an non-trusted
+   [Jenkins nightly build](https://nightly.tails.boum.org/);
+
+ - cannot be automatically upgraded from; it follows a beta release
+   comes with no security support;
+
+ - is scheduled in an ad-hoc manner, while release candidates are
+   [[scheduled|contribute/release_schedule]] in our [[contribute/calendar]]
+   months ahead;
+
+ - does not imply freezing any release branch.
+
+As a consequence of the above, compared to a RC, a beta release:
+
+ - requires vastly less effort and coordination to publish;
+
+ - is tested only briefly and by fewer people: Tails users should not upgrade
+   their "production" Tails USB stick to a beta.
+
+It can be tough to decide whether a given change requires a RC, as opposed to
+a mere beta. Here are some guidelines that may help:
+
+ - If the change has a broad impact, and carries a risk to break any part of
+   Tails, then a RC may be worth it: production usage has a vastly greater test
+   coverage than our automated test suite.
+
+   For example, migrating from `aufs` to `overlayfs` was first
+   done in a [beta](https://lists.autistici.org/message/20191221.150827.105ba267.en.html), then in 4.5~rc1, before being shipped in a stable release.
+
+ - If the change can be tested very quickly, then a beta may be sufficient.
+
+ - If the change affects only specific hardware, then it may be sufficient
+   to release a beta and call for testing on that specific hardware.

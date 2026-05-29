@@ -101,7 +101,7 @@ export function LoadingScreen({
         <div className="flex items-center gap-4 w-full">
           <div className="flex-1 h-1 bg-bg-accent overflow-hidden relative">
             <div
-              className="h-full bg-accent relative shadow-[0_0_8px_var(--accent-subtle)]"
+              className="h-full bg-accent relative "
               style={{
                 width: `${progress}%`,
                 transition: "width 1.5s ease-out",

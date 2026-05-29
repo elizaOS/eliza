@@ -12,7 +12,7 @@
     "build": "bun build src/index.ts --outdir dist --target node --external zlib-sync",
     "start": "PORT=3001 bun run --env-file ../../.env.local src/index.ts",
     "start:local": "PORT=3001 bun run src/index.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "docker:build": "docker build -t gateway-discord:local .",
     "docker:run": "docker run -p 3001:3000 --env-file ../../.env.local gateway-discord:local",

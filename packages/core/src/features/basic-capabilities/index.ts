@@ -810,7 +810,7 @@ const syncSingleUser = async (
 					roles: {
 						[entityId]: ROLE_OWNER,
 					},
-					settings: {}, // Initialize empty settings for onboarding
+					settings: {}, // Initialize empty settings for setup
 				}
 			: undefined;
 
@@ -1320,7 +1320,7 @@ export const basicServices: ServiceClass[] = [
 	EmbeddingGenerationService,
 	EvaluatorService,
 	// Loads optimized prompts for action_planner / media_description / etc.
-	// from the on-disk store (~/.eliza/optimized-prompts/<task>/). Cheap
+	// from the on-disk store (<stateDir>/optimized-prompts/<task>). Cheap
 	// in-memory cache; registering it on every runtime so the planner-loop
 	// can pick up artifacts produced by `bun run train -- --backend native`.
 	OptimizedPromptService as unknown as ServiceClass,
@@ -1381,8 +1381,7 @@ const autonomyCapabilities = {
 	routes: autonomyRoutes,
 };
 
-// Legacy alias exports for backwards compatibility
-export { advancedCapabilities as extendedCapabilities, autonomyCapabilities };
+export { autonomyCapabilities };
 
 /**
  * Creates the basic-capabilities plugin with the specified capability configuration.

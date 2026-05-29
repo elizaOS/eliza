@@ -1,4 +1,7 @@
 import { VRM_COUNT } from "../../state";
+import { formatRelativeTime } from "../../utils/format";
+
+export { formatRelativeTime };
 
 export function getLocalizedConversationTitle(
   title: string | undefined | null,
@@ -30,31 +33,6 @@ export const COMPUTER_CAPABILITY_PLUGIN_IDS = new Set([
   "computeruse",
   "computer-use",
 ]);
-
-export function formatRelativeTime(
-  dateString: string,
-  t: (
-    key: string,
-    vars?: Record<string, string | number | boolean | null | undefined>,
-  ) => string,
-): string {
-  const date = new Date(dateString);
-  if (!Number.isFinite(date.getTime())) {
-    return t("conversations.justNow");
-  }
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return t("conversations.justNow");
-  if (diffMins < 60) return t("conversations.minutesAgo", { count: diffMins });
-  if (diffHours < 24) return t("conversations.hoursAgo", { count: diffHours });
-  if (diffDays < 7) return t("conversations.daysAgo", { count: diffDays });
-
-  return date.toLocaleDateString();
-}
 
 export function avatarIndexFromConversationId(id: string): number {
   let hash = 0;

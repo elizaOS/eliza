@@ -95,7 +95,7 @@ describe("ensure-user", () => {
   });
 
   it("returns the concurrently created minimal user after an insert conflict", async () => {
-    const identifier = "did:privy:test-public-bootstrap";
+    const identifier = "steward:test:test-public-bootstrap";
     insertReturningResponses.push([]);
     selectResponses.push([{ id: identifier }]);
 
@@ -122,7 +122,7 @@ describe("ensure-user", () => {
   });
 
   it("invalidates identifier caches when minimal bootstrap wins the insert", async () => {
-    const identifier = "did:privy:test-public-created";
+    const identifier = "steward:test:test-public-created";
     insertReturningResponses.push([{ id: identifier }]);
 
     const user = await ensureMinimalUserByIdentifier(identifier);
@@ -136,7 +136,7 @@ describe("ensure-user", () => {
   });
 
   it("reloads the authenticated user after a concurrent insert conflict", async () => {
-    const identifier = "did:privy:test-auth-bootstrap";
+    const identifier = "steward:test:test-auth-bootstrap";
     insertReturningResponses.push([]);
     selectResponses.push([]);
     selectResponses.push([

@@ -1,0 +1,34 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2017-08-05 14:00+0200\n"
+"PO-Revision-Date: 2022-12-20 10:06+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Possible errors while upgrading\"]]\n"
+msgstr "[[!meta title=\"Errori possibili durante l'aggiornamento\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- This page is here only not to break breadcrumbs on https://tails.net/doc/upgrade/error/*. -->\n"
+msgstr "<!-- This page is here only not to break breadcrumbs on https://tails.net/doc/upgrade/error/*. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!map pages=\"doc/upgrade/error/* and currentlang()\" show=\"title\"]]\n"
+msgstr "[[!map pages=\"doc/upgrade/error/* and currentlang()\" show=\"title\"]]\n"

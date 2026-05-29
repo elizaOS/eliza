@@ -1,4 +1,7 @@
 /// <reference types="bun-types" />
+
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
@@ -131,6 +134,10 @@ let nativeReminderBridge: NativeReminderBridge | null | undefined;
 let nativeReminderBridgeOverride: NativeReminderBridge | null | undefined;
 
 const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
+const MODULE_DIR =
+  typeof import.meta.dir === "string"
+    ? import.meta.dir
+    : dirname(fileURLToPath(import.meta.url));
 
 function nativeDylibCandidates(): NativeLibraryCandidate[] {
   return [
@@ -171,7 +178,7 @@ async function loadNativeReminderBridge(): Promise<NativeReminderBridge | null> 
   for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
       expectedBasename: NATIVE_DYLIB_BASENAME,
-      moduleDir: import.meta.dir,
+      moduleDir: MODULE_DIR,
       warn: (message) => logger.warn(`[AppleReminders] ${message}`),
     });
     if (!dylibPath) continue;

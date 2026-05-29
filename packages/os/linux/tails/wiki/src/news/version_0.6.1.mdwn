@@ -1,0 +1,27 @@
+[[!meta date="Sat, 25 Dec 2010 02:02:02 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.6.1, is out.
+
+This is a bugfix-only release mainly aimed at fixing serious security
+issues in bundled software. All users must upgrade as soon as
+possible.
+
+Notable changes include:
+
+- Tor 0.2.1.28: resolves possible remote code execution, see the [Tor
+  project blog
+  post](https://blog.torproject.org/blog/tor-02128-released-security-patches)
+  for details.
+- Other software upgrades fix grave bugs, most of these with serious
+  security implications.
+- FireGPG and Seahorse: use the keyserver configured in `gpg.conf`.
+- HTP: display the logs when the clock synchronization fails.
+- Use the light version of the "Are you using Tor?" webpage.
+
+See the online
+Changelog
+for details.
+
+[[Download it, seed it!|install]]

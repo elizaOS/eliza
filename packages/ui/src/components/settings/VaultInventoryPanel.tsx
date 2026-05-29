@@ -187,7 +187,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
         <Button
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 gap-1 rounded-md px-2"
+          className="h-8 shrink-0 gap-1 rounded-sm px-2"
           onClick={() => setShowAdd((v) => !v)}
           aria-label="Add secret"
         >
@@ -200,7 +200,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
         <div
           aria-live="polite"
           data-testid="vault-inventory-error"
-          className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+          className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
         >
           {error}
         </div>
@@ -223,7 +223,7 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
       ) : entries.length === 0 ? (
         <div
           data-testid="vault-inventory-empty"
-          className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
           No secrets stored yet. Add an API key to get started.
         </div>
@@ -275,7 +275,7 @@ function CategoryGroup({
       <p className="text-2xs font-semibold uppercase tracking-wide text-muted">
         {CATEGORY_LABEL[category]}
       </p>
-      <ul className="space-y-1 rounded-md border border-border/40 bg-card/30 p-1">
+      <ul className="space-y-1 rounded-sm border border-border/40 bg-card/30 p-1">
         {entries.map((entry) => (
           <li key={entry.key}>
             <EntryRow
@@ -391,13 +391,13 @@ function EntryRow({
     <div
       ref={rowRef}
       data-testid={`vault-entry-row-${entry.key}`}
-      className="rounded px-2 py-1.5 hover:bg-bg-muted/30"
+      className="rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
     >
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 w-6 shrink-0 rounded-md p-0 text-muted"
+          className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted"
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? "Collapse" : "Expand"}
         >
@@ -423,7 +423,7 @@ function EntryRow({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1 rounded-md px-2 text-xs text-muted"
+            className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
             onClick={() => void reveal()}
             disabled={revealing}
             aria-label={`Reveal ${entry.label}`}
@@ -439,7 +439,7 @@ function EntryRow({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 gap-1 rounded-md px-2 text-xs text-muted"
+            className="h-7 shrink-0 gap-1 rounded-sm px-2 text-xs text-muted"
             onClick={hide}
             aria-label={`Hide ${entry.label}`}
           >
@@ -450,7 +450,7 @@ function EntryRow({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+          className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
           onClick={() => void onDelete()}
           aria-label={`Delete ${entry.label}`}
         >
@@ -461,7 +461,7 @@ function EntryRow({
       {revealed && (
         <div
           data-testid={`vault-revealed-${entry.key}`}
-          className="mt-1.5 flex items-center gap-2 rounded-md border border-border/50 bg-bg/40 p-2"
+          className="mt-1.5 flex items-center gap-2 rounded-sm border border-border/50 bg-bg/40 p-2"
         >
           <code className="flex-1 truncate font-mono text-2xs text-txt">
             {revealed.value}
@@ -474,7 +474,7 @@ function EntryRow({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 shrink-0 gap-1 rounded-md px-2 text-2xs"
+            className="h-6 shrink-0 gap-1 rounded-sm px-2 text-2xs"
             onClick={() => void copy()}
             aria-label="Copy"
           >
@@ -602,7 +602,7 @@ function ProfilesPanel({
   return (
     <div
       data-testid={`profiles-panel-${entry.key}`}
-      className="mt-2 space-y-2 rounded-md border border-border/40 bg-bg/30 p-2"
+      className="mt-2 space-y-2 rounded-sm border border-border/40 bg-bg/30 p-2"
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-2xs font-semibold uppercase text-muted">Profiles</p>
@@ -611,7 +611,7 @@ function ProfilesPanel({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 rounded-md px-2 text-2xs"
+              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => onJumpToRouting(entry.key)}
               aria-label={`Routing rules for ${entry.label}`}
             >
@@ -623,7 +623,7 @@ function ProfilesPanel({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 rounded-md px-2 text-2xs"
+              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => setShowAdd((v) => !v)}
               aria-label="Add profile"
             >
@@ -633,7 +633,7 @@ function ProfilesPanel({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 gap-1 rounded-md px-2 text-2xs"
+              className="h-6 gap-1 rounded-sm px-2 text-2xs"
               onClick={() => void onMigrate()}
               disabled={migrating}
               aria-label="Enable profiles for this key"
@@ -662,7 +662,7 @@ function ProfilesPanel({
             return (
               <li
                 key={p.id}
-                className={`flex items-center gap-2 rounded px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
+                className={`flex items-center gap-2 rounded-sm px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
               >
                 <input
                   type="radio"
@@ -686,7 +686,7 @@ function ProfilesPanel({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+                  className="h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
                   aria-label={`Delete profile ${p.label}`}
                   onClick={() => void onDelete(p.id)}
                 >
@@ -702,7 +702,7 @@ function ProfilesPanel({
         <form
           onSubmit={onAdd}
           data-testid={`add-profile-form-${entry.key}`}
-          className="space-y-1.5 rounded-md border border-border/40 bg-card/40 p-2"
+          className="space-y-1.5 rounded-sm border border-border/40 bg-card/40 p-2"
         >
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             <div>
@@ -742,7 +742,7 @@ function ProfilesPanel({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-6 rounded-md px-2 text-2xs"
+              className="h-6 rounded-sm px-2 text-2xs"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -752,7 +752,7 @@ function ProfilesPanel({
               type="submit"
               variant="default"
               size="sm"
-              className="h-6 rounded-md px-2 text-2xs"
+              className="h-6 rounded-sm px-2 text-2xs"
               disabled={submitting || !newId || !newValue}
             >
               {submitting ? "Saving…" : "Save profile"}
@@ -814,7 +814,7 @@ function AddSecretForm({
     <form
       onSubmit={onSubmit}
       data-testid="vault-add-secret-form"
-      className="space-y-2 rounded-md border border-border/50 bg-card/30 p-2"
+      className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-2"
     >
       <p className="text-2xs text-muted">
         Stored locally and encrypted at rest. The key is the env-var-style
@@ -860,7 +860,7 @@ function AddSecretForm({
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value as VaultEntryCategory)}
-            className="block h-8 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+            className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
             {CATEGORY_INPUT_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -892,7 +892,7 @@ function AddSecretForm({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 rounded-md px-3 text-xs"
+          className="h-7 rounded-sm px-3 text-xs"
           onClick={onClose}
           disabled={submitting}
         >
@@ -902,7 +902,7 @@ function AddSecretForm({
           type="submit"
           variant="default"
           size="sm"
-          className="h-7 rounded-md px-3 text-xs"
+          className="h-7 rounded-sm px-3 text-xs"
           disabled={submitting || !key.trim() || !value}
         >
           {submitting ? "Saving…" : "Save secret"}

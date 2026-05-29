@@ -12,9 +12,8 @@
  *
  * Each site decided independently when to push and what value to push.
  * The five copies were the disease behind the port-shift renderer
- * disconnect MASTER.md §0 documents: a tactical fix in `RuntimeGate.tsx`
- * patched the symptom, but until *one* module owns the value the
- * renderer is reading, every new push site is a fresh chance to ship
+ * disconnect MASTER.md §0 documents; until *one* module owns the value
+ * the renderer is reading, every new push site is a fresh chance to ship
  * the wrong port.
  *
  * This module owns:

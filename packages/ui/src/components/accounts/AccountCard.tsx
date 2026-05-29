@@ -197,7 +197,7 @@ export function AccountCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-lg border border-border/45 bg-card/35 px-3 py-2.5 transition-opacity",
+        "flex flex-col gap-2 rounded-sm border border-border/45 bg-card/35 px-3 py-2.5 transition-opacity",
         !account.enabled && "opacity-60",
       )}
     >

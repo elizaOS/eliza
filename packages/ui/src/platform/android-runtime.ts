@@ -17,7 +17,7 @@
  * The build script injects `VITE_ELIZA_ANDROID_RUNTIME_MODE` (and the
  * `VITE_ELIZA_ANDROID_RUNTIME_MODE` alias for white-label forks) at vite
  * compile time so the renderer can adapt — most importantly, the
- * `android-cloud` build must hide the "Local" runtime picker so users
+ * `android-cloud` build must hide the Local first-run option so users
  * cannot try to provision an on-device agent that physically isn't there.
  */
 

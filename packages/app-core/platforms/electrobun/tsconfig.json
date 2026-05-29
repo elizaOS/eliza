@@ -53,6 +53,8 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../../plugins/plugin-elizacloud/src/*"
       ],
+      "@elizaos/cloud-sdk": ["../../../cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../../cloud-sdk/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../../../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -77,8 +79,6 @@
       "@elizaos/plugin-workflow/*": [
         "../../../../plugins/plugin-workflow/src/*"
       ],
-      "@elizaos/workflows": ["../../../workflows/src/index.ts"],
-      "@elizaos/workflows/*": ["../../../workflows/src/*"],
       "@elizaos/plugin-signal": [
         "../../../../plugins/plugin-signal/src/index.ts"
       ],

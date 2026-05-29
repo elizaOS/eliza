@@ -37,6 +37,9 @@ RUN mkdir -p /tmp/docker-runtime-deps \
   && cd /tmp/docker-runtime-deps \
   && npm init -y >/dev/null \
   && npm install --omit=dev --ignore-scripts --no-package-lock \
+    --fetch-retries=5 \
+    --fetch-retry-mintimeout=20000 \
+    --fetch-retry-maxtimeout=120000 \
     @electric-sql/pglite@0.4.5 \
     @neondatabase/serverless@1.1.0 \
     @node-rs/argon2@2.0.2 \
@@ -46,6 +49,7 @@ RUN mkdir -p /tmp/docker-runtime-deps \
     pg@8.20.0 \
     uuid@14.0.0 \
     ws@8.20.0 \
+    yaml@2.8.2 \
   && mkdir -p /app/node_modules \
   && rm -rf \
     /app/node_modules/@electric-sql/pglite \
@@ -57,6 +61,7 @@ RUN mkdir -p /tmp/docker-runtime-deps \
     /app/node_modules/pg \
     /app/node_modules/uuid \
     /app/node_modules/ws \
+    /app/node_modules/yaml \
   && cp -a /tmp/docker-runtime-deps/node_modules/. /app/node_modules/ \
   && rm -rf /tmp/docker-runtime-deps
 

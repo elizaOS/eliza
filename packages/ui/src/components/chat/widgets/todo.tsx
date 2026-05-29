@@ -48,7 +48,7 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
   const showType = todo.type.trim().length > 0 && todo.type !== "task";
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg/70 p-3">
+    <div className="rounded-sm border border-border/50 bg-bg/70 p-3">
       <div className="flex items-start gap-2">
         <span
           className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${

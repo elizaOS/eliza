@@ -1,0 +1,97 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-14 16:04+0000\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Trying a testing version of Tails\"]]"
+msgstr "[[!meta title=\"Provar una versió de prova de Tails\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]]"
+msgstr ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] "
+"[[!meta stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]] "
+"[[!meta robots=\"noindex\"]] [[!meta script=\"home\"]]"
+
+#. type: Content of: <div><p>
+msgid "You are running a testing version of Tails. Thanks!"
+msgstr "Esteu executant una versió de prova de Tails. Gràcies!"
+
+#. type: Content of: <div><ul><li>
+msgid "Release candidates are safe to use but might have other problems."
+msgstr ""
+"Els candidats a la versió són segurs d'utilitzar, però poden tenir altres "
+"problemes."
+
+#. type: Content of: <div><ul><li>
+msgid "Beta versions are unsafe to use. Only use beta versions for testing."
+msgstr ""
+"Les versions beta no són segures d'utilitzar. Utilitzeu només versions beta "
+"per fer proves."
+
+#. type: Content of: <div><p>
+msgid ""
+"Report any problems to <a href=\"mailto:tails-testers@boum.org\">tails-"
+"testers@boum.org</a>."
+msgstr ""
+"Informeu de qualsevol problema a <a href=\"mailto:tails-"
+"testers@boum.org\">tails-testers@boum.org</a>."
+
+#. type: Content of: <h1>
+msgid "Current calls for testing"
+msgstr "Convocatòries actuals de proves"
+
+#. type: Content of: <p>
+msgid "None at this moment"
+msgstr "Cap en aquest moment"
+
+#. type: Content of: <h1>
+msgid "Other news"
+msgstr "Altres notícies"
+
+#. type: Content of: <div>
+msgid "<a href=\"https://check.torproject.org/\">Tor check</a>"
+msgstr ""
+"<a href=\"https://check.torproject.org/?lang=ca\">Comprovació de Tor</a>"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"news\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"news.ca\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "Our calls for testing include specific testing instructions and known "
+#~ "issues:"
+#~ msgstr ""
+#~ "Les nostres versions per fer proves inclouen instruccions específiques de "
+#~ "prova i problemes coneguts:"
+
+#, fuzzy
+#~| msgid "[[Call for testing: 6.0~rc1|news/test_6.0-rc1]]"
+#~ msgid "[[Call for testing: 7.0~rc2|news/test_7.0-rc2]]"
+#~ msgstr "[[Versió de prova: 6.0~rc1|news/test_6.0-rc1]]"
+
+#, fuzzy
+#~ msgid "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/tor_check.de\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!inline pages=\"home/tor_check\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/tor_check.de\" raw=\"yes\" sort=\"age\"]]"

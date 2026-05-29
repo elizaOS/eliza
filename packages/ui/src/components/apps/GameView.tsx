@@ -340,13 +340,13 @@ export function DesktopGameWindowControls({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="rounded border border-border px-2 py-1 text-2xs text-muted">
+      <span className="rounded-sm border border-border px-2 py-1 text-2xs text-muted">
         {boundsLabel}
       </span>
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs shadow-sm hover:border-accent"
+        className="h-7 text-xs hover:border-accent"
         onClick={() =>
           void runAction(
             "game-native-refresh",
@@ -365,7 +365,7 @@ export function DesktopGameWindowControls({
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs shadow-sm hover:border-accent"
+        className="h-7 text-xs hover:border-accent"
         onClick={() =>
           void runAction(
             "game-native-focus",
@@ -396,7 +396,7 @@ export function DesktopGameWindowControls({
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs shadow-sm hover:border-accent"
+        className="h-7 text-xs hover:border-accent"
         onClick={() =>
           void runAction(
             "game-native-show",
@@ -427,7 +427,7 @@ export function DesktopGameWindowControls({
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs shadow-sm hover:border-accent"
+        className="h-7 text-xs hover:border-accent"
         onClick={() =>
           void runAction(
             "game-native-hide",
@@ -458,7 +458,7 @@ export function DesktopGameWindowControls({
       <Button
         variant={alwaysOnTop ? "default" : "outline"}
         size="sm"
-        className="h-7 gap-1.5 text-xs shadow-sm hover:border-accent"
+        className="h-7 gap-1.5 text-xs hover:border-accent"
         onClick={() =>
           void runAction(
             "game-native-always-on-top",
@@ -510,7 +510,7 @@ export function DesktopGameWindowControls({
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs shadow-sm hover:border-accent"
+        className="h-7 text-xs hover:border-accent"
         onClick={() =>
           void runAction(
             "game-native-snapshot",
@@ -550,7 +550,7 @@ export function DesktopGameWindowControls({
       <Button
         variant="outline"
         size="sm"
-        className="h-7 text-xs shadow-sm hover:border-accent"
+        className="h-7 text-xs hover:border-accent"
         onClick={() =>
           void runAction(
             "game-gpu-window",
@@ -596,7 +596,7 @@ export function DesktopGameWindowControls({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs shadow-sm hover:border-accent"
+            className="h-7 text-xs hover:border-accent"
             onClick={() =>
               void runAction(
                 "game-gpu-show",
@@ -622,7 +622,7 @@ export function DesktopGameWindowControls({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs shadow-sm hover:border-accent"
+            className="h-7 text-xs hover:border-accent"
             onClick={() =>
               void runAction(
                 "game-gpu-hide",
@@ -1502,7 +1502,7 @@ export function GameView() {
             setState("tab", "apps");
             setState("appsSubTab", "browse");
           }}
-          className="ml-2 font-bold tracking-wide shadow-sm"
+          className="ml-2 font-bold tracking-wide "
         >
           {t("game.backToApps")}
         </Button>
@@ -1563,11 +1563,11 @@ export function GameView() {
               <span className="text-danger font-semibold">DEAD</span>
             ) : null}
             {activeSessionState.telemetry.autoPlay ? (
-              <span className="px-1 py-0.5 rounded bg-ok/15 text-ok font-semibold">
+              <span className="px-1 py-0.5 rounded-sm bg-ok/15 text-ok font-semibold">
                 AUTO
               </span>
             ) : (
-              <span className="px-1 py-0.5 rounded bg-muted/15 text-muted">
+              <span className="px-1 py-0.5 rounded-sm bg-muted/15 text-muted">
                 MANUAL
               </span>
             )}
@@ -1683,7 +1683,7 @@ export function GameView() {
               key={prompt}
               variant="outline"
               size="sm"
-              className="h-6 max-w-full text-2xs shadow-sm"
+              className="h-6 max-w-full text-2xs "
               onClick={() => void sendChatCommand(prompt)}
               disabled={sendingChat}
             >
@@ -1745,7 +1745,7 @@ export function GameView() {
           data-testid="game-command-send"
           onClick={handleSendChat}
           disabled={sendingChat || !chatInput.trim()}
-          className="h-8 shadow-sm font-bold tracking-wide"
+          className="h-8 font-bold tracking-wide"
         >
           {sendingChat ? "..." : t("common.send")}
         </Button>
@@ -1861,7 +1861,7 @@ export function GameView() {
                   return (
                     <span
                       key={t}
-                      className="text-3xs px-1 py-px rounded"
+                      className="text-3xs px-1 py-px rounded-sm"
                       style={{
                         background: c ? c.bg : "var(--bg-muted)",
                         color: c ? c.fg : "var(--muted)",
@@ -2043,7 +2043,7 @@ export function GameView() {
             variant="outline"
             size="sm"
             data-testid="game-session-control"
-            className="h-7 text-xs shadow-sm hover:border-accent"
+            className="h-7 text-xs hover:border-accent"
             onClick={() => void handleSessionControl()}
             disabled={sessionBusyAction === sessionControlAction}
           >
@@ -2061,7 +2061,7 @@ export function GameView() {
             variant={showLogsPanel ? "default" : "outline"}
             size="sm"
             data-testid="game-toggle-logs"
-            className="h-7 text-xs shadow-sm hover:border-accent"
+            className="h-7 text-xs hover:border-accent"
             onClick={() => setShowLogsPanel(!showLogsPanel)}
           >
             {showLogsPanel ? "Hide game chat" : "Show game chat"}
@@ -2070,7 +2070,7 @@ export function GameView() {
         <Button
           variant={showDiagnostics ? "default" : "outline"}
           size="sm"
-          className="h-7 text-xs shadow-sm hover:border-accent"
+          className="h-7 text-xs hover:border-accent"
           onClick={() => setShowDiagnostics((current) => !current)}
         >
           Details
@@ -2079,7 +2079,7 @@ export function GameView() {
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs shadow-sm hover:border-accent"
+            className="h-7 text-xs hover:border-accent"
             onClick={() => void handleAttachViewer()}
             disabled={attachingViewer}
           >
@@ -2090,7 +2090,7 @@ export function GameView() {
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs shadow-sm hover:border-accent"
+            className="h-7 text-xs hover:border-accent"
             onClick={() => void handleDetachViewer()}
             disabled={detachingViewer}
           >
@@ -2104,7 +2104,7 @@ export function GameView() {
           <Button
             variant={gameOverlayEnabled ? "default" : "outline"}
             size="sm"
-            className="h-7 text-xs shadow-sm hover:border-accent"
+            className="h-7 text-xs hover:border-accent"
             onClick={() => setState("gameOverlayEnabled", !gameOverlayEnabled)}
             title={
               gameOverlayEnabled
@@ -2115,11 +2115,11 @@ export function GameView() {
             {gameOverlayEnabled ? t("game.unpinOverlay") : t("game.keepOnTop")}
           </Button>
         ) : null}
-        {renderOpenInNewTabButton("default", "h-7 text-xs shadow-sm")}
+        {renderOpenInNewTabButton("default", "h-7 text-xs ")}
         <Button
           variant="default"
           size="sm"
-          className="h-7 text-xs shadow-sm"
+          className="h-7 text-xs "
           disabled={stopping}
           onClick={handleStop}
         >
@@ -2128,7 +2128,7 @@ export function GameView() {
         <Button
           variant="default"
           size="sm"
-          className="h-7 text-xs shadow-sm"
+          className="h-7 text-xs "
           onClick={() => {
             setState("tab", "apps");
             setState("appsSubTab", "browse");
@@ -2166,7 +2166,7 @@ export function GameView() {
             variant={mobileSurface === "game" ? "default" : "outline"}
             size="sm"
             data-testid="game-mobile-surface-game"
-            className="h-8 text-xs shadow-sm"
+            className="h-8 text-xs "
             onClick={() => setMobileSurface("game")}
           >
             {t("common.game", {
@@ -2177,7 +2177,7 @@ export function GameView() {
             variant={mobileSurface === "dashboard" ? "default" : "outline"}
             size="sm"
             data-testid="game-mobile-surface-dashboard"
-            className="h-8 text-xs shadow-sm"
+            className="h-8 text-xs "
             onClick={() => setMobileSurface("dashboard")}
           >
             {t("common.actions", {
@@ -2188,7 +2188,7 @@ export function GameView() {
             variant={mobileSurface === "chat" ? "default" : "outline"}
             size="sm"
             data-testid="game-mobile-surface-chat"
-            className="h-8 text-xs shadow-sm"
+            className="h-8 text-xs "
             onClick={() => setMobileSurface("chat")}
           >
             {t("nav.chat", {

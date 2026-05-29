@@ -60,7 +60,7 @@ function ConnectionLoadingCard({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "rounded-lg border bg-card text-card-foreground shadow-sm",
+        "rounded-sm border bg-card text-card-foreground ",
         className,
       )}
     >
@@ -108,7 +108,7 @@ function ConnectionIdentityPanel({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 p-4 bg-muted rounded-lg",
+        "flex items-center gap-4 p-4 bg-muted rounded-sm",
         className,
       )}
     >
@@ -165,7 +165,7 @@ function ConnectionCallout({
   return (
     <div
       className={cn(
-        "p-3 border rounded-lg",
+        "p-3 border rounded-sm",
         calloutToneClassName[tone],
         className,
       )}
@@ -241,10 +241,10 @@ function ConnectionCopyRow({
   className,
 }: ConnectionCopyRowProps) {
   return (
-    <div className={cn("p-3 bg-muted rounded-lg space-y-2", className)}>
+    <div className={cn("p-3 bg-muted rounded-sm space-y-2", className)}>
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <div className="flex items-center gap-2">
-        <code className="flex-1 text-xs bg-background p-2 rounded border overflow-x-auto">
+        <code className="flex-1 text-xs bg-background p-2 rounded-sm border overflow-x-auto">
           {value}
         </code>
         <Button
@@ -359,7 +359,7 @@ function ConnectionCard({
     <div
       data-slot="connection-card"
       className={cn(
-        "rounded-lg border bg-card text-card-foreground shadow-sm",
+        "rounded-sm border bg-card text-card-foreground ",
         className,
       )}
     >
@@ -384,7 +384,7 @@ function ConnectionCard({
       {/* Content */}
       <div className="p-6 pt-0">
         {status === "not-configured" && (
-          <div className="p-4 bg-muted rounded-lg">
+          <div className="p-4 bg-muted rounded-sm">
             <p className="text-sm text-muted-foreground">
               {notConfiguredMessage}
             </p>

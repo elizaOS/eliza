@@ -32,6 +32,7 @@ _ELIZA_APP_HARNESS_PROVIDERS = {
     "eliza-app-harness",
     "eliza-browser-app",
 }
+_LOCAL_ELIZA_PROVIDERS = {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}
 
 
 class VisualWebBenchRunner:
@@ -86,6 +87,10 @@ class VisualWebBenchRunner:
         if self.config.mock:
             return OracleVisualWebBenchAgent()
         provider = (self.config.provider or "eliza").strip().lower()
+        if provider in _LOCAL_ELIZA_PROVIDERS:
+            from eliza_adapter.visualwebbench import LocalElizaVisualWebBenchAgent
+
+            return LocalElizaVisualWebBenchAgent(self.config)
         if provider in _ELIZA_BRIDGE_PROVIDERS:
             from eliza_adapter.visualwebbench import ElizaVisualWebBenchAgent
 

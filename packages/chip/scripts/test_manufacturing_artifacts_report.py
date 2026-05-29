@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,7 +15,7 @@ RESOLVED = ROOT / "build/reports/manufacturing-resolved-artifacts.json"
 
 def main() -> int:
     result = subprocess.run(
-        ["python3", "scripts/check_manufacturing_artifacts.py", "--release"],
+        [sys.executable, "scripts/check_manufacturing_artifacts.py", "--release"],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -70,9 +71,52 @@ def main() -> int:
         and plan["generation_status"] == "blocked_by_routed_pcb_release_gate"
         for plan in generation_plan["plans"]
     )
+    assert any(
+        plan["source_selector"].startswith("required_release_output_manifest.")
+        and plan["artifact_state"] == "true_missing_release_output"
+        and plan["generation_status"]
+        in {
+            "blocked_by_factory_output_release",
+            "blocked_by_supplier_and_avl_release",
+            "blocked_by_enclosure_and_factory_output_release",
+            "blocked_by_first_article_measurements",
+        }
+        and "python3 scripts/check_e1_phone_factory_output_content.py"
+        in plan["generation_commands"]
+        for plan in generation_plan["plans"]
+    )
+    assert any(
+        plan["source_selector"] == "required_release_output_manifest.routed_kicad_pcb"
+        and plan["artifact_state"] == "true_missing_release_output"
+        and plan["generation_status"] == "blocked_by_routed_pcb_release_gate"
+        and "python3 scripts/check_e1_phone_routed_output_content.py" in plan["generation_commands"]
+        for plan in generation_plan["plans"]
+    )
+    assert any(
+        packet["artifact_state"]
+        in {"true_missing_release_output", "present_fail_closed_non_release_artifact"}
+        and packet["artifact_context"]
+        .get("selector", "")
+        .startswith("required_release_output_manifest.")
+        and "first_article" in packet["artifact_context"].get("selector", "")
+        and "python3 scripts/check_e1_phone_first_article_content.py"
+        in packet["generation_commands"]
+        for packet in report["blocker_execution_packets"]
+    )
 
     matrix = report["manifest_unblock_matrix"]
     assert len(matrix) >= 5
+    matrix_by_path = {row["manifest_path"]: row for row in matrix}
+    pd_row = matrix_by_path["pd/signoff/manifest.yaml"]
+    assert pd_row["manifest"] == "e1_chip_top_pd"
+    assert pd_row["release_credit"] is False
+    assert pd_row["artifact_state_counts"]["true_missing_generated_file"] > 0
+    assert pd_row["artifact_state_counts"]["external_release_gate_open"] > 0
+    assert "python3 scripts/check_pd_signoff.py" in pd_row["generation_commands"]
+    assert (
+        "python3 scripts/check_openlane_run_preflight.py --release" in pd_row["generation_commands"]
+    )
+    assert "build/reports/pd_signoff.json" in pd_row["primary_paths"]
     for row in matrix:
         assert row["release_credit"] is False
         assert row["manifest_path"]
@@ -106,6 +150,20 @@ def main() -> int:
     assert any(
         packet["artifact_state"] == "present_fail_closed_non_release_artifact"
         and packet["artifact_context"].get("files_present") is True
+        for packet in packets
+    )
+    assert any(
+        packet["artifact_state"]
+        in {"true_missing_release_output", "present_fail_closed_non_release_artifact"}
+        and (
+            packet["artifact_context"]
+            .get("selector", "")
+            .startswith("required_release_output_manifest.")
+            or "factory" in packet["artifact_context"].get("selector", "")
+        )
+        and "python3 scripts/check_e1_phone_factory_output_content.py"
+        in packet["generation_commands"]
+        and packet["repo_generation_plan"]["can_generate_from_repo_now"] is False
         for packet in packets
     )
     return 0

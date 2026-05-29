@@ -1,0 +1,14 @@
+# This user unit triggers update of the Additional Software configuration after
+# the desktop has started by starting the identically named system unit.
+
+[Unit]
+Description=Trigger update of the Additional Software configuration
+After=tails-additional-software-install.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/systemctl --system start tails-additional-software-update-config.service
+
+[Install]
+WantedBy=desktop.target

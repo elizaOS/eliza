@@ -23,7 +23,7 @@ Connect your agent to Discord servers and DMs using the `@elizaos/plugin-discord
 
 The connector auto-enables when `token`, `botToken`, or `apiKey` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

@@ -2297,7 +2297,7 @@ def main() -> int:
             "handoff_external_deliverables_missing",
             "release_blockers",
         }
-        findings = [
+        findings: list[dict[str, Any]] = [
             {
                 "code": "enclosure_mechanical_release_blocked",
                 "severity": "blocker",
@@ -2307,7 +2307,7 @@ def main() -> int:
             for key, value in summary.items()
             if key in blocking_summary_keys and value
         ]
-        diagnostic_findings = []
+        diagnostic_findings: list[dict[str, Any]] = []
         if present_candidate_step_paths:
             diagnostic_findings.append(
                 {

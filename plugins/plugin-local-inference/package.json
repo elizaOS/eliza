@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-inference",
-	"version": "2.0.3",
+	"version": "2.0.3-beta.0",
 	"description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -82,7 +82,7 @@
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsgo --noEmit"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",

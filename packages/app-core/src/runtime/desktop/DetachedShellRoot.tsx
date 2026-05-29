@@ -140,11 +140,11 @@ function DetachedWorkspaceView({
   );
 }
 
-function OnboardingBlockedView(): JSX.Element {
+function FirstRunBlockedView(): JSX.Element {
   const { t } = useApp();
   return (
     <div
-      data-testid="onboarding-ui-overlay"
+      data-testid="first-run-blocked-view"
       className="flex flex-col items-center justify-center flex-1 min-h-0 gap-4 text-center px-6"
     >
       <div className="text-4xl">🎀</div>
@@ -156,7 +156,7 @@ function OnboardingBlockedView(): JSX.Element {
       <p className="text-sm text-muted max-w-sm">
         {t("detachedshell.SetupInProgressDesc", {
           defaultValue:
-            "Complete onboarding in the main window first. This window will become available once your agent is ready.",
+            "Complete first-run setup in the main window first. This window will become available once your agent is ready.",
         })}
       </p>
     </div>
@@ -217,7 +217,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
 export function DetachedShellRoot({
   route,
 }: DetachedShellRootProps): JSX.Element {
-  const { authRequired, onboardingComplete, retryStartup, startupError, t } =
+  const { authRequired, firstRunComplete, retryStartup, startupError, t } =
     useApp();
   if (startupError) {
     return <StartupFailureView error={startupError} onRetry={retryStartup} />;
@@ -227,11 +227,11 @@ export function DetachedShellRoot({
     return <PairingView />;
   }
 
-  if (!onboardingComplete) {
+  if (!firstRunComplete) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col font-body text-txt bg-bg">
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <OnboardingBlockedView />
+          <FirstRunBlockedView />
         </main>
       </div>
     );

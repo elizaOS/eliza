@@ -23,12 +23,6 @@ const ELIZA_ROOT = existsSync(
 )
   ? ROOT
   : path.join(ROOT, "eliza");
-const PATCH_TSUP_DTS_SCRIPT = existsSync(
-  path.join(ELIZA_ROOT, "packages", "scripts", "patch-tsup-dts.mjs"),
-)
-  ? path.join(ELIZA_ROOT, "packages", "scripts", "patch-tsup-dts.mjs")
-  : path.join(ELIZA_ROOT, "scripts", "patch-tsup-dts.mjs");
-
 // Seed packages to pack. Their local workspace dependencies are added
 // automatically so PR tarball install tests do not depend on already-published
 // beta packages.
@@ -356,8 +350,6 @@ async function packUpstreams() {
       `Could not find eliza workspace at ${ELIZA_ROOT}. Run this from a standalone eliza checkout or a Eliza checkout with eliza/ present.`,
     );
   }
-
-  await runCommand("node", [PATCH_TSUP_DTS_SCRIPT], ELIZA_ROOT);
 
   if (!existsSync(ARTIFACTS_DIR)) {
     mkdirSync(ARTIFACTS_DIR, { recursive: true });

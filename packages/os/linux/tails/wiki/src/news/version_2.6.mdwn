@@ -1,0 +1,87 @@
+[[!meta date="Tue, 20 Sep 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.6 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.5]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+  - We enabled [[!wikipedia address space layout randomization]] in the Linux
+    kernel (`kASLR`) to improve protection from buffer overflow attacks.
+
+  - We installed [[`rngd`|contribute/design/random#rngd]] to improve the
+    entropy of the random numbers generated on computers that have
+    a hardware random number generator.
+
+## Upgrades and changes
+
+  - Upgrade *Tor* to [0.2.8.7](https://blog.torproject.org/blog/tor-0287-released-important-fixes).
+
+  - Upgrade *Tor Browser* to [6.0.5](https://blog.torproject.org/blog/tor-browser-605-released).
+
+  - Upgrade to Linux 4.6. This should improve the support for newer hardware (graphics, Wi-Fi, etc.)
+
+  - Upgrade *Icedove* to [45.2.0](https://www.mozilla.org/en-US/thunderbird/45.2.0/releasenotes/).
+
+  - Upgrade *Tor Birdy* to [0.2.0](https://gitweb.torproject.org/torbirdy.git/tree/ChangeLog?id=0.2.0).
+
+  - Upgrade *Electrum* to [2.6.4](https://github.com/spesmilo/electrum/blob/7dbb23e8c6acfa40795d861b192c205dbb4b4268/RELEASE-NOTES).
+
+  - Install firmware for Intel SST sound cards (`firmware-intel-sound`).
+
+  - Install firmware for Texas Instruments Wi-Fi interfaces (`firmware-ti-connectivity`).
+
+  - Remove `non-free` APT repositories. We documented how to configure
+    additional APT repositories]]
+    using the persistent volume.
+
+  - Use a dedicated page as the homepage of *Tor Browser* so we can customize
+    it for our users.
+
+  - Set up the trigger for RAM erasure on shutdown earlier in the boot
+    process. This should speed up shutdown and make RAM erasure more robust.
+
+## Fixed problems
+
+  - Disable the automatic configuration of *Icedove* when using [[!wikipedia OAuth]].
+    This should fix the automatic configuration for GMail accounts. ([[!tails_ticket 11536]])
+
+  - Make the *Disable all networking* and *Tor bridge mode* options of *Tails
+    Greeter* more robust. ([[!tails_ticket 11593]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+# Known issues
+
+* For some users memory wiping fails more often than in Tails 2.5, and
+  for some users it fails less often. Please report any such changes
+  to [[!tails_ticket 11786]].
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.6
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.5 to 2.6.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.6.|install/download]]
+
+# What's coming up?
+
+Tails 2.7 is [[scheduled|contribute/calendar]] for November 8.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

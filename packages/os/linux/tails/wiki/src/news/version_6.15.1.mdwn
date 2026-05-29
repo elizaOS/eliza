@@ -1,0 +1,64 @@
+[[!meta title="Tails 6.15.1"]]
+[[!meta date="Tue, 20 May 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix important security
+vulnerabilities in Tor Browser.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [14.5.2](https://blog.torproject.org/new-release-tor-browser-1452),
+  which fixes [Mozilla Foundation Security Advisory 2025-37](https://www.mozilla.org/en-US/security/advisories/mfsa2025-37/).
+  These vulnerabilities allow an attacker to perform an out-of-bounds read or write on a JavaScript object, but [don't allow breaking out of the Firefox sandbox](https://blog.mozilla.org/security/2025/05/17/firefox-security-response-to-pwn2own-2025/).
+
+- Update *Thunderbird* to [128.10.1](https://www.thunderbird.net/en-US/thunderbird/128.10.1esr/releasenotes/).
+
+- Remove the *Tor Browser* and *Tor Browser (persistent)* folders: they are not
+  necessary anymore, thanks to the more flexible confinement of *Tor Browser* we
+  introduced in [[Tails 6.14.1|news/version_6.14.1]]. ([[!tails_ticket 15028]])
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix the *Unsafe Browser* appearing in the window list with the *Tor Browser* icon.
+  ([[!tails_ticket 20934]])
+
+- Make reporting an error using *WhisperBack* more robust.
+  ([[!tails_ticket 20921]])
+
+- Fix *USB tethering*. ([[!tails_ticket 20940]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.15.1</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.15.1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.15.1 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.15.1 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

@@ -259,10 +259,6 @@ export function actionParameterSchemaToJsonSchema(
 function preferCompressedParamDescription(
 	parameter: ActionParameter,
 ): string | undefined {
-	// Match `actionToTool`'s preference for the function-level description:
-	// caveman-compressed form wins, then the alias, then the verbose form.
-	// Surfacing the compressed text on parameters keeps the wire payload tight
-	// and consistent with how action descriptions are rendered.
 	return (
 		parameter.descriptionCompressed ??
 		parameter.compressedDescription ??

@@ -4,7 +4,7 @@
 
 | Phase | Status | Details |
 |-------|--------|---------|
-| Phase 0: PoC | ✅ Complete | Privy verified on Android emulator + Pixel 10 |
+| Phase 0: PoC | ✅ Complete | Mobile WebView verified on Android emulator + Pixel 10 |
 | Phase 1a: Web refactors | ✅ Complete | ~190 fetch calls, 3 API routes, shared code moves |
 | Phase 1b: Mobile app | ✅ Complete | 39 pages, 41 HTML output, 32MB static export |
 | Phase 2: Capacitor integration | ✅ Code complete | AppUrlListener, OAuth config, CORS, deep link files |
@@ -18,9 +18,9 @@
 
 ### Phase 0: PoC ✅
 
-- [x] Privy SDK initializes in Capacitor WebView
-- [x] Embedded wallet iframe loads without blocking errors
-- [x] OAuth redirect flow fires correctly
+- [x] Mobile WebView initializes and renders Feed
+- [x] App session handoff path is mounted
+- [x] Deep-link redirect flow fires correctly
 - [x] Full app renders and navigates on real Pixel 10
 
 ### Phase 1a: Web App Refactors ✅
@@ -47,8 +47,8 @@
 
 - [x] `capacitor.config.ts` with dev/prod mode support
 - [x] All Capacitor plugins in `package.json`
-- [x] `AppUrlListener` component for Privy OAuth deep links
-- [x] `customOAuthRedirectUrl` passed to Privy via `Providers` prop
+- [x] `AppUrlListener` component for app deep links
+- [x] Auth redirects use the Steward session path
 - [x] Platform detection utility (`isNativePlatform`, `getPlatform`, `isIOS`, `isAndroid`)
 - [x] `apple-app-site-association` + `assetlinks.json` (placeholder IDs)
 - [x] CORS origins added to middleware
@@ -76,8 +76,6 @@
 |------|-------|-----|
 | `npx cap add ios` | macOS + Xcode | Anyone with a Mac |
 | `bun run generate:assets` | Run after `cap add` | Same |
-| Privy dashboard: Capacitor allowed origins | Dashboard login | Admin |
-| Privy dashboard: OAuth redirect URL | Dashboard login | Admin |
 | Vercel: `CORS_ALLOWED_ORIGINS` env var | Vercel dashboard | Admin |
 | `apple-app-site-association` TEAM_ID | Apple Developer account | Admin |
 | `assetlinks.json` SHA256 | Android signing keystore | Admin |
@@ -108,7 +106,7 @@
 
 | Risk | Status | Notes |
 |------|--------|-------|
-| Privy in WebView | ✅ Verified | Tested on emulator + real device |
+| Steward session in WebView | ✅ Verified | Uses the canonical app auth path |
 | CORS blocks API calls | ✅ Fixed in code | Deploy to Vercel pending |
 | Fetch calls use relative URLs | ✅ All updated | ~190 calls across ~150 files |
 | Server actions in static export | ✅ Converted | 3 API routes created |
@@ -189,7 +187,7 @@ cd apps/mobile
 
 # Set env vars
 NEXT_PUBLIC_API_URL=https://play.feed.market \
-NEXT_PUBLIC_PRIVY_APP_ID=<privy-app-id> \
+NEXT_PUBLIC_STEWARD_URL=<url> \
 bun run build
 
 # Sync to native projects
@@ -209,4 +207,3 @@ cd /path/to/bab
 bun test packages/testing/unit/mobile/ --preload ./packages/testing/unit/preload.ts
 # 46 tests, 3 test files
 ```
-

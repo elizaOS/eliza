@@ -1,19 +1,14 @@
 /**
  * RAM-pressure monitor for the local-inference path (W10 / J2).
  *
- * Polls `os.freemem()` / `os.totalmem()` on an interval (and, when the
- * dflash llama-server is running, scrapes its `/metrics` RSS so a runaway
- * server process is visible even when the OS hasn't yet reported low free
- * RAM). When free RAM crosses a low-water threshold, the monitor walks the
+ * Polls `os.freemem()` / `os.totalmem()` on an interval. When free RAM
+ * crosses a low-water threshold, the monitor walks the
  * `SharedResourceRegistry`'s evictable model roles in *ascending priority*
- * — `drafter < vision/mmproj < embedding < vad < ASR < TTS < text-target` —
+ * — `vision/mmproj < embedding < vad < ASR < TTS < text-target` —
  * and evicts the cheapest one. Cheap evictions are the voice TTS/ASR weights
  * (`MmapRegionHandle.evictPages()`), the vision projector, and unloading the
- * embedding model; the DFlash drafter is co-resident in the llama-server
- * process, so "evicting" it means restarting the server without `-md` — that
- * role registers a high enough priority that it's only chosen as a last
- * resort. Every eviction is logged (observable) and reversible (roles re-load
- * lazily on next use).
+ * embedding model. Every eviction is logged (observable) and reversible
+ * (roles re-load lazily on next use).
  *
  * The monitor never *loads* anything — it only frees memory. Re-load is the
  * caller's job, on demand. It also never evicts the text target (priority
@@ -41,7 +36,7 @@ export interface MemoryMonitorLogger {
 export interface MemorySample {
 	totalMb: number;
 	freeMb: number;
-	/** llama-server RSS in MB when the dflash backend exposes it, else null. */
+	/** External runtime RSS in MB when a host probe exposes it, else null. */
 	serverRssMb: number | null;
 	/** Effective free memory used for the pressure decision (min of OS-free and total-minus-RSS-style headroom). */
 	effectiveFreeMb: number;
@@ -130,7 +125,7 @@ export function resolveMemoryMonitorConfig(
 export interface MemoryMonitorSources {
 	/** OS free/total memory in bytes. Defaults to `os.freemem()/os.totalmem()`. */
 	osMemory?: () => { freeBytes: number; totalBytes: number };
-	/** Running llama-server RSS in MB, or null. Defaults to the dflash backend probe. */
+	/** Running external runtime RSS in MB, or null. */
 	serverRssMb?: () => Promise<number | null>;
 }
 
@@ -275,30 +270,9 @@ export class MemoryMonitor {
 }
 
 /**
- * Default llama-server RSS probe: scrape the dflash backend's `/metrics`
- * for `process_resident_memory_bytes` (the standard Prometheus process
- * collector gauge llama-server exports). Returns null when no server is
- * running or the gauge isn't present. Inline import keeps `memory-monitor`
- * loadable without dragging the whole engine in at module-load time and
- * avoids a static cycle (dflash-server → conversation-registry → ... → here).
+ * Default RSS probe. The local text path is in-process FFI now, so there is no
+ * server-side metrics endpoint to scrape.
  */
 async function defaultServerRssMb(): Promise<number | null> {
-	try {
-		const { dflashLlamaServer } = await import("./dflash-server");
-		if (!dflashLlamaServer.hasLoadedModel()) return null;
-		const baseUrl = dflashLlamaServer.currentBaseUrl();
-		if (!baseUrl) return null;
-		const res = await fetch(`${baseUrl.replace(/\/$/, "")}/metrics`, {
-			method: "GET",
-		});
-		if (!res.ok) return null;
-		const text = await res.text();
-		const match = text.match(/^process_resident_memory_bytes\s+([0-9.eE+-]+)/m);
-		if (!match) return null;
-		const bytes = Number.parseFloat(match[1]);
-		if (!Number.isFinite(bytes) || bytes <= 0) return null;
-		return Math.round(bytes / BYTES_PER_MB);
-	} catch {
-		return null;
-	}
+	return null;
 }

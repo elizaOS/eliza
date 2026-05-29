@@ -262,6 +262,7 @@ async def main_async(args):
         print(
             f"  {r['label']:<15}: backward={bk_rate:>4.0%} | "
             f"compute_saved={compute_saved:>4.0%} | "
+            f"exp={total_exp:>5} | "
             f"reward={avg_reward:>7.4f} | "
             f"delight={total_delight:>7.1f} | "
             f"time={r['total_time']:.0f}s"

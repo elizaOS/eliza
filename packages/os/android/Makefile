@@ -1,7 +1,7 @@
 # elizaOS Mobile (AOSP) — emulator + build entry point.
 #
 # The discoverable front door for the AOSP/Cuttlefish fork, parallel to
-# packages/os/linux/elizaos/Makefile for the Debian fork. It drives the
+# packages/os/linux/Justfile for the canonical Debian fork. It drives the
 # brand-aware orchestrator in packages/scripts/distro-android with the
 # elizaOS vendor overlay shipped in this package (vendor/eliza: the Eliza
 # launcher, init.eliza.rc, sepolicy, privileged permissions, and the boot

@@ -1,0 +1,168 @@
+[[!meta date="Thu, 04 Apr 2013 11:12:49 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for March, 2013"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.17.1 [[was released|news/version_0.17.1]] on March 23rd.
+
+Metrics
+=======
+
+  - 115 798 connections of Tails to the Tor network. This makes a boot
+    every 23 seconds on average (this number is an approximation from
+    the requests made to the security announcements feed. The later is
+    retrieved by Tails after being connected to Tor to eventually
+    encourage users to update.)
+
+  - 75 reports were received through WhisperBack.
+
+  - 756 comments were posted on the forum, with 185 signed by Tails.
+
+Code
+====
+
+- Some progress has been done on a feature to
+  remember installed packages.
+
+- A about Tails launcher was
+  drafted, following-up on some feedback
+  from Runa's "Training Journalists in Istanbul report.
+
+- The Indymedia IRC account
+  was removed.
+
+- Bugs and todo pages are not shipped any more in ISO images.
+
+- Some work
+  was started to make the system disk
+  read-only (which was supposedly
+  fixed months ago, but apparently it either was not, or there was
+  a regression).
+
+- Awesome progress
+  was made to [[!tails_ticket 6090 desc="automate
+  our test suite"]] with
+  Cucumber.
+
+- We
+  worked
+  around an unfortunate regression caused by the integration of
+  Debian backports into the main
+  archive.
+
+- NoScript's HTML5 media click-to-play
+  was disabled.
+
+- udisks users (GNOME Disk Utility, tails-persistence-setup, etc.)
+  won't reset the system partition's attributes when manipulating the
+  partition table
+  anymore.
+
+- More reliable OpenPGP keyservers
+  were configured.
+
+Documentation and Website
+=========================
+
+- A *Tor check* link
+  was added to the [[web
+  browser homepage|news]]. This link hides the "Download Tails 0.17.1"
+  one, so it should both help people who want to do this check every
+  time they boot Tails, and clear up some confusion reported by Runa
+  about "oh, is this a new version available, should I update?"
+
+- The reintroduction of hybrid ISO images to simplify Mac USB boot was
+  [worked on](https://github.com/kolohe/amnesia/tree/manual_usb_installation/mac).
+
+- The AutoType feature of KeePassX [[has been
+  documented|/doc/encryption_and_privacy/manage_passwords#index4h1]] to
+  allow pasting complex passwords into Pinentry.
+
+Translation
+===========
+
+- Tails USB installer: update translations for French, German, Spanish,
+  Finnish, Greek, Italian, Latvian, Dutch, Polish and Chinese.
+
+- Tails Greeter: update translations for Farsi, Chinese, French;
+  new translations: Finnish, Norwegian Bokmål, Galician.
+
+- tails-persistence-setup: update Farsi and Chinese translations;
+  import new translations for Finnish and Swedish.
+
+- WhisperBack: update translations for Arabic, French, German, Greek,
+  Spanish, Korean, Polish, Russian. New translations: Finnish, Chinese.
+
+On-going discussions
+====================
+
+- Some discussions triggered by Runa's "Training Journalists in
+  Istanbul" report went
+  on.
+
+- Some discussion was
+  triggered
+  by a proposed branch that fixes how some buggy hard drives don't
+  well the Tails APM settings.
+
+- We have
+  discussed
+  if and how to better deal, at Tails upgrade time, with the situation
+  when the user has added random files on the Tails system partition
+  (which is not supported).
+
+- Some discussions about
+  potentially
+  supported
+  hardware happened.
+
+- A discussion about the process to contribute to the
+  documentation
+  clarified why the current process works the way it does, and
+  resulted in a good compromise to be found.
+
+- We started
+  discussing
+  with GDM developers if and how they intend to support the custom
+  greeter usecase that we depend on.
+
+- We
+  decided
+  not to include a text web browser in Tails.
+
+Infrastructure
+==============
+
+- Some work was put into foundations we need to set up Jenkins for our
+  needs, mainly on the Puppet modules side (e.g. code for safely
+  installing Jenkins plugins from the web, an improved Puppet module
+  to manage Jenkins).
+
+- A VM to automatically build Tails was created, and the Puppet code
+  that describes its initial setup was written.
+
+- We have setup a Debian package builder based on
+  [debomatic](https://launchpad.net/debomatic). It still has some
+  rough edges, but seems to basically do its job.
+
+- The nice folks at [immerda](https://www.immerda.ch/) have setup most
+  of what's needed to host all our Git repositories in the same place,
+  in a way that makes it convenient for us to create new repositories,
+  manage access to it, and reintroduce IRC commit notifications.
+  Thanks!
+
+Funding
+=======
+
+- Tails now accepts Bitcoin donations.
+
+- We will soon close the budget for our bounties program. Teaser:
+  a handful of great programs, that are useful to Tails, will see some
+  bonus activity in the next few months!
+
+- We have filed a grant application that answers Sponsor Echo's call
+  for proposals.

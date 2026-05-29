@@ -143,7 +143,8 @@ function toAuthUser(dbUser: DbUserRow): AuthenticatedUser {
   return {
     userId: dbUser.id,
     dbUserId: dbUser.id,
-    privyId: dbUser.privyId ?? dbUser.stewardId ?? dbUser.id,
+    stewardId: dbUser.stewardId ?? undefined,
+    privyId: dbUser.privyId ?? dbUser.id,
     email: dbUser.email ?? undefined,
     isAdmin: dbUser.isAdmin,
     isAgent: dbUser.isAgent,
@@ -201,9 +202,9 @@ export async function authenticate(
 
   // ── Integration test DID: steward:test:<userId> ────────────────────────────
   const allowTestAuth =
-    process.env.ALLOW_TEST_PRIVY_DID_AUTH !== undefined
+    process.env.ALLOW_TEST_STEWARD_AUTH !== undefined
       ? ["true", "1", "yes", "on"].includes(
-          process.env.ALLOW_TEST_PRIVY_DID_AUTH.toLowerCase(),
+          process.env.ALLOW_TEST_STEWARD_AUTH.toLowerCase(),
         )
       : process.env.NODE_ENV === "development" ||
         process.env.NODE_ENV === "test";
@@ -347,20 +348,4 @@ export function authErrorResponse(message = "Unauthorized") {
 export async function authenticateUser(req: NextRequest) {
   const authUser = await authenticate(req);
   return { id: authUser.userId, ...authUser };
-}
-
-// ─── Legacy Privy client export (no-op — kept for import compatibility) ───────
-// Any code still importing getPrivyClient() will compile but get an error at
-// runtime to surface remaining usages during Phase 2 migration.
-
-/** @deprecated — use Steward JWT verification instead */
-export function getPrivyClient(): never {
-  throw new Error(
-    "[Phase 2] getPrivyClient() has been removed. Use Steward JWT verification.",
-  );
-}
-
-/** @internal Reset for testing only — no-op in Phase 2 */
-export function _resetPrivyClientForTesting(): void {
-  /* no-op */
 }

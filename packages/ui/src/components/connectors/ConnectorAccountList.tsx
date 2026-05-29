@@ -193,13 +193,13 @@ export function ConnectorAccountList({
       ) : null}
 
       {connectorAccounts.error ? (
-        <div className="rounded-lg border border-border/45 bg-card/30 px-3 py-2 text-xs text-muted">
+        <div className="rounded-sm border border-border/45 bg-card/30 px-3 py-2 text-xs text-muted">
           {connectorAccounts.error}
         </div>
       ) : null}
 
       {sortedAccounts.length === 0 && !connectorAccounts.loading ? (
-        <div className="rounded-lg border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
+        <div className="rounded-sm border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
           No connector accounts yet.
         </div>
       ) : (

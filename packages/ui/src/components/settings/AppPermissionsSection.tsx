@@ -197,7 +197,7 @@ export function AppPermissionsSection() {
         <button
           type="button"
           onClick={() => void refresh()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-bg-hover px-2.5 py-1 text-xs-tight text-muted-strong hover:bg-bg-hover/80"
+          className="inline-flex items-center gap-1.5 rounded-sm border border-border/60 bg-bg-hover px-2.5 py-1 text-xs-tight text-muted-strong hover:bg-bg-hover/80"
           disabled={listStatus.state === "loading"}
         >
           {listStatus.state === "loading" ? (
@@ -224,7 +224,7 @@ export function AppPermissionsSection() {
       {grantableRows.map((row) => (
         <article
           key={row.view.slug}
-          className="space-y-3 rounded border border-border/60 bg-card/92 p-4 shadow-sm"
+          className="space-y-3 rounded-sm border border-border/60 bg-card/92 p-4 "
         >
           <header className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="min-w-0">
@@ -290,7 +290,7 @@ export function AppPermissionsSection() {
           </div>
 
           {row.error && (
-            <div className="rounded-lg border border-danger/30 bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">
               {row.error}
             </div>
           )}

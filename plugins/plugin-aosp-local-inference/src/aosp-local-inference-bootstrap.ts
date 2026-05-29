@@ -507,30 +507,30 @@ function resolveAospLlamaGpuLayers(): number {
   return useGpu === true ? 99 : 0;
 }
 
-function dflashServerSpawnAllowed(): boolean {
-  const explicitServerSpawn = readBooleanEnv("ELIZA_DFLASH_SERVER_SPAWN");
+function mtpServerSpawnAllowed(): boolean {
+  const explicitServerSpawn = readBooleanEnv("ELIZA_MTP_SERVER_SPAWN");
   if (explicitServerSpawn !== null) {
     return explicitServerSpawn;
   }
 
-  // ELIZA_DFLASH expresses the desired inference mode. It must not opt a
+  // ELIZA_MTP expresses the desired inference mode. It must not opt a
   // stock APK into the retired child-process llama-server path. Android
   // production builds only enable speculation through an in-process FFI
   // implementation that explicitly reports support; server spawn is a
-  // diagnostic escape hatch and requires ELIZA_DFLASH_SERVER_SPAWN=1.
+  // diagnostic escape hatch and requires ELIZA_MTP_SERVER_SPAWN=1.
   return false;
 }
 
-function inProcessDflashRequested(): boolean {
-  const explicitDflash = readBooleanEnv("ELIZA_DFLASH");
-  if (explicitDflash !== null) {
-    return explicitDflash;
+function inProcessMtpRequested(): boolean {
+  const explicitMtp = readBooleanEnv("ELIZA_MTP");
+  if (explicitMtp !== null) {
+    return explicitMtp;
   }
-  return readBooleanEnv("ELIZA_DFLASH_REQUIRED") === true;
+  return readBooleanEnv("ELIZA_MTP_REQUIRED") === true;
 }
 
-function dflashDrafterIsTargetCopy(bundleDir: string): boolean {
-  const raw = readDflashTargetMeta(bundleDir);
+function mtpDrafterIsTargetCopy(bundleDir: string): boolean {
+  const raw = readMtpTargetMeta(bundleDir);
   if (!raw) return false;
   const draftSha =
     typeof raw.drafter?.sha256 === "string"
@@ -543,7 +543,7 @@ function dflashDrafterIsTargetCopy(bundleDir: string): boolean {
   return Boolean(draftSha && targetSha && draftSha === targetSha);
 }
 
-function readDflashTargetMeta(bundleDir: string): {
+function readMtpTargetMeta(bundleDir: string): {
   publishEligible?: unknown;
   drafter?: {
     sha256?: unknown;
@@ -559,12 +559,12 @@ function readDflashTargetMeta(bundleDir: string): {
     checks?: Record<string, { pass?: unknown } | undefined>;
   };
 } | null {
-  const metaPath = path.join(bundleDir, "dflash", "target-meta.json");
+  const metaPath = path.join(bundleDir, "mtp", "target-meta.json");
   if (!existsSync(metaPath)) return null;
   try {
     return JSON.parse(readFileSync(metaPath, "utf8"));
   } catch (err) {
-    writeAospLlamaDebugLog("bootstrap:dflash:targetMetaReadFailed", {
+    writeAospLlamaDebugLog("bootstrap:mtp:targetMetaReadFailed", {
       metaPath,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -572,10 +572,10 @@ function readDflashTargetMeta(bundleDir: string): {
   }
 }
 
-function dflashMetadataAllowsStockAutoPair(bundleDir: string): boolean {
-  const meta = readDflashTargetMeta(bundleDir);
+function mtpMetadataAllowsStockAutoPair(bundleDir: string): boolean {
+  const meta = readMtpTargetMeta(bundleDir);
   if (!meta || meta.publishEligible !== true) return false;
-  if (dflashDrafterIsTargetCopy(bundleDir)) return false;
+  if (mtpDrafterIsTargetCopy(bundleDir)) return false;
   if (
     meta.drafter?.finalElizaWeights === false ||
     meta.targetText?.finalElizaWeights === false
@@ -601,8 +601,8 @@ function dflashMetadataAllowsStockAutoPair(bundleDir: string): boolean {
   return true;
 }
 
-function resolveDflashDrafterPath(modelPath: string): string | null {
-  const explicit = process.env.ELIZA_DFLASH_DRAFTER_PATH?.trim();
+function resolveMtpDrafterPath(modelPath: string): string | null {
+  const explicit = process.env.ELIZA_MTP_DRAFTER_PATH?.trim();
   if (explicit) {
     return existsSync(explicit) ? explicit : null;
   }
@@ -611,33 +611,33 @@ function resolveDflashDrafterPath(modelPath: string): string | null {
     path.basename(textDir).toLowerCase() === "text"
       ? path.dirname(textDir)
       : path.dirname(modelPath);
-  const dflashDir = path.join(bundleDir, "dflash");
-  if (!existsSync(dflashDir)) return null;
+  const mtpDir = path.join(bundleDir, "mtp");
+  if (!existsSync(mtpDir)) return null;
   const explicitlyRequested =
-    inProcessDflashRequested() || dflashServerSpawnAllowed();
-  const explicitlyDisabled = readBooleanEnv("ELIZA_DFLASH") === false;
+    inProcessMtpRequested() || mtpServerSpawnAllowed();
+  const explicitlyDisabled = readBooleanEnv("ELIZA_MTP") === false;
   if (
     !explicitlyRequested &&
-    (explicitlyDisabled || !dflashMetadataAllowsStockAutoPair(bundleDir))
+    (explicitlyDisabled || !mtpMetadataAllowsStockAutoPair(bundleDir))
   ) {
     return null;
   }
-  if (dflashDrafterIsTargetCopy(bundleDir)) {
-    writeAospLlamaDebugLog("bootstrap:dflash:skip", {
+  if (mtpDrafterIsTargetCopy(bundleDir)) {
+    writeAospLlamaDebugLog("bootstrap:mtp:skip", {
       reason: "drafter_sha_matches_target",
       bundleDir,
     });
     return null;
   }
   try {
-    const candidates = readdirSync(dflashDir)
+    const candidates = readdirSync(mtpDir)
       .filter((name) => {
         const lower = name.toLowerCase();
         return lower.endsWith(".gguf") && lower.includes("draft");
       })
       .sort();
     for (const name of candidates) {
-      const candidate = path.join(dflashDir, name);
+      const candidate = path.join(mtpDir, name);
       if (existsSync(candidate)) return candidate;
     }
   } catch {
@@ -651,20 +651,20 @@ export function buildAospLoadModelArgs(
   modelPath: string,
 ): AospLoadModelArgs {
   if (role === "chat") {
-    const draftModelPath = resolveDflashDrafterPath(modelPath);
+    const draftModelPath = resolveMtpDrafterPath(modelPath);
     const gpuLayers = resolveAospLlamaGpuLayers();
     return {
       modelPath,
       contextSize: readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
       draftModelPath: draftModelPath ?? undefined,
       draftContextSize: draftModelPath
-        ? readPositiveIntEnv("ELIZA_DFLASH_DRAFT_N_CTX", 2048)
+        ? readPositiveIntEnv("ELIZA_MTP_DRAFT_N_CTX", 2048)
         : undefined,
       draftMin: draftModelPath
-        ? readPositiveIntEnv("ELIZA_DFLASH_DRAFT_MIN", 1)
+        ? readPositiveIntEnv("ELIZA_MTP_DRAFT_MIN", 1)
         : undefined,
       draftMax: draftModelPath
-        ? readPositiveIntEnv("ELIZA_DFLASH_DRAFT_MAX", 16)
+        ? readPositiveIntEnv("ELIZA_MTP_DRAFT_MAX", 16)
         : undefined,
       useGpu: gpuLayers > 0,
       gpuLayers,
@@ -944,7 +944,7 @@ function isChatModelPath(file: string): boolean {
   return (
     lowerName.endsWith(".gguf") &&
     lowerName.includes("eliza-1") &&
-    !lowerPath.includes("/dflash/") &&
+    !lowerPath.includes("/mtp/") &&
     !lowerPath.includes("/tts/") &&
     !lowerPath.includes("/asr/") &&
     !lowerPath.includes("/vad/") &&
@@ -1223,7 +1223,7 @@ function fallbackFindBundledModels(modelsDir: string): {
       } else if (
         !chat &&
         lowerName.includes("eliza-1") &&
-        !lowerPath.includes("/dflash/") &&
+        !lowerPath.includes("/mtp/") &&
         !lowerPath.includes("/tts/") &&
         !lowerPath.includes("/asr/") &&
         !lowerPath.includes("/vad/") &&

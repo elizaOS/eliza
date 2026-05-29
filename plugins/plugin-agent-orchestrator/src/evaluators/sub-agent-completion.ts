@@ -18,6 +18,12 @@ const EMPTY_COMPLETION_PLACEHOLDER =
 const ORCHESTRATOR_CONTEXT_ID = "automation" as AgentContext;
 const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
+const TOOL_FAILURE_MARKER_RE =
+  /\b(?:command not found|permission denied|no such file or directory|timed? out|timeout|exited with code|exit code [1-9]\d*|non[-\s]?zero exit|could not find|unable to find)\b/i;
+const NO_RESULT_MARKER_RE =
+  /\b(?:no files? found|no matching files?|no matches? found|found no files?|nothing found)\b/i;
+const POSITIVE_QUANTITATIVE_EVIDENCE_RE =
+  /\b(?:found|located|matched|identified|listed|returned|there (?:are|were)|total(?:ed)?|count(?:\s+is)?|contains?)\s+(?:[1-9]\d*|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|[a-z]+(?:ty|teen))\b/i;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object"
@@ -299,6 +305,19 @@ function completionHasVerificationFailure(text: string): boolean {
   );
 }
 
+function completionHasFailureMarkerWithoutPositiveEvidence(
+  text: string,
+  verifiedUrls: readonly string[] = [],
+): boolean {
+  const body = userFacingCompletionBody(text);
+  const fullText = stripRouterAnnotations(text);
+  const searchable = [body, fullText].filter(Boolean).join("\n");
+  if (verifiedUrls.length > 0 || hasUserFacingUrl(searchable)) return false;
+  if (POSITIVE_QUANTITATIVE_EVIDENCE_RE.test(searchable)) return false;
+  if (TOOL_FAILURE_MARKER_RE.test(searchable)) return true;
+  return NO_RESULT_MARKER_RE.test(fullText) && !NO_RESULT_MARKER_RE.test(body);
+}
+
 function verifiedUrlsFromMetadata(message: Memory): string[] {
   return stringArrayOf(metadataRecord(message)?.subAgentVerifiedUrls);
 }
@@ -424,6 +443,14 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
+    if (
+      completionHasFailureMarkerWithoutPositiveEvidence(
+        completionText,
+        verifiedUrls,
+      )
+    ) {
+      return true;
+    }
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
@@ -440,6 +467,24 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
+    if (
+      completionHasFailureMarkerWithoutPositiveEvidence(
+        completionText,
+        verifiedUrls,
+      )
+    ) {
+      return {
+        ...respondIfNeeded(messageHandler),
+        requiresTool: true,
+        setContexts: [ORCHESTRATOR_CONTEXT_ID],
+        clearReply: true,
+        addCandidateActions: ["TASKS_SEND_TO_AGENT"],
+        addParentActionHints: ["TASKS"],
+        debug: [
+          "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
+        ],
+      };
+    }
     const reply = cleanCompletionReply(
       replyPatchFromCompletion(
         currentReply,

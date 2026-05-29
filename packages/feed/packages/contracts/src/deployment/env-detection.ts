@@ -174,10 +174,8 @@ export function validateEnvironment(env?: DeploymentEnv): EnvValidationResult {
     errors.push("DATABASE_URL is required");
   }
 
-  const privyAppId =
-    process.env.NEXT_PUBLIC_PRIVY_APP_ID || process.env.PRIVY_APP_ID;
-  if (!privyAppId) {
-    errors.push("NEXT_PUBLIC_PRIVY_APP_ID (or PRIVY_APP_ID) is required");
+  if (!process.env.STEWARD_JWT_SECRET) {
+    errors.push("STEWARD_JWT_SECRET is required");
   }
 
   switch (environment) {
@@ -287,10 +285,8 @@ function validateMainnet(errors: string[], warnings: string[]): void {
   }
 
   if (process.env.NODE_ENV === "production") {
-    const privyAppId =
-      process.env.PRIVY_APP_ID || process.env.NEXT_PUBLIC_PRIVY_APP_ID;
-    if (!privyAppId || !process.env.PRIVY_APP_SECRET) {
-      errors.push("Privy credentials required for production");
+    if (!process.env.STEWARD_JWT_SECRET) {
+      errors.push("STEWARD_JWT_SECRET is required for production");
     }
 
     if (!process.env.NEXT_PUBLIC_POSTHOG_PROJECT_ID) {

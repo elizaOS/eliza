@@ -1,0 +1,70 @@
+[[!meta title="Uninstalling Tails using Linux"]]
+
+[[!inline pages="doc/first_steps/uninstall.intro" raw="yes" sort="age"]]
+
+1. Start on Linux or Tails.
+
+   <div class="tip">
+
+   <p>To uninstall a Tails USB stick while running Tails from that same USB
+   stick, add the <code>toram</code> boot option in the <i>Boot Loader</i>. See
+   [[uninstalling Tails using Tails itself|tails]].</p>
+
+   </div>
+
+1. Install *GNOME Disks*.
+
+   - If you are using the GNOME desktop environment,
+     *GNOME Disks* should be installed by
+     default.
+
+   - Otherwise, install the `gnome-disk-utility`
+     package using the usual installation method for your distribution.
+
+1. Make sure that the USB stick that you want to uninstall is unplugged.
+
+1. Open *GNOME Disks* (also called *Disks*).
+
+   <div>
+     For example, you can press the <b>Super</b> ([[!img lib/start.png class="symbolic" link="no" alt=""]]) key,
+     then enter <code>disks</code> and select <b>Disks</b>.
+   </div>
+
+   The storage devices in the computer are listed in the left pane.
+
+   [[!img install/inc/icons/gnome-disks.png link="no" alt=""]]
+
+1. Plug in the USB stick that you want to uninstall.
+
+   A new device appears in the list of storage devices. Select it.
+
+1. In the right pane of the window, verify that the device corresponds
+   to the USB stick that you want to uninstall, its brand, its size, etc.
+
+   <div class="caution">
+
+   <p>You might overwrite any hard disk on the computer.</p>
+
+   <p>If you are not sure about the device, stop proceeding.</p>
+
+   </div>
+
+1. To format the USB stick, select the [[!img lib/view-more.png alt="Drive Options" class="symbolic" link="no"]] button
+   in the title bar and choose **Format Disk**
+   to erase all the existing partitions on the device.
+
+1. In the **Format Disk** dialog:
+
+   - If you want to overwrite all data on the device, choose **Overwrite
+     existing data with zeroes** in the **Erase** menu.
+
+   - Choose **Compatible with all systems and devices (MBR/DOS)** in the
+     **Partitioning** menu.
+
+1. Click **Format**.
+
+1. In the confirmation dialog, click **Format** to confirm.
+
+1. To make sure that all the changes are written to the USB stick, select the
+   [[!img lib/system-shutdown.png alt="Power Off this Disk" class="symbolic" link="no"]]
+   button in the title bar.

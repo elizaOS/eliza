@@ -50,7 +50,7 @@ export function LoadContentPackForm() {
           })}
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
-          className="h-9 flex-1 rounded-lg bg-bg text-sm"
+          className="h-9 flex-1 rounded-sm bg-bg text-sm"
           onKeyDown={(e) => {
             if (e.key === "Enter") handleLoadFromUrl();
           }}
@@ -58,7 +58,7 @@ export function LoadContentPackForm() {
         <Button
           variant="outline"
           size="sm"
-          className="h-9 rounded-lg"
+          className="h-9 rounded-sm"
           onClick={handleLoadFromUrl}
           disabled={!urlInput.trim()}
         >
@@ -69,7 +69,7 @@ export function LoadContentPackForm() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-9 rounded-lg text-xs text-muted hover:text-txt"
+              className="h-9 rounded-sm text-xs text-muted hover:text-txt"
               onClick={() => fileInputRef.current?.click()}
               title={t("settings.appearance.loadFromFolder", {
                 defaultValue: "From folder",

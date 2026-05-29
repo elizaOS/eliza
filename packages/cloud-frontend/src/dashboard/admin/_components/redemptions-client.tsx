@@ -1,5 +1,6 @@
 "use client";
 
+import { formatUsd as formatCurrency } from "@elizaos/shared";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -220,13 +221,6 @@ export function AdminRedemptionsClient() {
       toast.error("Failed to reject", { description: error.error });
     }
     setActionLoading(false);
-  };
-
-  const formatCurrency = (value: number | string) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(typeof value === "string" ? parseFloat(value) : value);
   };
 
   const formatDate = (dateStr: string) => {
@@ -502,7 +496,7 @@ export function AdminRedemptionsClient() {
                           href={getExplorerUrl(r.network, r.tx_hash)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="h-8 w-8 flex items-center justify-center text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/80"
+                          className="h-8 w-8 flex items-center justify-center text-white/50 hover:text-white transition-colors"
                         >
                           <ExternalLink className="h-4 w-4" />
                         </a>

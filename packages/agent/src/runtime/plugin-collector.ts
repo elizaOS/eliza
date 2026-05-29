@@ -12,6 +12,8 @@
  *
  * @module plugin-collector
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import {
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
@@ -38,6 +40,19 @@ const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
   "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
 ]);
+
+function isOptionalProviderPackageAvailable(pluginName: string): boolean {
+  if (pluginName !== "@elizaos/plugin-vercel-ai-gateway") return true;
+  return (
+    existsSync(path.join(process.cwd(), "plugins/plugin-vercel-ai-gateway")) ||
+    existsSync(
+      path.join(
+        process.cwd(),
+        "node_modules/@elizaos/plugin-vercel-ai-gateway",
+      ),
+    )
+  );
+}
 
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
@@ -73,6 +88,30 @@ function isElizaOsAndroidRuntime(): boolean {
     isAndroidMobile() &&
     process.env.ELIZA_LOCAL_LLAMA?.trim().toLowerCase() === "1"
   );
+}
+
+/**
+ * Gitpathologist ships as @elizaos/plugin-gitpathologist. Auto-loads when the
+ * same env-resolved workspace the action will analyze looks like a git repo.
+ * Users can explicitly opt out via ELIZA_GITPATHOLOGIST=0.
+ */
+function resolveGitpathologistRepoRoot(): string {
+  const fromEnv =
+    process.env.MILADY_WORKSPACE_DIR ?? process.env.ELIZA_WORKSPACE_DIR;
+  const cwd = fromEnv?.trim() ? fromEnv.trim() : process.cwd();
+  return path.resolve(cwd);
+}
+
+function gitpathologistRequested(config: ElizaConfig): boolean {
+  const agentEntry = config.agents?.list?.[0];
+  const fromEntry = agentEntry?.gitpathologist;
+  const fromDefaults = config.agents?.defaults?.gitpathologist;
+  if (typeof fromEntry === "boolean") return fromEntry;
+  if (typeof fromDefaults === "boolean") return fromDefaults;
+  const raw = process.env.ELIZA_GITPATHOLOGIST?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "no") return false;
+  if (raw === "1" || raw === "true" || raw === "yes") return true;
+  return existsSync(path.join(resolveGitpathologistRepoRoot(), ".git"));
 }
 
 // ---------------------------------------------------------------------------
@@ -303,12 +342,6 @@ export function collectPluginNames(
     config as Record<string, unknown>,
   );
   const shellPluginDisabled = config.features?.shellEnabled === false;
-  const localEmbeddingsExplicitlyDisabled = (() => {
-    const raw = process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
-    if (!raw) return false;
-    const normalized = raw.trim().toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "yes";
-  })();
   const cloudTopology = resolveElizaCloudTopology(
     config as Record<string, unknown>,
   );
@@ -422,10 +455,13 @@ export function collectPluginNames(
       "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
     );
   }
-  if (localEmbeddingsExplicitlyDisabled) {
-    pluginsToLoad.delete("@elizaos/plugin-local-inference");
+  if (!onMobile && gitpathologistRequested(config)) {
+    pluginsToLoad.add("@elizaos/plugin-gitpathologist");
+    track(
+      "@elizaos/plugin-gitpathologist",
+      "gitpathologist (auto-on when .git/ present; gate ELIZA_GITPATHOLOGIST)",
+    );
   }
-
   // Allow list is additive — extra plugins on top of auto-detection,
   // not an exclusive whitelist that blocks everything else.
   if (allowList && allowList.length > 0) {
@@ -490,7 +526,10 @@ export function collectPluginNames(
         continue;
       }
     }
-    if (process.env[envKey]?.trim()) {
+    if (
+      process.env[envKey]?.trim() &&
+      isOptionalProviderPackageAvailable(pluginName)
+    ) {
       pluginsToLoad.add(pluginName);
       track(pluginName, `env: ${envKey}`);
     }

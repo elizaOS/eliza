@@ -2,7 +2,7 @@
 /**
  * Portable llama-server ablation runner for local inference backends.
  *
- * Measures target-only, DFlash, TurboQuant KV, TCQ/QJL KV, and combined paths
+ * Measures target-only, MTP, TurboQuant KV, TCQ/QJL KV, and combined paths
  * with the same OpenAI-compatible request shape across Metal, CUDA, ROCm, and
  * CPU builds. Results are written as JSON for cross-machine comparison.
  */
@@ -43,18 +43,18 @@ const DEFAULT_VARIANTS = [
     softFailSignals: ["SIGSEGV"],
   },
   {
-    name: "dflash_only",
-    label: "DFlash, f16 KV",
+    name: "mtp_only",
+    label: "MTP, f16 KV",
     needsDrafter: true,
-    args: ["--spec-type", "dflash"],
+    args: ["--spec-type", "mtp"],
   },
   {
-    name: "dflash_turbo4_polar",
-    label: "DFlash + Turbo/Polar KV turbo4",
+    name: "mtp_turbo4_polar",
+    label: "MTP + Turbo/Polar KV turbo4",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "dflash",
+      "mtp",
       "--cache-type-k",
       "tbq4_0",
       "--cache-type-v",
@@ -66,12 +66,12 @@ const DEFAULT_VARIANTS = [
     ],
   },
   {
-    name: "all_dflash_qjl_tcq",
-    label: "DFlash + forced QJL/TCQ turbo3_tcq",
+    name: "all_mtp_qjl_tcq",
+    label: "MTP + forced QJL/TCQ turbo3_tcq",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "dflash",
+      "mtp",
       "--cache-type-k",
       "tbq3_tcq",
       "--cache-type-v",
@@ -91,7 +91,7 @@ function stateDir() {
 }
 
 function detectBackend() {
-  const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
+  const forced = process.env.ELIZA_MTP_BACKEND?.trim().toLowerCase();
   if (forced) return forced;
   if (process.platform === "darwin") return "metal";
   if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES)
@@ -113,7 +113,7 @@ function defaultBinary(backend) {
     stateDir(),
     "local-inference",
     "bin",
-    "dflash",
+    "mtp",
     platformKey(backend),
     "llama-server",
   );
@@ -130,8 +130,8 @@ function parseArgs(argv) {
   const args = {
     backend,
     binary: defaultBinary(backend),
-    model: defaultModelPath("qwen3.5-4b-dflash.gguf"),
-    drafter: defaultModelPath("qwen3.5-4b-dflash-drafter-q4.repaired.gguf"),
+    model: defaultModelPath("qwen3.5-4b-mtp.gguf"),
+    drafter: defaultModelPath("qwen3.5-4b-mtp-drafter-q4.repaired.gguf"),
     runs: 3,
     warmupTokens: 32,
     maxTokens: 256,
@@ -208,7 +208,7 @@ function parseArgs(argv) {
         "baseline_f16_kv",
         "turbo4_polar_kv",
         "qjl_tcq_forced",
-        "dflash_only",
+        "mtp_only",
       ];
     } else if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -232,7 +232,7 @@ Options:
   --binary /path/to/llama-server
   --model /path/to/target.gguf
   --drafter /path/to/drafter.gguf
-  --variants baseline_f16_kv,turbo4_polar_kv,qjl_tcq_forced,dflash_only
+  --variants baseline_f16_kv,turbo4_polar_kv,qjl_tcq_forced,mtp_only
   --runs 3 --max-tokens 256 --quick
   --out-dir artifacts/local-inference-ablation
   --config packages/scripts/local-inference-ablation.config.json
@@ -291,7 +291,7 @@ function missingVariantKernels(variant, capabilities) {
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
     const value = args[i + 1];
-    if (flag === "--spec-type" && value === "dflash") required.add("dflash");
+    if (flag === "--spec-type" && value === "mtp") required.add("mtp");
     if (
       flag === "--cache-type-k" ||
       flag === "--cache-type-v" ||

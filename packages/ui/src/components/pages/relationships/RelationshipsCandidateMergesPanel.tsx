@@ -109,7 +109,7 @@ export function RelationshipsCandidateMergesPanel({
           return (
             <div
               key={candidate.id}
-              className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+              className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
             >
               <div className="flex flex-wrap items-center gap-1.5">
                 <MetaPill compact>

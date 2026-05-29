@@ -292,7 +292,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                     defaultValue: `Launch ${displayName}`,
                     name: displayName,
                   })}
-                  className={`rounded transition-transform hover:scale-105 ${ringClass}`}
+                  className={`rounded-sm transition-transform hover:scale-105 ${ringClass}`}
                   onClick={() => void handleLaunch(app)}
                 >
                   <AppIdentityTile
@@ -309,7 +309,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                       aria-label={`Actions for ${displayName}`}
                       data-testid={`apps-section-kebab-${app.name}`}
                       onClick={(event) => event.stopPropagation()}
-                      className="absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg text-muted opacity-0 shadow-sm transition-opacity hover:text-txt focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
+                      className="absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg text-muted opacity-0 transition-opacity hover:text-txt focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
                     >
                       <MoreHorizontal className="h-3 w-3" aria-hidden />
                     </button>

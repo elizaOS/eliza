@@ -14,8 +14,14 @@ on:
         required: true
         type: string
     secrets:
+      # Marked `required: false` so this reusable workflow's secret
+      # contract does not abort the parent at startup when called via
+      # `secrets: inherit` from release-orchestrator.yml. The job body
+      # now has a Check credentials step that emits a warning + skips
+      # the dispatch when HOMEBREW_TAP_TOKEN is empty. Mirrors the
+      # pattern used in publish-apt-repo.yml (PR #7976).
       HOMEBREW_TAP_TOKEN:
-        required: true
+        required: false
   workflow_dispatch:
     inputs:
       version:
@@ -36,7 +42,20 @@ jobs:
     name: Trigger Homebrew tap update
     runs-on: ubuntu-24.04
     steps:
+      - name: Check credentials
+        id: creds
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [[ -z "$HOMEBREW_TAP_TOKEN" ]]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN not configured. Homebrew tap update skipped."
+            echo "can_dispatch=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "can_dispatch=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Determine version
+        if: steps.creds.outputs.can_dispatch == 'true'
         id: meta
         run: |
           VERSION="${{ inputs.version }}"
@@ -45,7 +64,8 @@ jobs:
           echo "Triggering Homebrew update for version: $VERSION"
 
       - name: Dispatch to homebrew-tap
-        uses: peter-evans/repository-dispatch@v4
+        if: steps.creds.outputs.can_dispatch == 'true'
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           repository: elizaOS/homebrew-tap

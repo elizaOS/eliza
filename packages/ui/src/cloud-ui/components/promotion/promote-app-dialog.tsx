@@ -222,7 +222,7 @@ export function PromoteAppDialog({
               <button
                 type="button"
                 onClick={() => toggleChannel("social")}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left group ${
+                className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left group ${
                   config.channels.includes("social")
                     ? "border-blue-500/50 bg-blue-500/10"
                     : "border-white/10 bg-white/5 hover:bg-white/[0.07] hover:border-white/20"
@@ -234,6 +234,15 @@ export function PromoteAppDialog({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-white">Social Media</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-sm text-[10px] ${
+                        config.channels.includes("social")
+                          ? "bg-blue-500/20 text-blue-300"
+                          : "bg-white/10 text-neutral-400"
+                      }`}
+                    >
+                      ~$0.02/post
+                    </span>
                   </div>
                   <p className="text-sm text-white/50 mt-0.5">
                     Post to Twitter, LinkedIn, Discord...
@@ -256,7 +265,7 @@ export function PromoteAppDialog({
               <button
                 type="button"
                 onClick={() => toggleChannel("seo")}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left group ${
+                className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left group ${
                   config.channels.includes("seo")
                     ? "border-green-500/50 bg-green-500/10"
                     : "border-white/10 bg-white/5 hover:bg-white/[0.07] hover:border-white/20"
@@ -268,6 +277,15 @@ export function PromoteAppDialog({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-white">SEO</span>
+                    <span
+                      className={`px-2 py-0.5 rounded-sm text-[10px] ${
+                        config.channels.includes("seo")
+                          ? "bg-green-500/20 text-green-300"
+                          : "bg-white/10 text-neutral-400"
+                      }`}
+                    >
+                      ~$0.03
+                    </span>
                   </div>
                   <p className="text-sm text-white/50 mt-0.5">
                     Optimize for search engines
@@ -292,7 +310,7 @@ export function PromoteAppDialog({
                 onClick={() =>
                   adAccounts.length > 0 && toggleChannel("advertising")
                 }
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left group ${
+                className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left group ${
                   config.channels.includes("advertising")
                     ? "border-purple-500/50 bg-purple-500/10"
                     : adAccounts.length === 0
@@ -317,12 +335,12 @@ export function PromoteAppDialog({
                       Advertising
                     </span>
                     {adAccounts.length === 0 ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      <span className="px-2 py-0.5 rounded-sm text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30">
                         Connect account first
                       </span>
                     ) : (
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] ${
+                        className={`px-2 py-0.5 rounded-sm text-[10px] ${
                           config.channels.includes("advertising")
                             ? "bg-purple-500/20 text-purple-300"
                             : "bg-white/10 text-neutral-400"
@@ -388,7 +406,7 @@ export function PromoteAppDialog({
                     type="button"
                     key={channel}
                     onClick={() => setActiveTab(channel)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                    className={`px-3 py-1.5 rounded-sm text-sm font-medium transition-all ${
                       activeTab === channel
                         ? "bg-white/10 text-white"
                         : "text-neutral-500 hover:text-white"
@@ -416,14 +434,14 @@ export function PromoteAppDialog({
                           type="button"
                           key={platform.id}
                           onClick={() => toggleSocialPlatform(platform.id)}
-                          className={`flex items-center gap-2 p-3 rounded-lg transition-all ${
+                          className={`flex items-center gap-2 p-3 rounded-sm transition-all ${
                             config.social?.platforms?.includes(platform.id)
                               ? "bg-blue-500/10 border border-blue-500/50"
                               : "bg-black/30 border border-white/5 hover:border-white/20"
                           }`}
                         >
                           <div
-                            className={`w-4 h-4 rounded border flex items-center justify-center ${
+                            className={`w-4 h-4 rounded-sm border flex items-center justify-center ${
                               config.social?.platforms?.includes(platform.id)
                                 ? "bg-blue-500 border-blue-500"
                                 : "border-white/20"
@@ -458,7 +476,7 @@ export function PromoteAppDialog({
                           },
                         }))
                       }
-                      className="mt-1.5 bg-black/30 border-white/10 text-white placeholder:text-neutral-600 rounded-lg"
+                      className="mt-1.5 bg-black/30 border-white/10 text-white placeholder:text-neutral-600 rounded-sm"
                       rows={3}
                     />
                   </div>
@@ -480,7 +498,7 @@ export function PromoteAppDialog({
                         },
                       }))
                     }
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${
+                    className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left ${
                       (config.seo?.generateMeta ?? true)
                         ? "border-green-500/50 bg-green-500/10"
                         : "border-white/10 bg-white/5 hover:bg-white/[0.07] hover:border-white/20"
@@ -522,7 +540,7 @@ export function PromoteAppDialog({
                         },
                       }))
                     }
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${
+                    className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left ${
                       (config.seo?.generateSchema ?? true)
                         ? "border-green-500/50 bg-green-500/10"
                         : "border-white/10 bg-white/5 hover:bg-white/[0.07] hover:border-white/20"
@@ -566,7 +584,7 @@ export function PromoteAppDialog({
                         },
                       }))
                     }
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${
+                    className={`w-full flex items-center gap-4 p-4 rounded-sm border transition-all text-left ${
                       (config.seo?.submitToIndexNow ?? true)
                         ? "border-green-500/50 bg-green-500/10"
                         : "border-white/10 bg-white/5 hover:bg-white/[0.07] hover:border-white/20"
@@ -625,7 +643,7 @@ export function PromoteAppDialog({
                           }));
                         }}
                       >
-                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-lg">
+                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-sm">
                           <SelectValue placeholder="Select account" />
                         </SelectTrigger>
                         <SelectContent className="bg-neutral-800 border-white/10">
@@ -656,7 +674,7 @@ export function PromoteAppDialog({
                           }))
                         }
                       >
-                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-lg">
+                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-sm">
                           <SelectValue placeholder="Select objective" />
                         </SelectTrigger>
                         <SelectContent className="bg-neutral-800 border-white/10">
@@ -689,7 +707,7 @@ export function PromoteAppDialog({
                             },
                           }))
                         }
-                        className="mt-1.5 bg-black/30 border-white/10 text-white rounded-lg"
+                        className="mt-1.5 bg-black/30 border-white/10 text-white rounded-sm"
                       />
                     </div>
 
@@ -707,7 +725,7 @@ export function PromoteAppDialog({
                           }))
                         }
                       >
-                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-lg">
+                        <SelectTrigger className="mt-1.5 bg-black/30 border-white/10 text-white rounded-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-neutral-800 border-white/10">
@@ -746,7 +764,7 @@ export function PromoteAppDialog({
           {/* Step: Review */}
           {step === "review" && (
             <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-black/30 border border-white/5 space-y-4">
+              <div className="p-4 rounded-sm bg-black/30 border border-white/5 space-y-4">
                 <h3 className="text-sm font-medium text-white">
                   Promotion Summary
                 </h3>
@@ -854,7 +872,7 @@ export function PromoteAppDialog({
                     status && (
                       <div
                         key={channel}
-                        className={`p-4 rounded-lg flex items-center justify-between ${
+                        className={`p-4 rounded-sm flex items-center justify-between ${
                           status.success
                             ? "bg-green-500/10 border border-green-500/30"
                             : "bg-red-500/10 border border-red-500/30"
@@ -864,7 +882,7 @@ export function PromoteAppDialog({
                           {channel}
                         </span>
                         <span
-                          className={`text-xs font-medium px-2 py-1 rounded ${
+                          className={`text-xs font-medium px-2 py-1 rounded-sm ${
                             status.success
                               ? "bg-green-500/20 text-green-400"
                               : "bg-red-500/20 text-red-400"
@@ -880,7 +898,7 @@ export function PromoteAppDialog({
               {Object.entries(result.channels).some(
                 ([, status]) => status && !status.success && status.error,
               ) && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/20">
                   {Object.entries(result.channels).map(
                     ([channel, status]) =>
                       status &&

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-openai",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -79,7 +79,7 @@
     "clean": "rm -rf dist .turbo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run --config ./vitest.config.ts",
     "test:ts": "vitest run --config ./vitest.config.ts",
     "build": "bun run build.ts"

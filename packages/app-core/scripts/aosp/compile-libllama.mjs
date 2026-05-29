@@ -45,8 +45,8 @@
 //   land on identical kernel sources. A rebase onto a newer upstream is a
 //   deferred effort — see docs/porting/upstream-rebase-plan.md.
 //
-//   v0.2.0-eliza (subset of this pin) added DFlash speculative decoding
-//   CLI surface (--spec-type dflash, --spec-draft-n-min/max, n_drafted_total
+//   v0.2.0-eliza (subset of this pin) added MTP speculative decoding
+//   CLI surface (--spec-type mtp, --spec-draft-n-min/max, n_drafted_total
 //   / n_drafted_accepted_total Prometheus counters) on top of v0.1.0-eliza.
 //
 // Why this fork (not stock ggml-org/llama.cpp b8198):
@@ -89,7 +89,7 @@
 //   packages/app/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
 //   packages/app/android/app/src/main/assets/agent/{abi}/libggml-base.so
 //   packages/app/android/app/src/main/assets/agent/{abi}/libeliza-llama-shim.so
-//   packages/app/android/app/src/main/assets/agent/{abi}/llama-server          (DFlash spec-decode HTTP server)
+//   packages/app/android/app/src/main/assets/agent/{abi}/llama-server          (MTP spec-decode HTTP server)
 //
 // libllama.so has NEEDED entries on the entire libggml family (see
 // `readelf -d`); the dynamic linker resolves them from the per-ABI asset
@@ -186,14 +186,14 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
 // elizaOS/llama.cpp @ 33c888a7b. Composes TBQ (apothic) +
-// QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + DFlash spec-decode
+// QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + MTP spec-decode
 // (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
 // upstream b9213. See docs/porting/unified-fork-strategy.md for the full
 // migration story.
 //
 // The fork ships in-tree as the git submodule at
-// plugins/plugin-local-inference/native/llama.cpp (next to the DFlash build at
-// scripts/build-llama-cpp-dflash.mjs — same pinned commit so both build paths
+// plugins/plugin-local-inference/native/llama.cpp (next to the MTP build at
+// scripts/build-llama-cpp-mtp.mjs — same pinned commit so both build paths
 // land on identical kernels). When that
 // submodule is initialized this path defaults to it (no clone needed); pass
 // `--src-dir` to point at another checkout, or `--cache-dir` to force a
@@ -274,7 +274,7 @@ export const FUSED_ANDROID_TARGETS = Object.freeze([
 
 /**
  * Parse one of the `android-<arch>-<backend>[-fused]` target strings used by
- * the dflash build script into the pieces this script needs (the Android ABI
+ * the mtp build script into the pieces this script needs (the Android ABI
  * + the fused/backend flags). Throws on unsupported triples — there is no
  * implicit translation; the operator either asks for one of the known
  * triples or gets a hard error.
@@ -413,7 +413,7 @@ export function parseArgs(argv) {
           "                    compiler probe before any TU compiles.\n" +
           "                    Android Vulkan targets fail closed until GGML_VULKAN\n" +
           "                    flags and Vulkan backend artifact staging are wired.\n" +
-          "                    -fused enables the omnivoice graft (same as dflash's\n" +
+          "                    -fused enables the omnivoice graft (same as mtp's\n" +
           "                    *-fused desktop targets) — one binary serving text +\n" +
           "                    POST /v1/audio/speech.\n" +
           "  --dry-run         Print the cmake invocation + graft steps + expected\n" +
@@ -436,7 +436,7 @@ export function parseArgs(argv) {
 
   // Default the source dir to the in-repo submodule when it is initialized and
   // the caller did not point us elsewhere (--src-dir) or force a standalone
-  // clone (--cache-dir). Keeps both build paths (dflash + AOSP) on the exact
+  // clone (--cache-dir). Keeps both build paths (mtp + AOSP) on the exact
   // same pinned commit.
   if (!args.srcDir && !args.cacheDirExplicit && llamaCppSubmodulePresent()) {
     args.srcDir = LLAMA_CPP_SUBMODULE_DIR;
@@ -773,7 +773,7 @@ function assertSwaSpecDecodeFallback({ srcDir }) {
   if (sourceContainsSwaSpecDecodeFallback(srcDir)) return;
   throw new Error(
     `[compile-libllama] checkout ${srcDir} lacks the SWA-aware seq_rm fallback ` +
-      `required for --spec-type dflash on SWA target bodies (elizaOS/eliza#7635).`,
+      `required for --spec-type mtp on SWA target bodies (elizaOS/eliza#7635).`,
   );
 }
 
@@ -1079,7 +1079,7 @@ export function buildLibllamaForAbi({
       "-DBUILD_SHARED_LIBS=ON",
       "-DLLAMA_BUILD_EXAMPLES=OFF",
       "-DLLAMA_BUILD_TESTS=OFF",
-      // llama-server is required for the AOSP DFlash speculative-decode path
+      // llama-server is required for the AOSP MTP speculative-decode path
       // (target + drafter share one process; aosp-llama-adapter.ts spawns this
       // binary and routes inference over the OpenAI-compatible HTTP API). The
       // server target also pulls in the JSON/HTTP common-lib pieces, but adds
@@ -1135,7 +1135,7 @@ export function buildLibllamaForAbi({
   // Targets are filtered against what the configured build tree actually
   // exposes. The eliza llama.cpp fork's target set drifts from the script's
   // pinned expectations — e.g. `llama-speculative-simple` is an upstream
-  // example the fork drops in favour of DFlash spec-decode. A
+  // example the fork drops in favour of MTP spec-decode. A
   // requested-but-absent *auxiliary* target must not abort the whole
   // libllama build: the libllama.so + libggml*.so family is the critical
   // output and is fully built by the `llama` target above. We warn on the
@@ -1270,7 +1270,7 @@ export function buildLibllamaForAbi({
   } else {
     log(
       `[compile-libllama] WARN: llama-server binary not found under ${buildDir}/bin/ or ${buildDir}/. ` +
-        `DFlash speculative decode on AOSP requires it; rebuild with -DLLAMA_BUILD_SERVER=ON.`,
+        `MTP speculative decode on AOSP requires it; rebuild with -DLLAMA_BUILD_SERVER=ON.`,
     );
   }
 
@@ -1279,7 +1279,7 @@ export function buildLibllamaForAbi({
   // target llama-omnivoice-server. We do NOT throw when these are missing —
   // a non-fused build (extraBuildTargets empty) won't produce them, and the
   // caller is responsible for invoking `verifyFusedSymbols` only on fused
-  // targets. Mirrors the dflash install-loop's conditional copy of the same
+  // targets. Mirrors the mtp install-loop's conditional copy of the same
   // pair.
   const fusedLibSrcCandidates = [
     path.join(buildDir, "libelizainference.so"),
@@ -1472,9 +1472,9 @@ export function buildShimForAbi({
 }
 
 /**
- * Compile the optional in-process DFlash speculative shim. This shared object
+ * Compile the optional in-process MTP speculative shim. This shared object
  * is loaded separately from the struct-by-value llama shim so Android builds
- * can require it (`ELIZA_DFLASH_REQUIRED=1`) or fall back loudly when the
+ * can require it (`ELIZA_MTP_REQUIRED=1`) or fall back loudly when the
  * current llama.cpp checkout only supports the headerless stub.
  */
 export function buildSpeculativeShimForAbi({
@@ -1789,7 +1789,7 @@ function locateBuiltLib(buildDir, soName) {
 let _ndkLlvmStripPathCache = undefined;
 function locateNdkLlvmStrip() {
   if (_ndkLlvmStripPathCache !== undefined) return _ndkLlvmStripPathCache;
-  // Honor the same env-var ladder as build-llama-cpp-dflash's resolveAndroidNdk()
+  // Honor the same env-var ladder as build-llama-cpp-mtp's resolveAndroidNdk()
   // so operators with a custom NDK location get a consistent answer in both
   // scripts.
   const envRoots = [
@@ -1922,7 +1922,7 @@ export function applyOmnivoiceGraft({ srcDir: _srcDir, log = console.log }) {
  * Print the dry-run plan for one `android-<arch>-<backend>[-fused]` target:
  * the cmake invocation, the post-cmake build target list, the graft steps
  * (for fused targets), the expected output file layout, and the post-build
- * verify step (for fused targets). Mirrors the structure of the dflash build
+ * verify step (for fused targets). Mirrors the structure of the mtp build
  * script's --dry-run output so the two paths read the same.
  *
  * Exported for tests so the dry-run rendering can be asserted without going
@@ -2030,7 +2030,7 @@ export function describeAndroidTargetDryRun({
 export async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
 
-  // If --target was passed, the caller is asking for the dflash-style
+  // If --target was passed, the caller is asking for the mtp-style
   // explicit-triple build path. --abi still drives the legacy bulk-build
   // (cpu only, no fusion) entry point so existing callers keep working.
   if (args.targets.length > 0) {
@@ -2208,7 +2208,7 @@ export async function main(argv = process.argv.slice(2)) {
 
 /**
  * Explicit-triple entry point: runs the build for one or more
- * `android-<arch>-<backend>[-fused]` targets. Mirrors the dflash build
+ * `android-<arch>-<backend>[-fused]` targets. Mirrors the mtp build
  * script's `--target` semantics one-for-one so an operator running the
  * desktop fused build and the mobile fused build invokes the two scripts
  * with the same target string.
@@ -2267,7 +2267,7 @@ export async function mainTargets(args) {
 
   // omnivoice.cpp clone lives at <cacheRoot>/omnivoice.cpp; we use the parent
   // of the llama.cpp cache dir so both clones live under one cache root, the
-  // same shape the dflash build path uses (cacheRoot=path.dirname(args.cacheDir)).
+  // same shape the mtp build path uses (cacheRoot=path.dirname(args.cacheDir)).
   const omnivoiceCacheRoot = path.dirname(args.cacheDir);
 
   if (!args.dryRun) {
@@ -2296,7 +2296,7 @@ export async function mainTargets(args) {
     }
 
     // Pre-cmake: run the omnivoice graft for fused targets. Same call
-    // sequence as the dflash linux-x64-cpu-fused path; the graft is
+    // sequence as the mtp linux-x64-cpu-fused path; the graft is
     // toolchain-agnostic (CMake snippet + source layout).
     let omnivoiceInfo = null;
     if (parsed.fused) {
@@ -2351,7 +2351,7 @@ export async function mainTargets(args) {
 
     // Post-build: for fused targets prove libelizainference.so exports both
     // `llama_*` and `ov_*` (and the eliza_inference ABI surface). Hard error
-    // on a half-fused artifact — same contract as the dflash build path.
+    // on a half-fused artifact — same contract as the mtp build path.
     if (parsed.fused) {
       const verification = verifyFusedSymbols({
         outDir: abiAssetDir,

@@ -79,12 +79,6 @@ export function DashboardSidebarNavigationSection({
     return null;
   }
 
-  const isComingSoon = false;
-
-  if (isCollapsed && isComingSoon) {
-    return null;
-  }
-
   const renderItems = (collapsed = false) =>
     filteredItems.map((item) => (
       <DashboardSidebarNavigationItem
@@ -105,24 +99,6 @@ export function DashboardSidebarNavigationSection({
 
   if (!section.title) {
     return <nav className="space-y-1">{renderItems()}</nav>;
-  }
-
-  if (isComingSoon) {
-    return (
-      <div className="mb-3 flex w-full cursor-default select-none items-center px-3 opacity-50">
-        <h3 className="flex-1 whitespace-nowrap text-left font-mono text-sm text-white/62">
-          {section.title}
-        </h3>
-        <span
-          className="rounded bg-white/18 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/58"
-          style={{
-            fontFamily: "var(--font-roboto-mono)",
-          }}
-        >
-          soon
-        </span>
-      </div>
-    );
   }
 
   return (

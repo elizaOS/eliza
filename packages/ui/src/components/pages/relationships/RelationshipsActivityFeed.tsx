@@ -1,5 +1,5 @@
 import { Fingerprint, Link2, Tags } from "lucide-react";
-import { type ComponentType, useEffect, useState } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
 import { client } from "../../../api/client";
 import type { RelationshipsActivityItem } from "../../../api/client-types-relationships";
 import { formatDateTime, formatShortDate } from "../../../utils/format";
@@ -29,6 +29,8 @@ const ACTIVITY_TYPE_STYLES: Record<
 };
 
 const ACTIVITY_PAGE_SIZE = 25;
+/** Max retained activity rows (20 pages) so long sessions stay bounded. */
+const ACTIVITY_MAX_ITEMS = 500;
 
 export function RelationshipsActivityFeed() {
   const [activity, setActivity] = useState<RelationshipsActivityItem[]>([]);
@@ -36,6 +38,10 @@ export function RelationshipsActivityFeed() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Total rows fetched from the server — the pagination offset. Tracked
+  // separately from `activity.length` because the retained array is capped at
+  // ACTIVITY_MAX_ITEMS, so its length stops reflecting the true server offset.
+  const fetchedCountRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +51,7 @@ export function RelationshipsActivityFeed() {
       .getRelationshipsActivity(ACTIVITY_PAGE_SIZE, 0)
       .then((response) => {
         if (!cancelled) {
+          fetchedCountRef.current = response.activity.length;
           setActivity(response.activity);
           setHasMore(response.hasMore);
         }
@@ -72,9 +79,14 @@ export function RelationshipsActivityFeed() {
     setLoadingMore(true);
     setError(null);
     void client
-      .getRelationshipsActivity(ACTIVITY_PAGE_SIZE, activity.length)
+      .getRelationshipsActivity(ACTIVITY_PAGE_SIZE, fetchedCountRef.current)
       .then((response) => {
-        setActivity((current) => [...current, ...response.activity]);
+        fetchedCountRef.current += response.activity.length;
+        // Cap retained rows so a long pagination session stays bounded; older
+        // rows drop off the top.
+        setActivity((current) =>
+          [...current, ...response.activity].slice(-ACTIVITY_MAX_ITEMS),
+        );
         setHasMore(response.hasMore);
       })
       .catch((err) =>
@@ -93,7 +105,7 @@ export function RelationshipsActivityFeed() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+      <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
         {error}
       </div>
     );
@@ -111,7 +123,7 @@ export function RelationshipsActivityFeed() {
         return (
           <div
             key={`${item.personId}-${item.type}-${item.timestamp ?? "none"}-${item.summary}`}
-            className="flex items-center gap-2 rounded-lg border border-border/24 bg-card/28 px-2.5 py-2"
+            className="flex items-center gap-2 rounded-sm border border-border/24 bg-card/28 px-2.5 py-2"
           >
             <span
               role="img"
@@ -146,7 +158,7 @@ export function RelationshipsActivityFeed() {
           type="button"
           size="sm"
           variant="outline"
-          className="h-8 rounded-lg px-3"
+          className="h-8 rounded-sm px-3"
           disabled={loadingMore}
           onClick={loadMore}
         >

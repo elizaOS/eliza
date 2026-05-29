@@ -1,3 +1,4 @@
+import { FIRST_PARTY_CONTEXT_IDS } from "../runtime/context-normalization";
 import type { Action, AgentContext, Provider } from "../types/components";
 
 export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
@@ -162,6 +163,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 };
 
 export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
+	ACTION_STATE: [...FIRST_PARTY_CONTEXT_IDS],
 	time: ["general"],
 	boredom: ["general"],
 	facts: ["general", "documents"],

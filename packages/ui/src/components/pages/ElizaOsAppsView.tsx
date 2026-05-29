@@ -18,6 +18,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -29,6 +30,9 @@ import type {
   SmsMessageSummary,
 } from "../../bridge/native-plugins";
 import { getPlugins } from "../../bridge/plugin-bridge";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 type PhonePanel = "dialer" | "recents" | "contacts" | "import" | "transcripts";
 
@@ -111,7 +115,7 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded border border-border bg-card p-4 shadow-sm">
+    <section className="rounded-sm border border-border bg-card p-4">
       <div className="mb-4">
         <h2 className="text-base font-semibold text-txt">{title}</h2>
         {description ? (
@@ -137,15 +141,16 @@ function PrimaryButton({
   type?: "button" | "submit";
 }) {
   return (
-    <button
+    <Button
       type={type}
+      variant="default"
+      size="sm"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded border border-border bg-primary px-3 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       <span className="truncate">{children}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -163,15 +168,16 @@ function SecondaryButton({
   type?: "button" | "submit";
 }) {
   return (
-    <button
+    <Button
       type={type}
+      variant="outline"
+      size="sm"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded border border-border bg-bg px-3 text-sm font-medium text-txt disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       <span className="truncate">{children}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -186,14 +192,15 @@ function TextInput({
   placeholder?: string;
   value: string;
 }) {
+  const id = useId();
   return (
-    <label className="grid gap-1 text-sm text-txt">
+    <label className="grid gap-1 text-sm text-txt" htmlFor={id}>
       <span className="font-medium">{label}</span>
-      <input
+      <Input
+        id={id}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 rounded border border-border bg-bg px-3 text-sm text-txt outline-none focus:border-primary"
       />
     </label>
   );
@@ -210,14 +217,15 @@ function TextArea({
   placeholder?: string;
   value: string;
 }) {
+  const id = useId();
   return (
-    <label className="grid gap-1 text-sm text-txt">
+    <label className="grid gap-1 text-sm text-txt" htmlFor={id}>
       <span className="font-medium">{label}</span>
-      <textarea
+      <Textarea
+        id={id}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-24 rounded border border-border bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-primary"
       />
     </label>
   );
@@ -232,14 +240,14 @@ function StatusNotice({
 }) {
   if (error) {
     return (
-      <div className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <div className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
         {error}
       </div>
     );
   }
   if (notice) {
     return (
-      <div className="rounded border border-border bg-bg px-3 py-2 text-sm text-muted">
+      <div className="rounded-sm border border-border bg-bg px-3 py-2 text-sm text-muted">
         {notice}
       </div>
     );
@@ -249,7 +257,7 @@ function StatusNotice({
 
 function EmptyState({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded border border-border bg-bg p-3 text-sm text-muted">
+    <div className="rounded-sm border border-border bg-bg p-3 text-sm text-muted">
       {children}
     </div>
   );
@@ -615,7 +623,7 @@ export function PhonePageView() {
                     setSelectedCallId(call.id);
                     setActivePanel("transcripts");
                   }}
-                  className="rounded border border-border bg-bg p-3 text-left text-sm hover:border-primary"
+                  className="rounded-sm border border-border bg-bg p-3 text-left text-sm hover:border-primary"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium text-txt">
@@ -674,7 +682,7 @@ export function PhonePageView() {
                 return (
                   <div
                     key={contact.id}
-                    className="rounded border border-border bg-bg p-3 text-sm"
+                    className="rounded-sm border border-border bg-bg p-3 text-sm"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -769,7 +777,7 @@ export function PhonePageView() {
         >
           {selectedCall ? (
             <div className="grid gap-3">
-              <div className="rounded border border-border bg-bg p-3 text-sm">
+              <div className="rounded-sm border border-border bg-bg p-3 text-sm">
                 <div className="font-medium text-txt">
                   {callDisplayName(selectedCall)}
                 </div>
@@ -780,7 +788,7 @@ export function PhonePageView() {
                 </div>
               </div>
               {selectedCall.transcription ? (
-                <div className="rounded border border-border bg-bg p-3 text-sm text-txt">
+                <div className="rounded-sm border border-border bg-bg p-3 text-sm text-txt">
                   <div className="mb-1 text-xs font-medium uppercase text-muted">
                     Voicemail transcription
                   </div>
@@ -837,7 +845,7 @@ export function PhonePageView() {
                   key={key}
                   type="button"
                   onClick={() => appendDialpadKey(key)}
-                  className="aspect-[1.6] rounded border border-border bg-bg text-lg font-semibold text-txt hover:border-primary"
+                  className="aspect-[1.6] rounded-sm border border-border bg-bg text-lg font-semibold text-txt hover:border-primary"
                 >
                   {key}
                 </button>
@@ -868,12 +876,12 @@ export function PhonePageView() {
             </div>
           </div>
           <div className="grid gap-3">
-            <div className="grid gap-1 rounded border border-border bg-bg p-3 text-sm text-muted">
+            <div className="grid gap-1 rounded-sm border border-border bg-bg p-3 text-sm text-muted">
               {status.length > 0
                 ? status.map((line) => <div key={line}>{line}</div>)
                 : "No status loaded."}
             </div>
-            <div className="grid gap-2 rounded border border-border bg-bg p-3">
+            <div className="grid gap-2 rounded-sm border border-border bg-bg p-3">
               <div className="text-sm font-medium text-txt">
                 Android default roles
               </div>
@@ -881,7 +889,7 @@ export function PhonePageView() {
                 roles.map((role) => (
                   <div
                     key={role.role}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-card p-2 text-sm"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-border bg-card p-2 text-sm"
                   >
                     <div className="min-w-0">
                       <div className="font-medium text-txt">
@@ -911,7 +919,7 @@ export function PhonePageView() {
                 Settings
               </SecondaryButton>
             </div>
-            <div className="rounded border border-border bg-bg p-3">
+            <div className="rounded-sm border border-border bg-bg p-3">
               <div className="mb-3 text-sm font-medium text-txt">
                 New Contact
               </div>
@@ -969,7 +977,7 @@ export function PhonePageView() {
             key={item.id}
             type="button"
             onClick={() => setActivePanel(item.id)}
-            className={`inline-flex h-9 items-center gap-2 rounded border px-3 text-sm font-medium ${
+            className={`inline-flex h-9 items-center gap-2 rounded-sm border px-3 text-sm font-medium ${
               activePanel === item.id
                 ? "border-primary bg-primary text-primary-foreground"
                 : "border-border bg-bg text-txt"
@@ -1216,7 +1224,7 @@ export function MessagesPageView() {
       <Panel title="Compose" description="Send through Android SMS Manager.">
         <div className="grid gap-3">
           {incomingSms ? (
-            <div className="rounded border border-border bg-bg p-3 text-sm">
+            <div className="rounded-sm border border-border bg-bg p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                 <span>{incomingSms.sender || "unknown sender"}</span>
                 <span>
@@ -1275,7 +1283,7 @@ export function MessagesPageView() {
             messages.map((message) => (
               <div
                 key={message.id}
-                className="rounded border border-border bg-bg p-3 text-sm"
+                className="rounded-sm border border-border bg-bg p-3 text-sm"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                   <span>{message.address || "unknown address"}</span>
@@ -1424,7 +1432,7 @@ export function ContactsPageView() {
             contacts.map((contact) => (
               <div
                 key={contact.id}
-                className="rounded border border-border bg-bg p-3 text-sm"
+                className="rounded-sm border border-border bg-bg p-3 text-sm"
               >
                 <div className="font-medium text-txt">
                   {contact.displayName}

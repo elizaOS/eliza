@@ -1,0 +1,29 @@
+[[!meta title="Translate Tails into Italian"]]
+
+[[!toc levels=2]]
+
+# What can be translated
+
+* **This website** is translated with the [Tails translation
+  platform](https://translate.tails.net/). Read an introduction about it
+  [[here|with_translation_platform/]].
+
+# Workflow
+
+We have three main communication channels:
+
+* Our [[!tails_blueprint l10n_Italian desc="wiki"]], to share guides and tools and to keep trace of who is doing what;
+* Online assemblies, to discuss about how translations and reviews are going;
+* A [mailing list](https://www.autistici.org/mailman/listinfo/transitails), to plan assemblies and for other day by day communications.
+
+If you want to contribute, please contact us first through the mailing list. We kindly ask not to start translating files on your own before contacting the team, as we prefer to discuss things together and have a consensus before starting to work.
+
+# Glossaries used by the Italian translation team
+
+We use this glossary:
+
+* <http://tp.linux.it/glossario.html>
+
+And this website for translations, amongst others:
+
+* <http://amagama-live.translatehouse.org>

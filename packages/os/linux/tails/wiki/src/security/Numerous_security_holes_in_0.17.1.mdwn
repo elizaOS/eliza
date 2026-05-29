@@ -1,0 +1,35 @@
+[[!meta date="Sat, 06 Apr 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.17.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.17.1.
+
+We **strongly** urge you to [[upgrade to Tails 0.17.2|news/version_0.17.2]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Iceweasel
+   ([MFSA 2013-30](https://www.mozilla.org/security/announce/2013/mfsa2013-30.html),
+   [MFSA 2013-31](https://www.mozilla.org/security/announce/2013/mfsa2013-31.html),
+   [MFSA 2013-32](https://www.mozilla.org/security/announce/2013/mfsa2013-32.html),
+   [MFSA 2013-34](https://www.mozilla.org/security/announce/2013/mfsa2013-34.html),
+   [MFSA 2013-35](https://www.mozilla.org/security/announce/2013/mfsa2013-35.html),
+   [MFSA 2013-36](https://www.mozilla.org/security/announce/2013/mfsa2013-36.html),
+   [MFSA 2013-38](https://www.mozilla.org/security/announce/2013/mfsa2013-38.html),
+   [MFSA 2013-40](https://www.mozilla.org/security/announce/2013/mfsa2013-40.html))
+ - Linux ([[!cve CVE-2013-0913]], [[!cve CVE-2013-1796]],
+   [[!cve CVE-2013-1797]], [[!cve CVE-2013-1798]],
+   [[!cve CVE-2013-1767]], [[!cve CVE-2013-0231]],
+   [[!cve CVE-2013-0311]], [[!cve CVE-2013-1848]],
+   [[!cve CVE-2013-1792]], [[!cve CVE-2013-1860]],
+   [[!cve CVE-2013-0914]], [[!cve CVE-2013-2546]],
+   [[!cve CVE-2013-2547]], [[!cve CVE-2013-2548]],
+   [[!cve CVE-2012-5517]], [[!cve CVE-2012-6548]],
+   [[!cve CVE-2012-6549]])
+ - libxml2 ([[!debsa2013 2652]])
+ - libdns ([[!debsa2013 2656]])
+ - libxslt ([[!debsa2013 2654]])

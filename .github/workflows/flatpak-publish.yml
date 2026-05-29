@@ -49,7 +49,7 @@ jobs:
 
       - name: Checkout flatpak manifest
         if: steps.flathub_check.outputs.listed == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ inputs.tag }}
           submodules: false
@@ -61,6 +61,7 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           TAG="${{ inputs.tag }}"
+          echo "Preparing Flatpak update for ${VERSION}"
 
           # Get the tarball sha256 for the release
           TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"

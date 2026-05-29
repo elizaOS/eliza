@@ -50,7 +50,7 @@ export interface GbnfGrammar {
 /**
  * Local-inference mirror of the structured-output extensions on
  * `GenerateTextParams`. Threaded `useModel` → router → local handler →
- * engine → dflash-server.
+ * engine → FFI runtime.
  */
 export interface StructuredGenerateParams {
 	/**
@@ -418,7 +418,7 @@ export interface PrefillRun {
 	text: string;
 	/**
 	 * Optional pre-tokenized token IDs for this run. When provided at compile time
-	 * via a tokenizer callback, the dflash-server can use these directly without
+	 * via a tokenizer callback, the FFI runtime can use these directly without
 	 * re-tokenizing, improving latency.
 	 */
 	tokenIds?: number[];
@@ -591,7 +591,7 @@ export function spanSamplerPlanRequestFields(
  *
  * Producers: `@elizaos/core` `buildPlannerActionGrammar` / `buildResponseGrammar`
  * wrapped by {@link elizaHarnessSchemaFromSkeleton}. Consumer: the local engine
- * (`dflash-server.ts` / `engine.ts`).
+ * (`ffi-streaming-backend.ts` / `engine.ts`).
  */
 export interface ElizaHarnessSchema {
 	/** Structure-forcing description; compiles to a lazy GBNF. */

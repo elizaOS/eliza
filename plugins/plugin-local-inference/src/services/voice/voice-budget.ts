@@ -29,7 +29,7 @@
  * `release()` on unload.
  *
  * Wire-up plan (handed to follow-up commits, NOT done by I9):
- *   - `dflash-server.ts`     → `reserve(role="text-target")` + `reserve(role="drafter")` at spawn.
+ *   - `ffi-streaming-backend.ts`     → `reserve(role="text-target")` + `reserve(role="drafter")` at spawn.
  *   - `voice/pipeline.ts`    → `reserve(role="tts", bytes=transientPeakMb*MB)` per synth.
  *   - `voice/wake-word.ts`, `vad.ts`, `eot-classifier.ts` → reserve at session arm.
  *   - I2/I3 add `emotion` + `speaker-id` reservations when those models register.
@@ -206,7 +206,7 @@ function defaultTierBudgetBytes(
  * local TTS, so transient = 0.
  *
  * The figures are MEASURED on-disk (Q4_K_M GGUFs in
- * `~/.eliza/local-inference/models/eliza-1-{0_8b,2b}.bundle/`) plus
+ * `<stateDir>/local-inference/models/eliza-1-{0_8b,2b}.bundle/`) plus
  * model-card sizes for VAD, wake-word, turn-detector, emotion, speaker-id.
  * See R9 §2.1 + §2.2 + §2.3 for the per-component breakdown.
  */

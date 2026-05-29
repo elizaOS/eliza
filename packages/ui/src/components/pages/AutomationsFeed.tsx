@@ -31,11 +31,13 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
+import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
   AutomationItem,
   AutomationListResponse,
 } from "../../api/client-types-config";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
+import { useFetchData } from "../../hooks/useFetchData";
 import {
   type FeedFilter,
   passesFilter,
@@ -330,13 +332,13 @@ export function AutomationsFeed({
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
           {error}
         </div>
       )}
 
       {/* Feed */}
-      <PagePanel variant="inset" className="overflow-hidden rounded-2xl p-0">
+      <PagePanel variant="inset" className="overflow-hidden rounded-sm p-0">
         {loading && !data ? (
           <div className="flex items-center justify-center p-8">
             <Spinner className="h-5 w-5" />
@@ -445,7 +447,7 @@ function FeedRowItem({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         <Icon
-          className={`h-4 w-4 shrink-0 ${row.kind === "workflow" ? "text-violet-400" : "text-blue-400"}`}
+          className={`h-4 w-4 shrink-0 ${row.kind === "workflow" ? "text-accent" : "text-info"}`}
           aria-hidden
         />
         <div className="min-w-0 flex-1">
@@ -489,7 +491,7 @@ function FeedRowItem({
           type="button"
           aria-label={row.active ? "Deactivate workflow" : "Activate workflow"}
           onClick={onRunNow}
-          className="rounded-md border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
+          className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
         >
           {row.active ? (
             <Pause className="h-3 w-3" aria-hidden />
@@ -521,7 +523,7 @@ function ChooserSheet({
       />
       <dialog
         open
-        className="relative m-0 w-full max-w-md rounded-2xl border border-border/40 bg-bg p-4 shadow-xl"
+        className="relative m-0 w-full max-w-md rounded-sm border border-border/40 bg-bg p-4 "
         aria-modal="true"
       >
         <h3 className="mb-3 text-base font-semibold text-txt">
@@ -531,10 +533,10 @@ function ChooserSheet({
           <button
             type="button"
             onClick={onChooseTask}
-            className="flex items-start gap-3 rounded-xl border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
+            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-blue-400"
+              className="mt-0.5 h-5 w-5 shrink-0 text-info"
               aria-hidden
             />
             <div>
@@ -550,10 +552,10 @@ function ChooserSheet({
           <button
             type="button"
             onClick={onChooseWorkflow}
-            className="flex items-start gap-3 rounded-xl border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
+            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <Workflow
-              className="mt-0.5 h-5 w-5 shrink-0 text-violet-400"
+              className="mt-0.5 h-5 w-5 shrink-0 text-accent"
               aria-hidden
             />
             <div>
@@ -581,39 +583,18 @@ function WorkflowEditorLoader({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [loaded, setLoaded] = useState<null | {
-    workflow: import("../../api/client-types-chat").WorkflowDefinition | null;
-  }>(workflowId ? null : { workflow: null });
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // A null workflowId means "create new" — resolve to a null definition
+  // without hitting the API. Otherwise fetch the definition to edit.
+  const fetchState = useFetchData<WorkflowDefinition | null>(
+    async () => (workflowId ? client.getWorkflowDefinition(workflowId) : null),
+    [workflowId],
+  );
 
-  useEffect(() => {
-    if (!workflowId) {
-      setLoaded({ workflow: null });
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const wf = await client.getWorkflowDefinition(workflowId);
-        if (!cancelled) setLoaded({ workflow: wf });
-      } catch (e) {
-        if (!cancelled) {
-          setLoadError(
-            e instanceof Error ? e.message : "Failed to load workflow.",
-          );
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [workflowId]);
-
-  if (loadError) {
+  if (fetchState.status === "error") {
     return (
       <div className="p-6">
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
-          {loadError}
+        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+          {fetchState.error.message || "Failed to load workflow."}
         </div>
         <Button variant="ghost" size="sm" className="mt-3" onClick={onCancel}>
           Back
@@ -621,7 +602,7 @@ function WorkflowEditorLoader({
       </div>
     );
   }
-  if (!loaded) {
+  if (fetchState.status !== "success") {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <Spinner className="h-5 w-5" />
@@ -631,7 +612,7 @@ function WorkflowEditorLoader({
   return (
     <div className="device-layout mx-auto flex h-full w-full max-w-7xl flex-col gap-4 px-4 py-4 lg:px-6">
       <WorkflowEditor
-        initial={loaded.workflow}
+        initial={fetchState.data}
         onSaved={onSaved}
         onCancel={onCancel}
       />

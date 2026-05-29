@@ -1,0 +1,183 @@
+[[!meta title="Tails report for June, 2020"]]
+[[!meta date="Mon, 13 Jul 2020 21:34:33 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+[[Tails 4.7 was released on June 2|news/version_4.7]]:
+
+- Make the installation of Additional Software more robust. ([[!tails_ticket 17278]])
+
+- Clarify the error message when entering an incorrect password to unlock a
+  VeraCrypt volume: *Wrong passphrase or parameters* instead of *Error
+  unlocking volume*. ([[!tails_ticket 17668]])
+
+- Clean up confusing comments in `/etc/tor/torrc`. ([[!tails_ticket 17706]])
+
+[[Tails 4.8 was released on June 30|news/version_4.8]]:
+
+- We disabled the *Unsafe Browser* by default and clarified that [[the
+  *Unsafe Browser* can be used to deanonymize
+  you|doc/anonymous_internet/unsafe_browser#security]].
+
+- We added a new feature of the Persistent Storage to save the settings
+  from the Welcome Screen.
+
+  This feature is beta and only the additional setting to enable the
+  *Unsafe Browser* is made persistent. The other settings (language,
+  keyboard, and other additional settings) will be made persistent in
+  Tails 4.9 (July 28).
+
+- Fix the *Find in page* feature of *Thunderbird*. ([[!tails_ticket
+  17328]])
+
+- Fix shutting down automatically the laptop when resuming from suspend
+  with the Tails USB stick removed. ([[!tails_ticket 16787]])
+
+- Notify always when [[MAC address
+  spoofing|doc/first_steps/welcome_screen/mac_spoofing]] fails and the
+  network interface is disabled. ([[!tails_ticket 17779]])
+
+- Fix the import of OpenPGP public keys in binary format (non armored)
+  from the *Files* browser.
+
+Tails 4.9 is [[scheduled for July 28|contribute/calendar]].
+
+Code
+====
+
+ - Adapted our test suite to our new homepage and to GitLab.
+   ([[!tails_ticket 17718]], [[!tails_ticket 17719]])
+
+ - Upgraded to tor 0.4.3. ([[!tails_ticket 17741]])
+
+ - Automated post-release GitLab updates with
+   [`gitlab-triage`](https://gitlab.com/gitlab-org/gitlab-triage).
+   ([[!tails_ticket 17589]], [[!tails_mr 36]])
+
+Documentation and website
+=========================
+
+- @syster added a favicon to our website. ([[!tails_mr 37]])
+
+- Documented the
+  [[letterboxing feature of *Tor Browser*|doc/anonymous_internet/Tor_Browser#letterboxing]].
+  ([[!tails_ticket 17227]])
+
+- Interviewed 4 more candidates to the
+  [[Technical Writer job offer|jobs/technical_writer]].
+
+- Added a shortcut on top of the [[cloning instructions|install/clone]]
+  for people who are already in Tails.
+
+- Reported a [bug upstream to
+  Etcher](https://github.com/balena-io/etcher/issues/3197) about Windows manipulating the
+  system partition, leading to a failed verification.
+  ([[!tails_ticket 17634]])
+
+Hot topics on our help desk
+===========================
+
+1. A lot of people complained about having trouble starting Tails with
+[AMD/ATI] Renoir GPUs, but it seems that a kernel update [[!tails_ticket
+17759#note_152260 desc="fixed that problem in Tails 4.8"]].
+
+1. Some MacBook users reported that [[!tails_ticket 17775 desc="Tails
+fails to boot with some recent MacBooks"]]. A workaround was proposed
+but people were then affected by their [[!tails_ticket 17791 desc="key
+combinations"]] or [[!tails_ticket 13576 desc="mouse and keyboard"]] not
+being supported by GRUB.
+
+1. There were still a couple of users reporting having problems to
+[[!tails_ticket 17183 desc="import public PGP keys in Seahorse"]].
+
+Infrastructure
+==============
+
+- Decommissioned the system that used to host our Redmine.
+
+- Made it possible for core community members to propose changes to our GitLab
+  configuration with a merge request. ([[!tails_ticket 17753]])
+
+Funding
+=======
+
+- Submitted a full proposal to the
+  OTF Core Infrastructure Fund
+  to improve the user experience of
+  [[!tails_blueprint desc="connecting to Tor" network_connection]] and using Tails to
+  circumvent censorship.
+
+Outreach
+========
+
+Published leaflets and their source on the website:
+
+  [[!map pages="contribute/how/promote/leaflets/*.pdf"]]
+
+Past events
+-----------
+
+- El Barracon Digital from El Progreso, Honduras, organized an
+  international online webinar on Tails: [Privacidad y Anonimato Con
+  Tails](https://barracondigital.org/webinar-internacional-privacidad-y-anonimato-con-tails/).
+
+Upcoming events
+---------------
+
+- El Rancho Electronico is organizing 2 online workshops about
+  Tails
+  on July 14 and July 21.
+
+Press and testimonials
+======================
+
+* 2020-06-23: [Privacy-Focused OS Wants to Know How Facebook and the FBI Hacked
+it](https://www.vice.com/en_us/article/dyz3jy/privacy-focused-os-tails-wants-to-know-how-facebook-and-the-fbi-hacked-it)
+  by Lorenzo Franceschi-Bicchierai in Motherboard.
+
+* 2020-06-10: [Facebook Helped the FBI Hack a Child
+  Predator](https://www.vice.com/en_us/article/v7gd9b/facebook-helped-fbi-hack-child-predator-buster-hernandez)
+  by Lorenzo Franceschi-Bicchierai in Motherboard.
+
+Translations
+============
+
+## All the website
+
+  - fr: 84% (5415) strings translated, 8% strings fuzzy
+  - es: 47% (3072) strings translated, 8% strings fuzzy
+  - de: 30% (1988) strings translated, 13% strings fuzzy
+  - it: 28% (1808) strings translated, 10% strings fuzzy
+  - fa: 22% (1474) strings translated, 13% strings fuzzy
+  - pt: 22% (1418) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 83% (1709) strings translated, 10% strings fuzzy
+  - es: 77% (1585) strings translated, 10% strings fuzzy
+  - it: 50% (1043) strings translated, 20% strings fuzzy
+  - de: 50% (1041) strings translated, 21% strings fuzzy
+  - pt: 39% (815) strings translated, 14% strings fuzzy
+  - fa: 20% (415) strings translated, 15% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - zh_TW: 25% (447) strings translated, 12% strings fuzzy
+  - zh: 12% (224) strings translated, 6% strings fuzzy
+  - ru: 8% (160) strings translated, 5% strings fuzzy
+  - pl: 8% (149) strings translated, 4% strings fuzzy
+  - tr: 8% (148) strings translated, 4% strings fuzzy
+  - ar: 7% (132) strings translated, 5% strings fuzzy
+  - ca: 7% (131) strings translated, 5% strings fuzzy
+  - id: 5% (99) strings translated, 3% strings fuzzy
+  - sr_Latn: 4% (80) strings translated, 2% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 926&#8239;605 times this month. This makes 30&#8239;887 boots a day on average.
+

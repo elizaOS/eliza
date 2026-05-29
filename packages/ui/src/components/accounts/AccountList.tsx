@@ -89,7 +89,7 @@ export function AccountList({ providerId }: AccountListProps) {
   }
 
   return (
-    <div className="mt-3 flex flex-col gap-2 rounded-xl border border-border/40 bg-bg-accent/40 p-3">
+    <div className="mt-3 flex flex-col gap-2 rounded-sm border border-border/40 bg-bg-accent/40 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
@@ -122,7 +122,7 @@ export function AccountList({ providerId }: AccountListProps) {
       </div>
 
       {sorted.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
+        <div className="rounded-sm border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
           {t("accounts.empty", {
             defaultValue:
               "No accounts yet — add one to start using this provider.",

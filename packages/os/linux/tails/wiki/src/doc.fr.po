@@ -1,0 +1,235 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-25 11:32+0200\n"
+"PO-Revision-Date: 2025-07-11 09:56+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Documentation\"]]\n"
+msgstr "[[!meta title=\"Documentation\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If this section doesn't answer your questions, you can also look at our\n"
+"[[FAQ|support/faq]].</p>\n"
+msgstr ""
+"<p>Si cette section ne répond pas à vos questions, vous pouvez également\n"
+"consulter notre [[foire aux questions (FAQ)|support/faq]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title #
+#, no-wrap
+msgid "General information"
+msgstr "Informations générales"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/about.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/about.index.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "First steps with Tails"
+msgstr "Premiers pas avec Tails"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/first_steps.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/first_steps.index.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Upgrading a Tails USB stick"
+msgstr "Mettre à jour une clé USB Tails"
+
+#. type: Bullet: '- '
+msgid "[[Upgrading automatically|doc/upgrade]]"
+msgstr "[[Mise à jour automatique|doc/upgrade]]"
+
+#. type: Bullet: '- '
+msgid "[[Upgrading manually from your Tails|doc/upgrade/tails]]"
+msgstr "[[Mise à jour manuelle depuis votre Tails|doc/upgrade/tails]]"
+
+#. type: Bullet: '- '
+msgid "[[Upgrading manually from Windows|doc/upgrade/windows]]"
+msgstr "[[Mise à jour manuelle depuis Windows|doc/upgrade/windows]]"
+
+#. type: Bullet: '- '
+msgid "[[Upgrading manually from macOS|doc/upgrade/mac]]"
+msgstr "[[Mise à jour manuelle depuis macOS|doc/upgrade/mac]]"
+
+#. type: Bullet: '- '
+msgid "[[Upgrading manually from Linux|doc/upgrade/linux]]"
+msgstr "[[Mise à jour manuelle depuis Linux|doc/upgrade/linux]]"
+
+#. type: Bullet: '- '
+msgid "[[Upgrading manually by cloning from another Tails|doc/upgrade/clone]]"
+msgstr ""
+"[[Mise à jour manuelle en clonant depuis un autre Tails|doc/upgrade/clone]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Repairing a Tails USB stick that fails to start after an upgrade|doc/"
+"upgrade/repair]]"
+msgstr ""
+"[[Réparer une clé USB Tails qui ne démarre pas après une mise à jour|doc/"
+"upgrade/repair]]"
+
+#. type: Title #
+#, no-wrap
+msgid "Persistent Storage"
+msgstr "Stockage persistant"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/persistent_storage.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/persistent_storage.index.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Uncensored and anonymous Internet"
+msgstr "Internet non censuré et anonyme"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet.index.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Encryption and privacy"
+msgstr "Chiffrement et vie privée"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/encryption_and_privacy.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/encryption_and_privacy.index.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Working on sensitive documents"
+msgstr "Travailler sur des documents sensibles"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents.index.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Advanced topics"
+msgstr "Sujets avancés"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/advanced_topics.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/advanced_topics.index.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "<a id=\"install\"></a>\n"
+#~ msgstr "<a id=\"install\"></a>\n"
+
+#, no-wrap
+#~ msgid "Download, installation, and upgrade"
+#~ msgstr "Téléchargement, installation et mise à jour"
+
+#~ msgid "Installing from:"
+#~ msgstr "Installer depuis :"
+
+#~ msgid "[[Windows|install/windows]]"
+#~ msgstr "[[Windows|install/windows]]"
+
+#~ msgid "[[macOS|install/mac]]"
+#~ msgstr "[[macOS|install/mac]]"
+
+#~ msgid "[[Linux (recommended)|install/linux]]"
+#~ msgstr "[[Linux (recommandé)|install/linux]]"
+
+#~ msgid ""
+#~ "[[Debian, Ubuntu, or Mint using the command line and GnuPG (experts)|"
+#~ "install/expert]]"
+#~ msgstr ""
+#~ "[[Debian, Ubuntu ou Mint avec la ligne de commande et GnuPG (experts)|"
+#~ "install/expert]]"
+
+#~ msgid "Installing by cloning from another Tails:"
+#~ msgstr "Installer en clonant depuis un autre Tails :"
+
+#~ msgid "[[For PC|install/clone/pc]]"
+#~ msgstr "[[Pour PC|install/clone/pc]]"
+
+#~ msgid "[[For Mac|install/clone/mac]]"
+#~ msgstr "[[Pour Mac|install/clone/mac]]"
+
+#~ msgid "[[Burning a DVD|install/dvd]]"
+#~ msgstr "[[Graver un DVD|install/dvd]]"
+
+#~ msgid "Downloading without installing:"
+#~ msgstr "Télécharger sans installer :"
+
+#~ msgid "[[For USB sticks (USB image)|install/download]]"
+#~ msgstr "[[Pour clés USB (image USB)|install/download]]"
+
+#~ msgid "[[For DVDs (ISO image)|install/download-iso]]"
+#~ msgstr "[[Pour DVD (image ISO)|install/download-iso]]"
+
+#~ msgid "Upgrading a Tails USB stick:"
+#~ msgstr "Mettre à jour une clé USB Tails :"
+
+#~ msgid "[[Upgrading automatically|upgrade]]"
+#~ msgstr "[[Mise à jour automatique|upgrade]]"
+
+#~ msgid "[[Upgrading manually from your Tails|upgrade/tails]]"
+#~ msgstr "[[Mise à jour manuelle depuis votre Tails|upgrade/tails]]"
+
+#~ msgid "[[Upgrading manually from Windows|upgrade/windows]]"
+#~ msgstr "[[Mise à jour manuelle depuis Windows|upgrade/windows]]"
+
+#~ msgid "[[Upgrading manually from macOS|upgrade/mac]]"
+#~ msgstr "[[Mise à jour manuelle depuis macOS|upgrade/mac]]"
+
+#~ msgid "[[Upgrading manually from Linux|upgrade/linux]]"
+#~ msgstr "[[Mise à jour manuelle depuis Linux|upgrade/linux]]"
+
+#~ msgid "[[Upgrading manually by cloning from another Tails|upgrade/clone]]"
+#~ msgstr ""
+#~ "[[Mise à jour manuelle en clonant depuis un autre Tails|upgrade/clone]]"
+
+#~ msgid ""
+#~ "[[Repairing a Tails USB stick that fails to start after an upgrade|"
+#~ "upgrade/repair]]"
+#~ msgstr ""
+#~ "[[Réparer une clé USB Tails qui ne démarre pas après une mise à jour|"
+#~ "upgrade/repair]]"
+
+#~ msgid ""
+#~ "Uninstalling Tails or resetting a USB stick using [[Linux|reset/linux]], "
+#~ "[[Windows|reset/windows]], or [[Mac|reset/mac]]"
+#~ msgstr ""
+#~ "Désinstaller Tails ou réinitialiser une clé USB avec [[Linux|reset/"
+#~ "linux]], [[Windows|reset/windows]] ou [[Mac|reset/mac]]"

@@ -202,7 +202,7 @@ export function TelegramAccountConnectorPanel() {
         ) : null}
 
         {connectedLabel ? (
-          <div className="rounded-lg border border-border/40 bg-bg/60 px-3 py-2 text-xs-tight text-muted-strong">
+          <div className="rounded-sm border border-border/40 bg-bg/60 px-3 py-2 text-xs-tight text-muted-strong">
             {status?.detail.serviceConnected
               ? `Connected as ${connectedLabel}.`
               : `Authenticated as ${connectedLabel}.`}
@@ -222,7 +222,7 @@ export function TelegramAccountConnectorPanel() {
                 }
               }}
               placeholder="+15551234567"
-              className="h-8 w-full rounded-lg border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
+              className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
             />
             <Button
               variant="default"
@@ -254,7 +254,7 @@ export function TelegramAccountConnectorPanel() {
                   }
                 }}
                 placeholder={prompt.placeholder}
-                className="h-8 flex-1 rounded-lg border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
+                className="h-8 flex-1 rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50 focus:border-accent focus:outline-none"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     void submitAuthInput();
@@ -279,7 +279,7 @@ export function TelegramAccountConnectorPanel() {
         ) : null}
 
         {status?.detail.restartRequired ? (
-          <div className="space-y-2 rounded-lg border border-border/40 bg-bg/60 px-3 py-2 text-xs-tight text-muted-strong">
+          <div className="space-y-2 rounded-sm border border-border/40 bg-bg/60 px-3 py-2 text-xs-tight text-muted-strong">
             <div>
               {t("pluginsview.TelegramAccountRestartHint", {
                 defaultValue:

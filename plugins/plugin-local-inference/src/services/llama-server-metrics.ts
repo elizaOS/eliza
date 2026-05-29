@@ -15,7 +15,7 @@
  *   llamacpp:kv_cache_tokens          — current size of KV cache (gauge)
  *   llamacpp:kv_cache_used_cells      — slots with active KV (gauge)
  *
- * For DFlash speculative decoding, the fork additionally publishes:
+ * For MTP speculative decoding, the fork additionally publishes:
  *
  *   llamacpp:n_drafted_total          — drafter-emitted tokens
  *   llamacpp:n_drafted_accepted_total — accepted speculative tokens
@@ -26,7 +26,7 @@
  *   n_tokens_predicted_total                         → output_tokens
  *   n_prompt_tokens_processed_total                  → cache_creation_input_tokens
  *   prompt_tokens_total - n_prompt_tokens_processed_total → cache_read_input_tokens
- *   n_drafted_total / n_drafted_accepted_total       → DFlash extension fields
+ *   n_drafted_total / n_drafted_accepted_total       → MTP extension fields
  *
  * Counters are taken as deltas across two snapshots: take one before
  * `generate`, one after, and subtract. Losing a few samples to process
@@ -82,7 +82,7 @@ const DEFAULT_METRICS_SCRAPE_TIMEOUT_MS = 2_000;
  *
  * llama-server usually exposes one sample per metric (no labels), e.g.
  *   `llamacpp:prompt_tokens_total 1234`
- * Some DFlash forks expose per-slot labelled samples, e.g.
+ * Some MTP forks expose per-slot labelled samples, e.g.
  *   `llamacpp:n_drafted_accepted_total{slot_id="0"} 12`
  * Labelled samples are summed unless an unlabelled total exists for the same
  * canonical field, in which case the unlabelled total wins.
@@ -148,21 +148,22 @@ export function parsePrometheusMetrics(
 }
 
 /**
- * Anthropic-SDK-shaped usage block, optionally extended with DFlash
+ * Anthropic-SDK-shaped usage block, optionally extended with MTP
  * speculative-decoding metrics. The cloud plugin (plugin-anthropic)
  * emits the first three fields verbatim; local inference adds the
- * `dflash_*` fields when speculative decoding is active. Callers that
+ * `mtp_*` fields when speculative decoding is active. Callers that
  * already handle the cloud `usage` shape need no change.
  */
 export interface LocalUsageBlock {
+	[key: string]: unknown;
 	input_tokens: number;
 	output_tokens: number;
 	cache_creation_input_tokens: number;
 	cache_read_input_tokens: number;
-	dflash_drafted_tokens?: number;
-	dflash_accepted_tokens?: number;
+	mtp_drafted_tokens?: number;
+	mtp_accepted_tokens?: number;
 	/** 0..1 — proportion of drafted tokens that were accepted. */
-	dflash_acceptance_rate?: number;
+	mtp_acceptance_rate?: number;
 	/** 0..1 — proportion of input tokens that hit a warm slot (cache reuse). */
 	cache_hit_rate?: number;
 }
@@ -224,9 +225,9 @@ export function diffSnapshots(
 		block.cache_hit_rate = cacheRead / inputTokens;
 	}
 	if (draftedDelta > 0) {
-		block.dflash_drafted_tokens = draftedDelta;
-		block.dflash_accepted_tokens = acceptedDelta;
-		block.dflash_acceptance_rate = acceptedDelta / draftedDelta;
+		block.mtp_drafted_tokens = draftedDelta;
+		block.mtp_accepted_tokens = acceptedDelta;
+		block.mtp_acceptance_rate = acceptedDelta / draftedDelta;
 	}
 	return block;
 }
@@ -240,7 +241,7 @@ function clampNonNegative(value: number): number {
  * GET `/metrics` from a running llama-server and parse it. Errors fall
  * back to a zero-valued snapshot rather than throwing — observability
  * MUST NOT break generation. `scrapeOk=false` tells callers that the
- * zeros are not evidence of absent DFlash/KV activity.
+ * zeros are not evidence of absent MTP/KV activity.
  */
 export async function fetchMetricsSnapshot(
 	baseUrl: string,

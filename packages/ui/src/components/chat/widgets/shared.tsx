@@ -33,7 +33,7 @@ export function WidgetSection({
           <button
             type="button"
             onClick={onTitleClick}
-            className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-0.5 py-1 text-left transition-colors hover:text-txt"
+            className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-sm bg-transparent px-0.5 py-1 text-left transition-colors hover:text-txt"
           >
             {titleContent}
           </button>

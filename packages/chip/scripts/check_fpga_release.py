@@ -6,6 +6,7 @@ import sys
 from argparse import ArgumentParser
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -19,6 +20,7 @@ SCHEMA = "eliza.fpga_release.v1"
 CLAIM_BOUNDARY = "fpga_release_validation_only_not_board_fabrication_evidence"
 DIAGNOSTIC_REPORT_DIR = ROOT / "board/fpga/reports/diagnostics"
 FPGA_BUILD_ARCHIVE_DIR = ROOT / "build/fpga/e1_demo/archive"
+OSS_CAD_SUITE_BIN = ROOT / "external/oss-cad-suite/bin"
 BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
     {
         "id": "preabc_profile",
@@ -27,7 +29,7 @@ BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
         "exact_command": (
             "python3 scripts/run_with_timeout.py --timeout-seconds 120 "
             "--label fpga-e1-chip-top-preabc-profile -- bash -lc "
-            "'PATH=/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
+            f"'PATH={OSS_CAD_SUITE_BIN}:$PATH "
             "TOP=e1_chip_top "
             "BUILD_DIR=build/fpga/e1_demo_profile "
             "PROFILE_LOG=build/fpga/e1_demo_profile/yosys_profile.log "
@@ -45,7 +47,7 @@ BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
         "exact_command": (
             "python3 scripts/run_with_timeout.py --timeout-seconds 300 "
             "--label fpga-e1-chip-top-noabc9-diagnostic -- bash -lc "
-            "'PATH=/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
+            f"'PATH={OSS_CAD_SUITE_BIN}:$PATH "
             "SYNTH_ECP5_FLAGS=-noabc9 TOP=e1_chip_top "
             "BUILD_DIR=build/fpga/e1_demo_noabc9 "
             "SYNTH_LOG=build/fpga/e1_demo_noabc9/yosys_noabc9.log "
@@ -54,7 +56,7 @@ BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
     },
 ]
 LOCAL_TOOL_DIRS = [
-    ROOT / "external/oss-cad-suite/bin",
+    OSS_CAD_SUITE_BIN,
 ]
 
 REQUIRED_RELEASE_EVIDENCE = {
@@ -1664,12 +1666,12 @@ def yosys_memory_rom_pressure(
 
     sorted_pressure_modules = sorted(
         pressure_modules,
-        key=lambda row: row["cells_including_submodules"],
+        key=lambda row: cast("int", row["cells_including_submodules"]),
         reverse=True,
     )
     next_actions = []
     for row in sorted_pressure_modules:
-        action = module_actions[row["module"]]
+        action = module_actions[cast("str", row["module"])]
         next_actions.append(
             {
                 **action,
@@ -1701,7 +1703,7 @@ def yosys_memory_rom_pressure(
 def bounded_synthesis_diagnostics() -> list[dict]:
     rows = []
     for spec in BOUNDED_SYNTH_DIAGNOSTIC_LOGS:
-        path = spec["log"]
+        path = cast("Path", spec["log"])
         if not path.is_file():
             rows.append(
                 {
@@ -1837,7 +1839,7 @@ def latest_non_release_build_probe() -> dict:
                 "_observed_mtime": live_yosys_log.stat().st_mtime,
             }
         )
-    rows.sort(key=lambda row: row["_observed_mtime"])
+    rows.sort(key=lambda row: cast("float", row["_observed_mtime"]))
     for row in rows:
         row.pop("_observed_mtime", None)
     latest = rows[-1] if rows else None

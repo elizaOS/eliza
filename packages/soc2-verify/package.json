@@ -33,7 +33,7 @@
     "verify:strict": "bun run src/cli.ts --strict-fail",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@elizaos/security": "workspace:*"

@@ -224,6 +224,12 @@ const PLANNER_CONTROL_ACTIONS = new Set(
 const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
+const STAGE1_TRUNCATION_REPLY =
+	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
+const CODE_SNIPPET_VALIDITY_INSTRUCTION =
+	"For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
+const COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION =
+	"For code snippets, prefer valid runnable syntax over impossible formatting constraints.";
 const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
 	"facts",
@@ -830,6 +836,18 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
 	"RUNTIME_MODEL_CONTEXT",
+	// FACTS is dynamic and would otherwise never run during response
+	// composition. Stage 1 keeps it rendered when present (see
+	// STAGE1_EXTRA_PROVIDER_EXCLUSIONS) precisely so durable user facts
+	// ("my dog's name is Jeff", "my car is named Bertha") persisted by the
+	// facts-and-relationships stage can be recalled on a later turn — even a
+	// simple-path turn after the source message has scrolled out of the
+	// RECENT_MESSAGES window. Without this, stored facts are written but
+	// never retrieved into the answer. FACTS is cacheStable:false /
+	// cacheScope:"turn" and BM25-ranked against the current message, so its
+	// rendered text varies per turn (like CURRENT_TIME); we accept that
+	// prefix-cache churn and token cost as the price of cross-turn recall.
+	"FACTS",
 	// CURRENT_TIME is dynamic and would otherwise be filtered out before
 	// reaching the response handler. The wall-clock time is a baseline
 	// signal for nearly every routing decision (scheduling, freshness of
@@ -1386,7 +1404,26 @@ interface StrategyResult {
  */
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
-	| { kind: "noProvider" };
+	| { kind: "noProvider" }
+	| { kind: "rateLimited" };
+
+/**
+ * Detect provider rate-limit / 429 failures so the user-facing failure reply
+ * can say "I'm being rate-limited, try again shortly" instead of the opaque
+ * generic "something went wrong". The AI SDK surfaces these as
+ * `AI_RetryError: Failed after N attempts. Last error: Too Many Requests`.
+ */
+export function isRateLimitError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	const haystack = `${error.name} ${error.message}`.toLowerCase();
+	return (
+		haystack.includes("too many requests") ||
+		haystack.includes("rate limit") ||
+		haystack.includes("rate_limit") ||
+		haystack.includes("ratelimit") ||
+		/\b429\b/.test(haystack)
+	);
+}
 
 export function buildFailureReplyPrompt(recentMessages: string): string {
 	return [
@@ -2446,7 +2483,7 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
+			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.',
 	});
 
 	const replyReferenceEvent = replyReferenceEventForContext(args.message);
@@ -2595,95 +2632,6 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-function providerDataRecord(
-	state: State,
-	providerName: string,
-): Record<string, unknown> | null {
-	const providers = state.data?.providers;
-	if (!providers || typeof providers !== "object") return null;
-	const entry =
-		providers[providerName] ??
-		providers[providerName.toLowerCase()] ??
-		providers[providerName.toUpperCase()];
-	if (!entry || typeof entry !== "object") return null;
-	const data = (entry as { data?: unknown }).data;
-	return data && typeof data === "object"
-		? (data as Record<string, unknown>)
-		: null;
-}
-
-function mediaListFrom(value: unknown): Media[] {
-	return Array.isArray(value)
-		? value.filter((item): item is Media => !!item && typeof item === "object")
-		: [];
-}
-
-function availableAttachmentCount(message: Memory, state: State): number {
-	const directAttachments = mediaListFrom(message.content.attachments);
-	const attachmentData = providerDataRecord(state, "ATTACHMENTS");
-	const providerAttachments = [
-		...mediaListFrom(attachmentData?.attachments),
-		...mediaListFrom(attachmentData?.visibleAttachments),
-	];
-	const ids = new Set<string>();
-	for (const attachment of [...directAttachments, ...providerAttachments]) {
-		const id = typeof attachment.id === "string" ? attachment.id : "";
-		ids.add(id || attachment.url || JSON.stringify(attachment));
-	}
-	return ids.size;
-}
-
-function latestPriorUserText(
-	state: State,
-	runtimeAgentId: string | undefined,
-): string {
-	const recentData = providerDataRecord(state, "RECENT_MESSAGES");
-	const recentMessages = Array.isArray(recentData?.recentMessages)
-		? (recentData.recentMessages as Memory[])
-		: [];
-	const latest = [...recentMessages]
-		.filter((memory) => {
-			if (runtimeAgentId && memory.entityId === runtimeAgentId) {
-				return false;
-			}
-			return memory.entityId !== memory.agentId;
-		})
-		.sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
-		.at(-1);
-	return typeof latest?.content?.text === "string" ? latest.content.text : "";
-}
-
-const ATTACHMENT_NOUN_RE =
-	/\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b/iu;
-const ATTACHMENT_INSPECTION_RE =
-	/\b(?:what|see|view|look(?:ing)?(?:\s+at)?|read|open|inspect|analy[sz]e|describe|summari[sz]e|transcribe|ocr|shown?|showing|contains?|content|shape|colou?r|thoughts?|think|opinion|take)\b/iu;
-const VISUAL_INSPECTION_RE =
-	/\b(?:can\s+you\s+see|what\s+do\s+you\s+see|look\s+at|view|describe|analy[sz]e|inspect|read|open)\b/iu;
-const PRONOUN_ATTACHMENT_FOLLOWUP_RE = /\b(?:it|this|that|them|those)\b/iu;
-
-function looksLikeAttachmentInspectionRequest(
-	message: Memory,
-	state: State,
-	runtimeAgentId: string | undefined,
-): boolean {
-	if (availableAttachmentCount(message, state) === 0) return false;
-	const text =
-		typeof message.content.text === "string" ? message.content.text : "";
-	if (!text.trim()) return false;
-	if (ATTACHMENT_NOUN_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)) {
-		return true;
-	}
-	if (VISUAL_INSPECTION_RE.test(text)) {
-		return true;
-	}
-	const priorText = latestPriorUserText(state, runtimeAgentId);
-	return (
-		ATTACHMENT_NOUN_RE.test(priorText) &&
-		PRONOUN_ATTACHMENT_FOLLOWUP_RE.test(text) &&
-		ATTACHMENT_INSPECTION_RE.test(text)
-	);
-}
-
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -2706,62 +2654,6 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 				};
 			},
 		},
-		{
-			name: "core.attachment_inspection_requires_tool",
-			description:
-				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
-			priority: 10,
-			shouldRun: ({ runtime, message, state }) =>
-				!isSubAgentCompletionArtifact(message) &&
-				looksLikeAttachmentInspectionRequest(message, state, runtime.agentId),
-			evaluate: () => ({
-				requiresTool: true,
-				addContexts: ["media", "messaging"],
-				addCandidateActions: ["ATTACHMENT"],
-				clearReply: true,
-				debug: [
-					"attachment/image request has conversation attachments; routing through ATTACHMENT before answering",
-				],
-			}),
-		},
-		{
-			name: "core.contextual_identity_lookup_requires_recall",
-			description:
-				"Routes short chat-entity identity lookups through memory/messaging instead of letting Stage 1 guess from the simple shortcut.",
-			priority: 20,
-			shouldRun: ({ message, messageHandler }) =>
-				!isSubAgentCompletionArtifact(message) &&
-				isSimpleMessageHandlerShortcut(messageHandler) &&
-				extractContextualIdentityLookupSubject(
-					getUserMessageText(message) ?? "",
-				) !== null,
-			evaluate: ({ runtime, message }) => {
-				const subject = extractContextualIdentityLookupSubject(
-					getUserMessageText(message) ?? "",
-				);
-				const messageAction = findRuntimeActionByNames(runtime, ["MESSAGE"]);
-				return {
-					setContexts: ["general", "memory", "messaging"],
-					...(messageAction
-						? {
-								addCandidateActions: [messageAction.name],
-							}
-						: {}),
-					clearReply: true,
-					addContextSlices: [
-						[
-							"identity_lookup_policy:",
-							`The current user is asking who/what "${subject ?? "the named subject"}" is in context.`,
-							"Ground the answer in recent messages, memory, or message-search results before identifying the subject.",
-							"If recalled context does not identify a chat-local subject, say that plainly instead of inventing a relationship; only use public knowledge when the subject is clearly a public entity.",
-						].join("\n"),
-					],
-					debug: [
-						`short identity lookup for "${subject ?? "unknown"}"; routing through recall context before answering`,
-					],
-				};
-			},
-		},
 	];
 
 /**
@@ -2779,8 +2671,10 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"rules:",
 	"- answer directly in the agent's voice",
 	"- when the user asks for exact words, output only those exact words",
+	`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
+	"- high-stakes personal crisis/legal/medical/self-harm/police/CPS: no tactical concealment/evasion/testimony/contraband advice; direct to qualified help, and for imminent danger prioritize emergency services, poison control, or a crisis hotline",
 ].join("\n");
 
 const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
@@ -2802,12 +2696,13 @@ available_contexts:
 {{availableContexts}}
 
 direct/private rules:
-- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations should use contexts=["simple"] and put the final answer in replyText.
-- For simple requests, replyText must be a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
-- Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
-- Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If the message refers to a specific name, person, nickname, or thing you cannot identify from the visible context, choose a non-simple context (such as general or memory) instead of guessing.
-- Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content. If you cannot ground the answer from the visible context, say so plainly.
-- For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
+- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations: use contexts=["simple"] and put the final answer in replyText.
+- For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.
+- Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
+- Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
+- Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline.
+- For tool/planning paths, replyText is only a brief ack ("On it."). Never refuse because tools may run after this stage.
 - If schema omits shouldRespond, do not invent it.
 - contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
 
@@ -2912,6 +2807,7 @@ async function generateDirectReplyOnce(args: {
 function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
+	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
 	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
 	if (/(.)\1{4,}/u.test(trimmed)) return true;
@@ -3030,11 +2926,21 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
+	const renderedWithSharedRules = options?.directMessage
+		? [rendered, "", `- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`].join(
+				"\n",
+			)
+		: [
+				rendered,
+				"",
+				"## Shared Response Quality Rules",
+				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+			].join("\n");
 	if (!options?.responseHandlerFields?.trim()) {
-		return rendered;
+		return renderedWithSharedRules;
 	}
 	return [
-		rendered,
+		renderedWithSharedRules,
 		"",
 		"## Response Handler Fields",
 		"Populate every registered field. Use empty value when not applicable.",
@@ -3442,20 +3348,32 @@ export function messageHandlerFromFieldResult(
 			candidateActions: effectiveCandidateActions,
 			contexts: routedContexts,
 		});
+	const preferInlineCodeSnippetDirectReply =
+		!preemptDirect &&
+		requestedPlanning &&
+		shouldPreferInlineCodeSnippetDirectReply({
+			currentMessageText,
+			candidateActions: effectiveCandidateActions,
+			contexts: routedContexts,
+		});
 	const shouldPlan =
-		!preemptDirect && requestedPlanning && !preferCompleteDirectReply;
-	const finalContexts = preferCompleteDirectReply
-		? [SIMPLE_CONTEXT_ID]
-		: shouldPlan && initialPlanningContexts.length === 0
-			? Array.from(
-					new Set([
-						...routedContexts.filter(
-							(context) => context !== SIMPLE_CONTEXT_ID,
-						),
-						"general",
-					]),
-				)
-			: routedContexts;
+		!preemptDirect &&
+		requestedPlanning &&
+		!preferCompleteDirectReply &&
+		!preferInlineCodeSnippetDirectReply;
+	const finalContexts =
+		preferCompleteDirectReply || preferInlineCodeSnippetDirectReply
+			? [SIMPLE_CONTEXT_ID]
+			: shouldPlan && initialPlanningContexts.length === 0
+				? Array.from(
+						new Set([
+							...routedContexts.filter(
+								(context) => context !== SIMPLE_CONTEXT_ID,
+							),
+							"general",
+						]),
+					)
+				: routedContexts;
 	// Refusal suppression for the planning path (elizaOS/eliza#7620). Mirrors
 	// the logic in `parseMessageHandlerOutput`: when the planner is about to
 	// run, a refusal-shaped `replyText` from a safety-tuned hosted model is
@@ -3468,7 +3386,11 @@ export function messageHandlerFromFieldResult(
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
-	if (!preferCompleteDirectReply && effectiveCandidateActions.length > 0) {
+	if (
+		!preferCompleteDirectReply &&
+		!preferInlineCodeSnippetDirectReply &&
+		effectiveCandidateActions.length > 0
+	) {
 		plan.candidateActions = effectiveCandidateActions;
 	}
 	const extract =
@@ -3530,7 +3452,7 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	);
 }
 
-function isSimpleMessageHandlerShortcut(
+function _isSimpleMessageHandlerShortcut(
 	messageHandler: MessageHandlerResult,
 ): boolean {
 	if (messageHandler.processMessage !== "RESPOND") return false;
@@ -3543,107 +3465,6 @@ function isSimpleMessageHandlerShortcut(
 		nonSimpleContexts.length === 0 &&
 		(messageHandler.plan.candidateActions?.length ?? 0) === 0
 	);
-}
-
-const CONTEXTUAL_IDENTITY_LOOKUP_PREFIXES = [
-	"who is ",
-	"who are ",
-	"who was ",
-	"who were ",
-	"who's ",
-	"whos ",
-	"what is ",
-	"what was ",
-	"what's ",
-	"whats ",
-	"tell me about ",
-	"do you know ",
-	"do you remember ",
-	"what do you know about ",
-] as const;
-
-const CONTEXTUAL_IDENTITY_PRONOUN_SUBJECTS = new Set([
-	"he",
-	"her",
-	"him",
-	"i",
-	"it",
-	"me",
-	"she",
-	"that",
-	"them",
-	"they",
-	"this",
-	"us",
-	"we",
-	"you",
-]);
-
-function removeLeadingPlatformAddress(text: string): string {
-	let cleaned = text
-		.replace(/<@!?\d+>/gu, " ")
-		.replace(/\s+/gu, " ")
-		.trim();
-	const displayAddressRe = /(?:^|[\s:])[^:\n]{0,96}\(@\d+\)\s+/gu;
-	let displayAddressEnd = -1;
-	for (
-		let displayAddressMatch = displayAddressRe.exec(cleaned);
-		displayAddressMatch !== null;
-		displayAddressMatch = displayAddressRe.exec(cleaned)
-	) {
-		displayAddressEnd = displayAddressRe.lastIndex;
-	}
-	if (displayAddressEnd > 0) {
-		cleaned = cleaned.slice(displayAddressEnd).trim();
-	}
-	return cleaned;
-}
-
-function cleanContextualLookupSubject(subject: string): string {
-	return subject
-		.replace(/[\s?.!]+$/gu, "")
-		.replace(/^["'`“”‘’]+|["'`“”‘’]+$/gu, "")
-		.replace(
-			/\s+(?:in|from|on)\s+(?:this\s+)?(?:chat|channel|thread|server)$/iu,
-			"",
-		)
-		.trim();
-}
-
-function isShortContextualLookupSubject(subject: string): boolean {
-	const normalized = subject.toLowerCase();
-	if (!normalized || CONTEXTUAL_IDENTITY_PRONOUN_SUBJECTS.has(normalized)) {
-		return false;
-	}
-	const words = normalized.split(/\s+/u).filter(Boolean);
-	if (words.length === 0 || words.length > 3) return false;
-	if (subject.length > 48) return false;
-	if (/^[0-9\s.,:+*/=()-]+$/u.test(subject)) return false;
-	const looksLikeLocalName =
-		/[@_\-0-9]/u.test(subject) ||
-		/\b(?:bot|agent|ai)\b/iu.test(subject) ||
-		/^[a-z][a-z0-9_-]{6,}$/u.test(subject);
-	return looksLikeLocalName;
-}
-
-function lastNonEmptyLine(text: string): string {
-	const lines = text.replace(/\r\n/g, "\n").split("\n");
-	for (let index = lines.length - 1; index >= 0; index -= 1) {
-		const line = lines[index]?.trim();
-		if (line) return line;
-	}
-	return text.trim();
-}
-
-function extractContextualIdentityLookupSubject(text: string): string | null {
-	const cleaned = removeLeadingPlatformAddress(lastNonEmptyLine(text));
-	const lower = cleaned.toLowerCase();
-	for (const prefix of CONTEXTUAL_IDENTITY_LOOKUP_PREFIXES) {
-		if (!lower.startsWith(prefix)) continue;
-		const subject = cleanContextualLookupSubject(cleaned.slice(prefix.length));
-		return isShortContextualLookupSubject(subject) ? subject : null;
-	}
-	return null;
 }
 
 function shouldPreferCompleteDirectReply(args: {
@@ -3666,6 +3487,16 @@ function shouldPreferCompleteDirectReply(args: {
 		looksLikeActionExplanationRequest(normalized) ||
 		looksLikeCreativeWritingRequest(normalized)
 	);
+}
+
+function shouldPreferInlineCodeSnippetDirectReply(args: {
+	currentMessageText: string;
+	candidateActions: readonly string[];
+	contexts: readonly string[];
+}): boolean {
+	if (looksLikeExplicitDelegationRequest(args.currentMessageText)) return false;
+	if (!looksLikeInlineCodeSnippetRequest(args.currentMessageText)) return false;
+	return hasOnlyWeakDirectReplyPlanningSignals(args);
 }
 
 const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
@@ -3854,6 +3685,7 @@ function shouldUseDirectReplyFastPath(args: {
 }): boolean {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
+	if (looksLikeHighStakesPersonalCrisisRequest(text)) return false;
 	if (
 		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
 	) {
@@ -3868,6 +3700,19 @@ function shouldUseDirectReplyFastPath(args: {
 		return false;
 	}
 	return true;
+}
+
+function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
+	if (
+		!/\b(?:what\s+should|what\s+do|should\s+i|should\s+he|should\s+she|should\s+they|help|advice|urgent|emergency|crisis)\b/iu.test(
+			text,
+		)
+	) {
+		return false;
+	}
+	return /\b(?:lawyer|attorney|police|cop|cops|court|criminal|felony|arrest|charged|custody|cps|child\s+protective|landlord|grow|plants|contraband|evidence|overdose|too\s+many\s+pills|poison|suicide|self[-\s]?harm|kill\s+(?:myself|himself|herself|themselves)|medical\s+emergency|psychiatric\s+emergency|domestic\s+violence|abuse)\b/iu.test(
+		text,
+	);
 }
 
 function findWebLookupActionName(
@@ -4157,6 +4002,152 @@ function parseMessageHandlerModelOutput(
 	return (
 		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
 	);
+}
+
+function getStage1FinishReason(raw: string | GenerateTextResult): string {
+	if (typeof raw === "string") return "";
+	return typeof raw.finishReason === "string" ? raw.finishReason : "";
+}
+
+function stage1HitCompletionLimit(
+	raw: string | GenerateTextResult,
+	maxTokens: number,
+): boolean {
+	if (typeof raw === "string") return false;
+	const finishReason = getStage1FinishReason(raw).toLowerCase();
+	if (
+		/\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/u.test(
+			finishReason,
+		)
+	) {
+		return true;
+	}
+	const completionTokens = raw.usage?.completionTokens;
+	return (
+		typeof completionTokens === "number" &&
+		Number.isFinite(completionTokens) &&
+		completionTokens >= maxTokens
+	);
+}
+
+function extractJsonStringField(
+	text: string,
+	fieldName: string,
+): string | null {
+	const pattern = new RegExp(
+		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*"`,
+		"u",
+	);
+	const match = pattern.exec(text);
+	if (!match) return null;
+	const valueStart = match.index + match[0].length;
+	let escaped = false;
+	for (let i = valueStart; i < text.length; i++) {
+		const ch = text[i];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (ch === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (ch === '"') {
+			try {
+				return JSON.parse(`"${text.slice(valueStart, i)}"`) as string;
+			} catch {
+				return null;
+			}
+		}
+	}
+	return null;
+}
+
+function extractJsonStringArrayField(
+	text: string,
+	fieldName: string,
+): string[] {
+	const pattern = new RegExp(
+		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*\\[([^\\]]*)\\]`,
+		"u",
+	);
+	const match = pattern.exec(text);
+	if (!match?.[1]) return [];
+	const values: string[] = [];
+	const itemPattern = /"((?:\\.|[^"\\])*)"/gu;
+	for (const item of match[1].matchAll(itemPattern)) {
+		try {
+			values.push(JSON.parse(`"${item[1]}"`) as string);
+		} catch {
+			return [];
+		}
+	}
+	return values;
+}
+
+function extractJsonBooleanField(
+	text: string,
+	fieldName: string,
+): boolean | null {
+	const pattern = new RegExp(
+		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*(true|false)`,
+		"u",
+	);
+	const match = pattern.exec(text);
+	if (!match) return null;
+	return match[1] === "true";
+}
+
+function recoverStage1TruncatedMessageHandler(
+	raw: string | GenerateTextResult,
+): MessageHandlerResult | null {
+	const text = getV5ModelText(raw);
+	const replyText = extractJsonStringField(text, "replyText")?.trim();
+	if (!replyText) return null;
+	const contexts = extractJsonStringArrayField(text, "contexts");
+	const candidateActions = extractJsonStringArrayField(
+		text,
+		"candidateActionNames",
+	);
+	const requiresTool = extractJsonBooleanField(text, "requiresTool");
+	const hasOnlySimpleContext =
+		contexts.length === 0 ||
+		contexts.every((context) => context === SIMPLE_CONTEXT_ID);
+	if (!hasOnlySimpleContext) return null;
+	if (candidateActions.length > 0) return null;
+	if (requiresTool === true) return null;
+	const strippedReply = stripReasoningBlocks(replyText);
+	if (
+		!looksLikeCompleteDirectReply(strippedReply) &&
+		!looksLikeInlineCodeSnippetRequest(strippedReply)
+	) {
+		return null;
+	}
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Stage 1 hit the completion limit; recovered a completed replyText field from the truncated envelope.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: strippedReply,
+			simple: true,
+			requiresTool: false,
+		},
+	};
+}
+
+function synthesizeStage1TruncationReply(): MessageHandlerResult {
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Stage 1 hit the completion limit and no complete replyText field could be recovered.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: STAGE1_TRUNCATION_REPLY,
+			simple: true,
+			requiresTool: false,
+		},
+	};
 }
 
 /**
@@ -5010,6 +5001,30 @@ export async function runV5MessageRuntimeStage1(args: {
 		if (!messageHandler) {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
 		}
+		const stage1CompletionLimitHit = stage1HitCompletionLimit(
+			rawMessageHandler,
+			stage1ModelParams.maxTokens,
+		);
+		if (stage1CompletionLimitHit) {
+			args.runtime.logger?.warn?.(
+				{
+					src: "service:message",
+					finishReason: getStage1FinishReason(rawMessageHandler),
+					usage:
+						typeof rawMessageHandler === "string"
+							? undefined
+							: rawMessageHandler.usage,
+					maxTokens: stage1ModelParams.maxTokens,
+					recovered: Boolean(messageHandler),
+				},
+				"[message] Stage 1 hit the completion-token limit",
+			);
+		}
+		if (!messageHandler && stage1CompletionLimitHit) {
+			messageHandler =
+				recoverStage1TruncatedMessageHandler(rawMessageHandler) ??
+				synthesizeStage1TruncationReply();
+		}
 		if (
 			!messageHandler &&
 			isEmptyStage1Result(rawMessageHandler) &&
@@ -5603,6 +5618,7 @@ async function recordMessageHandlerStage(args: {
 				response: responseText,
 				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
+				finishReason: getStage1FinishReason(args.raw) || undefined,
 			},
 			cache: args.prefixHash
 				? {
@@ -6751,13 +6767,10 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 
-	const asksDelegation =
-		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
-			normalized,
-		);
+	const asksDelegation = looksLikeExplicitDelegationRequest(normalized);
+	if (!asksDelegation && looksLikeInlineCodeSnippetRequest(normalized)) {
+		return false;
+	}
 	const asksCodingWork =
 		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
 			normalized,
@@ -6766,6 +6779,41 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 			normalized,
 		);
 	return asksDelegation || asksCodingWork;
+}
+
+function looksLikeExplicitDelegationRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	return (
+		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+			normalized,
+		)
+	);
+}
+
+function looksLikeInlineCodeSnippetRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (
+		/\b(?:file|files|repo|repository|project|app|site|page|backend|frontend|deploy|build|run|execute|install|test|verify|fix|edit|modify|save|write\s+(?:to|in)\s+(?:\/|\.\/|[a-z]:\\))\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+	const asksForSnippet =
+		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b[\s\S]{0,80}\b(?:in|using|for)\s+(?:python|javascript|typescript|java|go|rust|ruby|bash|shell|c\+\+|c#|c\b|php|swift|kotlin)\b/iu.test(
+			normalized,
+		);
+	const hasSmallScope =
+		/\b(?:hello world|fibonacci|fib|single|simple|short|small|tiny|example|snippet|function|code block|one[- ]?liner|\d+\s*[- ]?line)\b/iu.test(
+			normalized,
+		);
+	return asksForSnippet && hasSmallScope;
 }
 
 function looksLikeCreativeWritingRequest(text: string): boolean {
@@ -10128,6 +10176,7 @@ export class DefaultMessageService implements IMessageService {
 		prompt: string,
 		stage: string,
 	): Promise<FailureReplyAttempt> {
+		let sawRateLimit = false;
 		for (const modelType of [
 			ModelType.TEXT_LARGE,
 			ModelType.RESPONSE_HANDLER,
@@ -10164,6 +10213,12 @@ export class DefaultMessageService implements IMessageService {
 				) {
 					return { kind: "noProvider" };
 				}
+				// Track the most recent slot's cause. Reporting "rate-limited"
+				// only when the LAST attempted slot was a 429 avoids misleading
+				// the user in a mixed-failure run (one slot throttled, others
+				// failed for unrelated reasons where retrying won't help). The
+				// all-429 cascade from the live incident still lands here.
+				sawRateLimit = isRateLimitError(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -10174,6 +10229,13 @@ export class DefaultMessageService implements IMessageService {
 					"Structured failure reply generation failed for model",
 				);
 			}
+		}
+		// Every model slot failed without a usable reply. When the final cause
+		// was provider rate-limiting (429), tell the user that plainly instead
+		// of the opaque generic message — the honest signal is "try again
+		// shortly", not "something broke".
+		if (sawRateLimit) {
+			return { kind: "rateLimited" };
 		}
 		return { kind: "text", value: "" };
 	}
@@ -10220,15 +10282,22 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		let replyText = attempt.value;
+		let replyText = attempt.kind === "rateLimited" ? "" : attempt.value;
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters
 			// can override with their own phrasing via
-			// character.templates.transientFailureReply.
-			replyText =
-				runtime.character.templates?.transientFailureReply ||
-				"Something went wrong on my end. Please try again.";
+			// character.templates.transientFailureReply (or
+			// rateLimitedReply for the throttling-specific case).
+			if (attempt.kind === "rateLimited") {
+				replyText =
+					runtime.character.templates?.rateLimitedReply ||
+					"My model provider is rate-limiting me right now — give it a few seconds and try again.";
+			} else {
+				replyText =
+					runtime.character.templates?.transientFailureReply ||
+					"Something went wrong on my end. Please try again.";
+			}
 		}
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
@@ -10286,6 +10355,7 @@ export class DefaultMessageService implements IMessageService {
 		const responseContent: Content = {
 			thought: `No LLM provider configured during ${stage}.`,
 			actions: ["REPLY"],
+			failureKind: "no_provider",
 			providers: [],
 			text: replyText,
 			responseId,

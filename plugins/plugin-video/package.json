@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-video",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -38,7 +38,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts"
   },
   "agentConfig": {

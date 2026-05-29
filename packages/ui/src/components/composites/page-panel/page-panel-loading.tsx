@@ -58,7 +58,7 @@ export function PageLoadingState({
   return (
     <div
       className={cn(
-        "flex min-h-[18rem] flex-col items-center justify-center rounded-sm border border-dashed border-border bg-card px-6 py-12 text-center shadow-xs",
+        "flex min-h-[18rem] flex-col items-center justify-center rounded-sm border border-dashed border-border bg-card px-6 py-12 text-center ",
         className,
       )}
       {...props}

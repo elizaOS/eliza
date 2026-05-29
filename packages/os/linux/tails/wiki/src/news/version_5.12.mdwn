@@ -1,0 +1,116 @@
+[[!meta title="Tails 5.12 is out"]]
+[[!meta date="Wed, 19 Apr 2023 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+<h2>Data deletion when deactivating a feature of the Persistent Storage</h2>
+
+After you turn off a feature of the Persistent Storage, you can now click the
+**Delete Data** button to delete the data stored for this feature.
+
+[[!img delete-data.png link="no" alt="Persistent Storage settings with message:
+Persistent Folder. The data of this feature is still saved. Delete Data?"]]
+
+<h2>Passphrase suggestion when creating the Persistent Storage</h2>
+
+When creating the Persistent Storage, a random and very secure passphrase is
+now displayed as a suggestion:
+
+[[!img diceware.png link="no" alt="We recommend a long passphrase of 5 to 7 random words. For example: Ella Grim Inca Brief Facts Panda"]]
+
+This passphrase uses the diceware method to give very strong security
+guarantees while being possible to memorize.
+
+For example, a six-word passphrase like we suggest would take 3&#8239;505 years
+to crack at a trillion guesses a second.
+
+Learn more about the maths in [The Intercept: Passphrases That You Can Memorize
+— But That Even the NSA Can’t
+Guess](https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/).
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [12.0.5](https://blog.torproject.org/new-release-tor-browser-1205/).
+
+- Update the *Linux* kernel to 6.1.20. This improves the support for newer
+  hardware: graphics, Wi-Fi, and so on.
+
+- Use a new icon for the backup utility for the Persistent Storage.
+
+  [[!img lib/apps/backup.png link="no" alt=""]]
+
+<h1 id="fixes">Fixed problems</h1>
+
+We fixed several reliability issues with the Persistent Storage:
+
+- We improved the error message when a feature of the Persistent Storage fails
+  to activate from the Welcome Screen to clarify which feature is affected.
+
+  [[!img failure-to-activate.png link="no" alt="Welcome Screen with error
+  message: Failed to activate some features of the Persistent Storage:
+  Persistent Folder."]]
+
+  After starting Tails, the feature that failed to activate is marked as such
+  in the Persistent Storage settings. You can try turning the feature off and
+  on again or deleting its data to reset it entirely.
+
+  [[!img activation-failed.png link="no" alt="Persistent Storage settings with
+  error message: Persistent Folder. Activation failed. Try again."]]
+
+- We made the activation of the Persistent Storage more reliable in 2 error
+  cases. ([[!tails_ticket 19376]] and [[!tails_ticket 19331]])
+
+- We added a progress indicator while turning on a new feature to clarify that
+  it can take some time. ([[!tails_ticket 19291]])
+
+- We made sure that all data that is already available in Tails is really
+  copied to the USB stick when turning on a feature. ([[!tails_ticket 19368]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+<!--
+
+Copy the known issues from the previous version if they haven't been
+solved or move them to /support/known_issues if more appropriate.
+
+-->
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 5.12</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.12.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.12 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]

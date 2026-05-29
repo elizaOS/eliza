@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/i18next.json",
-  "description": "Voice device-tier warning copy. Authored by I9 (.swarm/research/R9-memory.md §7). Surfaced by I10 in onboarding step 2 and the Voice settings tier banner. DO NOT edit the prose without updating R9 §7.",
+  "description": "Voice device-tier warning copy. Authored by I9 (.swarm/research/R9-memory.md §7). Surfaced by I10 in first-run step 2 and the Voice settings tier banner. DO NOT edit the prose without updating R9 §7.",
   "tier": {
     "max": {
       "header": "Your device is in the MAX tier for on-device Eliza.",

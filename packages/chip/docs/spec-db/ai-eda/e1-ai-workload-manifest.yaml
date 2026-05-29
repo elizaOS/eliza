@@ -150,7 +150,7 @@ workloads:
         sha256: ab4ef28f289ec6bd64c892f7e5faf336fbd8d291bce75e408669c989c0654c31
         role: e2e_test
       - path: compiler/runtime/e1_npu_stablehlo.py
-        sha256: ee8980e961e4efd58a88d82de918d5d402563efd526f3fb0dc92b887e99808f4
+        sha256: 856f11461e773aeb979f7350e43b46685aeac813601cedc9f8dc7d389e2143af
         role: lowering
       - path: compiler/runtime/e1_npu_runtime.py
         sha256: 6ae121292252e26217ccaecee615a1ab53140c6a65925fa120d4022153e14562

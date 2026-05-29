@@ -24,7 +24,7 @@ export function PolicyToggle({
 
   return (
     <div
-      className={`rounded-xl border transition-all ${
+      className={`rounded-sm border transition-all ${
         enabled
           ? "border-accent/30 bg-accent/5"
           : "border-border/50 bg-card/30 opacity-75"
@@ -38,7 +38,7 @@ export function PolicyToggle({
           onClick={() => enabled && setExpanded((e) => !e)}
         >
           <div
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-sm ${
               enabled ? "bg-accent/15 text-accent" : "bg-muted/10 text-muted"
             }`}
           >

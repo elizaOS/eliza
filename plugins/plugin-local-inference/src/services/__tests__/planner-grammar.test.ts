@@ -10,10 +10,6 @@
  *               → {responseSkeleton, grammar, actionSchemas,
  *                  paramsSkeletons, elizaSchema}
  *
- *   well-formed model output (matching the skeleton)
- *               → extractPlanActionsFromContent
- *               → ExtractedPlanAction(action, parameters, thought)
- *
  * GBNF compiler limitation: `compileSkeletonToGbnf` cannot express per-action
  * `parameters` discrimination in a single flat skeleton. Tests assert the
  * fallback: `parameters` is `free-json`, and the engine drives a second pass
@@ -23,7 +19,6 @@
 import {
 	type Action,
 	clearResponseGrammarCache,
-	extractPlanActionsFromContent,
 	normalizeActionJsonSchema,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
@@ -50,7 +45,7 @@ function makeAction(name: string, overrides: Partial<Action> = {}): Action {
 }
 
 describe("buildPlanActionsSkeleton — top-level PLAN_ACTIONS envelope", () => {
-	it("emits the bare-JSON shape `{action, parameters, thought}` that plan-actions-extractor parses", () => {
+	it("emits the canonical bare-JSON shape `{action, parameters, thought}`", () => {
 		clearResponseGrammarCache();
 		const skeleton = buildPlanActionsSkeleton([
 			makeAction("ALPHA"),
@@ -145,54 +140,6 @@ describe("compileSkeletonToGbnf(buildPlanActionsSkeleton(...))", () => {
 		expect(grammar.source).not.toMatch(
 			/HALLUCINATED|UNKNOWN_ACTION|NOT_A_REAL/,
 		);
-	});
-
-	it("a model output matching the skeleton round-trips through extractPlanActionsFromContent", () => {
-		clearResponseGrammarCache();
-		const skeleton = buildPlanActionsSkeleton([
-			makeAction("SEND_MESSAGE", {
-				parameters: [
-					{
-						name: "channelId",
-						description: "where to send",
-						required: true,
-						schema: { type: "string" },
-					},
-					{
-						name: "text",
-						description: "what to say",
-						required: true,
-						schema: { type: "string" },
-					},
-				],
-			}),
-			makeAction("IGNORE"),
-		]);
-		if (!skeleton) throw new Error("expected skeleton");
-		// Simulate a well-formed PLAN_ACTIONS output produced under the grammar:
-		// the literals are the scaffold; the model sampled the action enum value
-		// (`"SEND_MESSAGE"`), the parameters object, and a free-string thought.
-		const modelOutput =
-			'{"action":"SEND_MESSAGE","parameters":{"channelId":"c1","text":"hi"},"thought":"replying"}';
-		const extracted = extractPlanActionsFromContent(modelOutput);
-		expect(extracted).not.toBeNull();
-		expect(extracted?.action).toBe("SEND_MESSAGE");
-		expect(extracted?.parameters).toEqual({ channelId: "c1", text: "hi" });
-		expect(extracted?.thought).toBe("replying");
-		expect(extracted?.recoverySource).toBe("bare-action-object");
-	});
-
-	it("the parser refuses an action name not in the skeleton's enum (constraint is enforced at decode, not parse)", () => {
-		// The parser is intentionally permissive about `action` values — the
-		// grammar is what pins the enum at decode time. The parser does its own
-		// sanity check (rejecting envelopes that look like HANDLE_RESPONSE), but
-		// a stray action name passes through; downstream callers reject it
-		// against the registry. This test pins that contract so future changes
-		// to either side stay co-ordinated.
-		const stray = '{"action":"NOT_REGISTERED","parameters":{},"thought":"x"}';
-		const extracted = extractPlanActionsFromContent(stray);
-		expect(extracted).not.toBeNull();
-		expect(extracted?.action).toBe("NOT_REGISTERED");
 	});
 });
 
@@ -349,18 +296,7 @@ describe("end-to-end: planner skeleton wired through StructuredGenerateParams", 
 		});
 		expect(resolved.grammar).not.toBeNull();
 
-		// Mock model output (what the engine would have produced under the GBNF
-		// — the grammar pins the scaffold and the action alternation; the
-		// free-string thought and free-json parameters are model-sampled).
-		const mockOutput =
-			'{"action":"SEND_MESSAGE","parameters":{"channelId":"c1","text":"hi"},"thought":"reply"}';
-		const extracted = extractPlanActionsFromContent(mockOutput);
-		expect(extracted).not.toBeNull();
-		expect(extracted?.action).toBe("SEND_MESSAGE");
-		expect(extracted?.parameters).toEqual({ channelId: "c1", text: "hi" });
-		// Round-trip: the action name is one of the registered set — i.e. the
-		// GBNF would have accepted it during decode.
-		expect(Object.keys(bundle.actionSchemas)).toContain(extracted?.action);
+		expect(Object.keys(bundle.actionSchemas)).toContain("SEND_MESSAGE");
 	});
 });
 

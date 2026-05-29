@@ -133,7 +133,7 @@ export interface DataLoadersDeps {
   characterDraft: CharacterData | null;
   loadCharacter: () => Promise<void>;
   selectedVrmIndex: number;
-  onboardingComplete: boolean;
+  firstRunComplete: boolean;
   uiLanguage: UiLanguage;
 
   // Owner name
@@ -164,7 +164,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     characterDraft,
     loadCharacter,
     selectedVrmIndex,
-    onboardingComplete,
+    firstRunComplete,
     uiLanguage,
     setOwnerNameState,
   } = deps;
@@ -468,7 +468,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     if (previousLanguage === uiLanguage) {
       return;
     }
-    if (!onboardingComplete || selectedVrmIndex <= 0) {
+    if (!firstRunComplete || selectedVrmIndex <= 0) {
       return;
     }
 
@@ -501,7 +501,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
     characterData?.name,
     characterDraft?.name,
     loadCharacter,
-    onboardingComplete,
+    firstRunComplete,
     selectedVrmIndex,
     uiLanguage,
   ]);

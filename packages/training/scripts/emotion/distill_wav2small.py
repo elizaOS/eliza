@@ -356,7 +356,6 @@ def build_student() -> Any:
             import torch.nn.functional as F
 
             n_fft = self.N_FFT
-            hop = self.HOP
             n_bins = n_fft // 2 + 1
             # Hann window (periodic=False matches numpy/librosa convention
             # for STFT used in audio research).
@@ -785,7 +784,7 @@ def train_student(
     # where the operator's full corpus is materialised in memory; on a real
     # MSP-Podcast pass the operator will want to swap this for a streaming
     # IterableDataset, but for the in-repo training-script CLI this matches
-    # the rest of the kokoro/dflash scripts' approach.
+    # the rest of the kokoro/mtp scripts' approach.
     pcm_list: list[Any] = []
     vad_list: list[Any] = []
     cls_list: list[int] = []

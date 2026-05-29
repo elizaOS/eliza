@@ -72,14 +72,14 @@ export function MarketplaceCard({
       className="flex items-start gap-4 p-4 border border-border bg-card hover:border-accent/50 transition-colors"
       data-testid={`skill-result-card-${item.id}`}
     >
-      <div className="w-10 h-10 shrink-0 flex items-center justify-center bg-accent/10 text-accent text-sm font-bold rounded">
+      <div className="w-10 h-10 shrink-0 flex items-center justify-center bg-accent/10 text-accent text-sm font-bold rounded-sm">
         {item.name.charAt(0).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <div className="font-semibold text-sm text-txt">{item.name}</div>
           <span
-            className={`px-1.5 py-px text-2xs font-bold uppercase tracking-wider rounded ${
+            className={`px-1.5 py-px text-2xs font-bold uppercase tracking-wider rounded-sm ${
               stateBadge.tone === "success"
                 ? "bg-success/15 text-success"
                 : stateBadge.tone === "warning"
@@ -124,7 +124,7 @@ export function MarketplaceCard({
             <Button
               variant="default"
               size="sm"
-              className="h-8 px-3 text-xs-tight font-bold tracking-wide shadow-sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide "
               onClick={() => onInstall(item)}
               disabled={isInstalling}
               data-testid={`skill-action-install-${item.id}`}
@@ -186,7 +186,7 @@ export function MarketplaceCard({
             <Button
               variant="default"
               size="sm"
-              className="h-8 px-3 text-xs-tight font-bold tracking-wide shadow-sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide "
               onClick={() => onEnable(item.id, item.name)}
               disabled={isToggling}
               data-testid={`skill-action-enable-${item.id}`}
@@ -221,7 +221,7 @@ export function MarketplaceCard({
             <Button
               variant="destructive"
               size="sm"
-              className="h-8 px-3 text-xs-tight font-bold tracking-wide shadow-sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide "
               onClick={() => onUninstall(item.id, item.name)}
               disabled={isUninstalling}
               data-testid={`skill-action-uninstall-${item.id}`}
@@ -382,7 +382,7 @@ export function InstallModal({
               {skillsMarketplaceError && (
                 <div
                   role="alert"
-                  className="mb-3 rounded-lg border border-danger/35 bg-danger/10 p-2.5 text-xs text-danger"
+                  className="mb-3 rounded-sm border border-danger/35 bg-danger/10 p-2.5 text-xs text-danger"
                 >
                   {skillsMarketplaceError}
                 </div>
@@ -481,7 +481,7 @@ export function InstallModal({
               {skillsMarketplaceError && (
                 <div
                   role="alert"
-                  className="mt-3 rounded-lg border border-danger/35 bg-danger/10 p-2.5 text-xs text-danger"
+                  className="mt-3 rounded-sm border border-danger/35 bg-danger/10 p-2.5 text-xs text-danger"
                 >
                   {skillsMarketplaceError}
                 </div>

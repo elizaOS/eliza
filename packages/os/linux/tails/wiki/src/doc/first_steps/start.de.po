@@ -1,0 +1,45 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails Translation\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2024-05-11 14:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <tails-l10n@boum.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Starting Tails\"]]\n"
+msgstr "[[!meta title=\"Starten Sie Tails!\"]]\n"
+
+#. type: Plain text
+msgid "To learn how to start Tails, refer to our installation instructions on:"
+msgstr ""
+"Um zu erfahren, wie Tails gestartet wird, beziehen Sie sich auf unsere "
+"Installationsanweisungen zum:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Starting Tails on PC|pc]]"
+msgid "[[Starting Tails on PC|pc]]"
+msgstr "- [[Tails von einem PC starten|pc]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Starting Tails on Mac|mac]]"
+msgid "[[Starting Tails on Mac|mac]]"
+msgstr "- [[Tails auf einem Mac starten|mac]]"
+
+#~ msgid "[[Starting a Mac on a DVD|install/mac/dvd#start-dvd]]"
+#~ msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"

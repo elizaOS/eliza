@@ -8,7 +8,7 @@ import { useStewardAuthContext } from "./StewardAuthProvider";
  * Telegram Mini App Provider.
  *
  * Phase 2: Auto-authenticates via /api/auth/telegram-miniapp (HMAC-verified
- * initData) instead of Privy's loginWithTelegram.
+ * initData) instead of a provider-specific Telegram login flow.
  *
  * Flow:
  * 1. Detect Telegram Mini App context via @telegram-apps/sdk-react

@@ -14,11 +14,34 @@ import { logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
 
-let cachedManager: SecretsManager | null = null;
+// Cache for the lazily-created process-wide SecretsManager facade.
+//
+// TDZ-hardening: this module sits in a circular-import chain that runs through
+// vault-bootstrap.ts → loadRegistry (../registry) → … → back into app-core,
+// which on Bun's strict ESM evaluator can re-enter `sharedSecretsManager()`
+// before the top-level initializer of `vault-mirror.ts` finishes running. A
+// bare `let cachedManager = null` would be in the temporal dead zone at that
+// moment and throw `Cannot access 'cachedManager' before initialization`,
+// which surfaced at boot as `[vault-bootstrap]` failing and the agent never
+// binding to port 31337 (live-USB symptom). A module-level `let` of a
+// container object dodges TDZ because the container is hoisted with its
+// `undefined` initializer in the var-environment phase, and the only access
+// path goes through `state.manager` which is just an object property read.
+var state: { manager: SecretsManager | null } = { manager: null };
 
 export function sharedSecretsManager(): SecretsManager {
-  if (!cachedManager) cachedManager = createManager();
-  return cachedManager;
+  // Self-heal: if a circular import re-entered us before the module-top
+  // `var state = {…}` initializer line ran, hoisted `state` is still
+  // `undefined`. Lazily initialize the container so we never throw and
+  // downstream callers see a stable `{ manager: null }` after first access.
+  // Defensive: the primary fix is breaking the cycle (see
+  // `vault-bootstrap.ts` agent-bridge lazy import), but this guard keeps
+  // future cycle re-introductions from silently bricking boot.
+  if (!state) {
+    state = { manager: null };
+  }
+  if (!state.manager) state.manager = createManager();
+  return state.manager;
 }
 
 export function sharedVault(): Vault {
@@ -31,7 +54,7 @@ export function sharedVault(): Vault {
  * Also lets tests inject a test vault built via `createTestVault`.
  */
 export function _resetSharedVaultForTesting(next: Vault | null = null): void {
-  cachedManager = next ? createManager({ vault: next }) : null;
+  state.manager = next ? createManager({ vault: next }) : null;
 }
 
 /**
@@ -41,11 +64,13 @@ export function _resetSharedVaultForTesting(next: Vault | null = null): void {
  *
  * Returns the list of keys that failed to write. The PUT handler
  * surfaces them under `vaultMirrorFailures` in the response so the UI
- * can warn the user that the vault mirror did not take. Per-key
- * try/catch keeps one failed key from aborting the rest of the loop.
+ * can warn the user that their secret was saved to legacy config but
+ * not mirrored to the vault. Per-key try/catch keeps one failed key
+ * from aborting the rest of the loop.
  *
- * Vault key shape: the env-var name itself (e.g. `OPENROUTER_API_KEY`),
- * matching the read-side hydration path.
+ * Vault key shape: the env-var name itself (e.g.
+ * `OPENROUTER_API_KEY`). Stable, matches what the legacy code uses,
+ * and lets the read-side hydration round-trip cleanly.
  */
 export async function mirrorPluginSensitiveToVault(
   plugin: { parameters: Array<{ key: string; sensitive: boolean }> },

@@ -1,376 +1,81 @@
-/**
- * StartupShell — the front door to the app.
- *
- * Shows a branded splash with retro progress bar during ALL startup phases.
- * New users see the server chooser first. Returning users see the progress bar
- * immediately. The splash stays visible until the app is FULLY loaded
- * (including a brief settle delay after coordinator reaches ready).
- *
- * Non-loading phases (error, pairing, onboarding) delegate to their views.
- */
-
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { client } from "../../api";
-import { CONNECT_EVENT } from "../../events";
-import { ensureStoreBuildWorkspaceFolder } from "../../onboarding/ensure-store-build-workspace-folder";
-import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
-import { applyLaunchConnection } from "../../platform";
-import { useApp } from "../../state";
-import {
-  loadVoicePrefixDone,
-  saveVoicePrefixDone,
-} from "../../state/persistence";
-import type { StartupErrorReason, StartupErrorState } from "../../state/types";
-import { BootstrapStep } from "../onboarding/BootstrapStep";
-import { VoicePrefixGate } from "../onboarding/VoicePrefixGate";
+import type { ReactNode } from "react";
+import { BootstrapStep } from "../setup/BootstrapStep";
 import { PairingView } from "./PairingView";
-import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
+import type { StartupShellProps } from "./startup-shell-types";
 
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
-const PHASE_PROGRESS: Record<string, number> = {
-  splash: 0,
-  "restoring-session": 10,
-  "resolving-target": 20,
-  "polling-backend": 40,
-  "starting-runtime": 60,
-  hydrating: 85,
-  ready: 100,
-};
-
-function phaseToStatusKey(phase: string): string {
-  switch (phase) {
-    case "restoring-session":
-      return "startupshell.Starting";
-    case "resolving-target":
-    case "polling-backend":
-      return "startupshell.ConnectingBackend";
-    case "starting-runtime":
-      return "startupshell.InitializingAgent";
-    case "hydrating":
-    case "ready":
-      return "startupshell.Loading";
-    default:
-      return "startupshell.Starting";
-  }
-}
-
-/**
- * Returns true when the cloud-provisioned bootstrap session has NOT yet been
- * established for this page load. After a successful exchange the UI writes
- * sessionStorage["eliza_session"] as a renderer-side marker; the server-owned
- * HttpOnly cookie remains the actual auth boundary.
- */
-function needsBootstrapSession(): boolean {
-  try {
-    return !sessionStorage.getItem("eliza_session");
-  } catch {
-    // sessionStorage unavailable — treat as needing bootstrap (fail closed).
-    return true;
-  }
-}
-
-export function StartupShell() {
-  const {
-    startupCoordinator,
-    startupError,
-    onboardingComplete,
-    onboardingCloudProvisionedContainer,
-    retryStartup,
-    setActionNotice,
-    setState,
-    t,
-  } = useApp();
-  const phase = startupCoordinator.phase;
-  const cloudSkipProbeStartedRef = useRef(false);
-  const isSplash = phase === "splash";
-  const splashLoaded = isSplash
-    ? (startupCoordinator.state as { loaded?: boolean }).loaded
-    : false;
-  const progress = PHASE_PROGRESS[phase] ?? 50;
-
-  // ── Voice prefix gate state ───────────────────────────────────
-  // Show the voice onboarding prefix before RuntimeGate on first boot.
-  // Once done (user completes or explicitly skips) we persist the flag and
-  // fall through to RuntimeGate.
-  const [voicePrefixDone, setVoicePrefixDone] = useState(loadVoicePrefixDone);
-  const handleVoicePrefixDone = useCallback(() => {
-    saveVoicePrefixDone(true);
-    setVoicePrefixDone(true);
-  }, []);
-
-  // ── Bootstrap gate state ───────────────────────────────────────
-  // Set to true when the server reports cloudProvisioned=true and no
-  // session exists yet. Set to false once the bootstrap exchange succeeds
-  // (onAdvance callback below).
-  const [showBootstrap, setShowBootstrap] = useState(false);
-
-  // ── Cloud onboarding skip ──────────────────────────────────────
-  // Fallback: if a cloud-provisioned container still reaches onboarding-required
-  // (e.g. splash probe didn't fire SPLASH_CLOUD_SKIP), re-check the server here
-  // and fast-forward past onboarding.
-  //
-  // IMPORTANT: deps must NOT include the unstable `startupCoordinator` object
-  // reference. Including it caused the probe to be cancelled on every re-render
-  // (RuntimeGate triggers state updates when the cloud login resolves), killing
-  // the in-flight fetch. We use a ref to access the coordinator's dispatch
-  // function instead.
-  const coordinatorDispatchRef = useRef(startupCoordinator.dispatch);
-  coordinatorDispatchRef.current = startupCoordinator.dispatch;
-  const coordinatorStateRef = useRef(startupCoordinator.state);
-  coordinatorStateRef.current = startupCoordinator.state;
-
-  useEffect(() => {
-    const handleConnect = (event: Event): void => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      const payload =
-        detail && typeof detail === "object" && !Array.isArray(detail)
-          ? (detail as { gatewayUrl?: unknown; token?: unknown })
-          : null;
-      if (typeof payload?.gatewayUrl !== "string") {
-        return;
-      }
-
-      try {
-        const connection = applyLaunchConnection({
-          kind: "remote",
-          apiBase: payload.gatewayUrl,
-          token: typeof payload.token === "string" ? payload.token : null,
-          allowPublicHttps: true,
-        });
-        persistMobileRuntimeModeForServerTarget("remote");
-        setState("onboardingServerTarget", "remote");
-        setState("onboardingRemoteApiBase", connection.apiBase);
-        setState("onboardingRemoteToken", connection.token ?? "");
-        setState("onboardingRemoteConnected", true);
-        setState("onboardingRemoteError", null);
-        setActionNotice("Connected to remote backend.", "success", 4200);
-        retryStartup();
-      } catch (err) {
-        setActionNotice(
-          err instanceof Error
-            ? err.message
-            : "Failed to connect remote backend.",
-          "error",
-          8000,
-        );
-      }
-    };
-
-    document.addEventListener(CONNECT_EVENT, handleConnect);
-    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
-  }, [retryStartup, setActionNotice, setState]);
-
-  // Boot-time workspace-folder bookmark re-resolve. Idempotent helper
-  // re-resolves the macOS security-scoped bookmark every launch under
-  // store builds (so the agent runtime can write inside the
-  // user-granted folder) and short-circuits to no-op on direct builds
-  // or non-Electrobun renderers.
-  useEffect(() => {
-    void ensureStoreBuildWorkspaceFolder();
-  }, []);
-
-  useEffect(() => {
-    if (phase !== "onboarding-required") {
-      cloudSkipProbeStartedRef.current = false;
-      return;
-    }
-
-    const coordState = coordinatorStateRef.current;
-    if (
-      coordState.phase !== "onboarding-required" ||
-      coordState.serverReachable ||
-      cloudSkipProbeStartedRef.current
-    ) {
-      return;
-    }
-
-    cloudSkipProbeStartedRef.current = true;
-    let cancelled = false;
-
-    void client
-      .getOnboardingStatus()
-      .then((status) => {
-        if (cancelled) return;
-
-        if (!status.cloudProvisioned) {
-          // Not a cloud-provisioned container — nothing special to do here.
-          return;
-        }
-
-        if (needsBootstrapSession()) {
-          // Cloud-provisioned but no session yet. Lock the dashboard and show
-          // the bootstrap wizard step. Fail closed: we do NOT advance.
-          setShowBootstrap(true);
-          return;
-        }
-
-        // Cloud-provisioned and session already established — skip the wizard.
-        setState("onboardingComplete", true);
-        coordinatorDispatchRef.current({ type: "ONBOARDING_COMPLETE" });
-      })
-      .catch(() => {
-        // Probe failed — fail closed. If we can't determine cloud status,
-        // keep showBootstrap as false (no special gate) so the user sees
-        // RuntimeGate and can still choose how to connect.
-        cloudSkipProbeStartedRef.current = false;
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [phase, setState]);
-
-  // ── Bootstrap advance ──────────────────────────────────────────
-  // Called by BootstrapStep after a successful exchange. The session is
-  // already in sessionStorage at this point. Dispatch ONBOARDING_COMPLETE
-  // so the coordinator moves to "ready" and the main app shell renders.
-  const handleBootstrapAdvance = useCallback(() => {
-    setShowBootstrap(false);
-    setState("onboardingComplete", true);
-    coordinatorDispatchRef.current({ type: "ONBOARDING_COMPLETE" });
-  }, [setState]);
-
-  // ── Auto-continue splash ──────────────────────────────────────
-  // The deployment chooser now lives inside RuntimeGate. The splash phase
-  // is a pure loading screen that auto-advances to onboarding-required,
-  // which renders RuntimeGate when the user hasn't been onboarded yet.
-  useEffect(() => {
-    if (isSplash && splashLoaded) {
-      startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
-    }
-  }, [isSplash, splashLoaded, startupCoordinator]);
-
-  // Error — delegate
-  if (phase === "error") {
-    const coordState = startupCoordinator.state;
-    const errState =
-      coordState.phase === "error" &&
-      typeof coordState.reason === "string" &&
-      typeof coordState.message === "string"
-        ? {
-            reason: coordState.reason as StartupErrorReason,
-            message: coordState.message,
-            timedOut: coordState.timedOut === true,
-          }
-        : null;
-    const errorState: StartupErrorState = startupError ?? {
-      reason: errState?.reason ?? "unknown",
-      message:
-        errState?.message ?? "An unexpected error occurred during startup.",
-      phase: "starting-backend" as const,
-    };
-    return <StartupFailureView error={errorState} onRetry={retryStartup} />;
+export function StartupShell({ view, firstRun, onRetry }: StartupShellProps) {
+  if (view.kind === "error") {
+    return <StartupFailureView error={view.error} onRetry={onRetry} />;
   }
 
-  // Pairing — delegate
-  if (phase === "pairing-required") {
+  if (view.kind === "pairing") {
     return <PairingView />;
   }
 
-  // Onboarding — cloud-provisioned containers must exchange their bootstrap
-  // token before reaching RuntimeGate. All other containers go straight through.
-  if (phase === "onboarding-required") {
-    if (
-      showBootstrap ||
-      (onboardingCloudProvisionedContainer && needsBootstrapSession())
-    ) {
-      return (
-        <BootstrapGateShell>
-          <BootstrapStep onAdvance={handleBootstrapAdvance} />
-        </BootstrapGateShell>
-      );
-    }
-    // Voice prefix prefix runs on first boot before the runtime picker.
-    if (!voicePrefixDone) {
-      return <VoicePrefixGate onDone={handleVoicePrefixDone} />;
-    }
-    return <RuntimeGate />;
+  if (view.kind === "bootstrap") {
+    return (
+      <BootstrapGateShell>
+        <BootstrapStep onAdvance={view.onAdvance} />
+      </BootstrapGateShell>
+    );
   }
 
-  // Ready — let the app through
-  if (phase === "ready") {
-    if (!onboardingComplete) {
-      return <RuntimeGate />;
-    }
+  if (view.kind === "first-run") {
+    return <>{firstRun}</>;
+  }
+
+  if (view.kind === "none") {
     return null;
   }
 
+  return <StartupLoading phase={view.phase} status={view.status} />;
+}
+
+function StartupLoading(props: { phase: string; status: string }) {
   return (
     <div
       data-testid="startup-shell-loading"
-      data-startup-phase={phase}
+      data-startup-phase={props.phase}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
       className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
       style={{ fontFamily: FONT }}
     >
-      <div
-        aria-hidden="true"
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(135deg, #FFFFFF 0%, #F7F9FF 58%, #E9EEFF 100%)",
-        }}
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-44"
-        style={{
-          background:
-            "linear-gradient(172deg, transparent 0 36%, rgba(11, 53, 241, 0.08) 36% 100%)",
-        }}
-      />
-      <div
-        className="relative z-10 flex w-full flex-col items-center gap-6 px-6 text-center"
-        style={{ maxWidth: 380 }}
-      >
+      <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
-          <img
-            src="./brand/favicons/favicon.svg"
-            alt=""
-            aria-hidden="true"
-            className="h-12 w-12"
-          />
-          <span className="text-4xl font-medium leading-none">elizaOS</span>
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-white ring-1 ring-[#0B35F1]/15">
+            <img
+              src="./brand/favicons/favicon.svg"
+              alt=""
+              aria-hidden="true"
+              className="h-9 w-9"
+            />
+          </span>
+          <span className="text-4xl font-medium leading-none tracking-normal">
+            elizaOS
+          </span>
         </div>
 
-        <div className="w-full mt-2">
-          <div className="h-3 w-full overflow-hidden rounded-full border border-[#0B35F1]/25 bg-white">
-            <div
-              className="h-full bg-[#0B35F1] transition-all duration-700 ease-out"
-              style={{ width: `${progress}%` }}
-            >
-              <div
-                className="h-full w-full"
-                style={{
-                  backgroundImage:
-                    "repeating-linear-gradient(90deg, transparent, transparent 8px, rgba(255,255,255,0.38) 8px, rgba(255,255,255,0.38) 10px)",
-                }}
-              />
-            </div>
-          </div>
-          <p
-            style={{ fontFamily: FONT }}
-            className="mt-3 text-sm text-[#0B35F1]/70 animate-pulse"
-          >
-            {t(phaseToStatusKey(phase))}
-          </p>
+        <p
+          style={{ fontFamily: FONT }}
+          className="min-h-5 text-sm text-[#0B35F1]/75 animate-pulse motion-reduce:animate-none"
+        >
+          {props.status}
+        </p>
+        <div className="flex w-full max-w-[18rem] flex-col gap-2" aria-hidden>
+          <div className="h-2.5 w-full rounded-sm bg-[#0B35F1]/20 animate-pulse motion-reduce:animate-none" />
+          <div className="h-2.5 w-3/4 self-center rounded-sm bg-[#0B35F1]/15 animate-pulse motion-reduce:animate-none" />
+          <div className="h-2.5 w-1/2 self-center rounded-sm bg-[#0B35F1]/10 animate-pulse motion-reduce:animate-none" />
         </div>
       </div>
     </div>
   );
 }
 
-/**
- * Shell wrapper for the bootstrap step — matches the dark visual style of
- * RuntimeGate so the bootstrap gate feels like part of the same flow.
- */
 function BootstrapGateShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative flex min-h-full w-full flex-col bg-[#F7F9FF] text-[#0B35F1]">

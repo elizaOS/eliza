@@ -1,0 +1,110 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-05-27 21:54+0000\n"
+"PO-Revision-Date: 2024-05-17 17:54+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Protecting your identity when using Tails\"]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Protecting your identity"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"[[!inline pages=\"doc/about/warning/identity.inline\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+msgstr ""
+"[[!inline pages=\"doc/about/warning/identity.inline.zh\" raw=\"yes\" "
+"sort=\"age\"]] [[!toc levels=2]]"
+
+#. type: Content of: <h2>
+msgid "Clean metadata from files before sharing them"
+msgstr ""
+
+#. type: Content of: <p>
+msgid "Many files contain hidden data, or metadata:"
+msgstr ""
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"JPEG and other image files often contain information about where a picture "
+"was taken and which camera was used."
+msgstr ""
+
+#. type: Content of: <ul><li><p>
+msgid ""
+"Office documents often contain information about their author, and the date "
+"and time the document was created."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"To help you clean metadata, Tails include [[<i>Metadata Cleaner</i>|doc/"
+"sensitive_documents/metadata]], a tool to remove metadata in a wide range of "
+"file formats."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Metadata has been used in the past to locate people from pictures they took. "
+"For an example, see <a href=\"https://www.npr.org/sections/thetwo-"
+"way/2012/12/04/166487197/betrayed-by-metadata-john-mcafee-admits-hes-really-"
+"in-guatemala\">NPR: Betrayed by metadata, John McAfee admits he's really in "
+"Guatemala</a>."
+msgstr ""
+
+#. type: Content of: <h2>
+msgid "Use Tails sessions for only one purpose at a time"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"If you use Tails sessions for more than one purpose at a time, an adversary "
+"could link your different activities together."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"For example, if you log into different accounts on the same website in a "
+"single Tails session, the website could determine that the accounts are used "
+"by the same person. This is because websites can tell when 2 accounts are "
+"using the same Tor circuit."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"To prevent an adversary from linking your activities together while using "
+"Tails, restart Tails between different activities. For example, restart "
+"Tails between checking your work email and your whistleblowing email."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"We are not aware of any such attacks to deanonymize people online who used "
+"Tails for different purposes at a time."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"If you worry that the files in your [[Persistent Storage|doc/"
+"persistent_storage]] could be used to link your activities together, "
+"consider using a different Tails USB stick for each activity.  For example, "
+"use one Tails USB stick for your activism work and another one for your "
+"journalism work."
+msgstr ""

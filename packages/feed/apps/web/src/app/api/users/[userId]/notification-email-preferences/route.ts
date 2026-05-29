@@ -39,7 +39,7 @@ const UpdateNotificationEmailPreferencesSchema = z
     },
   );
 
-// Phase 2: Privy email lookup removed. Email comes from Feed's users.email
+// Phase 2: legacy email lookup removed. Email comes from Feed's users.email
 // column which is populated by Steward at login time.
 async function getVerifiedEmailFromDb(userId: string): Promise<string | null> {
   const [user] = await db

@@ -13,7 +13,7 @@ The root configuration type for the config file (defaults to `eliza.json` in thi
 ```typescript
 // eliza/packages/shared/src/config/types.eliza.ts
 export type ElizaConfig = {
-  meta?:         { onboardingComplete?: boolean; lastTouchedVersion?: string; lastTouchedAt?: string };
+  meta?:         { firstRunComplete?: boolean; lastTouchedVersion?: string; lastTouchedAt?: string };
   auth?:         AuthConfig;
   env?:          {
     shellEnv?: { enabled?: boolean; timeoutMs?: number };

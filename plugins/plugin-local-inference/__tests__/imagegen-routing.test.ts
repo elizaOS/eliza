@@ -6,7 +6,7 @@
  * why):
  *
  *   1. `services/imagegen/backend-selector.ts#TIER_TO_DEFAULT_IMAGE_MODEL`
- *   2. `eliza/docs/ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`
+ *   2. `eliza/packages/chip/ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`
  *
  * This test asserts they agree, plus that the small/desktop split lands
  * where the bundle plan expects (sd-1.5 for 0_8b/2b/4b; z-image-turbo
@@ -23,7 +23,10 @@ import {
 } from "../src/services/imagegen/backend-selector";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXTRAS_PATH = resolve(__dirname, "../../../packages/chip/ELIZA_1_BUNDLE_EXTRAS.json");
+const EXTRAS_PATH = resolve(
+	__dirname,
+	"../../../packages/chip/ELIZA_1_BUNDLE_EXTRAS.json",
+);
 
 interface ExtrasShape {
 	imagegen?: {

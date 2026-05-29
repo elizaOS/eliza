@@ -753,6 +753,9 @@ def validate_evidence_spec(spec: EvidenceSpec) -> list[str]:
 def evidence_blocker_class(spec: EvidenceSpec, errors: list[str]) -> str | None:
     if not errors:
         return None
+    live_contract = live_capture_contract(rel(spec.path))
+    if live_contract.get("capture_commands"):
+        return LIVE_CAPTURE_UNAVAILABLE
     if not spec.path.exists() and planned_evidence_template(spec.path) is not None:
         return PLANNED_EVIDENCE_INCOMPLETE
     if not spec.path.exists():
@@ -785,9 +788,6 @@ def evidence_blocker_category(
         return PLANNED_MISSING_EVIDENCE
     if blocker_class == PLANNED_EVIDENCE_INCOMPLETE:
         return PLANNED_INCOMPLETE_EVIDENCE
-    capture = evidence_capture_plan(spec.path)
-    if capture.get("capture_commands"):
-        return REPO_ARTIFACT_GENERATION
     return PLANNED_INCOMPLETE_EVIDENCE
 
 

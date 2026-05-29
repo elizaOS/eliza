@@ -18,7 +18,7 @@
  *   4. Per-call `overrides` arg.
  *
  * Pure functions only; no FS access, no process.env reads — env-var
- * application happens at the dflash-server spawn site. Tests in
+ * application happens at the FFI runtime spawn site. Tests in
  * `__tests__/gpu-autotune.test.ts`.
  *
  * Scope: single-GPU only — never split layers across cards in this
@@ -495,7 +495,7 @@ function finalize(args: {
 /**
  * Convert resolved `LlamaServerFlags` to the canonical `llama-server`
  * argv list. Mirrors the flag names llama.cpp actually accepts —
- * `dflash-server.ts` is the existing producer of these flags and is
+ * `ffi-streaming-backend.ts` is the existing producer of these flags and is
  * the source of truth for naming; this helper exists for tests and for
  * the voice-bench harness.
  */
@@ -525,7 +525,7 @@ export function flagsToLlamaServerArgv(flags: LlamaServerFlags): string[] {
 
 /**
  * Cross-check: return the static `GpuProfile` for a `GpuConfig`. Used
- * by the dflash-server spawn site to feed `applyGpuProfile()` with the
+ * by the FFI runtime spawn site to feed `applyGpuProfile()` with the
  * matching `GpuProfile` while keeping the JSON the source of truth for
  * per-bundle overrides.
  */

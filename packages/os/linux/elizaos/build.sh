@@ -401,6 +401,12 @@ rm -rf "${HERE}/.build" "${HERE}/binary" "${HERE}/chroot" \
     "${HERE}"/chroot.* "${HERE}"/binary.* "${HERE}"/live-image-* 2>/dev/null || true
 rm -f "${HERE}/.lock"
 
+# Profile overlays are copied into live-build's mutable config/ tree below.
+# Remove overlay-owned files before each run so `ELIZAOS_PROFILE=gui ./build.sh`
+# followed by `ELIZAOS_PROFILE=default ./build.sh` cannot leave GUI packages in
+# the headless default image.
+rm -f "${HERE}/config/package-lists/elizaos-gui.list.chroot"
+
 echo "=== elizaOS Linux build ==="
 echo "    arch:        ${ARCH}"
 echo "    profile:     ${PROFILE}"

@@ -160,22 +160,22 @@ describe("buildGenerateArgsFromParams", () => {
 });
 
 describe("buildAospLoadModelArgs", () => {
-  it("leaves bundled DFlash disabled by default on stock Android", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-model-"));
+  it("leaves bundled MTP disabled by default on stock Android", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-model-"));
     const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const dflashDir = path.join(root, "eliza-1-0_8b.bundle", "dflash");
+    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
-    mkdirSync(dflashDir, { recursive: true });
+    mkdirSync(mtpDir, { recursive: true });
     const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(dflashDir, "drafter-0_8b.gguf");
+    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
 
     withEnv(
       {
         ELIZA_MOBILE_PLATFORM: "android",
-        ELIZA_DFLASH: undefined,
-        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+        ELIZA_MTP: undefined,
+        ELIZA_MTP_SERVER_SPAWN: undefined,
       },
       () => {
         expect(buildAospLoadModelArgs("chat", chat)).toEqual(
@@ -188,18 +188,18 @@ describe("buildAospLoadModelArgs", () => {
     );
   });
 
-  it("auto-pairs a publish-eligible bundled DFlash drafter on stock Android", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-auto-"));
+  it("auto-pairs a publish-eligible bundled MTP drafter on stock Android", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-auto-"));
     const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const dflashDir = path.join(root, "eliza-1-0_8b.bundle", "dflash");
+    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
-    mkdirSync(dflashDir, { recursive: true });
+    mkdirSync(mtpDir, { recursive: true });
     const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(dflashDir, "drafter-0_8b.gguf");
+    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
     writeFileSync(
-      path.join(dflashDir, "target-meta.json"),
+      path.join(mtpDir, "target-meta.json"),
       JSON.stringify({
         publishEligible: true,
         targetText: {
@@ -226,8 +226,8 @@ describe("buildAospLoadModelArgs", () => {
     withEnv(
       {
         ELIZA_MOBILE_PLATFORM: "android",
-        ELIZA_DFLASH: undefined,
-        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+        ELIZA_MTP: undefined,
+        ELIZA_MTP_SERVER_SPAWN: undefined,
       },
       () => {
         expect(buildAospLoadModelArgs("chat", chat)).toEqual(
@@ -243,18 +243,18 @@ describe("buildAospLoadModelArgs", () => {
     );
   });
 
-  it("does not auto-pair candidate DFlash metadata on stock Android", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-candidate-"));
+  it("does not auto-pair candidate MTP metadata on stock Android", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-candidate-"));
     const textDir = path.join(root, "eliza-1-2b.bundle", "text");
-    const dflashDir = path.join(root, "eliza-1-2b.bundle", "dflash");
+    const mtpDir = path.join(root, "eliza-1-2b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
-    mkdirSync(dflashDir, { recursive: true });
+    mkdirSync(mtpDir, { recursive: true });
     const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
-    const drafter = path.join(dflashDir, "drafter-2b.gguf");
+    const drafter = path.join(mtpDir, "drafter-2b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
     writeFileSync(
-      path.join(dflashDir, "target-meta.json"),
+      path.join(mtpDir, "target-meta.json"),
       JSON.stringify({
         publishEligible: false,
         targetText: { sha256: "a".repeat(64), sizeBytes: 1_270_808_512 },
@@ -265,8 +265,8 @@ describe("buildAospLoadModelArgs", () => {
     withEnv(
       {
         ELIZA_MOBILE_PLATFORM: "android",
-        ELIZA_DFLASH: undefined,
-        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+        ELIZA_MTP: undefined,
+        ELIZA_MTP_SERVER_SPAWN: undefined,
       },
       () => {
         expect(buildAospLoadModelArgs("chat", chat)).toEqual(
@@ -279,22 +279,22 @@ describe("buildAospLoadModelArgs", () => {
     );
   });
 
-  it("auto-pairs a bundled chat GGUF with its DFlash drafter when explicitly enabled", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-model-"));
+  it("auto-pairs a bundled chat GGUF with its MTP drafter when explicitly enabled", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-model-"));
     const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const dflashDir = path.join(root, "eliza-1-0_8b.bundle", "dflash");
+    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
-    mkdirSync(dflashDir, { recursive: true });
+    mkdirSync(mtpDir, { recursive: true });
     const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(dflashDir, "drafter-0_8b.gguf");
+    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
     writeFileSync(chat, "chat");
     writeFileSync(drafter, "draft");
 
     withEnv(
       {
         ELIZA_MOBILE_PLATFORM: "android",
-        ELIZA_DFLASH: "1",
-        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+        ELIZA_MTP: "1",
+        ELIZA_MTP_SERVER_SPAWN: undefined,
       },
       () => {
         expect(buildAospLoadModelArgs("chat", chat)).toEqual(
@@ -314,18 +314,18 @@ describe("buildAospLoadModelArgs", () => {
     );
   });
 
-  it("does not enable DFlash when target-meta says the drafter is the target bytes", () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-copy-"));
+  it("does not enable MTP when target-meta says the drafter is the target bytes", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-copy-"));
     const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
-    const dflashDir = path.join(root, "eliza-1-0_8b.bundle", "dflash");
+    const mtpDir = path.join(root, "eliza-1-0_8b.bundle", "mtp");
     mkdirSync(textDir, { recursive: true });
-    mkdirSync(dflashDir, { recursive: true });
+    mkdirSync(mtpDir, { recursive: true });
     const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
-    const drafter = path.join(dflashDir, "drafter-0_8b.gguf");
+    const drafter = path.join(mtpDir, "drafter-0_8b.gguf");
     writeFileSync(chat, "same-model");
     writeFileSync(drafter, "same-model");
     writeFileSync(
-      path.join(dflashDir, "target-meta.json"),
+      path.join(mtpDir, "target-meta.json"),
       JSON.stringify({
         targetText: { sha256: "a".repeat(64) },
         drafter: { sha256: "a".repeat(64) },
@@ -335,8 +335,8 @@ describe("buildAospLoadModelArgs", () => {
     withEnv(
       {
         ELIZA_MOBILE_PLATFORM: "android",
-        ELIZA_DFLASH: "1",
-        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+        ELIZA_MTP: "1",
+        ELIZA_MTP_SERVER_SPAWN: undefined,
       },
       () => {
         expect(buildAospLoadModelArgs("chat", chat)).toEqual(

@@ -49,7 +49,7 @@ async function createTestUser(params: {
 
   await db.insert(users).values({
     id,
-    privyId: `did:privy:test-${id}`,
+    privyId: `steward:test:test-${id}`,
     username,
     displayName: username,
     virtualBalance: params.initialBalance.toFixed(2),

@@ -298,6 +298,18 @@ def _response_metadata(harness_name: str, response: Any) -> dict[str, Any]:
         from eliza_loca.hermes_harness import hermes_loca_metadata
 
         return hermes_loca_metadata(response)
+    if harness_name == "smithers":
+        params = getattr(response, "params", {})
+        usage = params.get("usage") if isinstance(params, Mapping) else None
+        tool_calls = params.get("tool_calls") if isinstance(params, Mapping) else None
+        return {
+            "benchmark_harness": "smithers",
+            "adapter": "smithers-adapter",
+            "agent_family": "smithers",
+            "native_tool_calls": isinstance(tool_calls, list),
+            "tool_call_count": len(tool_calls) if isinstance(tool_calls, list) else 0,
+            "usage": dict(usage) if isinstance(usage, Mapping) else {},
+        }
     if harness_name == "openclaw":
         params = getattr(response, "params", {})
         meta = params.get("_meta") if isinstance(params, Mapping) else {}
@@ -331,6 +343,14 @@ def _build_client() -> Any:
         from eliza_loca.hermes_harness import build_hermes_loca_client
 
         return build_hermes_loca_client(
+            provider=provider,
+            model=model,
+            timeout_s=timeout_s,
+        )
+    if harness == "smithers":
+        from smithers_adapter.client import SmithersClient
+
+        return SmithersClient(
             provider=provider,
             model=model,
             timeout_s=timeout_s,

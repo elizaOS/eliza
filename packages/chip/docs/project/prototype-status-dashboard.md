@@ -8,11 +8,11 @@ Snapshot: updated 2026-05-27 from current local gate output; generated-artifact 
 | --- | --- | --- | --- |
 | docs-and-project-plan | `PASS` | `command_pass` | `none` |
 | architecture-docs | `PASS` | `command_pass` | `none` |
-| toolchain-fast-path | `PASS` | `tool_available` | `none` |
+| toolchain-fast-path | `BLOCK` | `tool_blocker` | `scripts/check_tools.sh && scripts/tool_versions.sh` |
 | platform-contract | `PASS` | `command_pass` | `none` |
 | linux-boot-prerequisites | `PASS` | `command_pass` | `none` |
 | software-bsp | `PASS` | `command_pass` | `none` |
-| real-world-release-gates | `PASS` | `command_pass` | `none` |
+| real-world-release-gates | `BLOCK` | `fail_closed_contract` | `archive real evidence from the named gates` |
 | rtl-source | `PASS` | `source_present` | `none` |
 | synthesis | `PASS` | `generated_artifact` | `none` |
 | cocotb | `BLOCK` | `regen_required` | `make cocotb cocotb-npu cocotb-contract cocotb-cpu` |
@@ -32,8 +32,8 @@ Snapshot: updated 2026-05-27 from current local gate output; generated-artifact 
 | Workstream | Status | Boundary |
 | --- | --- | --- |
 | A: RTL and formal | PASS scaffold evidence | Directed RTL/formal evidence is present, not silicon signoff. |
-| B: software, boot, OS, simulation | BLOCK | QEMU PASS is qemu-virt software-reference evidence; Renode local checks now pass; external BSP transcripts are still required. |
-| C: PD, package, board, SI/PI | BLOCK | Full OpenLane run `RUN_2026-05-19_05-08-54` produced final layout artifacts and clean DRC/LVS, but antenna, hold, max-slew, and max-cap closure remain blocked. The hard-SRAM macro now has a PD blackbox model for OpenROAD, but rerunning closure is blocked locally because Docker hangs on container creation. |
+| B: software, boot, OS, simulation | BLOCK | QEMU PASS is qemu-virt software-reference evidence; archived Renode and external BSP transcripts are still required. |
+| C: PD, package, board, SI/PI | BLOCK | No selected OpenLane/OpenROAD run archive is present under `pd/openlane/runs/*` or `runs/*`. PD release remains blocked until a selected run is archived with clean signoff artifacts; see `build/reports/pd_signoff.json` and `build/reports/openlane_run_release_preflight.json` after running the release gates. |
 | D: ISP, display, real-world verification | BLOCK | Display RTL has directed checks; ISP and real-world verification remain not implemented. |
 | E: toolchain and upstreams | BLOCK | Missing optional/heavy tools must stay explicit. |
 | F: product, security, radios, sensors, battery | BLOCK | secure boot, cellular, Wi-Fi/BT/GNSS/NFC, sensors, and battery/PMIC/thermal need real transcripts. |

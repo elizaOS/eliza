@@ -1,0 +1,32 @@
+[Unit]
+Description=Upgrade Additional Software Packages
+Documentation=https://tails.net/contribute/design/persistence/
+After=tails-additional-software-install.service
+After=tails-additional-software-update-config.service
+After=tails-wait-until-tor-has-bootstrapped.service
+ConditionFileNotEmpty=/live/persistence/TailsData_unlocked/live-additional-software.conf
+ConditionPathIsMountPoint=/var/lib/apt/lists
+ConditionPathIsMountPoint=/var/cache/apt/archives
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/bin/sh -c 'until test -e /run/tor-has-bootstrapped/done; do /bin/sleep 1; done'
+ExecStart=/usr/local/lib/additional-software/asp-install --upgrade
+ExecStartPost=/usr/bin/install -m 0644 -D /dev/null /run/live-additional-software/upgraded
+TimeoutStartSec=infinity
+PrivateDevices=yes
+PrivateTmp=yes
+
+# Capabilities needed by tails-additional-software
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+
+# Capabilities needed by apt/dpkg
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID
+CapabilityBoundingSet=CAP_SETGID CAP_SETUID
+ProtectSystem=no
+
+# Capabilities needed by tails-notify-user
+CapabilityBoundingSet=CAP_AUDIT_WRITE CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_SETGID CAP_SETUID
+ProtectHome=no

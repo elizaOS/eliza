@@ -1,13 +1,13 @@
 {
   "name": "@elizaos/cloud-routing",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ../scripts/prepare-package-dist.mjs packages/cloud-routing",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc --noCheck -p tsconfig.json && node ../scripts/prepare-package-dist.mjs packages/cloud-routing",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "biome check src"
   },
   "devDependencies": {
@@ -19,6 +19,11 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },

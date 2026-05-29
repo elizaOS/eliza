@@ -35,7 +35,7 @@ export function AutoApproveSection({
           />
         </div>
       </div>
-      <div className="flex items-center gap-2 rounded-lg bg-accent/5 border border-accent/15 px-3 py-1.5">
+      <div className="flex items-center gap-2 rounded-sm bg-accent/5 border border-accent/15 px-3 py-1.5">
         <ShieldCheck className="h-3.5 w-3.5 text-accent shrink-0" />
         <div className="text-xs-tight text-muted">
           Under{" "}

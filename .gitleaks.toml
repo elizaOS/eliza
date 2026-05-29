@@ -127,3 +127,18 @@ regexTarget = "match"
 regexes = [
   '''0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
 ]
+
+# Vendored upstream Tails OS source snapshot. This subtree is a verbatim copy of
+# the public Tails project source (mirroring its GitLab layout), not project
+# code. Its only gitleaks hits are public upstream material: the published
+# OpenPGP release-signing fingerprint (A490D0F4D311A4153E2BB7CADBB802B258ACD84F),
+# Tails' own test-VM SSH key literally named `Unsafe_SSH_private_key`, and a
+# private_key FORMAT example in the release-process wiki docs. None are
+# credentials for this repo. Scoped to the vendored tails/ tree only. (The files
+# were added then deleted, but gitleaks scans the diff over the commit range so
+# they still trip.)
+[[allowlists]]
+description = "Vendored upstream Tails OS source (public test fixtures + docs)"
+paths = [
+  '''(^|/)packages/os/linux/variants/milady-tails/tails/''',
+]

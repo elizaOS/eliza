@@ -60,7 +60,7 @@ const STATE_TONE: Record<RemotePluginViewState, string> = {
 function StateBadge({ state }: { state: RemotePluginViewState }) {
   return (
     <span
-      className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
+      className={`inline-flex items-center rounded-sm px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
     >
       {state}
     </span>
@@ -158,7 +158,7 @@ function RemotePluginRow({
   }, [remotePlugin.id, logsOpen]);
 
   return (
-    <div className="rounded border border-bg-3 bg-bg-2 p-3">
+    <div className="rounded-sm border border-bg-3 bg-bg-2 p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
@@ -171,7 +171,7 @@ function RemotePluginRow({
             <span className="text-[10px] text-muted">
               v{remotePlugin.version}
             </span>
-            <span className="rounded bg-bg/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+            <span className="rounded-sm bg-bg/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
               {remotePlugin.mode}
             </span>
             <StateBadge state={state} />
@@ -250,7 +250,7 @@ function RemotePluginRow({
       </div>
 
       {logsOpen ? (
-        <pre className="mt-2 max-h-48 overflow-auto rounded bg-bg-3 p-2 text-[11px] text-txt/80">
+        <pre className="mt-2 max-h-48 overflow-auto rounded-sm bg-bg-3 p-2 text-[11px] text-txt/80">
           {logs.length === 0 ? "(no logs yet)" : logs}
         </pre>
       ) : null}
@@ -399,7 +399,7 @@ export function RemotePluginHostSection() {
             </span>
             <button
               type="button"
-              className="rounded p-0.5 hover:bg-bg-3"
+              className="rounded-sm p-0.5 hover:bg-bg-3"
               title="Reveal in file manager"
               onClick={() => void desktopOpenPath(storeRoot)}
             >

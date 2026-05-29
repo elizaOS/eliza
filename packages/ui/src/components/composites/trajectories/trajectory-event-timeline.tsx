@@ -55,7 +55,7 @@ export function TrajectoryEventTimeline({
         {heading}
       </div>
       {events.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
+        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
           {emptyLabel}
         </div>
       ) : (
@@ -63,7 +63,7 @@ export function TrajectoryEventTimeline({
           {events.map((event) => (
             <li
               key={event.id}
-              className="grid grid-cols-[1.5rem_1fr] gap-3 rounded-lg border border-border/40 bg-bg/40 px-3 py-3"
+              className="grid grid-cols-[1.5rem_1fr] gap-3 rounded-sm border border-border/40 bg-bg/40 px-3 py-3"
             >
               <div className="mt-0.5 flex justify-center">
                 {statusIcon(event.status)}
@@ -74,7 +74,7 @@ export function TrajectoryEventTimeline({
                     {event.label}
                   </span>
                   {event.stage ? (
-                    <span className="rounded border border-border/50 px-1.5 py-0.5 text-[11px] uppercase tracking-[0.12em] text-muted">
+                    <span className="rounded-sm border border-border/50 px-1.5 py-0.5 text-[11px] uppercase tracking-[0.12em] text-muted">
                       {event.stage}
                     </span>
                   ) : null}

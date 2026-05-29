@@ -378,6 +378,34 @@ const rolesPlugin: Plugin = {
       }
     }
 
+    // Step 3: Re-fire the bootstrap on every world-creation event. init()
+    // runs before any connector (Discord/Telegram/etc.) has populated
+    // runtime.worlds, so ensureOwnerRole sees an empty set and the scheduled
+    // retry tail fires three times within ~10s — usually still before the
+    // connector worlds land. Without this hook the owner role never lands in
+    // world metadata, resolveStage1SenderRole forever returns USER, and
+    // every ADMIN-gated context (tasks/code/automation/connectors) stays
+    // hidden from the Stage 1 planner. Hooking WORLD_JOINED + WORLD_CONNECTED
+    // makes the bootstrap converge as soon as the first connector world
+    // appears, regardless of the initial retry-window timing.
+    const rerunOwnerBootstrap = async (label: string): Promise<void> => {
+      const ok = await ensureOwnerRole(runtime, {
+        pruneConnectorAdmins: !hasConnectorAdmins,
+      });
+      if (ok) {
+        logger.info(`[roles] Owner role re-applied after ${label}`);
+      }
+      if (hasConnectorAdmins) {
+        await applyConnectorAdminWhitelists(runtime, connectorAdmins);
+      }
+    };
+    runtime.registerEvent("WORLD_JOINED", async () => {
+      await rerunOwnerBootstrap("WORLD_JOINED");
+    });
+    runtime.registerEvent("WORLD_CONNECTED", async () => {
+      await rerunOwnerBootstrap("WORLD_CONNECTED");
+    });
+
     logger.info("[roles] Roles initialized");
   },
 };

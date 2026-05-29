@@ -17,7 +17,7 @@ test.describe("api-keys create flow", () => {
     "Drives a stubbed POST; live-prod would create real keys.",
   );
 
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ context }) => {
     // Synthetic JWT — the page-level audit already does this; here we
     // just need an authenticated session, not the full eth-injection
     // round-trip (covered in siwe-flow.spec.ts).

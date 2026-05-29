@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-instagram",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -43,7 +43,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint:check": "bunx @biomejs/biome check .",
     "build:ts": "bun run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "publishConfig": {
     "access": "public"

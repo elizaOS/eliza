@@ -4,7 +4,7 @@ status: blocked
 release_class: fpga_bitstream
 next_commands:
   target_preflight: python3 scripts/check_fpga_target.py
-  release_gate: python3 scripts/check_fpga_release.py
+  release_gate: python3 scripts/check_fpga_release.py --release
   product_release_gate: python3 scripts/product_check.py --release
   local_tool_versions: yosys -V && nextpnr-ecp5 --version && ecppack --version && openFPGALoader --version
   local_synth: TOP=e1_chip_top make -C board/fpga synth

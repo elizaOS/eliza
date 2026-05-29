@@ -49,7 +49,7 @@ export const ConnectionStatus = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          "inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs",
+          "inline-flex items-center gap-2 rounded-sm border px-3 py-1.5 text-xs",
           state === "connected"
             ? "border-ok/25 bg-ok-subtle/70 text-txt"
             : state === "disconnected"

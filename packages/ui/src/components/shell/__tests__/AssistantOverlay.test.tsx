@@ -64,6 +64,19 @@ describe("AssistantOverlay", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("offers a visible close button for pointer users", () => {
+    const onClose = vi.fn();
+    render(
+      <AssistantOverlay phase="summoned" onClose={onClose}>
+        <button type="button">inside</button>
+      </AssistantOverlay>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /close assistant/i }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("does not call onClose when Escape is pressed while phase=idle", () => {
     const onClose = vi.fn();
     render(
@@ -111,8 +124,10 @@ describe("AssistantOverlay", () => {
       </AssistantOverlay>,
     );
 
-    // Focus moves to the first focusable descendant inside the dialog.
-    expect(document.activeElement?.textContent).toBe("first-inside");
+    // Focus moves to the first focusable control inside the dialog.
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /close assistant/i }),
+    );
 
     triggerButton.remove();
   });
@@ -129,7 +144,9 @@ describe("AssistantOverlay", () => {
       </AssistantOverlay>,
     );
 
-    expect(document.activeElement?.textContent).toBe("inside");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /close assistant/i }),
+    );
     unmount();
     expect(document.activeElement).toBe(triggerButton);
     triggerButton.remove();
@@ -144,12 +161,16 @@ describe("AssistantOverlay", () => {
     );
 
     // After open the first descendant has focus.
-    expect(document.activeElement?.textContent).toBe("alpha");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /close assistant/i }),
+    );
 
     fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
     expect(document.activeElement?.textContent).toBe("omega");
 
     fireEvent.keyDown(document, { key: "Tab" });
-    expect(document.activeElement?.textContent).toBe("alpha");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: /close assistant/i }),
+    );
   });
 });

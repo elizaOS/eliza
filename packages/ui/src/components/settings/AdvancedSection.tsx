@@ -76,10 +76,10 @@ export function AdvancedSection() {
             variant="outline"
             type="button"
             onClick={openExportModal}
-            className="min-h-[5.5rem] h-auto rounded-[calc(var(--radius-xl)_+_2px)] border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent-rgb),0.1)]"
+            className="min-h-[5.5rem] h-auto rounded-sm border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent "
             aria-haspopup="dialog"
           >
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 shadow-sm transition-all group-hover:border-accent group-hover:bg-accent">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 transition-all group-hover:border-accent group-hover:bg-accent">
               <Download className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
             </div>
             <div>
@@ -93,10 +93,10 @@ export function AdvancedSection() {
             variant="outline"
             type="button"
             onClick={openImportModal}
-            className="min-h-[5.5rem] h-auto rounded-[calc(var(--radius-xl)_+_2px)] border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent-rgb),0.1)]"
+            className="min-h-[5.5rem] h-auto rounded-sm border border-border/50 bg-card/60 p-5 text-left  transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent "
             aria-haspopup="dialog"
           >
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 shadow-sm transition-all group-hover:border-accent group-hover:bg-accent">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-sm border border-border/50 bg-bg-accent p-3 transition-all group-hover:border-accent group-hover:bg-accent">
               <Upload className="h-5 w-5 shrink-0 text-txt transition-colors group-hover:text-accent-fg" />
             </div>
             <div>
@@ -106,7 +106,7 @@ export function AdvancedSection() {
             </div>
           </Button>
         </div>
-        <div className="border border-border/50 rounded overflow-hidden bg-bg/40 ">
+        <div className="border border-border/50 rounded-sm overflow-hidden bg-bg/40 ">
           <div className="p-4 space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
@@ -128,7 +128,7 @@ export function AdvancedSection() {
             </div>
           </div>
         </div>
-        <div className="border border-danger/30 rounded overflow-hidden bg-bg/40 ">
+        <div className="border border-danger/30 rounded-sm overflow-hidden bg-bg/40 ">
           <div className="bg-danger/10 px-5 py-3 border-b border-danger/20 flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-danger" />
             <span className="font-bold text-sm text-danger tracking-wide uppercase">
@@ -148,7 +148,7 @@ export function AdvancedSection() {
               <Button
                 variant="destructive"
                 size="sm"
-                className="rounded-sm shadow-sm whitespace-nowrap"
+                className="rounded-sm whitespace-nowrap"
                 onClick={() => {
                   void handleReset();
                 }}
@@ -184,7 +184,7 @@ export function AdvancedSection() {
                 value={exportPassword}
                 onChange={(e) => setState("exportPassword", e.target.value)}
                 placeholder={t("settingsview.EnterExportPasswor")}
-                className="rounded-lg bg-bg"
+                className="rounded-sm bg-bg"
               />
               <Label className="flex items-center gap-2 font-normal text-muted">
                 <Checkbox
@@ -200,7 +200,7 @@ export function AdvancedSection() {
 
             {exportError && (
               <div
-                className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+                className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
                 role="alert"
                 aria-live="assertive"
               >
@@ -209,7 +209,7 @@ export function AdvancedSection() {
             )}
             {exportSuccess && (
               <div
-                className="rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok"
+                className="rounded-sm border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok"
                 role="status"
                 aria-live="polite"
               >
@@ -221,7 +221,7 @@ export function AdvancedSection() {
               <Button
                 variant="outline"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
+                className="min-h-[2.625rem] px-4 rounded-sm"
                 onClick={closeExportModal}
               >
                 {t("common.cancel")}
@@ -229,7 +229,7 @@ export function AdvancedSection() {
               <Button
                 variant="default"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
+                className="min-h-[2.625rem] px-4 rounded-sm"
                 disabled={exportBusy}
                 onClick={() => void handleAgentExport()}
               >
@@ -268,7 +268,7 @@ export function AdvancedSection() {
               </div>
               <Button
                 variant="outline"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)] flex w-full items-center justify-between gap-3 text-left"
+                className="min-h-[2.625rem] px-4 rounded-sm flex w-full items-center justify-between gap-3 text-left"
                 onClick={() => importFileInputRef.current?.click()}
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-txt">
@@ -295,13 +295,13 @@ export function AdvancedSection() {
                 value={importPassword}
                 onChange={(e) => setState("importPassword", e.target.value)}
                 placeholder={t("settingsview.EnterImportPasswor")}
-                className="rounded-lg bg-bg"
+                className="rounded-sm bg-bg"
               />
             </div>
 
             {importError && (
               <div
-                className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+                className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
                 role="alert"
                 aria-live="assertive"
               >
@@ -310,7 +310,7 @@ export function AdvancedSection() {
             )}
             {importSuccess && (
               <div
-                className="rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok"
+                className="rounded-sm border border-ok/30 bg-ok/10 px-3 py-2 text-sm text-ok"
                 role="status"
                 aria-live="polite"
               >
@@ -322,7 +322,7 @@ export function AdvancedSection() {
               <Button
                 variant="outline"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
+                className="min-h-[2.625rem] px-4 rounded-sm"
                 onClick={closeImportModal}
               >
                 {t("common.cancel")}
@@ -330,7 +330,7 @@ export function AdvancedSection() {
               <Button
                 variant="default"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
+                className="min-h-[2.625rem] px-4 rounded-sm"
                 disabled={importBusy}
                 onClick={() => void handleAgentImport()}
               >

@@ -218,7 +218,7 @@ export function AppMonetizationSettings({
                   onClick={() =>
                     navigate(`/dashboard/apps/${appId}?tab=earnings`)
                   }
-                  className="mt-2 text-xs text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/80 transition-colors flex items-center gap-1"
+                  className="mt-2 text-xs text-white/60 hover:text-white transition-colors flex items-center gap-1"
                 >
                   ${settings.totalCreatorEarnings.toFixed(2)} earned
                   <ChevronRight className="h-3 w-3" />
@@ -345,7 +345,7 @@ export function AppMonetizationSettings({
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white disabled:bg-white/5 disabled:text-white/30"
+                className="w-full bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white disabled:bg-white/5 disabled:text-white/30"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -401,7 +401,7 @@ export function AppMonetizationSettings({
                   toggleMonetization(true);
                   setShowEnableDialog(false);
                 }}
-                className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white px-6"
+                className="bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white px-6"
               >
                 Start Earning
               </AlertDialogAction>
@@ -438,7 +438,7 @@ function SelfHostCTA() {
           <div className="flex flex-wrap gap-2">
             <Link
               to="/dashboard/agents"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
               Deploy an Agent

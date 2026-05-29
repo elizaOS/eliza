@@ -163,6 +163,17 @@ describe("TASKS:spawn_agent", () => {
     expect(initialTask).toContain("AGENT_COORDINATION");
     expect(initialTask).toContain(TASK_ROOM);
     expect(initialTask).toContain(WORKTREE_ROOM);
+    // Regression for elizaOS/eliza#7935: sub-agents must not write
+    // routing-kind constants as markdown banners in user-visible prose.
+    // The router classifies routing from the session event; prose should
+    // stay as the actual question or coordination note.
+    expect(initialTask).toContain(
+      "Do not prefix the reply with routing-kind labels",
+    );
+    expect(initialTask).toContain("no markdown banners");
+    expect(initialTask).toContain(
+      "the orchestrator classifies routing from the session event, not your prose",
+    );
   });
 
   it("keeps both swarm roles when task room and worktree room are the same", async () => {

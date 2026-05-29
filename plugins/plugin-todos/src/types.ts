@@ -9,7 +9,7 @@ export const TODO_STATUSES = [
 ] as const;
 export type TodoStatus = (typeof TODO_STATUSES)[number];
 
-export const TODO_OPS = [
+export const TODO_ACTIONS = [
   "write",
   "create",
   "update",
@@ -19,7 +19,9 @@ export const TODO_OPS = [
   "list",
   "clear",
 ] as const;
-export type TodoOp = (typeof TODO_OPS)[number];
+export type TodoActionName = (typeof TODO_ACTIONS)[number];
+export const TODO_OPS = TODO_ACTIONS;
+export type TodoOp = TodoActionName;
 
 export interface Todo {
   id: string;

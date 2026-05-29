@@ -41,7 +41,7 @@ from .types import (
 
 # Ensure the adapter packages are importable when running from a checkout.
 _BENCH_ROOT = Path(__file__).resolve().parents[1]
-for _adapter_dir in ("eliza-adapter", "hermes-adapter", "openclaw-adapter"):
+for _adapter_dir in ("eliza-adapter", "hermes-adapter", "openclaw-adapter", "smithers-adapter"):
     _pkg = _BENCH_ROOT / _adapter_dir
     if _pkg.exists() and str(_pkg) not in sys.path:
         sys.path.insert(0, str(_pkg))
@@ -1778,6 +1778,20 @@ def _build_client_for_harness(
                 logger.warning("[swe_bench] openclaw wait_until_ready failed: %s", exc)
         return client, None
 
+    if harness == "smithers":
+        from smithers_adapter.client import SmithersClient  # noqa: WPS433
+
+        client_kwargs: dict[str, object] = {}
+        normalized_model = _openai_compat_model_name(model_name)
+        if normalized_model:
+            client_kwargs["model"] = normalized_model
+        client = SmithersClient(**client_kwargs)
+        try:
+            client.wait_until_ready(timeout=60)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[swe_bench] smithers wait_until_ready failed: %s", exc)
+        return client, None
+
     raise ValueError(f"unknown harness: {harness!r}")
 
 
@@ -1821,7 +1835,11 @@ async def _run(args: argparse.Namespace) -> int:
         use_docker_eval=not args.no_docker,
         timeout_seconds=args.timeout,
         model_name=args.model
-        or ("gpt-oss-120b" if args.harness == "hermes" else f"{args.harness}-swe-bench"),
+        or (
+            "gpt-oss-120b"
+            if args.harness in {"hermes", "smithers"}
+            else f"{args.harness}-swe-bench"
+        ),
         harness=args.harness,
         baseline=args.baseline,
     )
@@ -2041,13 +2059,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--harness",
-        choices=["eliza", "hermes", "openclaw"],
+        choices=["eliza", "hermes", "openclaw", "smithers"],
         default="eliza",
         help=(
             "Adapter that drives patch generation. eliza: TS bridge "
             "(default; preserves current behavior). hermes: HermesClient "
             "(in-process or subprocess Cerebras chat). openclaw: "
-            "OpenClawClient (direct OpenAI-compat or CLI)."
+            "OpenClawClient (direct OpenAI-compat or CLI). smithers: "
+            "SmithersClient (Cerebras chat via smithers harness)."
         ),
     )
     p.add_argument(

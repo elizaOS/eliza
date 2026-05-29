@@ -217,7 +217,7 @@ export function AffiliatesPageClient() {
               mistake,{" "}
               <a
                 href="mailto:support@eliza.cloud?subject=Referral%20code%20inactive"
-                className="text-[#FF5800] underline hover:text-orange-300"
+                className="text-white/80 underline hover:text-white"
               >
                 email support@eliza.cloud
               </a>
@@ -357,7 +357,7 @@ export function AffiliatesPageClient() {
             disabled={
               isSaving || markupPercent === affiliateData?.markup_percent
             }
-            className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white min-w-[100px]"
+            className="bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white min-w-[100px]"
           >
             {isSaving ? "Saving..." : "Save Config"}
           </Button>

@@ -369,9 +369,9 @@ The `eliza update` command updates the CLI package itself, which includes:
 | API server (`src/api/`) | Yes | Bundled into the package |
 | Built-in services | Yes | Update checker, plugin installer, etc. |
 | Bundled core plugins | No | Core plugins are separate npm packages resolved at runtime |
-| User-installed plugins | No | Installed independently in `~/.eliza/plugins/` |
+| User-installed plugins | No | Installed independently in `~/.local/state/eliza/plugins/` |
 | Configuration (`eliza.json`) | No | Preserved across updates |
-| Database (PGLite data) | No | Preserved in `~/.eliza/workspace/` |
+| Database (PGLite data) | No | Preserved in `~/.local/state/eliza/workspace/` |
 | Workspace files | No | Agent workspace is independent of the CLI version |
 
 Core elizaOS plugins (`@elizaos/plugin-*`) are resolved from `node_modules` at runtime. When you update Eliza and the new version specifies different plugin versions in its `dependencies`, those plugins are updated as part of the npm/bun install process.
@@ -386,7 +386,7 @@ npm install -g elizaai@2.0.0-alpha.26
 
 # Disable automatic update checks by editing eliza.json
 # Set "update": { "checkOnStart": false } in your config file
-$EDITOR "~/.eliza/eliza.json"
+$EDITOR "~/.local/state/eliza/eliza.json"
 ```
 
 For package-manager-specific pinning:
@@ -476,7 +476,7 @@ For fully air-gapped deployments, disable the update check entirely:
 Or set via the CLI (open config in your editor):
 
 ```bash
-$EDITOR "~/.eliza/eliza.json"
+$EDITOR "~/.local/state/eliza/eliza.json"
 # Set "update": { "checkOnStart": false }
 ```
 

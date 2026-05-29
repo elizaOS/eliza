@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_openlane_run_preflight as openlane_preflight  # noqa: E402
 import openlane_pd_blocker_summary  # noqa: E402
 
 
@@ -42,7 +44,8 @@ class PhysicalGateTests(unittest.TestCase):
     def test_openlane_preflight_scaffold_has_current_diagnostic_run(self) -> None:
         result = run_check("scripts/check_openlane_run_preflight.py")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("STATUS: PASS openlane_run_preflight", result.stdout)
+        self.assertIn("STATUS: BLOCKED openlane_run_preflight", result.stdout)
+        self.assertIn("run/image evidence is still blocked", result.stdout)
 
     def test_openlane_preflight_writes_mode_specific_reports(self) -> None:
         normal_report = ROOT / "build/reports/openlane_run_preflight.json"
@@ -70,6 +73,49 @@ class PhysicalGateTests(unittest.TestCase):
             )
         )
 
+    def test_openlane_release_rejects_cross_run_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            run_a = root / "runs/RUN_A/final/gds"
+            run_b = root / "runs/RUN_B/final/def"
+            run_a.mkdir(parents=True)
+            run_b.mkdir(parents=True)
+            (run_a / "e1_chip_top.gds").write_text("gds\n", encoding="utf-8")
+            (run_b / "e1_chip_top.def").write_text("def\n", encoding="utf-8")
+            manifest = {
+                "run_roots": ["runs"],
+                "required_artifacts": {
+                    "gds": {"globs": ["runs/*/final/gds/*.gds"]},
+                    "def": {"globs": ["runs/*/final/def/*.def"]},
+                },
+            }
+            with mock.patch.object(openlane_preflight, "ROOT", root):
+                blockers = openlane_preflight.release_artifact_blockers(manifest)
+
+        self.assertIn(
+            "release artifacts must come from one selected OpenLane/OpenROAD run directory",
+            blockers,
+        )
+        categories = {openlane_preflight.blocker_category(blocker) for blocker in blockers}
+        self.assertIn("release_artifacts_cross_run", categories)
+
+    def test_openlane_release_requires_native_runner_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with (
+                mock.patch.object(openlane_preflight, "ROOT", root),
+                mock.patch.object(
+                    openlane_preflight.shutil, "which", return_value="/usr/bin/openlane"
+                ),
+            ):
+                blockers = openlane_preflight.native_openlane_release_blockers()
+
+        self.assertEqual(len(blockers), 1)
+        self.assertEqual(
+            openlane_preflight.blocker_category(blockers[0]),
+            "runner_provenance_missing",
+        )
+
     def test_openlane_preflight_custom_report_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             custom_report = Path(tmpdir) / "custom-openlane.json"
@@ -90,9 +136,9 @@ class PhysicalGateTests(unittest.TestCase):
         self.assertEqual(report["schema"], "eliza.openlane_pd_blocker_summary.v1")
         self.assertFalse(report["summary"]["release_ready"])
         self.assertFalse(report["summary"]["release_credit"])
-        self.assertGreater(report["summary"]["magic__drc_error__count"], 0)
+        self.assertFalse(report["summary"]["complete_run_found"])
         self.assertIn(
-            "magic_drc_blocked",
+            "openlane_no_complete_pd_run",
             {finding["code"] for finding in report["findings"]},
         )
 

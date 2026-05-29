@@ -8,11 +8,12 @@ mild sector_scale on the back (-X) over the same band adds the calf-muscle
 bulge. connection_weight ramps every warp to 1.0 at the reserved knee (0) and
 ankle (-0.2947) levels, so both mating rings stay exact.
 
-All multipliers are <= 1.0 (radial) plus a small back-only bulge that never
-pushes -X past the original calf, so the femme mesh stays inside the original
-bounding box.  LEFT and RIGHT use the identical profile mirrored across Y by
-the source meshes themselves (the knee shaft is Y-symmetric), so no extra
-mirroring math is needed.
+The global shaft multiplier stays below 1.0, while the localized back-only
+sector gain is allowed to push the calf belly slightly past the original -X
+envelope. That makes the calf-back morphology parameter measurable instead of
+only implied by catalog intent. LEFT and RIGHT use the identical profile
+mirrored across Y by the source meshes themselves (the knee shaft is
+Y-symmetric), so no extra mirroring math is needed.
 """
 import os
 import sys
@@ -34,7 +35,8 @@ SHAFT_SLIM = 0.80        # slimmest target (shin front + ankle approach)
 BELLY_SLIM = 0.90        # fuller target across the calf belly
 BELLY_Z = -0.15          # centre of the calf muscle belly
 BELLY_SIGMA = 0.045      # gaussian half-spread of the belly swell
-BACK_BULGE = 1.06        # extra -X (calf) sector multiplier at the belly peak
+BACK_BULGE = 1.70        # extra -X (calf) sector multiplier at the belly peak
+BACK_BULGE_WIDTH = np.pi * 0.45
 
 
 def _bell(z, centre, sigma):
@@ -71,7 +73,7 @@ def build(part, render=False):
     # Slim the whole shaft with a calf-belly swell, then add a back-only bulge
     # for the calf muscle.  Angle 0 = +X (shin front); pi = -X (calf back).
     P.radial_scale(param, calf_profile, weight=w)
-    P.sector_scale(param, ang_center=np.pi, ang_width=np.pi * 1.1,
+    P.sector_scale(param, ang_center=np.pi, ang_width=BACK_BULGE_WIDTH,
                    fn=calf_back_bulge, weight=w)
 
     femme = P.rings_to_mesh(param)

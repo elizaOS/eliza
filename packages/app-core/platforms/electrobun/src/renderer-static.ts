@@ -9,6 +9,11 @@ export type ResolvedRendererAsset = {
   mimeExt: string;
 };
 
+export type RendererAssetByteRange = {
+  start: number;
+  end: number;
+};
+
 export const RENDERER_ASSET_MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -50,6 +55,45 @@ export function getRendererAssetContentType(mimeExt: string): string {
     RENDERER_ASSET_MIME_TYPES[mimeExt.toLowerCase()] ??
     "application/octet-stream"
   );
+}
+
+function parseNonNegativeInteger(value: string): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+export function resolveRendererAssetByteRange(
+  rangeHeader: string | null,
+  contentLength: number,
+): RendererAssetByteRange | null {
+  if (!rangeHeader || contentLength <= 0) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) return null;
+
+  const [, rawStart, rawEnd] = match;
+  if (!rawStart && !rawEnd) return null;
+
+  if (!rawStart) {
+    const suffixLength = parseNonNegativeInteger(rawEnd);
+    if (suffixLength === null || suffixLength <= 0) return null;
+    return {
+      start: Math.max(contentLength - suffixLength, 0),
+      end: contentLength - 1,
+    };
+  }
+
+  const start = parseNonNegativeInteger(rawStart);
+  if (start === null || start >= contentLength) return null;
+  const requestedEnd = rawEnd
+    ? parseNonNegativeInteger(rawEnd)
+    : contentLength - 1;
+  if (requestedEnd === null || requestedEnd < start) return null;
+
+  return {
+    start,
+    end: Math.min(requestedEnd, contentLength - 1),
+  };
 }
 
 type ResolveRendererAssetOptions = {

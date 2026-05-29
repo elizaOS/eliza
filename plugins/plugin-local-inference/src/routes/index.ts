@@ -27,6 +27,16 @@ export * from "./local-inference-asr-route.js";
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";
 export {
+	__resetVoiceFirstRunSessions,
+	type EncoderFactory as VoiceFirstRunEncoderFactory,
+	FIRST_RUN_SCRIPT,
+	type FirstRunScriptStep,
+	handleVoiceFirstRunRoutes,
+	setVoiceFirstRunEncoderFactory,
+	setVoiceFirstRunProfileStore,
+	setVoiceFirstRunSettingsWriter,
+} from "./voice-first-run-routes.js";
+export {
 	handleVoiceModelsRoutes,
 	resolveInstalledVersions as resolveInstalledVoiceModelVersions,
 	setVoiceModelDownloader,
@@ -34,13 +44,3 @@ export {
 	setVoiceModelsUpdater,
 	type VoiceModelInstallationView,
 } from "./voice-models-routes.js";
-export {
-	__resetVoiceOnboardingSessions,
-	type EncoderFactory as VoiceOnboardingEncoderFactory,
-	handleVoiceOnboardingRoutes,
-	ONBOARDING_SCRIPT,
-	type OnboardingScriptStep,
-	setVoiceOnboardingEncoderFactory,
-	setVoiceOnboardingProfileStore,
-	setVoiceOnboardingSettingsWriter,
-} from "./voice-onboarding-routes.js";

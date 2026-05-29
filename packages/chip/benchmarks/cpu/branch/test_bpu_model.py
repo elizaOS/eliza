@@ -261,7 +261,7 @@ def test_ftb_uses_set_way_replacement_like_rtl():
     ftb = BPUSimulator().ftb
     base = 0x8000_0000
     idx = ftb._index(base)
-    pcs = []
+    pcs: list[int] = []
     pc = base
     while len(pcs) < DEFAULT_GEOMETRY["FTB_WAYS"] + 1:
         if ftb._index(pc) == idx and pc not in pcs:

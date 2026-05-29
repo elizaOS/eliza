@@ -3,7 +3,7 @@
 /**
  * Pre-agent / home-screen brand wiring test.
  *
- * Asserts that `App.tsx` wraps the StartupShell (pre-agent gate) in
+ * Asserts that `App.tsx` wraps the StartupScreen (pre-agent gate) in
  * `<CloudVideoBackground>` so the home screen renders over CLOUDS per brand,
  * and that the cloud component itself can produce either the expected `<video>`
  * element with cloud sources or a static poster for startup. Rendering the full <App> would require mocking the
@@ -77,12 +77,29 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
+const APP_MAIN_TS = readFileSync(
+  resolve(__dirname, "../../app/src/main.tsx"),
+  "utf8",
+);
+const USE_NAVIGATION_STATE_TS = readFileSync(
+  resolve(__dirname, "./state/useNavigationState.ts"),
+  "utf8",
+);
+const USE_STARTUP_SHELL_CONTROLLER_TS = readFileSync(
+  resolve(__dirname, "./state/use-startup-shell-controller.ts"),
+  "utf8",
+);
+const WINDOW_SHELL_TS = readFileSync(
+  resolve(__dirname, "./platform/window-shell.ts"),
+  "utf8",
+);
 
 describe("App pre-agent cloud wiring", () => {
-  it("wraps the pre-agent StartupShell in CloudVideoBackground", () => {
+  it("wraps the pre-agent StartupScreen in a full-screen CloudVideoBackground", () => {
     // Pull the contents of the `if (startupCoordinator.phase !== "ready" …)`
     // pre-agent gate and assert clouds are wired there. We grep for the
     // testid we added so the assertion fails loudly if the wrapper is moved.
@@ -91,45 +108,42 @@ describe("App pre-agent cloud wiring", () => {
     );
     expect(APP_TSX).toContain('data-testid="pre-agent-cloud-shell"');
     expect(APP_TSX).toMatch(
-      /<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/,
+      /<CloudVideoBackground[\s\S]*<StartupScreen[\s\S]*<\/CloudVideoBackground>/,
     );
-    // Brand rules: 8x speed, /clouds basePath, light scrim, themed text.
-    expect(APP_TSX).toMatch(/speed="8x"/);
-    expect(APP_TSX).toMatch(/basePath="\/clouds"/);
-    expect(APP_TSX).toMatch(/animated=\{false\}/);
+    // The clouds are a true full-viewport background (fixed inset:0) with a
+    // light scrim and theme-aware black text layered above.
+    expect(APP_TSX).toMatch(/position: "fixed"/);
     expect(APP_TSX).toMatch(/scrim=\{0\.05\}/);
-    // text-txt is the theme-aware class for black text on the cloud background.
     expect(APP_TSX).toMatch(/text-txt/);
   });
 
-  it("CloudVideoBackground renders a <video> with cloud sources", async () => {
+  it("shows the poster first, then streams the cloud loop video over it", async () => {
     const { container } = render(
-      <CloudVideoBackground
-        speed="8x"
-        basePath="/clouds"
-        poster="/clouds/poster-960.jpg"
-        scrim={0.05}
-      >
+      <CloudVideoBackground scrim={0.05}>
         <div data-testid="welcome">welcome</div>
       </CloudVideoBackground>,
     );
 
-    const video = container.querySelector("video");
-    expect(video).not.toBeNull();
-    expect(video?.getAttribute("poster")).toBe("/clouds/poster-960.jpg");
-    await waitFor(() => {
-      expect(container.querySelector("video")?.getAttribute("preload")).toBe(
-        "metadata",
-      );
-    });
+    // Poster image is present immediately (jpeg-first).
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "/clouds/poster-960.jpg",
+      CLOUD_BACKGROUND_ASSETS.poster,
     );
 
-    const sources = container.querySelectorAll("video > source");
-    expect(sources.length).toBeGreaterThan(0);
-    const srcAttrs = Array.from(sources).map((s) => s.getAttribute("src"));
-    expect(srcAttrs.some((s) => s?.includes("/clouds/clouds_8x_"))).toBe(true);
+    // The video layer mounts after the deferred post-load tick.
+    await waitFor(
+      () => {
+        expect(container.querySelector("video")).not.toBeNull();
+      },
+      { timeout: 2000 },
+    );
+    const video = container.querySelector("video");
+    expect(video?.getAttribute("preload")).toBe("auto");
+    expect(video?.getAttribute("poster")).toBe(CLOUD_BACKGROUND_ASSETS.poster);
+
+    const srcAttrs = Array.from(
+      container.querySelectorAll("video > source"),
+    ).map((s) => s.getAttribute("src"));
+    expect(srcAttrs).toContain(CLOUD_BACKGROUND_ASSETS.source1080pMp4);
 
     // children still rendered above the video
     expect(
@@ -137,13 +151,11 @@ describe("App pre-agent cloud wiring", () => {
     ).toBe("welcome");
   });
 
-  it("CloudVideoBackground can render a static poster without video decode", () => {
+  it("renders only the poster when not animated", () => {
     const { container } = render(
       <CloudVideoBackground
-        speed="8x"
-        basePath="/clouds"
-        poster="/clouds/poster.jpg"
         animated={false}
+        poster={CLOUD_BACKGROUND_ASSETS.poster}
       >
         <div data-testid="welcome">welcome</div>
       </CloudVideoBackground>,
@@ -151,10 +163,62 @@ describe("App pre-agent cloud wiring", () => {
 
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "/clouds/poster.jpg",
+      CLOUD_BACKGROUND_ASSETS.poster,
     );
     expect(
       container.querySelector('[data-testid="welcome"]')?.textContent,
     ).toBe("welcome");
+  });
+
+  it("keeps the assistant pill out of the full app shell", () => {
+    expect(APP_TSX).toContain("home: <HomeView />");
+    expect(APP_TSX).toContain('shellMode === "chat-overlay"');
+    expect(APP_TSX).toContain("<ShellFoundationMount />");
+    expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
+    expect(APP_TSX).not.toContain(
+      "{isCoordinatorReady && <ShellFoundationMount />}",
+    );
+    expect(APP_TSX.indexOf('shellMode === "chat-overlay"')).toBeLessThan(
+      APP_TSX.indexOf(
+        'startupCoordinator.phase !== "ready" || !firstRunComplete',
+      ),
+    );
+  });
+
+  it("classifies chat-overlay as a standalone shell, not the main app", () => {
+    expect(WINDOW_SHELL_TS).toContain('shellMode === "chat-overlay"');
+    expect(WINDOW_SHELL_TS).toContain('{ mode: "chat-overlay" }');
+    expect(WINDOW_SHELL_TS).toContain("isChatOverlayWindowShell");
+    expect(WINDOW_SHELL_TS).toContain("isStandaloneWindowShell");
+    expect(WINDOW_SHELL_TS).toContain('route.mode === "chat-overlay"');
+    expect(APP_MAIN_TS).toContain("isStandaloneWindowShell(windowShellRoute)");
+    expect(APP_MAIN_TS).toContain("isChatOverlayWindowShell(windowShellRoute)");
+  });
+
+  it("preserves chat-overlay shell mode during shell-window navigation", () => {
+    expect(USE_NAVIGATION_STATE_TS).toContain("pathWithCurrentShellMode");
+    expect(USE_NAVIGATION_STATE_TS).toContain("isDetachedShell");
+    expect(USE_NAVIGATION_STATE_TS).toContain("eliza-chat-overlay-shell");
+    expect(USE_NAVIGATION_STATE_TS).toContain(
+      "if (!isDetachedShell) return path",
+    );
+    expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shellMode")');
+    expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shell-mode")');
+    expect(USE_NAVIGATION_STATE_TS).toContain(
+      'window.history.pushState(null, "", pathWithCurrentShellMode(path))',
+    );
+  });
+
+  it("lets existing shell windows advance after onboarding finishes elsewhere", () => {
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(".getFirstRunStatus()");
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
+      "status.cloudProvisioned",
+    );
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
+      'setState("firstRunComplete", true)',
+    );
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
+      'coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" })',
+    );
   });
 });

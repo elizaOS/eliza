@@ -1,8 +1,8 @@
 /**
- * Voice onboarding route: create a family-member voice profile.
+ * Voice first-run route: create a family-member voice profile.
  *
  * Route:
- *   POST /v1/voice/onboarding/family-member
+ *   POST /v1/voice/first-run/family-member
  *     Body (JSON):
  *       {
  *         audioBase64: string,   // raw base64-encoded audio (webm/wav/ogg)
@@ -20,7 +20,7 @@
  *         relationshipTag: "family_of"
  *       }
  *
- * Audio pipeline (mirrors voice-onboarding-routes.ts):
+ * Audio pipeline (mirrors voice-first-run-routes.ts):
  *   1. Decode base64 → Buffer → Float32 PCM (assumes 16 kHz, mono).
  *   2. Encode via WespeakerEncoder → 256-dim centroid.
  *   3. Store in VoiceProfileStore (non-OWNER entity binding).
@@ -30,7 +30,7 @@
  * to a stub profile so the UI flow is not blocked.
  *
  * The `family_of` relationship edge is recorded in profile metadata so a
- * runtime-level consumer (e.g. voice-onboarding-complete handler) can create
+ * runtime-level consumer (e.g. voice-first-run-complete handler) can create
  * the real Entity + Relationship rows after the runtime is up. The route
  * itself does not call IAgentRuntime because HTTP route handlers in this
  * plugin do not hold a runtime reference.
@@ -58,7 +58,7 @@ import {
 } from "../services/voice/speaker/encoder.js";
 
 // ---------------------------------------------------------------------------
-// Injectable test hooks (mirrors voice-onboarding-routes.ts)
+// Injectable test hooks (mirrors voice-first-run-routes.ts)
 // ---------------------------------------------------------------------------
 
 export type FamilyMemberEncoderFactory = () => Promise<SpeakerEncoder>;
@@ -200,7 +200,7 @@ export interface FamilyMemberResult {
 }
 
 /**
- * Handle `POST /v1/voice/onboarding/family-member`.
+ * Handle `POST /v1/voice/first-run/family-member`.
  *
  * Returns `true` when the request was handled (success or error response
  * written), `false` when the path does not match this handler.
@@ -213,7 +213,7 @@ export async function handleFamilyMemberRoute(
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
 
-	if (method !== "POST" || pathname !== "/v1/voice/onboarding/family-member") {
+	if (method !== "POST" || pathname !== "/v1/voice/first-run/family-member") {
 		return false;
 	}
 
@@ -301,7 +301,7 @@ export async function handleFamilyMemberRoute(
 				displayName,
 				relationship,
 				cohort: "family",
-				source: "onboarding",
+				source: "first-run",
 				relationshipTag: FAMILY_OF_TAG,
 				ownerEntityId: ownerEntityId ?? null,
 			},

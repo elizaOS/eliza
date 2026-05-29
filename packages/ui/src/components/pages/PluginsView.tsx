@@ -225,10 +225,19 @@ function PluginListView({
 
   const allowCustomOrder = !isSocialMode;
 
-  // Load plugins on mount
+  // Load plugins on mount — exactly once. `ensurePluginsLoaded` is recreated
+  // whenever the underlying `pluginsLoaded` flag flips (its useCallback depends
+  // on it), so depending on its identity here re-fires the effect on every such
+  // change and, combined with context re-renders, produces a render storm. Read
+  // the latest callback through a ref and gate on a one-shot flag instead.
+  const ensurePluginsLoadedRef = useRef(ensurePluginsLoaded);
+  ensurePluginsLoadedRef.current = ensurePluginsLoaded;
+  const didLoadPluginsRef = useRef(false);
   useEffect(() => {
-    void ensurePluginsLoaded();
-  }, [ensurePluginsLoaded]);
+    if (didLoadPluginsRef.current) return;
+    didLoadPluginsRef.current = true;
+    void ensurePluginsLoadedRef.current();
+  }, []);
 
   // Listen for install progress events via WebSocket
   useEffect(() => {
@@ -347,16 +356,16 @@ function PluginListView({
           key={tag.id}
           variant={isActive ? "default" : "outline"}
           size="sm"
-          className={`h-7 px-3 text-xs-tight font-bold tracking-wide rounded-[var(--radius-md)] transition-all ${
+          className={`h-7 px-3 text-xs-tight font-bold tracking-wide rounded-sm transition-all ${
             isActive
-              ? "border-accent/55 bg-accent/16 text-txt-strong shadow-sm"
-              : "bg-card/40 backdrop-blur-sm border-border/40 text-muted hover:text-txt shadow-sm hover:border-accent/30"
+              ? "border-accent/55 bg-accent/16 text-txt-strong "
+              : "bg-card/40 backdrop-blur-sm border-border/40 text-muted hover:text-txt hover:border-accent/30"
           }`}
           onClick={() => setSubgroupFilter(tag.id)}
         >
           {tag.label}
           <span
-            className={`ml-1.5 rounded border px-1.5 py-0.5 text-3xs font-mono leading-none ${
+            className={`ml-1.5 rounded-sm border px-1.5 py-0.5 text-3xs font-mono leading-none ${
               isActive
                 ? "border-accent/30 bg-accent/12 text-txt-strong"
                 : "border-border/50 bg-bg-accent/80 text-muted-strong"
@@ -553,11 +562,13 @@ function PluginListView({
         "error",
         3800,
       );
-      // Still try to refresh in case install succeeded but restart failed
+      // The install failure is already surfaced above. This refresh is a
+      // best-effort reconciliation in case install partially succeeded; its
+      // own failure adds no new actionable information for the user.
       try {
         await loadPlugins();
       } catch {
-        /* ignore */
+        /* best-effort refresh; outer error already shown */
       }
     } finally {
       setInstallingPlugins((prev) => {
@@ -633,7 +644,7 @@ function PluginListView({
       try {
         await loadPlugins();
       } catch {
-        /* ignore */
+        /* best-effort refresh; outer error already shown */
       }
     } finally {
       setUpdatingPlugins((prev) => {
@@ -710,7 +721,7 @@ function PluginListView({
       try {
         await loadPlugins();
       } catch {
-        /* ignore */
+        /* best-effort refresh; outer error already shown */
       }
     } finally {
       setUninstallingPlugins((prev) => {
@@ -853,8 +864,7 @@ function PluginListView({
             src={imageSrc}
             alt=""
             className={
-              options?.className ??
-              "w-5 h-5 rounded-[var(--radius-sm)] object-contain"
+              options?.className ?? "w-5 h-5 rounded-sm object-contain"
             }
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -1109,7 +1119,7 @@ function PluginListView({
         {visiblePlugins.length === 0 ? (
           <PagePanel.Empty
             variant="surface"
-            className="min-h-[18rem] rounded-[1.6rem] px-5 py-10"
+            className="min-h-[18rem] rounded-sm px-5 py-10"
             description={
               hasActivePluginFilters
                 ? `Try a different search or category filter for ${resultLabel}.`
@@ -1290,7 +1300,7 @@ function PluginListView({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 rounded-[var(--radius-sm)] px-4 text-xs-tight font-bold tracking-[0.12em]"
+                        className="h-9 rounded-sm px-4 text-xs-tight font-bold tracking-[0.12em]"
                         onClick={handleResetOrder}
                         title={t("pluginsview.ResetToDefaultSor")}
                       >
@@ -1322,7 +1332,7 @@ function PluginListView({
                   {sorted.length === 0 ? (
                     <PagePanel.Empty
                       variant="surface"
-                      className="min-h-[18rem] rounded-[1.6rem] px-5 py-10"
+                      className="min-h-[18rem] rounded-sm px-5 py-10"
                       description={t("pluginsview.NoneAvailableDesc", {
                         defaultValue: "No {{label}} are available right now.",
                         label: resultLabel,
@@ -1335,7 +1345,7 @@ function PluginListView({
                   ) : visiblePlugins.length === 0 ? (
                     <PagePanel.Empty
                       variant="surface"
-                      className="min-h-[16rem] rounded-[1.6rem] px-5 py-10"
+                      className="min-h-[16rem] rounded-sm px-5 py-10"
                       description={
                         showSubgroupFilters
                           ? t("pluginsview.NoPluginsMatchCategory", {

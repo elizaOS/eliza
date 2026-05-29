@@ -1,0 +1,189 @@
+[[!meta date="Fri, 05 Oct 2012 12:00:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for September, 2012"]]
+
+September, 2012 has been pretty busy for Tails. Here is a report of what
+happened.
+
+Releases
+========
+
+Tails 0.13 was released on September 18th. See the [[announcement for more
+details|version_0.13]].
+
+The release came out one week late compared to the initial schedule.
+This is due to an unexpected late arrival of the updated Iceweasel ESR
+backported packages.
+
+The next release, labeled 0.14, should be released by the end of
+October. A first release candidate should be available for testing on
+the 9th.
+
+People
+======
+
+Tails has been started and successfully connected to the Tor network
+around 71.000 times in September. That makes a boot every 36 seconds on
+average. This number is an approximation from the requests made for the
+security announcements feed. The later is retrieved by Tails after being
+connected to Tor to eventually encourage users to update.
+
+47 reports were received through WhisperBack.
+
+The forum activity went pretty crazy with 1038 new messages, 156 of them
+signed by "Tails". Not the highest signal/noise ratio in history,
+though.
+
+Code
+====
+
+A fix was merged for the slow browsing experience of the
+documentation available inside
+Tails systems.
+
+Some progress was made on the front of supporting multiple
+kernels, that should lead a future version of Tails to use
+multiple cores and more than 3GB of memory eventually, as well as fixing most
+of the dreaded "not all memory is wiped at shutdown" bug.
+
+A first attempt to tackle persistent connections in Network
+Manager is available for reviews.
+
+'Old style' PC speaker is now disabled to prevent
+loud, unexpected beeps.
+
+The Unsafe Web browser now disables all Iceweasel
+extensions.
+
+The firewall is now configured using `ferm`.
+
+The build process is now more likely to fail instead of letting errors
+slip.
+
+Tails (`devel` Git branch) is now using Tor 0.2.3.
+
+One of the new feature of Tor 0.2.3 is network stream isolation.
+Subsequent anonymity enhancements have been
+implemented and will be available in Tails 0.14.
+
+The readahead breakage resulting in a
+noticeable pause during startup has been fixed.
+
+The Vagrant-based build system was
+optimized.
+
+Some more work has been done in improving handling of init
+scripts.
+
+The bug that made the default search engine for some languages fallback on
+Google has
+been fixed.
+
+Some more build system optimization related to package
+installation.
+
+An input method for Japanese has been
+added
+and will be in Tails 0.14.
+
+Programs used by default to open downloaded files were often
+sub-optimal. The issue is now
+fixed.
+
+A bug resulting in whisperback reporting an inexistent
+error
+during the send process has been fixed.
+
+On the OpenPGP smartcards support front, some backports were prepared
+and are being tested.
+
+On-going discussions
+====================
+
+Two contributors interested in working on Tails server showed
+up.
+
+Some feedback and comments about the 'uwt'
+script
+shipped in Whonix.
+
+Experiments on backporting
+Iceweasel
+
+What should be done with the system date when it's off any reasonable
+limit?
+
+Schedule for the upcoming 0.14
+release
+
+Block/unblock wireless
+devices?
+
+Researching best way to implement persistent browser
+bookmarks,
+with some first patches from Alessandro Grassi.
+
+Should Tails ship a "download
+manager"?
+
+Should PCMCIA / ExpressCard / Firewall be
+deactivated?
+
+What should be the default web browser
+homepage?
+
+Documentation and website
+=========================
+
+The documentation has received several small improvements in the
+following areas:
+
+ * List what can be done when Tails does not start.
+ * Better phrasing of the disclaimer about TrueCrypt.
+ * Adjust TrueCrypt documentation for the current boot menu.
+ * Specify what happens to the persistent volume when using
+   the clone option of the installer.
+ * Be more explicit of what should be done after installing
+   Tails.
+ * Link more appropriately the Torrent OpenPGP signature.
+
+An important amount of (still invisible) work has been done to replace
+the forum with a Q&A-style (like StackOverflow) web application that
+would suit our needs (and possibly the Tor project's ones -- we'll see).
+
+Translations
+============
+
+The French translations has received a sturdy stream of updates.
+
+The website is currently at:
+
+ * FR: 79% translated, 1% fuzzy
+ * PT: 50% translated, 1% fuzzy
+ * ES: 28% translated, 3% fuzzy
+ * DE: 13% translated, 1% fuzzy
+
+Infrastructure
+==============
+
+The `tails::whisperback::relay` Puppet class was brought into working
+state. This allowed us to setup additional WhisperBack relays:
+fail-over should now ensure bug reporting is possible most of
+the time. See Git repository at:
+`git://webmasters.boum.org/tails-puppet-module-tails`
+
+The server that will be dedicated to Tails development needs was
+delivered and plugged in the SeaCCP colocation. Many thanks to our
+friends at Riseup, who helped a lot through the whole process, and to
+the Tor project, who supports us once again by funding the
+server hosting! Debian Wheezy was installed.
+
+A Redmine install was setup at Riseup Labs to allow us to evaluate it.
+Thanks a lot, again!
+
+Funding
+=======
+
+The discussions with sponsor Bravo are going well. It's likely that
+around 20 days of work for two developers will be funded by
+the end of November.

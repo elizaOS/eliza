@@ -37,13 +37,10 @@
  * refuses to activate Kokoro — no silent downgrade.
  */
 
-import { existsSync } from "node:fs";
-import path from "node:path";
-import {
-  type KokoroModelLayout,
-  KokoroModelMissingError,
-  type KokoroPhonemeSequence,
-  type KokoroVoicePack,
+import type {
+  KokoroModelLayout,
+  KokoroPhonemeSequence,
+  KokoroVoicePack,
 } from "./types.js";
 
 /** Pinned voices directory tree on HF. Each voice pack is a single .bin. */
@@ -342,7 +339,9 @@ export const KOKORO_ONNX_MODEL_URL =
 export class KokoroOnnxRuntime implements KokoroRuntime {
   readonly id = "onnx" as const;
   readonly sampleRate = 24000;
-  constructor(_opts: KokoroOnnxRuntimeOptions) {}
+  constructor(_opts: KokoroOnnxRuntimeOptions) {
+    void _opts;
+  }
   async synthesize(
     _args: KokoroRuntimeInputs,
   ): Promise<{ cancelled: boolean }> {

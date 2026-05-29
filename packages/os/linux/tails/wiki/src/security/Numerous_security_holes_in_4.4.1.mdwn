@@ -1,0 +1,13 @@
+[[!meta date="Sun, 05 Apr 2020 15:15:15 +0000"]]
+[[!meta title="Numerous security holes in Tails 4.4.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.5|news/version_4.5]] fixes many security issues that affect
+Tails 4.4.1. You should [[upgrade to Tails 4.5|news/version_4.5]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-11]], [[!mfsa 2020-13]]
+ - BlueZ: [[!debsa2020 4647]]
+ - GnuTLS: [[!debsa2020 4652]]

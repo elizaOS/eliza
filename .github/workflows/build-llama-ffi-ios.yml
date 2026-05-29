@@ -17,13 +17,13 @@ name: Build libelizainference (iOS, FFI static)
 #
 # STATUS: SCAFFOLD. The runner has not been validated against the
 # Electrobun iOS shell's XCFramework consumption path. Top-level
-# `if: false` keeps this out of the default fan-out.
+# The `run_real_build` input keeps this out of the default fan-out.
 
 on:
   workflow_dispatch:
     inputs:
       run_real_build:
-        description: "Bypass the if:false guard once the build is verified"
+        description: "Run the scaffold build once it has been verified"
         required: false
         type: boolean
         default: false
@@ -48,23 +48,23 @@ env:
 jobs:
   build:
     name: iOS XCFramework (Metal)
-    if: ${{ false }}
+    if: ${{ inputs.run_real_build == true }}
     runs-on: macos-14
     timeout-minutes: 120
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
           show-progress: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -84,7 +84,7 @@ jobs:
           cmake --version
 
       - name: Cache llama.cpp build artifacts
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: |
             plugins/plugin-local-inference/native/llama.cpp/build-ios-device
@@ -136,7 +136,7 @@ jobs:
           echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Upload XCFramework artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: libelizainference-ios-arm64
           path: ${{ steps.stage.outputs.stage_dir }}/*

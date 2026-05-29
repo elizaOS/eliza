@@ -179,43 +179,115 @@ def _write_image_input(raw_url: str, tmpdir: Path) -> str:
     return raw_url
 
 
+def _eliza_state_dir() -> Path:
+    explicit = os.environ.get("ELIZA_STATE_DIR") or os.environ.get("MILADY_STATE_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    ns = os.environ.get("ELIZA_NAMESPACE") or "eliza"
+    return Path.home() / f".{ns}"
+
+
+def _resolve_mtmd_binary() -> str:
+    explicit = os.environ.get("LOCAL_ELIZA_VLM_BIN")
+    if explicit:
+        return explicit
+    root = _eliza_state_dir() / "local-inference" / "bin"
+    default = root / "dflash" / "darwin-arm64-metal-fused" / "llama-mtmd-cli"
+    if default.is_file():
+        return str(default)
+    matches = sorted(root.glob("**/llama-mtmd-cli"))
+    if matches:
+        return str(matches[0])
+    raise RuntimeError(f"llama-mtmd-cli not found under {root}")
+
+
+def _resolve_vlm_models(tier: str) -> tuple[str, str]:
+    """Return (text_gguf, mmproj_gguf) for an eliza-1 vision bundle.
+
+    Honors LOCAL_ELIZA_VLM_MODEL / LOCAL_ELIZA_VLM_MMPROJ overrides; otherwise
+    resolves from the bundle layout verified for eliza-1 (text/*.gguf +
+    vision/mmproj-<slug>.gguf).
+    """
+    env_text = os.environ.get("LOCAL_ELIZA_VLM_MODEL")
+    env_mmproj = os.environ.get("LOCAL_ELIZA_VLM_MMPROJ")
+    if env_text and env_mmproj:
+        return env_text, env_mmproj
+    slug = tier.removeprefix("eliza-1-")
+    bundle = _eliza_state_dir() / "local-inference" / "models" / f"{tier}.bundle"
+    text_candidates = [
+        bundle / "text" / f"eliza-1-{slug}-32k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-64k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-128k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-256k.gguf",
+        bundle / "text" / f"eliza-1-{slug}.gguf",
+    ]
+    text_path = env_text or next((str(p) for p in text_candidates if p.is_file()), "")
+    mmproj_path = env_mmproj or str(bundle / "vision" / f"mmproj-{slug}.gguf")
+    if not text_path or not Path(text_path).is_file():
+        raise RuntimeError(f"no text gguf found for tier {tier!r} under {bundle / 'text'}")
+    if not Path(mmproj_path).is_file():
+        raise RuntimeError(f"no vision projector found for tier {tier!r}: {mmproj_path}")
+    return text_path, mmproj_path
+
+
+def _parse_mtmd_output(stdout: str) -> str:
+    """Strip llama-mtmd-cli's <think> reasoning block and trim whitespace."""
+    text = stdout
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[1]
+    text = text.replace("<think>", "").strip()
+    return text
+
+
+def _build_mtmd_command(
+    *, binary: str, text_model: str, mmproj: str, image_path: str, question: str, max_tokens: int | None
+) -> list[str]:
+    return [
+        binary,
+        "-m",
+        text_model,
+        "--mmproj",
+        mmproj,
+        "--image",
+        image_path,
+        "-p",
+        question,
+        "-n",
+        str(max_tokens if max_tokens and max_tokens > 0 else 96),
+        "--temp",
+        "0.1",
+        "--image-min-tokens",
+        "1024",
+    ]
+
+
 def _run_local_eliza_vlm(*, tier: str, image_path: str, question: str, max_tokens: int | None) -> str:
-    script = PACKAGE_ROOT / "scripts" / "local_eliza_vlm.ts"
-    payload: dict[str, Any] = {
-        "tier": tier,
-        "imagePath": image_path,
-        "question": question,
-    }
-    if max_tokens and max_tokens > 0:
-        payload["maxTokens"] = max_tokens
+    binary = _resolve_mtmd_binary()
+    text_model, mmproj = _resolve_vlm_models(tier)
+    command = _build_mtmd_command(
+        binary=binary,
+        text_model=text_model,
+        mmproj=mmproj,
+        image_path=image_path,
+        question=question,
+        max_tokens=max_tokens,
+    )
     result = subprocess.run(
-        ["bun", "run", str(script)],
-        input=json.dumps(payload),
+        command,
         text=True,
         capture_output=True,
-        cwd=str(PACKAGE_ROOT.parents[2]),
         env=os.environ.copy(),
         timeout=900,
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr or result.stdout or "local Eliza VLM failed")
-    parsed: dict[str, Any] | None = None
-    for line in (result.stdout or "").splitlines():
-        stripped = line.strip()
-        if not stripped.startswith("{"):
-            continue
-        try:
-            candidate = json.loads(stripped)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(candidate, dict) and "text" in candidate:
-            parsed = candidate
-            break
-    if parsed is None:
-        raise RuntimeError(f"local Eliza VLM produced no JSON text line: {result.stdout[-1000:]}")
-    text = parsed.get("text")
-    return text if isinstance(text, str) else ""
+        raise RuntimeError(
+            f"llama-mtmd-cli exited {result.returncode}: {(result.stderr or result.stdout or '')[-1000:]}"
+        )
+    text = _parse_mtmd_output(result.stdout or "")
+    if not text:
+        raise RuntimeError(f"local Eliza VLM produced empty output: {(result.stdout or '')[-500:]}")
+    return text
 
 
 @contextmanager
@@ -313,6 +385,24 @@ def main() -> int:
 
     started = time.monotonic()
     if provider in LOCAL_ELIZA_PROVIDERS:
+        # eliza harness drives the local VLM directly through llama-mtmd-cli.
+        # Other harnesses (hermes/openclaw) speak OpenAI-compatible HTTP, so we
+        # front the CLI with a tiny in-process /v1/chat/completions server.
+        if harness in {"eliza", ""}:
+            text = _run_local_eliza_vlm(
+                tier=model,
+                image_path=image_path,
+                question=question,
+                max_tokens=max_tokens,
+            )
+            print(
+                json.dumps(
+                    {"text": text, "latencyMs": (time.monotonic() - started) * 1000.0, "params": {}},
+                    ensure_ascii=True,
+                    sort_keys=True,
+                )
+            )
+            return 0
         with _local_eliza_openai_server(model) as base_url:
             client = _client(
                 harness,

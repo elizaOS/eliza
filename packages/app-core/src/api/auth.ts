@@ -226,6 +226,19 @@ export async function ensureCompatApiAuthorizedAsync(
       options.now,
     ).catch(() => null);
     if (sessionFromBearer) return true;
+
+    // Android local-agent mode sets ELIZA_REQUIRE_LOCAL_AUTH=1 because
+    // loopback is shared across apps on-device. In that mode the native
+    // service injects a per-boot ELIZA_API_TOKEN bearer for WebView requests;
+    // accept that configured token even after the runtime DB is available.
+    const expectedToken = getCompatApiToken();
+    if (
+      process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" &&
+      expectedToken &&
+      tokenMatches(expectedToken, provided)
+    ) {
+      return true;
+    }
   }
 
   recordFailedAuth(ip);

@@ -77,6 +77,8 @@ const MEMORY_FEED_EMPTY_FEATURES = [
 ] as const;
 
 const FEED_PAGE_SIZE = 50;
+/** Max retained feed items (10 pages) so long sessions stay bounded. */
+const FEED_MAX_ITEMS = 500;
 const BROWSE_PAGE_SIZE = 50;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -117,7 +119,7 @@ function MemoryCard({
   return (
     <button
       type="button"
-      className="w-full text-left rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3 transition-colors hover:border-border/40 hover:bg-card/50"
+      className="w-full text-left rounded-sm border border-border/24 bg-card/32 px-3.5 py-3 transition-colors hover:border-border/40 hover:bg-card/50"
       onClick={onToggle}
       data-testid={`memory-card-${memory.id}`}
     >
@@ -199,7 +201,10 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           before,
         });
         if (before) {
-          setFeed((prev) => [...prev, ...result.memories]);
+          // Cap retained items so a long pagination session can't grow the
+          // feed unboundedly. 500 covers many pages of scrollback while
+          // bounding memory; older items drop off the top.
+          setFeed((prev) => [...prev, ...result.memories].slice(-FEED_MAX_ITEMS));
         } else {
           setFeed(result.memories);
         }
@@ -231,7 +236,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+      <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
         {error}
       </div>
     );
@@ -365,7 +370,7 @@ function MemoryBrowserPanel({
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Search memory text…"
-            className="h-9 w-full rounded-xl border border-border/32 bg-card/40 pl-9 pr-3 text-sm text-txt placeholder:text-muted/50 focus:border-accent/50 focus:outline-none"
+            className="h-9 w-full rounded-sm border border-border/32 bg-card/40 pl-9 pr-3 text-sm text-txt placeholder:text-muted/50 focus:border-accent/50 focus:outline-none"
             data-testid="memory-browser-search"
           />
         </div>
@@ -374,7 +379,7 @@ function MemoryBrowserPanel({
       {loading && !result ? (
         <PagePanel.Loading heading="Loading memories…" />
       ) : error ? (
-        <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+        <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       ) : !result || result.memories.length === 0 ? (
@@ -523,7 +528,7 @@ export function MemoryViewerView({
           {stats ? (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-border/24 bg-card/35 px-2.5 py-2">
+                <div className="rounded-sm border border-border/24 bg-card/35 px-2.5 py-2">
                   <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
                     Total
                   </div>
@@ -534,7 +539,7 @@ export function MemoryViewerView({
                 {Object.entries(stats.byType).map(([type, count]) => (
                   <div
                     key={type}
-                    className="rounded-xl border border-border/24 bg-card/35 px-2.5 py-2"
+                    className="rounded-sm border border-border/24 bg-card/35 px-2.5 py-2"
                   >
                     <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
                       {typeLabel(type)}

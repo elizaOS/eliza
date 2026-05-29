@@ -1,4 +1,7 @@
 /// <reference types="bun-types" />
+
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   type NativeLibraryCandidate,
   resolveNativeLibraryCandidate,
@@ -111,6 +114,10 @@ let macCalendarBridgeOverride: MacCalendarBridge | null | undefined;
 let nativeBridgeOverride: NativeCalendarBridge | null | undefined;
 
 const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
+const MODULE_DIR =
+  typeof import.meta.dir === "string"
+    ? import.meta.dir
+    : dirname(fileURLToPath(import.meta.url));
 
 function nativeDylibCandidates(): NativeLibraryCandidate[] {
   return [
@@ -169,7 +176,7 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
   for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {
       expectedBasename: NATIVE_DYLIB_BASENAME,
-      moduleDir: import.meta.dir,
+      moduleDir: MODULE_DIR,
       warn: (message) => logger.warn(`[AppleCalendar] ${message}`),
     });
     if (!dylibPath) continue;

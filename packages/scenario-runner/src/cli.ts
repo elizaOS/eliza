@@ -13,7 +13,6 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
-import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { listScenarioMetadata, loadAllScenarios } from "./loader.ts";
 import type { ScenarioReport } from "./types.ts";
@@ -24,14 +23,10 @@ type NativeExportModule = typeof import("./native-export.ts");
 type LiveProviderModule = {
   availableProviderNames: () => readonly string[];
 };
-type ScenarioRuntimeFactoryModule = {
-  createScenarioRuntime: () => Promise<{
-    runtime: AgentRuntime;
-    providerName: string;
-    cleanup: () => Promise<void>;
-  }>;
-  shouldUseDeterministicLlmProxy: () => boolean;
-};
+type ScenarioRuntimeFactoryModule = Pick<
+  typeof import("./runtime-factory.ts"),
+  "createScenarioRuntime" | "shouldUseDeterministicLlmProxy"
+>;
 
 interface ParsedArgs {
   command: "run" | "list";
@@ -45,7 +40,9 @@ interface ParsedArgs {
   fileGlobs?: string[];
 }
 
-function scenarioNativeManifestPath(nativeJsonlPath?: string): string | undefined {
+function scenarioNativeManifestPath(
+  nativeJsonlPath?: string,
+): string | undefined {
   if (!nativeJsonlPath) return undefined;
   return nativeJsonlPath.endsWith(".jsonl")
     ? `${nativeJsonlPath.slice(0, -".jsonl".length)}.manifest.json`
@@ -155,7 +152,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const liveProviderSpecifier = "@elizaos/core" as string;
+  const liveProviderSpecifier = "@elizaos/core/testing" as string;
   const [
     { availableProviderNames },
     { runScenario },

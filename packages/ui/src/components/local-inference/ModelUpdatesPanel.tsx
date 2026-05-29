@@ -9,7 +9,7 @@
  *   `installedVersions` and `pinned` sets come from that API. Until the
  *   service routes are mounted we render the local catalog so the panel
  *   surface is testable.
- * - Toggle persistence lands in `~/.eliza/local-inference/voice-update-prefs.json`
+ * - Toggle persistence lands in `<stateDir>/local-inference/voice-update-prefs.json`
  *   via `POST /api/local-inference/voice-models/preferences` (route to be
  *   added in plugin-local-inference; the panel calls a tolerant stub that
  *   no-ops when the route is missing so the UI does not break in dev).
@@ -114,7 +114,7 @@ export function ModelUpdatesPanel({
   }, [installations]);
 
   return (
-    <section className="rounded-xl border border-border p-4 text-sm">
+    <section className="rounded-sm border border-border p-4 text-sm">
       <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
         <div>
           <h3 className="text-base font-semibold">Model Updates</h3>
@@ -202,7 +202,7 @@ function ModelUpdateCard({
         : `${row.latest.version} (not installed)`
     : "no version data";
   return (
-    <article className="rounded-lg border border-border p-3">
+    <article className="rounded-sm border border-border p-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-mono text-sm">{row.id}</div>
         <div className="text-xs text-muted-foreground">{versionLabel}</div>
@@ -218,7 +218,7 @@ function ModelUpdateCard({
         </p>
       ) : null}
       {row.lastError ? (
-        <p className="mt-2 rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
+        <p className="mt-2 rounded-sm bg-destructive/10 px-2 py-1 text-xs text-destructive">
           {row.lastError}
         </p>
       ) : null}

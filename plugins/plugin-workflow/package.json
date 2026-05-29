@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-workflow",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "ElizaOS plugin for generating and running workflows in-process",
   "type": "module",
   "main": "dist/index.js",
@@ -36,7 +36,7 @@
   "scripts": {
     "build": "node ../../packages/scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
@@ -86,8 +86,9 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/workflows": "workspace:*",
     "drizzle-orm": "^0.45.1",
-    "quickjs-emscripten": "0.32.0"
+    "effect": "^3.21.1",
+    "quickjs-emscripten": "0.32.0",
+    "smithers-orchestrator": "0.20.4"
   }
 }

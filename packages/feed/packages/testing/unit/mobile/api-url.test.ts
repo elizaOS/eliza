@@ -131,7 +131,7 @@ describe("apiUrl", () => {
 
     it("handles URL-encoded params", async () => {
       const apiUrl = await importApiUrl("https://play.feed.market");
-      const identifier = "did:privy:abc%3A123";
+      const identifier = "steward:test:abc%3A123";
       expect(apiUrl(`/api/profiles/resolve/${identifier}`)).toBe(
         `https://play.feed.market/api/profiles/resolve/${identifier}`,
       );

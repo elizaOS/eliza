@@ -57,7 +57,14 @@ describe("local inference catalog", () => {
 
   it("does not expose hidden companion entries in the hub", () => {
     const visible = localInferenceService.getCatalog();
-    expect(visible.some((model) => model.category === "drafter")).toBe(false);
+    const visibleIds = new Set(visible.map((model) => model.id));
+    const hiddenCompanionIds = MODEL_CATALOG.filter(
+      (model) => model.hiddenFromCatalog || model.runtimeRole === "mtp-drafter",
+    ).map((model) => model.id);
+    expect(hiddenCompanionIds.filter((id) => visibleIds.has(id))).toEqual([]);
+    expect(visible.flatMap((model) => model.companionModelIds ?? [])).toEqual(
+      [],
+    );
   });
 
   it("keeps the visible model hub focused on Eliza-1 only", () => {
@@ -117,40 +124,11 @@ describe("local inference catalog", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("DFlash pairs share a tokenizer family when present", () => {
-    const dflashEntries = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
-    for (const entry of dflashEntries) {
-      const drafterId = entry.runtime?.dflash?.drafterModelId;
-      const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
-      expect(
-        drafter,
-        `drafter ${drafterId} of ${entry.id} not found in catalog`,
-      ).toBeDefined();
-      expect(
-        entry.tokenizerFamily,
-        `target ${entry.id} missing tokenizerFamily`,
-      ).toBeDefined();
-      expect(
-        drafter?.tokenizerFamily,
-        `drafter ${drafterId} missing tokenizerFamily`,
-      ).toBeDefined();
-      expect(
-        entry.tokenizerFamily,
-        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) != drafter ${drafterId} (${drafter?.tokenizerFamily})`,
-      ).toBe(drafter?.tokenizerFamily);
-    }
-  });
-
-  it("attaches a tiny DFlash companion to the 0.8B tier", () => {
-    const model = findCatalogModel("eliza-1-0_8b");
-
-    expect(model, "eliza-1-0_8b missing").toBeTruthy();
-    expect(model?.displayName).toBe("eliza-1-0.8B");
-    expect(model?.companionModelIds ?? []).toEqual(["eliza-1-0_8b-drafter"]);
-    expect(model?.runtime?.dflash?.drafterModelId).toBe("eliza-1-0_8b-drafter");
-    expect(
-      MODEL_CATALOG.some((entry) => entry.id === "eliza-1-0_8b-drafter"),
-    ).toBe(true);
+  it("does not publish external drafter companion entries", () => {
+    const drafters = MODEL_CATALOG.filter(
+      (model) => model.runtimeRole === "mtp-drafter",
+    );
+    expect(drafters).toEqual([]);
   });
 
   it("does not ship non-Eliza local model entries", () => {
@@ -169,7 +147,7 @@ describe("local inference catalog", () => {
     expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(FIRST_RUN_DEFAULT_MODEL_ID)).toBe(
       true,
     );
-    expect(defaultModel?.runtimeRole).not.toBe("dflash-drafter");
+    expect(defaultModel?.runtimeRole).not.toBe("mtp-drafter");
   });
 
   it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {

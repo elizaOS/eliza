@@ -1,0 +1,184 @@
+#!/usr/bin/python3 -I
+"""
+Debug Tails.
+
+Test with "python3 tails-debugging-info.py doctest" as root.
+
+goodcrypto.com converted from bash to python and added basic tests.
+
+*** WARNING about debug_file and debug_directory *********************
+
+Great attention must be given to the ownership situation of these
+files and their parent directories in order to avoid a symlink-based
+attack that could read the contents of any file and make it
+accessible to the user running this script (typically the live
+user). Therefore, when adding a new file, give as the first argument
+'root' only if the complete path to it (including the file itself)
+is owned by root and already exists before the system is connected to
+the network (that is, before GDM's PostLogin script is run).
+If not, the following rules must be followed strictly:
+
+* only one non-root user is involved in the ownership situation (the
+  file, its dir and the parent dirs). From now on let's assume it is
+  the case and call it $USER.
+
+* if any non-root group has write access, it must not have any
+  members.
+
+If any of these rules does not apply, the file cannot be added here
+safely and something is probably quite wrong and should be
+investigated carefully.
+
+>>> # run script
+>>> import sh
+>>> this_command = sh.Command(sys.argv[0])
+>>> this_command()
+<BLANKLINE>
+...
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pwd import getpwuid
+
+# AppArmor Ux rules don't sanitize PATH, which can lead to an
+# exploited application (that's allowed to run this script unconfined)
+# having this script run arbitrary code, violating that application's
+# confinement. Let's prevent that by setting PATH to a list of
+# directories where only root can write.
+os.environ["PATH"] = "/usr/local/bin:/usr/bin:/bin"
+os.environ["LC_ALL"] = "C"
+
+
+def main():
+    """Print debug information serialized as json.
+
+    >>> main()
+    <BLANKLINE>
+    ...
+    """
+
+    config = None
+    with open("/etc/whisperback/debugging-info.json") as conf_file:
+        config = json.load(conf_file)
+
+    info = []
+    for _type, _args in config:
+        if _type == "command":
+            shell = _args["shell"] if "shell" in _args else False
+            info.append(  # nosec any_other_function_with_shell_equals_true
+                debug_command(args=_args["args"], shell=shell),
+            )
+        elif _type == "directory":
+            info.append(debug_directory(_args["user"], _args["path"]))
+        else:
+            info.append(debug_file(_args["user"], _args["path"]))
+    print()
+    print(json.dumps(info, indent=4))
+
+
+def debug_command(args: list, shell=False):
+    """Return the command and it's standard output as dict.
+
+    >>> debug_command(['echo', 'foo'])
+    {...'key': 'echo foo'...}
+    """
+    try:
+        if shell:
+            command_output = subprocess.check_output(  # nosec subprocess_popen_with_shell_equals_true
+                " ".join(args),
+                stderr=subprocess.PIPE,
+                shell=True,  # noqa: S602
+            )
+        else:
+            command_output = subprocess.check_output(args, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        if strict_mode:
+            raise
+        command_output = e.stdout
+    command_output = command_output.decode("UTF-8").strip().split("\n")
+    return {"key": "{}".format(" ".join(args)), "content": command_output}
+
+
+def debug_file(user, filename):
+    """Return the filename and the file content as dict.
+
+    >>> import tempfile, getpass
+    >>> with tempfile.NamedTemporaryFile('w') as f:
+    ...     _ = f.write("foo\\nbar")
+    ...     _ = f.seek(0)
+    ...     debug_file(getpass.getuser(), f.name)
+    {...'content': ['foo', 'bar']...}
+    """
+    if not os.path.isfile(filename):
+        return {"key": filename, "content": "Not found"}
+
+    # This check is not sufficient, see the comment at the top of the file
+    # for the complete requirements required for security
+    owner = getpwuid(os.stat(filename).st_uid).pw_name
+    if owner != user:
+        return {
+            "key": filename,
+            "content": f"""WARNING: not opening file {filename}, because it is """
+            f"""owned by {owner} instead of {user}""",
+        }
+
+    file_content = []
+    with open(filename) as f:
+        for line in f:
+            file_content.append(line.replace("\n", ""))
+    return {"key": filename, "content": file_content}
+
+
+def debug_directory(user, dir_name):
+    """Return a dict with the dir_name and dicts with
+    the content of all contained files (non-recursively).
+
+    >>> import os, getpass
+    >>> tmpdir = '/tmp/mytempdir'
+    >>> os.makedirs(tmpdir)
+    >>> with open(os.path.join(tmpdir, 'foo'), 'w') as f:
+    ...     _ = f.write("foobar\\nbar")
+    ...     _ = f.seek(0)
+    ...     result = debug_directory(getpass.getuser(), tmpdir)
+    >>> os.remove(os.path.join(tmpdir, 'foo'))
+    >>> os.rmdir(tmpdir)
+    >>> result
+    {...[{...['foobar', 'bar']...}]}
+    """
+    if not os.path.isdir(dir_name):
+        return {"key": dir_name, "content": "Not found"}
+
+    # This check is not sufficient, see the comment at the top of the file
+    # for the complete requirements required for security
+    owner = getpwuid(os.stat(dir_name).st_uid).pw_name
+    if owner != user:
+        return {
+            "key": dir_name,
+            "content": f"""WARNING: not opening directory {dir_name}, because """
+            f"""it is owned by {owner} instead of {user}""",
+        }
+
+    files = os.listdir(dir_name)
+
+    listing = []
+
+    for f in files:
+        listing.append(debug_file(user, os.path.join(dir_name, f)))
+    return {"key": dir_name, "content": listing}
+
+
+if __name__ == "__main__":
+    if sys.argv and len(sys.argv) > 1:
+        strict_mode = "--strict" in sys.argv
+        if sys.argv[1] == "doctest":
+            import doctest
+
+            doctest.testmod(optionflags=doctest.ELLIPSIS)
+        else:
+            main()
+    else:
+        strict_mode = False
+        main()

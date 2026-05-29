@@ -19,7 +19,7 @@ export function HUDContainer({
   return (
     <div
       className={cn(
-        "relative rounded-sm border border-border/80 bg-bg-elevated/80 text-txt shadow-sm",
+        "relative rounded-sm border border-border/80 bg-bg-elevated/80 text-txt ",
         className,
       )}
       {...props}

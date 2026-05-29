@@ -112,7 +112,7 @@ export function SaveCommandModal({
               aria-labelledby={inputLabelId}
               aria-describedby={error ? inputErrorId : undefined}
               aria-invalid={error ? "true" : undefined}
-              className="flex-1 h-8 text-sm shadow-sm"
+              className="flex-1 h-8 text-sm "
               style={{
                 background: "var(--bg-hover)",
                 border: "1px solid var(--border)",
@@ -132,7 +132,7 @@ export function SaveCommandModal({
 
           <span className="text-xs mt-1 text-muted">{t("common.preview")}</span>
           <pre
-            className="text-xs px-3 py-2 whitespace-pre-wrap break-words max-h-24 overflow-y-auto rounded-lg"
+            className="text-xs px-3 py-2 whitespace-pre-wrap break-words max-h-24 overflow-y-auto rounded-sm"
             style={{
               color: "var(--muted)",
               background: "var(--bg-hover)",

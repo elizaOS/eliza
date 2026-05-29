@@ -12,7 +12,7 @@
       "required": false,
       "sensitive": false,
       "label": "Storage Path",
-      "help": "Filesystem root for attachment storage. Defaults to ${ELIZA_STATE_DIR ?? ~/.eliza}/attachments.",
+      "help": "Filesystem root for attachment storage. Defaults to <stateDir>/attachments.",
       "advanced": false
     }
   },

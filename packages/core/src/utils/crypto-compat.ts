@@ -173,9 +173,6 @@ async function webCryptoHash(
 	return new Uint8Array(hashBuffer);
 }
 
-/**
- * Encrypt data using AES-256-CBC with Web Crypto API (browser-compatible)
- */
 async function webCryptoEncrypt(
 	key: Uint8Array,
 	iv: Uint8Array,
@@ -183,7 +180,6 @@ async function webCryptoEncrypt(
 ): Promise<Uint8Array> {
 	validateKeyAndIv(key, iv);
 	const subtle = getWebCryptoSubtle();
-
 	const cryptoKey = await subtle.importKey(
 		"raw",
 		Uint8Array.from(key),
@@ -191,7 +187,6 @@ async function webCryptoEncrypt(
 		false,
 		["encrypt"],
 	);
-
 	const encrypted = await subtle.encrypt(
 		{ name: "AES-CBC", iv: Uint8Array.from(iv) },
 		cryptoKey,
@@ -200,9 +195,6 @@ async function webCryptoEncrypt(
 	return new Uint8Array(encrypted);
 }
 
-/**
- * Decrypt data using AES-256-CBC with Web Crypto API (browser-compatible)
- */
 async function webCryptoDecrypt(
 	key: Uint8Array,
 	iv: Uint8Array,
@@ -210,7 +202,6 @@ async function webCryptoDecrypt(
 ): Promise<Uint8Array> {
 	validateKeyAndIv(key, iv);
 	const subtle = getWebCryptoSubtle();
-
 	const cryptoKey = await subtle.importKey(
 		"raw",
 		Uint8Array.from(key),
@@ -218,7 +209,6 @@ async function webCryptoDecrypt(
 		false,
 		["decrypt"],
 	);
-
 	const decrypted = await subtle.decrypt(
 		{ name: "AES-CBC", iv: Uint8Array.from(iv) },
 		cryptoKey,
@@ -227,9 +217,6 @@ async function webCryptoDecrypt(
 	return new Uint8Array(decrypted);
 }
 
-/**
- * Add PKCS#7 padding to a CBC plaintext tail.
- */
 function applyPkcs7Padding(data: Uint8Array): Uint8Array {
 	const padLength = AES_BLOCK_SIZE - (data.length % AES_BLOCK_SIZE || 0);
 	const padding = new Uint8Array(padLength === 0 ? AES_BLOCK_SIZE : padLength);
@@ -237,9 +224,6 @@ function applyPkcs7Padding(data: Uint8Array): Uint8Array {
 	return concatBytes(data, padding);
 }
 
-/**
- * Remove PKCS#7 padding from a decrypted CBC plaintext tail.
- */
 function removePkcs7Padding(data: Uint8Array): Uint8Array {
 	if (data.length === 0 || data.length % AES_BLOCK_SIZE !== 0) {
 		throw new Error("Invalid ciphertext length for AES-CBC payload.");
@@ -256,9 +240,6 @@ function removePkcs7Padding(data: Uint8Array): Uint8Array {
 	return sliceBytes(data, 0, data.length - padLength);
 }
 
-/**
- * Validate key and IV lengths for AES-256-CBC
- */
 function validateKeyAndIv(key: Uint8Array, iv: Uint8Array): void {
 	if (key.length !== 32) {
 		throw new Error(
@@ -343,14 +324,6 @@ export async function createHashAsync(
 	return webCryptoHash(algorithm, bytes);
 }
 
-/**
- * Create a cipher for encryption (cross-platform - synchronous)
- *
- * @param algorithm - Cipher algorithm (only 'aes-256-cbc' is supported)
- * @param key - 256-bit (32-byte) encryption key
- * @param iv - 128-bit (16-byte) initialization vector
- * @returns Cipher object with update() and final() methods
- */
 export function createCipheriv(
 	algorithm: string,
 	key: Uint8Array,
@@ -370,18 +343,12 @@ export function createCipheriv(
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
 	return {
-		update(
-			data: string,
-			inputEncoding: string,
-			outputEncoding: string,
-		): string {
+		update(data, inputEncoding, outputEncoding) {
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const fullBlockLength =
 				pending.length - (pending.length % AES_BLOCK_SIZE);
-			if (fullBlockLength === 0) {
-				return "";
-			}
+			if (fullBlockLength === 0) return "";
 			const plaintextChunk = sliceBytes(pending, 0, fullBlockLength);
 			pending = sliceBytes(pending, fullBlockLength);
 			const encryptedChunk = Uint8Array.from(
@@ -395,7 +362,7 @@ export function createCipheriv(
 			);
 			return toEncodedString(encryptedChunk, normalizeEncoding(outputEncoding));
 		},
-		final(encoding: string): string {
+		final(encoding) {
 			const encryptedTail = Uint8Array.from(
 				cbc(normalizedKey, currentIv, { disablePadding: true }).encrypt(
 					applyPkcs7Padding(pending),
@@ -407,14 +374,6 @@ export function createCipheriv(
 	};
 }
 
-/**
- * Create a decipher for decryption (cross-platform - synchronous)
- *
- * @param algorithm - Cipher algorithm (only 'aes-256-cbc' is supported)
- * @param key - 256-bit (32-byte) decryption key
- * @param iv - 128-bit (16-byte) initialization vector
- * @returns Decipher object with update() and final() methods
- */
 export function createDecipheriv(
 	algorithm: string,
 	key: Uint8Array,
@@ -434,11 +393,7 @@ export function createDecipheriv(
 	let currentIv = Uint8Array.from(iv);
 	let pending = new Uint8Array(0);
 	return {
-		update(
-			data: string,
-			inputEncoding: string,
-			outputEncoding: string,
-		): string {
+		update(data, inputEncoding, outputEncoding) {
 			const incoming = toUint8Array(data, normalizeEncoding(inputEncoding));
 			pending = concatBytes(pending, incoming);
 			const decryptableLength =
@@ -447,9 +402,7 @@ export function createDecipheriv(
 						AES_BLOCK_SIZE -
 						((pending.length - AES_BLOCK_SIZE) % AES_BLOCK_SIZE)
 					: 0;
-			if (decryptableLength === 0) {
-				return "";
-			}
+			if (decryptableLength === 0) return "";
 			const ciphertextChunk = sliceBytes(pending, 0, decryptableLength);
 			pending = sliceBytes(pending, decryptableLength);
 			const plaintextChunk = Uint8Array.from(
@@ -463,7 +416,7 @@ export function createDecipheriv(
 			);
 			return toEncodedString(plaintextChunk, normalizeEncoding(outputEncoding));
 		},
-		final(encoding: string): string {
+		final(encoding) {
 			if (pending.length === 0 || pending.length % AES_BLOCK_SIZE !== 0) {
 				throw new Error("Invalid ciphertext length for AES-CBC payload.");
 			}
@@ -481,43 +434,21 @@ export function createDecipheriv(
 	};
 }
 
-/**
- * Encrypt data asynchronously (works in both Node.js and browser)
- *
- * This is the recommended method for cross-platform code using AES-256-CBC.
- *
- * @param key - 256-bit (32-byte) encryption key
- * @param iv - 128-bit (16-byte) initialization vector
- * @param data - Data to encrypt
- * @returns Encrypted data
- */
 export async function encryptAsync(
 	key: Uint8Array,
 	iv: Uint8Array,
 	data: Uint8Array,
 ): Promise<Uint8Array> {
 	validateKeyAndIv(key, iv);
-
 	return webCryptoEncrypt(key, iv, data);
 }
 
-/**
- * Decrypt data asynchronously (works in both Node.js and browser)
- *
- * This is the recommended method for cross-platform code using AES-256-CBC.
- *
- * @param key - 256-bit (32-byte) decryption key
- * @param iv - 128-bit (16-byte) initialization vector
- * @param data - Data to decrypt
- * @returns Decrypted data
- */
 export async function decryptAsync(
 	key: Uint8Array,
 	iv: Uint8Array,
 	data: Uint8Array,
 ): Promise<Uint8Array> {
 	validateKeyAndIv(key, iv);
-
 	return webCryptoDecrypt(key, iv, data);
 }
 

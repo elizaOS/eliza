@@ -198,10 +198,40 @@ export const containersEnv = {
   /**
    * Default Hetzner Cloud server type for elastic Docker nodes. Keep this on
    * x86 because the managed agent image defaults to linux/amd64.
+   *
+   * Default is ccx33 (8 dedicated vCPU / 32 GB) so the out-of-the-box pair
+   * with the 8-agents/node default capacity gives ~4 GB/agent, well clear of
+   * an OOM. The prior cpx32 (8 GB) default paired with the same capacity put
+   * each agent on ~1 GB and was OOM-killed by the kernel under real load.
+   *
+   * ccx33 was picked over a same-sized shared type (e.g. cpx51) because the
+   * Hetzner API actually rejects `cpx51` server creation in fsn1/nbg1/hel1
+   * with `unsupported location for server type` even though /server_types
+   * lists those locations in its prices array. Dedicated vCPU is also a
+   * better fit for agent workloads (no noisy-neighbor throttling).
    */
   defaultHcloudServerType(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "cpx32";
+    return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "ccx33";
+  },
+
+  /**
+   * Per-node agent capacity for newly autoscaled Hetzner Cloud nodes. The
+   * autoscaler stamps this onto a node's `capacity` at creation; the
+   * scheduler then refuses placement once `allocated_count >= capacity`.
+   *
+   * Env-overridable so ops can right-size for a smaller server type without
+   * a code change. Default: 8 — safe alongside the ccx33 default at
+   * ~32 GB / ~4 GB per agent. Lower it explicitly if you set a smaller
+   * server type (e.g. cpx41 16 GB → 4-5; cpx31 8 GB → 2-3) to avoid OOM.
+   *
+   * Clamped to [1, 64].
+   */
+  defaultAutoscaleNodeCapacity(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AUTOSCALE_NODE_CAPACITY);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed >= 1 ? Math.min(64, Math.floor(parsed)) : 8;
   },
 
   // ── Warm pool ───────────────────────────────────────────────────────────

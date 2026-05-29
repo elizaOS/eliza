@@ -13,7 +13,7 @@ export function TasksPageView() {
     >
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-info/25 bg-info/12 text-info">
+          <span className="flex h-9 w-9 items-center justify-center rounded-sm border border-info/25 bg-info/12 text-info">
             <ListTodo className="h-4 w-4" />
           </span>
           <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
@@ -30,7 +30,7 @@ export function TasksPageView() {
 
       <PagePanel
         variant="inset"
-        className="min-h-[18rem] rounded-2xl p-4 lg:p-5"
+        className="min-h-[18rem] rounded-sm p-4 lg:p-5"
       >
         <CodingAgentTasksPanel fullPage />
       </PagePanel>

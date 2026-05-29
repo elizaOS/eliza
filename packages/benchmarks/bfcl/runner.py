@@ -87,7 +87,7 @@ class BFCLRunner:
         ).strip().lower()
         effective_provider = (
             harness
-            if harness in {"eliza", "hermes", "openclaw"}
+            if harness in {"eliza", "hermes", "openclaw", "smithers"}
             and provider in {None, "eliza"}
             else provider
         )
@@ -119,6 +119,17 @@ class BFCLRunner:
             from openclaw_adapter.bfcl import OpenClawBFCLAgent
 
             self.agent = OpenClawBFCLAgent(model_name=model)
+            self._model_name = model or self.agent.model_name
+        elif effective_provider == "smithers":
+            import sys
+            from pathlib import Path
+
+            adapter_path = Path(__file__).resolve().parents[1] / "smithers-adapter"
+            if adapter_path.exists() and str(adapter_path) not in sys.path:
+                sys.path.insert(0, str(adapter_path))
+            from smithers_adapter.bfcl import SmithersBFCLAgent
+
+            self.agent = SmithersBFCLAgent(model_name=model)
             self._model_name = model or self.agent.model_name
         elif effective_provider == "eliza":
             import sys

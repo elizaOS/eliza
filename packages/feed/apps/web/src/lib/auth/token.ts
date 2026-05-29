@@ -3,10 +3,7 @@
  *
  * The token is set on the window object by the useAuth hook when the user
  * authenticates via Steward. This module provides a clean API to access it
- * without spreading `typeof window !== 'undefined' ? window.__privyAccessToken : null`
- * throughout the codebase.
- *
- * TODO: Phase 3 — rename window.__privyAccessToken to window.__accessToken
+ * without spreading window-token access throughout the codebase.
  *
  * @example
  * ```ts
@@ -34,14 +31,13 @@
  *
  * @returns The access token if available, null otherwise
  */
-// TODO: Phase 3 — rename to WindowWithAccessToken and use __accessToken
-type WindowWithPrivyToken = Window & {
-  __privyAccessToken?: string | null;
+type WindowWithAccessToken = Window & {
+  __accessToken?: string | null;
 };
 
 export function getAuthToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  return (window as WindowWithPrivyToken).__privyAccessToken ?? null;
+  return (window as WindowWithAccessToken).__accessToken ?? null;
 }

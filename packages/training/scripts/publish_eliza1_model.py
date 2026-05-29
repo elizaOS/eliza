@@ -5,7 +5,7 @@ produced by W5-Pipeline (a fully-optimized GGUF + manifest.json + a
 README.md) and ships it to `elizaos/eliza-1`. It is distinct from
 `push_model_to_hf.py`, which publishes the *base* eliza-1 fine-tunes in stock
 GGUF / fp8 / polarquant flavors. The canonical model repo contains the
-**fused** stack (Q4_POLAR + QJL1_256 K + TBQ V + DFlash) in a single file.
+**fused** stack (Q4_POLAR + QJL1_256 K + TBQ V + MTP) in a single file.
 
 Refuses to ship stock-format GGUFs: every file the script publishes must
 declare `Q4_POLAR`, `qjl1_256`, and a TurboQuant V-cache type (`tbq3_0` or
@@ -41,7 +41,6 @@ import dataclasses
 import hashlib
 import json
 import logging
-import os
 import shutil
 import subprocess
 import sys

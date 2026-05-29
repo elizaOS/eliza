@@ -1,0 +1,67 @@
+[[!meta title="Results of the 2020 donation campaign"]]
+[[!meta date="Tue, 09 Mar 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Thank you so much, on behalf of our entire team, to everyone who
+donated during our end-of-year campaign!
+
+We raised $132&#8239;750 from 2&#8239;799 donors. That's an amazing 40%
+more than last year and 30% of our yearly budget. These excellent
+numbers mean more sustainability for Tails and ultimately better tools
+for you and all our users.
+
+Here is what we did since October with your help:
+
+- From the number of automatic upgrades, we know that Tails was used 20%
+  more in 2020 than in 2019. It's our biggest increase since 2016.
+
+- **We designed and tested usability improvements to the Persistent
+  Storage and the connection to Tor.**
+
+  We know from previous surveys and usability research that these are 2
+  critical aspects to improve the usability of Tails, especially for
+  less technical users and people experiencing heavy online censorship,
+  for example in Asia.
+
+  Your donations will help us implement as many of these improvements as
+  possible during 2021. You can already have a look at the new designs
+  in our blueprints on the [[!tails_blueprint
+  Persistent-Storage-redesign desc="Persistent Storage"]] and the
+  [[!tails_blueprint network_connection desc="connection to Tor"]].
+
+  We always test the usability of major features with users before
+  releasing them. It was particularly exciting this time because we
+  tested our design remotely using <a
+  href="https://simplysecure.org/blog/formative-testing">paper
+  prototyping</a> with people in Greece, Mexico, Italy, Uganda, Germany,
+  Ireland, and Malaysia!
+
+- **We simplified the verification procedure on our download page** by
+  [[replacing the *Tails Verification*
+  extension|verification_extension_deprecation]] with similar JavaScript
+  code that runs [[directly on the download page|install/download]].
+
+  This simple usability improvement had a huge impact and 60% more
+  downloads are verified and secure now than with the verification
+  extension.
+
+- **We automated the most time-consuming parts of our release process.**
+
+  We estimate that we divided roughly by 2 the amount of time, work, and
+  stress needed for us to publish a new version of Tails.
+
+  For you, this means a quicker response time in case of important
+  security vulnerability and more time available for us to work on new
+  features and improvements.
+
+- **We hired a new core developer, boyska.**
+
+  boyska has very strong experience in the technical aspects of
+  operating systems and software development, and also in the social
+  implications of technology, Free Software, and privacy.
+
+  boyska will be key to bringing more improvements to Tails more
+  quickly.
+
+Thanks again for supporting Tails!

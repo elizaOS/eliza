@@ -35,7 +35,7 @@ export interface LoadOptions {
   /** Optional KV cache types for fork builds such as TurboQuant. */
   cacheTypeK?: string;
   cacheTypeV?: string;
-  /** Eliza-1 DFlash drafters are trained for non-thinking outputs. */
+  /** Eliza-1 MTP drafters are trained for non-thinking outputs. */
   disableThinking?: boolean;
 }
 
@@ -165,13 +165,13 @@ export interface HardwareInfo {
   gpuSupported: boolean;
   lowPowerMode?: boolean;
   thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
-  /** True only when the native build can load a drafter and run DFlash/spec decode. */
-  dflashSupported?: boolean;
-  dflashReason?: string;
+  /** True only when the native build can load a drafter and run MTP/spec decode. */
+  mtpSupported?: boolean;
+  mtpReason?: string;
   source?: "native" | "adapter-fallback";
   /**
    * Names of fork-specific kernels compiled into the loaded native library
-   * (e.g. "turbo3", "turbo4", "turbo3_tcq", "dflash", "qjl_full"). Empty
+   * (e.g. "turbo3", "turbo4", "turbo3_tcq", "mtp", "qjl_full"). Empty
    * when the loaded build is stock llama.cpp or when no native lib is loaded.
    * Surfaced from the native bridge via a `kernels.json` manifest shipped
    * alongside the .so.
@@ -211,8 +211,8 @@ export interface SetSpecTypeArgs {
   target: string;
   /** Path to the drafter (small) GGUF. */
   drafter: string;
-  /** Currently only "dflash" is honoured by the buun fork. */
-  specType: "dflash";
+  /** Currently only "mtp" is honoured by the buun fork. */
+  specType: "mtp";
   draftMin: number;
   draftMax: number;
 }
@@ -267,7 +267,7 @@ export interface LlamaAdapter {
    */
   setCacheType?(typeK: string, typeV: string): Promise<void>;
   /**
-   * Configure DFlash speculative decoding for the next loaded context.
+   * Configure MTP speculative decoding for the next loaded context.
    * Stock builds without speculative bridge methods warn-and-no-op.
    */
   setSpecType?(args: SetSpecTypeArgs): Promise<void>;

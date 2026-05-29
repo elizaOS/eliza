@@ -153,7 +153,7 @@ export default function TermsOfServicePage() {
         <div className="mx-auto w-full max-w-4xl space-y-10">
           <Link
             to="/login"
-            className="inline-flex items-center gap-2 text-sm text-white/60 transition-colors hover:text-[#FF5800]"
+            className="inline-flex items-center gap-2 text-sm text-white/60 transition-opacity hover:opacity-75"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to login
@@ -182,13 +182,13 @@ export default function TermsOfServicePage() {
           <div className="flex flex-col items-center justify-between gap-4 border-t border-white/14 pt-8 sm:flex-row">
             <Link
               to="/privacy-policy"
-              className="text-sm text-white/60 underline underline-offset-4 transition-colors hover:text-[#FF5800]"
+              className="text-sm text-white/60 underline underline-offset-4 transition-opacity hover:opacity-75"
             >
               Privacy Policy
             </Link>
             <Link
               to="/login"
-              className="text-sm text-white/60 transition-colors hover:text-[#FF5800]"
+              className="text-sm text-white/60 transition-opacity hover:opacity-75"
             >
               Return to login
             </Link>

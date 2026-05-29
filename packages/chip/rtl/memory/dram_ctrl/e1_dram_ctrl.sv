@@ -301,7 +301,9 @@ module e1_dram_ctrl
         for (int b = 0; b < BYTES_PER_BEAT; b++) begin
             if (strb[b]) cur[b*8 +: 8] = data[b*8 +: 8];
         end
+        /* verilator lint_off BLKSEQ */
         store[key] = cur;
+        /* verilator lint_on BLKSEQ */
     endtask
 
     // Sim-only image preload (firmware load by an external boot agent).  When

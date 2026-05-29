@@ -55,100 +55,23 @@ setup("extract auth tokens for integration tests", async ({ page }) => {
     return parsed as { userId: string; accessToken: string };
   }, PLAYWRIGHT_DEV_AUTH_STORAGE_KEY);
 
-  if (devSession) {
-    const tokenData = {
-      TEST_USER_ID: devSession.userId,
-      TEST_ACCESS_TOKEN: devSession.accessToken,
-      updatedAt: new Date().toISOString(),
-      baseURL: baseURL,
-    };
-
-    writeFileSync(tokenFile, JSON.stringify(tokenData, null, 2));
-
-    console.log(`✅ Dev auth tokens extracted and saved to ${tokenFile}`);
-    console.log(`   User ID: ${devSession.userId}`);
-    console.log(`   Token: ${devSession.accessToken.substring(0, 20)}...`);
-    console.log(`   Updated: ${tokenData.updatedAt}`);
-    return;
+  if (!devSession) {
+    throw new Error(
+      "Steward dev auth session not found in browser storage. Run the Playwright setup project first.",
+    );
   }
 
-  // Wait for Privy SDK to be ready
-  console.log("⏳ Waiting for Privy SDK to initialize...");
-  await page.waitForFunction(
-    () => {
-      if (typeof window === "undefined") return false;
-      const privy = (
-        window as {
-          privy?: {
-            ready?: boolean;
-            getAccessToken?: () => Promise<string | null>;
-          };
-        }
-      ).privy;
-      return (
-        privy?.ready === true && typeof privy.getAccessToken === "function"
-      );
-    },
-    { timeout: 30000 },
-  );
-
-  console.log("✅ Privy SDK is ready");
-
-  // Extract access token and user ID from browser
-  console.log("🔑 Extracting authentication tokens...");
-  const { accessToken, userId } = await page.evaluate(async (apiUrl) => {
-    const privy = (
-      window as { privy?: { getAccessToken?: () => Promise<string | null> } }
-    ).privy;
-    if (!privy?.getAccessToken) {
-      throw new Error("Privy SDK getAccessToken not available");
-    }
-
-    const token = await privy.getAccessToken();
-    if (!token) {
-      throw new Error(
-        "Could not get access token - user may not be authenticated",
-      );
-    }
-
-    // Get user ID from API
-    const response = await fetch(`${apiUrl}/api/users/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `API request failed: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const userData = await response.json();
-    return {
-      accessToken: token,
-      userId: userData.user?.id || null,
-    };
-  }, baseURL);
-
-  if (!accessToken) {
-    throw new Error("Failed to extract access token");
-  }
-
-  if (!userId) {
-    throw new Error("Failed to extract user ID");
-  }
-
-  // Save tokens for integration tests
   const tokenData = {
-    TEST_USER_ID: userId,
-    TEST_ACCESS_TOKEN: accessToken,
+    TEST_USER_ID: devSession.userId,
+    TEST_ACCESS_TOKEN: devSession.accessToken,
     updatedAt: new Date().toISOString(),
     baseURL: baseURL,
   };
 
   writeFileSync(tokenFile, JSON.stringify(tokenData, null, 2));
 
-  console.log(`✅ Auth tokens extracted and saved to ${tokenFile}`);
-  console.log(`   User ID: ${userId}`);
-  console.log(`   Token: ${accessToken.substring(0, 20)}...`);
+  console.log(`✅ Steward auth tokens extracted and saved to ${tokenFile}`);
+  console.log(`   User ID: ${devSession.userId}`);
+  console.log(`   Token: ${devSession.accessToken.substring(0, 20)}...`);
   console.log(`   Updated: ${tokenData.updatedAt}`);
 });

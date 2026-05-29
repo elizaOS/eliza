@@ -16,10 +16,10 @@ import type {
 } from "../../api/client-types-chat";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { isRoutineCodingAgentMessage } from "../../chat";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
@@ -50,6 +50,7 @@ import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
 import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
+import { ChatEmptyState } from "../composites/chat/chat-empty-state";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
 import { ChatTranscript } from "../composites/chat/chat-transcript";
@@ -499,9 +500,19 @@ export function ChatView({
             return combined.slice(0, 4);
           });
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          // A failed image read leaves nothing attached; tell the user rather
+          // than silently dropping their image.
+          app.setActionNotice?.(
+            app.t("chatview.ImageReadFailed", {
+              message: err instanceof Error ? err.message : "unknown error",
+              defaultValue: "Couldn't read image: {{message}}",
+            }),
+            "error",
+          );
+        });
     },
-    [setChatPendingImages],
+    [app, setChatPendingImages],
   );
 
   const handleImageDrop = useCallback(
@@ -548,9 +559,11 @@ export function ChatView({
 
   const messagesContent =
     visibleMsgs.length === 0 && !chatSending ? (
-      <div className="flex h-full items-center justify-center px-6 text-center text-xs text-muted">
-        {t("chatview.NoMessagesYet", { defaultValue: "No messages yet." })}
-      </div>
+      <ChatEmptyState
+        agentName={agentName}
+        variant={variant}
+        onSuggestionClick={(suggestion) => setChatInput(suggestion)}
+      />
     ) : (
       <ChatTranscript
         variant={variant}
@@ -924,6 +937,7 @@ function InboxChatPanel({
   const t = app?.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [replyError, setReplyError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -946,8 +960,17 @@ function InboxChatPanel({
         .reverse()
         .map((m): ConversationMessage => m);
       setMessages(next);
-    } catch {
-      // Transient errors keep the last snapshot; next poll retries.
+      setLoadError(null);
+    } catch (err) {
+      // A failed poll keeps the last snapshot (next tick retries), but a
+      // failure with nothing on screen would otherwise look like an empty
+      // inbox — surface it so the user knows the load failed.
+      setMessages((prev) => {
+        if (prev.length === 0) {
+          setLoadError(err instanceof Error ? err.message : String(err));
+        }
+        return prev;
+      });
     } finally {
       setLoading(false);
     }
@@ -1206,7 +1229,7 @@ function InboxChatPanel({
               defaultValue: "{{title}} avatar",
               title: activeInboxChat.title,
             })}
-            className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover shadow-[0_10px_18px_-16px_rgba(15,23,42,0.45)]"
+            className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover "
           />
         ) : null}
       </div>
@@ -1221,9 +1244,14 @@ function InboxChatPanel({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-center text-xs text-muted">
-            {t("inboxview.EmptyRoom", {
-              defaultValue: "No messages in this chat yet.",
-            })}
+            {loadError
+              ? t("inboxview.LoadFailed", {
+                  message: loadError,
+                  defaultValue: "Couldn't load messages: {{message}}",
+                })
+              : t("inboxview.EmptyRoom", {
+                  defaultValue: "No messages in this chat yet.",
+                })}
           </div>
         ) : (
           <ChatTranscript
@@ -1285,7 +1313,7 @@ function InboxChatPanel({
               onSelectAccount={handleSelectSendAsAccount}
             />
           ) : null}
-          <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
+          <div className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
             {t("inboxview.AgentSendWarning", {
               defaultValue:
                 "This message will be sent as your agent in {{source}}.",

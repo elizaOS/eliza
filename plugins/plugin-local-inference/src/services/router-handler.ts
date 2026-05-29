@@ -62,7 +62,11 @@
  */
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import {
+	logger,
+	ModelType,
+	NoModelProviderConfiguredError,
+} from "@elizaos/core";
 import { readEffectiveAssignments } from "./assignments";
 import { localInferenceEngine } from "./engine";
 import type { HandlerRegistration } from "./handler-registry";
@@ -236,7 +240,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				if (lastError) {
 					throw lastError;
 				}
-				throw new Error(
+				throw new NoModelProviderConfiguredError(
 					`[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
 				);
 			}
@@ -273,7 +277,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 
 				failedProviders.add(pick.provider);
 				lastError = err;
-				logger.warn(
+				logger.info(
 					`[router] Provider ${pick.provider} failed for ${slot}; trying fallback provider (${err instanceof Error ? err.message : String(err)})`,
 				);
 			}
@@ -289,7 +293,14 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
  * Called from `ensure-local-inference-handler.ts` after `handlerRegistry`
  * has been installed on the runtime.
  */
-export function installRouterHandler(runtime: AgentRuntime): void {
+export interface RouterInstallOptions {
+	skipSlots?: readonly AgentModelSlot[];
+}
+
+export function installRouterHandler(
+	runtime: AgentRuntime,
+	options: RouterInstallOptions = {},
+): void {
 	const rt = runtime as AgentRuntime & {
 		registerModel?: (
 			modelType: string,
@@ -300,7 +311,9 @@ export function installRouterHandler(runtime: AgentRuntime): void {
 	};
 	if (typeof rt.registerModel !== "function") return;
 
+	const skippedSlots = new Set(options.skipSlots ?? []);
 	for (const slot of AGENT_MODEL_SLOTS) {
+		if (skippedSlots.has(slot)) continue;
 		const modelType = slotToModelType(slot);
 		if (!modelType) continue;
 		rt.registerModel(

@@ -4,7 +4,7 @@
  * Shared component for the three surfaces that need to show OWNER role:
  * 1. Shell `Header` — next to the user's display name.
  * 2. Chat avatar overlay — corner sticker on the owner's message bubbles.
- * 3. Onboarding step 6 — confirmation card.
+ * 3. First-run step — confirmation card.
  *
  * Keeps the Crown rendering + tooltip + sizing identical everywhere so the
  * three surfaces don't drift apart. The existing relationships graph uses
@@ -47,7 +47,7 @@ const VARIANT_CLASS: Record<OwnerBadgeVariant, string> = {
   inline: "inline-flex items-center align-baseline",
   overlay:
     "absolute -right-0.5 -top-0.5 inline-flex items-center justify-center rounded-sm bg-bg/90 p-0.5 shadow",
-  card: "inline-flex items-center justify-center rounded-md bg-accent/15 px-2 py-1",
+  card: "inline-flex items-center justify-center rounded-sm bg-accent/15 px-2 py-1",
 };
 
 export function OwnerBadge({

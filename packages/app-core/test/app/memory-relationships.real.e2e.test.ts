@@ -12,11 +12,14 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildOnboardingRuntimeConfig } from "@elizaos/ui";
+import { buildFirstRunRuntimeConfig } from "@elizaos/ui";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../helpers/live-provider.ts";
+import {
+  getFirstRunProviderForLiveProvider,
+  selectLiveProvider,
+} from "../helpers/live-provider.ts";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality.ts";
 
 const DEFAULT_UI_URL = stripTrailingSlash(
@@ -306,8 +309,8 @@ async function configureLivePage(page: Page): Promise<void> {
     });
   }
   await page.evaluateOnNewDocument(() => {
-    localStorage.setItem("eliza:onboarding-complete", "1");
-    localStorage.setItem("eliza:onboarding:step", "activate");
+    localStorage.setItem("eliza:first-run-complete", "1");
+    localStorage.setItem("eliza:setup:step", "activate");
     localStorage.setItem("eliza:ui-shell-mode", "native");
     localStorage.setItem(
       "elizaos:active-server",
@@ -323,7 +326,7 @@ async function configureLivePage(page: Page): Promise<void> {
 async function navigate(page: Page, url: string): Promise<void> {
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(
-    () => !window.location.pathname.includes("/onboarding"),
+    () => !window.location.pathname.includes("/first-run"),
     { timeout: 60_000 },
   );
   await page.waitForNetworkIdle({ idleTime: 500, timeout: 60_000 });
@@ -769,28 +772,28 @@ async function waitForChildExit(
   });
 }
 
-async function submitOnboarding(apiBase: string): Promise<void> {
+async function submitFirstRun(apiBase: string): Promise<void> {
   if (!LIVE_PROVIDER) {
     throw new Error("A live provider is required to complete onboarding.");
   }
 
-  const runtimeConfig = buildOnboardingRuntimeConfig({
-    onboardingServerTarget: "local",
-    onboardingCloudApiKey: "",
-    onboardingProvider: LIVE_PROVIDER.name,
-    onboardingApiKey: LIVE_PROVIDER.apiKey,
-    onboardingVoiceProvider: "",
-    onboardingVoiceApiKey: "",
-    onboardingPrimaryModel: LIVE_PROVIDER.largeModel,
-    onboardingOpenRouterModel: LIVE_PROVIDER.largeModel,
-    onboardingRemoteConnected: false,
-    onboardingRemoteApiBase: "",
-    onboardingRemoteToken: "",
-    onboardingSmallModel: LIVE_PROVIDER.smallModel,
-    onboardingLargeModel: LIVE_PROVIDER.largeModel,
+  const runtimeConfig = buildFirstRunRuntimeConfig({
+    firstRunRuntimeTarget: "local",
+    firstRunCloudApiKey: "",
+    firstRunProvider: getFirstRunProviderForLiveProvider(LIVE_PROVIDER),
+    firstRunApiKey: LIVE_PROVIDER.apiKey,
+    firstRunVoiceProvider: "",
+    firstRunVoiceApiKey: "",
+    firstRunPrimaryModel: LIVE_PROVIDER.largeModel,
+    firstRunOpenRouterModel: LIVE_PROVIDER.largeModel,
+    firstRunRemoteConnected: false,
+    firstRunRemoteApiBase: "",
+    firstRunRemoteToken: "",
+    firstRunSmallModel: LIVE_PROVIDER.smallModel,
+    firstRunLargeModel: LIVE_PROVIDER.largeModel,
   });
 
-  const response = await fetch(`${apiBase}/api/onboarding`, {
+  const response = await fetch(`${apiBase}/api/first-run`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -863,10 +866,10 @@ async function startRealStack(): Promise<StartedStack> {
     process.stdout.write(`[live-memory][api-err] ${chunk}`);
   });
 
-  await waitForJson<{ complete: boolean }>(`${apiBase}/api/onboarding/status`);
-  await submitOnboarding(apiBase);
+  await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
+  await submitFirstRun(apiBase);
   await waitForJsonPredicate<{ complete: boolean }>(
-    `${apiBase}/api/onboarding/status`,
+    `${apiBase}/api/first-run/status`,
     (status) => status.complete === true,
   );
 

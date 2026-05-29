@@ -1,7 +1,7 @@
 /**
  * User Lookup Utilities
  *
- * @description Utilities for finding users by various identifiers (ID, privyId, username).
+ * @description Utilities for finding users by various identifiers (ID, stewardId, username).
  */
 
 import { db, eq, users } from "@feed/db";
@@ -42,9 +42,7 @@ function projectUser(
 /**
  * Fetch a user row by classified identifier kind.
  *
- * For `privyId` lookups that miss, falls back to a PK lookup because some
- * users have their `did:privy:…` value stored as `users.id` rather than
- * `users.privyId`. Both queries use single-column indexes (no OR).
+ * Each lookup uses a single indexed query instead of OR predicates.
  */
 async function fetchUserByClassifiedIdentifier(
   identifier: string,
@@ -60,20 +58,7 @@ async function fetchUserByClassifiedIdentifier(
           : sql`lower(${users.username}) = lower(${identifier})`;
 
   const [user] = await db.select().from(users).where(condition).limit(1);
-  if (user) return user;
-
-  // Fallback: did:privy: identifiers may be stored as the primary key
-  // instead of in the privyId column. PK lookup is O(1).
-  if (kind === "privyId") {
-    const [byId] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, identifier))
-      .limit(1);
-    return byId ?? null;
-  }
-
-  return null;
+  return user ?? null;
 }
 
 /**
@@ -84,7 +69,7 @@ async function fetchUserByClassifiedIdentifier(
  *
  * **WHY prefixed keys?**
  * - Allows us to use a single unified namespace (`user:identifier`) for all identifier types
- * - Prefixes (`id:`, `privy:`, `username:`) distinguish identifier types within the namespace
+ * - Prefixes (`id:`, `steward:`, `username:`) distinguish identifier types within the namespace
  * - Makes cache keys self-documenting and easier to debug
  * - Enables pattern-based invalidation if needed (e.g., `user:identifier:id:*`)
  *
@@ -95,7 +80,7 @@ async function fetchUserByClassifiedIdentifier(
  * - Still uses classification: classification determines the prefix, we're just organizing differently
  *
  * @param {string} identifier - The identifier value
- * @param {'id' | 'privyId' | 'username'} kind - The identifier kind
+ * @param {'id' | 'stewardId' | 'username'} kind - The identifier kind
  * @returns {string} Cache key with appropriate prefix
  */
 function getUserIdentifierCacheKey(
@@ -104,8 +89,6 @@ function getUserIdentifierCacheKey(
 ): string {
   if (kind === "id") {
     return `id:${identifier}`;
-  } else if (kind === "privyId") {
-    return `privy:${identifier}`;
   } else if (kind === "stewardId") {
     return `steward:${identifier}`;
   } else {

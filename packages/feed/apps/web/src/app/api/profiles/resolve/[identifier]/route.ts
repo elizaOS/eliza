@@ -5,7 +5,7 @@
  * @access Public
  *
  * @description
- * Resolves an ambiguous identifier (user ID, username, Privy DID, actor name,
+ * Resolves an ambiguous identifier (user ID, username, legacy provider ID, actor name,
  * org name) to a canonical profile path. Used by the mobile app to replicate
  * the server-side resolution logic from profile/[id]/page.tsx without importing
  * server-only packages.

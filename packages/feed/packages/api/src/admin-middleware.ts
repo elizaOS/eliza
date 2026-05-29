@@ -3,13 +3,13 @@
  *
  * @description Middleware for verifying admin privileges. Authenticates the user
  * and checks if they have admin access. In development mode, supports dev admin
- * token authentication for easier testing. In production, requires full Privy
+ * token authentication for easier testing. In production, requires full Steward
  * authentication and database admin flag verification.
  *
  * @security
  * - NEVER bypasses authentication based on localhost/host header
  * - Dev mode requires explicit dev admin token
- * - Production requires Privy auth + database admin flag
+ * - Production requires Steward auth + database admin flag
  *
  * @rbac
  * - SUPER_ADMIN: Full access, can manage other admins
@@ -54,7 +54,7 @@ export interface AuthenticatedAdminUser extends AuthenticatedUser {
  * Get admin role and permissions for a user
  *
  * @param userId - The database user ID
- * @param privyId - Optional Privy ID for fetching verified email directly from Privy
+ * @param _privyId - Deprecated identifier parameter retained by the AuthenticatedUser shape.
  */
 export async function getAdminRole(
   userId: string,
@@ -114,10 +114,10 @@ export async function getAdminRole(
  *
  * In development mode:
  * - Accepts x-dev-admin-token header with valid dev token
- * - Falls back to standard Privy auth + admin check
+ * - Falls back to standard Steward auth + admin check
  *
  * In production:
- * - Requires valid Privy authentication
+ * - Requires valid Steward authentication
  * - Requires isAdmin flag in database OR role in adminRoles table
  */
 export async function requireAdmin(
@@ -215,7 +215,7 @@ export async function requireAdmin(
     throw new AuthorizationError("User is banned", "admin", "access");
   }
 
-  // Get admin role (checks both adminRoles table, isAdmin flag, and Privy email domain)
+  // Get admin role (checks adminRoles, isAdmin, and verified email domain).
   const { role, permissions } = await getAdminRole(user.userId, user.privyId);
 
   if (!role) {

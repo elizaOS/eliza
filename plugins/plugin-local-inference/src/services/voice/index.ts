@@ -50,10 +50,6 @@ export {
 	truncateMatryoshka,
 } from "./embedding";
 export {
-	EmbeddingServer,
-	embeddingServerForRoute,
-} from "./embedding-server";
-export {
 	attributeVoiceEmotion,
 	type VoiceEmotionAsrFeatures,
 	type VoiceEmotionAttribution,
@@ -176,11 +172,11 @@ export {
 	type VoicePipelineEvents,
 } from "./pipeline";
 export {
-	type DflashTextRunner,
-	dflashTextRunner,
-	LlamaServerDraftProposer,
-	LlamaServerTargetVerifier,
 	MissingAsrTranscriber,
+	MtpDraftProposer,
+	MtpTargetVerifier,
+	type MtpTextRunner,
+	mtpTextRunner,
 } from "./pipeline-impls";
 export {
 	type PrefillOptimisticArgs,
@@ -214,10 +210,10 @@ export {
 	VoiceScheduler,
 } from "./scheduler";
 export {
-	createDflashDrafterHandle,
-	type DflashDrafterHandle,
+	createMtpDraftHandle,
 	type KernelSet,
 	type MmapRegionHandle,
+	type MtpDraftHandle,
 	type RefCountedResource,
 	type SchedulerSlot,
 	SharedResourceRegistry,
@@ -371,9 +367,7 @@ export {
 } from "./voice-budget";
 export {
 	readVoicePresetFile,
-	VOICE_PRESET_HEADER_BYTES,
 	VOICE_PRESET_MAGIC,
-	VOICE_PRESET_VERSION,
 	type VoicePresetFile,
 	VoicePresetFormatError,
 	type VoicePresetSeedPhrase,
@@ -457,7 +451,7 @@ export {
  *      - the fused kernel set (TurboQuant/QJL/Polar live in the
  *        same shipped llama.cpp library after the fusion build)
  *      - the scheduler queue (one queue, prioritised across surfaces)
- *      - the DFlash drafter (always wired — see AGENTS.md §3 #4)
+ *      - the MTP drafter (always wired — see AGENTS.md §3 #4)
  *
  *    Text and voice keep SEPARATE KV caches (different layer counts,
  *    different head configs, different quantizations — AGENTS.md §4

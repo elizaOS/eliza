@@ -25,7 +25,7 @@ function isRateLimitingDisabled() {
   return (
     process.env.DISABLE_RATE_LIMITING === "true" &&
     (process.env.NODE_ENV !== "production" ||
-      process.env.ALLOW_TEST_PRIVY_DID_AUTH === "true")
+      process.env.ALLOW_TEST_STEWARD_AUTH === "true")
   );
 }
 

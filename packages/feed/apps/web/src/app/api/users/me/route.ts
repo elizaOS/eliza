@@ -88,7 +88,7 @@
  *
  * **User Object Fields:**
  * @property {string} user.id - User ID
- * @property {string} user.privyId - Legacy Privy ID (deprecated, kept for migration compatibility)
+ * @property {string} user.privyId - Historical auth provider ID retained in the schema
  * @property {string} user.username - Unique username
  * @property {string} user.displayName - Display name
  * @property {string} user.bio - User biography
@@ -131,13 +131,12 @@
 import {
   authenticate,
   authenticateWithDbUser,
-  ConflictError,
   cachedDb,
   InternalServerError,
   successResponse,
   withErrorHandling,
 } from "@feed/api";
-import { db, eq, or, sql, users } from "@feed/db";
+import { db, eq, sql, users } from "@feed/db";
 import { logger, toISO, toISOOrNull } from "@feed/shared";
 import type { NextRequest } from "next/server";
 import { getOptionalProfileStats } from "@/lib/users/profile-stats";
@@ -382,31 +381,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     "GET /api/users/me",
   );
 
-  // Phase 2: Look up by primary key (fastest, works for both Steward and legacy Privy users).
-  // auth-middleware already resolved the correct Feed user ID into authUser.dbUserId
-  // via ensureUserFromSteward / email-bridge / fast-path, so we trust it directly.
+  // auth-middleware resolved the correct Feed user ID via
+  // ensureUserFromSteward / email-bridge / fast-path, so trust it directly.
   let [dbUser] = await db
     .select(userSelectFields)
     .from(users)
     .where(eq(users.id, canonicalUserId))
     .limit(1);
 
-  // Fallback: legacy Privy users whose row predates the stewardId column —
-  // find them by privyId in case canonicalUserId resolved to the Steward UUID
-  // rather than the Feed snowflake on an older session.
-  if (!dbUser) {
-    [dbUser] = await db
-      .select(userSelectFields)
-      .from(users)
-      .where(eq(users.privyId, privyId))
-      .limit(1);
-  }
-
   // Create minimal user record on first authentication
   // Phase 2: auth-middleware creates the user via ensureUserFromSteward before
   // this route runs, so this block should rarely be hit for Steward users.
   if (!dbUser) {
-    // Use only data available from the authenticated session — no Privy call
+    // Use only data available from the authenticated session.
     const email: string | null = authUser.email ?? null;
     const farcasterUsername: string | null = null;
     const farcasterFid: string | null = null;
@@ -420,184 +407,6 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       { privyId, email },
       "GET /api/users/me",
     );
-
-    // Check if Farcaster or Twitter account is already linked to an existing user
-    // If found, auto-link the new Privy session to the existing account
-    // This allows users to login with their social account and access their existing Feed account
-    if (farcasterFid || twitterId) {
-      const conditions = [];
-      if (farcasterFid) {
-        conditions.push(eq(users.farcasterFid, farcasterFid));
-      }
-      if (twitterId) {
-        conditions.push(eq(users.twitterId, twitterId));
-      }
-
-      const existingUsersWithSocial = await db
-        .select(userSelectFields)
-        .from(users)
-        .where(or(...conditions))
-        .limit(2);
-
-      // If multiple users found, it means Farcaster and Twitter belong to different accounts
-      // Skip auto-linking to prevent linking the wrong account
-      if (existingUsersWithSocial.length > 1) {
-        logger.warn(
-          "Multiple users found with conflicting social accounts - skipping auto-link",
-          {
-            newPrivyId: privyId,
-            farcasterFid,
-            twitterId,
-            foundUserIds: existingUsersWithSocial.map((u) => u.id),
-          },
-          "GET /api/users/me",
-        );
-
-        // Return error to prevent insert failure due to unique constraint violation
-        throw new ConflictError(
-          "Your social accounts are linked to different existing users. Please contact support.",
-          "User.socialAccounts",
-        );
-      } else if (existingUsersWithSocial.length === 1) {
-        const existingUserWithSocial = existingUsersWithSocial[0]!;
-        const matchedByFarcaster =
-          !!farcasterFid &&
-          existingUserWithSocial.farcasterFid === farcasterFid;
-        const matchedByTwitter =
-          !!twitterId && existingUserWithSocial.twitterId === twitterId;
-
-        const linkedAccount =
-          matchedByFarcaster && matchedByTwitter
-            ? "Farcaster+Twitter"
-            : matchedByFarcaster
-              ? "Farcaster"
-              : matchedByTwitter
-                ? "Twitter"
-                : "Unknown";
-
-        logger.info(
-          "Found existing user by social account - auto-linking new Privy session",
-          {
-            newPrivyId: privyId,
-            oldPrivyId: existingUserWithSocial.privyId,
-            existingUserId: existingUserWithSocial.id,
-            existingUsername: existingUserWithSocial.username,
-            linkedAccount,
-            farcasterFid,
-            twitterId,
-          },
-          "GET /api/users/me",
-        );
-
-        // Check if the new privyId is already linked to a different user
-        const [existingUserWithPrivyId] = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.privyId, privyId))
-          .limit(1);
-
-        if (
-          existingUserWithPrivyId &&
-          existingUserWithPrivyId.id !== existingUserWithSocial.id
-        ) {
-          logger.warn(
-            "New privyId already linked to a different user - skipping auto-link to prevent account conflict",
-            {
-              newPrivyId: privyId,
-              existingPrivyUserId: existingUserWithPrivyId.id,
-              socialMatchUserId: existingUserWithSocial.id,
-            },
-            "GET /api/users/me",
-          );
-          // Skip auto-linking, let normal flow continue
-        } else {
-          // Update the existing user's privyId to the new one
-          const oldPrivyId = existingUserWithSocial.privyId;
-          const [updatedUser] = await db
-            .update(users)
-            .set({
-              privyId,
-              updatedAt: new Date(),
-            })
-            .where(eq(users.id, existingUserWithSocial.id))
-            .returning(userSelectFields);
-
-          if (updatedUser) {
-            dbUser = updatedUser;
-
-            // Invalidate identifier caches for privyId change
-            await cachedDb.invalidateUserIdentifierCaches(
-              {
-                id: updatedUser.id,
-                privyId: updatedUser.privyId,
-                username: updatedUser.username,
-              },
-              {
-                privyId: oldPrivyId,
-              },
-            );
-
-            logger.info(
-              "Successfully linked new Privy session to existing user",
-              {
-                userId: updatedUser.id,
-                username: updatedUser.username,
-                newPrivyId: privyId,
-              },
-              "GET /api/users/me",
-            );
-          }
-        }
-      }
-    }
-
-    // If we found and linked to an existing user, skip the new user creation
-    if (dbUser) {
-      let linkedUser = dbUser;
-
-      if (referralCode && !linkedUser.profileComplete) {
-        linkedUser = await updateReferrerForIncompleteUser(
-          linkedUser,
-          referralCode,
-        );
-      } else if (referralCode && linkedUser.profileComplete) {
-        logger.warn(
-          "Referral change blocked - profile already complete",
-          {
-            userId: linkedUser.id,
-            referralCode,
-            existingReferrer: linkedUser.referredBy,
-          },
-          "GET /api/users/me",
-        );
-      }
-
-      // Get cached profile stats for the linked user
-      const stats = await getOptionalProfileStats(
-        linkedUser.id,
-        "GET /api/users/me",
-      );
-
-      const responseUser = buildUserResponse(linkedUser, stats);
-
-      const needsOnboarding = !linkedUser.profileComplete;
-      logger.info(
-        "Returning linked existing user profile",
-        {
-          userId: linkedUser.id,
-          username: linkedUser.username,
-          profileComplete: linkedUser.profileComplete,
-          needsOnboarding,
-        },
-        "GET /api/users/me",
-      );
-
-      return successResponse({
-        authenticated: true,
-        needsOnboarding,
-        user: responseUser,
-      });
-    }
 
     // Resolve referrer if referralCode provided
     let resolvedReferrerId: string | null = null;
@@ -726,7 +535,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
       const [concurrentUser] = await db
         .select(userSelectFields)
         .from(users)
-        .where(or(eq(users.privyId, privyId), eq(users.id, canonicalUserId)))
+        .where(eq(users.id, canonicalUserId))
         .limit(1);
 
       if (!concurrentUser) {
@@ -773,7 +582,6 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     throw new InternalServerError("Failed to create or find user record");
   }
 
-  // Phase 2: Privy identity sync removed. Social identities are synced at login time.
   const needsAdminPromotionCheck = !dbUser.isAdmin;
 
   if (needsAdminPromotionCheck) {

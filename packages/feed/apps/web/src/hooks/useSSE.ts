@@ -159,7 +159,7 @@ const fetchRealtimeToken = async (
 
 /**
  * Get the realtime SSE token for the given channels.
- * This fetches a specialized token for SSE connections, not the Privy access token.
+ * This fetches a specialized token for SSE connections, not the browser access token.
  */
 const getRealtimeToken = async (
   channels: Channel[],
@@ -478,7 +478,7 @@ async function ensureConnection(forceReconnect = false) {
  * - Automatic reconnection with exponential backoff
  * - Shared connection across components (efficient)
  * - Channel-based subscription model
- * - Authentication token management via Privy
+ * - Authentication token management
  * - Connection state tracking
  * - Online/offline support
  *

@@ -335,13 +335,9 @@ export function buildTriggerDedupeKey(parts: {
   cronExpression?: string;
   eventKind?: string;
   wakeMode: TriggerWakeMode;
-  kind?: TriggerKind;
+  kind: TriggerKind;
   workflowId?: string;
 }): string {
-  // Phase 2E: every persisted trigger is `kind: "workflow"`. Stale
-  // `kind: "text"` records are tolerated only on read (legacy hash) until
-  // the boot migration rewrites them.
-  const effectiveKind: TriggerKind = parts.kind ?? "workflow";
   const normalizedParts = [
     parts.triggerType,
     normalizeText(parts.instructions).toLowerCase(),
@@ -350,10 +346,9 @@ export function buildTriggerDedupeKey(parts: {
     parts.cronExpression ?? "",
     parts.eventKind ?? "",
     parts.wakeMode,
+    parts.kind,
+    parts.workflowId ?? "",
   ];
-  if (effectiveKind === "workflow") {
-    normalizedParts.push(effectiveKind, parts.workflowId ?? "");
-  }
   const normalized = normalizedParts.join("|");
   let hash = 5381;
   for (const char of normalized) {
@@ -426,7 +421,7 @@ export function normalizeTriggerDraft(params: {
     createdBy: string;
   };
 }): { draft?: NormalizedTriggerDraft; error?: string } {
-  const kind: TriggerKind | undefined = params.input.kind;
+  const kind: TriggerKind = params.input.kind ?? "workflow";
   const workflowId = params.input.workflowId?.trim();
   const workflowName = params.input.workflowName?.trim();
 
@@ -434,23 +429,14 @@ export function normalizeTriggerDraft(params: {
     normalizeText(params.input.displayName ?? "") ||
     normalizeText(params.fallback.displayName);
 
-  // Workflow-kind triggers don't require user-provided instructions; we
-  // synthesize them so display/dedupe logic downstream keeps working.
-  let instructions: string;
-  if (kind === "workflow") {
-    if (!workflowId) {
-      return { error: "workflowId is required for workflow triggers" };
-    }
-    const synthesized = `Run workflow ${workflowName ?? workflowId}`;
-    instructions =
-      normalizeText(params.input.instructions ?? "") ||
-      normalizeText(params.fallback.instructions) ||
-      normalizeText(synthesized);
-  } else {
-    instructions =
-      normalizeText(params.input.instructions ?? "") ||
-      normalizeText(params.fallback.instructions);
+  if (!workflowId) {
+    return { error: "workflowId is required for workflow triggers" };
   }
+  const synthesized = `Run workflow ${workflowName ?? workflowId}`;
+  const instructions =
+    normalizeText(params.input.instructions ?? "") ||
+    normalizeText(params.fallback.instructions) ||
+    normalizeText(synthesized);
 
   if (!displayName) {
     return { error: "displayName is required" };

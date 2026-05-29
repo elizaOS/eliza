@@ -55,6 +55,13 @@ a {
   text-decoration: none;
 }
 
+/* Visible keyboard-focus ring on every interactive element. os-homepage is
+   the OS brand family, so the ring uses the OS blue accent. */
+*:focus-visible {
+  outline: 2px solid var(--brand-blue);
+  outline-offset: 2px;
+}
+
 .rounded-full,
 [class*="rounded-full"] {
   border-radius: var(--radius-full, 9999px);
@@ -838,15 +845,16 @@ h3 {
 .color-swatch {
   width: 2.4rem;
   height: 2.4rem;
-  border: 0;
+  border: 2px solid rgba(255, 255, 255, 0.35);
   border-radius: var(--radius-xs);
-  outline: 2px solid rgba(255, 255, 255, 0.35);
-  outline-offset: 0;
   cursor: pointer;
 }
 
+/* Selection state uses a border/ring (not `outline`) so the keyboard
+   focus outline below stays visually distinct from the selected swatch. */
 .color-swatch-active {
-  outline: 4px solid var(--brand-orange);
+  border-color: var(--brand-orange);
+  box-shadow: 0 0 0 2px var(--brand-orange);
 }
 
 .checkout-button {

@@ -121,7 +121,11 @@ function dedupeRecentPostAuthors(
   const authors: Array<{ id: string }> = [];
 
   for (const post of context.recentPosts) {
-    if (post.authorId === agentUserId || seen.has(post.authorId)) {
+    if (
+      post.authorId === agentUserId ||
+      post.authorCanContact !== true ||
+      seen.has(post.authorId)
+    ) {
       continue;
     }
     seen.add(post.authorId);

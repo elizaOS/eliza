@@ -170,6 +170,7 @@ current_artifacts:
     - board/kicad/e1-phone/first-article-route-execution-order.yaml
     - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
     - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml
     - board/kicad/e1-phone/mechanical-overlay.yaml
   package_bindings:
     - package/display/v0-dsi-720x1280.yaml

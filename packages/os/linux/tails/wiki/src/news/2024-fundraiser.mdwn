@@ -1,0 +1,43 @@
+[[!meta title="Shape Tails' future today!"]]
+[[!meta date="Mon, 18 Nov 2024 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+📢 It’s that time of year again when we emerge from our encrypted shells to ask
+for your support!
+
+2024 has been a life-changing year for Tails. We’ve continued doing what we do
+best -- developing Tails as an accessible shield for privacy, anonymity, and
+anti-censorship. And you may have heard: [[we merged operations with the Tor
+Project|/news/tails_tor]].
+
+✊ This transition couldn’t have come at a more critical time for online and
+offline freedoms. Civil society is contracting, liberatory struggles are being
+silenced, and investigative journalists are being surveilled through
+increasingly sophisticated tools. In this landscape, our merger with the Tor
+Project isn’t just about operational efficiencies. By joining forces, we are
+strategically strengthening the infrastructure necessary for responding to
+these evolving challenges.
+
+[[!img index/camping.svg link=\"no\" alt=\"\"]]
+
+# How you can help
+
+- Make a donation: Donate through any of the channels listed on our
+  website.
+
+- Double your impact: Many corporations match employees’ donations to
+  charitable organisations. Ask your employer if they do, and if they don't --
+  ask why! Search for our fiscal host, Riseup Labs, and specify Tails in your
+  donation.
+
+- Spread the word: Share this fundraiser with your network! We are on
+  [X](https://twitter.com/Tails_live). 
+
+While we’ve joined the Tor Project, all contributions during this campaign will
+be used for Tails-related activities.
+
+Together, we can ensure that everyone -- regardless of their circumstances --
+has access to the tech they need to stay safe, secure, and free.
+
+[Donate](https://tails.net/donate/)

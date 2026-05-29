@@ -111,6 +111,11 @@ DISPLAY_FETCHED = 0x34
 DISPLAY_FMT_XR24 = 0x3432_5258
 
 
+def packed_slot(value, slot, width):
+    raw = int(value)
+    return (raw >> (slot * width)) & ((1 << width) - 1)
+
+
 async def reset(dut):
     dut.rst_n.value = 0
     dut.mmio_valid.value = 0
@@ -493,8 +498,9 @@ async def bpu_vector_redirect_lanes_are_soc_visible(dut):
 
     assert int(dut.pred_valid_o.value) == 1
     assert int(dut.pred_redirect_valid_o.value) == 0b11
-    assert int(dut.pred_redirect_pc_o[0].value) == first_target_block
-    assert int(dut.pred_redirect_pc_o[1].value) == final_target
+    pred_redirect_pc = int(dut.pred_redirect_pc_o.value)
+    assert packed_slot(pred_redirect_pc, 0, VADDR_W) == first_target_block
+    assert packed_slot(pred_redirect_pc, 1, VADDR_W) == final_target
 
 
 @cocotb.test()
@@ -536,8 +542,9 @@ async def bpu_fetch_stream_backpressures_soc_ftq_pop(dut):
         await RisingEdge(dut.clk)
         if int(dut.fetch_valid_o.value) == 1:
             assert int(dut.fetch_stream_valid_o.value) == 0b11
-            assert int(dut.fetch_stream_target_pc_o[0].value) == first_target_block
-            assert int(dut.fetch_stream_target_pc_o[1].value) == final_target
+            fetch_stream_target_pc = int(dut.fetch_stream_target_pc_o.value)
+            assert packed_slot(fetch_stream_target_pc, 0, VADDR_W) == first_target_block
+            assert packed_slot(fetch_stream_target_pc, 1, VADDR_W) == final_target
             assert int(dut.l1i_prefetch_valid_o.value) == 0
             saw_stalled_stream = True
     assert saw_stalled_stream, "FTQ head was not held while fetch stream ready was low"

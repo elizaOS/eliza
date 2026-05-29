@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFailureReplyPrompt } from "../message";
+import { buildFailureReplyPrompt, isRateLimitError } from "../message";
 
 /**
  * Pinned hard rules for the transient-failure reply prompt.
@@ -113,5 +113,58 @@ describe("buildFailureReplyPrompt", () => {
 		const prompt = buildFailureReplyPrompt(RECENT);
 		expect(prompt.endsWith("Reply:")).toBe(true);
 		expect(prompt).not.toContain("```");
+	});
+});
+
+/**
+ * BACKGROUND — live regression on Cerebras gpt-oss-120b (2026-05-27,
+ * milady channel): "Write me a haiku about the Israel Iran war" + "What
+ * was the actual error?" both errored with 0 trajectory stages. bot.log:
+ * `AI_RetryError: Failed after 3 attempts. Last error: Too Many Requests`
+ * cascaded across all four model slots (TEXT_LARGE -> RESPONSE_HANDLER ->
+ * TEXT_SMALL -> TEXT_NANO), all 429. The failure path then emitted the
+ * opaque "Something went wrong on my end." The user could not tell the
+ * outage was provider throttling vs. a real bug.
+ *
+ * Fix: detect rate-limit / 429 failures so the failure reply can say
+ * "I'm being rate-limited, try again shortly" instead. These tests pin
+ * the detector so the classification can't silently regress.
+ */
+describe("isRateLimitError", () => {
+	it("matches the AI SDK retry-exhausted 429 shape from the live incident", () => {
+		const err = new Error(
+			"Failed after 3 attempts. Last error: Too Many Requests",
+		);
+		err.name = "AI_RetryError";
+		expect(isRateLimitError(err)).toBe(true);
+	});
+
+	it("matches common rate-limit phrasings case-insensitively", () => {
+		for (const msg of [
+			"429 Too Many Requests",
+			"Rate limit exceeded",
+			"rate_limit_error",
+			"RateLimitError: slow down",
+		]) {
+			expect(isRateLimitError(new Error(msg))).toBe(true);
+		}
+	});
+
+	it("does not match unrelated runtime errors", () => {
+		for (const msg of [
+			"NoModelProviderConfiguredError",
+			"ECONNREFUSED 127.0.0.1:443",
+			"invalid JSON in tool args",
+			"context length exceeded",
+		]) {
+			expect(isRateLimitError(new Error(msg))).toBe(false);
+		}
+	});
+
+	it("returns false for non-Error inputs", () => {
+		expect(isRateLimitError("Too Many Requests")).toBe(false);
+		expect(isRateLimitError(null)).toBe(false);
+		expect(isRateLimitError(undefined)).toBe(false);
+		expect(isRateLimitError({ message: "429" })).toBe(false);
 	});
 });

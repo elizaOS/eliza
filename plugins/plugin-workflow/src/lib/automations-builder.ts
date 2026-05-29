@@ -101,24 +101,6 @@ function isSystemTask(task: WorkbenchTaskView): boolean {
   return tags.has('queue') && tags.has('repeat');
 }
 
-/**
- * True when the raw runtime task carries the `migratedToWorkflowId` metadata
- * flag set by `migrateLegacyWorkbenchTasks`. The workflow representation is
- * already surfaced by the workflow listing path; the original task should not
- * also appear as a coordinator-text item.
- */
-function taskHasMigrationFlag(rawTasks: Task[], taskId: string): boolean {
-  for (const raw of rawTasks) {
-    if (raw.id !== taskId) continue;
-    const meta = isRecord(raw.metadata) ? raw.metadata : null;
-    if (meta && typeof meta.migratedToWorkflowId === 'string') {
-      return true;
-    }
-    return false;
-  }
-  return false;
-}
-
 function choosePreferredSystemTask(
   current: WorkbenchTaskView,
   candidate: WorkbenchTaskView
@@ -295,7 +277,7 @@ function buildCoordinatorTaskItem(
   };
 }
 
-function buildCoordinatorTriggerItem(
+function _buildCoordinatorTriggerItem(
   trigger: TriggerSummary,
   room: AutomationRoomRecord | undefined
 ): AutomationItem {
@@ -523,7 +505,7 @@ export async function buildAutomationListResponse(
       .filter((room) => room.metadata.taskId)
       .map((room) => [room.metadata.taskId as string, room])
   );
-  const triggerRooms = new Map(
+  const _triggerRooms = new Map(
     rooms
       .filter((room) => room.metadata.triggerId)
       .map((room) => [room.metadata.triggerId as string, room])
@@ -547,11 +529,6 @@ export async function buildAutomationListResponse(
     allTasks
       .map((task) => toWorkbenchTaskView(task))
       .filter((task): task is WorkbenchTaskView => task !== null)
-      // Tasks migrated to workflows by plugin-workflow's boot migration carry
-      // a `migratedToWorkflowId` metadata flag; their workflow representation
-      // is already in the workflowItemsById map below, so skip them here to
-      // avoid duplicate Automations entries.
-      .filter((task) => !taskHasMigrationFlag(allTasks, task.id))
   );
 
   const triggerTaskRecords = await listTriggerTasks(runtime);
@@ -641,15 +618,15 @@ export async function buildAutomationListResponse(
     );
   }
 
-  const coordinatorTriggerItems = triggerItems
-    .filter((trigger) => trigger.kind !== 'workflow')
-    .map((trigger) => buildCoordinatorTriggerItem(trigger, triggerRooms.get(trigger.id)));
+  const coordinatorTriggerItems = triggerItems.map((trigger) =>
+    _buildCoordinatorTriggerItem(trigger, _triggerRooms.get(trigger.id))
+  );
 
   const automations = [
     ...automationDraftItems,
     ...workflowDraftItems,
-    ...taskItems,
     ...coordinatorTriggerItems,
+    ...taskItems,
     ...workflowItemsById.values(),
   ].sort(compareAutomationItems);
 

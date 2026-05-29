@@ -1,5 +1,6 @@
 "use client";
 
+import { formatByteSize } from "@elizaos/shared";
 import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/ui";
 import { formatDistanceToNowStrict } from "date-fns";
 import {
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { formatBytes } from "../../../lib/format-bytes";
 
 interface ElizaAgentBackupsPanelProps {
   agentId: string;
@@ -376,7 +376,10 @@ export function ElizaAgentBackupsPanel({
                             style={{ fontFamily: "var(--font-roboto-mono)" }}
                           >
                             Size:{" "}
-                            {formatBytes(backup.sizeBytes, { precision: 1 })}
+                            {formatByteSize(backup.sizeBytes, {
+                              precision: 1,
+                              unknownLabel: "—",
+                            })}
                           </span>
                           <span
                             style={{ fontFamily: "var(--font-roboto-mono)" }}

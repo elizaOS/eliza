@@ -83,27 +83,27 @@ const trustCapability = {
 // ./advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels.
 import { secretsAction } from "./secrets/actions/manage-secret.ts";
-import { updateSettingsAction as onboardingUpdateSettingsAction } from "./secrets/onboarding/action.ts";
-import {
-	missingSecretsProvider,
-	onboardingSettingsProvider,
-} from "./secrets/onboarding/provider.ts";
-import { OnboardingService } from "./secrets/onboarding/service.ts";
 import {
 	secretsInfoProvider,
 	secretsStatusProvider,
 } from "./secrets/providers/secrets-status.ts";
 import { PluginActivatorService } from "./secrets/services/plugin-activator.ts";
 import { SecretsService } from "./secrets/services/secrets.ts";
+import { updateSettingsAction as setupUpdateSettingsAction } from "./secrets/setup/action.ts";
+import {
+	missingSecretsProvider,
+	setupSettingsProvider,
+} from "./secrets/setup/provider.ts";
+import { SetupService } from "./secrets/setup/service.ts";
 
 const secretsCapability = {
 	providers: [
 		secretsStatusProvider,
 		secretsInfoProvider,
-		onboardingSettingsProvider,
+		setupSettingsProvider,
 		missingSecretsProvider,
 	] as Provider[],
-	actions: [secretsAction, onboardingUpdateSettingsAction] as Action[],
+	actions: [secretsAction, setupUpdateSettingsAction] as Action[],
 	services: [
 		createService("SECRETS")
 			.withDescription("Secrets manager")
@@ -117,10 +117,10 @@ const secretsCapability = {
 				return PluginActivatorService.start(runtime);
 			})
 			.build(),
-		createService("ONBOARDING")
-			.withDescription("Secrets onboarding service")
+		createService("SETUP")
+			.withDescription("Secrets setup service")
 			.withStart(async (runtime: IAgentRuntime) => {
-				return OnboardingService.start(runtime);
+				return SetupService.start(runtime);
 			})
 			.build(),
 	] as ServiceClass[],

@@ -9,7 +9,7 @@
     "test": "bun run test-client.ts --once",
     "deploy": "convex deploy",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {

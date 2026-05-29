@@ -39,6 +39,7 @@ _AGENT_CHOICES = (
     "eliza",
     "openclaw",
     "hermes",
+    "smithers",
     "cerebras-direct",
 )
 _DOMAIN_CHOICES = tuple(d.value for d in Domain)
@@ -340,6 +341,10 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
                 "tool calls whenever an operation is needed."
             ),
         )
+    if name == "smithers":
+        from .agents.smithers import build_smithers_agent  # type: ignore[attr-defined]
+
+        return build_smithers_agent(model=model_override, base_url=base_url_override)
     if name == "hermes":
         try:
             from .agents import build_hermes_agent  # type: ignore[attr-defined]
@@ -385,13 +390,13 @@ def _apply_eliza_one_bundle_override(
     # `1` is the only value the aggregator parses as truthy — keep that
     # explicit (no surrounding whitespace, no "true"/"yes" shortcut here).
     os.environ["ELIZA_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
-    # Spawn the dflash local-llama-cpp server pointing at the bundle weights.
+    # Spawn the mtp local-llama-cpp server pointing at the bundle weights.
     # We pass the weights path through MODEL_BUNDLE_OVERRIDE so downstream TS
     # readers (live-provider.ts, model-tiers.ts) see the same value, and we
     # publish ELIZA_OPENCODE_BASE_URL so the OpenAI-compatible adapter
     # finds the running server.
     os.environ["MODEL_BUNDLE_OVERRIDE"] = manifest.weights_path
-    base_url = _spawn_dflash_server_for_bundle(manifest)
+    base_url = _spawn_mtp_server_for_bundle(manifest)
     if base_url:
         os.environ["ELIZA_OPENCODE_BASE_URL"] = base_url
     rewritten = TierSpec(
@@ -418,29 +423,29 @@ def _apply_eliza_one_bundle_override(
     return manifest, rewritten
 
 
-def _spawn_dflash_server_for_bundle(
+def _spawn_mtp_server_for_bundle(
     manifest: ElizaOneBundleManifest,
 ) -> Optional[str]:
-    """Start a dflash llama-server pointing at the bundle's weights.
+    """Start a mtp llama-server pointing at the bundle's weights.
 
     Returns the OpenAI-compatible base URL on success, or ``None`` when the
     operator has already pointed ``ELIZA_OPENCODE_BASE_URL`` at an
-    externally-managed server (LM Studio, Ollama, an existing dflash
+    externally-managed server (LM Studio, Ollama, an existing mtp
     instance). The caller is responsible for any teardown; we register an
     atexit hook for the spawned subprocess.
     """
     if os.environ.get("ELIZA_OPENCODE_BASE_URL"):
         # Operator already pointed us at a running server — don't double-spawn.
         return os.environ["ELIZA_OPENCODE_BASE_URL"]
-    dflash_root = (
-        os.environ.get("ELIZA_DFLASH_LLAMA_DIR")
-        or os.path.expanduser("~/.cache/eliza-dflash/eliza-llama-cpp")
+    mtp_root = (
+        os.environ.get("ELIZA_MTP_LLAMA_DIR")
+        or os.path.expanduser("~/.cache/eliza-mtp/eliza-llama-cpp")
     )
-    binary = os.path.join(dflash_root, "build", "bin", "llama-server")
+    binary = os.path.join(mtp_root, "build", "bin", "llama-server")
     if not os.path.exists(binary):
         raise SystemExit(
-            f"ELIZA_1_MODEL_BUNDLE requested but dflash llama-server binary "
-            f"is not built at {binary}. Build the fork at {dflash_root} or "
+            f"ELIZA_1_MODEL_BUNDLE requested but mtp llama-server binary "
+            f"is not built at {binary}. Build the fork at {mtp_root} or "
             f"set ELIZA_OPENCODE_BASE_URL to point at a running server."
         )
     import atexit
@@ -538,7 +543,7 @@ async def _run(args: argparse.Namespace) -> None:
 
     tier_spec = resolve_tier()
     # When ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
-    # so the harness boots the dflash local-llama-cpp server pointing at the
+    # so the harness boots the mtp local-llama-cpp server pointing at the
     # bundle's GGUF weights. The bundle manifest's pre-release flag is
     # propagated through ELIZA_BENCH_PRE_RELEASE so the aggregator stamps
     # `preRelease: true` on every emitted RunMetrics + report.json.

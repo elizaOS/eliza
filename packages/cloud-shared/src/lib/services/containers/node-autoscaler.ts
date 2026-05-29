@@ -71,7 +71,7 @@ export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
   defaultServerType: containersEnv.defaultHcloudServerType(),
   defaultLocation: containersEnv.defaultHcloudLocation(),
   defaultImage: "ubuntu-24.04",
-  defaultCapacity: 8,
+  defaultCapacity: containersEnv.defaultAutoscaleNodeCapacity(),
 };
 
 export interface CapacityDecision {

@@ -95,8 +95,8 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
     Resolution order: --llama-cpp-dir → $LLAMA_CPP_DIR → the in-repo fork
     submodule (``packages/inference/llama.cpp``, the single canonical
     llama.cpp checkout) → the standalone clone at
-    ``~/.cache/eliza-dflash/eliza-llama-cpp`` (used when the build scripts'
-    ELIZA_DFLASH_LLAMA_CPP_REMOTE/_REF override forces one) → $PATH.
+    ``~/.cache/eliza-mtp/eliza-llama-cpp`` (used when the build scripts'
+    ELIZA_MTP_LLAMA_CPP_REMOTE/_REF override forces one) → $PATH.
     """
     cands: list[Path] = []
     if llama_cpp_dir is not None:
@@ -112,7 +112,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         if cand.is_dir():
             cands.append(cand)
             break
-    cands.append(Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp")
+    cands.append(Path.home() / ".cache" / "eliza-mtp" / "eliza-llama-cpp")
     for c in cands:
         cand = c / "convert_hf_to_gguf.py"
         if cand.exists():
@@ -347,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
             "Preserve Qwen3.5/3.6 built-in MTP/NextN heads in the target GGUF "
             "when the source checkpoint has them. This is the default and "
             "enables llama.cpp --spec-type draft-mtp without a separate "
-            "DFlash drafter artifact."
+            "MTP drafter artifact."
         ),
     )
     mtp_group.add_argument(

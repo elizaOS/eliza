@@ -87,6 +87,10 @@ LATEST_SNAPSHOT_AGENTS: set[str] = {
     *CANONICAL_REAL_HARNESSES,
     *SYNTHETIC_HARNESSES,
     "compare",
+    # smithers publishes to latest/ but is intentionally NOT in
+    # CANONICAL_REAL_HARNESSES: it has partial benchmark coverage, so it must
+    # not be a required agent for cross-harness comparability.
+    "smithers",
 }
 
 
@@ -297,6 +301,7 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
         str((benchmarks_root / "eliza-adapter").resolve()),
         str((benchmarks_root / "hermes-adapter").resolve()),
         str((benchmarks_root / "openclaw-adapter").resolve()),
+        str((benchmarks_root / "smithers-adapter").resolve()),
     ]
     workspace_python = [
         str(workspace_root),

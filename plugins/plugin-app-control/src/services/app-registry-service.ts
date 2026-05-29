@@ -623,10 +623,16 @@ function buildViewFromGrants(
 	const grantedNamespaces = grant
 		? grant.namespaces.filter((ns) => recognised.includes(ns))
 		: [];
+	const trust: AppTrust =
+		entry.trust === "first-party" ? "first-party" : "external";
+	const declaredIsolation: AppIsolation =
+		entry.isolation === "worker" ? "worker" : "none";
+	const isolation: AppIsolation =
+		trust === "external" ? "worker" : declaredIsolation;
 	return {
 		slug: entry.slug,
-		trust: entry.trust ?? "external",
-		isolation: entry.isolation ?? "none",
+		trust,
+		isolation,
 		requestedPermissions,
 		recognisedNamespaces: recognised,
 		grantedNamespaces,

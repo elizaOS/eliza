@@ -23,17 +23,17 @@ export type PermissionsPatchState = {
   isShellEnabled: PermissionsClientLike["isShellEnabled"];
 };
 
-// ── onboarding-reset ────────────────────────────────────────────────────
+// ── first-run-reset ────────────────────────────────────────────────────
 
-export type OnboardingClientLike = Pick<
+export type FirstRunClientLike = Pick<
   typeof appClient,
-  "getConfig" | "getOnboardingStatus" | "submitOnboarding"
+  "getConfig" | "getFirstRunStatus" | "submitFirstRun"
 >;
 
-export type OnboardingPatchState = {
-  getConfig: OnboardingClientLike["getConfig"];
-  getOnboardingStatus: OnboardingClientLike["getOnboardingStatus"];
-  submitOnboarding: OnboardingClientLike["submitOnboarding"];
+export type FirstRunPatchState = {
+  getConfig: FirstRunClientLike["getConfig"];
+  getFirstRunStatus: FirstRunClientLike["getFirstRunStatus"];
+  submitFirstRun: FirstRunClientLike["submitFirstRun"];
 };
 
 // ── cloud-preference-patch ──────────────────────────────────────────────

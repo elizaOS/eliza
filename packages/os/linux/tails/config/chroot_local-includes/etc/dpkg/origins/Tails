@@ -1,0 +1,4 @@
+Vendor: Tails
+Vendor-URL: https://tails.net/
+Bugs: mailto:foundations@tails.net
+Parent: Debian

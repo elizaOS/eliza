@@ -10,105 +10,17 @@ import {
   ConnectionIdentityPanel,
 } from "@elizaos/ui";
 import { Calendar, Loader2, Mail, Plus, Users } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
-
-interface GoogleConnection {
-  id: string;
-  platform: string;
-  email?: string;
-  displayName?: string;
-  scopes?: string[];
-  status: string;
-}
+import { useOAuthConnections } from "./oauth-connection";
 
 export function GoogleConnection() {
-  const [connections, setConnections] = useState<GoogleConnection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-
-  const fetchConnections = useCallback(async (signal?: AbortSignal) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(
-        "/api/v1/oauth/connections?platform=google",
-        {
-          signal,
-        },
-      );
-      if (signal?.aborted) return;
-      if (!response.ok) {
-        toast.error("Failed to fetch Google connections");
-        return;
-      }
-      const data = (await response.json()) as {
-        connections?: GoogleConnection[];
-      };
-      if (!signal?.aborted) {
-        setConnections(data.connections ?? []);
-      }
-    } catch {
-      if (!signal?.aborted) {
-        toast.error("Failed to fetch Google connections");
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetchConnections(controller.signal);
-    return () => controller.abort();
-  }, [fetchConnections]);
-
-  const handleConnect = async () => {
-    if (isConnecting) return;
-    setIsConnecting(true);
-
-    const response = await fetch("/api/v1/oauth/google/initiate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        redirectUrl: "/dashboard/settings?tab=connections",
-      }),
-    });
-
-    const data = (await response.json()) as {
-      authUrl?: string;
-      error?: string;
-    };
-    if (response.ok && data.authUrl) {
-      window.location.href = data.authUrl;
-      return;
-    }
-    toast.error(data.error || "Failed to initiate Google OAuth");
-    setIsConnecting(false);
-  };
-
-  const handleDisconnect = async (connectionId: string) => {
-    if (disconnectingId) return;
-    setDisconnectingId(connectionId);
-
-    const response = await fetch(`/api/v1/oauth/connections/${connectionId}`, {
-      method: "DELETE",
-    });
-
-    if (response.ok) {
-      toast.success("Google account disconnected");
-      await fetchConnections();
-    } else {
-      const data = (await response.json().catch(() => ({}))) as {
-        error?: string;
-      };
-      toast.error(data.error || "Failed to disconnect");
-    }
-
-    setDisconnectingId(null);
-  };
+  const {
+    activeConnections,
+    isLoading,
+    isConnecting,
+    disconnectingId,
+    connect: handleConnect,
+    disconnect: handleDisconnect,
+  } = useOAuthConnections({ platform: "google", label: "Google" });
 
   const getScopeIcon = (scope: string) => {
     if (scope.includes("gmail") || scope.includes("mail")) {
@@ -145,7 +57,6 @@ export function GoogleConnection() {
     );
   }
 
-  const activeConnections = connections.filter((c) => c.status === "active");
   const hasConnections = activeConnections.length > 0;
 
   return (

@@ -9,7 +9,7 @@ import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { resolveUserPath } from "../config/paths.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
-import { clearPersistedOnboardingConfig } from "./provider-switch-config.ts";
+import { clearPersistedFirstRunConfig } from "./provider-switch-config.ts";
 
 type AgentStateStatus =
   | "not_started"
@@ -96,7 +96,7 @@ function resolveResetPgliteDataDir(
 
   const workspaceDir =
     config.agents?.defaults?.workspace ?? `${stateDir}/workspace`;
-  return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
+  return path.join(resolveUserPath(workspaceDir), ".elizadb");
 }
 
 export async function handleAgentAdminRoutes(
@@ -191,7 +191,7 @@ export async function handleAgentAdminRoutes(
         removeStateDir(dataDir);
       }
 
-      clearPersistedOnboardingConfig(config);
+      clearPersistedFirstRunConfig(config);
       saveElizaConfig(config);
 
       // Wipe cloud-related vault entries so the next boot doesn't re-hydrate

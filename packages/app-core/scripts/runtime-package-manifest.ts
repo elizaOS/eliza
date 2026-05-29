@@ -77,9 +77,27 @@ export function discoverRuntimePackages(scanDir: string): string[] {
   const found = new Set<string>();
 
   function walk(dir: string): void {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return;
+      }
+      throw error;
+    }
+
+    for (const entry of entries) {
       const entryPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name === "node_modules") {
+          continue;
+        }
         walk(entryPath);
         continue;
       }

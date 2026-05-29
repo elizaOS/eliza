@@ -2,7 +2,7 @@
 
 # Key Lifecycle
 
-Authoritative lifecycle documentation for every key class used in the Eliza stack. Implements [`../../POLICIES/12-cryptography.md`](../../POLICIES/12-cryptography.md) against the contract in [`audits/KMS-CONTRACT.md`](audits/KMS-CONTRACT.md) and the Steward spec in [`audits/STEWARD-KMS-SPEC.md`](audits/STEWARD-KMS-SPEC.md).
+Authoritative lifecycle documentation for every key class used in the Eliza stack. Implements [`../../POLICIES/12-cryptography.md`](../../POLICIES/12-cryptography.md) against the contract in `audits/KMS-CONTRACT.md` and the Steward spec in `audits/STEWARD-KMS-SPEC.md`.
 
 ## Namespace layout
 

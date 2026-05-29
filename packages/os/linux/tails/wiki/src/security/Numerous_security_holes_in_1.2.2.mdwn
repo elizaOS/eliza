@@ -1,0 +1,36 @@
+[[!meta date="Mon, 12 Jan 2015 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.2.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.2.2 are now fixed in Tails
+1.2.3.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.2.3|news/version_1.2.3]] as soon as possible.
+
+Details
+=======
+
+ - Tails' MAC spoofing feature may leak the real MAC address
+   ([[!tails_ticket 8571]]).
+ - The Unsafe Browser checks for an upgrade of the Tor Browser in the
+   clear ([[!tails_ticket 8694]]).
+ - Tor Browser and its bundled NSS: [[!mfsa 2015-01]],
+   [[!mfsa 2015-03]], [[!mfsa 2015-04]], [[!mfsa 2015-06]]
+ - tcpdump: [[!debsa2014 3086]]
+ - linux: [[!debsa2014 3093]]
+ - bind9: [[!debsa2014 3094]]
+ - xorg-server: [[!debsa2014 3095]]
+ - dbus: [[!debsa2014 3099]]
+ - libyaml: [[!debsa2014 3102]]
+ - libyaml-libyaml-perl: [[!debsa2014 3103]]
+ - cpio: [[!debsa2014 3111]]
+ - unzip: [[!debsa2014 3113]]
+ - mime-support: [[!debsa2014 3114]]
+ - libevent: [[!debsa2015 3119]]
+ - file: [[!debsa2015 3121]]
+ - curl: [[!debsa2015 3122]]
+ - binutils: [[!debsa2015 3123]]
+ - openssl: [[!debsa2015 3125]]

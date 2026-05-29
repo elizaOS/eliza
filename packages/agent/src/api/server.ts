@@ -252,7 +252,6 @@ import {
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
-import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.ts";
 import { handleAccountsRoutes } from "./accounts-routes.ts";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.ts";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.ts";
@@ -276,6 +275,7 @@ import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
+import { handleFirstRunRoutes } from "./first-run-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
@@ -284,7 +284,6 @@ import { handleMiscRoutes } from "./misc-routes.ts";
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.ts";
 import { handleModelsRoutes } from "./models-routes.ts";
 import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.ts";
-import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
@@ -299,8 +298,7 @@ import {
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
-  getErrorMessage,
-  hasPersistedOnboardingState,
+  hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
@@ -351,7 +349,7 @@ export {
   shouldForceCheckBalanceFallback,
 } from "./binance-skill-helpers.ts";
 
-type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
+type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
 type TtsRouteArg = {
   req: http.IncomingMessage;
@@ -1014,54 +1012,6 @@ async function handleBuiltinOptionalRoutes(
   return false;
 }
 
-function isModuleResolutionFailure(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) {
-    return false;
-  }
-  const code = "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
-  if (
-    code === "MODULE_NOT_FOUND" ||
-    code === "ERR_MODULE_NOT_FOUND" ||
-    code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
-  ) {
-    return true;
-  }
-  if (!("message" in err) || typeof err.message !== "string") {
-    return false;
-  }
-  return (
-    err.message.includes("Cannot find module") ||
-    err.message.includes("Cannot find package") ||
-    err.message.includes("ERR_MODULE_NOT_FOUND") ||
-    err.message.includes('is not defined by "exports"')
-  );
-}
-
-function isWalletBridgeImportFailure(err: unknown): boolean {
-  if (isModuleResolutionFailure(err)) {
-    return true;
-  }
-  if (typeof err !== "object" || err === null) {
-    return false;
-  }
-  const code = "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
-  if (code === "ERR_UNKNOWN_FILE_EXTENSION") {
-    return true;
-  }
-  if (!("message" in err) || typeof err.message !== "string") {
-    return false;
-  }
-  return err.message.includes('Unknown file extension ".css"');
-}
-
-type StewardWalletCoreRoutesHandler = (
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: unknown,
-) => Promise<boolean>;
-
-const STEWARD_WALLET_CORE_ROUTES_MODULE: string = "@elizaos/plugin-steward-app";
-
 // ---------------------------------------------------------------------------
 import {
   injectApiBaseIntoHtml,
@@ -1131,10 +1081,10 @@ export {
 
 const resolveMcpServersRejection = _resolveMcpServersRejection;
 
-import { pickRandomNames } from "../runtime/onboarding-names.ts";
+import { pickRandomNames } from "../runtime/first-run-names.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
-  applyOnboardingVoicePreset,
+  applyFirstRunVoicePreset,
   ensureWalletKeysInEnvAndConfig,
   getCloudProviderOptions,
   getProviderOptions,
@@ -1546,9 +1496,9 @@ async function handleRequest(
     resolveBlueBubblesWebhookPath: (args: unknown) => string;
   }>("imessage");
   const isCloudProvisioned = isCloudProvisionedContainer();
-  const isCloudOnboardingStatusEndpoint =
+  const isCloudFirstRunStatusEndpoint =
     method === "GET" &&
-    pathname === "/api/onboarding/status" &&
+    pathname === "/api/first-run/status" &&
     isCloudProvisioned;
   const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
   const blueBubblesWebhookPath =
@@ -1680,7 +1630,7 @@ async function handleRequest(
     isAuthProtectedPath &&
     !isAuthEndpoint &&
     !isHealthEndpoint &&
-    !isCloudOnboardingStatusEndpoint &&
+    !isCloudFirstRunStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
     !isPublicRuntimePluginRoute({
@@ -1852,54 +1802,52 @@ async function handleRequest(
   }
 
   if (
-    await handleOnboardingRoutes({
+    await handleFirstRunRoutes({
       req,
       res,
       method,
       pathname,
       url,
-      state: coerce<OnboardingRouteArg["state"]>(state),
+      state: coerce<FirstRunRouteArg["state"]>(state),
       json,
       error,
       readJsonBody,
       isCloudProvisionedContainer,
-      hasPersistedOnboardingState,
+      hasPersistedFirstRunState,
       ensureWalletKeysInEnvAndConfig,
       getWalletAddresses:
-        coerce<OnboardingRouteArg["getWalletAddresses"]>(getWalletAddresses),
+        coerce<FirstRunRouteArg["getWalletAddresses"]>(getWalletAddresses),
       pickRandomNames,
       getStylePresets:
-        coerce<OnboardingRouteArg["getStylePresets"]>(getStylePresets),
+        coerce<FirstRunRouteArg["getStylePresets"]>(getStylePresets),
       getProviderOptions:
-        coerce<OnboardingRouteArg["getProviderOptions"]>(getProviderOptions),
+        coerce<FirstRunRouteArg["getProviderOptions"]>(getProviderOptions),
       getCloudProviderOptions: coerce<
-        OnboardingRouteArg["getCloudProviderOptions"]
+        FirstRunRouteArg["getCloudProviderOptions"]
       >(getCloudProviderOptions),
       getModelOptions:
-        coerce<OnboardingRouteArg["getModelOptions"]>(getModelOptions),
+        coerce<FirstRunRouteArg["getModelOptions"]>(getModelOptions),
       getInventoryProviderOptions: coerce<
-        OnboardingRouteArg["getInventoryProviderOptions"]
+        FirstRunRouteArg["getInventoryProviderOptions"]
       >(getInventoryProviderOptions),
       resolveConfiguredCharacterLanguage: coerce<
-        OnboardingRouteArg["resolveConfiguredCharacterLanguage"]
+        FirstRunRouteArg["resolveConfiguredCharacterLanguage"]
       >(resolveConfiguredCharacterLanguage),
       normalizeCharacterLanguage: coerce<
-        OnboardingRouteArg["normalizeCharacterLanguage"]
+        FirstRunRouteArg["normalizeCharacterLanguage"]
       >(normalizeCharacterLanguage),
       readUiLanguageHeader:
-        coerce<OnboardingRouteArg["readUiLanguageHeader"]>(
-          readUiLanguageHeader,
-        ),
-      applyOnboardingVoicePreset: coerce<
-        OnboardingRouteArg["applyOnboardingVoicePreset"]
-      >(applyOnboardingVoicePreset),
+        coerce<FirstRunRouteArg["readUiLanguageHeader"]>(readUiLanguageHeader),
+      applyFirstRunVoicePreset: coerce<
+        FirstRunRouteArg["applyFirstRunVoicePreset"]
+      >(applyFirstRunVoicePreset),
       saveElizaConfig,
     })
   ) {
     return;
   }
 
-  // POST /api/onboarding is now handled by onboarding-routes.ts above.
+  // POST /api/first-run is now handled by first-run-routes.ts above.
 
   if (
     await handleAgentLifecycleRoutes({
@@ -1939,7 +1887,6 @@ async function handleRequest(
     buildTriggerConfig,
     buildTriggerMetadata,
     normalizeTriggerDraft,
-    deployTextTriggerWorkflow,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
@@ -2208,7 +2155,6 @@ async function handleRequest(
         readJsonBody,
         readBody,
         discoverSkills,
-        saveElizaConfig: coerce<(config: unknown) => void>(saveElizaConfig),
       })
     ) {
       return;
@@ -2283,45 +2229,11 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // Wallet core routes (addresses, balances, generate, config, export)
-  // Canonical implementation lives in @elizaos/plugin-steward-app; wired here
-  // so the API server exposes them without requiring plugin registration.
+  // Prefer the local wallet implementation during desktop startup. The
+  // steward-app bridge can pull browser/UI-only dependencies into the agent
+  // process and must not block local assistant boot.
   // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/wallet/")) {
-    let stewardWalletCoreRoutes: StewardWalletCoreRoutesHandler | null = null;
-    try {
-      const loaded = (await import(
-        /* @vite-ignore */ STEWARD_WALLET_CORE_ROUTES_MODULE
-      )) as { handleWalletCoreRoutes?: StewardWalletCoreRoutesHandler };
-      stewardWalletCoreRoutes = loaded.handleWalletCoreRoutes ?? null;
-    } catch (err) {
-      if (isWalletBridgeImportFailure(err)) {
-        logger.debug(
-          { err },
-          "[eliza-api] Wallet core routes unavailable from @elizaos/plugin-steward-app; falling back to local bridge",
-        );
-      } else {
-        logger.error({ err }, "[eliza-api] Wallet core route bridge failed");
-        error(res, getErrorMessage(err), 500);
-        return;
-      }
-    }
-    if (stewardWalletCoreRoutes) {
-      try {
-        if (
-          await stewardWalletCoreRoutes(req, res, {
-            runtime: state.runtime ?? null,
-            restartRuntime,
-            scheduleRuntimeRestart,
-          })
-        ) {
-          return;
-        }
-      } catch (err) {
-        logger.error({ err }, "[eliza-api] Wallet core route bridge failed");
-        error(res, getErrorMessage(err), 500);
-        return;
-      }
-    }
     const { handleWalletRoutes } = await getWalletApi();
     if (
       await handleWalletRoutes({
@@ -3832,7 +3744,7 @@ export async function startApiServer(opts?: {
               };
               // Merge disk + live server config so we never persist a minimal
               // snapshot (e.g. ENOENT default) and clobber eliza.json during
-              // onboarding while state.config still holds the full boot payload.
+              // first-run while state.config still holds the full boot payload.
               const toSave: ElizaConfig = {
                 ...diskCfg,
                 ...state.config,

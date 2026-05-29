@@ -246,6 +246,7 @@ export async function runLoadFromDirectory({
 			aliases: app.aliases,
 			directory: app.directory,
 			displayName: app.displayName,
+			trust: "external",
 			isolation: app.isolation,
 			...(app.permissions.raw !== null
 				? { requestedPermissions: app.permissions.raw }

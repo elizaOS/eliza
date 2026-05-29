@@ -253,6 +253,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected readonly jitterMax: number = 1000;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   protected migrationService?: DatabaseMigrationService;
+  private migrationRunPromise: Promise<void> | null = null;
   private _connectorAccountStore?: ConnectorAccountStore;
 
   protected getConnectorAccountStore(): ConnectorAccountStore {
@@ -306,7 +307,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
     }
 
-    await this.migrationService.runAllPluginMigrations(options);
+    if (this.migrationRunPromise) {
+      logger.info(
+        { src: "plugin:sql", pluginCount: plugins.length },
+        "Plugin migrations already running in this process; joining active run"
+      );
+      await this.migrationRunPromise;
+      return;
+    }
+
+    this.migrationRunPromise = this.migrationService.runAllPluginMigrations(options);
+    try {
+      await this.migrationRunPromise;
+    } finally {
+      this.migrationRunPromise = null;
+    }
   }
 
   public getDatabase(): unknown {

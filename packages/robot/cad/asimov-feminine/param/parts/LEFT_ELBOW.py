@@ -11,6 +11,7 @@ sys.path.insert(0, '/Users/shawwalters/eliza-workspace/milady/eliza/packages/rob
 import numpy as np
 import trimesh
 import paramlib as P
+import warp2 as W
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -45,9 +46,30 @@ def femme_forearm(z):
 def build():
     orig = trimesh.load(SRC)
     param = P.slice_to_rings(orig, axis='z', step=0.01, n_angular=72)
-    w = P.connection_weight(param, reserved, ramp=0.035)
-    P.radial_scale(param, femme_forearm, weight=w)
-    rebuilt = P.rings_to_mesh(param)
+    rebuilt = W.warp_similarity(
+        orig,
+        axis='z',
+        scale_fn=femme_forearm,
+        reserved=reserved,
+        ramp=0.035,
+        step=0.0025,
+        smooth_m=5,
+    )
+    rebuilt = W.separate_quantized_components(
+        rebuilt,
+        axis='z',
+        epsilon=1e-4,
+        merge_tolerance=1e-6,
+    )
+    rebuilt = W.remove_excess_quantized_nonmanifold_faces(
+        rebuilt,
+        merge_tolerance=1e-6,
+    )
+    rebuilt = W.cap_quantized_boundary_loops(
+        rebuilt,
+        merge_tolerance=1e-6,
+        max_loop_vertices=128,
+    )
     rebuilt.export(OUT)
 
     ob, rb = orig.bounds, rebuilt.bounds

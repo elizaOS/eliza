@@ -48,8 +48,8 @@ interface DeviceCapabilities {
   gpuSupported?: boolean;
   lowPowerMode?: boolean;
   thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
-  dflashSupported?: boolean;
-  dflashReason?: string;
+  mtpSupported?: boolean;
+  mtpReason?: string;
 }
 
 type AgentInbound =
@@ -428,9 +428,9 @@ export class DeviceBridgeClient {
           gpuSupported,
           ...(typeof lowPowerMode === "boolean" ? { lowPowerMode } : {}),
           ...(thermalState ? { thermalState } : {}),
-          dflashSupported: hardware.dflashSupported,
-          ...(hardware.dflashReason
-            ? { dflashReason: hardware.dflashReason }
+          mtpSupported: hardware.mtpSupported,
+          ...(hardware.mtpReason
+            ? { mtpReason: hardware.mtpReason }
             : {}),
         },
         loadedPath: loaded.modelPath,

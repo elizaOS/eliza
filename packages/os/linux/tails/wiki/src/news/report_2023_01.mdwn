@@ -1,0 +1,52 @@
+[[!meta title="Tails report for January 2023"]]
+[[!meta date="Wed, 15 Feb 2023 17:47:25 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- We agreed internally on strategic goals for the new 3 years.
+
+  In terms of product strategy, we will focus on learning about *existing*
+  users who match our [[personas|contribute/personas]] and how to serve them
+  better. We will focus less on acquiring new users from our target audience.
+
+  In terms of features, we will prioritize better interoperability with tools
+  like mobile messaging apps, online video calls, and social media.
+
+- We updated our documentation to the new Persistent Storage and added a page
+  about [[opening your Persistent Storage from another operating
+  system|doc/persistent_storage/open]]. 
+
+- We made Tails Upgrader use our new pool of mirrors at
+  <https://download.tails.net/> instead of our previous custom solution.
+
+Releases
+========
+
+[[Tails 5.9 was released on January 23|news/version_5.9]].
+
+It fixed most of the regressions introduced in Tails 5.8 in December:
+
+- Fixed support for some graphics cards.
+
+- Fixed starting AppImages that use the Qt toolkit like *Feather* and
+  *Bitcoin-Qt*. ([[!tails_ticket 19326]])
+
+- Fixed clipboard encryption and decryption in *Kleopatra*. ([[!tails_ticket 19329]])
+
+- Fixed at least 2 cases of Persistent Storage not activating:
+
+  * When activation takes longer ([[!tails_ticket 19347]])
+
+  * When the Dotfiles feature includes symbolic links ([[!tails_ticket 19346]])
+
+- Fixed 3 clipboard operations with *KeePassXC*.
+
+Metrics
+=======
+
+Tails has been started more than 713 228 times this month. This makes 23 007
+boots a day on average.

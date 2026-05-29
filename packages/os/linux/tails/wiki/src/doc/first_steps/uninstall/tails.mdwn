@@ -1,0 +1,19 @@
+[[!meta title="Uninstalling Tails using Tails itself"]]
+
+[[!inline pages="doc/first_steps/uninstall.intro" raw="yes" sort="age"]]
+
+You can generally uninstall a Tails USB stick while running Tails from that
+same USB stick.
+
+1.  When starting Tails, add the `toram` boot
+    option in the *Boot Loader*.
+
+    See [[modifying the boot options using the *Boot Loader*|advanced_topics/boot_options]].
+
+1.  If Tails starts as usual, follow the instructions to [[uninstall Tails
+    using Linux|linux]].
+
+    If the system fails to start, the computer might not have enough memory to
+    use the `toram` boot option. Try with another computer, uninstall using
+    [[another operating system|uninstall]], or uninstall while running Tails
+    from another USB stick.

@@ -294,7 +294,7 @@ function StatTile({
   detail: string;
 }) {
   return (
-    <div className="min-w-0 rounded-xl border border-border/30 bg-bg-muted/15 px-3 py-2">
+    <div className="min-w-0 rounded-sm border border-border/30 bg-bg-muted/15 px-3 py-2">
       <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
         {label}
       </div>
@@ -341,7 +341,7 @@ function EvidencePanel({
   body: string | null | undefined;
 }) {
   return (
-    <div className="min-w-0 rounded-xl border border-border/30 bg-bg-muted/15 p-3">
+    <div className="min-w-0 rounded-sm border border-border/30 bg-bg-muted/15 p-3">
       <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
         {title}
       </div>
@@ -362,7 +362,7 @@ function ProvenancePanel({
     experience.sourceTrajectoryId ?? experience.sourceTrajectoryStepId ?? null;
 
   return (
-    <div className="rounded-xl border border-border/30 bg-bg-muted/10 p-3">
+    <div className="rounded-sm border border-border/30 bg-bg-muted/10 p-3">
       <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
         Evidence source
       </div>
@@ -447,7 +447,7 @@ function ExperienceGraphPanel({
   return (
     <div
       data-testid="experience-graph-panel"
-      className="relative h-[24rem] overflow-hidden rounded-[2rem] border border-border/40 bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.18),transparent_30%),radial-gradient(circle_at_82%_24%,rgba(245,158,11,0.16),transparent_28%),radial-gradient(circle_at_50%_92%,rgba(34,197,94,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.24),rgba(2,6,23,0.04))]"
+      className="relative h-[24rem] overflow-hidden rounded-sm border border-border/40 bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.18),transparent_30%),radial-gradient(circle_at_82%_24%,rgba(245,158,11,0.16),transparent_28%),radial-gradient(circle_at_50%_92%,rgba(34,197,94,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.24),rgba(2,6,23,0.04))]"
     >
       <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,6,23,0.22)_72%)]" />
@@ -551,7 +551,7 @@ function ExperienceGraphPanel({
             />
             <span
               aria-hidden="true"
-              className="absolute inset-0 rounded-full border shadow-lg"
+              className="absolute inset-0 rounded-full border "
               style={{
                 background: `radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), ${color.fill} 32%, rgba(15,23,42,0.88) 100%)`,
                 borderColor: color.ring,
@@ -757,7 +757,7 @@ export function CharacterExperienceWorkspace({
 
   if (experiences.length === 0) {
     return (
-      <section className="rounded-2xl border border-dashed border-border/40 bg-bg-muted/20 px-5 py-8 text-sm text-muted">
+      <section className="rounded-sm border border-dashed border-border/40 bg-bg-muted/20 px-5 py-8 text-sm text-muted">
         <div className="text-base font-semibold text-txt">
           I haven&rsquo;t learned anything yet.
         </div>
@@ -772,7 +772,7 @@ export function CharacterExperienceWorkspace({
 
   return (
     <section className="flex min-w-0 flex-col gap-4">
-      <div className="rounded-2xl border border-border/40 bg-bg/70 p-4">
+      <div className="rounded-sm border border-border/40 bg-bg/70 p-4">
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-txt">Experience</h3>
@@ -818,7 +818,7 @@ export function CharacterExperienceWorkspace({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder={t("character.searchLearningEvidenceTags")}
-              className="h-9 rounded-xl border-border/40 bg-bg-muted/15"
+              className="h-9 rounded-sm border-border/40 bg-bg-muted/15"
             />
           </label>
           <label className="min-w-0">
@@ -827,7 +827,7 @@ export function CharacterExperienceWorkspace({
               aria-label={t("character.outcomeFilter")}
               value={outcomeFilter}
               onChange={(event) => setOutcomeFilter(event.target.value)}
-              className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
             >
               <option value="all">All outcomes</option>
               {filters.outcomes.map((outcome) => (
@@ -843,7 +843,7 @@ export function CharacterExperienceWorkspace({
               aria-label={t("character.domainFilter")}
               value={domainFilter}
               onChange={(event) => setDomainFilter(event.target.value)}
-              className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
             >
               <option value="all">All domains</option>
               {filters.domains.map((domain) => (
@@ -859,7 +859,7 @@ export function CharacterExperienceWorkspace({
               aria-label={t("character.tagFilter")}
               value={tagFilter}
               onChange={(event) => setTagFilter(event.target.value)}
-              className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
             >
               <option value="all">All tags</option>
               {filters.tags.map((tag) => (
@@ -877,7 +877,7 @@ export function CharacterExperienceWorkspace({
               onChange={(event) =>
                 setReviewFilter(event.target.value as ReviewFilter)
               }
-              className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
             >
               <option value="all">All review states</option>
               <option value="needs-review">Needs review</option>
@@ -891,7 +891,7 @@ export function CharacterExperienceWorkspace({
               aria-label={t("character.sortExperiences")}
               value={sortMode}
               onChange={(event) => setSortMode(event.target.value as SortMode)}
-              className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
+              className="h-9 w-full rounded-sm border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
             >
               <option value="priority">Priority</option>
               <option value="newest">Newest</option>
@@ -909,7 +909,7 @@ export function CharacterExperienceWorkspace({
       />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
-        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-bg/70">
+        <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-sm border border-border/40 bg-bg/70">
           <div className="border-b border-border/30 px-4 py-3">
             <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
               Review queue
@@ -995,7 +995,7 @@ export function CharacterExperienceWorkspace({
         </div>
 
         {visibleSelectedExperience ? (
-          <div className="flex min-w-0 flex-col gap-4 rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
+          <div className="flex min-w-0 flex-col gap-4 rounded-sm border border-border/40 bg-bg/70 px-4 py-4">
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -1036,7 +1036,7 @@ export function CharacterExperienceWorkspace({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-lg"
+                    className="rounded-sm"
                     disabled={
                       deletingExperienceId === visibleSelectedExperience.id
                     }
@@ -1053,7 +1053,7 @@ export function CharacterExperienceWorkspace({
                   <Button
                     type="button"
                     size="sm"
-                    className="rounded-lg"
+                    className="rounded-sm"
                     disabled={
                       savingExperienceId === visibleSelectedExperience.id
                     }
@@ -1071,7 +1071,7 @@ export function CharacterExperienceWorkspace({
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
               <div className="space-y-4">
-                <div className="rounded-xl border border-border/30 bg-bg-muted/15 p-3">
+                <div className="rounded-sm border border-border/30 bg-bg-muted/15 p-3">
                   <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
                     Learned takeaway
                   </div>
@@ -1095,7 +1095,7 @@ export function CharacterExperienceWorkspace({
                 </div>
               </div>
 
-              <div className="space-y-4 rounded-xl border border-border/30 bg-bg-muted/10 p-3">
+              <div className="space-y-4 rounded-sm border border-border/30 bg-bg-muted/10 p-3">
                 <ScoreBar
                   label="Importance"
                   value={visibleSelectedExperience.importance}
@@ -1181,7 +1181,7 @@ export function CharacterExperienceWorkspace({
 
             {visibleSelectedExperience.supersedes ||
             selectedRelatedExperiences.length > 0 ? (
-              <div className="rounded-xl border border-border/30 bg-bg-muted/15 p-3">
+              <div className="rounded-sm border border-border/30 bg-bg-muted/15 p-3">
                 <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
                   Related experience trail
                 </div>
@@ -1201,7 +1201,7 @@ export function CharacterExperienceWorkspace({
                     <button
                       key={experience.id}
                       type="button"
-                      className="block w-full rounded-lg border border-border/30 px-3 py-2 text-left hover:bg-bg-muted/20"
+                      className="block w-full rounded-sm border border-border/30 px-3 py-2 text-left hover:bg-bg-muted/20"
                       onClick={() => onSelectExperience(experience.id)}
                     >
                       <span className="font-mono text-xs text-muted">
@@ -1220,7 +1220,7 @@ export function CharacterExperienceWorkspace({
 
             <ProvenancePanel experience={visibleSelectedExperience} />
 
-            <div className="rounded-xl border border-border/30 bg-bg-muted/10 p-3">
+            <div className="rounded-sm border border-border/30 bg-bg-muted/10 p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
@@ -1250,7 +1250,7 @@ export function CharacterExperienceWorkspace({
                       learning: event.target.value,
                     }))
                   }
-                  className="min-h-[8rem] resize-y rounded-xl border-border/40 bg-bg-muted/15 font-mono text-sm leading-relaxed"
+                  className="min-h-[8rem] resize-y rounded-sm border-border/40 bg-bg-muted/15 font-mono text-sm leading-relaxed"
                 />
               </label>
 
@@ -1275,7 +1275,7 @@ export function CharacterExperienceWorkspace({
                         importance: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-xl border-border/40 bg-bg-muted/15"
+                    className="rounded-sm border-border/40 bg-bg-muted/15"
                   />
                 </label>
                 <label
@@ -1298,7 +1298,7 @@ export function CharacterExperienceWorkspace({
                         confidence: Number(event.target.value || 0),
                       }))
                     }
-                    className="rounded-xl border-border/40 bg-bg-muted/15"
+                    className="rounded-sm border-border/40 bg-bg-muted/15"
                   />
                 </label>
                 <label
@@ -1318,7 +1318,7 @@ export function CharacterExperienceWorkspace({
                         tags: event.target.value,
                       }))
                     }
-                    className="rounded-xl border-border/40 bg-bg-muted/15"
+                    className="rounded-sm border-border/40 bg-bg-muted/15"
                   />
                 </label>
               </div>

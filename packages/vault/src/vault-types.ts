@@ -55,7 +55,8 @@ export interface CreateVaultOptions {
    *
    *   1. `opts.workDir` — explicit caller override (tests, embedded use).
    *   2. `$ELIZA_STATE_DIR` — Eliza's state-dir override.
-   *   3. `~/$ELIZA_NAMESPACE` with a leading dot (`~/.eliza` by default).
+   *   3. `$XDG_STATE_HOME/$ELIZA_NAMESPACE`.
+   *   4. `~/.local/state/$ELIZA_NAMESPACE`.
    *
    * The vault writes `vault.json` and `audit/vault.jsonl` inside the
    * resolved directory.

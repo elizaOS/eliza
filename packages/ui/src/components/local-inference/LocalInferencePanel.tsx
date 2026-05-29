@@ -266,12 +266,12 @@ export function LocalInferencePanel() {
 
   if (error && !hub) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+      <div className="flex items-center justify-between gap-3 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
         <span>{error}</span>
         <Button
           size="sm"
           variant="outline"
-          className="h-8 rounded-lg"
+          className="h-8 rounded-sm"
           onClick={refresh}
         >
           Retry
@@ -304,7 +304,7 @@ export function LocalInferencePanel() {
         onUnload={handleUnload}
         busy={busy}
       />
-      <nav className="inline-flex h-8 w-fit items-center rounded-lg border border-border/60 bg-bg/40 p-0.5">
+      <nav className="inline-flex h-8 w-fit items-center rounded-sm border border-border/60 bg-bg/40 p-0.5">
         {(
           [
             ["curated", "Eliza-1"],
@@ -318,10 +318,8 @@ export function LocalInferencePanel() {
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
-                active
-                  ? "bg-card text-txt shadow-sm"
-                  : "text-muted hover:text-txt"
+              className={`h-7 rounded-sm px-2.5 text-xs font-medium transition-colors ${
+                active ? "bg-card text-txt " : "text-muted hover:text-txt"
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -428,7 +426,7 @@ function ExternalInstalledSummary({
           return (
             <div
               key={m.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card/60 px-2 py-1.5"
+              className="flex items-center justify-between gap-2 rounded-sm border border-border/50 bg-card/60 px-2 py-1.5"
             >
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-txt">
@@ -440,7 +438,7 @@ function ExternalInstalledSummary({
               </div>
               {isActive ? (
                 <span
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-ok/35 bg-ok/10 text-ok"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-ok/35 bg-ok/10 text-ok"
                   title="Active"
                   role="img"
                   aria-label="Active"
@@ -450,7 +448,7 @@ function ExternalInstalledSummary({
               ) : (
                 <Button
                   size="sm"
-                  className="h-7 rounded-md px-2 text-xs"
+                  className="h-7 rounded-sm px-2 text-xs"
                   onClick={() => onActivate(m.id)}
                   disabled={busy}
                 >

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -28,7 +28,7 @@
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "generate:css-strings": "node ../scripts/generate-css-strings.mjs",
-    "typecheck": "bun run generate:css-strings && tsc --noEmit -p tsconfig.json",
+    "typecheck": "bun run generate:css-strings && tsgo --noEmit -p tsconfig.json",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "test:slow": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.e2e.config.ts",
     "test:e2e": "bun run test:slow",
@@ -36,7 +36,7 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "bun run clean && bun run generate:css-strings && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui",
+    "build:dist": "bun run clean && bun run generate:css-strings && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "stories:dev": "vite --config stories/vite.config.ts",
     "stories:build": "vite build --config stories/vite.config.ts"
@@ -126,15 +126,20 @@
       "import": "./dist/content-packs/index.js",
       "default": "./dist/content-packs/index.js"
     },
-    "./desktop-runtime": {
-      "types": "./dist/desktop-runtime/index.d.ts",
-      "import": "./dist/desktop-runtime/index.js",
-      "default": "./dist/desktop-runtime/index.js"
-    },
     "./events": {
       "types": "./dist/events/index.d.ts",
       "import": "./dist/events/index.js",
       "default": "./dist/events/index.js"
+    },
+    "./genui": {
+      "types": "./dist/genui/index.d.ts",
+      "import": "./dist/genui/index.js",
+      "default": "./dist/genui/index.js"
+    },
+    "./first-run/*": {
+      "types": "./dist/first-run/*.d.ts",
+      "import": "./dist/first-run/*.js",
+      "default": "./dist/first-run/*.js"
     },
     "./hooks": {
       "types": "./dist/hooks/index.d.ts",

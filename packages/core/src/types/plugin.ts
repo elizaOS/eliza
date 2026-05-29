@@ -798,7 +798,7 @@ export interface RemotePluginConfig {
  *
  * - `inline`: agent-authored. The plugin's source files (typically the
  *   worker entry + a manifest) are handed over as a string map. The host
- *   writes them to a tempdir under `~/.eliza/remote-plugins/<runtime>/
+ *   writes them to a tempdir under `<stateDir>/remote-plugins/<runtime>/
  *   <pluginName>-<instanceId>/`, then spawns the worker from there. The
  *   inline path is intentionally restricted: workers run as
  *   `isolated-process` always, network defaults to `loopback`, and FS

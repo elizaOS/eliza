@@ -233,7 +233,7 @@ module e1_cva6_unit_tb (
 
     // ── Minimal AXI4 memory model ─────────────────────────────────────
     // Two regions:
-    //   - boot ROM  : 0x0000_1000 .. 0x0000_2000 (4 KiB), preloaded by
+    //   - boot ROM  : 0x0000_0000 .. 0x0001_0000 (64 KiB), preloaded by
     //                 cocotb via `dut.u_cva6_unit_tb.boot_rom.write_word()`
     //                 (force on the array signal).
     //   - DRAM      : 0x8000_0000 .. 0x8000_4000 (16 KiB), backs RW.
@@ -241,7 +241,7 @@ module e1_cva6_unit_tb (
     // are accepted on the same beat as the request handshake. No burst
     // pipelining — CVA6 issues short bursts in this config which fit in
     // a single response with last=1 for len=0.
-    localparam int unsigned ROM_WORDS  = 512;   // 4 KiB / 8 B
+    localparam int unsigned ROM_WORDS  = 8192;  // 64 KiB / 8 B
     localparam int unsigned DRAM_WORDS = 2048;  // 16 KiB / 8 B
     // ROM_BASE must match BOOT_ADDR (CVA6's executable PMA region 1 starts
     // at 0x1_0000).  DRAM_BASE matches CVA6's cacheable + executable region

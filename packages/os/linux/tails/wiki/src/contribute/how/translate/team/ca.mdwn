@@ -1,0 +1,36 @@
+[[!meta title="Translate Tails into Catalan"]]
+
+[[!toc levels=2]]
+
+We are the Catalan Translation Team for Tails, and our mission is to make Tails
+accessible to Catalan-speaking users by translating the operating system, the
+documentation, and the website into Catalan.
+
+# Get Involved
+
+Join our dedicated team of translators, and be part of the global movement
+towards online privacy and security. By translating Tails into Catalan, you're
+helping people protect their digital identity and maintain their online
+freedom. Your contributions are essential, and we welcome translators of all
+skill levels.
+
+# How to Participate
+
+* Subscribe to our [Catalan Translation Team mailing
+  list](https://www.autistici.org/mailman/listinfo/tails-l10n-ca) to stay
+  updated on translation discussions and announcements.
+
+* Check out the [Tails Translation Platform](https://translate.tails.net/languages/ca/tails/) to see
+  the ongoing translation efforts and get started with contributing. Please
+  read [this
+  introduction](https://tails.net/contribute/how/translate/with_translation_platform/)
+  before translating.
+
+* The first documents to translate should be the [[core
+  pages|contribute/l10n_tricks/core_po_files.txt]].
+
+If you have any questions or need assistance, feel free to contact us through
+the catalan translation mailing list at any time or through the general
+translation mailing list.
+
+Thank you for your support, and we look forward to collaborating with you!

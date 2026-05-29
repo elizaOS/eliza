@@ -103,6 +103,96 @@ function normaliseArgs(raw: unknown): string[] {
 	return [String(raw)];
 }
 
+function stringifyUserFacingValue(value: unknown): string | undefined {
+	if (typeof value === "string") return value.trim();
+	if (value === undefined || value === null) return undefined;
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return String(value);
+	}
+}
+
+function findLeadingJsonObjectEnd(text: string): number {
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let i = 0; i < text.length; i += 1) {
+		const char = text[i];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			escaped = inString;
+			continue;
+		}
+		if (char === '"') {
+			inString = !inString;
+			continue;
+		}
+		if (inString) continue;
+		if (char === "{") depth += 1;
+		else if (char === "}") {
+			depth -= 1;
+			if (depth === 0) return i + 1;
+		}
+	}
+	return -1;
+}
+
+function unwrapSkillStdoutEnvelope(stdout: string): string | undefined {
+	const trimmed = stdout.trim();
+	if (!trimmed) return undefined;
+	if (!trimmed.startsWith("{")) return trimmed;
+
+	const firstJsonEnd = findLeadingJsonObjectEnd(trimmed);
+	if (firstJsonEnd < 0) return undefined;
+	const firstJson = trimmed.slice(0, firstJsonEnd);
+	const remainder = trimmed.slice(firstJsonEnd).trim();
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(firstJson);
+	} catch {
+		return undefined;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return undefined;
+	}
+
+	const record = parsed as Record<string, unknown>;
+	const hasCommandEnvelope = "cmd" in record || "command" in record;
+	if (!hasCommandEnvelope) return undefined;
+
+	for (const key of ["output", "stdout", "result"] as const) {
+		if (key in record) {
+			return stringifyUserFacingValue(record[key]);
+		}
+	}
+	if (remainder.startsWith("{")) {
+		const secondJsonEnd = findLeadingJsonObjectEnd(remainder);
+		if (secondJsonEnd > 0) {
+			try {
+				const second = JSON.parse(remainder.slice(0, secondJsonEnd));
+				if (second && typeof second === "object" && !Array.isArray(second)) {
+						const secondRecord = second as Record<string, unknown>;
+						for (const key of ["output", "stdout", "result"] as const) {
+							if (key in secondRecord) {
+								return stringifyUserFacingValue(secondRecord[key]);
+							}
+						}
+					}
+			} catch {
+				// Fall through to the non-JSON remainder below.
+			}
+			const afterSecond = remainder.slice(secondJsonEnd).trim();
+			if (afterSecond) return afterSecond;
+		}
+	}
+	if (remainder) return remainder;
+	return undefined;
+}
+
 function isSkillTruncationMarker(
 	marker: { field: string; originalBytes: number; capBytes: number },
 ): marker is SkillTruncationMarker {
@@ -369,6 +459,10 @@ export const useSkillAction: Action = {
 			const text = result.success
 				? `**${skill.name}** ran \`${requestedScript}\`:\n\`\`\`\n${result.stdout || "(no output)"}\n\`\`\``
 				: `**${skill.name}** script \`${requestedScript}\` failed (exit ${result.exitCode}):\n\`\`\`\n${result.stderr || "(no stderr)"}\n\`\`\``;
+			const userFacingText =
+				result.success && result.stdout
+					? unwrapSkillStdoutEnvelope(result.stdout)
+					: undefined;
 
 			if (callback) await callback({ text });
 
@@ -402,6 +496,9 @@ export const useSkillAction: Action = {
 					stdout: result.stdout,
 					stderr: result.stderr,
 				},
+				...(userFacingText
+					? { userFacingText, verifiedUserFacing: true }
+					: {}),
 			};
 		}
 

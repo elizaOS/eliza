@@ -1,5 +1,6 @@
 "use client";
 
+import { formatUsd as formatCurrency } from "@elizaos/shared";
 import {
   Badge,
   BrandCard,
@@ -297,13 +298,6 @@ export function EarningsPageClient() {
     setSubmitting(false);
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(value);
-  };
-
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString("en-US", {
       month: "short",
@@ -377,7 +371,7 @@ export function EarningsPageClient() {
             </div>
           </div>
           <Button
-            className="w-full mt-4 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90"
+            className="w-full mt-4 bg-[var(--brand-orange)] hover:bg-black hover:text-white"
             disabled={!balance?.eligibility.canRedeem}
             onClick={() => setShowRedeemDialog(true)}
           >
@@ -783,7 +777,7 @@ export function EarningsPageClient() {
                 submitting ||
                 !balance?.eligibility?.canRedeem
               }
-              className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90"
+              className="bg-[var(--brand-orange)] hover:bg-black hover:text-white"
             >
               {submitting ? (
                 <>

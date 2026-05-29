@@ -17,7 +17,6 @@ import {
 } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
@@ -26,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
+import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
 import { resolvePlugins } from "./plugin-resolver.ts";
@@ -490,6 +490,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginAnthropic,
       pluginOpenai,
       pluginGoogle,
+      pluginGitpathologist,
     ] = await Promise.all([
       trackImport("@elizaos/plugin-sql", () => getPluginSql(), {
         required: true,
@@ -559,6 +560,11 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         () => getOptionalPlugin("@elizaos/plugin-google"),
         { required: false },
       ),
+      trackImport(
+        "@elizaos/plugin-gitpathologist",
+        () => getOptionalPlugin("@elizaos/plugin-gitpathologist"),
+        { required: false },
+      ),
     ]);
 
     if (!pluginSql) {
@@ -586,6 +592,9 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         : {}),
       ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
       ...(pluginGoogle ? { "@elizaos/plugin-google": pluginGoogle } : {}),
+      ...(pluginGitpathologist
+        ? { "@elizaos/plugin-gitpathologist": pluginGitpathologist }
+        : {}),
       ...(pluginAnthropic
         ? { "@elizaos/plugin-anthropic": pluginAnthropic }
         : {}),
@@ -838,8 +847,16 @@ export function configureLocalEmbeddingPlugin(
     detectedPreset.gpuLayers === "auto" ? "false" : "true",
   );
 
-  // Set default models directory if not present
-  setEnvIfMissing("MODELS_DIR", path.join(os.homedir(), ".eliza", "models"));
+  setEnvIfMissing("MODELS_DIR", path.join(resolveStateDir(), "models"));
+  const documentEmbeddingProvider = process.env.EMBEDDING_PROVIDER?.trim();
+  if (
+    !documentEmbeddingProvider ||
+    !["local", "openai", "google"].includes(
+      documentEmbeddingProvider.toLowerCase(),
+    )
+  ) {
+    process.env.EMBEDDING_PROVIDER = "local";
+  }
 
   // Normalize Google AI API key aliases — the elizaOS plugin and @google/genai
   // SDK expect different env var names. Canonicalize to the long form that
@@ -880,6 +897,53 @@ export function configureLocalEmbeddingPlugin(
   logger.info(
     `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
   );
+}
+
+const LOCAL_INFERENCE_RUNTIME_MODEL_KEYS = new Set([
+  "TEXT_SMALL",
+  "TEXT_LARGE",
+  "TEXT_EMBEDDING",
+  "RESPONSE_HANDLER",
+  "ACTION_PLANNER",
+  "TEXT_COMPLETION",
+  "TEXT_TO_SPEECH",
+  "TRANSCRIPTION",
+  "IMAGE_DESCRIPTION",
+]);
+
+function moveLocalInferenceModelsToRuntimeHandlers(plugin: Plugin): void {
+  if (!plugin.models) return;
+  const nextModels = { ...plugin.models };
+  let removed = 0;
+  for (const modelType of LOCAL_INFERENCE_RUNTIME_MODEL_KEYS) {
+    if (modelType in nextModels) {
+      delete nextModels[modelType as keyof typeof nextModels];
+      removed += 1;
+    }
+  }
+  if (removed === 0) return;
+  plugin.models =
+    Object.keys(nextModels).length > 0
+      ? (nextModels as NonNullable<Plugin["models"]>)
+      : undefined;
+  logger.info(
+    `[eliza] plugin-local-inference model handlers moved to runtime router (${removed} static handler(s) deferred)`,
+  );
+}
+
+async function ensureLocalInferenceRuntimeHandlers(
+  runtime: AgentRuntime,
+): Promise<void> {
+  try {
+    const { ensureLocalInferenceHandler } = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
+    await ensureLocalInferenceHandler(runtime);
+  } catch (err) {
+    logger.warn(
+      `[eliza] plugin-local-inference runtime handler registration skipped: ${formatError(err)}`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1637,7 +1701,7 @@ export async function autoFetchCloudGithubToken(
     if (!res.ok) {
       // 404 = no GitHub connection for this agent, which is fine
       if (res.status !== 404) {
-        logger.warn(
+        logger.info(
           `[eliza] Failed to fetch cloud GitHub token: ${res.status}`,
         );
       }
@@ -1655,7 +1719,7 @@ export async function autoFetchCloudGithubToken(
       `[eliza] Fetched GitHub token from cloud for @${body.data.githubUsername || "unknown"}`,
     );
   } catch (err) {
-    logger.warn(`[eliza] Could not fetch cloud GitHub token: ${err}`);
+    logger.info(`[eliza] Could not fetch cloud GitHub token: ${err}`);
   }
 }
 
@@ -1671,7 +1735,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   if (!cloud && !isCloudContainer) return;
   const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
 
-  // Cloud inference is selected from the canonical onboarding connection, not
+  // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
   // Eliza Cloud after the user has switched to a local or remote provider.
   const effectivelyEnabled = topology.services.inference || isCloudContainer;
@@ -1852,7 +1916,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
  * credentials (or use the explicit `connectionString` field) and set
  * `POSTGRES_URL`. When the provider is "pglite" (the default), we set
  * `PGLITE_DATA_DIR` to either the configured value or the resolved default
- * workspace (`<workspace>/.eliza/.elizadb`) and remove any stale
+ * workspace (`<workspace>/.elizadb`) and remove any stale
  * `POSTGRES_URL`.
  */
 /** @internal Exported for testing. */
@@ -1871,7 +1935,7 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
 function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
+  return path.join(resolveUserPath(workspaceDir), ".elizadb");
 }
 
 /**
@@ -1913,7 +1977,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       const password = pg.password ? encodeURIComponent(pg.password) : "";
       const database = pg.database ?? "postgres";
       const auth = password ? `${user}:${password}` : user;
-      const sslParam = pg.ssl ? "?sslmode=require" : "";
+      const sslParam = pg.ssl ? "?sslmode=verify-full" : "";
       url = `postgresql://${auth}@${host}:${port}/${database}${sslParam}`;
     }
     process.env.POSTGRES_URL = url;
@@ -2791,6 +2855,86 @@ async function registerSqlPluginWithRecovery(
   await initializeDatabaseAdapter(runtime, config);
 }
 
+const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
+  ["@elizaos/plugin-coding-tools", ["@elizaos/plugin-shell"]],
+  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-shell"]],
+  ["@elizaos/plugin-lifeops", ["@elizaos/plugin-google"]],
+]);
+
+async function preregisterCorePluginsInDependencyWaves(args: {
+  runtime: AgentRuntime;
+  resolvedPlugins: RuntimeResolvedPlugin[];
+  alreadyPreRegistered: Set<string>;
+  label?: string;
+}): Promise<void> {
+  const pending = new Map<string, RuntimeResolvedPlugin>();
+  for (const name of CORE_PLUGINS) {
+    if (args.alreadyPreRegistered.has(name)) continue;
+    const resolved = args.resolvedPlugins.find((p) => p.name === name);
+    if (!resolved) {
+      logger.debug(
+        `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
+      );
+      continue;
+    }
+    pending.set(name, resolved);
+  }
+
+  const registered = new Set(args.alreadyPreRegistered);
+  const timeoutMs = 30_000;
+  const context = args.label ? `${args.label}: ` : "";
+
+  const registerOne = async (
+    name: string,
+    resolved: RuntimeResolvedPlugin,
+  ): Promise<void> => {
+    try {
+      const regStart = Date.now();
+      logger.info(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
+      await Promise.race([
+        args.runtime.registerPlugin(resolved.plugin),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
+            timeoutMs,
+          ),
+        ),
+      ]);
+      registered.add(name);
+      logger.info(
+        `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
+      );
+    } catch (err) {
+      registered.add(name);
+      logger.warn(
+        `[eliza] ${context}Core plugin ${name} pre-registration failed: ${formatError(err)}`,
+      );
+    } finally {
+      pending.delete(name);
+    }
+  };
+
+  while (pending.size > 0) {
+    const ready: Array<[string, RuntimeResolvedPlugin]> = [];
+    for (const [name, resolved] of pending) {
+      const declaredDependencies = resolved.plugin.dependencies ?? [];
+      const bootDependencies = CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? [];
+      const dependencies = [...declaredDependencies, ...bootDependencies];
+      const hasPendingDependency = dependencies.some(
+        (dependency) => pending.has(dependency) && !registered.has(dependency),
+      );
+      if (!hasPendingDependency) {
+        ready.push([name, resolved]);
+      }
+    }
+
+    const wave = ready.length > 0 ? ready : Array.from(pending);
+    await Promise.all(
+      wave.map(([name, resolved]) => registerOne(name, resolved)),
+    );
+  }
+}
+
 export {
   buildCharacterFromConfig,
   resolvePreferredProviderId,
@@ -2892,9 +3036,9 @@ export interface StartElizaOptions {
 
 export interface BootElizaRuntimeOptions {
   /**
-   * When true, require an existing ~/.eliza/eliza.json config file.
+   * When true, require an existing state-dir config file.
    * This is used by non-CLI UIs (like the @elizaos/tui interface) where interactive
-   * onboarding prompts would break the alternate screen.
+   * first-run prompts would break the alternate screen.
    */
   requireConfig?: boolean;
 }
@@ -2983,11 +3127,14 @@ export const logToChatListener = (entry: LogEntry) => {
 export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  const bootTimer = new BootTimer("[eliza-boot]");
+
   // Resolve and register baseline `@elizaos/plugin-*` modules into the
   // STATIC_ELIZA_PLUGINS map BEFORE any plugin resolution happens. See the
   // comment on `ensureCoreStaticPluginsRegistered()` for why this isn't a
   // module-init top-level await.
   await ensureCoreStaticPluginsRegistered();
+  bootTimer.lap("static-plugins-import");
 
   // Start buffering logs early so startup messages appear in the UI log viewer
   const { captureEarlyLogs } = await import("../api/early-logs.ts");
@@ -2996,7 +3143,7 @@ export async function startEliza(
   // Register log listener for chat mirroring
   addLogListener(logToChatListener);
 
-  // 1. Load Eliza config from ~/.eliza/eliza.json
+  // 1. Load Eliza config from the resolved state dir.
   let config: ElizaConfig;
   try {
     config = loadElizaConfig();
@@ -3011,10 +3158,10 @@ export async function startEliza(
     }
   }
 
-  // 1b. First-run onboarding — ask for agent name if not configured.
-  //     In headless mode (GUI) the onboarding is handled by the web UI,
+  // 1b. First-run setup — ask for agent name if not configured.
+  //     In headless mode (GUI) the first-run setup is handled by the web UI,
   //     so we skip the interactive CLI prompt and let the runtime start
-  //     with defaults.  The GUI will restart the agent after onboarding.
+  //     with defaults.  The GUI will restart the agent after first-run setup.
   if (!opts?.headless) {
     config = await runFirstTimeSetup(config);
   }
@@ -3288,7 +3435,7 @@ export async function startEliza(
     );
   }
 
-  // 2h. Cloud mode — if the user chose cloud during onboarding (or on a
+  // 2h. Cloud mode — if the user chose cloud during first-run setup (or on a
   //     subsequent start with cloud config), skip local runtime setup and
   //     connect via the thin client instead.
   const deploymentTarget = resolveDeploymentTargetInConfig(
@@ -3298,7 +3445,7 @@ export async function startEliza(
   // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
   // policy is incompatible with running an embedded local AgentRuntime, so
   // store builds must route to Eliza Cloud. If the cloud config is missing,
-  // fail loudly and route the user to onboarding.
+  // fail loudly and route the user to first-run setup.
   const { isStoreBuild, getBuildVariant } = await importAppCoreRuntime();
 
   // Boot-time observability: print the resolved (buildVariant, deploymentTarget,
@@ -3316,13 +3463,13 @@ export async function startEliza(
     if (deploymentTarget.runtime === "local") {
       throw new Error(
         "[eliza] Store-variant builds cannot run a local agent. " +
-          "Pair an Eliza Cloud account in onboarding, or switch to the direct download build.",
+          "Pair an Eliza Cloud account in first-run setup, or switch to the direct download build.",
       );
     }
     if (!config.cloud?.apiKey?.trim() || !config.cloud?.agentId?.trim()) {
       throw new Error(
         "[eliza] Store-variant build requires a paired Eliza Cloud account. " +
-          "Run onboarding to link Eliza Cloud, or switch to the direct download build.",
+          "Run first-run setup to link Eliza Cloud, or switch to the direct download build.",
       );
     }
     return startInCloudMode(config, config.cloud.agentId, opts);
@@ -3422,6 +3569,7 @@ export async function startEliza(
 
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
+  bootTimer.lap("pre-resolve-setup");
 
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
@@ -3430,18 +3578,19 @@ export async function startEliza(
   });
 
   // 6. Resolve and load plugins
-  // In headless (GUI) mode before onboarding, the user hasn't configured a
+  // In headless (GUI) mode before first-run setup, the user hasn't configured a
   // provider yet.  Downgrade diagnostics so the expected "no AI provider"
   // state doesn't appear as a scary Error in the terminal.
   const preOnboarding = opts?.headless && !config.agents;
   const resolvedPlugins = await resolvePlugins(config, {
     quiet: preOnboarding,
   });
+  bootTimer.lap("resolve-plugins-import");
 
   if (resolvedPlugins.length === 0) {
     if (preOnboarding) {
       logger.info(
-        "[eliza] No plugins loaded yet — the onboarding wizard will configure a model provider",
+        "[eliza] No plugins loaded yet — the first-run setup will configure a model provider",
       );
     } else {
       logger.error(
@@ -3766,7 +3915,7 @@ export async function startEliza(
       ...(config.skills?.denyBundled
         ? { SKILLS_DENYLIST: config.skills.denyBundled.join(",") }
         : {}),
-      // Managed skills are stored in the Eliza state dir (~/.eliza/skills).
+      // Managed skills are stored in the Eliza state dir.
       SKILLS_DIR: managedSkillsDir,
       // Tell plugin-agent-skills where to find bundled + workspace skills
       ...(bundledSkillsDir ? { BUNDLED_SKILLS_DIRS: bundledSkillsDir } : {}),
@@ -3824,6 +3973,7 @@ export async function startEliza(
     //     BEFORE other plugins run their init(). When legacy/corrupt PGLite
     //     state causes startup aborts, reset the local DB dir and retry once.
     await registerSqlPluginWithRecovery(runtime, sqlPlugin, config);
+    bootTimer.lap("register-sql");
   } else {
     const loadedNames = resolvedPlugins.map((p) => p.name).join(", ");
     logger.error(
@@ -3844,9 +3994,12 @@ export async function startEliza(
   //     must not abort the app before the user can activate one.
   if (localEmbeddingPlugin) {
     configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
+    moveLocalInferenceModelsToRuntimeHandlers(localEmbeddingPlugin.plugin);
     await runtime.registerPlugin(localEmbeddingPlugin.plugin);
+    await ensureLocalInferenceRuntimeHandlers(runtime);
+    bootTimer.lap("register-local-inference");
     logger.info(
-      "[eliza] plugin-local-inference pre-registered (TEXT_EMBEDDING deferred until a local backend is active)",
+      "[eliza] plugin-local-inference pre-registered with runtime local handlers (TEXT_EMBEDDING follows ELIZA_DISABLE_LOCAL_EMBEDDINGS)",
     );
   } else {
     logger.warn(
@@ -3870,44 +4023,16 @@ export async function startEliza(
       );
     }
 
-    const alreadyPreRegistered = new Set([
+    const alreadyPreRegistered = new Set<string>([
       "@elizaos/plugin-sql",
       "@elizaos/plugin-local-inference",
     ]);
-    for (const name of CORE_PLUGINS) {
-      if (alreadyPreRegistered.has(name)) continue;
-      const resolved = resolvedPlugins.find((p) => p.name === name);
-      if (!resolved) {
-        logger.debug(
-          `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
-        );
-        continue;
-      }
-      try {
-        const regStart = Date.now();
-        logger.info(`[eliza] Pre-registering core plugin: ${name}...`);
-        const PLUGIN_REG_TIMEOUT_MS = 30_000;
-        await Promise.race([
-          runtime.registerPlugin(resolved.plugin),
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(`Timed out after ${PLUGIN_REG_TIMEOUT_MS / 1000}s`),
-                ),
-              PLUGIN_REG_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-        logger.info(
-          `[eliza] ✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
-        );
-      } catch (err) {
-        logger.warn(
-          `[eliza] Core plugin ${name} pre-registration failed: ${formatError(err)}`,
-        );
-      }
-    }
+    await preregisterCorePluginsInDependencyWaves({
+      runtime,
+      resolvedPlugins,
+      alreadyPreRegistered,
+    });
+    bootTimer.lap("core-plugin-waves");
   }
 
   const warmAgentSkillsService = async (): Promise<void> => {
@@ -4219,7 +4344,7 @@ export async function startEliza(
   };
 
   const isAutonomyEnabled = (): boolean =>
-    (process.env.ENABLE_AUTONOMY ?? "true").toLowerCase() !== "false";
+    ["true", "1"].includes((process.env.ENABLE_AUTONOMY ?? "").toLowerCase());
 
   const startAutonomyServiceIfEnabled = async (
     autonomyEnabled: boolean,
@@ -4266,8 +4391,14 @@ export async function startEliza(
     await runStewardEvmPreBoot();
     await registerConnectorSetupService();
     await registerRemoteCodingRunner();
+    bootTimer.lap("svc:pre-init");
+
     await initializeCoreRuntime();
+    bootTimer.lap("svc:runtime.initialize");
+
     await runTeeBootGate();
+    bootTimer.lap("svc:tee-gate");
+
     await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
@@ -4275,10 +4406,13 @@ export async function startEliza(
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
     await installAnthropicWebSearchIfAvailable();
-    const autonomyEnabled = isAutonomyEnabled();
-    await startAutonomyServiceIfEnabled(autonomyEnabled);
-    await enableAutonomyLoopIfAvailable(autonomyEnabled);
+    bootTimer.lap("svc:post-init");
+
+    const autonomyLoopEnabled = isAutonomyEnabled();
+    await startAutonomyServiceIfEnabled(true);
+    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
+    bootTimer.lap("svc:autonomy+warmup");
   };
 
   try {
@@ -4314,6 +4448,8 @@ export async function startEliza(
       pgliteRecoveryAttempted: true,
     });
   }
+
+  bootTimer.summary();
 
   installActionAliases(runtime);
 
@@ -4434,7 +4570,7 @@ export async function startEliza(
           // (especially plugin-elizacloud) can discover them.  The initial
           // startup does this in startEliza(); the hot-reload must repeat it
           // because the config may have changed (e.g. cloud enabled during
-          // onboarding).
+          // first-run setup).
           applyConnectorSecretsToEnv(freshConfig);
           await autoResolveDiscordAppId();
           applyCloudConfigToEnv(freshConfig);
@@ -4468,7 +4604,7 @@ export async function startEliza(
           }
 
           // Apply subscription-based credentials (Claude Max, Codex Max)
-          // that may have been set up during onboarding.
+          // that may have been set up during first-run setup.
           try {
             const { applySubscriptionCredentials } = await import(
               "../auth/index.ts"
@@ -4483,7 +4619,7 @@ export async function startEliza(
           // Resolve plugins using same function as startup
           const resolvedPlugins = await resolvePlugins(freshConfig);
 
-          // Rebuild character from the fresh config so onboarding changes
+          // Rebuild character from the fresh config so first-run changes
           // (name, bio, style, etc.) are picked up on restart.
           const freshCharacter = buildCharacterFromConfig(freshConfig);
 
@@ -4560,7 +4696,11 @@ export async function startEliza(
               freshLocalEmbeddingPlugin.plugin,
               freshConfig,
             );
+            moveLocalInferenceModelsToRuntimeHandlers(
+              freshLocalEmbeddingPlugin.plugin,
+            );
             await newRuntime.registerPlugin(freshLocalEmbeddingPlugin.plugin);
+            await ensureLocalInferenceRuntimeHandlers(newRuntime);
           }
 
           // Pre-register remaining core plugins sequentially (same as startup)
@@ -4573,22 +4713,16 @@ export async function startEliza(
               );
             }
 
-            const alreadyPreRegistered = new Set([
+            const alreadyPreRegistered = new Set<string>([
               "@elizaos/plugin-sql",
               "@elizaos/plugin-local-inference",
             ]);
-            for (const name of CORE_PLUGINS) {
-              if (alreadyPreRegistered.has(name)) continue;
-              const resolved = resolvedPlugins.find((p) => p.name === name);
-              if (!resolved) continue;
-              try {
-                await newRuntime.registerPlugin(resolved.plugin);
-              } catch (err) {
-                logger.warn(
-                  `[eliza] Hot-reload: core plugin ${name} pre-registration failed: ${formatError(err)}`,
-                );
-              }
-            }
+            await preregisterCorePluginsInDependencyWaves({
+              runtime: newRuntime,
+              resolvedPlugins,
+              alreadyPreRegistered,
+              label: "Hot-reload",
+            });
           }
 
           assertPersistentDatabaseRequired(newRuntime);
@@ -4643,11 +4777,10 @@ export async function startEliza(
             // non-fatal
           }
 
-          // Ensure AutonomyService survives hot-reload (respects ENABLE_AUTONOMY)
-          const hotReloadAutonomyEnabled =
-            (process.env.ENABLE_AUTONOMY ?? "true").toLowerCase() !== "false";
+          // Ensure AutonomyService survives hot-reload; the loop remains opt-in.
+          const hotReloadAutonomyLoopEnabled = isAutonomyEnabled();
 
-          if (hotReloadAutonomyEnabled && !newRuntime.getService("AUTONOMY")) {
+          if (!newRuntime.getService("AUTONOMY")) {
             try {
               await startAndRegisterAutonomyService(newRuntime);
             } catch (err) {
@@ -4657,8 +4790,8 @@ export async function startEliza(
             }
           }
 
-          // Enable the autonomy loop after hot-reload (same as initial boot)
-          if (hotReloadAutonomyEnabled) {
+          // Enable the autonomy loop after hot-reload only when explicitly requested.
+          if (hotReloadAutonomyLoopEnabled) {
             const svc = getAutonomyService(newRuntime);
             if (svc) {
               try {
@@ -4743,7 +4876,7 @@ export async function startEliza(
       metadata: { ownership: { ownerId: userId } },
     });
     // Ensure the world has ownership metadata so the settings
-    // provider can locate it via findWorldsForOwner during onboarding.
+    // provider can locate it via findWorldsForOwner during first-run setup.
     // This also handles worlds that already exist from a prior session
     // but were created without ownership metadata.
     const world = await runtime.getWorld(worldId);

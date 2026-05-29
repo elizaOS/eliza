@@ -30,12 +30,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -55,8 +55,8 @@ jobs:
         working-directory: packages
         run: bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/llm-proxy-plugin.test.ts
 
-      - name: UI assistant app-flow coverage
-        run: bun run --cwd packages/ui test:slow -- src/onboarding/__e2e__/assistant-view-manager-flow.test.tsx src/onboarding/__e2e__/assistant-voice-flow.test.tsx
+      - name: UI voice interaction coverage
+        run: bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx
 
       - name: UI dynamic view interaction coverage
         run: bun run --cwd packages/ui test -- src/App.navigate-view-wiring.test.tsx src/app-navigate-view.test.ts src/components/pages/ViewManagerPage.test.tsx src/components/shell/__tests__/shell-assistant-flow.test.tsx src/components/views/DynamicViewLoader.test.tsx src/hooks/useAvailableViews.test.tsx src/hooks/useDesktopTabs.test.tsx src/state/startup-phase-hydrate.view-interact.test.ts
@@ -65,7 +65,7 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app assistant pill browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures onboarding, assistant home, chat suppression, and view pill states"
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"
 
       - name: Actual app assistant voice browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"
@@ -102,7 +102,7 @@ jobs:
 
       - name: Upload scenario report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: scenario-pr-deterministic-report
           path: reports/scenarios/pr-deterministic/

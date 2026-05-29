@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-device-settings",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "description": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
   "main": "./dist/index.js",
@@ -24,7 +24,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",

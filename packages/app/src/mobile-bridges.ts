@@ -16,7 +16,7 @@ import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
-} from "@elizaos/ui/onboarding/mobile-runtime-mode";
+} from "@elizaos/ui/first-run/mobile-runtime-mode";
 import { apiBaseToDeviceBridgeUrl, type IosRuntimeConfig } from "./ios-runtime";
 import type { UrlTrustPolicy } from "./url-trust-policy";
 

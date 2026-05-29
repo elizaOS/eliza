@@ -51,7 +51,7 @@ let globalTokenRetryTimeout: number | null = null;
 /**
  * Main authentication hook.
  *
- * Phase 2: Backed by Steward auth (StewardAuth SDK) instead of Privy.
+ * Backed by Steward auth.
  * Authentication state comes from the Steward session (localStorage-backed
  * JWT) and an httpOnly `steward-token` cookie set by /api/auth/session.
  *
@@ -91,28 +91,16 @@ export function useAuth(): UseAuthReturn {
     return stewardAuth.getToken() ?? null;
   }, [devAuthSession, stewardAuth]);
 
-  // TODO: Phase 3 — rename window.__privyAccessToken / __privyGetAccessToken
-  // to window.__accessToken / __getAccessToken once all consumers have migrated.
-  // Keep window-level token in sync for apiFetch legacy compatibility
+  // Keep window-level token helpers in sync for apiFetch.
   useEffect(() => {
     const token = stewardAuth.getToken();
     if (typeof window !== "undefined") {
-      (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = token;
-      (
-        window as Window & {
-          __privyGetAccessToken?: () => Promise<string | null>;
-        }
-      ).__privyGetAccessToken = getAccessToken;
+      window.__accessToken = token;
+      window.__getAccessToken = getAccessToken;
     }
     return () => {
       if (typeof window !== "undefined") {
-        (
-          window as Window & {
-            __privyGetAccessToken?: () => Promise<string | null>;
-          }
-        ).__privyGetAccessToken = undefined;
+        window.__getAccessToken = undefined;
       }
     };
   }, [getAccessToken, stewardAuth]);
@@ -364,9 +352,7 @@ export function useAuth(): UseAuthReturn {
       setDevAuthSession(null);
       clearAuth();
       if (typeof window !== "undefined") {
-        (
-          window as Window & { __privyAccessToken?: string | null }
-        ).__privyAccessToken = null;
+        window.__accessToken = null;
         localStorage.removeItem("feed-auth");
       }
       globalFetchInFlight = null;
@@ -391,9 +377,7 @@ export function useAuth(): UseAuthReturn {
     clearAuth();
 
     if (typeof window !== "undefined") {
-      (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = null;
+      window.__accessToken = null;
       removeStorageItem("localStorage", "feed-auth");
     }
 

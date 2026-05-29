@@ -6,28 +6,27 @@
  * or an appropriate error/auth event.
  */
 
-import { logger } from "@elizaos/core";
 import { getStylePresets } from "@elizaos/shared";
-import type { OnboardingOptions } from "../api";
+import type { FirstRunOptions } from "../api";
 import { client } from "../api";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
+import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
-import type { OnboardingServerTarget } from "../onboarding/server-target";
 import {
   asApiLikeError,
-  clearPersistedOnboardingStep,
-  deriveOnboardingResumeFieldsFromConfig,
+  clearPersistedSetupStep,
+  deriveFirstRunResumeFieldsFromConfig,
   formatStartupErrorDetail,
-  inferOnboardingResumeStep,
+  inferSetupResumeStep,
   type StartupErrorState,
 } from "./internal";
 import {
-  loadPersistedOnboardingStep,
+  loadPersistedSetupStep,
   savePersistedActiveServer,
 } from "./persistence";
 import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
-import type { OnboardingStep } from "./types";
+import type { SetupStep } from "./types";
 
 function isCapacitorNative(): boolean {
   try {
@@ -43,81 +42,81 @@ function isCapacitorNative(): boolean {
 export interface PollingBackendDeps {
   setStartupError: (v: StartupErrorState | null) => void;
   setAuthRequired: (v: boolean) => void;
-  setOnboardingComplete: (v: boolean) => void;
-  setOnboardingLoading: (v: boolean) => void;
-  setOnboardingOptions: (v: OnboardingOptions) => void;
-  setOnboardingStep: (v: OnboardingStep) => void;
-  setOnboardingServerTarget: (v: OnboardingServerTarget) => void;
-  setOnboardingCloudApiKey: (v: string) => void;
-  setOnboardingProvider: (v: string) => void;
-  setOnboardingVoiceProvider: (v: string) => void;
-  setOnboardingApiKey: (v: string) => void;
-  setOnboardingPrimaryModel: (v: string) => void;
-  setOnboardingOpenRouterModel: (v: string) => void;
-  setOnboardingRemoteConnected: (v: boolean) => void;
-  setOnboardingRemoteApiBase: (v: string) => void;
-  setOnboardingRemoteToken: (v: string) => void;
-  setOnboardingSmallModel: (v: string) => void;
-  setOnboardingLargeModel: (v: string) => void;
-  setOnboardingCloudProvisionedContainer: (v: boolean) => void;
+  setFirstRunComplete: (v: boolean) => void;
+  setFirstRunLoading: (v: boolean) => void;
+  setFirstRunOptions: (v: FirstRunOptions) => void;
+  setSetupStep: (v: SetupStep) => void;
+  setFirstRunRuntimeTarget: (v: FirstRunRuntimeTarget) => void;
+  setFirstRunCloudApiKey: (v: string) => void;
+  setFirstRunProvider: (v: string) => void;
+  setFirstRunVoiceProvider: (v: string) => void;
+  setFirstRunApiKey: (v: string) => void;
+  setFirstRunPrimaryModel: (v: string) => void;
+  setFirstRunOpenRouterModel: (v: string) => void;
+  setFirstRunRemoteConnected: (v: boolean) => void;
+  setFirstRunRemoteApiBase: (v: string) => void;
+  setFirstRunRemoteToken: (v: string) => void;
+  setFirstRunSmallModel: (v: string) => void;
+  setFirstRunLargeModel: (v: string) => void;
+  setFirstRunCloudProvisionedContainer: (v: boolean) => void;
   setPairingEnabled: (v: boolean) => void;
   setPairingExpiresAt: (v: number | null) => void;
   applyDetectedProviders: (
     detected: Awaited<ReturnType<typeof scanProviderCredentials>>,
   ) => void;
-  onboardingCompletionCommittedRef: React.MutableRefObject<boolean>;
+  firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   uiLanguage: UiLanguage;
 }
 
-/** Apply resume fields derived from a partial config to the onboarding state. */
-function applyOnboardingResumeFields(
-  rf: ReturnType<typeof deriveOnboardingResumeFieldsFromConfig>,
+/** Apply resume fields derived from a partial config to the first-run state. */
+function applyFirstRunResumeFields(
+  rf: ReturnType<typeof deriveFirstRunResumeFieldsFromConfig>,
   deps: Pick<
     PollingBackendDeps,
-    | "setOnboardingServerTarget"
-    | "setOnboardingCloudApiKey"
-    | "setOnboardingProvider"
-    | "setOnboardingVoiceProvider"
-    | "setOnboardingApiKey"
-    | "setOnboardingPrimaryModel"
-    | "setOnboardingOpenRouterModel"
-    | "setOnboardingRemoteConnected"
-    | "setOnboardingRemoteApiBase"
-    | "setOnboardingRemoteToken"
-    | "setOnboardingSmallModel"
-    | "setOnboardingLargeModel"
+    | "setFirstRunRuntimeTarget"
+    | "setFirstRunCloudApiKey"
+    | "setFirstRunProvider"
+    | "setFirstRunVoiceProvider"
+    | "setFirstRunApiKey"
+    | "setFirstRunPrimaryModel"
+    | "setFirstRunOpenRouterModel"
+    | "setFirstRunRemoteConnected"
+    | "setFirstRunRemoteApiBase"
+    | "setFirstRunRemoteToken"
+    | "setFirstRunSmallModel"
+    | "setFirstRunLargeModel"
   >,
 ): void {
-  if (rf.onboardingServerTarget !== undefined)
-    deps.setOnboardingServerTarget(rf.onboardingServerTarget);
-  if (rf.onboardingCloudApiKey !== undefined)
-    deps.setOnboardingCloudApiKey(rf.onboardingCloudApiKey);
-  if (rf.onboardingProvider !== undefined)
-    deps.setOnboardingProvider(rf.onboardingProvider);
-  if (rf.onboardingVoiceProvider !== undefined)
-    deps.setOnboardingVoiceProvider(rf.onboardingVoiceProvider);
-  if (rf.onboardingApiKey !== undefined)
-    deps.setOnboardingApiKey(rf.onboardingApiKey);
-  if (rf.onboardingPrimaryModel !== undefined)
-    deps.setOnboardingPrimaryModel(rf.onboardingPrimaryModel);
-  if (rf.onboardingOpenRouterModel !== undefined)
-    deps.setOnboardingOpenRouterModel(rf.onboardingOpenRouterModel);
-  if (rf.onboardingRemoteConnected !== undefined)
-    deps.setOnboardingRemoteConnected(rf.onboardingRemoteConnected);
-  if (rf.onboardingRemoteApiBase !== undefined)
-    deps.setOnboardingRemoteApiBase(rf.onboardingRemoteApiBase);
-  if (rf.onboardingRemoteToken !== undefined)
-    deps.setOnboardingRemoteToken(rf.onboardingRemoteToken);
-  if (rf.onboardingSmallModel !== undefined)
-    deps.setOnboardingSmallModel(rf.onboardingSmallModel);
-  if (rf.onboardingLargeModel !== undefined)
-    deps.setOnboardingLargeModel(rf.onboardingLargeModel);
+  if (rf.firstRunRuntimeTarget !== undefined)
+    deps.setFirstRunRuntimeTarget(rf.firstRunRuntimeTarget);
+  if (rf.firstRunCloudApiKey !== undefined)
+    deps.setFirstRunCloudApiKey(rf.firstRunCloudApiKey);
+  if (rf.firstRunProvider !== undefined)
+    deps.setFirstRunProvider(rf.firstRunProvider);
+  if (rf.firstRunVoiceProvider !== undefined)
+    deps.setFirstRunVoiceProvider(rf.firstRunVoiceProvider);
+  if (rf.firstRunApiKey !== undefined)
+    deps.setFirstRunApiKey(rf.firstRunApiKey);
+  if (rf.firstRunPrimaryModel !== undefined)
+    deps.setFirstRunPrimaryModel(rf.firstRunPrimaryModel);
+  if (rf.firstRunOpenRouterModel !== undefined)
+    deps.setFirstRunOpenRouterModel(rf.firstRunOpenRouterModel);
+  if (rf.firstRunRemoteConnected !== undefined)
+    deps.setFirstRunRemoteConnected(rf.firstRunRemoteConnected);
+  if (rf.firstRunRemoteApiBase !== undefined)
+    deps.setFirstRunRemoteApiBase(rf.firstRunRemoteApiBase);
+  if (rf.firstRunRemoteToken !== undefined)
+    deps.setFirstRunRemoteToken(rf.firstRunRemoteToken);
+  if (rf.firstRunSmallModel !== undefined)
+    deps.setFirstRunSmallModel(rf.firstRunSmallModel);
+  if (rf.firstRunLargeModel !== undefined)
+    deps.setFirstRunLargeModel(rf.firstRunLargeModel);
 }
 
 /**
  * Runs the polling-backend phase.
- * Polls /auth/status and /onboarding/status until the backend is reachable
- * and onboarding state is determined.
+ * Polls /auth/status and /first-run/status until the backend is reachable
+ * and first-run state is determined.
  *
  * @param deps - Coordinator dependency bag
  * @param dispatch - startupReducer dispatch
@@ -184,7 +183,7 @@ export async function runPollingBackend(
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
       deps.setStartupError(describeBackendFailure(lastErr, true));
-      deps.setOnboardingLoading(false);
+      deps.setFirstRunLoading(false);
       dispatch({ type: "BACKEND_TIMEOUT" });
       return;
     }
@@ -195,16 +194,16 @@ export async function runPollingBackend(
       if (auth.required && !auth.authenticated && !client.hasToken()) {
         if (auth.bootstrapRequired) {
           deps.setAuthRequired(false);
-          deps.setOnboardingCloudProvisionedContainer(true);
-          deps.setOnboardingComplete(false);
-          deps.setOnboardingLoading(false);
-          dispatch({ type: "BACKEND_REACHED", onboardingComplete: false });
+          deps.setFirstRunCloudProvisionedContainer(true);
+          deps.setFirstRunComplete(false);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
           return;
         }
         deps.setAuthRequired(true);
         deps.setPairingEnabled(auth.pairingEnabled);
         deps.setPairingExpiresAt(auth.expiresAt);
-        deps.setOnboardingLoading(false);
+        deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
@@ -214,38 +213,36 @@ export async function runPollingBackend(
       // loop polling forever — advance the coordinator to "ready" so the
       // top-level auth gate can render LoginView with an actionable
       // "Remote access blocked" message. Without this, the phone is stuck
-      // on the splash because every onboarding/runtime endpoint returns 401.
+      // in startup because every first-run/runtime endpoint returns 401.
       if (auth.required && !auth.authenticated && client.hasToken()) {
         deps.setAuthRequired(false);
-        deps.setOnboardingComplete(true);
-        deps.setOnboardingLoading(false);
-        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        deps.setFirstRunComplete(true);
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
         return;
       }
-      const onboardingStatusRes = await client.getOnboardingStatus();
-      const { complete, cloudProvisioned } = onboardingStatusRes;
+      const firstRunStatusRes = await client.getFirstRunStatus();
+      const { complete, cloudProvisioned } = firstRunStatusRes;
       if (cancelled.current) return;
-      deps.setOnboardingCloudProvisionedContainer(Boolean(cloudProvisioned));
+      deps.setFirstRunCloudProvisionedContainer(Boolean(cloudProvisioned));
       let sessionComplete =
-        complete ||
-        deps.onboardingCompletionCommittedRef.current ||
-        (ctx?.shouldPreserveCompletedOnboarding ?? false);
+        complete || deps.firstRunCompletionCommittedRef.current;
 
       // Preserve backend-complete installs even when this browser has no prior
       // local state (for example headless/VPS setups or a fresh visit to a
       // cloud-provisioned container). Only clear the optimistic completion
-      // flag when the backend itself still reports onboarding as incomplete.
+      // flag when the backend itself still reports firstRun as incomplete.
       if (
         sessionComplete &&
         !complete &&
         !ctx?.persistedActiveServer &&
-        !ctx?.hadPriorOnboarding
+        !ctx?.hadPriorFirstRun
       ) {
         sessionComplete = false;
       }
 
       if (complete && sessionComplete) {
-        clearPersistedOnboardingStep();
+        clearPersistedSetupStep();
       }
       if (
         sessionComplete &&
@@ -254,42 +251,38 @@ export async function runPollingBackend(
       ) {
         savePersistedActiveServer(ctx.restoredActiveServer);
       }
-      if (!complete && ctx?.shouldPreserveCompletedOnboarding)
-        logger.warn(
-          "[eliza][startup:init] Preserving completed onboarding despite incomplete backend onboarding status.",
-        );
-      deps.setOnboardingComplete(sessionComplete);
+      deps.setFirstRunComplete(sessionComplete);
 
       if (!sessionComplete) {
-        // Fetch onboarding options
+        // Fetch first-run options
         const optDeadline = Date.now() + getBackendStartupTimeoutMs();
         let optErr: unknown = null;
         while (!cancelled.current && effectRunRef.current === effectRunId) {
           if (Date.now() >= optDeadline) {
             deps.setStartupError(describeBackendFailure(optErr, true));
-            deps.setOnboardingLoading(false);
+            deps.setFirstRunLoading(false);
             dispatch({ type: "BACKEND_TIMEOUT" });
             return;
           }
           try {
             const [options, config] = await Promise.all([
-              client.getOnboardingOptions(),
+              client.getFirstRunOptions(),
               client.getConfig().catch(() => null),
             ]);
-            if (deps.onboardingCompletionCommittedRef.current) {
-              deps.setOnboardingLoading(false);
-              dispatch({ type: "ONBOARDING_COMPLETE" });
+            if (deps.firstRunCompletionCommittedRef.current) {
+              deps.setFirstRunLoading(false);
+              dispatch({ type: "FIRST_RUN_COMPLETE" });
               return;
             }
-            const rf = deriveOnboardingResumeFieldsFromConfig(config);
-            deps.setOnboardingOptions({
+            const rf = deriveFirstRunResumeFieldsFromConfig(config);
+            deps.setFirstRunOptions({
               ...options,
               styles:
                 options.styles.length > 0
                   ? options.styles
                   : getStylePresets(deps.uiLanguage),
             });
-            if (!rf.onboardingProvider) {
+            if (!rf.firstRunProvider) {
               try {
                 const det = await scanProviderCredentials();
                 if (det.length > 0) deps.applyDetectedProviders(det);
@@ -300,17 +293,17 @@ export async function runPollingBackend(
                 );
               }
             }
-            applyOnboardingResumeFields(rf, deps);
-            deps.setOnboardingStep(
-              inferOnboardingResumeStep({
-                persistedStep: loadPersistedOnboardingStep(),
+            applyFirstRunResumeFields(rf, deps);
+            deps.setSetupStep(
+              inferSetupResumeStep({
+                persistedStep: loadPersistedSetupStep(),
                 config,
               }),
             );
-            deps.setOnboardingLoading(false);
+            deps.setFirstRunLoading(false);
             dispatch({
               type: "BACKEND_REACHED",
-              onboardingComplete: false,
+              firstRunComplete: false,
             });
             return;
           } catch (err) {
@@ -325,7 +318,7 @@ export async function runPollingBackend(
             }
             if (ae?.status === 404) {
               deps.setStartupError(describeBackendFailure(err, false));
-              deps.setOnboardingLoading(false);
+              deps.setFirstRunLoading(false);
               dispatch({ type: "BACKEND_NOT_FOUND" });
               return;
             }
@@ -337,7 +330,7 @@ export async function runPollingBackend(
         }
         return;
       }
-      dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+      dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
@@ -353,7 +346,7 @@ export async function runPollingBackend(
           deps.setAuthRequired(true);
           deps.setPairingEnabled(latestAuth.pairingEnabled);
           deps.setPairingExpiresAt(latestAuth.expiresAt);
-          deps.setOnboardingLoading(false);
+          deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_AUTH_REQUIRED" });
           return;
         }
@@ -365,16 +358,16 @@ export async function runPollingBackend(
       ) {
         // Bearer-only token (paired but no password session). /api/auth/status
         // returned authenticated:true but a downstream endpoint
-        // (onboarding-status, etc.) still 401s, or the server's auth rate
+        // (firstRun-status, etc.) still 401s, or the server's auth rate
         // limiter starts returning 429 ("Too many authentication attempts")
         // because every poll re-checks bearer-vs-session. /api/auth/me responds
         // with reason="remote_auth_required" in this state. Don't loop forever
         // — advance to ready so the top-level auth gate can render LoginView
         // with an actionable "Sign in" / "Remote access blocked" prompt.
         deps.setAuthRequired(false);
-        deps.setOnboardingComplete(true);
-        deps.setOnboardingLoading(false);
-        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        deps.setFirstRunComplete(true);
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
         return;
       }
       if (
@@ -392,7 +385,7 @@ export async function runPollingBackend(
         deps.setAuthRequired(true);
         deps.setPairingEnabled(latestAuth.pairingEnabled);
         deps.setPairingExpiresAt(latestAuth.expiresAt);
-        deps.setOnboardingLoading(false);
+        deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
@@ -404,7 +397,7 @@ export async function runPollingBackend(
       }
       if (ae?.status === 404) {
         deps.setStartupError(describeBackendFailure(err, false));
-        deps.setOnboardingLoading(false);
+        deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_NOT_FOUND" });
         return;
       }

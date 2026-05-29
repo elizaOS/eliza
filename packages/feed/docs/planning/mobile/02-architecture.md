@@ -75,7 +75,7 @@ These pages exist solely for social sharing previews. They use DB queries in `ge
 |----------|-----------|---------------|
 | **Database** | PostgreSQL via `drizzle-orm` + `postgres` (Neon) | Server-only; stays on Vercel |
 | **Cache/Realtime** | Redis via `ioredis` | Server-only; SSE endpoint stays on Vercel |
-| **Auth** | Privy (`@privy-io/server-auth` server, `@privy-io/react-auth` client) | Server validates JWT on Vercel. Privy officially supports Capacitor. OAuth + embedded wallet verified working. |
+| **Auth** | Steward | Server validates Steward JWT on Vercel. Mobile uses the same app-owned session path as web. |
 | **Storage** | Vercel Blob (`@vercel/blob`) | Server-only; upload API stays on Vercel |
 | **Analytics** | PostHog (`posthog-node` server, `posthog-js` client) | Client PostHog works in WebView ✅ |
 | **Payments** | Stripe server SDK + `@stripe/stripe-js` client | Needs WebView testing. May trigger Apple IAP requirements. |
@@ -91,7 +91,7 @@ These pages exist solely for social sharing previews. They use DB queries in `ge
 - **Data fetching:** `apiFetch()` wrapper + ~190 direct `fetch('/api/...')` calls. All updated to use `apiUrl()`.
 - **Realtime:** SSE via `SSEManager` singleton. Fixed to use `apiUrl()` instead of `window.location.origin`.
 - **Routing:** Next.js App Router with `useRouter` and `next/link` — works in static export ✅
-- **Auth:** Privy React SDK (`usePrivy`, `useWallets`) — ✅ Verified in Capacitor
+- **Auth:** Steward session client — same canonical auth path as web
 - **Web3:** wagmi + viem — pure JS, works in WebView ✅
 - **Styling:** Tailwind CSS 4 + Radix UI — works in WebView ✅
 
@@ -109,7 +109,7 @@ All ~190 `fetch('/api/...')` calls across ~150 files have been updated to use `a
 
 ### Cookie-Based Auth in Cross-Origin Context (LIKELY OK)
 
-`apiFetch()` sends `credentials: 'include'` for cookies. In cross-origin context, SameSite cookies won't be sent. However, `apiFetch()` also sends `Authorization: Bearer <token>` via `getPrivyAccessToken()`. The API middleware checks both cookie and header. Likely OK but needs explicit production testing.
+`apiFetch()` sends `credentials: 'include'` for cookies. In cross-origin context, SameSite cookies won't be sent. However, `apiFetch()` also sends `Authorization: Bearer <token>` via `getAccessToken()`. The API middleware checks both cookie and header. Likely OK but needs explicit production testing.
 
 ### Shared Code Imports `@/app/` Paths (RESOLVED)
 
@@ -137,4 +137,3 @@ apps/web (Vercel)                  apps/mobile (Capacitor)
 ```
 
 The mobile app shares components, hooks, stores, and utilities from `apps/web/src/` via webpack aliases. It has its own page layer (`apps/mobile/src/app/`) that's client-only for static export. The API stays on Vercel — the mobile app calls it cross-origin via `NEXT_PUBLIC_API_URL`.
-

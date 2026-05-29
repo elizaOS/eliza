@@ -1,0 +1,187 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-22 08:55+0000\n"
+"PO-Revision-Date: 2020-12-25 17:43+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"How can I trust Tails?\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/trust/testimonials.inline\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails will never try to harm you or any of our users, as a core principle of "
+"our [social contract](https://community.torproject.org/policies/"
+"social_contract/). As part of that commitment, we have written this page to "
+"help you make an informed decision about whether you can trust Tails."
+msgstr ""
+
+#. type: Plain text
+msgid "We think that Tails is a trustworthy project because:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Our work is public**"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"Tails is [[Free Software|about/license]] and security researchers can "
+"examine our [[!tails_gitlab tails/tails desc=\"source code\"]]."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"Tails is [[audited by independent security researchers|security#audits]] and "
+"we publish the results of these audits."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"Known issues in Tails are described publicly in our [[!tails_gitlab tails/"
+"tails/-/issues desc=\"GitLab issue tracker\"]]. We might hide embargoed "
+"security vulnerabilities in Tails while we work on a solution, but only as a "
+"way of protecting our users."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"The most sensitive parts of Tails are explained in our [[design documents|"
+"contribute/design]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Tails is based on Tor and Debian**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  The software included in Tails is either written by us or inherited from\n"
+"  Debian and other Tor projects:\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[Debian](https://debian.org/) is the Linux distribution with the most "
+"derivatives, including Ubuntu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    Debian and its derivatives\n"
+"    are [the most popular Linux distributions on web\n"
+"    servers](https://w3techs.com/technologies/details/os-linux) across the\n"
+"    Internet.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    The Debian project is coordinated over the Internet by a team of\n"
+"    volunteers whose work is entirely public. All this makes Debian one of the\n"
+"    Free Software projects under the most scrutiny by security researchers.\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[Tor](https://torproject.org/) is the best anonymity network available."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    Tails is made by the Tor Project, the same organization that makes the Tor\n"
+"    software and *Tor Browser*.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    Tor\n"
+"    has partnered with leading research institutions and has been subjected to\n"
+"    intensive academic research. Tor has received awards from institutions\n"
+"    such as the [EFF](https://www.eff.org/awards/pioneer/2012) and the [Free\n"
+"    Software\n"
+"    Foundation](https://www.fsf.org/news/2010-free-software-awards-announced).\n"
+"    Even the NSA qualified Tor as \"[the King of high secure, low latency Internet\n"
+"    Anonymity](https://www.theguardian.com/world/interactive/2013/oct/04/tor-high-secure-internet-anonymity).\"\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Our downloads are verifiable**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Making sure that our users are really downloading an unmodified version of\n"
+"  our work is also critical to trust and security:\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"We provide [[strong and easy-to-use verification mechanisms|contribute/"
+"design/download_verification]] to make sure that our users are downloading a "
+"genuine copy of Tails."
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"Our downloads are [[reproducible|contribute/build/reproducible]] to make "
+"sure that the process of building the downloads from our source code was not "
+"altered by our own infrastructure."
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"However, Tails, like Debian, includes closed source binary firmware in order "
+"to work on as much hardware as possible."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Tails is recommended by renown and diverse people and organizations**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  See also our list of [[supporters|https://www.torproject.org/about/supporters/]].\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/about/trust/testimonials.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "[[!toc levels=2]]\n"
+#~ msgstr "[[!toc levels=2]]\n"
+
+#, no-wrap
+#~ msgid "<a id=\"free_software\"></a>\n"
+#~ msgstr "<a id=\"free_software\"></a>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"trust_debian\"></a>\n"
+#~ msgstr "<a id=\"trust_debian\"></a>\n"

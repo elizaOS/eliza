@@ -248,7 +248,7 @@ def supplier_splits(matrix: dict[str, Any]) -> dict[str, Any]:
     lanes = matrix.get("acceptance_matrix", [])
     if not isinstance(lanes, list):
         lanes = []
-    lane_rows = []
+    lane_rows: list[dict[str, Any]] = []
     for lane in lanes:
         if not isinstance(lane, dict):
             continue
@@ -763,8 +763,8 @@ def routed_board_gap(
     intake_cases = board_step.get("routed_board_intake_cases", [])
     if not isinstance(intake_cases, list):
         intake_cases = []
-    missing_intake_fields = []
-    missing_intake_artifacts = []
+    missing_intake_fields: list[str] = []
+    missing_intake_artifacts: list[str] = []
     for case in intake_cases:
         if not isinstance(case, dict):
             continue

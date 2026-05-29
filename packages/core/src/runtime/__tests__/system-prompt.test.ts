@@ -26,7 +26,7 @@ describe("system prompt helpers", () => {
 	});
 
 	it("substitutes {{name}} / {{agentName}} placeholders in system + bio", () => {
-		// Onboarding presets (packages/shared/dist/onboarding-presets.characters.js)
+		// Character presets (packages/shared/dist/character-presets.characters.js)
 		// persist `{{name}}` tokens so character renames propagate. The runtime
 		// must resolve them before the prompt reaches `useModel(...)`.
 		const prompt = buildCanonicalSystemPrompt({

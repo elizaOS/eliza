@@ -1,0 +1,3695 @@
+{
+  "accepted": false,
+  "body_groups": [
+    {
+      "accepted": false,
+      "candidate_xy_area_m2": 0.01572120295544521,
+      "candidate_xy_area_reduction_fraction": 0.783191872730557,
+      "current_xy_area_m2": 0.07251205549092421,
+      "group": "torso",
+      "link_count": 2,
+      "link_records": [
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.062,
+              "anchor_span_m": 0.052,
+              "candidate_min_extent_m": 0.062,
+              "candidate_reduction_m": 0.06985408432036638,
+              "candidate_scale": 0.4702167575587447,
+              "current_extent_m": 0.13185408432036638,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.14500000000000002,
+              "anchor_span_m": 0.135,
+              "candidate_min_extent_m": 0.13499999046325684,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.13499999046325684,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.14,
+              "anchor_span_m": 0.13,
+              "candidate_min_extent_m": 0.18379999697208405,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.18379999697208405,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.062,
+            0.13499999046325684,
+            0.18379999697208405
+          ],
+          "candidate_xy_area_m2": 0.008369999408721924,
+          "candidate_xy_area_reduction_fraction": 0.5297832424412553,
+          "current_xy_area_m2": 0.017800300125790924,
+          "group": "torso",
+          "link": "IMU_ORIGIN",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.06985408432036638,
+          "ok": true,
+          "protected_anchor_count": 9,
+          "source_bbox_extent_m": [
+            0.13185408432036638,
+            0.13499999046325684,
+            0.18379999697208405
+          ],
+          "source_bbox_max_m": [
+            0.007999998517334461,
+            0.06749999523162842,
+            0.07975500077009201
+          ],
+          "source_bbox_min_m": [
+            -0.12385408580303192,
+            -0.06749999523162842,
+            -0.10404499620199203
+          ],
+          "source_sha256": "4103db420f4b511026f9967711366852243e80904909ff491300117e796194de",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/IMU_ORIGIN.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0362128253533167,
+              "anchor_span_m": 0.0262128253533167,
+              "candidate_min_extent_m": 0.0362128253533167,
+              "candidate_reduction_m": 0.18263419610721643,
+              "candidate_scale": 0.16547095369012055,
+              "current_extent_m": 0.21884702146053314,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.2029999999999999,
+              "anchor_span_m": 0.1929999999999999,
+              "candidate_min_extent_m": 0.2029999999999999,
+              "candidate_reduction_m": 0.0470000000000001,
+              "candidate_scale": 0.8119999999999996,
+              "current_extent_m": 0.25,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.38816702955645,
+              "anchor_span_m": 0.37816702955645,
+              "candidate_min_extent_m": 0.3816669760271907,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.3816669760271907,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.0362128253533167,
+            0.2029999999999999,
+            0.3816669760271907
+          ],
+          "candidate_xy_area_m2": 0.007351203546723286,
+          "candidate_xy_area_reduction_fraction": 0.8656375856036221,
+          "current_xy_area_m2": 0.054711755365133286,
+          "group": "torso",
+          "link": "WAIST_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.18263419610721643,
+          "ok": true,
+          "protected_anchor_count": 8,
+          "source_bbox_extent_m": [
+            0.21884702146053314,
+            0.25,
+            0.3816669760271907
+          ],
+          "source_bbox_max_m": [
+            0.1016249731183052,
+            0.125,
+            0.3781670331954956
+          ],
+          "source_bbox_min_m": [
+            -0.11722204834222794,
+            -0.125,
+            -0.00349994283169508
+          ],
+          "source_sha256": "24d5000c0a90bc5b053c6734ce517d8d23e9957d3ee59994e1b65d3a1db52a7d",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/WAIST_YAW.STL",
+          "z_height_preserved": true
+        }
+      ],
+      "links": [
+        "IMU_ORIGIN",
+        "WAIST_YAW"
+      ],
+      "manufacturing_constraints": {
+        "fabrication_classes": [
+          "ALU_7075",
+          "MJF_PA12",
+          "SML_316L"
+        ],
+        "minimum_envelope_extent_m": 0.003,
+        "minimum_feature_size_m": 0.001,
+        "minimum_wall_thickness_m": 0.0015,
+        "process_records": {
+          "ALU_7075": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process": "CNC machining or sheet/plate fabrication",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "machined functional fits require drawing-specific tolerances"
+          },
+          "MJF_PA12": {
+            "draft_angle_deg": 1.0,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0012,
+            "process": "MJF additive manufacturing or reconstructed molded shell",
+            "requires_flatness_check": false,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": false,
+            "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+          },
+          "SML_316L": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0008,
+            "process": "sheet metal/laser cut or machined stainless",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+          }
+        },
+        "requires_flatness_check": true,
+        "requires_smoothness_check": true,
+        "requires_tool_access_check": true
+      }
+    },
+    {
+      "accepted": false,
+      "candidate_xy_area_m2": 0.000624,
+      "candidate_xy_area_reduction_fraction": 0.9764139816851146,
+      "current_xy_area_m2": 0.026456351880562473,
+      "group": "head",
+      "link_count": 2,
+      "link_records": [
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.05868441063165665,
+              "candidate_scale": 0.16976869288099705,
+              "current_extent_m": 0.07068441063165665,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.04849999967217446,
+              "candidate_scale": 0.19834710851278098,
+              "current_extent_m": 0.060499999672174454,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0473499999999998,
+              "anchor_span_m": 0.0373499999999998,
+              "candidate_min_extent_m": 0.07466627261601388,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.07466627261601388,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.07466627261601388
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.9663268706510599,
+          "current_xy_area_m2": 0.004276406820043072,
+          "group": "head",
+          "link": "NECK_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.05868441063165665,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.07068441063165665,
+            0.060499999672174454,
+            0.07466627261601388
+          ],
+          "source_bbox_max_m": [
+            0.035349905490875244,
+            0.02775000035762787,
+            0.07266627252101898
+          ],
+          "source_bbox_min_m": [
+            -0.0353345051407814,
+            -0.032749999314546585,
+            -0.0020000000949949026
+          ],
+          "source_sha256": "47b311a7138ebae9326216e5b79d85cf2750f0283a133188eaf5b9a14670a7c7",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/NECK_YAW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.04,
+              "anchor_span_m": 0.03,
+              "candidate_min_extent_m": 0.04,
+              "candidate_reduction_m": 0.1287920019030571,
+              "candidate_scale": 0.23697805316020448,
+              "current_extent_m": 0.1687920019030571,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.11940400499105454,
+              "candidate_scale": 0.09132141749269296,
+              "current_extent_m": 0.13140400499105453,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.05,
+              "anchor_span_m": 0.04,
+              "candidate_min_extent_m": 0.18396008387207985,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.18396008387207985,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.04,
+            0.012,
+            0.18396008387207985
+          ],
+          "candidate_xy_area_m2": 0.00048,
+          "candidate_xy_area_reduction_fraction": 0.9783588282707514,
+          "current_xy_area_m2": 0.0221799450605194,
+          "group": "head",
+          "link": "NECK_PITCH",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.1287920019030571,
+          "ok": true,
+          "protected_anchor_count": 5,
+          "source_bbox_extent_m": [
+            0.1687920019030571,
+            0.13140400499105453,
+            0.18396008387207985
+          ],
+          "source_bbox_max_m": [
+            0.09715314954519272,
+            0.06659006327390671,
+            0.13290800154209137
+          ],
+          "source_bbox_min_m": [
+            -0.07163885235786438,
+            -0.06481394171714783,
+            -0.05105208232998848
+          ],
+          "source_sha256": "6467104a3890738a7dd4f946c1533d0f136d75ad6566e9627f57f64cda874798",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/NECK_PITCH.STL",
+          "z_height_preserved": true
+        }
+      ],
+      "links": [
+        "NECK_YAW",
+        "NECK_PITCH"
+      ],
+      "manufacturing_constraints": {
+        "fabrication_classes": [
+          "ALU_7075",
+          "MJF_PA12"
+        ],
+        "minimum_envelope_extent_m": 0.003,
+        "minimum_feature_size_m": 0.001,
+        "minimum_wall_thickness_m": 0.0015,
+        "process_records": {
+          "ALU_7075": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process": "CNC machining or sheet/plate fabrication",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "machined functional fits require drawing-specific tolerances"
+          },
+          "MJF_PA12": {
+            "draft_angle_deg": 1.0,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0012,
+            "process": "MJF additive manufacturing or reconstructed molded shell",
+            "requires_flatness_check": false,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": false,
+            "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+          }
+        },
+        "requires_flatness_check": true,
+        "requires_smoothness_check": true,
+        "requires_tool_access_check": true
+      }
+    },
+    {
+      "accepted": false,
+      "candidate_xy_area_m2": 0.006864477357581186,
+      "candidate_xy_area_reduction_fraction": 0.8986208238265222,
+      "current_xy_area_m2": 0.06771092069080185,
+      "group": "arm",
+      "link_count": 10,
+      "link_records": [
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01010000000000178,
+              "anchor_span_m": 0.000100000000001779,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.07459999817609787,
+              "candidate_scale": 0.13856813224866874,
+              "current_extent_m": 0.08659999817609787,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0753532232325531,
+              "anchor_span_m": 0.0653532232325531,
+              "candidate_min_extent_m": 0.0753532232325531,
+              "candidate_reduction_m": 0.04135322071798077,
+              "candidate_scale": 0.6456646324044595,
+              "current_extent_m": 0.11670644395053387,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.06670644879341125,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.06670644879341125,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.0753532232325531,
+            0.06670644879341125
+          ],
+          "candidate_xy_area_m2": 0.0009042386787906372,
+          "candidate_xy_area_reduction_fraction": 0.9105314578286908,
+          "current_xy_area_m2": 0.010106777833255101,
+          "group": "arm",
+          "link": "LEFT_SHOULDER_PITCH",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.07459999817609787,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.08659999817609787,
+            0.11670644395053387,
+            0.06670644879341125
+          ],
+          "source_bbox_max_m": [
+            0.04334999993443489,
+            0.0987064465880394,
+            0.03335322439670563
+          ],
+          "source_bbox_min_m": [
+            -0.04324999824166298,
+            -0.01799999736249447,
+            -0.03335322439670563
+          ],
+          "source_sha256": "5e7c93c3f5f7e60f7cc139da16237507915db84fa3a6d67bc6b07158b77e7e23",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_PITCH.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.07459999817609787,
+              "candidate_scale": 0.13856813224866874,
+              "current_extent_m": 0.08659999817609787,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0753532232325457,
+              "anchor_span_m": 0.0653532232325457,
+              "candidate_min_extent_m": 0.0753532232325457,
+              "candidate_reduction_m": 0.041353220717988165,
+              "candidate_scale": 0.6456646324043961,
+              "current_extent_m": 0.11670644395053387,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.010063341350411361,
+              "anchor_span_m": 6.33413504113611e-05,
+              "candidate_min_extent_m": 0.08274189755320549,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.08274189755320549,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.0753532232325457,
+            0.08274189755320549
+          ],
+          "candidate_xy_area_m2": 0.0009042386787905484,
+          "candidate_xy_area_reduction_fraction": 0.9105314578286996,
+          "current_xy_area_m2": 0.010106777833255101,
+          "group": "arm",
+          "link": "RIGHT_SHOULDER_PITCH",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.07459999817609787,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.08659999817609787,
+            0.11670644395053387,
+            0.08274189755320549
+          ],
+          "source_bbox_max_m": [
+            0.04324999824166298,
+            0.01799999736249447,
+            0.04133927822113037
+          ],
+          "source_bbox_min_m": [
+            -0.04334999993443489,
+            -0.0987064465880394,
+            -0.04140261933207512
+          ],
+          "source_sha256": "325c6cf9b79c09f53ec05cf5fd7c89e2d430d85f4fa2fe2ae5827879437d9531",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_PITCH.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.0625999999344349,
+              "candidate_scale": 0.16085790898856123,
+              "current_extent_m": 0.07459999993443489,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.02,
+              "anchor_span_m": 0.01,
+              "candidate_min_extent_m": 0.02,
+              "candidate_reduction_m": 0.08000000149011612,
+              "candidate_scale": 0.1999999970197678,
+              "current_extent_m": 0.10000000149011612,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.138998749978194,
+              "anchor_span_m": 0.128998749978194,
+              "candidate_min_extent_m": 0.18338218331336975,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.18338218331336975,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.02,
+            0.18338218331336975
+          ],
+          "candidate_xy_area_m2": 0.00024,
+          "candidate_xy_area_reduction_fraction": 0.9678284186816817,
+          "current_xy_area_m2": 0.0074600001046061515,
+          "group": "arm",
+          "link": "LEFT_SHOULDER_ROLL",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.08000000149011612,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.07459999993443489,
+            0.10000000149011612,
+            0.18338218331336975
+          ],
+          "source_bbox_max_m": [
+            0.03725000098347664,
+            0.05000000074505806,
+            0.049883440136909485
+          ],
+          "source_bbox_min_m": [
+            -0.03734999895095825,
+            -0.05000000074505806,
+            -0.13349874317646027
+          ],
+          "source_sha256": "539c9175e7b60d0df3ffd6d9620825244ae684967a63aec05d3da7aac7879237",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_ROLL.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.0625999999344349,
+              "candidate_scale": 0.16085790898856123,
+              "current_extent_m": 0.07459999993443489,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.02,
+              "anchor_span_m": 0.01,
+              "candidate_min_extent_m": 0.02,
+              "candidate_reduction_m": 0.08000000149011612,
+              "candidate_scale": 0.1999999970197678,
+              "current_extent_m": 0.10000000149011612,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.13899874997841602,
+              "anchor_span_m": 0.128998749978416,
+              "candidate_min_extent_m": 0.18338218331336975,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.18338218331336975,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.02,
+            0.18338218331336975
+          ],
+          "candidate_xy_area_m2": 0.00024,
+          "candidate_xy_area_reduction_fraction": 0.9678284186816817,
+          "current_xy_area_m2": 0.0074600001046061515,
+          "group": "arm",
+          "link": "RIGHT_SHOULDER_ROLL",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.08000000149011612,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.07459999993443489,
+            0.10000000149011612,
+            0.18338218331336975
+          ],
+          "source_bbox_max_m": [
+            0.03725000098347664,
+            0.05000000074505806,
+            0.049883440136909485
+          ],
+          "source_bbox_min_m": [
+            -0.03734999895095825,
+            -0.05000000074505806,
+            -0.13349874317646027
+          ],
+          "source_sha256": "7ea6c316d2292a5e929f91963fde0a72e378343758575c7652a40cbf8d3b51b3",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_ROLL.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.056527895957231525,
+              "candidate_scale": 0.17511116943513397,
+              "current_extent_m": 0.06852789595723152,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.05250000032782555,
+              "candidate_scale": 0.1860465106823132,
+              "current_extent_m": 0.06450000032782555,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.1063013000001065,
+              "anchor_span_m": 0.0963013000001065,
+              "candidate_min_extent_m": 0.13505129981786013,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.13505129981786013,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.13505129981786013
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.967421177945094,
+          "current_xy_area_m2": 0.004420049311706628,
+          "group": "arm",
+          "link": "LEFT_SHOULDER_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.056527895957231525,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.06852789595723152,
+            0.06450000032782555,
+            0.13505129981786013
+          ],
+          "source_bbox_max_m": [
+            0.03374989330768585,
+            0.032749999314546585,
+            0.004999999888241291
+          ],
+          "source_bbox_min_m": [
+            -0.03477800264954567,
+            -0.03175000101327896,
+            -0.13005129992961884
+          ],
+          "source_sha256": "82df3e536649a1d4bb218c157de154de4a94736ae195dc974e4ab97b8e86caa5",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_YAW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.056527895957231525,
+              "candidate_scale": 0.17511116943513397,
+              "current_extent_m": 0.06852789595723152,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.0536999982893467,
+              "candidate_scale": 0.18264840658216286,
+              "current_extent_m": 0.0656999982893467,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.1066012999998862,
+              "anchor_span_m": 0.0966012999998862,
+              "candidate_min_extent_m": 0.13535130489617586,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.13535130489617586,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.13535130489617586
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.9680162239279336,
+          "current_xy_area_m2": 0.004502282647162639,
+          "group": "arm",
+          "link": "RIGHT_SHOULDER_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.056527895957231525,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.06852789595723152,
+            0.0656999982893467,
+            0.13535130489617586
+          ],
+          "source_bbox_max_m": [
+            0.03374989330768585,
+            0.03294999897480011,
+            0.004999999888241291
+          ],
+          "source_bbox_min_m": [
+            -0.03477800264954567,
+            -0.032749999314546585,
+            -0.13035130500793457
+          ],
+          "source_sha256": "3bf54ab880e06c09f841d640374e9a91a99d3146cd2c5df98a79487c0c357f25",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_YAW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.09999999999999999,
+              "anchor_span_m": 0.09,
+              "candidate_min_extent_m": 0.09999999999999999,
+              "candidate_reduction_m": 0.0414158120751381,
+              "candidate_scale": 0.7071345030841901,
+              "current_extent_m": 0.1414158120751381,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.02,
+              "anchor_span_m": 0.01,
+              "candidate_min_extent_m": 0.02,
+              "candidate_reduction_m": 0.05349999994039535,
+              "candidate_scale": 0.272108843758081,
+              "current_extent_m": 0.07349999994039536,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.08263499989467639,
+              "anchor_span_m": 0.0726349998946764,
+              "candidate_min_extent_m": 0.13214801996946335,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.13214801996946335,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.09999999999999999,
+            0.02,
+            0.13214801996946335
+          ],
+          "candidate_xy_area_m2": 0.002,
+          "candidate_xy_area_reduction_fraction": 0.8075824479843159,
+          "current_xy_area_m2": 0.01039406217909361,
+          "group": "arm",
+          "link": "LEFT_ELBOW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.05349999994039535,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.1414158120751381,
+            0.07349999994039536,
+            0.13214801996946335
+          ],
+          "source_bbox_max_m": [
+            0.10767699778079987,
+            0.03674999997019768,
+            0.033748872578144073
+          ],
+          "source_bbox_min_m": [
+            -0.033738814294338226,
+            -0.03674999997019768,
+            -0.09839914739131927
+          ],
+          "source_sha256": "fc697105abe95a3a3b23356527f7180113055d6168f40e66472c834eab485375",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ELBOW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.09999999999999999,
+              "anchor_span_m": 0.09,
+              "candidate_min_extent_m": 0.09999999999999999,
+              "candidate_reduction_m": 0.041486987471580514,
+              "candidate_scale": 0.7067787772362196,
+              "current_extent_m": 0.1414869874715805,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.02,
+              "anchor_span_m": 0.01,
+              "candidate_min_extent_m": 0.02,
+              "candidate_reduction_m": 0.05349999994039535,
+              "candidate_scale": 0.272108843758081,
+              "current_extent_m": 0.07349999994039536,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.08263499989458829,
+              "anchor_span_m": 0.0726349998945883,
+              "candidate_min_extent_m": 0.13205821812152863,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.13205821812152863,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.09999999999999999,
+            0.02,
+            0.13205821812152863
+          ],
+          "candidate_xy_area_m2": 0.002,
+          "candidate_xy_area_reduction_fraction": 0.807679244133502,
+          "current_xy_area_m2": 0.010399293570727886,
+          "group": "arm",
+          "link": "RIGHT_ELBOW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.05349999994039535,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.1414869874715805,
+            0.07349999994039536,
+            0.13205821812152863
+          ],
+          "source_bbox_max_m": [
+            0.10774817317724228,
+            0.03674999997019768,
+            0.033748872578144073
+          ],
+          "source_bbox_min_m": [
+            -0.033738814294338226,
+            -0.03674999997019768,
+            -0.09830934554338455
+          ],
+          "source_sha256": "aa3df244f5dbe2404911005d288f658814709f0ff64b8c03d0a5af3079f5e6c6",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ELBOW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.026038070313632488,
+              "candidate_scale": 0.31547341652868527,
+              "current_extent_m": 0.03803807031363249,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.025590615451335907,
+              "candidate_scale": 0.3192286121395105,
+              "current_extent_m": 0.03759061545133591,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.040321046486496925,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.040321046486496925,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.040321046486496925
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.899291859074638,
+          "current_xy_area_m2": 0.001429874473670635,
+          "group": "arm",
+          "link": "LEFT_WRIST_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.026038070313632488,
+          "ok": true,
+          "protected_anchor_count": 3,
+          "source_bbox_extent_m": [
+            0.03803807031363249,
+            0.03759061545133591,
+            0.040321046486496925
+          ],
+          "source_bbox_max_m": [
+            0.022911470383405685,
+            0.018795307725667953,
+            0.016946585848927498
+          ],
+          "source_bbox_min_m": [
+            -0.015126599930226803,
+            -0.018795307725667953,
+            -0.023374460637569427
+          ],
+          "source_sha256": "966dd01e04b12fb5f5d46720d8fd82a094f3f8a8404f643c9b9c5b0c01018c38",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_WRIST_YAW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.02607985968887806,
+              "candidate_scale": 0.31512721155075124,
+              "current_extent_m": 0.03807985968887806,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.025599997594952583,
+              "candidate_scale": 0.3191489565842653,
+              "current_extent_m": 0.03759999759495258,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.04037221148610115,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.04037221148610115,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.04037221148610115
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.8994274792422687,
+          "current_xy_area_m2": 0.0014318026327179469,
+          "group": "arm",
+          "link": "RIGHT_WRIST_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.02607985968887806,
+          "ok": true,
+          "protected_anchor_count": 3,
+          "source_bbox_extent_m": [
+            0.03807985968887806,
+            0.03759999759495258,
+            0.04037221148610115
+          ],
+          "source_bbox_max_m": [
+            0.022931793704628944,
+            0.018799997866153717,
+            0.016972167417407036
+          ],
+          "source_bbox_min_m": [
+            -0.015148065984249115,
+            -0.018799999728798866,
+            -0.023400044068694115
+          ],
+          "source_sha256": "f71c5a4e4b762bd141477ac6b46af9598300630ce923f67f6c02bf98d4a67586",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_WRIST_YAW.STL",
+          "z_height_preserved": true
+        }
+      ],
+      "links": [
+        "LEFT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "RIGHT_SHOULDER_YAW",
+        "LEFT_ELBOW",
+        "RIGHT_ELBOW",
+        "LEFT_WRIST_YAW",
+        "RIGHT_WRIST_YAW"
+      ],
+      "manufacturing_constraints": {
+        "fabrication_classes": [
+          "ALU_7075",
+          "MJF_PA12",
+          "SML_316L"
+        ],
+        "minimum_envelope_extent_m": 0.003,
+        "minimum_feature_size_m": 0.001,
+        "minimum_wall_thickness_m": 0.0015,
+        "process_records": {
+          "ALU_7075": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process": "CNC machining or sheet/plate fabrication",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "machined functional fits require drawing-specific tolerances"
+          },
+          "MJF_PA12": {
+            "draft_angle_deg": 1.0,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0012,
+            "process": "MJF additive manufacturing or reconstructed molded shell",
+            "requires_flatness_check": false,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": false,
+            "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+          },
+          "SML_316L": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0008,
+            "process": "sheet metal/laser cut or machined stainless",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+          }
+        },
+        "requires_flatness_check": true,
+        "requires_smoothness_check": true,
+        "requires_tool_access_check": true
+      }
+    },
+    {
+      "accepted": false,
+      "candidate_xy_area_m2": 0.03094301941789735,
+      "candidate_xy_area_reduction_fraction": 0.7327841337880102,
+      "current_xy_area_m2": 0.1157978373684944,
+      "group": "leg",
+      "link_count": 12,
+      "link_records": [
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0522501,
+              "anchor_span_m": 0.0422501,
+              "candidate_min_extent_m": 0.0522501,
+              "candidate_reduction_m": 0.04499918066134453,
+              "candidate_scale": 0.537280066697386,
+              "current_extent_m": 0.09724928066134453,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.050000275940092404,
+              "anchor_span_m": 0.0400002759400924,
+              "candidate_min_extent_m": 0.050000275940092404,
+              "candidate_reduction_m": 0.04899803643262188,
+              "candidate_scale": 0.5050619019832239,
+              "current_extent_m": 0.09899831237271428,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.09600000083446503,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.09600000083446503,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.0522501,
+            0.050000275940092404,
+            0.09600000083446503
+          ],
+          "candidate_xy_area_m2": 0.002612519417897422,
+          "candidate_xy_area_reduction_fraction": 0.7286403076161447,
+          "current_xy_area_m2": 0.009627514664933548,
+          "group": "leg",
+          "link": "LEFT_HIP_PITCH",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.04899803643262188,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.09724928066134453,
+            0.09899831237271428,
+            0.09600000083446503
+          ],
+          "source_bbox_max_m": [
+            0.042250100523233414,
+            0.0949983149766922,
+            0.054999999701976776
+          ],
+          "source_bbox_min_m": [
+            -0.054999180138111115,
+            -0.003999997396022081,
+            -0.04100000113248825
+          ],
+          "source_sha256": "b63a1752cbae0cc09b140052df32c8ea45e14c0ebaea5d53ad317c8c90246d9a",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_PITCH.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.052250000000000005,
+              "anchor_span_m": 0.04225,
+              "candidate_min_extent_m": 0.052250000000000005,
+              "candidate_reduction_m": 0.04500009649991989,
+              "candidate_scale": 0.537274531136769,
+              "current_extent_m": 0.09725009649991989,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.05,
+              "anchor_span_m": 0.04,
+              "candidate_min_extent_m": 0.05,
+              "candidate_reduction_m": 0.04885058226063847,
+              "candidate_scale": 0.5058139148656245,
+              "current_extent_m": 0.09885058226063848,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.09600000083446503,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.09600000083446503,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.052250000000000005,
+            0.05,
+            0.09600000083446503
+          ],
+          "candidate_xy_area_m2": 0.0026125000000000002,
+          "candidate_xy_area_reduction_fraction": 0.728239066048118,
+          "current_xy_area_m2": 0.009613228663920361,
+          "group": "leg",
+          "link": "RIGHT_HIP_PITCH",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.04885058226063847,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.09725009649991989,
+            0.09885058226063848,
+            0.09600000083446503
+          ],
+          "source_bbox_max_m": [
+            0.042250100523233414,
+            0.003999997396022081,
+            0.054999999701976776
+          ],
+          "source_bbox_min_m": [
+            -0.05499999597668648,
+            -0.0948505848646164,
+            -0.04100000113248825
+          ],
+          "source_sha256": "3d7b4b69b2e5f13baaf2c822a3965c9e1db16a444b375f66813be57c6d1800a4",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_PITCH.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.052249999999995404,
+              "anchor_span_m": 0.0422499999999954,
+              "candidate_min_extent_m": 0.052249999999995404,
+              "candidate_reduction_m": 0.020269231587652987,
+              "candidate_scale": 0.7204985333696603,
+              "current_extent_m": 0.07251923158764839,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.041380303084850314,
+              "candidate_scale": 0.2248020207177445,
+              "current_extent_m": 0.05338030308485031,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0620000000000006,
+              "anchor_span_m": 0.0520000000000006,
+              "candidate_min_extent_m": 0.07999999821186066,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.07999999821186066,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.052249999999995404,
+            0.012,
+            0.07999999821186066
+          ],
+          "candidate_xy_area_m2": 0.0006269999999999449,
+          "candidate_xy_area_reduction_fraction": 0.8380304737743292,
+          "current_xy_area_m2": 0.0038710985616291216,
+          "group": "leg",
+          "link": "LEFT_HIP_ROLL",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.041380303084850314,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.07251923158764839,
+            0.05338030308485031,
+            0.07999999821186066
+          ],
+          "source_bbox_max_m": [
+            0.010000001639127731,
+            0.023000000044703484,
+            0.022999998182058334
+          ],
+          "source_bbox_min_m": [
+            -0.06251922994852066,
+            -0.030380303040146828,
+            -0.05700000002980232
+          ],
+          "source_sha256": "7bd909211765b2a133354677bc6ee09a38f290d8afab0e325b419ff9db79a12c",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_ROLL.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0522499999999986,
+              "anchor_span_m": 0.0422499999999986,
+              "candidate_min_extent_m": 0.0522499999999986,
+              "candidate_reduction_m": 0.02026923158764979,
+              "candidate_scale": 0.7204985333697044,
+              "current_extent_m": 0.07251923158764839,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.0413982589840889,
+              "candidate_scale": 0.22472642794544379,
+              "current_extent_m": 0.0533982589840889,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0620000000000019,
+              "anchor_span_m": 0.0520000000000019,
+              "candidate_min_extent_m": 0.07999999821186066,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.07999999821186066,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.0522499999999986,
+            0.012,
+            0.07999999821186066
+          ],
+          "candidate_xy_area_m2": 0.0006269999999999833,
+          "candidate_xy_area_reduction_fraction": 0.8380849382558953,
+          "current_xy_area_m2": 0.003872400709644369,
+          "group": "leg",
+          "link": "RIGHT_HIP_ROLL",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.0413982589840889,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.07251923158764839,
+            0.0533982589840889,
+            0.07999999821186066
+          ],
+          "source_bbox_max_m": [
+            0.010000001639127731,
+            0.030398258939385414,
+            0.022999998182058334
+          ],
+          "source_bbox_min_m": [
+            -0.06251922994852066,
+            -0.023000000044703484,
+            -0.05700000002980232
+          ],
+          "source_sha256": "c4b84b8450d8e2830217f69b22999d10795c15fd72a7f99382fd1abcccda65b1",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_ROLL.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.1111922172009945,
+              "candidate_scale": 0.0974087509150142,
+              "current_extent_m": 0.12319221720099449,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.10302362042665482,
+              "candidate_scale": 0.10432639796494529,
+              "current_extent_m": 0.11502362042665482,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.20563999999999802,
+              "anchor_span_m": 0.195639999999998,
+              "candidate_min_extent_m": 0.3087400123476982,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.3087400123476982,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.3087400123476982
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.989837695886772,
+          "current_xy_area_m2": 0.014170014830845207,
+          "group": "leg",
+          "link": "LEFT_HIP_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.1111922172009945,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.12319221720099449,
+            0.11502362042665482,
+            0.3087400123476982
+          ],
+          "source_bbox_max_m": [
+            0.06751339882612228,
+            0.059927236288785934,
+            0.07699999958276749
+          ],
+          "source_bbox_min_m": [
+            -0.05567881837487221,
+            -0.05509638413786888,
+            -0.23174001276493073
+          ],
+          "source_sha256": "ef18971b3c0aae2e06ad66a1e4c3a98440163d337e3ffa3750a1c3969e40a422",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_YAW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.1111922172009945,
+              "candidate_scale": 0.0974087509150142,
+              "current_extent_m": 0.12319221720099449,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.10302033844590187,
+              "candidate_scale": 0.10432937480569164,
+              "current_extent_m": 0.11502033844590187,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.20563999999999802,
+              "anchor_span_m": 0.195639999999998,
+              "candidate_min_extent_m": 0.3087400272488594,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.3087400272488594,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.3087400272488594
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.9898374059164332,
+          "current_xy_area_m2": 0.01416961051635944,
+          "group": "leg",
+          "link": "RIGHT_HIP_YAW",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.1111922172009945,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.12319221720099449,
+            0.11502033844590187,
+            0.3087400272488594
+          ],
+          "source_bbox_max_m": [
+            0.06751339882612228,
+            0.0550963431596756,
+            0.07700001448392868
+          ],
+          "source_bbox_min_m": [
+            -0.05567881837487221,
+            -0.05992399528622627,
+            -0.23174001276493073
+          ],
+          "source_sha256": "664a399f5b9a15cd11567cf08cf20e6fb386ff48f3ac741cd1f25848e237276e",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_YAW.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.11636166843771935,
+              "candidate_scale": 0.09348585248268536,
+              "current_extent_m": 0.12836166843771935,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.08894565525650978,
+              "candidate_scale": 0.11887584432937885,
+              "current_extent_m": 0.10094565525650978,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.30466233608702403,
+              "anchor_span_m": 0.294662336087024,
+              "candidate_min_extent_m": 0.36964358016848564,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.36964358016848564,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.36964358016848564
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.988886790353269,
+          "current_xy_area_m2": 0.01295755273026443,
+          "group": "leg",
+          "link": "LEFT_KNEE",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.11636166843771935,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.12836166843771935,
+            0.10094565525650978,
+            0.36964358016848564
+          ],
+          "source_bbox_max_m": [
+            0.061500098556280136,
+            0.051695652306079865,
+            0.06148124858736992
+          ],
+          "source_bbox_min_m": [
+            -0.06686156988143921,
+            -0.049250002950429916,
+            -0.3081623315811157
+          ],
+          "source_sha256": "c1429554f677ad70f0d1c26969079ad19add24c08c2c0ce29ed2c31c1a1c41f1",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_KNEE.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.1160105821788311,
+              "candidate_scale": 0.09374225002145503,
+              "current_extent_m": 0.1280105821788311,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.010099999999997963,
+              "anchor_span_m": 9.99999999979628e-05,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.08894646736979485,
+              "candidate_scale": 0.11887488797444173,
+              "current_extent_m": 0.10094646736979485,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.30466233608702303,
+              "anchor_span_m": 0.294662336087023,
+              "candidate_min_extent_m": 0.36964358016848564,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.36964358016848564,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.36964358016848564
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.9888564005302274,
+          "current_xy_area_m2": 0.012922216056903815,
+          "group": "leg",
+          "link": "RIGHT_KNEE",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.1160105821788311,
+          "ok": true,
+          "protected_anchor_count": 6,
+          "source_bbox_extent_m": [
+            0.1280105821788311,
+            0.10094646736979485,
+            0.36964358016848564
+          ],
+          "source_bbox_max_m": [
+            0.061500098556280136,
+            0.04935000464320183,
+            0.06148124858736992
+          ],
+          "source_bbox_min_m": [
+            -0.06651048362255096,
+            -0.05159646272659302,
+            -0.3081623315811157
+          ],
+          "source_sha256": "64d35ef5e9cb1d1a57e2232d670cb798d2aa7a6985bdafdaed7b3dd125aba7fe",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_KNEE.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01149999999999975,
+              "anchor_span_m": 0.00149999999999975,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.03899999904632569,
+              "candidate_scale": 0.23529412204694042,
+              "current_extent_m": 0.050999999046325684,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.03899999904632569,
+              "candidate_scale": 0.23529412204694042,
+              "current_extent_m": 0.050999999046325684,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01999999200000223,
+              "anchor_span_m": 0.00999999200000223,
+              "candidate_min_extent_m": 0.05099999159574509,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.05099999159574509,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.05099999159574509
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.9446366761301596,
+          "current_xy_area_m2": 0.0026009999027252206,
+          "group": "leg",
+          "link": "LEFT_ANKLE_A",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.03899999904632569,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.050999999046325684,
+            0.050999999046325684,
+            0.05099999159574509
+          ],
+          "source_bbox_max_m": [
+            0.024000000208616257,
+            0.025499999523162842,
+            0.017999999225139618
+          ],
+          "source_bbox_min_m": [
+            -0.026999998837709427,
+            -0.025499999523162842,
+            -0.03299999237060547
+          ],
+          "source_sha256": "00dd23a465b135d15ef991b46bb314bf801c0b03c7aada1db8d1f9e17d9568a2",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ANKLE_A.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.0115,
+              "anchor_span_m": 0.0015,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.03899999904632569,
+              "candidate_scale": 0.23529412204694042,
+              "current_extent_m": 0.050999999046325684,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.01,
+              "anchor_span_m": 0.0,
+              "candidate_min_extent_m": 0.012,
+              "candidate_reduction_m": 0.03899999904632569,
+              "candidate_scale": 0.23529412204694042,
+              "current_extent_m": 0.050999999046325684,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.019999992000000008,
+              "anchor_span_m": 0.00999999200000001,
+              "candidate_min_extent_m": 0.05099999159574509,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.05099999159574509,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.012,
+            0.012,
+            0.05099999159574509
+          ],
+          "candidate_xy_area_m2": 0.000144,
+          "candidate_xy_area_reduction_fraction": 0.9446366761301596,
+          "current_xy_area_m2": 0.0026009999027252206,
+          "group": "leg",
+          "link": "RIGHT_ANKLE_A",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.03899999904632569,
+          "ok": true,
+          "protected_anchor_count": 4,
+          "source_bbox_extent_m": [
+            0.050999999046325684,
+            0.050999999046325684,
+            0.05099999159574509
+          ],
+          "source_bbox_max_m": [
+            0.024000000208616257,
+            0.025499999523162842,
+            0.017999999225139618
+          ],
+          "source_bbox_min_m": [
+            -0.026999998837709427,
+            -0.025499999523162842,
+            -0.03299999237060547
+          ],
+          "source_sha256": "351c68c81211de8ff1bb0dbeea7e933335ec3a1a9035446f48829c4029a42d5f",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ANKLE_A.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.14753,
+              "anchor_span_m": 0.13752999999999999,
+              "candidate_min_extent_m": 0.14753,
+              "candidate_reduction_m": 0.004233454079627996,
+              "candidate_scale": 0.9721049174499761,
+              "current_extent_m": 0.151763454079628,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.08,
+              "anchor_span_m": 0.07,
+              "candidate_min_extent_m": 0.08,
+              "candidate_reduction_m": 0.016838817000389097,
+              "candidate_scale": 0.826115007163693,
+              "current_extent_m": 0.0968388170003891,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.035,
+              "anchor_span_m": 0.025,
+              "candidate_min_extent_m": 0.06608647108078003,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.06608647108078003,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.14753,
+            0.08,
+            0.06608647108078003
+          ],
+          "candidate_xy_area_m2": 0.0118024,
+          "candidate_xy_area_reduction_fraction": 0.19692953915695188,
+          "current_xy_area_m2": 0.01469659335696405,
+          "group": "leg",
+          "link": "LEFT_ANKLE_B",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.016838817000389097,
+          "ok": true,
+          "protected_anchor_count": 15,
+          "source_bbox_extent_m": [
+            0.151763454079628,
+            0.0968388170003891,
+            0.06608647108078003
+          ],
+          "source_bbox_max_m": [
+            0.1033211201429367,
+            0.05114307627081871,
+            0.03208647295832634
+          ],
+          "source_bbox_min_m": [
+            -0.048442333936691284,
+            -0.04569574072957039,
+            -0.03399999812245369
+          ],
+          "source_sha256": "6030dd954865caf17613e9a0350b961300b3a679d8fde1acab8c05d7f2714a00",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ANKLE_B.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.14747000000000002,
+              "anchor_span_m": 0.13747,
+              "candidate_min_extent_m": 0.14747000000000002,
+              "candidate_reduction_m": 0.004293472706079465,
+              "candidate_scale": 0.9717094460905317,
+              "current_extent_m": 0.15176347270607948,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.08,
+              "anchor_span_m": 0.07,
+              "candidate_min_extent_m": 0.08,
+              "candidate_reduction_m": 0.016832308918237684,
+              "candidate_scale": 0.826170530205467,
+              "current_extent_m": 0.09683230891823769,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.035,
+              "anchor_span_m": 0.025,
+              "candidate_min_extent_m": 0.06609831750392914,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.06609831750392914,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.14747000000000002,
+            0.08,
+            0.06609831750392914
+          ],
+          "candidate_xy_area_m2": 0.011797600000000002,
+          "candidate_xy_area_reduction_fraction": 0.19720229171772474,
+          "current_xy_area_m2": 0.014695607471579622,
+          "group": "leg",
+          "link": "RIGHT_ANKLE_B",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.016832308918237684,
+          "ok": true,
+          "protected_anchor_count": 15,
+          "source_bbox_extent_m": [
+            0.15176347270607948,
+            0.09683230891823769,
+            0.06609831750392914
+          ],
+          "source_bbox_max_m": [
+            0.1033211201429367,
+            0.045689232647418976,
+            0.03209831938147545
+          ],
+          "source_bbox_min_m": [
+            -0.048442352563142776,
+            -0.05114307627081871,
+            -0.03399999812245369
+          ],
+          "source_sha256": "808f88fe6fcba2ac5bcb01e25c65c1104fe5d4a2c1fc944e5dadf5640f2e0105",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ANKLE_B.STL",
+          "z_height_preserved": true
+        }
+      ],
+      "links": [
+        "LEFT_HIP_PITCH",
+        "RIGHT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "RIGHT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "RIGHT_HIP_YAW",
+        "LEFT_KNEE",
+        "RIGHT_KNEE",
+        "LEFT_ANKLE_A",
+        "RIGHT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "RIGHT_ANKLE_B"
+      ],
+      "manufacturing_constraints": {
+        "fabrication_classes": [
+          "ALU_7075",
+          "MJF_PA12",
+          "SML_316L"
+        ],
+        "minimum_envelope_extent_m": 0.003,
+        "minimum_feature_size_m": 0.001,
+        "minimum_wall_thickness_m": 0.0015,
+        "process_records": {
+          "ALU_7075": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process": "CNC machining or sheet/plate fabrication",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "machined functional fits require drawing-specific tolerances"
+          },
+          "MJF_PA12": {
+            "draft_angle_deg": 1.0,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0012,
+            "process": "MJF additive manufacturing or reconstructed molded shell",
+            "requires_flatness_check": false,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": false,
+            "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+          },
+          "SML_316L": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0008,
+            "process": "sheet metal/laser cut or machined stainless",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+          }
+        },
+        "requires_flatness_check": true,
+        "requires_smoothness_check": true,
+        "requires_tool_access_check": true
+      }
+    },
+    {
+      "accepted": false,
+      "candidate_xy_area_m2": 0.0112,
+      "candidate_xy_area_reduction_fraction": 0.16392515125036056,
+      "current_xy_area_m2": 0.01339592982225185,
+      "group": "foot",
+      "link_count": 2,
+      "link_records": [
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.06999999999999999,
+              "anchor_span_m": 0.06,
+              "candidate_min_extent_m": 0.06999999999999999,
+              "candidate_reduction_m": 0.00030546944588423497,
+              "candidate_scale": 0.995655111212658,
+              "current_extent_m": 0.07030546944588423,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.08,
+              "anchor_span_m": 0.07,
+              "candidate_min_extent_m": 0.08,
+              "candidate_reduction_m": 0.015269471406936644,
+              "candidate_scale": 0.8397233533320008,
+              "current_extent_m": 0.09526947140693665,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.027999999999999997,
+              "anchor_span_m": 0.018,
+              "candidate_min_extent_m": 0.04073064122349024,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.04073064122349024,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.06999999999999999,
+            0.08,
+            0.04073064122349024
+          ],
+          "candidate_xy_area_m2": 0.0056,
+          "candidate_xy_area_reduction_fraction": 0.16392515125036056,
+          "current_xy_area_m2": 0.006697964911125925,
+          "group": "foot",
+          "link": "LEFT_TOE",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.015269471406936644,
+          "ok": true,
+          "protected_anchor_count": 13,
+          "source_bbox_extent_m": [
+            0.07030546944588423,
+            0.09526947140693665,
+            0.04073064122349024
+          ],
+          "source_bbox_max_m": [
+            0.07190556824207306,
+            0.04561656340956688,
+            0.011223857291042805
+          ],
+          "source_bbox_min_m": [
+            0.0016000987961888313,
+            -0.049652907997369766,
+            -0.029506783932447433
+          ],
+          "source_sha256": "091eab0e25eabcc94c9d966fdf2bc63db25972ddb176a1e1fe8530ebdf84a1e4",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_TOE.STL",
+          "z_height_preserved": true
+        },
+        {
+          "accepted": false,
+          "axis_constraints": {
+            "x": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.06999999999999999,
+              "anchor_span_m": 0.06,
+              "candidate_min_extent_m": 0.06999999999999999,
+              "candidate_reduction_m": 0.00030546944588423497,
+              "candidate_scale": 0.995655111212658,
+              "current_extent_m": 0.07030546944588423,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "y": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.08,
+              "anchor_span_m": 0.07,
+              "candidate_min_extent_m": 0.08,
+              "candidate_reduction_m": 0.015269471406936644,
+              "candidate_scale": 0.8397233533320008,
+              "current_extent_m": 0.09526947140693665,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": false,
+              "process_minimum_extent_m": 0.003
+            },
+            "z": {
+              "anchor_clearance_m": 0.005,
+              "anchor_required_extent_m": 0.027999999999999997,
+              "anchor_span_m": 0.018,
+              "candidate_min_extent_m": 0.040729970671236515,
+              "candidate_reduction_m": 0.0,
+              "candidate_scale": 1.0,
+              "current_extent_m": 0.040729970671236515,
+              "minimum_envelope_extent_m": 0.012,
+              "minimum_manufacturable_extent_m": 0.012,
+              "preserve_current_extent": true,
+              "process_minimum_extent_m": 0.003
+            }
+          },
+          "blocking_reason": "initial shrink envelope only; generated fembot geometry must still pass CAD rebuild, keepout clearance, flatness/smoothness, structural, collision, and MuJoCo simulation gates",
+          "candidate_min_bbox_extent_m": [
+            0.06999999999999999,
+            0.08,
+            0.040729970671236515
+          ],
+          "candidate_xy_area_m2": 0.0056,
+          "candidate_xy_area_reduction_fraction": 0.16392515125036056,
+          "current_xy_area_m2": 0.006697964911125925,
+          "group": "foot",
+          "link": "RIGHT_TOE",
+          "manufacturing_constraints": {
+            "fabrication_classes": [
+              "ALU_7075",
+              "MJF_PA12",
+              "SML_316L"
+            ],
+            "minimum_envelope_extent_m": 0.003,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process_records": {
+              "ALU_7075": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.001,
+                "minimum_wall_thickness_m": 0.0015,
+                "process": "CNC machining or sheet/plate fabrication",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "machined functional fits require drawing-specific tolerances"
+              },
+              "MJF_PA12": {
+                "draft_angle_deg": 1.0,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0012,
+                "process": "MJF additive manufacturing or reconstructed molded shell",
+                "requires_flatness_check": false,
+                "requires_smoothness_check": true,
+                "requires_tool_access_check": false,
+                "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+              },
+              "SML_316L": {
+                "draft_angle_deg": null,
+                "minimum_feature_size_m": 0.0008,
+                "minimum_wall_thickness_m": 0.0008,
+                "process": "sheet metal/laser cut or machined stainless",
+                "requires_flatness_check": true,
+                "requires_smoothness_check": false,
+                "requires_tool_access_check": true,
+                "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+              }
+            },
+            "requires_flatness_check": true,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": true
+          },
+          "max_axis_reduction_m": 0.015269471406936644,
+          "ok": true,
+          "protected_anchor_count": 13,
+          "source_bbox_extent_m": [
+            0.07030546944588423,
+            0.09526947140693665,
+            0.040729970671236515
+          ],
+          "source_bbox_max_m": [
+            0.07190556824207306,
+            0.049652907997369766,
+            0.011223186738789082
+          ],
+          "source_bbox_min_m": [
+            0.0016000987961888313,
+            -0.04561656340956688,
+            -0.029506783932447433
+          ],
+          "source_sha256": "bccbd2aa1803c6fe4f954c881c4e0152ff268c564df2ad35d7c52fb693c1ccce",
+          "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_TOE.STL",
+          "z_height_preserved": true
+        }
+      ],
+      "links": [
+        "LEFT_TOE",
+        "RIGHT_TOE"
+      ],
+      "manufacturing_constraints": {
+        "fabrication_classes": [
+          "ALU_7075",
+          "MJF_PA12",
+          "SML_316L"
+        ],
+        "minimum_envelope_extent_m": 0.003,
+        "minimum_feature_size_m": 0.001,
+        "minimum_wall_thickness_m": 0.0015,
+        "process_records": {
+          "ALU_7075": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.001,
+            "minimum_wall_thickness_m": 0.0015,
+            "process": "CNC machining or sheet/plate fabrication",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "machined functional fits require drawing-specific tolerances"
+          },
+          "MJF_PA12": {
+            "draft_angle_deg": 1.0,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0012,
+            "process": "MJF additive manufacturing or reconstructed molded shell",
+            "requires_flatness_check": false,
+            "requires_smoothness_check": true,
+            "requires_tool_access_check": false,
+            "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+          },
+          "SML_316L": {
+            "draft_angle_deg": null,
+            "minimum_feature_size_m": 0.0008,
+            "minimum_wall_thickness_m": 0.0008,
+            "process": "sheet metal/laser cut or machined stainless",
+            "requires_flatness_check": true,
+            "requires_smoothness_check": false,
+            "requires_tool_access_check": true,
+            "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+          }
+        },
+        "requires_flatness_check": true,
+        "requires_smoothness_check": true,
+        "requires_tool_access_check": true
+      }
+    }
+  ],
+  "ok": true,
+  "schema": "asimov-fembot-slimming-envelope-v1",
+  "source": {
+    "anchor_clearance_m": 0.005,
+    "mesh_dir": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes",
+    "minimum_manufacturable_extent_m": 0.012,
+    "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml"
+  },
+  "summary": {
+    "acceptance_blocker": "slimming lower bounds are estimated from source envelopes and MJCF anchors, but no generated fembot CAD has been rebuilt, clearance-checked, structurally analyzed, or simulated against these bounds yet",
+    "accepted": false,
+    "body_groups": 5,
+    "candidate_total_xy_area_m2": 0.06535269973092375,
+    "candidate_total_xy_area_reduction_fraction": 0.779119153517378,
+    "current_total_xy_area_m2": 0.2958730952530348,
+    "links": 28,
+    "links_with_process_constraints": 28,
+    "links_with_protected_anchors": 28,
+    "missing_links": [],
+    "process_active_limiter_links": 0,
+    "z_preserved_links": 28
+  }
+}

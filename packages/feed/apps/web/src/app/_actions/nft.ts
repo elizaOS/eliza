@@ -1,11 +1,6 @@
 "use server";
 
 import {
-  extractPrivyApiDiagnostics,
-  type PrivyApiDiagnostics,
-  redactJwtLikeTokens,
-} from "@feed/api";
-import {
   type ConfirmResult,
   confirmMint,
   prepareMint,
@@ -39,15 +34,13 @@ export type MintNftActionResult =
       error: string;
       step: MintStep;
       errorId: string;
-      debug?: PrivyApiDiagnostics;
+      debug?: Record<string, unknown>;
     };
 
 // Suppress unused import warnings — kept for future re-enablement
 void confirmMint;
 void prepareMint;
 void reconcileOnChainMint;
-void extractPrivyApiDiagnostics;
-void redactJwtLikeTokens;
 
 async function mintNftActionImpl(_input?: {
   userJwt?: string;

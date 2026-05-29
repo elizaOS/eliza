@@ -30,6 +30,7 @@
     "allowSyntheticDefaultImports": true,
     "noEmit": true,
     "incremental": true,
+    "ignoreDeprecations": "6.0",
     // Interop Constraints
     "isolatedModules": true,
     "allowImportingTsExtensions": false,

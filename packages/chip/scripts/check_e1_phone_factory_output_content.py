@@ -7,7 +7,7 @@ import csv
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -469,7 +469,7 @@ def factory_first_article_bridge(
     bridged_consumer_rows = 0
     for path_text in sorted(set(first_article_by_path) & blocked_paths):
         consumers = first_article_by_path[path_text]
-        category = category_by_path.get(path_text, "unknown_factory_blocker")
+        category = cast(str, category_by_path.get(path_text, "unknown_factory_blocker"))
         counts[category] += len(consumers)
         bridged_consumer_rows += len(consumers)
         bridged[path_text] = {
@@ -981,21 +981,39 @@ def main() -> int:
         write_report(
             {
                 "schema": "eliza.e1_phone_factory_output_content_report.v1",
-                "status": "fail",
+                "status": "blocked",
                 "release_credit": False,
-                "summary": {"release_ready": False, "release_credit": False},
+                "summary": {
+                    "release_ready": False,
+                    "release_credit": False,
+                    "blocked": 1,
+                    "contract_error_count": 1,
+                },
                 "findings": [
                     {
                         "code": "factory_output_contract_invalid",
-                        "severity": "error",
+                        "severity": "blocker",
                         "message": str(exc),
                         "evidence": rel(INVENTORY),
+                        "release_credit": False,
                     }
                 ],
+                "blocked_evidence_inventory": [],
+                "factory_execution_packet_inventory": [],
+                "factory_output_blocker_categories": {
+                    "release_credit": False,
+                    "counts": {
+                        "contract_error": 1,
+                        "true_missing_factory_outputs": 0,
+                        "missing_approval_metadata": 0,
+                        "candidate_present_but_blocked": 0,
+                        "present_unapproved_or_placeholder": 0,
+                    },
+                },
             }
         )
-        print(f"FAIL: E1 phone factory-output content contract invalid: {exc}")
-        return 1
+        print(f"STATUS: BLOCKED E1 phone factory-output content contract invalid: {exc}")
+        return 2
 
     if blocked or missing:
         write_report(

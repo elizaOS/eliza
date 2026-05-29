@@ -5,6 +5,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { formatByteSize } from "../../utils/format";
 import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
@@ -14,8 +15,10 @@ import {
   findDownload,
   findInstalled,
   fitLabel,
-  formatBytes,
 } from "./hub-utils";
+
+const formatBytes = (bytes: number): string =>
+  formatByteSize(bytes, { unknownLabel: "—" });
 
 interface ModelCardProps {
   model: CatalogModel;
@@ -67,7 +70,7 @@ export function ModelCard({
   const parameterLabel = model.parameterLabel ?? model.params;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
+    <div className="rounded-sm border border-border bg-card p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-semibold truncate">

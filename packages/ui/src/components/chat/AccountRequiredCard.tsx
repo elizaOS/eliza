@@ -66,7 +66,7 @@ export function AccountRequiredCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-warn/35 bg-warn/10 px-3 py-2 text-xs text-txt shadow-sm",
+        "rounded-sm border border-warn/35 bg-warn/10 px-3 py-2 text-xs text-txt ",
         className,
       )}
       data-testid="account-required-card"
@@ -102,7 +102,7 @@ export function AccountRequiredCard({
               <div
                 key={account.id}
                 className={cn(
-                  "flex min-w-0 items-center gap-2 rounded-md border border-border/35 bg-card/45 px-2 py-1.5",
+                  "flex min-w-0 items-center gap-2 rounded-sm border border-border/35 bg-card/45 px-2 py-1.5",
                   selected && "border-accent/60 bg-accent/8",
                 )}
               >

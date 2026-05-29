@@ -55,8 +55,8 @@ type IsolatedWorkspace = {
   appDir: string;
 };
 
-const testPrivyDidPattern =
-  /Authorization[\s\S]{0,200}did:privy:test-|Bearer did:privy:test-/;
+const testStewardAuthPattern =
+  /Authorization[\s\S]{0,200}steward:test:|Bearer steward:test:/;
 
 async function isServerReady(
   serverBaseUrl: string,
@@ -82,13 +82,13 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-async function supportsTestPrivyDidAuth(baseUrl: string): Promise<boolean> {
+async function supportsTestStewardAuth(baseUrl: string): Promise<boolean> {
   try {
     const response = await fetch(`${baseUrl}/api/waitlist/bonus/email`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer did:privy:test-123456789012345",
+        Authorization: "Bearer steward:test:123456789012345",
       },
       body: JSON.stringify({ email: "probe@example.com" }),
       signal: AbortSignal.timeout(10_000),
@@ -297,9 +297,9 @@ function isOptionalIntegrationTest(filePath: string): boolean {
   );
 }
 
-function requiresTestPrivyDidAuth(targets: string[]): boolean {
+function requiresTestStewardAuth(targets: string[]): boolean {
   for (const filePath of collectTestFiles(targets)) {
-    if (testPrivyDidPattern.test(readFileSync(filePath, "utf-8"))) {
+    if (testStewardAuthPattern.test(readFileSync(filePath, "utf-8"))) {
       return true;
     }
   }
@@ -428,7 +428,7 @@ async function runWithOwnedServer(
     TEST_BASE_URL: effectiveBaseUrl,
     TEST_API_URL: effectiveBaseUrl,
     DISABLE_RATE_LIMITING: "true",
-    ALLOW_TEST_PRIVY_DID_AUTH: "true",
+    ALLOW_TEST_STEWARD_AUTH: "true",
     PERP_SETTLEMENT_MODE: "simulation",
     NEXT_PUBLIC_PERP_SETTLEMENT_MODE: "simulation",
   };
@@ -484,17 +484,17 @@ async function main() {
   const hasExplicitBaseUrl =
     process.env.TEST_BASE_URL !== undefined ||
     process.env.TEST_API_URL !== undefined;
-  const needsTestPrivyDidAuth = requiresTestPrivyDidAuth(testTargets);
+  const needsTestStewardAuth = requiresTestStewardAuth(testTargets);
   const explicitServerReady =
     hasExplicitBaseUrl && (await isServerReady(requestedBaseUrl, 10_000));
   const canReuseServer =
     explicitServerReady &&
-    (!needsTestPrivyDidAuth ||
-      (await supportsTestPrivyDidAuth(requestedBaseUrl)));
+    (!needsTestStewardAuth ||
+      (await supportsTestStewardAuth(requestedBaseUrl)));
 
-  if (explicitServerReady && needsTestPrivyDidAuth && !canReuseServer) {
+  if (explicitServerReady && needsTestStewardAuth && !canReuseServer) {
     throw new Error(
-      `Explicit integration server at ${requestedBaseUrl} does not support test Privy DID auth`,
+      `Explicit integration server at ${requestedBaseUrl} does not support test Steward auth`,
     );
   }
 
@@ -531,7 +531,7 @@ async function main() {
           TEST_BASE_URL: requestedBaseUrl,
           TEST_API_URL: requestedBaseUrl,
           DISABLE_RATE_LIMITING: "true",
-          ALLOW_TEST_PRIVY_DID_AUTH: "true",
+          ALLOW_TEST_STEWARD_AUTH: "true",
           PERP_SETTLEMENT_MODE: "simulation",
           NEXT_PUBLIC_PERP_SETTLEMENT_MODE: "simulation",
         })

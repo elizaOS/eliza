@@ -323,6 +323,7 @@ async def _drive_event(
                 "resolve_h2p_update_score": _signal_int(dut, "u_bpu.u_h2p.upd_score"),
             }
         )
+        assert debug_samples is not None
         debug_samples.append(prediction_debug)
     await RisingEdge(dut.clk)
     dut.resolve_valid.value = 0

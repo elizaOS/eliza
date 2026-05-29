@@ -4,7 +4,6 @@
  * the host-side dispatcher for `bridge.requestHost(...)` host actions.
  */
 import * as fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
@@ -37,13 +36,14 @@ import {
   uninstallInstalledRemotePlugin,
 } from "@elizaos/plugin-remote-manifest";
 import { resolveApiToken } from "@elizaos/shared";
-import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
+import { BrowserView, BrowserWindow } from "electrobun/bun";
 import type { DynamicViewHost } from "../dynamic-views/host";
 import { logger } from "../logger.js";
 import type { TraceHost } from "../trace/trace-host-requests";
 import type { SendToWebview } from "../types.js";
 import type { VoiceHost } from "../voice/voice-host-requests";
 import { getAgentManager, getDiagnosticLogPath } from "./agent";
+import { resolveStateDir } from "./auth-bridge";
 
 type RemotePluginWindowInstance = InstanceType<typeof BrowserWindow>;
 
@@ -143,12 +143,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function resolveUtilsUserData(): string | null {
-  const maybeUtils = Utils as typeof Utils & {
-    paths?: { userData?: string };
-  };
-  const value = maybeUtils.paths.userData;
-  return typeof value === "string" && value.length > 0 ? value : null;
+function formatRemotePluginError(value: unknown, fallback: string): string {
+  if (value instanceof Error) return value.message || value.name;
+  if (typeof value === "string" && value.trim()) return value;
+  if (isRecord(value)) {
+    const message = value.message;
+    const code = value.code;
+    if (typeof message === "string" && message.trim()) {
+      return typeof code === "string" && code.trim()
+        ? `${code}: ${message}`
+        : message;
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
 }
 
 export function resolveRemotePluginStoreRoot(
@@ -158,10 +170,7 @@ export function resolveRemotePluginStoreRoot(
     const value = env[key]?.trim();
     if (value) return path.resolve(value);
   }
-  return path.join(
-    resolveUtilsUserData() ?? path.join(os.homedir(), ".eliza"),
-    "remote-plugins",
-  );
+  return path.join(resolveStateDir(env), "remote-plugins");
 }
 
 class BrowserWorkerHandle implements RemotePluginWorkerHandle {
@@ -431,6 +440,12 @@ const INVOKE_TIMEOUT_MS = 30_000;
 const DEFAULT_WORKER_EVENT_BUFFER_LIMIT = 1_000;
 const DEFAULT_WORKER_EVENT_TAIL_LIMIT = 100;
 const MAX_WORKER_EVENT_TAIL_LIMIT = 500;
+
+function resolveInvokeTimeoutMs(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : INVOKE_TIMEOUT_MS;
+}
 
 function resolveWorkerEventBufferLimit(
   env: NodeJS.ProcessEnv = process.env,
@@ -801,6 +816,7 @@ export class RemotePluginHost {
     method: string;
     params?: JsonValue;
     windowId?: string;
+    timeoutMs?: number;
   }): Promise<JsonValue | null> {
     if (options.id.length === 0) {
       throw new Error("remote-plugin invoke: invalid id.");
@@ -815,16 +831,17 @@ export class RemotePluginHost {
       );
     }
     const requestId = ++this.nextInvokeId;
+    const timeoutMs = resolveInvokeTimeoutMs(options.timeoutMs);
     const timeout = setTimeout(() => {
       const pending = this.pendingDirectInvokes.get(requestId);
       if (!pending) return;
       this.pendingDirectInvokes.delete(requestId);
       pending.reject(
         new Error(
-          `remote-plugin invoke: target ${options.id} did not respond within ${INVOKE_TIMEOUT_MS}ms`,
+          `remote-plugin invoke: target ${options.id} did not respond within ${timeoutMs}ms`,
         ),
       );
-    }, INVOKE_TIMEOUT_MS);
+    }, timeoutMs);
 
     const promise = new Promise<JsonValue | null>((resolve, reject) => {
       this.pendingDirectInvokes.set(requestId, {
@@ -1111,8 +1128,10 @@ export class RemotePluginHost {
           ? {}
           : { payload: response.payload }
         : {
-            error:
-              response.error ?? "invoke-remote-plugin: target returned failure",
+            error: formatRemotePluginError(
+              response.error,
+              "invoke-remote-plugin: target returned failure",
+            ),
           }),
     });
   }
@@ -1127,7 +1146,10 @@ export class RemotePluginHost {
     } else {
       pending.reject(
         new Error(
-          response.error ?? "remote-plugin invoke: target returned failure",
+          formatRemotePluginError(
+            response.error,
+            "remote-plugin invoke: target returned failure",
+          ),
         ),
       );
     }

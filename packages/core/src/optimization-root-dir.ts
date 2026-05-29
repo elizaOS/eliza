@@ -1,5 +1,5 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveStateDir } from "./utils/state-dir";
 
 /**
  * Resolved optimization root directory for disk traces / artifacts.
@@ -11,5 +11,5 @@ export function getOptimizationRootDir(settingValue?: string | null): string {
 	if (settingValue && typeof settingValue === "string") {
 		return settingValue;
 	}
-	return join(homedir(), ".eliza", "optimization");
+	return join(resolveStateDir(), "optimization");
 }

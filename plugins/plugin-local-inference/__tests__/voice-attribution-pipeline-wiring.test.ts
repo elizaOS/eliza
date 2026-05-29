@@ -118,7 +118,7 @@ describe("EngineVoiceBridge — VoiceProfileStore attribution wiring (W3-1 item 
 		await bridge.arm();
 
 		// Intercept buildPipeline to get a stub that resolves "done" immediately.
-		// This avoids needing a live DFlash server for the text-generation side.
+		// This avoids needing a live MTP server for the text-generation side.
 		vi.spyOn(bridge, "buildPipeline").mockImplementation((_runner, _cfg, evts) => {
 			const stubbedPipeline = {
 				run: vi.fn().mockResolvedValue("done"),

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-2004scape",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
   "type": "module",
   "main": "./dist/index.js",
@@ -65,7 +65,7 @@
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:views": "vite build --config vite.config.views.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [

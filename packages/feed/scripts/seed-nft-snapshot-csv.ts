@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     .from(users);
 
   const byId = new Map<string, (typeof allUsers)[number]>();
-  const byPrivyId = new Map<string, (typeof allUsers)[number]>();
+  const byHistoricalAuthId = new Map<string, (typeof allUsers)[number]>();
   const byUsername = new Map<string, (typeof allUsers)[number]>();
   const byWallet = new Map<string, (typeof allUsers)[number]>();
 
@@ -121,8 +121,8 @@ async function main(): Promise<void> {
     const id = normalize(user.id);
     if (id) byId.set(id, user);
 
-    const privyId = normalize(user.privyId);
-    if (privyId) byPrivyId.set(privyId, user);
+    const historicalAuthId = normalize(user.privyId);
+    if (historicalAuthId) byHistoricalAuthId.set(historicalAuthId, user);
 
     const username = normalizeUsername(user.username);
     if (username) byUsername.set(username, user);
@@ -145,13 +145,15 @@ async function main(): Promise<void> {
     const rank = i + 1;
 
     const rowId = normalize(row.id);
-    const rowPrivyId = normalize(row.privyId);
+    const rowHistoricalAuthId = normalize(row.privyId);
     const rowUsername = normalizeUsername(row.username);
     const rowWallet = normalizeWallet(row.walletAddress);
 
     const user =
       (rowId ? byId.get(rowId) : undefined) ??
-      (rowPrivyId ? byPrivyId.get(rowPrivyId) : undefined) ??
+      (rowHistoricalAuthId
+        ? byHistoricalAuthId.get(rowHistoricalAuthId)
+        : undefined) ??
       (rowUsername ? byUsername.get(rowUsername) : undefined) ??
       (rowWallet ? byWallet.get(rowWallet) : undefined);
 

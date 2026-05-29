@@ -753,7 +753,7 @@ function isNoProviderError(err: unknown): boolean {
 }
 const NO_PROVIDER_CHAT_MESSAGE =
   "Connect an LLM provider to start chatting. Open Settings → Providers, " +
-  "or pick Eliza Cloud from the runtime picker.";
+  "or choose Eliza Cloud during first-run setup.";
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 type SyntheticChatFailureKind =
@@ -2355,9 +2355,19 @@ export async function generateChatResponse(
       typeof responseRecord.localInference === "object"
         ? responseRecord.localInference
         : undefined;
+    const responseMetadata = asRecord(responseRecord?.metadata);
+    const rawFailureKind =
+      typeof responseRecord?.failureKind === "string"
+        ? responseRecord.failureKind
+        : typeof responseMetadata?.chatFailureKind === "string"
+          ? responseMetadata.chatFailureKind
+          : undefined;
     const failureKind =
-      responseRecord?.failureKind === "local_inference"
-        ? "local_inference"
+      rawFailureKind === "insufficient_credits" ||
+      rawFailureKind === "local_inference" ||
+      rawFailureKind === "no_provider" ||
+      rawFailureKind === "provider_issue"
+        ? rawFailureKind
         : undefined;
 
     return {
@@ -2918,6 +2928,21 @@ export async function handleChatRoutes(
         responseText = result.text;
         localInference = result.localInference;
         failureKind = result.failureKind;
+      }
+
+      if (failureKind === "no_provider") {
+        json(
+          res,
+          {
+            error: {
+              message: NO_PROVIDER_CHAT_MESSAGE,
+              type: "no_provider",
+              code: "NO_PROVIDER_REGISTERED",
+            },
+          },
+          503,
+        );
+        return true;
       }
 
       const resolvedText = normalizeChatResponseText(

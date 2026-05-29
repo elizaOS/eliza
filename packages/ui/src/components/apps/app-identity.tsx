@@ -191,14 +191,14 @@ export function AppIdentityTile({
   const Icon = getAppCategoryIcon(app);
   const monogram = getAppMonogram(app);
   const outerSize =
-    size === "sm" ? "h-12 w-12 rounded-2xl" : "h-14 w-14 rounded-[1.15rem]";
+    size === "sm" ? "h-12 w-12 rounded-sm" : "h-14 w-14 rounded-sm";
   const iconSize = size === "sm" ? "h-5 w-5" : "h-6 w-6";
   const monoSize = size === "sm" ? "text-[0.64rem]" : "text-[0.68rem]";
   const badgeSize = size === "sm" ? "text-[0.56rem]" : "text-[0.58rem]";
 
   return (
     <div
-      className={`relative shrink-0 overflow-hidden border border-white/10 shadow-sm ring-1 ring-black/5 ${outerSize} ${className}`}
+      className={`relative shrink-0 overflow-hidden border border-white/10 ring-1 ring-black/5 ${outerSize} ${className}`}
       style={
         {
           backgroundImage: `linear-gradient(135deg, ${palette[0]} 0%, ${palette[1]} 100%)`,
@@ -232,7 +232,7 @@ export function AppIdentityTile({
         </div>
       )}
       {active && !imageOnly ? (
-        <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border border-card bg-ok shadow-sm" />
+        <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border border-card bg-ok " />
       ) : null}
       {!imageOnly ? (
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/12 to-transparent" />

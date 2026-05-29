@@ -125,7 +125,7 @@ export function loadElizaConfig(): ElizaConfig {
       );
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to auto-create ~/.eliza/skills.json: ${String(err)}`,
+        `[eliza] Failed to auto-create ${skillsJsonPath}: ${String(err)}`,
       );
     }
   }
@@ -156,9 +156,7 @@ export function loadElizaConfig(): ElizaConfig {
         }
       }
     } catch (err) {
-      logger.warn(
-        `[eliza] Failed to load ~/.eliza/skills.json: ${String(err)}`,
-      );
+      logger.warn(`[eliza] Failed to load ${skillsJsonPath}: ${String(err)}`);
     }
   }
 

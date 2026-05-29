@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-x402",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "x402 micropayment middleware for elizaOS plugin HTTP routes",
   "type": "module",
   "main": "dist/index.js",
@@ -51,7 +51,7 @@
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint"
   },

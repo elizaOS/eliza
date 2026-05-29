@@ -1,0 +1,25 @@
+#! /bin/sh
+
+set -e
+set -u
+set -x
+
+echo "Checking if we should stop shipping our own AppArmor feature set"
+
+if [ -f /usr/share/apparmor-features/features ] \
+       && [ -f /usr/share/apparmor-features/Tails.features ]; then
+    if cmp --quiet /usr/share/apparmor-features/features.Tails \
+              /usr/share/apparmor-features/features; then
+        echo "Debian ships the same AppArmor feature set as ours. " \
+             "Likely we can now remove our own one." >&2
+    else
+        echo "Debian ships a different AppArmor feature set from ours. " \
+             "Likely our own one is outdated and can be removed:" >&2
+        diff -Naur \
+            /usr/share/apparmor-features/features.Tails \
+            /usr/share/apparmor-features/features \
+            >&2
+    fi
+    # In any case, we probably have to do something about it.
+    exit 1
+fi

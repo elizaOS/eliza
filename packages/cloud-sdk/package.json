@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-sdk",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,7 +9,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "bun run build.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test src",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "lint": "biome check .",

@@ -9,8 +9,8 @@
  * at runtime (codegen'd from keywords/*.keywords.json).
  */
 
-import type { CharacterLanguage } from "../contracts/onboarding.js";
-import { normalizeCharacterLanguage } from "../onboarding-presets.js";
+import { normalizeCharacterLanguage } from "../character-presets.js";
+import type { CharacterLanguage } from "../contracts/first-run-options.js";
 import { VALIDATION_KEYWORD_DOCS } from "./generated/validation-keyword-data.js";
 
 // Re-export the generated data so existing consumers can still reach it

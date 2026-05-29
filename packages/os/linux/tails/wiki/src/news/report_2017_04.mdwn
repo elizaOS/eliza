@@ -1,0 +1,116 @@
+[[!meta title="Tails report for April, 2017"]]
+[[!meta date="Wed, 31 May 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 2.12 was released on April 19th|news/version_2.12]] (major release).
+
+* Tails 3.0 is [[scheduled for June 13th|contribute/calendar]].
+
+The following changes were introduced in Tails 2.12:
+
+- We installed again *GNOME Sound Recorder* to provide a very simple
+  application for recording sound in addition to the more complex
+  *Audacity*. Sound clips recorded using *GNOME Sound Recorder* are
+  saved to the *Recordings* folder.
+
+- We removed [*I2P*](//geti2p.net/), an alternative anonymity network,
+  because we unfortunately have failed to find a developer to maintain
+  *I2P* in Tails. Maintaining software like *I2P* well-integrated in
+  Tails takes time and effort and our team is too busy with other
+  priorities.
+
+- Upgrade *Linux* to 4.9.13. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.).
+
+Documentation and website
+=========================
+
+- Cody Brownstein documented how to [[change the password of an encrypted
+  partition|doc/encryption_and_privacy/encrypted_volumes#change]].
+
+- Cody Brownstein documented how to delete the files corresponding to a
+  persistence feature that has been deselected.
+
+- We added instructions on how to burn DVDs from macOS *El Capitan* or
+  later.
+
+User experience
+===============
+
+- We collected intercept interviews
+  of users using Tails world-wide to better understand our users, their needs,
+  and what they like or dislike in Tails. We already have seven great story
+  from Western Europe, North America, Latin America, and Africa.
+
+Infrastructure
+==============
+
+- We upgraded some of our systems to Debian 9 (Stretch), in order to
+  help identify remaining issues before it becomes the new Debian stable
+  release.
+
+- We made good progress towards using our Vagrant build system on our
+  Continuous Integration infrastructure, to make it match what
+  developers use. This is part of our work on Reproducible ISO Builds.
+
+- We are interviewing a candidate to join our system administration team.
+
+- The mechanism that we designed for the [[distribution and activation of the
+  revocation certificate of the Tails signing
+  key|doc/about/openpgp_keys/signing_key_revocation]] is now deployed and 23
+  people own a share of the revocation certificate. It allows revoking the
+  Tails signing key even if very bad things happens to most of the team while
+  making it hard for isolated and malicious individuals to revoke the signing
+  key when not needed. We still encourage experts to review this mechanism and
+  other projects to adopt similar practices.
+
+Funding
+=======
+
+- We are working towards adding a [[!tails_ticket 6972 desc="sponsors
+  page"]] to our website, and are talking with a couple potential
+  corporate sponsors.
+
+- We are still in the process of discussing our proposal with OTF, and
+  reworking it accordingly.
+
+- We were nominated for the [MIT Media Lab Disobedience
+  Award](https://www.media.mit.edu/disobedience/).
+
+Translation
+===========
+
+All website PO files
+====================
+
+  - de: 55% (3182) strings translated, 5% strings fuzzy, 50% words translated
+  - fa: 39% (2246) strings translated, 8% strings fuzzy, 43% words translated
+  - fr: 82% (4686) strings translated, 1% strings fuzzy, 81% words translated
+  - it: 27% (1591) strings translated, 3% strings fuzzy, 25% words translated
+  - pt: 26% (1537) strings translated, 8% strings fuzzy, 24% words translated
+
+Total original words: 58888
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+==========================================================
+
+  - de: 82% (1544) strings translated, 9% strings fuzzy, 83% words translated
+  - fa: 37% (701) strings translated, 10% strings fuzzy, 39% words translated
+  - fr: 98% (1836) strings translated, 1% strings fuzzy, 98% words translated
+  - it: 79% (1479) strings translated, 11% strings fuzzy, 78% words translated
+  - pt: 49% (916) strings translated, 13% strings fuzzy, 50% words translated
+
+Total original words: 17063
+
+
+Metrics
+=======
+
+* Tails has been started more than 672644 times this month. This makes 21698 boots a day on average.
+* 16930 downloads of the OpenPGP signature of Tails ISO from our website.
+* 160 bug reports were received through WhisperBack.

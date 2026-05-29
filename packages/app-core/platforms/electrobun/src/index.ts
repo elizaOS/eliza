@@ -59,6 +59,7 @@ import {
   configureDesktopLocalApiAuth,
   getAgentManager,
   getDiagnosticLogPath,
+  getHealthPollTimeoutMs,
   getStartupDiagnosticLogTail,
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
@@ -72,15 +73,20 @@ import {
   setTrafficLightsPosition,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
+import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
-import { createPillWindow } from "./pill-window";
+import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
   resolveRendererProxyIdleTimeoutSeconds,
 } from "./renderer-api-proxy";
-import { resolveRendererAsset } from "./renderer-static";
+import {
+  getRendererAssetContentType,
+  resolveRendererAsset,
+  resolveRendererAssetByteRange,
+} from "./renderer-static";
 import {
   buildBunRpcHandlers,
   wireBrowserWorkspaceCaller,
@@ -264,7 +270,7 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
         message:
           "This will reset the agent: config, cloud keys, and local agent database (conversations / memory).",
         detail:
-          "Downloaded GGUF embedding models are kept. You will return to the onboarding wizard.",
+          "Downloaded GGUF embedding models are kept. You will return to first-run runtime setup.",
         buttons: ["Reset", "Cancel"],
         defaultId: 0,
         cancelId: 1,
@@ -681,23 +687,6 @@ async function startRendererServer(): Promise<string> {
 
   const port = await getPort(5174);
 
-  const mimeTypes: Record<string, string> = {
-    ".html": "text/html; charset=utf-8",
-    ".js": "application/javascript",
-    ".mjs": "application/javascript",
-    ".css": "text/css",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".svg": "image/svg+xml",
-    ".ico": "image/x-icon",
-    ".json": "application/json",
-    ".gz": "application/octet-stream",
-    ".wasm": "application/wasm",
-    ".glb": "model/gltf-binary",
-    ".gltf": "model/gltf+json",
-    ".vrm": "model/gltf-binary",
-  };
-
   // Seed the api-base-owner singleton with the initial value so the
   // HTML-inject path and the RPC push path both read the same source of
   // truth. Without this seeding, the static server would inject one value
@@ -740,7 +729,15 @@ async function startRendererServer(): Promise<string> {
         ".m4a",
         ".aac",
         ".flac",
+        ".mp4",
+        ".webm",
         ".glb",
+        ".gltf",
+        ".vrm",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
       ].includes(mimeExt)
     ) {
       return "public, max-age=86400";
@@ -818,13 +815,32 @@ async function startRendererServer(): Promise<string> {
         }
 
         const headers: Record<string, string> = {
-          "Content-Type": mimeTypes[mimeExt] ?? "application/octet-stream",
+          "Content-Type": getRendererAssetContentType(mimeExt),
           "Access-Control-Allow-Origin": "*",
           "Cache-Control": resolveRendererCacheControl(pathname, mimeExt),
+          "Accept-Ranges": "bytes",
+          "Content-Length": String(content.byteLength),
         };
 
         if (isGzipped) {
           headers["Content-Encoding"] = "gzip";
+        }
+
+        const byteRange = isGzipped
+          ? null
+          : resolveRendererAssetByteRange(
+              req.headers.get("range"),
+              content.byteLength,
+            );
+        if (byteRange) {
+          const body = content.subarray(byteRange.start, byteRange.end + 1);
+          headers["Content-Length"] = String(body.byteLength);
+          headers["Content-Range"] =
+            `bytes ${byteRange.start}-${byteRange.end}/${content.byteLength}`;
+          return new Response(body, {
+            status: 206,
+            headers,
+          });
         }
 
         return new Response(content, { headers });
@@ -1507,6 +1523,21 @@ function injectApiBase(win: BrowserWindow): void {
   setAgentReady(true);
 }
 
+function injectApiBaseIntoOpenRendererWindows(): void {
+  if (currentWindow) {
+    injectApiBase(currentWindow);
+  }
+
+  const pillWindow = getPillWindow();
+  if (pillWindow && pillWindow !== currentWindow) {
+    injectApiBase(pillWindow);
+  }
+
+  surfaceWindowManager?.forEachWindow((w) => {
+    injectApiBase(w as BrowserWindow);
+  });
+}
+
 /**
  * Push real OS permission states into the agent REST API so the renderer's
  * PermissionsSection shows correct statuses and capability toggles unlock.
@@ -1545,7 +1576,6 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
     return;
   }
 
-  const agent = getAgentManager();
   recordStartupPhase("autostart_requested", {
     pid: process.pid,
     exec_path: process.execPath,
@@ -1553,7 +1583,14 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
   });
 
   try {
-    const status = await agent.start();
+    const remotePluginHost = getRemotePluginHost();
+    remotePluginHost.startWorker("eliza.runtime");
+    await remotePluginHost.invokeWorker({
+      id: "eliza.runtime",
+      method: "runtime.start",
+      timeoutMs: getHealthPollTimeoutMs() + 5_000,
+    });
+    const status = getAgentManager().getStatus();
 
     if (status.state === "running" && status.port) {
       const apiBase = `http://127.0.0.1:${status.port}`;
@@ -1569,6 +1606,10 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
       await primeDesktopSessionAuth(apiBase, rendererBase);
       const apiToken = resolveApiToken(process.env) ?? "";
       apiBaseOwner.notifyChange(win, rendererBase, apiToken);
+      const pillWindow = getPillWindow();
+      if (pillWindow && pillWindow !== win) {
+        apiBaseOwner.pushToWindow(pillWindow);
+      }
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
@@ -1990,13 +2031,13 @@ function setupShutdown(): void {
 }
 
 /**
- * Load repo-root and ~/.eliza/.env into `process.env` (non-destructive) so the
+ * Load repo-root and state-dir `.env` into `process.env` (non-destructive) so the
  * main process can send the same `ELIZA_API_TOKEN` as `dev-server.ts` when
  * calling loopback APIs (app menu reset, export, etc.). The dev API child
  * already loads dotenv; Electrobun did not until this ran.
  *
  * Packaged desktop builds must not load these files. On machines that also
- * have a the app/Eliza dev checkout, ~/.eliza/.env can contain
+ * have an app/Eliza dev checkout, the state-dir `.env` can contain
  * ELIZA_DESKTOP_API_BASE and related overrides that switch the packaged app
  * into external mode and make launcher startup appear dead.
  */
@@ -2016,9 +2057,16 @@ async function loadTheAppEnvFilesForMain(): Promise<void> {
       "..",
       "..",
     );
+    const namespace = process.env.ELIZA_NAMESPACE?.trim() || BRAND.namespace;
+    const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+    const stateHome = xdgStateHome
+      ? path.isAbsolute(xdgStateHome)
+        ? xdgStateHome
+        : path.join(os.homedir(), xdgStateHome)
+      : path.join(os.homedir(), ".local", "state");
     for (const envPath of [
       path.join(repoRootGuess, ".env"),
-      path.join(os.homedir(), ".eliza", ".env"),
+      path.join(stateHome, namespace, ".env"),
     ]) {
       if (fs.existsSync(envPath)) {
         config({ path: envPath, override: false });
@@ -2191,8 +2239,8 @@ async function main(): Promise<void> {
       if (status.port) {
         // The agent rebound to a different loopback port (or recovered from a
         // crash) — the cookies we installed during _startAgent were scoped to
-        // the old origin. Re-prime so the renderer's next /api request stays
-        // authenticated.
+        // the old origin. Re-prime so every renderer's next /api request stays
+        // authenticated, including the OS-level pill window.
         markDesktopSessionStale();
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
@@ -2200,12 +2248,7 @@ async function main(): Promise<void> {
           status.port,
         );
         void primeDesktopSessionAuth(apiBase, rendererBase);
-        if (currentWindow) {
-          injectApiBase(currentWindow);
-        }
-        surfaceWindowManager?.forEachWindow((w) => {
-          injectApiBase(w as BrowserWindow);
-        });
+        injectApiBaseIntoOpenRendererWindows();
       }
     }),
   );
@@ -2239,10 +2282,10 @@ async function main(): Promise<void> {
     }
     getFloatingChatManager().configure(url, preload);
     // In kiosk mode the chat pill lives in-canvas on the KioskShell, so we
-    // never spawn the separate native pill toplevel.
+    // never spawn the separate native pill toplevel. Outside kiosk, the pill
+    // loads the same renderer in chat-overlay shell mode so the assistant
+    // lives in its own OS-level window instead of inside the app.
     if (!isKioskShellMode() && shouldCreateDesktopPill()) {
-      // The pill loads the same renderer with `?shell=pill`, which routes to
-      // a minimal <VoicePill> mount in apps/app/src/main.tsx.
       try {
         createPillWindow({ rendererUrl: url, preload });
       } catch (err) {
@@ -2414,7 +2457,7 @@ async function main(): Promise<void> {
       process.env as Record<string, string | undefined>,
     );
     if (rt.mode === "external") {
-      injectApiBase(currentWindow);
+      injectApiBaseIntoOpenRendererWindows();
     } else if (rt.mode === "local") {
       logger.info("[Main] Starting embedded agent (local mode).");
       _startAgent(currentWindow).catch((err) => {

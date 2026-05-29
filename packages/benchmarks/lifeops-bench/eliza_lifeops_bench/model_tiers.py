@@ -51,7 +51,7 @@ DEFAULT_TIERS: dict[ModelTier, TierSpec] = {
         model_name="qwen3.5-0.8b-q8_0",
         bundle_path="~/.eliza/local-inference/models/eliza-1-0_8b.bundle",
         context_window=32_768,
-        notes="Tier-A smoke lane; dflash fork or Ollama fallback",
+        notes="Tier-A smoke lane; mtp fork or Ollama fallback",
     ),
     "mid": TierSpec(
         tier="mid",

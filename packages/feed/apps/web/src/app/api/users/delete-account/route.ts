@@ -226,7 +226,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       "Your account and personal data have been deleted from our servers.",
       "Some anonymized data may be retained for analytics and AI training.",
       "Blockchain data (if any) remains permanently on the blockchain and cannot be deleted.",
-      "If you registered via email, you may need to contact our authentication provider (Privy) to delete your auth account separately.",
+      "If you registered via email, you may need to contact the authentication provider to delete your auth account separately.",
     ],
   });
 });

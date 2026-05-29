@@ -17,11 +17,11 @@
  *
  * Scope of this first cut:
  *   - Text generation only. Embeddings, vision (mmproj), slot save/restore,
- *     prewarm, parallel resize all stay on the subprocess `dflash-server`
+ *     prewarm, parallel resize all stay on the native FFI runtime
  *     fallback. Each needs a separate native extension to the shim and is
  *     tracked in `FFI_BACKEND_WIREUP_PLAN.md`.
  *   - No speculative decoding in v1. `LlmStreamConfig.draftMin/draftMax/
- *     dflashDrafterPath` are silently ignored; a one-time warning fires.
+ *     draftModelPath` are silently ignored; a one-time warning fires.
  *
  * Memory + lifecycle:
  *   - `*_params_default()` returns a malloc'd pointer that MUST be freed
@@ -41,6 +41,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 import type {
 	LlmCtxHandle,
@@ -204,9 +205,9 @@ interface ShimSymbols {
 
 	eliza_llama_log_silence: () => void;
 
-	// === Speculative decoding (DFlash). When a drafter model is attached
+	// === Speculative decoding. When MTP is active
 	// === to the main ctx, `decode_unified` runs the verify-and-rewind
-	// === cycle internally; `dflash_stats` exposes the per-step counters
+	// === cycle internally; `mtp_stats` exposes the per-step counters
 	// === so we can populate `drafterDrafted` / `drafterAccepted` on
 	// === LlmStreamStep.
 	eliza_llama_context_attach_drafter: (
@@ -226,7 +227,7 @@ interface ShimSymbols {
 	) => number;
 	eliza_llama_decode_unified: (ctx: Pointer, batch: Pointer) => number;
 	/** Legacy 4-int32 telemetry: [drafted, accepted, rejected, last_status]. */
-	eliza_llama_dflash_stats: (ctx: Pointer, out: Pointer) => void;
+	eliza_llama_mtp_stats: (ctx: Pointer, out: Pointer) => void;
 }
 
 /**
@@ -272,7 +273,7 @@ interface VisionShimSymbols {
 // === Path resolution =======================================================
 
 /**
- * Resolve `$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/`
+ * Resolve `$ELIZA_STATE_DIR/local-inference/bin/llama-cpp/<platform>-<arch>-<backend>/`
  * — where `packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs` writes
  * the desktop dylibs. `<backend>` defaults per platform; `ELIZA_DESKTOP_BACKEND`
  * env var overrides.
@@ -280,10 +281,7 @@ interface VisionShimSymbols {
 export function resolveDesktopBinDir(
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
-	const stateDir =
-		env.ELIZA_STATE_DIR ??
-		env.ELIZA_STATE_DIR ??
-		path.join(os.homedir(), ".eliza");
+	const stateDir = env.ELIZA_STATE_DIR ?? resolveStateDir(env);
 	const platform =
 		process.platform === "darwin"
 			? "darwin"
@@ -313,7 +311,7 @@ export function resolveDesktopBinDir(
 		stateDir,
 		"local-inference",
 		"bin",
-		"dflash",
+		"llama-cpp",
 		`${platform}-${arch}-${backend}`,
 	);
 }
@@ -504,7 +502,7 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 			returns: T.i32,
 		},
 		eliza_llama_decode_unified: { args: [T.ptr, T.ptr], returns: T.i32 },
-		eliza_llama_dflash_stats: { args: [T.ptr, T.ptr], returns: T.void },
+		eliza_llama_mtp_stats: { args: [T.ptr, T.ptr], returns: T.void },
 	});
 	return handle.symbols;
 }
@@ -585,6 +583,12 @@ function defaultThreads(env: NodeJS.ProcessEnv = process.env): number {
 	}
 }
 
+function normalizeBatchSize(value: number | undefined): number {
+	if (value === undefined) return 256;
+	const normalized = Math.floor(value);
+	return Number.isFinite(normalized) && normalized > 0 ? normalized : 1;
+}
+
 // === Adapter ===============================================================
 
 export interface DesktopLlamaLoadOptions {
@@ -653,7 +657,7 @@ export class DesktopLlamaAdapter {
 	private vocabPtr: Pointer | null = null;
 	private nextStreamId = 1n;
 	private readonly sessions = new Map<bigint, DesktopSession>();
-	/** Loaded drafter model (DFlash speculative decoding) — shared across ctxs in the pool. */
+	/** Loaded draft model, if a non-MTP runtime attaches one. */
 	private drafterModelPtr: Pointer | null = null;
 	private drafterModelPath: string | null = null;
 	/**
@@ -712,7 +716,7 @@ export class DesktopLlamaAdapter {
 		}
 		const pathBuf = encodeCString(mmprojPath);
 		const threads = this.loadOpts?.threads ?? defaultThreads();
-		// `use_gpu=true` matches subprocess `dflash-server` behaviour
+		// `use_gpu=true` keeps native runtime GPU placement consistent.
 		// (mtmd offloads the projector to whichever backend is active —
 		// Metal on darwin, Vulkan/CUDA on linux/windows).
 		const ctxPtr = this.vision.eliza_mtmd_init(
@@ -779,6 +783,10 @@ export class DesktopLlamaAdapter {
 			const mem = this.llama.llama_get_memory(ctx);
 			this.llama.llama_memory_clear(mem, true);
 		}
+		// llama.cpp MTP + mtmd/mmproj is still a moving target. Keep the
+		// vision ctx target-only so image embeddings cannot inherit a drafter
+		// attached by a previous text session on the same pooled ctx.
+		this.detachDrafterFromCtx(0);
 
 		// Reference args explicitly so unused-warnings stay quiet on the
 		// stub. Once the JS-side RGB decode + embedding-batch shim wrapper
@@ -806,7 +814,7 @@ export class DesktopLlamaAdapter {
 				"plugin-local-inference deps; it is already in app-core) and " +
 				"(b) an embeddings-batch shim wrapper around llama_batch_get_one. " +
 				"Until both land, callers fall through to the subprocess " +
-				"`dflash-server` vision path.",
+				"the native vision path.",
 		);
 	}
 
@@ -894,7 +902,7 @@ export class DesktopLlamaAdapter {
 				let nextCtx: Pointer;
 				try {
 					const ctxSize = this.loadOpts.contextSize ?? 4096;
-					const nBatch = this.loadOpts.nBatch ?? 256;
+					const nBatch = normalizeBatchSize(this.loadOpts.nBatch);
 					const threads = this.loadOpts.threads ?? defaultThreads();
 					this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
 					this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
@@ -926,9 +934,9 @@ export class DesktopLlamaAdapter {
 	}
 
 	/**
-	 * Load a DFlash drafter model and attach it to the main context. Once
+	 * Load a draft model and attach it to the main context. Once
 	 * attached, `decode_unified` runs the verify-and-rewind speculative loop
-	 * internally and `dflash_stats` exposes per-step accept/reject counters.
+	 * internally and `mtp_stats` exposes per-step accept/reject counters.
 	 *
 	 * Reuses the loaded main model's GPU layer count by default — the
 	 * drafter is usually 4–8x smaller and benefits from the same backend.
@@ -1012,7 +1020,7 @@ export class DesktopLlamaAdapter {
 		const cp = this.shim.eliza_llama_context_params_default();
 		try {
 			const ctxSize = opts.contextSize ?? 4096;
-			const nBatch = opts.nBatch ?? 256;
+			const nBatch = normalizeBatchSize(opts.nBatch);
 			const threads = opts.threads ?? defaultThreads();
 			this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
 			this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
@@ -1259,9 +1267,9 @@ export class DesktopLlamaAdapter {
 		// Speculative decoding: drafter attach is per-ctx. Attach lazily
 		// when this session requests one. We track per-ctx attachment in
 		// `drafterAttached[ctxIdx]` so we don't re-attach unnecessarily.
-		if (config.dflashDrafterPath) {
+		if (config.draftModelPath) {
 			this.attachDrafterToCtx(ctxIdx, {
-				drafterPath: config.dflashDrafterPath,
+				drafterPath: config.draftModelPath,
 				draftMin: config.draftMin,
 				draftMax: config.draftMax,
 			});
@@ -1413,22 +1421,32 @@ export class DesktopLlamaAdapter {
 		const sess = this.requireSession(stream);
 		const ctx = this.ctxPool[sess.ctxIdx];
 		if (!ctx) throw new Error("[desktop-llama] ctx gone mid-prefill");
-		// Copy into a session-owned buffer so the FFI batch ptr stays valid
-		// for the lifetime of `eliza_llama_decode`.
-		const owned = new Int32Array(tokens.length);
-		owned.set(tokens);
-		const batch = this.shim.eliza_llama_batch_get_one(
-			this.ffi.ptr(owned),
-			owned.length,
-		);
-		try {
-			const rc = this.shim.eliza_llama_decode(ctx, batch);
-			if (rc !== 0) {
-				throw new Error(`[desktop-llama] prefill decode rc=${rc}`);
+		const nBatch = normalizeBatchSize(this.loadOpts?.nBatch);
+		for (let offset = 0; offset < tokens.length; offset += nBatch) {
+			const chunk = tokens.subarray(
+				offset,
+				Math.min(offset + nBatch, tokens.length),
+			);
+			// Copy into a session-owned buffer so the FFI batch ptr stays valid
+			// for the lifetime of `eliza_llama_decode`.
+			const owned = new Int32Array(chunk.length);
+			owned.set(chunk);
+			const batch = this.shim.eliza_llama_batch_get_one(
+				this.ffi.ptr(owned),
+				owned.length,
+			);
+			if (!batch) {
+				throw new Error("[desktop-llama] prefill batch allocation failed");
 			}
-			this.hasDecodedFlags[sess.ctxIdx] = true;
-		} finally {
-			this.shim.eliza_llama_batch_free(batch);
+			try {
+				const rc = this.shim.eliza_llama_decode(ctx, batch);
+				if (rc !== 0) {
+					throw new Error(`[desktop-llama] prefill decode rc=${rc}`);
+				}
+				this.hasDecodedFlags[sess.ctxIdx] = true;
+			} finally {
+				this.shim.eliza_llama_batch_free(batch);
+			}
 		}
 	}
 
@@ -1451,7 +1469,7 @@ export class DesktopLlamaAdapter {
 		// snapshot before/after and diff to report per-step
 		// `drafterDrafted` / `drafterAccepted` on the LlmStreamStep.
 		const usingDrafter = sess.usingDrafter;
-		const statsBefore = usingDrafter ? this.readDflashStats(ctx) : null;
+		const statsBefore = usingDrafter ? this.readMtpStats(ctx) : null;
 
 		for (let i = 0; i < maxTokensPerStep; i++) {
 			if (sess.abort.cancelled) {
@@ -1503,7 +1521,7 @@ export class DesktopLlamaAdapter {
 		let drafted = 0;
 		let accepted = 0;
 		if (usingDrafter && statsBefore) {
-			const statsAfter = this.readDflashStats(ctx);
+			const statsAfter = this.readMtpStats(ctx);
 			drafted = Math.max(0, statsAfter.drafted - statsBefore.drafted);
 			accepted = Math.max(0, statsAfter.accepted - statsBefore.accepted);
 		}
@@ -1517,18 +1535,18 @@ export class DesktopLlamaAdapter {
 	}
 
 	/**
-	 * Read the legacy 4-int32 DFlash telemetry block for a specific ctx.
+	 * Read the 4-int32 MTP telemetry block for a specific ctx.
 	 * Counters are per-ctx since each ctx in the pool has its own drafter
 	 * state. Returns zero counters when no drafter is attached.
 	 */
-	private readDflashStats(ctx: Pointer): {
+	private readMtpStats(ctx: Pointer): {
 		drafted: number;
 		accepted: number;
 		rejected: number;
 		lastStatus: number;
 	} {
 		const buf = new Int32Array(4);
-		this.shim.eliza_llama_dflash_stats(ctx, this.ffi.ptr(buf));
+		this.shim.eliza_llama_mtp_stats(ctx, this.ffi.ptr(buf));
 		return {
 			drafted: buf[0] ?? 0,
 			accepted: buf[1] ?? 0,
@@ -1567,7 +1585,7 @@ export interface DesktopLlamaLoadResult {
 /**
  * Load the desktop dylib pair, instantiate the adapter, mmap the model.
  * Returns `null` when the runtime isn't Bun, the dylibs aren't on disk, or
- * `dlopen` fails — callers fall through to the subprocess `dflash-server`
+ * `dlopen` fails — callers fall through to another local runtime
  * path on null.
  */
 export async function loadDesktopLlama(

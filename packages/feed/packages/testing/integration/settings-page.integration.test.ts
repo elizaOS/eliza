@@ -14,7 +14,7 @@
  *   - bunx playwright test --project=setup
  *   - bunx playwright test --project=setup-integration-auth
  *
- * Note: These tests require Privy authentication which may not be available in CI.
+ * Note: These tests require Steward authentication which may not be available in CI.
  * Tests will skip cleanly if auth is not set up.
  */
 

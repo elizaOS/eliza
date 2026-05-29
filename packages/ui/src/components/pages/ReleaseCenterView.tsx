@@ -329,7 +329,7 @@ export function ReleaseCenterView() {
       {actionError && (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+          className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
           {actionError}
         </div>
@@ -337,7 +337,7 @@ export function ReleaseCenterView() {
       {actionMessage && (
         <div
           role="status"
-          className="rounded-lg border border-ok/30 bg-ok/10 px-3 py-2 text-xs text-ok"
+          className="rounded-sm border border-ok/30 bg-ok/10 px-3 py-2 text-xs text-ok"
         >
           {actionMessage}
         </div>
@@ -345,7 +345,7 @@ export function ReleaseCenterView() {
       {autoUpdateDisabled && nativeUpdater?.autoUpdateDisabledReason && (
         <div
           role="status"
-          className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+          className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
         >
           {nativeUpdater.autoUpdateDisabledReason}
         </div>
@@ -353,7 +353,7 @@ export function ReleaseCenterView() {
       {applicationUpdate && !desktopRuntime && (
         <div
           role="status"
-          className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
+          className="rounded-sm border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
         >
           {applicationUpdate.detail}
         </div>
@@ -361,7 +361,7 @@ export function ReleaseCenterView() {
       {agentUpdate && (
         <div
           role="status"
-          className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
+          className="rounded-sm border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
         >
           {agentUpdate.error ?? agentUpdate.detail}
         </div>
@@ -385,7 +385,7 @@ export function ReleaseCenterView() {
         {desktopRuntime ? (
           <Button
             size="sm"
-            className="h-9 rounded-lg px-3 text-xs font-medium"
+            className="h-9 rounded-sm px-3 text-xs font-medium"
             disabled={
               busyAction === "check-updates" ||
               updateLoading ||
@@ -410,7 +410,7 @@ export function ReleaseCenterView() {
         {desktopRuntime && nativeUpdater?.updateReady && (
           <Button
             size="sm"
-            className="h-9 rounded-lg px-3 text-xs font-medium"
+            className="h-9 rounded-sm px-3 text-xs font-medium"
             disabled={busyAction === "apply-update" || autoUpdateDisabled}
             onClick={() =>
               void runAction(
@@ -430,7 +430,7 @@ export function ReleaseCenterView() {
         <Button
           size="icon"
           variant="outline"
-          className="h-9 w-9 rounded-lg"
+          className="h-9 w-9 rounded-sm"
           disabled={busyAction === "refresh" || updateLoading}
           aria-label={t("common.refresh")}
           title={t("common.refresh")}
@@ -453,7 +453,7 @@ export function ReleaseCenterView() {
           <Button
             size="sm"
             variant="outline"
-            className="h-9 rounded-lg px-3 text-xs font-medium"
+            className="h-9 rounded-sm px-3 text-xs font-medium"
             disabled={busyAction === "detach-release"}
             onClick={() =>
               void runAction(
@@ -485,7 +485,7 @@ export function ReleaseCenterView() {
           <Input
             id="release-notes-url"
             type="text"
-            className="h-9 flex-1 rounded-lg bg-bg text-xs"
+            className="h-9 flex-1 rounded-sm bg-bg text-xs"
             value={releaseNotesUrl}
             onChange={(e) => {
               setReleaseNotesUrlDirty(true);
@@ -496,7 +496,7 @@ export function ReleaseCenterView() {
             <Button
               size="sm"
               variant="outline"
-              className="h-9 rounded-lg px-3 text-xs font-medium"
+              className="h-9 rounded-sm px-3 text-xs font-medium"
               disabled={busyAction === "open-release-notes"}
               onClick={() =>
                 void runAction(
@@ -514,7 +514,7 @@ export function ReleaseCenterView() {
             <Button
               size="icon"
               variant="ghost"
-              className="h-9 w-9 rounded-lg text-muted-strong"
+              className="h-9 w-9 rounded-sm text-muted-strong"
               aria-label={t("releasecenter.ResetUrl", {
                 defaultValue: "Reset URL",
               })}

@@ -35,7 +35,7 @@ Mode = `lora-experimental`:
     vendored trainer fork ever gets pip-installed against `KModel`.
 
 Optimizer: APOLLO (apollo_mini by default — same choice as our text fine-tunes
-and the DFlash drafter distiller). Mixed precision: bf16 if CUDA available, else
+and the MTP drafter distiller). Mixed precision: bf16 if CUDA available, else
 fp32. Logging goes to TensorBoard via `<run-dir>/tb/`.
 
 Synthetic-smoke mode (`--synthetic-smoke`) runs the full control flow with a

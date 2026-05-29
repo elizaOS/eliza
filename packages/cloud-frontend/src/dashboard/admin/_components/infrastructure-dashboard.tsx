@@ -1953,7 +1953,7 @@ export function InfrastructureDashboard() {
                                     <>
                                       <TableRow
                                         key={row.key}
-                                        className={`${isGhost ? "bg-orange-500/5 hover:bg-orange-500/10" : ""} cursor-pointer`}
+                                        className={`${isGhost ? "bg-orange-500/5 hover:bg-white/5" : ""} cursor-pointer`}
                                         onClick={() => toggleRowExpand(row.key)}
                                       >
                                         <TableCell className="w-8 px-2">

@@ -477,6 +477,81 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "docs/evidence/android/runtime/live_runtime_capture_contracts.json",
         )
 
+    def test_live_capture_contract_precedence_marks_present_bad_file_as_live_blocker(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            manifest = (
+                tmp_root / "docs/evidence/android/runtime/live_runtime_capture_contracts.json"
+            )
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.android_live_runtime_capture_contracts.v1",
+                        "release_credit": False,
+                        "live_capture_contracts": [
+                            {
+                                "expected_path": "docs/evidence/android/peripherals/wifi_sim.log",
+                                "expected_file_schema": "fixture wifi evidence schema",
+                                "capture_commands": ["capture wifi fixture"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            evidence = tmp_root / "docs/evidence/android/peripherals/wifi_sim.log"
+            evidence.parent.mkdir(parents=True)
+            evidence.write_text("eliza-evidence: status=BLOCKED\n", encoding="utf-8")
+            wifi = gate.ScopeSpec(
+                name="radio_sensor_pmic",
+                report_builder=lambda: report("radio", status="ready", allowed=True),
+                validator=lambda _report: [],
+                required_status="ready",
+                runtime_surface="wifi",
+                required_runtime_evidence=("wifi proof",),
+                required_evidence_files=(
+                    gate.EvidenceSpec(
+                        path=evidence,
+                        description="wifi proof",
+                        required_tokens=("eliza-evidence: status=PASS",),
+                    ),
+                ),
+            )
+            with (
+                mock.patch.object(gate, "ROOT", tmp_root),
+                mock.patch.object(gate, "LIVE_CAPTURE_CONTRACT_MANIFEST", manifest),
+                mock.patch.object(gate, "SCOPES", (wifi,)),
+            ):
+                payload = gate.run_check(Namespace())
+
+        blocked_file = payload["runtime_evidence_collection_inventory"][0][
+            "blocked_evidence_files"
+        ][0]
+        self.assertEqual(blocked_file["path"], "docs/evidence/android/peripherals/wifi_sim.log")
+        self.assertEqual(blocked_file["blocker_class"], "live_capture_unavailable")
+        self.assertEqual(blocked_file["blocker_category"], "live_device_validation")
+        self.assertIn("eliza-evidence: status=PASS", blocked_file["required_tokens"])
+        self.assertIn(
+            "docs/evidence/android/peripherals/wifi_sim.log missing token "
+            "'eliza-evidence: status=PASS'",
+            blocked_file["errors"],
+        )
+        self.assertEqual(
+            blocked_file["capture_contract_manifest"],
+            "docs/evidence/android/runtime/live_runtime_capture_contracts.json",
+        )
+        self.assertEqual(blocked_file["expected_file_schema"], "fixture wifi evidence schema")
+        self.assertTrue(blocked_file["capture_commands"])
+        self.assertTrue(
+            any(
+                "capture_simulated_peripheral_evidence.py" in cmd
+                for cmd in blocked_file["capture_commands"]
+            )
+        )
+
     def test_current_live_device_blockers_all_have_executable_capture_contracts(self) -> None:
         expected = {
             "docs/evidence/android/eliza_launcher_runtime_evidence.json",

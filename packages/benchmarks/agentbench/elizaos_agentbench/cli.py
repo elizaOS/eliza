@@ -129,7 +129,7 @@ def create_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--runtime",
         type=str,
-        choices=["mock", "bridge", "elizaos", "eliza", "hermes", "openclaw"],
+        choices=["mock", "bridge", "elizaos", "eliza", "hermes", "openclaw", "smithers"],
         default="mock",
         help=(
             "Runtime/harness to use: mock for testing, bridge/eliza/elizaos "
@@ -233,7 +233,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     )
     if zero_task_dry_run:
         harness_label = "eliza" if runtime_name in {"bridge", "elizaos"} else runtime_name
-        if harness_label in {"eliza", "hermes", "openclaw"}:
+        if harness_label in {"eliza", "hermes", "openclaw", "smithers"}:
             os.environ["BENCHMARK_HARNESS"] = harness_label
             os.environ["ELIZA_BENCH_HARNESS"] = harness_label
         logger.info(
@@ -253,7 +253,7 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         runtime = SmartMockRuntime()
         runtime._app_harness = ElizaAgentHarness(bridge_manager.client)  # type: ignore[attr-defined]
         logger.info("Using Eliza TypeScript bridge")
-    elif runtime_name in {"hermes", "openclaw"}:
+    elif runtime_name in {"hermes", "openclaw", "smithers"}:
         from elizaos_agentbench.agent_fn_harness import AgentFnHarness
 
         _load_dotenv()
@@ -267,6 +267,8 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         )
         if runtime_name == "hermes":
             from hermes_adapter.agentbench import build_agentbench_agent_fn
+        elif runtime_name == "smithers":
+            from smithers_adapter.agentbench import build_agentbench_agent_fn
         else:
             from openclaw_adapter.agentbench import build_agentbench_agent_fn
 

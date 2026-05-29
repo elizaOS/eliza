@@ -178,6 +178,12 @@ interface ResidentEntry {
 	estimatedMb: number;
 	refCount: number;
 	loadedAtMs: number;
+	/**
+	 * Wall-clock of the most recent `acquire`. Drives the fit-to-budget LRU
+	 * eviction path (`evictToFit`): when a new load would exceed the usable
+	 * RAM budget, the least-recently-used evictable entries are dropped first.
+	 */
+	lastUsedAt: number;
 	roleId: string;
 }
 
@@ -194,7 +200,7 @@ export type ArbiterEvent =
 			type: "model_unload";
 			capability: ArbiterCapability;
 			modelKey: string;
-			reason: "release" | "swap" | "pressure" | "shutdown";
+			reason: "release" | "swap" | "pressure" | "shutdown" | "fit";
 			atMs: number;
 	  }
 	| {
@@ -208,7 +214,7 @@ export type ArbiterEvent =
 			type: "eviction";
 			capability: ArbiterCapability;
 			modelKey: string;
-			reason: "pressure" | "swap";
+			reason: "pressure" | "swap" | "fit";
 			estimatedMb: number;
 			atMs: number;
 	  }
@@ -240,6 +246,16 @@ export interface MemoryArbiterOptions {
 		debug?: (m: string) => void;
 	};
 	now?: () => number;
+	/**
+	 * Usable RAM budget (MB) for the proactive fit-to-budget LRU eviction
+	 * path. Before loading a model whose `estimatedMb` would push the sum of
+	 * resident footprints past this budget, the arbiter evicts the
+	 * least-recently-used evictable entries (refcount 0, never the text
+	 * target) until it fits. Return `null` to disable the fit path entirely —
+	 * the default, since an arbiter with no host-RAM knowledge must not guess.
+	 * Production wiring passes `os.totalmem()/MB - ramHeadroomReserveMb()`.
+	 */
+	budgetMb?: () => number | null;
 }
 
 /**
@@ -253,6 +269,7 @@ export class MemoryArbiter {
 	private readonly visionCache: VisionEmbeddingCache;
 	private readonly log?: MemoryArbiterOptions["logger"];
 	private readonly now: () => number;
+	private readonly budgetMb: () => number | null;
 
 	private readonly capabilities = new Map<
 		ArbiterCapability,
@@ -292,6 +309,7 @@ export class MemoryArbiter {
 		this.visionCache = opts.visionCache ?? new VisionEmbeddingCache();
 		this.log = opts.logger;
 		this.now = opts.now ?? (() => Date.now());
+		this.budgetMb = opts.budgetMb ?? (() => null);
 	}
 
 	/** Begin observing memory pressure. Idempotent. */
@@ -389,6 +407,7 @@ export class MemoryArbiter {
 		estimatedMb: number;
 		refCount: number;
 		loadedAtMs: number;
+		lastUsedAt: number;
 	}> {
 		return Array.from(this.resident.values()).map((e) => ({
 			capability: e.capability,
@@ -397,6 +416,7 @@ export class MemoryArbiter {
 			estimatedMb: e.estimatedMb,
 			refCount: e.refCount,
 			loadedAtMs: e.loadedAtMs,
+			lastUsedAt: e.lastUsedAt,
 		}));
 	}
 
@@ -435,6 +455,7 @@ export class MemoryArbiter {
 		}
 		const entry = await this.loadOrReuse(registration, modelKey);
 		entry.refCount++;
+		entry.lastUsedAt = this.now();
 		return this.handleFor<TBackend>(entry);
 	}
 
@@ -504,6 +525,11 @@ export class MemoryArbiter {
 				}
 				await this.evictEntry(conflict, "swap");
 			}
+			// Proactively make room for the incoming weights: evict the
+			// least-recently-used evictable models until this one fits the
+			// usable RAM budget. No-op when no budget is configured or the
+			// incoming footprint is unknown.
+			await this.evictToFit(registration.estimatedMb ?? 0);
 			const startMs = this.now();
 			const backend = await registration.load(modelKey);
 			const loadedAtMs = this.now();
@@ -515,6 +541,7 @@ export class MemoryArbiter {
 				estimatedMb: registration.estimatedMb ?? 0,
 				refCount: 0,
 				loadedAtMs,
+				lastUsedAt: loadedAtMs,
 				roleId: `arbiter:${registration.capability}:${modelKey}`,
 			};
 			const evictable = this.makeEvictable(entry, registration);
@@ -593,7 +620,7 @@ export class MemoryArbiter {
 
 	private async evictEntry(
 		entry: ResidentEntry,
-		reason: "release" | "swap" | "pressure" | "shutdown",
+		reason: "release" | "swap" | "pressure" | "shutdown" | "fit",
 		registration?: CapabilityRegistration<unknown, unknown, unknown>,
 	): Promise<void> {
 		const key = this.residentKey(entry.capability, entry.modelKey);
@@ -621,7 +648,7 @@ export class MemoryArbiter {
 			reason,
 			atMs: this.now(),
 		});
-		if (reason === "pressure" || reason === "swap") {
+		if (reason === "pressure" || reason === "swap" || reason === "fit") {
 			this.emit({
 				type: "eviction",
 				capability: entry.capability,
@@ -634,6 +661,69 @@ export class MemoryArbiter {
 		this.log?.info?.(
 			`[memory-arbiter] evicted ${entry.capability}/${entry.modelKey} reason=${reason}`,
 		);
+	}
+
+	/**
+	 * Proactive fit-to-budget eviction. Before loading a model needing
+	 * `incomingMb`, evict the least-recently-used evictable residents until
+	 * the projected resident footprint fits `budgetMb()`.
+	 *
+	 * Policy:
+	 *   - Disabled when no budget is configured (`budgetMb()` → null/≤0) or
+	 *     the incoming footprint is unknown (`incomingMb` ≤ 0): we never guess.
+	 *   - Pins: the text target is never evicted (losing it bricks the agent),
+	 *     and any entry with a live refcount is left alone (in active use).
+	 *   - Ordering is pure LRU (oldest `lastUsedAt` first); ties break toward
+	 *     the lower-priority role, then the older load.
+	 *   - Best-effort: if the pins can't be freed enough, the load still
+	 *     proceeds — the OS-pressure path and the `active-model` admission gate
+	 *     are the backstops; this path only avoids predictable overcommit.
+	 */
+	private async evictToFit(incomingMb: number): Promise<void> {
+		const budget = this.budgetMb();
+		if (budget === null || budget <= 0) return;
+		if (incomingMb <= 0) return;
+
+		const residentMb = (): number => {
+			let sum = 0;
+			for (const e of this.resident.values()) sum += e.estimatedMb;
+			return sum;
+		};
+
+		while (residentMb() + incomingMb > budget) {
+			const candidate = this.lruEvictionCandidate();
+			if (!candidate) break;
+			await this.evictEntry(candidate, "fit");
+		}
+	}
+
+	/**
+	 * The next entry the fit path should drop: least-recently-used among
+	 * evictable residents (refcount 0, not the text target). Returns null when
+	 * nothing is evictable.
+	 */
+	private lruEvictionCandidate(): ResidentEntry | null {
+		let best: ResidentEntry | null = null;
+		for (const entry of this.resident.values()) {
+			if (entry.refCount > 0) continue;
+			if (entry.residentRole === "text-target") continue;
+			if (best === null) {
+				best = entry;
+				continue;
+			}
+			if (entry.lastUsedAt !== best.lastUsedAt) {
+				if (entry.lastUsedAt < best.lastUsedAt) best = entry;
+				continue;
+			}
+			const pa = RESIDENT_ROLE_PRIORITY[entry.residentRole];
+			const pb = RESIDENT_ROLE_PRIORITY[best.residentRole];
+			if (pa !== pb) {
+				if (pa < pb) best = entry;
+				continue;
+			}
+			if (entry.loadedAtMs < best.loadedAtMs) best = entry;
+		}
+		return best;
 	}
 
 	private async handlePressure(event: MemoryPressureEvent): Promise<void> {

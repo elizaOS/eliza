@@ -206,7 +206,7 @@ export interface InitializeAppPluginsArgs {
   assetBaseUrl: string | undefined;
   cloudApiBase: string | undefined;
   vrmAssets: AppBootConfig["vrmAssets"];
-  onboardingStyles: AppBootConfig["onboardingStyles"];
+  firstRunStyles: AppBootConfig["firstRunStyles"];
   characterCatalog: AppBootConfig["characterCatalog"];
   envAliases: AppBootConfig["envAliases"];
   clientMiddleware: AppBootConfig["clientMiddleware"];
@@ -259,7 +259,7 @@ export function initializeAppPlugins(
       assetBaseUrl: args.assetBaseUrl,
       cloudApiBase: args.cloudApiBase,
       vrmAssets: args.vrmAssets,
-      onboardingStyles: args.onboardingStyles,
+      firstRunStyles: args.firstRunStyles,
       characterEditor: CharacterEditor,
       companionShell: CompanionShell,
       resolveCompanionInferenceNotice: ((

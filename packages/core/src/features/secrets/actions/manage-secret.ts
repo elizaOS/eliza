@@ -4,8 +4,7 @@
  * Single umbrella action for all secret management. The planner picks
  * `SECRETS` and supplies a structured `action` value (`get | set | delete |
  * list | check | mirror | request`); the dispatcher routes to the
- * appropriate atomic handler. Legacy discriminator names (`subaction`, `op`,
- * `operation`) remain accepted on input for back-compat.
+ * appropriate atomic handler.
  *
  * `SECRETS_UPDATE_SETTINGS` stays a separate action (it's a settings
  * mutation, not a secret operation).
@@ -63,33 +62,22 @@ const SECRETS_ACTIONS: readonly SecretsAction[] = [
 	"request",
 ] as const;
 
-/**
- * Resolve the requested subaction from structured parameters, honouring the
- * canonical `action` key and legacy aliases (`subaction`, `op`, `operation`).
- */
 function resolveSecretsAction(
 	params: Record<string, unknown>,
 ): SecretsAction | undefined {
-	const candidates = [
-		params.action,
-		params.subaction,
-		params.op,
-		params.operation,
-	];
-	for (const candidate of candidates) {
-		if (typeof candidate !== "string") continue;
-		const normalized = candidate.trim().toLowerCase();
-		if (SECRETS_ACTIONS.includes(normalized as SecretsAction)) {
-			return normalized as SecretsAction;
-		}
+	if (typeof params.action !== "string") {
+		return undefined;
 	}
-	return undefined;
+	const normalized = params.action.trim().toLowerCase();
+	return SECRETS_ACTIONS.includes(normalized as SecretsAction)
+		? (normalized as SecretsAction)
+		: undefined;
 }
 
 /**
  * Dispatch table mapping resolved actions to their atomic handlers. Every
  * handler returns the same ActionResult shape, so callers can rely on
- * `data.actionName === "SECRETS"` and `data.action === <subaction>`.
+ * `data.actionName === "SECRETS"` and `data.action === <action>`.
  */
 const dispatch: Record<SecretsAction, SecretsDispatchHandler> = {
 	get: getSecretHandler,
@@ -249,7 +237,7 @@ export const secretsAction: Action = {
 		const resolved = resolveSecretsAction(params);
 
 		// `request` validates in any channel (it routes the user to the right
-		// surface). Every other subaction is DM-only because the model may
+		// surface). Every other action is DM-only because the model may
 		// echo secret values into the chat.
 		if (resolved !== "request") {
 			const channelType = message.content.channelType;

@@ -299,7 +299,7 @@ export async function runProviderWizard(
 export function registerSetupCommand(program: Command) {
   program
     .command("setup")
-    .description("Initialize ~/.eliza/eliza.json and the agent workspace")
+    .description("Initialize the XDG state-dir config and agent workspace")
     .addHelpText(
       "after",
       () =>

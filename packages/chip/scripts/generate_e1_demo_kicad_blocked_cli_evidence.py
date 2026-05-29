@@ -11,7 +11,9 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 from check_kicad_artifacts import (
@@ -133,17 +135,17 @@ def promotion_contract_lines(contract: dict[str, object]) -> list[str]:
         "  release_credit: false",
         f"  next_action_id: {contract['next_action_id']}",
         "  source_manifests: ["
-        + ", ".join(str(item) for item in contract["source_manifests"])
+        + ", ".join(str(item) for item in cast("Iterable[object]", contract["source_manifests"]))
         + "]",
         f"  current_manifest_status: {contract['current_manifest_status']}",
         f"  required_manifest_status: {contract['required_manifest_status']}",
         f"  blocked_count: {contract['blocked_count']}",
         "  blocked_criteria: ["
-        + ", ".join(str(item) for item in contract["blocked_criteria"])
+        + ", ".join(str(item) for item in cast("Iterable[object]", contract["blocked_criteria"]))
         + "]",
         "  criteria:",
     ]
-    for criterion in contract["criteria"]:
+    for criterion in cast("list[dict[str, Any]]", contract["criteria"]):
         lines.extend(
             [
                 f"    - id: {criterion['id']}",

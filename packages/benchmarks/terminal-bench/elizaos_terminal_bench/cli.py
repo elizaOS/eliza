@@ -211,13 +211,14 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--agent-harness",
         type=str,
-        choices=["eliza", "hermes", "openclaw", "always-right", "always-wrong", "random"],
+        choices=["eliza", "hermes", "openclaw", "smithers", "always-right", "always-wrong", "random"],
         default="eliza",
         help=(
             "Select the agent harness for per-turn decision-making. "
             "'eliza' (default) routes through the elizaOS TS benchmark bridge. "
             "'hermes' uses hermes_adapter.terminal_bench.HermesTerminalAgent. "
             "'openclaw' uses openclaw_adapter.terminal_bench.OpenClawTerminalAgent. "
+            "'smithers' uses smithers_adapter.terminal_bench.SmithersTerminalAgent. "
             "Baseline harnesses run locally: always-right, always-wrong, random."
         ),
     )

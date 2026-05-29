@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-cli",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
   "type": "module",
   "main": "dist/index.js",
@@ -30,7 +30,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

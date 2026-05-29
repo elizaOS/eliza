@@ -10,7 +10,7 @@
     "start": "node server.js",
     "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@farcaster/miniapp-sdk": "^0.3.0",

@@ -25,7 +25,6 @@ vi.mock("../../src/auth/account-storage.js", () => ({
   deleteAccount: vi.fn(),
   listAccounts: vi.fn(() => []),
   loadAccount: vi.fn(() => null),
-  migrateLegacySingleAccount: vi.fn(),
   saveAccount: vi.fn(),
 }));
 

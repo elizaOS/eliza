@@ -34,14 +34,14 @@ const METHODS_SET = new Set<string>(HTTP_METHODS);
 /* ── CSS class names ───────────────────────────────────────────────── */
 
 export const editorDialogContentClassName =
-  "w-[min(calc(100%_-_2rem),48rem)] max-h-[min(90vh,56rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl";
+  "w-[min(calc(100%_-_2rem),48rem)] max-h-[min(90vh,56rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0 backdrop-blur-xl";
 export const editorFieldLabelClassName = "text-xs text-muted";
 export const editorInputClassName =
-  "rounded-xl border-border bg-surface text-txt placeholder:text-muted/50 focus-visible:ring-accent/25";
+  "rounded-sm border-border bg-surface text-txt placeholder:text-muted/50 focus-visible:ring-accent/25";
 export const editorTextareaClassName = `${editorInputClassName} resize-none`;
 export const editorMonoTextareaClassName = `${editorTextareaClassName} font-mono`;
 export const editorSectionCardClassName =
-  "flex flex-col gap-3 rounded-xl border border-border/70 bg-bg/20 p-3";
+  "flex flex-col gap-3 rounded-sm border border-border/70 bg-bg/20 p-3";
 
 /* ── Normalization helpers ─────────────────────────────────────────── */
 

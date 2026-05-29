@@ -83,7 +83,7 @@ export function ImagePromptInput({
   onStylePresetChange,
 }: PromptInputProps) {
   return (
-    <div className="rounded-2xl border bg-gradient-to-br from-card to-muted/20 p-8 shadow-sm">
+    <div className="rounded-sm border bg-gradient-to-br from-card to-muted/20 p-8 ">
       <form onSubmit={onSubmit} className="space-y-6">
         {/* Image Options Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -201,14 +201,14 @@ export function ImagePromptInput({
             placeholder="Describe the image you want to generate in detail... The more specific you are, the better the results!"
             disabled={isLoading}
             rows={6}
-            className="w-full rounded-xl border-2 bg-background px-5 py-4 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none shadow-sm transition-all"
+            className="w-full rounded-sm border-2 bg-background px-5 py-4 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none transition-all"
           />
         </div>
 
         <Button
           type="submit"
           disabled={isLoading || !prompt.trim()}
-          className="w-full rounded-xl h-12 text-base font-medium shadow-md hover:shadow-lg transition-all"
+          className="w-full rounded-sm h-12 text-base font-medium transition-all"
           size="lg"
         >
           {isLoading ? (

@@ -66,7 +66,7 @@ export function TelegramChatModeToggle({
 }) {
   const { t } = useApp();
   return (
-    <div className="flex items-center justify-between rounded-lg border border-border bg-[var(--card,rgba(255,255,255,0.03))] px-4 py-3 mb-4">
+    <div className="flex items-center justify-between rounded-sm border border-border bg-[var(--card,rgba(255,255,255,0.03))] px-4 py-3 mb-4">
       <div className="flex flex-col gap-0.5">
         <span className="text-sm font-semibold text-txt">
           {allowAll

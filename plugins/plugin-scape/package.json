@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-scape",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
   "main": "./dist/index.js",
@@ -142,7 +142,7 @@
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:views": "vite build --config vite.config.views.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "files": [

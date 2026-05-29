@@ -1,10 +1,14 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": "../..",
     "types": ["bun-types"],
     "noEmit": true,
-    "composite": false
+    "composite": false,
+    "paths": {
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"]
+    }
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]

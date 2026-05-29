@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-ainex",
   "description": "Drives Hiwonder AiNex (and other) humanoid robots via a websocket bridge; integrates camera into plugin-vision and exposes joystick + servo + action-group control to the agent.",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -70,7 +70,7 @@
     "build": "tsdown --config build.config.ts",
     "clean": "rm -rf dist .turbo",
     "lint": "echo \"Lint skipped for release\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run"
   },
   "publishConfig": {

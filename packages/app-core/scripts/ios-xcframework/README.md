@@ -2,7 +2,7 @@
 
 This directory contains the iOS xcframework packager that the mobile
 build pipeline uses to glue per-target static archives produced by
-`packages/app-core/scripts/build-llama-cpp-dflash.mjs` into a
+`packages/app-core/scripts/build-llama-cpp-mtp.mjs` into a
 well-formed `LlamaCpp.xcframework` consumed by the patched
 `llama-cpp-capacitor@0.1.5` Cocoapod.
 
@@ -11,39 +11,39 @@ well-formed `LlamaCpp.xcframework` consumed by the patched
 Pre-Wave-4-F, `run-mobile-build.mjs` built `LlamaCpp.xcframework` by
 shelling out to `cmake` against the **upstream npm package's bundled
 `ios/` source tree**. That source has none of the eliza kernels —
-TurboQuant, QJL, PolarQuant, DFlash — so every iOS Capacitor build
+TurboQuant, QJL, PolarQuant, MTP — so every iOS Capacitor build
 silently shipped a stock llama.cpp framework, in violation of
 [`packages/inference/AGENTS.md`](../../../inference/AGENTS.md) §3
-("Required for ALL tiers — TurboQuant / QJL / PolarQuant / DFlash;
+("Required for ALL tiers — TurboQuant / QJL / PolarQuant / MTP;
 runtime MUST refuse to load a bundle missing any required kernel").
 
 `packages/inference/DEVICE_SUPPORT_GAP_2026-05-10.md` row 4 / 5 / blocker
 #1 / blocker #5 documented this disconnect: the
-`build-llama-cpp-dflash.mjs --target ios-arm64-{metal,simulator-metal}`
+`build-llama-cpp-mtp.mjs --target ios-arm64-{metal,simulator-metal}`
 build paths existed and produced eliza-kernel-bearing archives, but
 nothing consumed those archives — they were orphaned.
 
-Wave-4-F rewires `run-mobile-build.mjs` to delegate to the dflash
+Wave-4-F rewires `run-mobile-build.mjs` to delegate to the mtp
 builder and pipes the produced archives through `build-xcframework.mjs`.
 
 ## Pipeline
 
 ```
-build-llama-cpp-dflash.mjs --target ios-arm64-metal
+build-llama-cpp-mtp.mjs --target ios-arm64-metal
   ├─ checkout elizaOS/llama.cpp @ v0.4.0-eliza (TBQ + QJL + Polar +
-  │  DFlash + W4-B kernels onto upstream b8198)
+  │  MTP + W4-B kernels onto upstream b8198)
   ├─ apply Metal kernel patches (kernel-patches/metal-kernels.mjs;
   │  EMBED-path is currently a documented gap — see "Known gaps" below)
   ├─ cmake -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos
   │       -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON …
   ├─ build llama / ggml / ggml-base / ggml-cpu / ggml-metal static .a
-  └─ install -> $ELIZA_STATE_DIR/local-inference/bin/dflash/ios-arm64-metal/
+  └─ install -> $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-metal/
        libllama.a, libggml*.a, include/, CAPABILITIES.json
        (build hard-fails via writeCapabilities() on missing kernels)
 
-build-llama-cpp-dflash.mjs --target ios-arm64-simulator-metal
+build-llama-cpp-mtp.mjs --target ios-arm64-simulator-metal
   └─ same as above but with -DCMAKE_OSX_SYSROOT=iphonesimulator;
-     installs to .../bin/dflash/ios-arm64-simulator-metal/
+     installs to .../bin/mtp/ios-arm64-simulator-metal/
 
 ios-xcframework/build-xcframework.mjs
   ├─ load both slices, refuse to proceed if either is missing
@@ -55,8 +55,8 @@ ios-xcframework/build-xcframework.mjs
 
 run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()
   ├─ guard: skip if ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA is unset
-  ├─ ensureDflashIosTarget("ios-arm64-metal")
-  ├─ ensureDflashIosTarget("ios-arm64-simulator-metal")
+  ├─ ensureMtpIosTarget("ios-arm64-metal")
+  ├─ ensureMtpIosTarget("ios-arm64-simulator-metal")
   ├─ build-xcframework.mjs --output node_modules/llama-cpp-capacitor/ios/
   │                                  Frameworks-xcframework/LlamaCpp.xcframework
   │                        --verify
@@ -75,8 +75,8 @@ access to `github.com/elizaOS/llama.cpp` (first run clones the fork).
 
 ```sh
 # Build both per-platform slices (~3–5 min each on M-series Mac).
-node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-metal
-node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-simulator-metal
+node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-metal
+node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-simulator-metal
 
 # Assemble the xcframework with full kernel verification.
 node packages/app-core/scripts/ios-xcframework/build-xcframework.mjs \
@@ -93,7 +93,7 @@ node packages/app-core/scripts/ios-xcframework/build-xcframework.mjs \
 `build-xcframework.mjs --verify` runs **three** independent checks:
 
 1. **AGENTS.md §3 kernel-symbol audit** — `nm -g` over every `.a` in
-   each slice, asserting the QJL, PolarQuant, DFlash, Turbo3, Turbo4
+   each slice, asserting the QJL, PolarQuant, MTP, Turbo3, Turbo4
    symbol patterns are present. Missing symbols hard-fail with a
    diagnostic that names the missing kernel + slice + expected archive.
 2. **Runtime-symbol audit** — the slice must also export the Capacitor
@@ -112,15 +112,15 @@ After the xcframework is written, manual verification:
 ```sh
 # Inspect the merged static archive in each slice.
 nm -g /tmp/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/LlamaCpp \
-  | grep -iE "qjl|polar|dflash|turbo"
+  | grep -iE "qjl|polar|mtp|turbo"
 nm -g /tmp/LlamaCpp.xcframework/ios-arm64-simulator/LlamaCpp.framework/LlamaCpp \
-  | grep -iE "qjl|polar|dflash|turbo"
+  | grep -iE "qjl|polar|mtp|turbo"
 
 # Inspect the xcframework's Info.plist (should list both slices).
 plutil -p /tmp/LlamaCpp.xcframework/Info.plist
 ```
 
-Expected QJL/PolarQuant/DFlash symbols in both slices today:
+Expected QJL/PolarQuant/MTP symbols in both slices today:
 
 ```
 T _dequantize_row_qjl1_256
@@ -130,7 +130,7 @@ T _ggml_attn_score_qjl
 T _ggml_fused_attn_qjl_tbq
 T _dequantize_row_q4_polar
 T _quantize_q4_polar
-T _llama_decode               # DFlash CLI / runtime entry surface
+T _llama_decode               # MTP CLI / runtime entry surface
 ```
 
 ## How to swap it into the Capacitor app
@@ -145,7 +145,7 @@ The Capacitor app picks up the xcframework automatically via
 
 The wiring is end-to-end:
 
-1. Both dflash slices build (or are reused if `CAPABILITIES.json`
+1. Both mtp slices build (or are reused if `CAPABILITIES.json`
    exists). Either build hard-failing aborts the iOS build.
 2. `build-xcframework.mjs --verify` assembles the bundle and refuses
    to write it if kernel symbols are missing.
@@ -167,8 +167,8 @@ To re-run from scratch (after a eliza-llama.cpp fork bump or kernel
 patch update):
 
 ```sh
-rm -rf "$ELIZA_STATE_DIR/local-inference/bin/dflash/ios-arm64-metal" \
-       "$ELIZA_STATE_DIR/local-inference/bin/dflash/ios-arm64-simulator-metal" \
+rm -rf "$ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-metal" \
+       "$ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-simulator-metal" \
        node_modules/llama-cpp-capacitor/ios/Frameworks-xcframework/LlamaCpp.xcframework
 
 ELIZA_IOS_INCLUDE_LLAMA=1 \
@@ -206,7 +206,7 @@ checks:
 
 1. `MTLCreateSystemDefaultDevice()` returns a real Metal device.
 2. The LlamaCpp bridge symbols resolve from the linked framework.
-3. QJL, PolarQuant, and DFlash runtime symbols resolve.
+3. QJL, PolarQuant, and MTP runtime symbols resolve.
 4. The `libelizainference` voice ABI v1 symbols resolve. Use
    `--skip-voice-abi` only for diagnosis; a release smoke must not skip it.
 
@@ -229,7 +229,7 @@ Per AGENTS.md §3:
 > bundle and surface a structured error to the UI. It MUST NOT
 > silently fall back to unoptimized inference."
 
-The build pipeline mirrors that runtime contract: a failed dflash
+The build pipeline mirrors that runtime contract: a failed mtp
 build, a missing kernel symbol, or a malformed xcframework throws
 through the iOS build. There is no escape hatch that points the
 Capacitor pod back at the stock npm framework.

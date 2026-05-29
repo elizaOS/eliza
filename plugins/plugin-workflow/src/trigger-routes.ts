@@ -84,8 +84,8 @@ export interface NormalizedTriggerDraft {
   cronExpression?: string;
   eventKind?: string;
   maxRuns?: number;
-  kind?: TriggerKind;
-  workflowId?: string;
+  kind: TriggerKind;
+  workflowId: string;
   workflowName?: string;
 }
 
@@ -105,17 +105,6 @@ export interface TriggerExecutionResult {
   runRecord?: CoreTriggerRunRecord;
   trigger?: TriggerSummary | null;
   executionId?: string;
-}
-
-export interface TextTriggerWorkflowDraft {
-  displayName: string;
-  instructions: string;
-  wakeMode: TriggerWakeMode;
-}
-
-export interface DeployedTriggerWorkflow {
-  id: string;
-  name: string;
 }
 
 interface TriggerDraftInput {
@@ -173,17 +162,6 @@ export interface TriggerRouteContext extends RouteRequestContext {
     input: TriggerDraftInput;
     fallback: NormalizeTriggerDraftFallback;
   }) => { draft?: NormalizedTriggerDraft; error?: string };
-  /**
-   * Phase 2E: every persisted trigger is `kind: "workflow"`. When the
-   * caller submits `kind: "text"` (or omits `kind`), the route uses this
-   * to materialize a single-node `respondToEvent` workflow first, then
-   * stores the trigger as `kind: "workflow"` pointing at that workflow.
-   */
-  deployTextTriggerWorkflow: (
-    runtime: IAgentRuntime,
-    draft: TextTriggerWorkflowDraft,
-    ownerId: string
-  ) => Promise<DeployedTriggerWorkflow | null>;
   DISABLED_TRIGGER_INTERVAL_MS: number;
   TRIGGER_TASK_NAME: string;
   TRIGGER_TASK_TAGS: string[];
@@ -194,7 +172,7 @@ function trim(value: string): string {
 }
 
 function parseTriggerKind(value: unknown): TriggerKind | undefined {
-  if (value === 'text' || value === 'workflow') return value;
+  if (value === 'workflow') return value;
   return undefined;
 }
 
@@ -202,8 +180,8 @@ type ParsedTriggerKind = { ok: true; kind: TriggerKind } | { ok: false; error: s
 
 function parseTriggerKindStrict(value: unknown): ParsedTriggerKind | undefined {
   if (value === undefined) return undefined;
-  if (value === 'text' || value === 'workflow') return { ok: true, kind: value };
-  return { ok: false, error: "kind must be 'text' or 'workflow'" };
+  if (value === 'workflow') return { ok: true, kind: value };
+  return { ok: false, error: "kind must be 'workflow'" };
 }
 
 function parseNonEmptyString(value: unknown): string | undefined {
@@ -276,7 +254,6 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     buildTriggerConfig,
     buildTriggerMetadata,
     normalizeTriggerDraft,
-    deployTextTriggerWorkflow,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS,
@@ -330,49 +307,14 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, kindParsed.error, 400);
       return true;
     }
-    const requestedKind: TriggerKind | undefined = kindParsed?.ok ? kindParsed.kind : undefined;
-    let workflowId = parseNonEmptyString(body.workflowId);
-    let workflowName = parseNonEmptyString(body.workflowName);
-    if (requestedKind === 'workflow' && !workflowId) {
+    const requestedKind: TriggerKind = kindParsed?.ok ? kindParsed.kind : 'workflow';
+    const workflowId = parseNonEmptyString(body.workflowId);
+    const workflowName = parseNonEmptyString(body.workflowName);
+    if (!workflowId) {
       error(res, "workflowId is required when kind is 'workflow'", 400);
       return true;
     }
 
-    // Phase 2E: when the client submits `kind: "text"` or omits `kind`,
-    // materialize a single-node `respondToEvent` workflow up front so the
-    // persisted trigger is always `kind: "workflow"`.
-    if (requestedKind !== 'workflow') {
-      const rawDisplayName =
-        typeof body.displayName === 'string' && trim(body.displayName)
-          ? trim(body.displayName)
-          : 'New Trigger';
-      const rawInstructions = typeof body.instructions === 'string' ? trim(body.instructions) : '';
-      if (!rawInstructions) {
-        error(res, 'instructions is required', 400);
-        return true;
-      }
-      const wakeModeForWorkflow: TriggerWakeMode =
-        typeof body.wakeMode === 'string' && body.wakeMode === 'next_autonomy_cycle'
-          ? 'next_autonomy_cycle'
-          : 'inject_now';
-      const deployed = await deployTextTriggerWorkflow(
-        runtime,
-        {
-          displayName: rawDisplayName,
-          instructions: rawInstructions,
-          wakeMode: wakeModeForWorkflow,
-        },
-        creator
-      );
-      if (!deployed) {
-        error(res, 'Workflow plugin is not loaded; cannot create text triggers.', 503);
-        return true;
-      }
-      workflowId = deployed.id;
-      workflowName = deployed.name;
-    }
-
-    const kind: TriggerKind = 'workflow';
     const inputDraft: TriggerDraftInput = {
       displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
       instructions: typeof body.instructions === 'string' ? body.instructions : undefined,
@@ -387,7 +329,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       cronExpression: typeof body.cronExpression === 'string' ? body.cronExpression : undefined,
       eventKind: typeof body.eventKind === 'string' ? body.eventKind : undefined,
       maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : undefined,
-      kind,
+      kind: requestedKind,
       workflowId,
       workflowName,
     };
@@ -615,7 +557,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return true;
     }
     const parsedKind: TriggerKind | undefined = kindParsed?.ok ? kindParsed.kind : undefined;
-    const nextKind: TriggerKind | undefined = parsedKind ?? parseTriggerKind(current.kind);
+    const nextKind: TriggerKind = parsedKind ?? parseTriggerKind(current.kind) ?? 'workflow';
     const nextWorkflowId = parseNonEmptyString(body.workflowId) ?? current.workflowId;
     const nextWorkflowName = parseNonEmptyString(body.workflowName) ?? current.workflowName;
     if (nextKind === 'workflow' && !nextWorkflowId) {

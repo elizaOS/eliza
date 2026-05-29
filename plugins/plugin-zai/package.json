@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-zai",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -73,7 +73,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",

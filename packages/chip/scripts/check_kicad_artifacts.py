@@ -8,6 +8,7 @@ import sys
 from argparse import ArgumentParser
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -413,6 +414,35 @@ def release_evidence_inventory() -> dict[str, dict[str, object]]:
             "generation_command": command_for_label(label, commands),
             "local_kicad7_partial_generation_command": KICAD7_PARTIAL_COMMANDS.get(label),
         }
+    has_command_transcript = bool(
+        inventory.get("command transcript", {}).get("release_credit_paths")
+    )
+    has_tool_versions = bool(inventory.get("KiCad tool versions", {}).get("release_credit_paths"))
+    has_erc = bool(inventory.get("erc transcript", {}).get("release_credit_paths"))
+    has_drc = bool(inventory.get("drc transcript", {}).get("release_credit_paths"))
+    support_blockers = []
+    if not has_command_transcript:
+        support_blockers.append("missing release-credit command transcript")
+    if not has_tool_versions:
+        support_blockers.append("missing release-credit KiCad tool versions")
+    if not has_erc:
+        support_blockers.append("missing release-credit ERC transcript")
+    if not has_drc:
+        support_blockers.append("missing release-credit DRC transcript")
+    if support_blockers:
+        supporting_labels = {
+            "command transcript",
+            "KiCad tool versions",
+            "erc transcript",
+            "drc transcript",
+        }
+        for label, record in inventory.items():
+            if label in supporting_labels:
+                continue
+            if record["release_credit_paths"]:
+                record["release_credit_blockers"] = support_blockers
+                record["release_credit_satisfied"] = False
+                record["missing_release_credit"] = True
     return inventory
 
 
@@ -700,7 +730,7 @@ def kicad_blocker_next_step(blocker_class: str) -> str:
 
 def write_report(status: str, failures: list[str], blockers: list[str], release: bool) -> None:
     inventory = release_evidence_inventory()
-    findings = []
+    findings: list[dict[str, object]] = []
     for failure in failures:
         findings.append(
             {
@@ -816,7 +846,7 @@ def main() -> int:
         if not fab_notes["present"]:
             failures.append("missing docs/board/kicad/e1-demo/fab-notes.md")
         elif fab_notes["missing_markers"]:
-            missing = ", ".join(fab_notes["missing_markers"])
+            missing = ", ".join(cast("list[str]", fab_notes["missing_markers"]))
             failures.append(
                 "docs/board/kicad/e1-demo/fab-notes.md is missing required "
                 f"fail-closed fabrication markers: {missing}"
@@ -845,7 +875,7 @@ def main() -> int:
             continue
         diagnostic_paths = entry["diagnostic_only_paths"]
         if diagnostic_paths:
-            shown = ", ".join(diagnostic_paths)
+            shown = ", ".join(cast("list[str]", diagnostic_paths))
             blockers.append(
                 f"missing release-credit KiCad/fab release evidence: {label} "
                 f"(diagnostic-only files present: {shown})"

@@ -15,6 +15,18 @@ import {
 
 const outputDirs: string[] = [];
 
+function stubLocalBenchmarkModels(modelIds: string[]): () => void {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ data: modelIds.map((id) => ({ id })) }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )) as typeof fetch;
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
@@ -1214,43 +1226,52 @@ describe("training collection runner", () => {
     const fakeBun = join(toolDir, "fake-bun");
     await writeFakeActionBenchmarkBun(fakeBun);
 
-    const result = await runTrainingCollection({
-      outputDir,
-      includeHuggingFace: false,
-      includeFeed: false,
-      includeNaturalTrajectories: false,
-      includeTestTrajectories: false,
-      includeScenarios: false,
-      includeEvalComparison: false,
-      includeActionBenchmark: true,
-      includeBenchmarkVsCerebras: false,
-      includeEliza1BundleStage: false,
-      includeBenchmarkMatrix: true,
-      actionBenchmark: {
-        workspaceRoot: join(process.cwd(), "../.."),
-        bun: fakeBun,
-        useMocks: false,
-        forceTrajectoryCapture: false,
-        provider: "local-llama-cpp",
-        benchmark: "eliza_harness_action_selection",
-        tier: "0_8b",
-        datasetVersion: "eliza-native-v1",
-        runsPerCase: 1,
-      },
-      actionBenchmarkPair: {
-        base: {
-          modelId: "eliza-1-0_8b-base",
-          runtimeModel: "eliza-1-0_8b-base",
-          variant: "base",
+    const restoreLocalModels = stubLocalBenchmarkModels([
+      "eliza-1-0_8b-base",
+      "eliza-1-0_8b-trained",
+    ]);
+    let result: Awaited<ReturnType<typeof runTrainingCollection>>;
+    try {
+      result = await runTrainingCollection({
+        outputDir,
+        includeHuggingFace: false,
+        includeFeed: false,
+        includeNaturalTrajectories: false,
+        includeTestTrajectories: false,
+        includeScenarios: false,
+        includeEvalComparison: false,
+        includeActionBenchmark: true,
+        includeBenchmarkVsCerebras: false,
+        includeEliza1BundleStage: false,
+        includeBenchmarkMatrix: true,
+        actionBenchmark: {
+          workspaceRoot: join(process.cwd(), "../.."),
+          bun: fakeBun,
+          useMocks: false,
+          forceTrajectoryCapture: false,
+          provider: "local-llama-cpp",
+          benchmark: "eliza_harness_action_selection",
+          tier: "0_8b",
+          datasetVersion: "eliza-native-v1",
+          runsPerCase: 1,
         },
-        trained: {
-          modelId: "eliza-1-0_8b-trained",
-          runtimeModel: "eliza-1-0_8b-trained",
-          variant: "trained",
+        actionBenchmarkPair: {
+          base: {
+            modelId: "eliza-1-0_8b-base",
+            runtimeModel: "eliza-1-0_8b-base",
+            variant: "base",
+          },
+          trained: {
+            modelId: "eliza-1-0_8b-trained",
+            runtimeModel: "eliza-1-0_8b-trained",
+            variant: "trained",
+          },
         },
-      },
-      now: () => new Date("2026-01-02T03:04:05.000Z"),
-    });
+        now: () => new Date("2026-01-02T03:04:05.000Z"),
+      });
+    } finally {
+      restoreLocalModels();
+    }
 
     const actionStep = result.manifest.steps.find(
       (step) => step.id === "action_benchmark",
@@ -1646,31 +1667,42 @@ describe("training collection runner", () => {
     const fakeBun = join(toolDir, "fake-bun");
     await writeFakeActionBenchmarkBun(fakeBun);
 
-    const result = await runTrainingCollection({
-      outputDir,
-      includeHuggingFace: false,
-      includeFeed: false,
-      includeNaturalTrajectories: false,
-      includeTestTrajectories: false,
-      includeScenarios: false,
-      includeEvalComparison: false,
-      includeActionBenchmark: true,
-      includeBenchmarkVsCerebras: false,
-      includeEliza1BundleStage: false,
-      includeBenchmarkMatrix: true,
-      actionBenchmark: {
-        workspaceRoot: join(process.cwd(), "../.."),
-        bun: fakeBun,
-        useMocks: false,
-        forceTrajectoryCapture: false,
-        provider: "local-llama-cpp",
-        benchmark: "eliza_harness_action_selection",
-        datasetVersion: "eliza-native-v1",
-        runsPerCase: 1,
-      },
-      actionBenchmarkPairs: [{ tier: "0_8b" }, { tier: "2b" }],
-      now: () => new Date("2026-01-02T03:04:05.000Z"),
-    });
+    const restoreLocalModels = stubLocalBenchmarkModels([
+      "eliza-1-0_8b-base",
+      "eliza-1-0_8b-trained",
+      "eliza-1-2b-base",
+      "eliza-1-2b-trained",
+    ]);
+    let result: Awaited<ReturnType<typeof runTrainingCollection>>;
+    try {
+      result = await runTrainingCollection({
+        outputDir,
+        includeHuggingFace: false,
+        includeFeed: false,
+        includeNaturalTrajectories: false,
+        includeTestTrajectories: false,
+        includeScenarios: false,
+        includeEvalComparison: false,
+        includeActionBenchmark: true,
+        includeBenchmarkVsCerebras: false,
+        includeEliza1BundleStage: false,
+        includeBenchmarkMatrix: true,
+        actionBenchmark: {
+          workspaceRoot: join(process.cwd(), "../.."),
+          bun: fakeBun,
+          useMocks: false,
+          forceTrajectoryCapture: false,
+          provider: "local-llama-cpp",
+          benchmark: "eliza_harness_action_selection",
+          datasetVersion: "eliza-native-v1",
+          runsPerCase: 1,
+        },
+        actionBenchmarkPairs: [{ tier: "0_8b" }, { tier: "2b" }],
+        now: () => new Date("2026-01-02T03:04:05.000Z"),
+      });
+    } finally {
+      restoreLocalModels();
+    }
 
     const actionStep = result.manifest.steps.find(
       (step) => step.id === "action_benchmark",

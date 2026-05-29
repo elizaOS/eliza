@@ -212,6 +212,7 @@ describe("normalizeSocialDecisionParameters", () => {
         id: "post-1",
         authorId: "user-1",
         authorName: "alpha",
+        authorCanContact: true,
         content: "first post",
         commentCount: 4,
         likeCount: 10,
@@ -222,6 +223,7 @@ describe("normalizeSocialDecisionParameters", () => {
         id: "post-2",
         authorId: "user-2",
         authorName: "beta",
+        authorCanContact: true,
         content: "second post",
         commentCount: 3,
         likeCount: 5,
@@ -315,6 +317,35 @@ describe("normalizeSocialDecisionParameters", () => {
       chatId: "chat-1",
       content: "pong",
     });
+  });
+
+  test("does not fill DM ids from stale recent post authors", () => {
+    expect(
+      normalizeSocialDecisionParameters(
+        "DM",
+        {
+          recipientId: "none",
+          content: "ping",
+        },
+        {
+          ...context,
+          recentPosts: [
+            {
+              id: "post-stale",
+              authorId: "stale-user",
+              authorName: "stale",
+              content: "old post",
+              commentCount: 0,
+              likeCount: 0,
+              repostCount: 0,
+              timeAgo: "1m",
+              authorCanContact: false,
+            },
+          ],
+        } as never,
+        "agent-1",
+      ),
+    ).not.toHaveProperty("recipientId");
   });
 
   test("rescues numeric social ids emitted as JSON numbers", () => {

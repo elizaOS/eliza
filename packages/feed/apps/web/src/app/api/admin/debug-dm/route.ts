@@ -216,7 +216,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   return successResponse({
     user,
     note: user
-      ? `User database ID: ${user.id}, Privy ID: ${user.privyId}`
+      ? `User database ID: ${user.id}, historical auth ID: ${user.privyId}`
       : "User not found",
     participantRecords: participants,
     chats: chatsList.map((chat, index) => ({

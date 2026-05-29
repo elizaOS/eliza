@@ -21,7 +21,7 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { userId: rawUserId } = await params;
-  // Decode URL-encoded userId (colons in Privy DIDs are encoded as %3A)
+  // Decode URL-encoded userId (colons in legacy provider IDs are encoded as %3A)
   const userId = decodeURIComponent(rawUserId);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://feed.market";
@@ -86,7 +86,7 @@ export async function generateMetadata({
 
 export default async function ShareReferralPage({ params }: PageProps) {
   const { userId: rawUserId } = await params;
-  // Decode URL-encoded userId (colons in Privy DIDs are encoded as %3A)
+  // Decode URL-encoded userId (colons in legacy provider IDs are encoded as %3A)
   const userId = decodeURIComponent(rawUserId);
 
   // Check if user exists

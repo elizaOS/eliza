@@ -1,7 +1,9 @@
 import * as fs from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
@@ -23,6 +25,8 @@ import {
   resolveSourceInspectionCommand,
   shellAction,
 } from "./bash.js";
+
+const execFileAsync = promisify(execFile);
 
 interface RuntimeOptions {
   blockedPaths?: string;
@@ -116,8 +120,7 @@ function makeShellRouter(
     git: {
       status: async () => unavailableCapability("git", "git.status"),
       diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () =>
-        unavailableCapability("git", "git.command.run"),
+      commandRun: async () => unavailableCapability("git", "git.command.run"),
     },
     model: {
       status: async () => unavailableCapability("model", "model.status"),
@@ -168,7 +171,12 @@ describe("shellAction", () => {
   });
 
   it("runs a simple foreground command (echo hello)", async () => {
-    const { runtime } = await makeRuntime();
+    const router = makeShellRouter(async () => ({
+      output: "alpha.txt\nsecret",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
     const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
@@ -722,6 +730,124 @@ describe("shellAction", () => {
     expect(result.userFacingText).toBe(
       "BTC price: $77,296.00 USD (source: CoinGecko).",
     );
+  });
+
+  it("projects safe small list stdout without shell meta-narration", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-list-"));
+    await fs.writeFile(path.join(tempDir, "alpha.txt"), "alpha", "utf8");
+    await fs.writeFile(path.join(tempDir, "beta.txt"), "beta", "utf8");
+    const { runtime } = await makeRuntime();
+
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-585858585858",
+          "list the files in this test directory",
+        ),
+        undefined,
+        { command: "ls -1", cwd: tempDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("$ ls -1");
+      expect(result.text).toContain("--- stdout ---");
+      expect(result.userFacingText).toBe("alpha.txt\nbeta.txt");
+      expect(result.verifiedUserFacing).toBe(true);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("projects safe small grep stdout without shell meta-narration", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-grep-"));
+    await fs.writeFile(
+      path.join(tempDir, "weather.txt"),
+      "weather: clear\nweather: windy\n",
+      "utf8",
+    );
+    const { runtime } = await makeRuntime();
+
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-595959595959",
+          "grep the weather lines",
+        ),
+        undefined,
+        { command: "grep -n weather weather.txt", cwd: tempDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("$ grep -n weather weather.txt");
+      expect(result.userFacingText).toBe("1:weather: clear\n2:weather: windy");
+      expect(result.verifiedUserFacing).toBe(true);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not verify compound stdout even when it starts with a safe command", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-compound-"));
+    await fs.writeFile(path.join(tempDir, "alpha.txt"), "alpha", "utf8");
+    const { runtime } = await makeRuntime();
+
+    try {
+      for (const command of ["ls -1; printf secret", "pwd && printf secret"]) {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(
+            "11111111-aaaa-bbbb-cccc-606060606060",
+            "show me the command output",
+          ),
+          undefined,
+          { command, cwd: tempDir },
+        );
+
+        expect(result.userFacingText).toBeUndefined();
+        expect(result.verifiedUserFacing).toBeUndefined();
+      }
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not verify verbose git history or diff stdout", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-git-"));
+    const { runtime } = await makeRuntime();
+
+    try {
+      await execFileAsync("git", ["init"], { cwd: tempDir });
+      await execFileAsync("git", ["config", "user.email", "test@example.com"], {
+        cwd: tempDir,
+      });
+      await execFileAsync("git", ["config", "user.name", "Test User"], {
+        cwd: tempDir,
+      });
+      await fs.writeFile(path.join(tempDir, "file.txt"), "before\n", "utf8");
+      await execFileAsync("git", ["add", "file.txt"], { cwd: tempDir });
+      await execFileAsync("git", ["commit", "-m", "initial"], { cwd: tempDir });
+      await fs.writeFile(path.join(tempDir, "file.txt"), "after\n", "utf8");
+
+      for (const command of ["git diff", "git log --oneline -1"]) {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(
+            "11111111-aaaa-bbbb-cccc-616161616161",
+            "show me the git output",
+          ),
+          undefined,
+          { command, cwd: tempDir },
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.userFacingText).toBeUndefined();
+        expect(result.verifiedUserFacing).toBeUndefined();
+      }
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("adds user-facing text for local health JSON", async () => {

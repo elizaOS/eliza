@@ -584,6 +584,69 @@ export const formatMessages = ({
 
 export const formatTimestamp = formatTimestampBase;
 
+function parseStructuredResponseFence(text: string): string {
+	const trimmed = text.trim();
+	const match = /^```(?:toon|text)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+	return match?.[1]?.trim() ?? trimmed;
+}
+
+function parseToonScalar(value: string): unknown {
+	if (!value) return "";
+	if (value === "null") return null;
+	if (
+		(value.startsWith('"') && value.endsWith('"')) ||
+		(value.startsWith("[") && value.endsWith("]")) ||
+		(value.startsWith("{") && value.endsWith("}"))
+	) {
+		try {
+			return JSON.parse(value);
+		} catch {
+			return value;
+		}
+	}
+	return value;
+}
+
+/**
+ * Parses the simple TOON key-value shape used by generated plugin prompts.
+ *
+ * Supported fields are `key: value` and indexed arrays like
+ * `items[0]: value`. Values stay as strings unless they are JSON literals,
+ * which preserves large IDs such as Discord snowflakes.
+ */
+export function parseToonKeyValue<T = Record<string, unknown>>(
+	text: string,
+): T | null {
+	const body = parseStructuredResponseFence(text);
+	if (!body) return null;
+
+	const result: Record<string, unknown> = {};
+	let found = false;
+	for (const rawLine of body.split(/\r?\n/)) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) continue;
+
+		const match = /^([A-Za-z_][\w.-]*)(?:\[(\d+)\])?\s*:\s*(.*)$/.exec(line);
+		if (!match) continue;
+
+		found = true;
+		const [, key, arrayIndex, rawValue] = match;
+		const value = parseToonScalar(rawValue.trim());
+		if (arrayIndex === undefined) {
+			result[key] = value;
+			continue;
+		}
+
+		const index = Number.parseInt(arrayIndex, 10);
+		const current = result[key];
+		const values = Array.isArray(current) ? current : [];
+		values[index] = value;
+		result[key] = values;
+	}
+
+	return found ? (result as T) : null;
+}
+
 /**
  * Legacy structured-response parser.
  *

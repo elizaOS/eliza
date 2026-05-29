@@ -2,6 +2,7 @@ import { logger, type UUID, validateUuid } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolClient, type PoolConfig } from "pg";
+import { normalizePgSslMode } from "./sslmode";
 
 export class PostgresConnectionManager {
   private pool: Pool;
@@ -11,7 +12,7 @@ export class PostgresConnectionManager {
 
   constructor(connectionString: string, rlsServerId?: string) {
     const poolConfig: PoolConfig = {
-      connectionString,
+      connectionString: normalizePgSslMode(connectionString),
       max: 20,
       min: 2,
       idleTimeoutMillis: 30000,

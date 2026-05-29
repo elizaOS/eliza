@@ -25,6 +25,22 @@ import {
 } from "./internal";
 import { getTabForShellView } from "./shell-routing";
 
+function pathWithCurrentShellMode(path: string): string {
+  if (typeof window === "undefined") return path;
+  const html = window.document?.documentElement;
+  const body = window.document?.body;
+  const isDetachedShell =
+    html?.classList.contains("eliza-chat-overlay-shell") === true ||
+    body?.classList.contains("eliza-chat-overlay-shell") === true;
+  if (!isDetachedShell) return path;
+  const params = new URLSearchParams(window.location.search);
+  const shellMode = params.get("shellMode") ?? params.get("shell-mode");
+  if (!shellMode) return path;
+  const nextParams = new URLSearchParams();
+  nextParams.set("shellMode", shellMode);
+  return `${path}?${nextParams.toString()}`;
+}
+
 // ── Hook deps ─────────────────────────────────────────────────────────────
 
 export interface NavigationStateDeps {
@@ -66,7 +82,7 @@ export function useNavigationState(deps: NavigationStateDeps) {
         if (shouldUseHashNavigation()) {
           window.location.hash = path;
         } else {
-          window.history.pushState(null, "", path);
+          window.history.pushState(null, "", pathWithCurrentShellMode(path));
         }
       } catch {
         // non-fatal: browser history update fails in restricted environments

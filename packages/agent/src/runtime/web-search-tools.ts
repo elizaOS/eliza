@@ -13,8 +13,11 @@
  *   ELIZA_WEB_SEARCH=0|false|off  — disable (default: enabled)
  */
 
+import { createRequire } from "node:module";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+
+const require = createRequire(import.meta.url);
 
 // ---------------------------------------------------------------------------
 // Env gate (opt-out, enabled by default)

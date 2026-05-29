@@ -18,7 +18,7 @@ import {
 
 type RoutedViewType = "gui" | "tui";
 
-function isRoutedViewType(
+function _isRoutedViewType(
   viewType: ViewDeclaration["viewType"],
 ): viewType is RoutedViewType {
   return viewType === "gui" || viewType === "tui";

@@ -40,5 +40,5 @@
     "LLAMA_DISABLE_THINKING": "1"
   },
   "onstart_script": "onstart.sh",
-  "notes": "Single RTX 3090 262K profile adapted from club-3090: GGUF + llama.cpp + one decode slot + q4_0 KV cache + flash attention. Keep DFlash off by default for this profile; enable DFLASH_DRAFTER_REPO/DFLASH_DRAFTER_FILE only after a 262K regression run on the custom elizaOS llama.cpp image."
+  "notes": "Single RTX 3090 262K profile adapted from club-3090: GGUF + llama.cpp + one decode slot + q4_0 KV cache + flash attention. Keep MTP off by default for this profile; enable MTP_DRAFTER_REPO/MTP_DRAFTER_FILE only after a 262K regression run on the custom elizaOS llama.cpp image."
 }

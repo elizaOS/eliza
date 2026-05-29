@@ -692,7 +692,7 @@ export function ElizaAgentsTable({
                           <button
                             type="button"
                             onClick={() => openWebUIWithPairing(sb.id)}
-                            className="inline-flex items-center gap-1 text-xs text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 transition-colors bg-transparent border-0 p-0"
+                            className="inline-flex items-center gap-1 text-xs text-white/60 hover:text-white transition-colors bg-transparent border-0 p-0"
                           >
                             <ExternalLink className="h-3 w-3" />
                             Open
@@ -847,7 +847,7 @@ export function ElizaAgentsTable({
                     <div className="min-w-0 space-y-1">
                       <a
                         href={`/dashboard/agents/${sb.id}`}
-                        className="font-medium text-white hover:text-[var(--brand-orange)] transition-colors block truncate"
+                        className="font-medium text-white hover:opacity-75 transition-opacity block truncate"
                       >
                         {sb.agent_name ?? "Unnamed Agent"}
                       </a>
@@ -890,7 +890,7 @@ export function ElizaAgentsTable({
                   <div className="flex items-center gap-1 border-t border-white/5 pt-3">
                     <a
                       href={`/dashboard/agents/${sb.id}`}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-white/50 hover:text-white hover:bg-white/5 transition-colors border border-white/10"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-white/50 hover:text-white hover:bg-white/5 transition-colors"
                     >
                       <FileText className="h-3.5 w-3.5" />
                       Details
@@ -912,7 +912,7 @@ export function ElizaAgentsTable({
                         type="button"
                         onClick={() => handleProvision(sb.id)}
                         disabled={busy}
-                        className="py-2 px-3 text-green-400 hover:bg-green-500/10 transition-colors border border-green-500/20 disabled:opacity-30"
+                        className="py-2 px-3 text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-30"
                       >
                         <Play className="h-3.5 w-3.5" />
                       </button>
@@ -933,7 +933,7 @@ export function ElizaAgentsTable({
                       type="button"
                       onClick={() => !busy && setDeleteId(sb.id)}
                       disabled={isDeleting || busy}
-                      className="py-2 px-3 text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors border border-white/10 disabled:opacity-30"
+                      className="py-2 px-3 text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-30"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

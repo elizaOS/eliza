@@ -9,12 +9,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 HERE = Path(__file__).resolve().parent
 MODULE_PATH = HERE / "check_linux_multiarch_gui_parity.py"
 spec = importlib.util.spec_from_file_location("check_linux_multiarch_gui_parity", MODULE_PATH)
 assert spec is not None and spec.loader is not None
-gate = importlib.util.module_from_spec(spec)
+gate: Any = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = gate
 spec.loader.exec_module(gate)
 

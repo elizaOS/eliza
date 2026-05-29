@@ -1,7 +1,7 @@
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/api/automation-node-contributors";
 import { logger } from "@elizaos/core";
 import type {
   IPermissionsRegistry,

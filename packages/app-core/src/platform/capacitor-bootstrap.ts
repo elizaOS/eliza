@@ -1,27 +1,29 @@
 // === Phase 5D: extracted from packages/app/src/main.tsx ===
 // Single orchestration entrypoint for the white-label app shell's pre-React
-// platform setup: applies onboarding/permission/cloud-preference client
+// platform setup: applies first-run/permission/cloud-preference client
 // patches, hydrates the storage bridge, installs the Capacitor event bridge,
 // and pre-seeds the Android local runtime preference when the device boots
 // into the elizaOS branded surface for the first time.
 import {
-  applyForceFreshOnboardingReset,
   client,
   initializeCapacitorBridge,
   initializeStorageBridge,
   installDesktopPermissionsClientPatch,
-  installForceFreshOnboardingClientPatch,
   installLocalProviderCloudPreferencePatch,
   isElizaOS,
   preSeedAndroidLocalRuntimeIfFresh,
-  shouldInstallMainWindowOnboardingPatches,
-  type WindowShellRoute,
 } from "@elizaos/ui";
+import {
+  applyForceFreshFirstRunReset,
+  installForceFreshFirstRunClientPatch,
+  shouldInstallMainWindowFirstRunPatches,
+  type WindowShellRoute,
+} from "@elizaos/ui/platform";
 
 export interface InitializeAppBootstrapClientsArgs {
   /**
    * Resolved window shell route (main, detached, popout, etc.). The
-   * onboarding-reset patch only runs on the main window.
+   * First-run reset patch only runs on the main window.
    */
   windowShellRoute: WindowShellRoute;
   /**
@@ -32,7 +34,7 @@ export interface InitializeAppBootstrapClientsArgs {
   isDesktopPlatform: boolean;
   /**
    * Allows the caller to skip the Android local runtime pre-seed when the
-   * user has explicitly requested the runtime picker via `?runtime=picker`.
+   * user has explicitly requested first-run runtime setup.
    */
   skipAndroidLocalRuntimeSeed?: boolean;
 }
@@ -46,9 +48,9 @@ export interface InitializeAppBootstrapClientsArgs {
 export function installAppBootstrapClientPatches(
   args: InitializeAppBootstrapClientsArgs,
 ): void {
-  if (shouldInstallMainWindowOnboardingPatches(args.windowShellRoute)) {
-    applyForceFreshOnboardingReset();
-    installForceFreshOnboardingClientPatch(client);
+  if (shouldInstallMainWindowFirstRunPatches(args.windowShellRoute)) {
+    applyForceFreshFirstRunReset();
+    installForceFreshFirstRunClientPatch(client);
   }
   installLocalProviderCloudPreferencePatch(client);
   installDesktopPermissionsClientPatch(client);

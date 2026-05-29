@@ -325,7 +325,7 @@ export function MediaGalleryView({
             placeholder={t("mediagalleryview.SearchMedia")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-10 rounded-xl border-border/40 bg-card/50 text-sm placeholder:text-muted/65 focus-visible:ring-accent/30"
+            className="h-10 rounded-sm border-border/40 bg-card/50 text-sm placeholder:text-muted/65 focus-visible:ring-accent/30"
           />
 
           <div className="grid grid-cols-2 gap-1.5">
@@ -336,7 +336,7 @@ export function MediaGalleryView({
                   key={chip}
                   variant="ghost"
                   size="sm"
-                  className={`h-auto min-h-[2.25rem] rounded-xl border px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
+                  className={`h-auto min-h-[2.25rem] rounded-sm border px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
                     isActive
                       ? "border-accent/35 bg-accent/14 text-txt-strong"
                       : "border-border/45 bg-bg/35 text-muted hover:border-border/60 hover:bg-bg-hover hover:text-txt"
@@ -403,7 +403,7 @@ export function MediaGalleryView({
     >
       <div className="flex min-h-0 flex-1 flex-col w-full">
         {error ? (
-          <div className="mb-4 rounded-2xl border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <div className="mb-4 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
             {error}
           </div>
         ) : loading ? (
@@ -413,7 +413,7 @@ export function MediaGalleryView({
         ) : !selectedItem ? (
           <PagePanel.Empty
             variant="surface"
-            className="min-h-[18rem] rounded-3xl px-5 py-10"
+            className="min-h-[18rem] rounded-sm px-5 py-10"
             title={t("mediagalleryview.NoMediaFound")}
             description={
               media.length === 0
@@ -460,18 +460,18 @@ export function MediaGalleryView({
                 <img
                   src={normalizeMediaUrl(selectedItem.url)}
                   alt={selectedItem.filename}
-                  className="max-h-[32rem] max-w-full rounded-2xl object-contain"
+                  className="max-h-[32rem] max-w-full rounded-sm object-contain"
                 />
               ) : selectedItem.type === "video" ? (
                 <video
                   src={normalizeMediaUrl(selectedItem.url)}
                   controls
-                  className="max-h-[32rem] max-w-full rounded-2xl"
+                  className="max-h-[32rem] max-w-full rounded-sm"
                 >
                   <track kind="captions" />
                 </video>
               ) : (
-                <div className="flex w-full max-w-xl flex-col items-center gap-5 rounded-3xl border border-border/35 bg-bg/35 px-8 py-10 text-center">
+                <div className="flex w-full max-w-xl flex-col items-center gap-5 rounded-sm border border-border/35 bg-bg/35 px-8 py-10 text-center">
                   <div className="text-lg font-semibold text-txt">
                     {t("mediagalleryview.AudioPreview", {
                       defaultValue: "Audio Preview",
@@ -488,7 +488,7 @@ export function MediaGalleryView({
               )}
             </PagePanel>
 
-            <div className="mt-5 rounded-2xl border border-border/40 bg-card/45 px-5 py-4 text-sm text-muted">
+            <div className="mt-5 rounded-sm border border-border/40 bg-card/45 px-5 py-4 text-sm text-muted">
               <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
                 {t("mediagalleryview.MediaDetails", {
                   defaultValue: "Media Details",

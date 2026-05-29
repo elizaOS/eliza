@@ -1,5 +1,6 @@
 import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
+import { CodeBlock } from "../ui/code-block";
 import type { MemoryRecord } from "./vector-browser-utils";
 
 export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
@@ -7,7 +8,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
   if (!memory) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
-        <div className="rounded-3xl border border-border/35 bg-bg/35 px-8 py-10 text-center shadow-inner">
+        <div className="rounded-sm border border-border/35 bg-bg/35 px-8 py-10 text-center ">
           <div className="text-base font-semibold text-txt">
             {t("vectorbrowserview.MemoryDetail")}
           </div>
@@ -59,7 +60,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
           </div>
         </PagePanel>
 
-        <section className="rounded-2xl border border-border/40 bg-card/45 p-5">
+        <section className="rounded-sm border border-border/40 bg-card/45 p-5">
           <div className="text-xs-tight font-bold uppercase tracking-[0.16em] text-muted/60">
             {t("vectorbrowserview.Metadata")}
           </div>
@@ -98,25 +99,31 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
         </section>
 
         {memory.embedding ? (
-          <section className="rounded-2xl border border-border/40 bg-card/45 p-5">
+          <section className="rounded-sm border border-border/40 bg-card/45 p-5">
             <div className="text-xs-tight font-bold uppercase tracking-[0.16em] text-muted/60">
               {t("vectorbrowserview.Embedding")}
               {" · "}
               {memory.embedding.length} {t("vectorbrowserview.dimensions")}
             </div>
-            <div className="mt-3 max-h-[16rem] overflow-auto rounded-xl border border-border/35 bg-bg/35 p-3 text-xs-tight leading-6 text-muted">
-              [{memory.embedding.map((v) => v.toFixed(6)).join(", ")}]
-            </div>
+            <CodeBlock
+              value={`[${memory.embedding.map((v) => v.toFixed(6)).join(", ")}]`}
+              wrap
+              copyable
+              className="mt-3 max-h-[16rem]"
+            />
           </section>
         ) : null}
 
-        <details className="rounded-2xl border border-border/40 bg-card/45 p-5">
+        <details className="rounded-sm border border-border/40 bg-card/45 p-5">
           <summary className="cursor-pointer text-xs-tight font-bold uppercase tracking-[0.16em] text-muted/60 hover:text-txt">
             {t("vectorbrowserview.RawRecord")}
           </summary>
-          <div className="mt-3 max-h-[18rem] overflow-auto rounded-xl border border-border/35 bg-bg/35 p-3 font-mono text-xs-tight leading-6 text-muted">
-            {JSON.stringify(memory.raw, null, 2)}
-          </div>
+          <CodeBlock
+            value={JSON.stringify(memory.raw, null, 2)}
+            wrap
+            copyable
+            className="mt-3 max-h-[18rem]"
+          />
         </details>
       </div>
     </div>

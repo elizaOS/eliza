@@ -225,7 +225,7 @@ export function HeartbeatForm({
             />
           </div>
 
-          <div className="grid gap-4 rounded-xl border border-border/30 bg-bg/20 p-4">
+          <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
               What it does
             </div>
@@ -243,7 +243,7 @@ export function HeartbeatForm({
             />
           </div>
 
-          <div className="grid gap-4 rounded-xl border border-border/30 bg-bg/20 p-4">
+          <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
               When it starts
             </div>
@@ -349,7 +349,7 @@ export function HeartbeatForm({
             <SchedulePreview form={form} t={t} />
           </div>
 
-          <div className="grid gap-4 rounded-xl border border-border/30 bg-bg/20 p-4">
+          <div className="grid gap-4 rounded-sm border border-border/30 bg-bg/20 p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
               Run behavior
             </div>
@@ -395,7 +395,7 @@ export function HeartbeatForm({
             <Button
               variant="default"
               size="sm"
-              className="h-10 px-6 text-sm text-white shadow-sm hover:text-white dark:text-white dark:hover:text-white"
+              className="h-10 px-6 text-sm text-white hover:text-white dark:text-white dark:hover:text-white"
               disabled={
                 triggersSaving ||
                 (form.kind === "workflow" && !form.workflowId) ||
@@ -505,7 +505,7 @@ function TriggerKindSection({
           type="button"
           aria-pressed={form.kind === "text"}
           onClick={() => setField("kind", "text")}
-          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "text"
               ? "border-accent bg-accent/10 text-accent"
               : "border-border/40 text-muted hover:border-border hover:text-txt"
@@ -517,7 +517,7 @@ function TriggerKindSection({
           type="button"
           aria-pressed={form.kind === "workflow"}
           onClick={() => setField("kind", "workflow")}
-          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+          className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
             form.kind === "workflow"
               ? "border-accent bg-accent/10 text-accent"
               : "border-border/40 text-muted hover:border-border hover:text-txt"
@@ -546,7 +546,7 @@ function TriggerKindSection({
           (!workflowsLoading && workflows.length === 0) ? (
             <div
               role="status"
-              className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-sm text-muted"
+              className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3 text-sm text-muted"
             >
               <p>{t("triggers.workflowUnavailable")}</p>
               <button
@@ -709,7 +709,7 @@ function EventInputSection({
       )}
 
       {form.eventKind.trim() && (
-        <div className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-xs text-muted">
+        <div className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3 text-xs text-muted">
           Runs when{" "}
           <span className="font-medium text-txt">
             {humanizeEventKind(form.eventKind)}
@@ -816,7 +816,7 @@ function SchedulePreview({
     <div
       role="status"
       aria-live="polite"
-      className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-sm"
+      className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3 text-sm"
     >
       {preview.kind === "error" ? (
         <p className="text-xs font-medium text-danger">{preview.message}</p>
@@ -967,7 +967,7 @@ function HeartbeatRunHistory({
                 .map((run) => (
                   <div
                     key={run.triggerRunId}
-                    className="rounded-xl bg-bg/30 border border-border/20 px-4 py-3 text-sm transition-colors hover:bg-bg/50"
+                    className="rounded-sm bg-bg/30 border border-border/20 px-4 py-3 text-sm transition-colors hover:bg-bg/50"
                   >
                     <div className="flex items-start gap-3">
                       <StatusDot
@@ -987,12 +987,12 @@ function HeartbeatRunHistory({
                         </div>
                         <div className="text-xs-tight text-muted/80">
                           {formatDurationMs(run.latencyMs)} &middot;{" "}
-                          <span className="font-mono text-muted/60 bg-bg/40 px-1 py-0.5 rounded">
+                          <span className="font-mono text-muted/60 bg-bg/40 px-1 py-0.5 rounded-sm">
                             {run.source}
                           </span>
                         </div>
                         {run.error && (
-                          <div className="mt-2.5 text-xs text-danger/90 bg-danger/10 border border-danger/20 p-2.5 rounded-lg whitespace-pre-wrap font-mono leading-relaxed">
+                          <div className="mt-2.5 text-xs text-danger/90 bg-danger/10 border border-danger/20 p-2.5 rounded-sm whitespace-pre-wrap font-mono leading-relaxed">
                             {run.error}
                           </div>
                         )}

@@ -350,12 +350,12 @@ export function CapabilitiesSection() {
           </div>
         </div>
         <fieldset
-          className="inline-flex rounded-md border border-border p-0.5"
+          className="inline-flex rounded-sm border border-border p-0.5"
           aria-label="Capability router connection mode"
         >
           <button
             type="button"
-            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-2xs ${
+            className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-2xs ${
               capabilityConnectMode === "endpoint"
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-strong"
@@ -368,7 +368,7 @@ export function CapabilitiesSection() {
           </button>
           <button
             type="button"
-            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-2xs ${
+            className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-2xs ${
               capabilityConnectMode === "cloud"
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-strong"
@@ -431,7 +431,7 @@ export function CapabilitiesSection() {
                 )
               }
               aria-label="Capability endpoint provider"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="h-9 w-full rounded-sm border border-input bg-background px-3 py-1 text-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               <option value="direct">Direct endpoint</option>
               <option value="e2b">E2B sandbox</option>

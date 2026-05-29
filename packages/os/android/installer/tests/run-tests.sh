@@ -44,12 +44,12 @@ case "$*" in
   *"getprop ro.build.fingerprint"*) echo 'elizaos/caiman/caiman:16/example:userdebug/test-keys' ;;
   *"getprop ro.boot.slot_suffix"*) echo '_a' ;;
   *"getprop sys.boot_completed"*) echo 1 ;;
-  *"pm path ai.elizaos.app"*) echo 'package:/system/priv-app/Eliza/Eliza.apk' ;;
-  *"cmd role holders android.app.role.HOME"*) echo 'ai.elizaos.app' ;;
-  *"cmd package resolve-activity"*) echo 'ai.elizaos.app/.MainActivity' ;;
-  *"dumpsys package ai.elizaos.app"*) echo 'Package [ai.elizaos.app]' ;;
-  *"dumpsys activity activities"*) echo 'mResumedActivity: ai.elizaos.app/.MainActivity' ;;
-  *"pidof ai.elizaos.app"*) echo 31337 ;;
+  *"pm path ai.milady.milady"*) echo 'package:/system/priv-app/Milady/Milady.apk' ;;
+  *"cmd role holders android.app.role.HOME"*) echo 'ai.milady.milady' ;;
+  *"cmd package resolve-activity"*) echo 'ai.milady.milady/.MainActivity' ;;
+  *"dumpsys package ai.milady.milady"*) echo 'Package [ai.milady.milady]' ;;
+  *"dumpsys activity activities"*) echo 'mResumedActivity: ai.milady.milady/.MainActivity' ;;
+  *"pidof ai.milady.milady"*) echo 31337 ;;
   *"curl -fsS http://127.0.0.1:31337/api/health"*) echo '{"status":"ready","agentId":"fixture"}' ;;
   *"logcat -d"*) echo 'logcat clean' ;;
   *"settings get global adb_enabled"*) echo 1 ;;
@@ -66,7 +66,13 @@ case "$*" in
 esac
 EOF
 
-chmod +x "$BIN_DIR/adb" "$BIN_DIR/fastboot"
+cat >"$BIN_DIR/timeout" <<'EOF'
+#!/usr/bin/env bash
+shift
+exec "$@"
+EOF
+
+chmod +x "$BIN_DIR/adb" "$BIN_DIR/fastboot" "$BIN_DIR/timeout"
 export PATH="$BIN_DIR:$PATH"
 
 INSTALL_OUT="$TMP_DIR/install.out"

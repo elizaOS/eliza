@@ -170,7 +170,7 @@ class DesktopCapacitorLlamaContext implements CapacitorLlamaContext {
 				promptCacheKey: null,
 				draftMin: 0,
 				draftMax: 0,
-				dflashDrafterPath: null,
+				draftModelPath: null,
 			},
 		});
 		this.currentSession = stream;
@@ -282,7 +282,7 @@ class DesktopCapacitorLlamaContext implements CapacitorLlamaContext {
 		throw new CapacitorLlamaUnsupportedError(
 			"embedding",
 			"desktop-ffi",
-			"[capacitor-llama] embedding extraction is not implemented on the desktop FFI path; route TEXT_EMBEDDING through the dflash subprocess backend until the shim adds llama_embeddings + per-context embedding mode toggle.",
+			"[capacitor-llama] embedding extraction is not implemented on the desktop FFI path; route TEXT_EMBEDDING through the mtp subprocess backend until the shim adds llama_embeddings + per-context embedding mode toggle.",
 		);
 	}
 
@@ -361,7 +361,7 @@ export async function initCapacitorLlama(
 	const loaded = await loadDesktopLlama(loadOptions);
 	if (!loaded) {
 		throw new Error(
-			"[capacitor-llama] desktop FFI load failed — bun:ffi unavailable or dlopen errored. Check ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/.",
+			"[capacitor-llama] desktop FFI load failed — bun:ffi unavailable or dlopen errored. Check ELIZA_STATE_DIR/local-inference/bin/mtp/<platform>-<arch>-<backend>/.",
 		);
 	}
 	logger.info(

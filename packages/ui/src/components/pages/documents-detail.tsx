@@ -202,7 +202,7 @@ export function DocumentViewer({
         )}
 
         {error && (
-          <div className="rounded-xl border border-danger/25 bg-danger/10 py-8 text-center text-sm font-medium text-danger">
+          <div className="rounded-sm border border-danger/25 bg-danger/10 py-8 text-center text-sm font-medium text-danger">
             {error}
           </div>
         )}
@@ -225,7 +225,7 @@ export function DocumentViewer({
           <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
             <div className="px-1">
               <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-bg-muted/30 text-muted-strong">
+                <span className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-bg-muted/30 text-muted-strong">
                   <FileText className="h-4.5 w-4.5" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -290,7 +290,7 @@ export function DocumentViewer({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="rounded-lg"
+                      className="rounded-sm"
                       onClick={() => setEditing((current) => !current)}
                       disabled={saving}
                     >
@@ -301,7 +301,7 @@ export function DocumentViewer({
                       <Button
                         type="button"
                         size="sm"
-                        className="rounded-lg"
+                        className="rounded-sm"
                         onClick={() => void handleSave()}
                         disabled={saving || draftText.trim().length === 0}
                       >
@@ -330,7 +330,7 @@ export function DocumentViewer({
                   value={draftText}
                   rows={16}
                   onChange={(event) => setDraftText(event.target.value)}
-                  className="min-h-[20rem] resize-y rounded-xl border-border/40 bg-bg-muted/15 font-mono text-sm leading-relaxed"
+                  className="min-h-[20rem] resize-y rounded-sm border-border/40 bg-bg-muted/15 font-mono text-sm leading-relaxed"
                 />
               ) : previewText ? (
                 <pre className="custom-scrollbar max-h-[16rem] overflow-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-txt/88">
@@ -365,7 +365,7 @@ export function DocumentViewer({
                       className="grid gap-3 py-4 sm:grid-cols-[4rem_minmax(0,1fr)]"
                     >
                       <div className="flex items-start gap-2 sm:block">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/35 bg-bg-muted/20 text-xs font-bold text-muted-strong">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-sm border border-border/35 bg-bg-muted/20 text-xs font-bold text-muted-strong">
                           {index + 1}
                         </div>
                         <div className="mt-0.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/60 sm:mt-2">

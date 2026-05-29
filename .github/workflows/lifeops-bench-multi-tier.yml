@@ -6,8 +6,7 @@
 #
 # Default PR cells: `--suite smoke --tiers large,frontier` (Cerebras
 # gpt-oss-120b + Anthropic Opus 4.7). Nightly runs the `core` suite over the
-# same two tiers. The `small` tier requires the dflash llama-cpp fork and is
-# only attempted on manual / scheduled dispatch.
+# same two tiers.
 #
 # All cells are skip-not-fail: missing API keys or missing local binaries
 # leave a SKIPPED row in the per-job summary and never turn the workflow red.
@@ -99,20 +98,20 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
           fetch-depth: 1
 
       - name: Setup Node.js
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Python
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -154,7 +153,7 @@ jobs:
 
       - name: Upload large-tier artifacts
         if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: lifeops-multi-tier-large-${{ github.run_id }}
           path: |
@@ -191,20 +190,20 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
           fetch-depth: 1
 
       - name: Setup Node.js
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Python
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -246,7 +245,7 @@ jobs:
 
       - name: Upload frontier-tier artifacts
         if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: lifeops-multi-tier-frontier-${{ github.run_id }}
           path: |
@@ -263,94 +262,6 @@ jobs:
         run: |
           echo "::notice::LifeOps multi-tier frontier skipped — ANTHROPIC_API_KEY not configured."
 
-  smoke-small:
-    name: "tier=small (manual/scheduled)"
-    needs: resolve-inputs
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: false
-          fetch-depth: 1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
-          install-native-deps: "false"
-
-      - name: Install Python bench package
-        run: |
-          cd packages/benchmarks/lifeops-bench
-          pip install -e .
-
-      - name: Restore dflash llama-cpp fork cache
-        id: dflash-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/eliza-dflash/eliza-llama-cpp/build/bin/llama-server
-          key: dflash-llama-cpp-${{ runner.os }}-v1
-
-      - name: Build dflash fork (best-effort)
-        id: build
-        if: steps.dflash-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        run: |
-          echo "[multi-tier] dflash fork not in cache — attempting build."
-          mkdir -p ~/.cache/eliza-dflash
-          if [ -x scripts/build-dflash-llama-cpp.sh ]; then
-            bash scripts/build-dflash-llama-cpp.sh
-          else
-            echo "[multi-tier] No dflash build script available — small tier will SKIP."
-            exit 0
-          fi
-
-      - name: Run multi-tier driver (small only)
-        id: run
-        run: |
-          set -e
-          RUN_DIR="${{ github.workspace }}/runs/small"
-          mkdir -p "$RUN_DIR/small"
-          lifeops-bench \
-            --agent perfect \
-            --model-tier small \
-            --suite "${{ needs.resolve-inputs.outputs.suite }}" \
-            --output-dir "$RUN_DIR/small" \
-            | tee multi-tier-small.log
-          RESULT_JSON=$(ls -t "$RUN_DIR/small"/lifeops_*.json 2>/dev/null | head -n1 || true)
-          if [ -n "$RESULT_JSON" ]; then
-            cp "$RESULT_JSON" "$RUN_DIR/small/report.json"
-          fi
-          printf '# LifeOps Multi-Tier Benchmark\n\nTier: small\nSuite: %s\n' "${{ needs.resolve-inputs.outputs.suite }}" > "$RUN_DIR/SUMMARY.md"
-          echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
-
-      - name: Upload small-tier artifacts
-        if: always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: lifeops-multi-tier-small-${{ github.run_id }}
-          path: |
-            ${{ steps.run.outputs.run-dir }}/SUMMARY.md
-            ${{ steps.run.outputs.run-dir }}/small/**/report.md
-            ${{ steps.run.outputs.run-dir }}/small/**/report.json
-            ${{ steps.run.outputs.run-dir }}/small/**/steps.csv
-          if-no-files-found: warn
-          retention-days: 30
-
   summary:
     name: "multi-tier summary"
     needs: [resolve-inputs, smoke-large, smoke-frontier]
@@ -361,7 +272,7 @@ jobs:
       - name: Download large-tier artifact
         if: needs.smoke-large.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: lifeops-multi-tier-large-${{ github.run_id }}
           path: artifacts/large
@@ -369,13 +280,13 @@ jobs:
       - name: Download frontier-tier artifact
         if: needs.smoke-frontier.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: lifeops-multi-tier-frontier-${{ github.run_id }}
           path: artifacts/frontier
 
       - name: Compose PR comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
           SUITE: ${{ needs.resolve-inputs.outputs.suite }}
           TIERS: ${{ needs.resolve-inputs.outputs.tiers }}

@@ -45,6 +45,22 @@ def test_turn_left_is_positive_yaw_right_is_negative():
     assert abs(left.vyaw) <= MAX_YAW_RATE_RAD_S + 1e-9
 
 
+def test_strafe_left_is_positive_vy_right_is_negative():
+    left = velocity_from_text("sidestep left")
+    right = velocity_from_text("strafe right")
+    assert left.vy > 0 and left.vx == 0.0 and left.vyaw == 0.0  # +y = robot's left
+    assert right.vy < 0
+    from eliza_robot.rl.meta.locomotion_command import MAX_LATERAL_SPEED_M_S
+    assert abs(left.vy) <= MAX_LATERAL_SPEED_M_S + 1e-9
+
+
+def test_strafe_does_not_collide_with_turn_or_walk():
+    assert velocity_from_text("turn left").vyaw > 0  # turn unaffected
+    assert velocity_from_text("turn left").vy == 0.0
+    assert velocity_from_text("walk forward").vx > 0  # walk unaffected
+    assert velocity_from_text("shuffle right").vy < 0
+
+
 @pytest.mark.parametrize("phrase", ["stop", "stand still", "wave hello", "bow down"])
 def test_non_locomotion_holds_still(phrase):
     cmd = velocity_from_text(phrase)

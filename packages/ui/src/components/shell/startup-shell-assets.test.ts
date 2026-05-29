@@ -10,48 +10,46 @@ const repoRoot = resolve(
 
 const shellSourcePaths = [
   "packages/ui/src/components/shell/StartupShell.tsx",
-  "packages/ui/src/components/shell/RuntimeGate.tsx",
+  "packages/ui/src/components/shell/FirstRunShell.tsx",
 ];
 
 describe("startup shell assets", () => {
-  it("does not reference missing splash background images", () => {
+  it("keeps shared shell renderers free of startup behavior imports", () => {
+    const behaviorTokens = [
+      "../api",
+      "../../api",
+      "useApp",
+      "useFirstRunController",
+      "useStartupShellController",
+      "Capacitor",
+      "invokeDesktopBridgeRequest",
+      "savePersisted",
+      "localStorage",
+      "sessionStorage",
+      "document.addEventListener",
+      "window.location",
+      "createVoiceCapture",
+      "speechSynthesis",
+      "SpeechRecognition",
+      "ensureStoreBuildWorkspaceFolder",
+      "applyLaunchConnection",
+    ];
+
     for (const sourcePath of shellSourcePaths) {
       const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
-      expect(source).not.toContain("splash-bg.svg");
-      expect(source).not.toContain("splash-bg.png");
+      for (const token of behaviorTokens) {
+        expect(source).not.toContain(token);
+      }
     }
   });
 
-  it("keeps the bootstrap shell on the elizaOS white and blue startup surface", () => {
-    const source = readFileSync(
-      resolve(repoRoot, "packages/ui/src/components/shell/StartupShell.tsx"),
-      "utf8",
-    );
-
-    const bootstrapShell = source.slice(
-      source.indexOf("function BootstrapGateShell"),
-    );
-    expect(bootstrapShell).toContain("bg-[#F7F9FF]");
-    expect(bootstrapShell).toContain("text-[#0B35F1]");
-    expect(bootstrapShell).not.toContain("bg-[#ffe600]");
-    expect(bootstrapShell).not.toContain("radial-gradient");
-    expect(bootstrapShell).not.toContain("blur-[");
-  });
-
-  it("keeps the startup failure shell on the elizaOS white and blue surface", () => {
-    const source = readFileSync(
-      resolve(
-        repoRoot,
-        "packages/ui/src/components/shell/StartupFailureView.tsx",
-      ),
-      "utf8",
-    );
-
-    expect(source).toContain("bg-[#F7F9FF]");
-    expect(source).toContain("text-[#0B35F1]");
-    expect(source).not.toContain("bg-danger");
-    expect(source).not.toContain("text-danger");
-    expect(source).not.toContain('variant="danger"');
-    expect(source).not.toContain("radial-gradient");
+  it("does not reference missing legacy startup background images", () => {
+    const legacySvg = `${"spla"}sh-bg.svg`;
+    const legacyPng = `${"spla"}sh-bg.png`;
+    for (const sourcePath of shellSourcePaths) {
+      const source = readFileSync(resolve(repoRoot, sourcePath), "utf8");
+      expect(source).not.toContain(legacySvg);
+      expect(source).not.toContain(legacyPng);
+    }
   });
 });

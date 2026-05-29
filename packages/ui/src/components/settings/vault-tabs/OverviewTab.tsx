@@ -140,7 +140,7 @@ export function OverviewTab(props: OverviewTabProps) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 rounded-md px-2"
+          className="h-7 rounded-sm px-2"
           onClick={onReload}
           aria-label="Re-detect backends"
           title="Re-detect backends"
@@ -195,7 +195,7 @@ export function OverviewTab(props: OverviewTabProps) {
         <Button
           variant="default"
           size="sm"
-          className="h-8 rounded-md font-semibold"
+          className="h-8 rounded-sm font-semibold"
           onClick={onSave}
           disabled={saving}
         >
@@ -283,7 +283,7 @@ export function BackendRow(props: BackendRowProps) {
 
   return (
     <div
-      className={`rounded-lg border bg-card/35 px-3 py-2.5 ${
+      className={`rounded-sm border bg-card/35 px-3 py-2.5 ${
         enabled ? "border-border" : "border-border/40 opacity-70"
       }`}
     >
@@ -330,7 +330,7 @@ export function BackendRow(props: BackendRowProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1 rounded-md px-2 text-xs"
+              className="h-7 gap-1 rounded-sm px-2 text-xs"
               onClick={onOpenInstallSheet}
               aria-label={`Install ${backend.label}`}
             >
@@ -342,7 +342,7 @@ export function BackendRow(props: BackendRowProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1 rounded-md px-2 text-xs"
+              className="h-7 gap-1 rounded-sm px-2 text-xs"
               onClick={onOpenSigninSheet}
               aria-label={`Sign in to ${backend.label}`}
             >
@@ -354,7 +354,7 @@ export function BackendRow(props: BackendRowProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 rounded-md px-2 text-xs text-muted"
+              className="h-7 gap-1 rounded-sm px-2 text-xs text-muted"
               onClick={onSignout}
               aria-label={`Sign out of ${backend.label}`}
               title="Sign out"
@@ -368,7 +368,7 @@ export function BackendRow(props: BackendRowProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 rounded-md p-0"
+                className="h-7 w-7 rounded-sm p-0"
                 onClick={onMoveUp}
                 disabled={position <= 0}
                 title="Move up"
@@ -379,7 +379,7 @@ export function BackendRow(props: BackendRowProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 rounded-md p-0"
+                className="h-7 w-7 rounded-sm p-0"
                 onClick={onMoveDown}
                 disabled={position < 0 || position >= totalEnabled - 1}
                 title="Move down"
@@ -546,13 +546,13 @@ export function InstallSheet({
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
   return (
-    <div className="mt-3 space-y-2 rounded-md border border-border/50 bg-bg/30 p-3">
+    <div className="mt-3 space-y-2 rounded-sm border border-border/50 bg-bg/30 p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-txt">Install {backendLabel}</p>
         <Button
           variant="ghost"
           size="sm"
-          className="h-6 rounded-md px-2 text-2xs"
+          className="h-6 rounded-sm px-2 text-2xs"
           onClick={close}
           disabled={running}
         >
@@ -573,7 +573,7 @@ export function InstallSheet({
                 key={methodKey(m)}
                 variant="outline"
                 size="sm"
-                className="h-8 w-full justify-start gap-2 rounded-md"
+                className="h-8 w-full justify-start gap-2 rounded-sm"
                 onClick={() => void start(m)}
               >
                 {m.kind === "manual" ? (
@@ -595,7 +595,7 @@ export function InstallSheet({
             Installing…
           </div>
           {lastLog && (
-            <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-border/40 bg-card/40 p-2 text-2xs text-muted">
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded-sm border border-border/40 bg-card/40 p-2 text-2xs text-muted">
               {lastLog}
             </pre>
           )}
@@ -603,7 +603,7 @@ export function InstallSheet({
       )}
 
       {done && !error && (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-ok/30 bg-ok/10 px-2 py-1.5 text-xs text-ok">
+        <div className="flex items-center justify-between gap-2 rounded-sm border border-ok/30 bg-ok/10 px-2 py-1.5 text-xs text-ok">
           <span className="flex items-center gap-1.5">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
             Install complete.
@@ -611,7 +611,7 @@ export function InstallSheet({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 rounded-md px-2 text-2xs"
+            className="h-6 rounded-sm px-2 text-2xs"
             onClick={onComplete}
           >
             Continue
@@ -620,7 +620,7 @@ export function InstallSheet({
       )}
 
       {error && (
-        <div className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-sm border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}
@@ -715,7 +715,7 @@ export function SigninSheet({
   return (
     <form
       onSubmit={onSubmit}
-      className="mt-3 space-y-2 rounded-md border border-border/50 bg-bg/30 p-3"
+      className="mt-3 space-y-2 rounded-sm border border-border/50 bg-bg/30 p-3"
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-txt">
@@ -725,7 +725,7 @@ export function SigninSheet({
           variant="ghost"
           size="sm"
           type="button"
-          className="h-6 rounded-md px-2 text-2xs"
+          className="h-6 rounded-sm px-2 text-2xs"
           onClick={onCancel}
           disabled={submitting}
         >
@@ -836,7 +836,7 @@ export function SigninSheet({
       </div>
 
       {error && (
-        <div className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="rounded-sm border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}
@@ -846,7 +846,7 @@ export function SigninSheet({
           type="submit"
           variant="default"
           size="sm"
-          className="h-7 gap-1 rounded-md px-3 text-xs"
+          className="h-7 gap-1 rounded-sm px-3 text-xs"
           disabled={submitting || backendId === "protonpass"}
         >
           {submitting ? (

@@ -743,7 +743,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
           <Button
             variant="default"
             size="sm"
-            className="px-4 py-1.5 h-7 text-xs shadow-sm bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            className="px-4 py-1.5 h-7 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
             onClick={handleSave}
             disabled={saving || enabling || Object.keys(values).length === 0}
           >
@@ -1127,7 +1127,7 @@ export function MessageContent({
     const downloading = status === "downloading" || status === "loading";
     const canStartDownload = Boolean(message.localInference.modelId);
     return (
-      <div className="rounded-md border border-warn/30 bg-warn/5 p-3 text-sm">
+      <div className="rounded-sm border border-warn/30 bg-warn/5 p-3 text-sm">
         <div className="mb-1 font-medium">
           {downloading
             ? "Local model download in progress"
@@ -1174,7 +1174,7 @@ export function MessageContent({
   // banner, retry).
   if (message.failureKind === "no_provider") {
     return (
-      <div className="border border-warn/30 bg-warn/5 rounded-md p-3 text-sm">
+      <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
         <div className="font-medium mb-1">Connect a provider to chat</div>
         <div className="text-muted whitespace-pre-wrap mb-2">
           {message.text}
@@ -1227,7 +1227,7 @@ export function MessageContent({
               return (
                 <div
                   key={segmentKey}
-                  className="my-2 border border-accent/20 rounded bg-accent/5 overflow-hidden"
+                  className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden"
                 >
                   <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
                     &lt;{seg.tag}&gt;
@@ -1292,7 +1292,7 @@ export function MessageContent({
         });
       })()}
       {analysisMode && message.actionName && (
-        <div className="my-2 border border-purple-500/20 rounded bg-purple-500/5 overflow-hidden">
+        <div className="my-2 border border-purple-500/20 rounded-sm bg-purple-500/5 overflow-hidden">
           <div className="bg-purple-500/10 px-3 py-1 text-xs font-mono font-bold text-purple-500 uppercase tracking-wider">
             ACTION TAKEN
           </div>
@@ -1304,7 +1304,7 @@ export function MessageContent({
       {analysisMode &&
         message.actionCallbackHistory &&
         message.actionCallbackHistory.length > 0 && (
-          <div className="my-2 border border-blue-500/20 rounded bg-blue-500/5 overflow-hidden">
+          <div className="my-2 border border-blue-500/20 rounded-sm bg-blue-500/5 overflow-hidden">
             <div className="bg-blue-500/10 px-3 py-1 text-xs font-mono font-bold text-blue-500 uppercase tracking-wider">
               ACTION CALLBACK HISTORY
             </div>

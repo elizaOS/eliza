@@ -1,0 +1,105 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2023-03-29 08:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Screenshot and screencast\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To take a screenshot or record a screencast:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "To start the camera widget, either:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Press the **PrtScn** key of the keyboard."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Select the [[!img lib/applets-screenshoter.png alt=\"Take Screenshot\" "
+"class=\"symbolic\" link=\"no\"]] button in the system menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img first_steps/desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "The camera widget appears at the bottom of the screen."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img camera.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"To turn on the screenshot mode, click on the [[!img lib/camera-photo.png "
+"alt=\"Screenshot\" class=\"symbolic\" link=\"no\"]] button."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"To turn on the screencast mode, click on the [[!img lib/camera-web.png "
+"alt=\"Screencast\" class=\"symbolic\" link=\"no\"]] button."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/media-record.png alt=\"Screencast\" "
+"class=\"symbolic\" link=\"no\"]] button to take a screenshot or start "
+"recording a screencast."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Screenshots are saved in the *Pictures* folder, accessible from the *Files* "
+"browser."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Screencasts are saved in the *Videos* folder, accessible from the *Files* "
+"browser."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Screencasts don't record sound. You can record ambient sound using\n"
+"<i>[[Sound Recorder|sound_and_video]]</i>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr ""

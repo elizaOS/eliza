@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const coreMocks = vi.hoisted(() => ({
 	debug: vi.fn(),
@@ -21,6 +24,10 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 
 import { ActiveModelCoordinator } from "./active-model";
 import { localInferenceEngine } from "./engine";
+import {
+	readRoutingPreferences,
+	writeRoutingPreferences,
+} from "./routing-preferences";
 import { LocalInferenceService } from "./service";
 import type { ActiveModelState, InstalledModel } from "./types";
 
@@ -55,10 +62,28 @@ function makeRuntime(): AgentRuntime {
 }
 
 describe("LocalInferenceService activation prewarm", () => {
-	afterEach(() => {
+	let originalStateDir: string | undefined;
+	let tempStateDir: string | null = null;
+
+	beforeEach(async () => {
+		originalStateDir = process.env.ELIZA_STATE_DIR;
+		tempStateDir = await mkdtemp(join(tmpdir(), "eliza-service-test-"));
+		process.env.ELIZA_STATE_DIR = tempStateDir;
+	});
+
+	afterEach(async () => {
 		vi.restoreAllMocks();
 		coreMocks.debug.mockReset();
 		coreMocks.renderMessageHandlerStablePrefix.mockClear();
+		if (originalStateDir === undefined) {
+			delete process.env.ELIZA_STATE_DIR;
+		} else {
+			process.env.ELIZA_STATE_DIR = originalStateDir;
+		}
+		if (tempStateDir) {
+			await rm(tempStateDir, { recursive: true, force: true });
+			tempStateDir = null;
+		}
 	});
 
 	it("prewarms the Stage-1 system prefix after a model becomes active", async () => {
@@ -84,7 +109,7 @@ describe("LocalInferenceService activation prewarm", () => {
 		);
 		vi.spyOn(localInferenceEngine, "hasLoadedModel").mockReturnValue(true);
 		vi.spyOn(localInferenceEngine, "activeBackendId").mockReturnValue(
-			"llama-server",
+			"llama-cpp",
 		);
 
 		await expect(service.setActive(runtime, installed.id)).resolves.toEqual(
@@ -128,5 +153,71 @@ describe("LocalInferenceService activation prewarm", () => {
 		);
 
 		expect(prewarm).not.toHaveBeenCalled();
+	});
+
+	it("routes stale capacitor text preferences to eliza-local-inference after activation", async () => {
+		const service = new LocalInferenceService();
+		const installed = makeInstalledModel("eliza-1-test");
+
+		await writeRoutingPreferences({
+			preferredProvider: {
+				TEXT_SMALL: "capacitor-llama",
+				TEXT_LARGE: "capacitor-llama",
+			},
+			policy: {
+				TEXT_SMALL: "manual",
+				TEXT_LARGE: "manual",
+			},
+		});
+		vi.spyOn(service, "getInstalled").mockResolvedValue([installed]);
+		vi.spyOn(ActiveModelCoordinator.prototype, "switchTo").mockResolvedValue(
+			readyState(installed.id),
+		);
+
+		await service.setActive(null, installed.id);
+
+		await expect(readRoutingPreferences()).resolves.toMatchObject({
+			preferredProvider: {
+				TEXT_SMALL: "eliza-local-inference",
+				TEXT_LARGE: "eliza-local-inference",
+			},
+			policy: {
+				TEXT_SMALL: "manual",
+				TEXT_LARGE: "manual",
+			},
+		});
+	});
+
+	it("does not overwrite an explicit cloud text provider during activation", async () => {
+		const service = new LocalInferenceService();
+		const installed = makeInstalledModel("eliza-1-test");
+
+		await writeRoutingPreferences({
+			preferredProvider: {
+				TEXT_SMALL: "anthropic",
+				TEXT_LARGE: "anthropic",
+			},
+			policy: {
+				TEXT_SMALL: "manual",
+				TEXT_LARGE: "manual",
+			},
+		});
+		vi.spyOn(service, "getInstalled").mockResolvedValue([installed]);
+		vi.spyOn(ActiveModelCoordinator.prototype, "switchTo").mockResolvedValue(
+			readyState(installed.id),
+		);
+
+		await service.setActive(null, installed.id);
+
+		await expect(readRoutingPreferences()).resolves.toMatchObject({
+			preferredProvider: {
+				TEXT_SMALL: "anthropic",
+				TEXT_LARGE: "anthropic",
+			},
+			policy: {
+				TEXT_SMALL: "manual",
+				TEXT_LARGE: "manual",
+			},
+		});
 	});
 });

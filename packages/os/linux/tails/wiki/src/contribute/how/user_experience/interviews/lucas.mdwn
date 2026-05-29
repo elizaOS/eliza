@@ -1,0 +1,122 @@
+[[!meta title="Lucas, May 2022"]]
+
+**Can you tell us a bit about who you are and what you do?**
+
+I'm a filmmaker and art teacher in Mexico.
+
+Since I was a child, my father gave me access to computers and I've
+found them fascinating. I started using the family computer at the age
+of 4 on Windows 95 and MS-DOS, then got into videogames and digital
+movie editing.
+
+Computers were key in my discovery of cinema, art, and science, which
+are my main interests and the basis of my work and activism.
+
+**How did you discover Tails and what do you use it for?**
+
+I started working on a feature film about today's electronic
+surveillance, which is backed by our government because it's convenient
+for them.
+
+Looking for alternatives, I came to Free Software, Linux, Tor, the
+Cypherpunk Manifesto, etc.
+
+From there, I learned about alternative operating systems: Ubuntu,
+Qubes, and then Tails. I'm rediscovering a bit of this feeling from when
+I was a child: exploring, learning, trying things out, etc.
+
+**What do you use Tails for?**
+
+I wanted to use Tails daily: to prepare for my classes, to work on the
+scripts for my movie, etc. For me, protecting my scripts from Windows or
+Word spying on my computer was most important. Free Software was the
+solution to make sure that I was in control of the computer. I feel
+safer in my creative work.
+
+I really connected with the metaphor of Tails as a camping tent: a safe
+space where I could develop my creativity.
+
+**How often have you used Tails?**
+
+For about 1 week.
+
+Then, I noticed that the 3 drives on which I installed Tails were all
+giving an error in Windows. I haven't tried to start Tails from these
+drives since the error by lack of time.
+
+Maybe it's Windows destroying my drives on purpose.
+
+I get an error message asking to reformat when I plugged the drives in
+Windows and I try to open them. I don't get this reformatting message
+when I try to plug it in Ubuntu, only on Windows.
+
+I would expect to see the EXE files from Tails when I open these drives
+in Windows, like when I open a Ubuntu drive on Windows.
+
+I tried to reformat these drives several times and install Tails again,
+but the installation program wouldn't detect the drive anymore.
+
+I was plugging these drives into Windows to check which was which
+because I didn't mark them physically. I wonder why the error only shows
+up on the drives with Tails.
+
+Next, I want to try to reinstall Tails on these drives using Ubuntu and
+see what happens. To me, it seems like these bastards are doing
+something...
+
+*Note: In the end, the USB sticks were fine but the error message in Windows
+was confusing to Lucas. See [[!tails_ticket 18700]].)*
+
+**What did you like about Tails during these few days when you used
+it?**
+
+- The minimalist interface. I'm fed up with the thousands of
+  notifications of Windows, the popups, news, ads, weather apps, etc.
+
+  I like that everything was a bit square. It felt like the 90's,
+  without so many animations and things. Tails has this aesthetic
+  clarity, like in video games where aesthetics support clarity,
+  playability, and understanding of what you are doing.
+
+  For example, the cursor goes above the different elements without
+  animations or that you can only see one thing at a time and not
+  multiple layers of windows. 
+
+- The color scheme from Tor. It makes me feel like I'm inside Tor. The
+  simple fact that my computer is connected to the Internet encrypts all
+  my communication.
+
+  Internet is a bit slower, but not as slow as in the 90's and that's
+  fine.
+
+- The preinstalled programs. I didn't know some of the applications but
+  it made me feel like trying them out.
+
+  A few things were missing for me (Telegram, Brave, VLC, etc.) and I
+  wondered whether it was possible to install them. I didn't get a
+  chance to try this yet.
+
+- Installing was very easy. It would be too hard for me if the
+  installation required coding like for Ubuntu, but I was surprised how
+  easy it was to install Tails.
+
+**What is it that you didn't like from Tails?**
+
+- That it takes a while to connect. I understand that this is part of
+  the encryption and will get better over time.
+
+- I would like to edit movies from Tails and install other programs, but
+  I haven't tried this yet.
+
+**What do you think is the biggest problem to Tails being adopted by
+less technical people?**
+
+First, because the powers that be (governments, companies, capitalist
+lobbies, etc.) have created an environment that prevents them from
+seeing and using alternatives. For example, the seductiveness and
+convenience of Mac.
+
+Second, education. I was lucky enough that my father told me about
+Linux, but in school, we were only taught how to use a few Windows
+applications.  Nowadays, computers are everywhere in schools, but it's
+still all Google Meet, Windows, and Excel.

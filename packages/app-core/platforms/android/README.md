@@ -60,11 +60,11 @@ Entry-point mapping:
 
 | User flow | Android surface | Fulfillment |
 |---|---|---|
-| Ask or chat with Eliza | `CREATE_MESSAGE` for message text, `GET_THING` for search-style ask text, plus the chat static shortcut | `eliza://chat?...` source-tagged deep links |
-| Start voice chat | `OPEN_APP_FEATURE` inline inventory plus the voice static shortcut | `eliza://voice?source=android-static-shortcut` |
-| Open LifeOps daily brief | `OPEN_APP_FEATURE` inline inventory plus the daily-brief static shortcut | `eliza://lifeops/daily-brief?source=android-static-shortcut` |
-| Create a LifeOps task | `OPEN_APP_FEATURE` inline inventory plus the new-task static shortcut | `eliza://lifeops/task/new?source=android-static-shortcut` deep link, then runtime confirmation/planning |
-| View LifeOps tasks | `OPEN_APP_FEATURE` inline inventory plus the tasks static shortcut | `eliza://lifeops/tasks?source=android-static-shortcut` |
+| Ask or chat with Eliza | `CREATE_MESSAGE` for message text, `GET_THING` for search-style ask text, plus the chat static shortcut | `elizaos://chat?...` source-tagged deep links |
+| Start voice chat | `OPEN_APP_FEATURE` inline inventory plus the voice static shortcut | `elizaos://voice?source=android-static-shortcut` |
+| Open LifeOps daily brief | `OPEN_APP_FEATURE` inline inventory plus the daily-brief static shortcut | `elizaos://lifeops/daily-brief?source=android-static-shortcut` |
+| Create a LifeOps task | `OPEN_APP_FEATURE` inline inventory plus the new-task static shortcut | `elizaos://lifeops/task/new?source=android-static-shortcut` deep link, then runtime confirmation/planning |
+| View LifeOps tasks | `OPEN_APP_FEATURE` inline inventory plus the tasks static shortcut | `elizaos://lifeops/tasks?source=android-static-shortcut` |
 
 There is no general third-party "be Gemini/default assistant" API for the
 Play build. Current Android docs route normal app voice entry through

@@ -22,8 +22,12 @@ export const searchMessagesAction: Action = {
 	descriptionCompressed:
 		"read-only search msgs; not for draft reply send unsubscribe archive trash label mutate",
 	similes: [
+		"SEARCH_MESSAGES",
+		"MESSAGE_SEARCH",
 		"SEARCH_INBOX",
+		"SEARCH_CHAT",
 		"FIND_MESSAGE",
+		"FIND_MESSAGES",
 		"SEARCH_EMAIL",
 		"SEARCH_CHATS",
 		"CROSS_CHANNEL_SEARCH",

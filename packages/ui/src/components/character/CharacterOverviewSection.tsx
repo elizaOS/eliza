@@ -76,12 +76,12 @@ function OverviewWidget({
     <button
       type="button"
       onClick={() => onOpenSection(widget.section)}
-      className={`group flex ${heightClass} min-w-0 flex-col gap-3 rounded-2xl border border-border/30 bg-card/40 p-4 text-left transition-colors hover:border-border/55 hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50`}
+      className={`group flex ${heightClass} min-w-0 flex-col gap-3 rounded-sm border border-border/30 bg-card/40 p-4 text-left transition-colors hover:border-border/55 hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50`}
       aria-label={`Open ${widget.title}`}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span
-          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-bg-muted/40 ${accent}`}
+          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-bg-muted/40 ${accent}`}
         >
           <Icon className="h-4 w-4" aria-hidden />
         </span>

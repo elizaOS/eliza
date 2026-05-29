@@ -9,8 +9,8 @@
   "files": ["dist"],
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc --noCheck -p tsconfig.build.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "bun test src/",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src"

@@ -31,13 +31,22 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/dram_controller.json"
+COCOTB_RESULT = ROOT / "build/reports/dram_controller_cocotb_results.xml"
+COCOTB_NATIVE_RESULTS = (
+    ROOT / "verify/cocotb/memory/results.xml",
+    ROOT / "verify/cocotb/results/e1_dram_ctrl_mem_tb_test_dram_memory.xml",
+)
 
 AXI4_PKG = "rtl/interconnect/axi4/e1_axi4_pkg.sv"
 CTRL_RTL = "rtl/memory/dram_ctrl/e1_dram_ctrl.sv"
@@ -83,6 +92,18 @@ LINT_WAIVERS = [
 ]
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def verilator_bin() -> str | None:
+    found = shutil.which("verilator")
+    if found:
+        return found
+    bundled = ROOT / "external/oss-cad-suite/bin/verilator"
+    return str(bundled) if bundled.is_file() else None
+
+
 def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(
@@ -95,9 +116,15 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "blocker_reason": blocker_reason,
                 "evidence_paths": [CTRL_RTL, AXI4_PKG, TB, TEST],
                 "as_of": datetime.now(UTC).isoformat(),
+                "generated_utc": utc_now(),
                 "subsystem": "memory",
                 "phone_claim_allowed": False,
                 "release_claim_allowed": False,
+                "linux_memory_claim_allowed": False,
+                "memory_bandwidth_claim_allowed": False,
+                "lpddr_phy_claim_allowed": False,
+                "silicon_capacity_claim_allowed": False,
+                "uma_claim_allowed": False,
                 "claim_boundary": (
                     "Proves e1_dram_ctrl is a real full-AXI4 slave front-end "
                     "(read/write bursts INCR/WRAP/FIXED, AxSIZE byte addressing, "
@@ -107,8 +134,10 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                     "mem_base_addr/mem_capacity_bytes) with a DRAMsim3-LPDDR "
                     "derived row-hit/miss latency model and fail-closed DECERR "
                     "on out-of-range access, verified under Verilator + cocotb. "
-                    "This is not phone-class memory evidence and does NOT cover "
-                    "the LPDDR5X analog PHY / DFI 5.0 training "
+                    "This is not phone-class memory evidence and not Linux "
+                    "memory-sizing evidence, memory-bandwidth evidence, LPDDR "
+                    "capacity, PHY, training, silicon-capacity, or UMA evidence. "
+                    "Does NOT cover the LPDDR5X analog PHY / DFI 5.0 training "
                     "(physical silicon dependency in "
                     "docs/evidence/memory/lpddr-phy-procurement.yaml), on-die "
                     "ECC injection, or SoC-top integration + DTS memory node."
@@ -135,8 +164,11 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
 
 
 def verilator_lint() -> tuple[bool, str]:
+    verilator = verilator_bin()
+    if verilator is None:
+        return False, "verilator not found on PATH or under external/oss-cad-suite/bin"
     cmd = [
-        "verilator",
+        verilator,
         "--lint-only",
         "-Wall",
         *LINT_WAIVERS,
@@ -173,8 +205,84 @@ def run_cocotb() -> tuple[bool, str]:
         env=env,
     )
     out = proc.stdout + proc.stderr
-    ok = proc.returncode == 0 and "FAIL=0" in out and "indicates failure" not in out
+    missing_tests = missing_required_tests_from_cocotb_outputs(out)
+    failure_markers = cocotb_failure_markers(out)
+    ok = proc.returncode == 0 and "FAIL=0" in out and not failure_markers and not missing_tests
     return ok, out
+
+
+def cocotb_failure_markers(sim_log: str) -> list[str]:
+    text = sim_log.lower()
+    markers: list[str] = []
+    if "fail=0" not in text:
+        markers.append("missing FAIL=0 pass marker")
+    if re.search(r"\bfail\s*=\s*[1-9]\d*\b", text):
+        markers.append("nonzero FAIL count in cocotb log")
+    if "indicates failure" in text:
+        markers.append("runner reported a failing XML result")
+    if re.search(r"<failure\b", text):
+        markers.append("JUnit failure element present")
+    if re.search(r'\bfailures\s*=\s*"[1-9]\d*"', text):
+        markers.append("JUnit nonzero failures attribute present")
+    for result_path in COCOTB_NATIVE_RESULTS:
+        if not result_path.is_file():
+            continue
+        result_text = result_path.read_text(encoding="utf-8", errors="ignore").lower()
+        if re.search(r"<failure\b", result_text):
+            markers.append(f"{result_path.relative_to(ROOT)} contains JUnit failure element")
+        if re.search(r'\bfailures\s*=\s*"[1-9]\d*"', result_text):
+            markers.append(f"{result_path.relative_to(ROOT)} reports nonzero JUnit failures")
+    return markers
+
+
+def missing_required_tests_from_cocotb_outputs(sim_log: str) -> list[str]:
+    text = sim_log
+    for result_path in COCOTB_NATIVE_RESULTS:
+        if result_path.is_file():
+            text += "\n" + result_path.read_text(encoding="utf-8", errors="ignore")
+    return [test for test in REQUIRED_TESTS if test not in text]
+
+
+def write_cocotb_result(sim_log: str) -> str:
+    failure_markers = cocotb_failure_markers(sim_log)
+    if failure_markers:
+        raise ValueError(
+            "cannot write passing DRAM cocotb summary; failure markers present: "
+            + ", ".join(failure_markers)
+        )
+    missing_tests = missing_required_tests_from_cocotb_outputs(sim_log)
+    if missing_tests:
+        raise ValueError(
+            "cannot write passing DRAM cocotb summary; missing required tests: "
+            + ", ".join(missing_tests)
+        )
+    COCOTB_RESULT.parent.mkdir(parents=True, exist_ok=True)
+    source_log_sha256 = sha256(sim_log.encode("utf-8")).hexdigest()
+    cases = "\n".join(
+        f'    <testcase classname="dram_controller" name="{escape(test)}" />'
+        for test in REQUIRED_TESTS
+    )
+    COCOTB_RESULT.write_text(
+        "\n".join(
+            [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                (
+                    f'<testsuite name="dram_controller" tests="{len(REQUIRED_TESTS)}" '
+                    'failures="0" errors="0" skipped="0">'
+                ),
+                "  <properties>",
+                '    <property name="artifact_kind" value="derived_cocotb_summary" />',
+                ('    <property name="source_command" value="scripts/run_cocotb.sh" />'),
+                (f'    <property name="source_log_sha256" value="{source_log_sha256}" />'),
+                "  </properties>",
+                cases,
+                "</testsuite>",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return COCOTB_RESULT.relative_to(ROOT).as_posix()
 
 
 def check_rtl_tokens() -> tuple[bool, list[str]]:
@@ -232,11 +340,12 @@ def main() -> int:
 
     sim_ok, sim_log = run_cocotb()
     if not sim_ok:
+        missing_sim_tests = missing_required_tests_from_cocotb_outputs(sim_log)
         write_report(
             "BLOCKED",
             "cocotb_memory_suite_failed",
             "The cocotb DRAM memory suite did not pass cleanly.",
-            {"sim_log_tail": sim_log[-2000:]},
+            {"sim_log_tail": sim_log[-2000:], "missing_required_tests": missing_sim_tests},
         )
         print("BLOCKED: cocotb memory suite failed")
         print(sim_log[-2000:])
@@ -249,7 +358,9 @@ def main() -> int:
         {
             "verilator_lint": "clean",
             "cocotb": "FAIL=0",
-            "cocotb_result": "verify/cocotb/memory/results.xml",
+            "cocotb_result": write_cocotb_result(sim_log),
+            "cocotb_result_artifact_kind": "derived_cocotb_summary",
+            "cocotb_source_log_sha256": sha256(sim_log.encode("utf-8")).hexdigest(),
             "required_tests": list(REQUIRED_TESTS),
         },
     )

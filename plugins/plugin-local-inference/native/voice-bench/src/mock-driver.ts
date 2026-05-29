@@ -43,14 +43,14 @@ export interface MockPipelineDriverOpts {
   draftTokensTotal?: number;
   /** Drafter tokens "rejected" by the verifier. */
   draftTokensWasted?: number;
-  /** When set, the driver also reports DFlash stats. */
-  dflashAccepted?: number;
-  dflashDrafted?: number;
+  /** When set, the driver also reports MTP stats. */
+  mtpAccepted?: number;
+  mtpDrafted?: number;
   /** ms latency for the barge-in hard-stop after the trigger. */
   bargeInResponseMs?: number;
 }
 
-const DEFAULTS: Required<Omit<MockPipelineDriverOpts, "dflashAccepted" | "dflashDrafted" | "backend">> = {
+const DEFAULTS: Required<Omit<MockPipelineDriverOpts, "mtpAccepted" | "mtpDrafted" | "backend">> = {
   vadOnsetMs: 12,
   hangoverMs: 70,
   asrCompleteMs: 6,
@@ -65,8 +65,8 @@ export class MockPipelineDriver implements PipelineDriver {
   readonly name = "mock";
   readonly backend: string;
   private readonly opts: typeof DEFAULTS;
-  private readonly dflashAccepted: number | undefined;
-  private readonly dflashDrafted: number | undefined;
+  private readonly mtpAccepted: number | undefined;
+  private readonly mtpDrafted: number | undefined;
 
   constructor(opts: MockPipelineDriverOpts = {}) {
     this.backend = opts.backend ?? "mock";
@@ -80,8 +80,8 @@ export class MockPipelineDriver implements PipelineDriver {
       draftTokensWasted: opts.draftTokensWasted ?? DEFAULTS.draftTokensWasted,
       bargeInResponseMs: opts.bargeInResponseMs ?? DEFAULTS.bargeInResponseMs,
     };
-    this.dflashAccepted = opts.dflashAccepted;
-    this.dflashDrafted = opts.dflashDrafted;
+    this.mtpAccepted = opts.mtpAccepted;
+    this.mtpDrafted = opts.mtpDrafted;
   }
 
   async run(args: {
@@ -220,8 +220,8 @@ export class MockPipelineDriver implements PipelineDriver {
       rollbackWasteTokens:
         rollbackWasteFromFalseEos + rollbackWasteFromBargeIn,
     };
-    if (this.dflashAccepted !== undefined) result.dflashAccepted = this.dflashAccepted;
-    if (this.dflashDrafted !== undefined) result.dflashDrafted = this.dflashDrafted;
+    if (this.mtpAccepted !== undefined) result.mtpAccepted = this.mtpAccepted;
+    if (this.mtpDrafted !== undefined) result.mtpDrafted = this.mtpDrafted;
     return result;
   }
 }

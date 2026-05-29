@@ -2,27 +2,29 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  colorizeDevSettingsStartupBanner,
-  type DevSettingsRow,
-  formatDevSettingsTable,
-  prependDevSubsystemFigletHeading,
-  resolveAppBranding,
-  resolveDesktopApiPort,
-  resolveDesktopApiPortPreference,
-  resolveDesktopUiPort,
-  resolveDesktopUiPortPreference,
-  syncElizaEnvAliases,
-} from "@elizaos/shared";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import {
   createLogger,
   defineConfig,
   type Plugin,
-  transformWithEsbuild,
+  transformWithOxc,
 } from "vite";
+import { resolveAppBranding } from "../shared/src/config/app-config.ts";
+import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
+import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
+import {
+  type DevSettingsRow,
+  formatDevSettingsTable,
+} from "../shared/src/dev-settings-table.ts";
+import {
+  resolveDesktopApiPort,
+  resolveDesktopApiPortPreference,
+  resolveDesktopUiPort,
+  resolveDesktopUiPortPreference,
+} from "../shared/src/runtime-env.ts";
+import { syncElizaEnvAliases } from "../shared/src/utils/env.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
@@ -44,21 +46,50 @@ const pluginBrowserBridgeSrcRoot = path.join(
   "plugins/plugin-browser/src",
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");
-const capacitorCoreEntry = _require.resolve("@capacitor/core");
+const capacitorCoreEntry = path.join(
+  path.dirname(_require.resolve("@capacitor/core/package.json")),
+  "dist/index.js",
+);
 const patheEntry = _require.resolve("pathe");
 // Other Capacitor packages imported by eliza/packages/app-core sources.
 // Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
-function tryResolve(id: string): string | undefined {
+function _tryResolve(id: string): string | undefined {
   try {
     return _require.resolve(id);
   } catch {
     return undefined;
   }
 }
-const capacitorKeyboardEntry = tryResolve("@capacitor/keyboard");
-const capacitorPreferencesEntry = tryResolve("@capacitor/preferences");
-const capacitorAppEntry = tryResolve("@capacitor/app");
+function tryResolvePackageModuleEntry(id: string): string | undefined {
+  try {
+    const packageJsonPath = _require.resolve(`${id}/package.json`);
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+      module?: unknown;
+      main?: unknown;
+    };
+    const entry =
+      typeof pkg.module === "string"
+        ? pkg.module
+        : typeof pkg.main === "string"
+          ? pkg.main
+          : undefined;
+    return entry ? path.join(path.dirname(packageJsonPath), entry) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+const capacitorKeyboardEntry = tryResolvePackageModuleEntry(
+  "@capacitor/keyboard",
+);
+const capacitorPreferencesEntry = tryResolvePackageModuleEntry(
+  "@capacitor/preferences",
+);
+const capacitorAppEntry = tryResolvePackageModuleEntry("@capacitor/app");
+const json5EsmEntry = path.join(
+  path.dirname(_require.resolve("json5/package.json")),
+  "dist/index.mjs",
+);
 
 function isExpectedWsProxySocketError(
   message: unknown,
@@ -118,6 +149,26 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
   );
 }
 
+function iosLocalAgentKernelEsbuildPlugin(): Plugin {
+  const targetPath = path
+    .join(elizaRoot, "packages/ui/src/api/ios-local-agent-kernel.ts")
+    .split(path.sep)
+    .join("/");
+
+  return {
+    name: "ios-local-agent-kernel-esbuild",
+    enforce: "pre",
+    async transform(code, id) {
+      const normalizedId = id.split("?")[0]?.split(path.sep).join("/");
+      if (normalizedId !== targetPath) return null;
+      return transformWithOxc(code, id, {
+        lang: "ts",
+        target: "es2022",
+      });
+    },
+  };
+}
+
 const viteLogger = createLogger();
 const viteLoggerError = viteLogger.error;
 const viteLoggerWarn = viteLogger.warn;
@@ -173,7 +224,7 @@ function resolveLocalPackageSourceExportTarget(
   const sourceTarget = path.join(
     packageDir,
     "src",
-    exportTarget.slice("./dist/".length, -".js".length) + ".ts",
+    `${exportTarget.slice("./dist/".length, -".js".length)}.ts`,
   );
   return fs.existsSync(sourceTarget) ? sourceTarget : null;
 }
@@ -689,6 +740,30 @@ const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
+function appDevWsBasePlugin(): Plugin {
+  const wsBase = `ws://127.0.0.1:${apiPort}`;
+  const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
+
+  return {
+    name: "eliza-dev-ws-base",
+    apply: "serve",
+    transformIndexHtml() {
+      return [
+        {
+          tag: "script",
+          attrs: { type: "text/javascript" },
+          injectTo: "head-prepend",
+          children: [
+            `window.__ELIZA_WS_BASE__ = ${JSON.stringify(wsBase)};`,
+            `window.__ELIZAOS_WS_BASE__ = ${JSON.stringify(wsBase)};`,
+            `window[${JSON.stringify(brandedWsBaseKey)}] = ${JSON.stringify(wsBase)};`,
+          ].join("\n"),
+        },
+      ];
+    },
+  };
+}
+
 function pathIncludesAny(id: string, markers: string[]): boolean {
   return markers.some((marker) => id.includes(marker));
 }
@@ -929,13 +1004,43 @@ function asyncLocalStoragePatchPlugin(): Plugin {
   };
 }
 
+function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
+  return (
+    normalizedFile.includes("/packages/app/.vite/") ||
+    normalizedFile.includes("/.turbo/") ||
+    normalizedFile.includes("/.wrangler/") ||
+    normalizedFile.includes("/packages/agent/data/") ||
+    normalizedFile.includes("/packages/agent/.elizadb/") ||
+    normalizedFile.includes("/packages/examples/") ||
+    normalizedFile.includes("/packages/feed/") ||
+    normalizedFile.includes("/output/generated-cad/") ||
+    normalizedFile.includes("/packages/robot/") ||
+    normalizedFile.includes("/src/i18n/generated/") ||
+    normalizedFile.endsWith(".d.ts") ||
+    normalizedFile.endsWith(".d.ts.map") ||
+    normalizedFile.endsWith(".log") ||
+    normalizedFile.endsWith(".md") ||
+    normalizedFile.endsWith(".tsbuildinfo") ||
+    /^.*\/packages\/.*\/dist\//.test(normalizedFile)
+  );
+}
+
 function watchWorkspacePackagesPlugin(): Plugin {
   return {
     name: "watch-workspace-packages",
     configureServer(server) {
+      const watcherStartedAt = Date.now();
+      const seenMtimes = new Map<string, number>();
       server.watcher.add(path.resolve(elizaRoot, "packages"));
       server.watcher.add(nativePluginsRoot);
       server.watcher.on("change", (file) => {
+        const normalizedFile = file.split(path.sep).join("/");
+        if (isIgnoredWorkspaceGeneratedOutput(normalizedFile)) return;
+        const stat = fs.statSync(file, { throwIfNoEntry: false });
+        if (!stat) return;
+        if (stat.mtimeMs < watcherStartedAt - 1000) return;
+        if (seenMtimes.get(normalizedFile) === stat.mtimeMs) return;
+        seenMtimes.set(normalizedFile, stat.mtimeMs);
         if (file.includes("/packages/")) {
           if (file.endsWith("package.json")) {
             server.restart();
@@ -1004,8 +1109,8 @@ function workspaceJsxInJsPlugin(): Plugin {
       if (!cleanId.endsWith(".js")) return null;
       if (!normalizedId.startsWith(`${normalizedAppCoreSrcRoot}/`)) return null;
 
-      return transformWithEsbuild(code, cleanId, {
-        loader: "jsx",
+      return transformWithOxc(code, cleanId, {
+        lang: "jsx",
         jsx: "automatic",
         sourcemap: true,
       });
@@ -1047,6 +1152,7 @@ export default defineConfig({
   },
   plugins: [
     appShellMetadataPlugin(),
+    appDevWsBasePlugin(),
     companionAssetsPlugin(),
     elizaCoreBrowserEntryFallbackPlugin(),
     nativeModuleStubPlugin({
@@ -1054,6 +1160,7 @@ export default defineConfig({
       requireModule: _require,
     }),
     asyncLocalStoragePatchPlugin(),
+    iosLocalAgentKernelEsbuildPlugin(),
     watchWorkspacePackagesPlugin(),
     workspaceJsxInJsPlugin(),
     tailwindcss(),
@@ -1086,6 +1193,43 @@ export default defineConfig({
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
       // events is pre-bundled via optimizeDeps.
       { find: /^path$/, replacement: patheEntry },
+      {
+        find: /^fast-redact$/,
+        replacement: path.resolve(here, "src/shims/fast-redact.ts"),
+      },
+      {
+        find: /^cron-parser$/,
+        replacement: path.resolve(here, "src/shims/cron-parser.ts"),
+      },
+      {
+        find: /^picocolors$/,
+        replacement: path.resolve(here, "src/shims/picocolors.ts"),
+      },
+      {
+        find: /^mammoth$/,
+        replacement: path.resolve(here, "src/shims/mammoth.ts"),
+      },
+      {
+        find: /^unpdf$/,
+        replacement: path.resolve(here, "src/shims/unpdf.ts"),
+      },
+      {
+        find: /^react-plaid-link$/,
+        replacement: path.resolve(here, "src/shims/react-plaid-link.ts"),
+      },
+      {
+        find: /^handlebars$/,
+        replacement: path.resolve(here, "src/shims/handlebars.ts"),
+      },
+      {
+        find: /^@vercel\/oidc$/,
+        replacement: path.resolve(here, "src/shims/vercel-oidc.ts"),
+      },
+      {
+        find: /^use-sync-external-store\/shim$/,
+        replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
+      },
+      { find: /^json5$/, replacement: json5EsmEntry },
       {
         find: /^lucide-react$/,
         replacement: path.resolve(
@@ -1367,10 +1511,10 @@ export default defineConfig({
             replacement: path.join(uiSource, "$1"),
           },
           {
-            find: /^@elizaos\/app-core\/onboarding\/onboarding-config$/,
+            find: /^@elizaos\/app-core\/first-run\/first-run-config$/,
             replacement: path.join(
               appCoreSrcRoot,
-              "onboarding/onboarding-config.ts",
+              "first-run/first-run-config.ts",
             ),
           },
           {
@@ -1417,9 +1561,11 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
+    noDiscovery: process.env.ELIZA_APP_VITE_NO_DISCOVERY !== "0",
     include: [
       "react",
       "react-dom",
+      "react-dom/client",
       // Three.js core + all subpath imports must be pre-bundled together so
       // esbuild shares a single module identity.
       "three",
@@ -1446,8 +1592,8 @@ export default defineConfig({
               return null;
             }
 
-            return transformWithEsbuild(code, id, {
-              loader: "jsx",
+            return transformWithOxc(code, id, {
+              lang: "jsx",
               jsx: "automatic",
               sourcemap: true,
             });
@@ -1663,6 +1809,23 @@ export default defineConfig({
       ignored: [
         "**/electrobun/build/**",
         "**/electrobun/artifacts/**",
+        "**/packages/app/.vite/**",
+        "**/packages/**/.turbo/**",
+        "**/packages/**/.wrangler/**",
+        "**/packages/agent/.elizadb/**",
+        "**/packages/agent/data/**",
+        "**/packages/examples/**",
+        "**/packages/feed/**",
+        "**/packages/**/dist/**",
+        "**/packages/**/*.log",
+        "**/packages/**/*.md",
+        "**/plugins/**/.turbo/**",
+        "**/*.d.ts",
+        "**/*.d.ts.map",
+        "**/*.tsbuildinfo",
+        "**/packages/**/output/generated-cad/**",
+        "**/packages/robot/**",
+        "**/packages/**/src/i18n/generated/**",
         "**/packages/benchmarks/**",
         "**/packages/os/**",
         "**/packages/training/data/raw/**",

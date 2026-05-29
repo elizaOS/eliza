@@ -2,7 +2,6 @@
  * Encryption module for secrets management
  *
  * Provides AES-256-GCM encryption with secure key derivation for protecting sensitive data.
- * Compatible with the Otto encryption approach while providing additional security features.
  */
 
 import {
@@ -21,7 +20,6 @@ import { EncryptionError } from "../types.ts";
 // ============================================================================
 
 const ALGORITHM_GCM = "aes-256-gcm";
-const ALGORITHM_CBC = "aes-256-cbc";
 const IV_LENGTH = 16;
 const _AUTH_TAG_LENGTH = 16;
 const KEY_LENGTH = 32; // 256 bits
@@ -85,25 +83,6 @@ export function deriveKeyScrypt(
 }
 
 /**
- * Derive a key from agent ID and salt (Otto compatible)
- *
- * This method provides backward compatibility with Otto's key derivation approach.
- * For new implementations, prefer deriveKeyPbkdf2 or deriveKeyScrypt.
- *
- * @param agentId - The agent's unique identifier
- * @param salt - Optional salt (defaults to 'default-salt')
- * @returns The derived key as a Buffer
- */
-export function deriveKeyFromAgentId(
-	agentId: string,
-	salt: string = "default-salt",
-): Buffer {
-	return createHash("sha256")
-		.update(agentId + salt)
-		.digest();
-}
-
-/**
  * Create key derivation parameters for storage
  */
 export function createKeyDerivationParams(
@@ -162,30 +141,6 @@ export function encryptGcm(
 }
 
 /**
- * Encrypt a value using AES-256-CBC (fallback for compatibility)
- *
- * CBC mode is provided for backward compatibility. For new implementations,
- * prefer encryptGcm which provides authentication.
- *
- * @param plaintext - The value to encrypt
- * @param key - The encryption key (32 bytes)
- * @param keyId - Identifier for the key (for rotation support)
- * @returns Encrypted secret container
- */
-export function encryptCbc(
-	plaintext: string,
-	key: Buffer,
-	keyId: string = "default",
-): EncryptedSecret {
-	void plaintext;
-	void key;
-	void keyId;
-	throw new EncryptionError(
-		"AES-256-CBC encryption is disabled. Use AES-256-GCM and migrate any legacy callers.",
-	);
-}
-
-/**
  * Encrypt a value using the default algorithm (GCM)
  */
 export function encrypt(
@@ -236,55 +191,16 @@ export function decryptGcm(encrypted: EncryptedSecret, key: Buffer): string {
 }
 
 /**
- * Decrypt a value encrypted with AES-256-CBC
+ * Decrypt a value using the appropriate algorithm
  *
  * @param encrypted - The encrypted secret container
  * @param key - The decryption key (32 bytes)
  * @returns The decrypted plaintext
  */
-export function decryptCbc(encrypted: EncryptedSecret, key: Buffer): string {
-	if (key.length !== KEY_LENGTH) {
-		throw new EncryptionError(
-			`Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
-		);
-	}
-
-	if (encrypted.algorithm !== "aes-256-cbc") {
-		throw new EncryptionError(
-			`Algorithm mismatch: expected aes-256-cbc, got ${encrypted.algorithm}`,
-		);
-	}
-
-	const iv = Buffer.from(encrypted.iv, "base64");
-	const decipher = createDecipheriv(ALGORITHM_CBC, key, iv);
-
-	let decrypted = decipher.update(encrypted.value, "base64", "utf8");
-	decrypted += decipher.final("utf8");
-
-	return decrypted;
-}
-
-/**
- * Decrypt a value using the appropriate algorithm
- *
- * @param encrypted - The encrypted secret container (or raw string for backward compat)
- * @param key - The decryption key (32 bytes)
- * @returns The decrypted plaintext
- */
-export function decrypt(
-	encrypted: EncryptedSecret | string,
-	key: Buffer,
-): string {
-	// Handle backward compatibility with unencrypted strings
-	if (typeof encrypted === "string") {
-		return encrypted;
-	}
-
+export function decrypt(encrypted: EncryptedSecret, key: Buffer): string {
 	switch (encrypted.algorithm) {
 		case "aes-256-gcm":
 			return decryptGcm(encrypted, key);
-		case "aes-256-cbc":
-			return decryptCbc(encrypted, key);
 		default:
 			throw new EncryptionError(
 				`Unsupported algorithm: ${encrypted.algorithm}`,
@@ -309,7 +225,7 @@ export function isEncryptedSecret(value: unknown): value is EncryptedSecret {
 		typeof obj.value === "string" &&
 		typeof obj.iv === "string" &&
 		typeof obj.algorithm === "string" &&
-		(obj.algorithm === "aes-256-gcm" || obj.algorithm === "aes-256-cbc")
+		obj.algorithm === "aes-256-gcm"
 	);
 }
 
@@ -391,15 +307,6 @@ export class KeyManager {
 	}
 
 	/**
-	 * Initialize with an agent ID (Otto compatible)
-	 */
-	initializeFromAgentId(agentId: string, salt?: string): void {
-		const key = deriveKeyFromAgentId(agentId, salt);
-		this.keys.set("default", key);
-		this.currentKeyId = "default";
-	}
-
-	/**
 	 * Add a key for decryption (supports key rotation)
 	 */
 	addKey(keyId: string, key: Buffer): void {
@@ -458,11 +365,7 @@ export class KeyManager {
 	/**
 	 * Decrypt a value (automatically selects the correct key)
 	 */
-	decrypt(encrypted: EncryptedSecret | string): string {
-		if (typeof encrypted === "string") {
-			return encrypted;
-		}
-
+	decrypt(encrypted: EncryptedSecret): string {
 		const key = this.keys.get(encrypted.keyId);
 		if (!key) {
 			throw new EncryptionError(
@@ -498,7 +401,6 @@ export class KeyManager {
 // ============================================================================
 
 export {
-	ALGORITHM_CBC,
 	ALGORITHM_GCM,
 	DEFAULT_PBKDF2_ITERATIONS,
 	DEFAULT_SALT_LENGTH,

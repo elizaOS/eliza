@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -e
+
+# Including common functions
+. "${LB_BASE:-/usr/share/live/build}"/scripts/build.sh
+
+# Setting static variables
+# shellcheck disable=SC2034
+{
+    DESCRIPTION="$(Echo 'fixing syslinux installation')"
+    HELP=""
+    USAGE="${PROGRAM}"
+}
+
+# Reading configuration files
+Read_conffiles config/all config/bootstrap config/common config/binary
+Set_defaults
+
+# Safeguards
+[ "${LB_BOOTLOADER}" = "syslinux" ] || exit 0
+[ "${LB_ARCHITECTURE}" = "amd64" ] || exit 0
+
+# Seems like we'll have work to do
+Echo_message "fixing syslinux installation"
+
+# Main
+SYSLINUX_PATH="binary/isolinux"
+for module in ldlinux libcom32 libutil; do
+    cp chroot/usr/lib/syslinux/modules/bios/"${module}.c32" "$SYSLINUX_PATH"
+done

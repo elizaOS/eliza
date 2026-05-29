@@ -424,10 +424,3 @@ export function StreamingPermissionsSettingsView({
     </div>
   );
 }
-
-// `StreamingPermissionsOnboardingView` previously rendered a dedicated
-// onboarding step that checked + requested camera/mic/screen permissions
-// up front. It was removed alongside the latent first-run permission
-// walkthrough in `PermissionsSection.tsx`. Permissions are now requested
-// just-in-time when the user actually invokes a feature that needs them
-// (via the permissions registry / chat surface).

@@ -1,0 +1,38 @@
+[[!meta title="Sound and video"]]
+
+Tails includes several sound and video applications:
+
+  - [*Audacity*](https://www.audacityteam.org/), a multi-track audio editor.
+
+    See the [official documentation](http://manual.audacityteam.org/).
+
+  - [*Brasero*](https://wiki.gnome.org/Apps/Brasero), an application to
+    burn, copy, and erase CDs and DVDs.
+
+  - [*Sound Juicer*](https://wiki.gnome.org/Apps/SoundJuicer), a CD
+    ripper application.
+
+  - [*Sound Recorder*](https://wiki.gnome.org/Apps/SoundRecorder), a sound recorder.
+
+  - [*Videos*](https://apps.gnome.org/Totem/), an audio and video player.
+
+These applications are available in the **Apps&nbsp;▸ Sound & Video** submenu.
+
+You can also install using the [[Additional Software|persistent_storage/additional_software]] feature:
+
+- [*VLC*](https://www.videolan.org/vlc/), a multimedia player with advanced
+  features.
+
+  <div class="bug">
+
+  <p>Watching [[!wikipedia IPTV]] channels from <i>VLC</i> in Tails doesn't work.</p>
+
+  </div>
+
+- [*Pitivi*](https://www.pitivi.org/), a video editor.
+
+- [*GNOME Camera*](https://apps.gnome.org/Snapshot/), from the `gnome-snapshot` package, an application
+  to take pictures and videos from your webcam.
+
+[[!inline pages="doc/sensitive_documents/persistence" raw="yes" sort="age"]]
+[[!inline pages="doc/sensitive_documents/metadata.inline" raw="yes" sort="age"]]

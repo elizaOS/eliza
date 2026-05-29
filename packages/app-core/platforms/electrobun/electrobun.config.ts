@@ -173,6 +173,7 @@ export function resolveElectrobunRepoRoot(startDir: string): string {
 }
 
 const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
+const sharedSourceDir = path.join(repoRoot, "packages/shared/src");
 const rendererDistDir = path.relative(
   electrobunDir,
   fs.existsSync(path.join(repoRoot, "packages/app/package.json"))
@@ -313,6 +314,46 @@ function parseEntitlementsPlist(
 
 function trimEnv(name: string): string {
   return (process.env[name] ?? "").trim();
+}
+
+function resolveSharedSourceImport(specifier: string): string | null {
+  if (specifier === "@elizaos/shared") {
+    return path.join(sharedSourceDir, "index.ts");
+  }
+
+  const prefix = "@elizaos/shared/";
+  if (!specifier.startsWith(prefix)) {
+    return null;
+  }
+
+  const subpath = specifier.slice(prefix.length);
+  const candidates = [
+    path.join(sharedSourceDir, `${subpath}.ts`),
+    path.join(sharedSourceDir, `${subpath}.tsx`),
+    path.join(sharedSourceDir, subpath, "index.ts"),
+    path.join(sharedSourceDir, subpath, "index.tsx"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function createElectrobunWorkspaceResolvePlugin() {
+  return {
+    name: "electrobun-workspace-resolve",
+    setup(build: {
+      onResolve: (
+        options: { filter: RegExp },
+        callback: (args: { path: string }) => { path: string } | undefined,
+      ) => void;
+    }) {
+      build.onResolve(
+        { filter: /^@elizaos\/shared(?:\/.*)?$/ },
+        ({ path: specifier }) => {
+          const resolved = resolveSharedSourceImport(specifier);
+          return resolved ? { path: resolved } : undefined;
+        },
+      );
+    },
+  };
 }
 
 export function resolveElectrobunCopyMap({
@@ -456,6 +497,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
     build: {
       bun: {
         entrypoint: "src/index.ts",
+        plugins: [createElectrobunWorkspaceResolvePlugin()],
         // The Electrobun bun process is a thin native shell — it creates
         // windows, dispatches RPCs to the renderer, and manages the embedded
         // API subprocess (or talks to an external API). It must NOT bundle
@@ -466,9 +508,9 @@ export function createElectrobunConfig(): ElectrobunConfig {
         external: [
           // Agent runtime packages — used only via type imports in the bun
           // src, but workspace TS resolution can drag the source graph in.
-          "@elizaos/core",
           "@elizaos/agent",
           "@elizaos/app-core",
+          "@elizaos/shared",
           // Plugins — initialized by the API subprocess, never the bun shell.
           "@elizaos/plugin-sql",
           "@elizaos/plugin-local-inference",
@@ -485,10 +527,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
           "onnxruntime-node",
           "onnxruntime-common",
           "onnxruntime-web",
-          // chalk is pulled in transitively via @elizaos/shared/dist/terminal/theme.js.
-          // The Electrobun bun shell never renders to a TTY, so this branch is dead at
-          // runtime — externalising it just keeps the bundler from trying to resolve it.
-          "chalk",
         ],
       },
       views: {},

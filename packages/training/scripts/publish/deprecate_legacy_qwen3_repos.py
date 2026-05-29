@@ -2,7 +2,7 @@
 
 Per the 2026-05-12 operator directive, the Eliza-1 fused-model line is
 Qwen3.5/Qwen3.6-only — the Qwen3 dense base models (Qwen/Qwen3-0.6B /
-Qwen/Qwen3-1.7B / Qwen/Qwen3-4B) do not work with the eliza-1 dflash
+Qwen/Qwen3-1.7B / Qwen/Qwen3-4B) do not work with the eliza-1 mtp
 spec-decode path. The
 corresponding HF tier repos under ``elizaos/`` stay public (existing
 downloads keep working) but their model cards are updated to mark them as
@@ -66,8 +66,8 @@ tags:
 # {repo_id} — DEPRECATED (2026-05-12)
 
 **This tier is deprecated.** It shipped against the Qwen3 base model
-(`Qwen/Qwen3-{legacy_size}`), which does not work with the eliza-1 dflash
-spec-decode path — the dflash kernels are validated against the Qwen3.5
+(`Qwen/Qwen3-{legacy_size}`), which does not work with the eliza-1 mtp
+spec-decode path — the mtp kernels are validated against the Qwen3.5
 architecture and 248320 tokenizer; a Qwen3 base has the wrong vocab
 (151936) and the wrong attention shape for the fused QJL / PolarQuant /
 TurboQuant paths.
@@ -100,7 +100,7 @@ tags:
 **This companion artifact is deprecated.** It pairs with the deprecated
 `elizaos/eliza-1-{legacy_tier}` parent tier, which shipped against the
 Qwen3 base model (`Qwen/Qwen3-{legacy_size}`) that does not work with
-the eliza-1 dflash spec-decode path.
+the eliza-1 mtp spec-decode path.
 
 Superseded by the active Eliza-1 line — see the current bundle companions under
 [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1)

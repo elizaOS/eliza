@@ -5,7 +5,7 @@
  * plan emitted by `@elizaos/core`'s `buildProviderCachePlan`) into
  * concrete behaviour for the two local backends:
  *
- *   1. Out-of-process llama-server (DFlash / buun-llama-cpp): stable
+ *   1. Out-of-process llama-server (MTP / buun-llama-cpp): stable
  *      slot-id derivation + on-disk slot KV save/restore directory layout
  *      + TTL-based eviction by mtime.
  *   2. In-process node-llama-cpp: a session pool (see

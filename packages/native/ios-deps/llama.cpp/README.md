@@ -5,7 +5,7 @@ This directory cross-builds the elizaOS-controlled
 `LlamaCpp.xcframework` for iOS (device + simulator slices) with Metal
 acceleration baked in. The fork carries the elizaOS kernels (Q4_POLAR /
 QJL1_256 / TBQ4_0 / TBQ3_0 GGML types + Metal/Vulkan/CUDA kernels) and
-DFlash spec-decode on top of stock upstream — the iOS Metal slice picks
+MTP spec-decode on top of stock upstream — the iOS Metal slice picks
 up the same kernel surface the desktop Metal build uses.
 
 The output is consumed by `@elizaos/capacitor-bun-runtime`'s Swift

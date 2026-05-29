@@ -134,7 +134,7 @@ if (!existsSync(envPath)) {
   } else {
     envContent = `DATABASE_URL="postgresql://feed:feed_dev_password@localhost:5433/feed"
 REDIS_URL="redis://localhost:6380"
-NEXT_PUBLIC_PRIVY_APP_ID=""
+STEWARD_JWT_SECRET="dev-jwt-secret-change-in-prod"
 `;
   }
 

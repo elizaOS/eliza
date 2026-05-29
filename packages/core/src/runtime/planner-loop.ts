@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
@@ -27,7 +28,6 @@ import {
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
-import { computeCallCostUsd } from "./cost-table";
 import { runEvaluator } from "./evaluator";
 import {
 	extractJsonObjects,
@@ -47,7 +47,6 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
-import { extractPlanActionsFromContent } from "./plan-actions-extractor";
 import {
 	cacheProviderOptions,
 	toolMessageContent,
@@ -101,6 +100,8 @@ export type {
 	PlannerToolResult,
 	PlannerTrajectory,
 } from "./planner-types";
+
+const DEFAULT_PLANNER_MAX_TOKENS = 1024;
 
 interface RawPlannerOutput {
 	action?: unknown;
@@ -175,6 +176,14 @@ export async function runPlannerLoop(
 	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
 	// field is absent the gate's other preconditions are honored as before.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	// Captures the most recent terminal-only refusal text the planner produced
+	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
+	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
+	// the planner repeatedly emits REPLY (or bare messageToUser) with a valid
+	// honest refusal. Without this, the loop discards every refusal, exceeds
+	// `maxRequiredToolMisses`, throws `TrajectoryLimitExceeded`, and the
+	// caller surfaces a generic apology instead of the planner's real answer.
+	let lastTerminalRefusalText: string | undefined;
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
@@ -219,7 +228,22 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					const refusalCandidate = getNonEmptyString(
+						lastPlannerExplicitMessageToUser,
+					);
+					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
+					if (
+						requiredToolMisses > config.maxRequiredToolMisses &&
+						lastTerminalRefusalText
+					) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: lastTerminalRefusalText,
+						});
+					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
 						max: config.maxRequiredToolMisses,
@@ -320,7 +344,23 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					const refusalCandidate = terminalMessageFromToolCalls(
+						plannerOutput.toolCalls,
+						plannerOutput.messageToUser,
+					);
+					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
+					if (
+						requiredToolMisses > config.maxRequiredToolMisses &&
+						lastTerminalRefusalText
+					) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: lastTerminalRefusalText,
+						});
+					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
 						max: config.maxRequiredToolMisses,
@@ -609,8 +649,8 @@ function renderPlannerModelInput(params: {
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
-	const instructions = (
-		template.split("context_object:")[0] ?? template
+	const instructions = appendMandatoryPlannerPolicy(
+		template.split("context_object:")[0] ?? template,
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		maxToolResultChars: params.maxToolResultChars,
@@ -694,6 +734,31 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 	NonNullable<ContextObject["events"]>,
 	string | null
 >();
+
+const MANDATORY_PLANNER_POLICY_LINES = [
+	"SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups.",
+	"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
+	"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+	"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+];
+
+const MANDATORY_PLANNER_POLICY = [
+	"mandatory planner policy:",
+	"- SHELL is for filesystem/process work, not a fallback for chat-message search/recall, memory queries, or agent-history lookups. When the user wants chat-message search/recall, memory queries, or agent-history lookups and no dedicated search action (e.g. SEARCH_MESSAGES, MESSAGE_SEARCH, MEMORY_SEARCH) is exposed, do not run shell greps, echo placeholders, or simulate the search — set messageToUser explaining that the capability is not available this turn.",
+	'- candidateActions naming a tool that is not in this turn\'s exposed tools list is a dead hint — do not invent SHELL/BROWSER/TASKS workarounds to fulfill it. Either an exposed tool genuinely resolves the user\'s intent (call it), or no tool fits (set messageToUser). Never emit echo-placeholder SHELL commands such as: echo "<intent-name>" / echo "placeholder for <ACTION>" / echo "search <X>" as a way to "trigger" a missing capability — placeholder echoes burn cost and produce no progress.',
+	'- TASKS_SPAWN_AGENT is for delegating coding/build/repo work to a coding sub-agent (file edits, shell tooling, building/deploying apps, running tests, opening PRs). It is not a fallback for chat-message recall, memory queries, or agent-history lookups. Spawning a coding sub-agent to "search the Discord channel for messages mentioning X" routinely ends in sub-agent error/timeout and a generic "Sorry, something went wrong" reply to the user. When the user wants chat-message recall and no dedicated search action is exposed, set messageToUser explaining the capability is not available — do not spawn a sub-agent for it.',
+	'- messageToUser and REPLY text must NEVER claim or imply an investigative action is happening, has happened, or is about to happen — "I\'m fetching X, please hold", "Let me look that up", "Pulling up the info", "Searching for the answer", "I\'m checking now", "I\'ll get back to you", "Spawning a sub-agent" — when no tool call this turn is in flight to produce that content. The planner does not run in the background after returning; once this turn ends, no further tool work happens unless a NEW user message arrives. If your tool iterations exhausted without a usable result (search returned nothing, fetch was blocked, scrape gave no usable HTML, RSS was empty), set messageToUser saying so plainly: "I tried web search via the available tools and couldn\'t find current info on X — try checking a news site directly" or "The searches returned no usable results". Never promise ongoing fetch when this turn is the planner\'s final iteration. This rule covers every grammatical form: past-perfect ("I have fetched"), bare past-tense ("I fetched"), present-continuous with subject ("I\'m fetching now", "I\'m checking"), bare present-participle without subject ("Fetching latest info", "Looking it up", "Pulling up the logs"), and "please hold" / "give me a sec" / "be right back" style stalling phrases.',
+].join("\n");
+
+function appendMandatoryPlannerPolicy(instructions: string): string {
+	if (
+		MANDATORY_PLANNER_POLICY_LINES.every((line) => instructions.includes(line))
+	) {
+		return instructions;
+	}
+	return `${instructions}\n\n${MANDATORY_PLANNER_POLICY}`;
+}
+
 function renderRoutingHintsBlock(context: ContextObject): string | null {
 	if (process.env.ELIZA_PROMPT_COMPRESS === "1") return null;
 	const events = context.events;
@@ -775,28 +840,7 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
 
-	// gpt-oss-class models narrate planner calls in the text channel. There
-	// are two observed shapes:
-	//   1. PLAN_ACTIONS({...}) or bare `{action,parameters}` text when native
-	//      extraction returns nothing; recover one planner call from that text.
-	//   2. concatenated `{type,args}` JSON objects where native extraction
-	//      captures only the first call; merge the missing calls back in.
 	let textRecoveredCalls: PlannerToolCall[] = [];
-	let recoverySource: string | undefined;
-	let recoveredThought: string | undefined;
-	if (nativeToolCalls.length === 0 && typeof text === "string") {
-		const extracted = extractPlanActionsFromContent(text);
-		if (extracted) {
-			textRecoveredCalls = [
-				{
-					name: extracted.action,
-					params: extracted.parameters,
-				},
-			];
-			recoverySource = extracted.recoverySource;
-			recoveredThought = extracted.thought;
-		}
-	}
 	const embeddedToolCalls = parseEmbeddedToolCalls(raw.text);
 	const embeddedObjectCount =
 		typeof raw.text === "string" ? extractJsonObjects(raw.text).length : 0;
@@ -809,7 +853,6 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	const toolCalls = mergeToolCalls(nativeToolCalls, textRecoveredCalls);
 
 	return {
-		thought: recoveredThought,
 		toolCalls,
 		// When `raw.text` was itself tool-call JSON it is not a user-facing
 		// message — take the reply from a REPLY call rather than leaking the
@@ -821,7 +864,6 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
-			...(recoverySource ? { textRecoverySource: recoverySource } : {}),
 		} as Record<string, unknown>,
 	};
 }
@@ -835,19 +877,6 @@ function parseJsonPlannerOutput(raw: string): {
 	const trimmed = raw.trim();
 	const parsed = parseJsonObject<RawPlannerOutput>(trimmed);
 	if (!parsed) {
-		// Tolerant in-text fallback (elizaOS/eliza#7620): the raw output isn't
-		// JSON, but it might contain a `PLAN_ACTIONS({...})` envelope as text.
-		const extracted = extractPlanActionsFromContent(trimmed);
-		if (extracted) {
-			return {
-				thought: extracted.thought,
-				toolCalls: [{ name: extracted.action, params: extracted.parameters }],
-				raw: {
-					text: trimmed,
-					textRecoverySource: extracted.recoverySource,
-				},
-			};
-		}
 		return {
 			toolCalls: [],
 			messageToUser: getNonEmptyString(trimmed),
@@ -966,6 +995,7 @@ async function callPlanner(params: {
 		responseSkeleton?: ResponseSkeleton;
 		grammar?: string;
 		spanSamplerPlan?: SpanSamplerPlan;
+		maxTokens?: number;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -980,6 +1010,15 @@ async function callPlanner(params: {
 			}),
 			modelInputBudget,
 		),
+		maxTokens: DEFAULT_PLANNER_MAX_TOKENS,
+	};
+	modelParams.providerOptions = {
+		...modelParams.providerOptions,
+		eliza: {
+			...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
+				.eliza ?? {}),
+			thinking: "off",
+		},
 	};
 	if (hasTools) {
 		modelParams.tools = params.tools;
@@ -2041,6 +2080,17 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			rawFunction?.parameters,
 	);
 
+	if (name.toUpperCase() === "PLAN_ACTIONS" && args) {
+		const actionName = normalizeToolCallName(args.action);
+		if (actionName) {
+			return {
+				id: typeof record.id === "string" ? record.id : undefined,
+				name: actionName,
+				params: normalizeArgs(args.parameters) ?? {},
+			};
+		}
+	}
+
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,
 		name,
@@ -2148,6 +2198,35 @@ function handleRequiredToolPlannerMiss(params: {
 			toolCalls: stringifyForModel(params.plannerOutput.toolCalls),
 		},
 	});
+}
+
+// Terminates the planner loop with a captured terminal-only refusal text in
+// place of throwing `TrajectoryLimitExceeded({kind: "required_tool_misses"})`.
+// Used when Stage 1 asserted `requiresTool=true` but no exposed tool can
+// fulfill the request: the planner produces honest REPLY refusals across
+// iterations, and surfacing the last one is materially better than the
+// generic apology the caller would otherwise emit.
+function finishWithCapturedRefusal(params: {
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	thought: string | undefined;
+	refusal: string;
+}): {
+	status: "finished";
+	trajectory: PlannerTrajectory;
+	finalMessage: string | undefined;
+} {
+	params.trajectory.steps.push({
+		iteration: params.iteration,
+		thought: params.thought,
+		terminalMessage: params.refusal,
+		terminalOnly: true,
+	});
+	return {
+		status: "finished",
+		trajectory: params.trajectory,
+		finalMessage: userSafeFinalMessage(params.refusal, params.trajectory),
+	};
 }
 
 function terminalMessageFromToolCalls(

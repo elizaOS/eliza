@@ -55,7 +55,7 @@ describe("Game Guide API - POST /api/users/me/game-guide", () => {
         signal: AbortSignal.timeout(15000),
       });
 
-      // Invalid tokens can return 401 or 500 depending on how Privy validates
+      // Invalid tokens can return 401 or 500 depending on how Steward validates
       expect([401, 500]).toContain(res.status);
     });
 

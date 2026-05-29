@@ -860,11 +860,13 @@ module bpu_top
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            /* verilator lint_off UNUSEDLOOP */
+            /* verilator lint_off BLKSEQ */
+            /* verilator lint_off UNUSED */
             for (int unsigned i = 0; i < H2P_META_ENTRIES; i++) begin
-                h2p_meta_ctr_q[i] <= '0;
+                h2p_meta_ctr_q[i] = '0;
             end
-            /* verilator lint_on UNUSEDLOOP */
+            /* verilator lint_on UNUSED */
+            /* verilator lint_on BLKSEQ */
         end else if ((H2P_META_ENABLE != 0) &&
                      resolve_update_valid && resolve.actual_kind == BR_COND &&
                      replay_h2p_conf &&
@@ -961,7 +963,8 @@ module bpu_top
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            /* verilator lint_off UNUSEDLOOP */
+            /* verilator lint_off BLKSEQ */
+            /* verilator lint_off UNUSED */
             for (int unsigned i = 0; i < LOCAL_DIR_ENTRIES; i++) begin
                 local_dir_hist_q[i] <= '0;
                 local_dir_hist_parity_q[i] <= 1'b0;
@@ -974,7 +977,8 @@ module bpu_top
                 local_dir_meta_ctr_q[i] <= '0;
                 local_dir_meta_parity_q[i] <= 1'b0;
             end
-            /* verilator lint_on UNUSEDLOOP */
+            /* verilator lint_on UNUSED */
+            /* verilator lint_on BLKSEQ */
         end else if ((LOCAL_DIR_ENABLE != 0) &&
                      resolve_update_valid && resolve.actual_kind == BR_COND) begin
             if ((LOCAL_DIR_META_ENABLE != 0) && replay_local_dir_conf &&
@@ -1274,16 +1278,20 @@ module bpu_top
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            /* verilator lint_off BLKSEQ */
             for (int unsigned i = 0; i < RAS_FALLBACK_ENTRIES; i++) begin
-                ras_fallback_q[i] <= '0;
+                ras_fallback_q[i] = '0;
             end
+            /* verilator lint_on BLKSEQ */
         end else if (predictor_flush.valid) begin
+            /* verilator lint_off BLKSEQ */
             for (int unsigned i = 0; i < RAS_FALLBACK_ENTRIES; i++) begin
                 if (!predictor_flush.context_valid ||
                     ras_fallback_q[i].ctx == predictor_flush.ctx) begin
-                    ras_fallback_q[i] <= '0;
+                    ras_fallback_q[i] = '0;
                 end
             end
+            /* verilator lint_on BLKSEQ */
         end else if (resolve_update_valid && resolve.actual_kind == BR_RET) begin
             ras_fallback_q[ras_fallback_upd_idx] <= ras_fallback_update_entry_n;
         end

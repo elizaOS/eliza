@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { formAction, formRestoreAction } from "./actions/form";
+import { formAction } from "./actions/form";
 import { formEvaluator } from "./evaluators/extractor";
 import formPlugin, { FormService } from "./index";
 import { formContextProvider } from "./providers/context";
@@ -187,10 +187,9 @@ describe("FORM_CONTEXT provider", () => {
 });
 
 describe("FORM action", () => {
-  it("declares the canonical name and exposes a back-compat alias", () => {
+  it("declares the canonical name", () => {
     expect(formAction.name).toBe("FORM");
     expect(formAction.similes).toContain("FORM_RESTORE");
-    expect(formRestoreAction).toBe(formAction);
   });
 
   it("validates only when stashed sessions exist and no active session", async () => {

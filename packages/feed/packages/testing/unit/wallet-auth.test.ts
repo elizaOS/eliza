@@ -1,7 +1,7 @@
 /**
  * Unit Tests: Wallet Auth — Token Freshness Check
  *
- * Tests requireFreshToken() which verifies Privy JWT age for wallet mutations.
+ * Tests requireFreshToken() which verifies Steward JWT age for wallet mutations.
  * Exercises real code paths in packages/api/src/wallet-auth.ts.
  *
  * Run with: bun test unit/wallet-auth.test.ts
@@ -29,8 +29,8 @@ const NOW = Math.floor(Date.now() / 1000);
 
 const BASE_PAYLOAD = {
   aud: "test-app-id",
-  sub: "did:privy:user123",
-  iss: "privy.io",
+  sub: "steward-user-123",
+  iss: "steward",
   exp: NOW + 3600,
 };
 

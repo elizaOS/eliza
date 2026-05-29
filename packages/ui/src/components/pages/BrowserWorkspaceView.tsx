@@ -17,10 +17,10 @@ import {
   client,
 } from "../../api";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
-import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {
@@ -2068,17 +2068,14 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               await activateBrowserWorkspaceTab(tab.id);
             })
           }
-          className={`flex w-full min-w-0 items-start gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-left transition-colors ${
+          className={`flex w-full min-w-0 items-start gap-1.5 rounded-sm px-1.5 py-1 text-left transition-colors ${
             tabIsInternal ? "pr-1.5" : "pr-7"
           } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
         >
           <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
             {tabHasSessionFocus ? (
               <>
-                <span
-                  aria-hidden
-                  className="h-2 w-2 rounded-full bg-accent shadow-[0_0_4px_var(--accent)]"
-                />
+                <span aria-hidden className="h-2 w-2 rounded-full bg-accent " />
                 <span className="sr-only">
                   {t("browserworkspace.AgentActive", {
                     defaultValue: "Agent is on this tab",
@@ -2105,7 +2102,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             type="button"
             aria-label={`${closeTabLabel} ${label}`}
             title={`${closeTabLabel}: ${label}`}
-            className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
+            className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
               active
                 ? "opacity-100"
                 : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -2412,21 +2409,21 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     >
       {watchBannerLabel ? (
         <div
-          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-md border border-border/40 bg-card/80 px-3 py-1.5 text-xs text-muted shadow-sm backdrop-blur-sm"
+          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-sm border border-border/40 bg-card/80 px-3 py-1.5 text-xs text-muted backdrop-blur-sm"
           role="status"
           aria-live="polite"
           data-testid="browser-workspace-watch-banner"
         >
           <span
             aria-hidden
-            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent shadow-[0_0_4px_var(--accent)]"
+            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent "
           />
           <span className="truncate">{watchBannerLabel}</span>
         </div>
       ) : null}
       {loadError ? (
         <div
-          className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+          className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-sm border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
           role="alert"
         >
           {loadError}
@@ -2480,7 +2477,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             workspace.mode === "web" &&
             browserBridgeSupported &&
             !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="mt-3 flex w-full flex-col gap-3 rounded-md border border-border/40 bg-card/35 p-3 text-left">
+              <div className="mt-3 flex w-full flex-col gap-3 rounded-sm border border-border/40 bg-card/35 p-3 text-left">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-txt">
@@ -2694,7 +2691,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             {selectedTabLiveViewUrl ? (
               <button
                 type="button"
-                className="rounded-md border border-border/40 px-2 py-1 text-txt hover:bg-card/60"
+                className="rounded-sm border border-border/40 px-2 py-1 text-txt hover:bg-card/60"
                 onClick={() =>
                   void runBrowserWorkspaceAction(
                     "open:live-session",
@@ -2714,7 +2711,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-card/15">
             {snapshotError ? (
               <div
-                className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+                className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-sm border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
                 role="alert"
               >
                 {snapshotError}

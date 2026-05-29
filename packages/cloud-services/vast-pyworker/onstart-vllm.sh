@@ -47,11 +47,11 @@
 #   VLLM_TURBOQUANT_PRESET  — quality/default => turboquant_k8v4; 4bit =>
 #                             turboquant_4bit_nc. More aggressive presets must
 #                             be requested by their exact vLLM dtype.
-#   DFLASH_MODEL            — optional HF drafter repo/path for vLLM DFlash.
-#                             Requires a vLLM build that supports method=dflash.
+#   MTP_MODEL            — optional HF drafter repo/path for vLLM MTP.
+#                             Requires a vLLM build that supports method=mtp.
 #   SPECULATIVE_CONFIG_JSON — raw vLLM speculative config JSON. Overrides
-#                             DFLASH_MODEL when set.
-#   SPECULATIVE_TOKENS      — default 15 for DFlash.
+#                             MTP_MODEL when set.
+#   SPECULATIVE_TOKENS      — default 15 for MTP.
 #   DRAFT_TENSOR_PARALLEL_SIZE — optional draft TP for speculative decoding.
 #   DRAFT_MAX_MODEL_LEN     — optional draft max context for speculative decoding.
 #   ADDITIONAL_CONFIG_JSON  — raw vLLM `--additional-config` JSON.
@@ -64,7 +64,7 @@
 #   REASONING_PARSER        — default eliza1.
 #   COMPILATION_CONFIG_JSON — JSON blob for `--compilation-config`. Empty = skip.
 #   VLLM_ENABLE_PREFIX_CACHING — default 1. Automatically forced off when a
-#                             DFlash/speculative drafter is active on an
+#                             MTP/speculative drafter is active on an
 #                             eliza-1/Qwen3.5/Qwen3.6 hybrid model unless
 #                             ELIZA_APC_DRAFTER_VERIFIED=1.
 #   EXTRA_VLLM_ARGS         — extra args appended verbatim before --port.
@@ -124,7 +124,7 @@ mapping = {
     "KV_CACHE_DTYPE": m.get("kv_cache_dtype"),
     "VLLM_TURBOQUANT_PRESET": m.get("turboquant_preset"),
     "VLLM_ENABLE_TURBOQUANT": m.get("enable_turboquant"),
-    "DFLASH_MODEL": m.get("dflash_model"),
+    "MTP_MODEL": m.get("mtp_model"),
     "SPECULATIVE_CONFIG_JSON": m.get("speculative_config"),
     "SPECULATIVE_TOKENS": m.get("speculative_tokens"),
     "DRAFT_TENSOR_PARALLEL_SIZE": m.get("draft_tensor_parallel_size"),
@@ -178,7 +178,7 @@ REASONING_PARSER="${REASONING_PARSER:-eliza1}"
 COMPILATION_CONFIG_JSON="${COMPILATION_CONFIG_JSON:-}"
 ADDITIONAL_CONFIG_JSON="${ADDITIONAL_CONFIG_JSON:-}"
 VLLM_METAL_ADDITIONAL_CONFIG_JSON="${VLLM_METAL_ADDITIONAL_CONFIG_JSON:-}"
-DFLASH_MODEL="${DFLASH_MODEL:-}"
+MTP_MODEL="${MTP_MODEL:-}"
 SPECULATIVE_CONFIG_JSON="${SPECULATIVE_CONFIG_JSON:-}"
 SPECULATIVE_TOKENS="${SPECULATIVE_TOKENS:-15}"
 DRAFT_TENSOR_PARALLEL_SIZE="${DRAFT_TENSOR_PARALLEL_SIZE:-}"
@@ -288,7 +288,7 @@ if [ -n "$KV_CACHE_DTYPE" ] && [ "$KV_CACHE_DTYPE" != "auto" ]; then
   VLLM_ARGS+=(--kv-cache-dtype "$KV_CACHE_DTYPE")
 fi
 drafter_active=0
-if [ -n "$DFLASH_MODEL" ] || [ -n "$SPECULATIVE_CONFIG_JSON" ]; then
+if [ -n "$MTP_MODEL" ] || [ -n "$SPECULATIVE_CONFIG_JSON" ]; then
   drafter_active=1
 fi
 if truthy "$VLLM_ENABLE_PREFIX_CACHING" && [ "$drafter_active" -eq 1 ] && \
@@ -339,15 +339,15 @@ fi
 if [ -n "$ADDITIONAL_CONFIG_JSON" ]; then
   VLLM_ARGS+=(--additional-config "$ADDITIONAL_CONFIG_JSON")
 fi
-if [ -z "$SPECULATIVE_CONFIG_JSON" ] && [ -n "$DFLASH_MODEL" ]; then
-  if [ "${ELIZA_VLLM_DFLASH:-}" != "1" ] && [ "${ELIZA_VLLM_DFLASH:-}" != "true" ]; then
-    echo "[onstart-vllm] DFLASH_MODEL set without ELIZA_VLLM_DFLASH=1; continuing, but stock vLLM may reject method=dflash" >&2
+if [ -z "$SPECULATIVE_CONFIG_JSON" ] && [ -n "$MTP_MODEL" ]; then
+  if [ "${ELIZA_VLLM_MTP:-}" != "1" ] && [ "${ELIZA_VLLM_MTP:-}" != "true" ]; then
+    echo "[onstart-vllm] MTP_MODEL set without ELIZA_VLLM_MTP=1; continuing, but stock vLLM may reject method=mtp" >&2
   fi
   SPECULATIVE_CONFIG_JSON="$(python3 - <<PY
 import json, os
 config = {
-    "method": "dflash",
-    "model": os.environ["DFLASH_MODEL"],
+    "method": "mtp",
+    "model": os.environ["MTP_MODEL"],
     "num_speculative_tokens": int(os.environ.get("SPECULATIVE_TOKENS", "15")),
 }
 if os.environ.get("DRAFT_TENSOR_PARALLEL_SIZE"):

@@ -21,7 +21,7 @@ import {
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import { persistConfigEnv } from "../lib/config-env";
 import {
-  applyCanonicalOnboardingConfig,
+  applyCanonicalSetupConfig,
   isTimeoutError,
 } from "../lib/config-like";
 import { isCloudWalletEnabled } from "../lib/feature-flags";
@@ -501,7 +501,7 @@ export async function handleCloudRoute(
       >;
       cloud.apiKey = data.apiKey;
       (state.config as Record<string, unknown>).cloud = cloud;
-      applyCanonicalOnboardingConfig(state.config as never, {
+      applyCanonicalSetupConfig(state.config as never, {
         linkedAccounts: {
           elizacloud: {
             status: "linked",
@@ -731,7 +731,7 @@ export async function handleCloudRoute(
       // path (`/api/v1/eliza/agents`) for agent creation/provisioning.
       // Without this, every cloud op falls back to the proxy compat path,
       // which creates agents in a namespace whose queue never drains
-      // (agents stay `status: "queued"` forever — onboarding hangs).
+      // (agents stay `status: "queued"` forever — setup hangs).
       //
       // ## Security trade-off — token in HTTP response body
       //
@@ -928,7 +928,7 @@ export async function handleCloudRoute(
     >;
     delete cloud.apiKey;
     (state.config as Record<string, unknown>).cloud = cloud;
-    applyCanonicalOnboardingConfig(state.config as never, {
+    applyCanonicalSetupConfig(state.config as never, {
       deploymentTarget: { runtime: "local" },
       linkedAccounts: {
         elizacloud: {

@@ -1,0 +1,464 @@
+[[!meta title="Time-based snapshots of upstream APT repositories"]]
+
+[[!toc levels=2]]
+
+Overview
+========
+
+Our time-based snapshots of upstream APT repositories are published on
+<http://time-based.snapshots.deb.tails.boum.org/>.
+
+These are _full_ snapshots of the upstream APT repositories we use for
+building Tails ISO images. They contain exactly the same set of
+packages as the mirrored repository. This has the advantage that some
+workflows are trivially handled, e.g. working on a topic branch that
+installs additional Debian packages; if such snapshots were not full
+ones, then to work on one such branch, one would need either that to
+have the credentials to import new packages from Debian into our own
+mirror or repositories (which raises the barrier for contributing), or
+that during some phases of Tails development the regular Debian
+archive is used instead of our own mirror, which feels prone to "time
+to QA vs. time to release" issues.
+
+We snapshot each upstream APT repository N times a day, and without
+further action, each snapshot is kept for D days.
+
+The main goal here is to be able to freeze the APT repositories used
+by a branch, whenever we freeze it.
+
+A time-based snapshot's name contains:
+
+ * an identifier of the APT repository this snapshot is about, e.g.
+   `debian`, `debian-security`, `torproject`;
+
+ * a `YYYYMMDD$ID` serial, `$ID` being an incremental decimal number
+   formatted on two digits (`01`, `02`, etc.).
+
+The APT repository mirroring infrastructure publishes the name of the
+latest snapshot for each mirrored repository over HTTP, in the
+`project/trace/$archive` file
+([example](http://time-based.snapshots.deb.tails.boum.org/debian-security/project/trace/debian-security)).
+Similarly, every ISO
+build exports the names of the APT repository snapshots it uses
+([example](http://nightly.tails.boum.org/build_Tails_ISO_devel/lastSuccessful/archive/latest.apt-sources)).
+
+The corresponding data is not critical: we can restart the whole thing
+from scratch if needed, without too much pain ⇒ no need to synchronize
+this content to the failover server; no need to back it up.
+
+We don't bother merging mirrored APT repositories / suites into
+aggregated ones. It loses information, gives us more work, and brings
+little value.
+
+# Source code
+
+* `profile::tails::reprepro::snapshots::time_based` class in
+  [[!tails_gitlab tails/puppet-code desc="the puppet-code repo"]]
+
+* bits scattered in the main Tails Git repository (details below)
+
+<a id="ssh-access"></a>
+
+SSH access
+==========
+
+One must configure their SSH client to connect to the APT server:
+
+	Host incoming.deb.tails.boum.org
+		Port 3003
+
+Workflow
+========
+
+<a id="freeze"></a>
+
+Freeze snapshots
+----------------
+
+For example, to encode in the `$RELEASE_BRANCH` branch the set of
+[[time-based APT repository snapshots|APT_repository/time-based snapshots]]
+that shall be used during the freeze:
+
+        ./bin/freeze-all-APT-snapshots
+
+<a id="thaw"></a>
+
+Thaw snapshots
+--------------
+
+For example, to encode in the `devel` Git branch the fact
+that it is not frozen anymore, that is remove the indication that
+a specific set of APT repository snapshots must be used:
+
+        git checkout devel && \
+        ./auto/scripts/apt-snapshots-serials thaw && \
+        git commit \
+            -m "Thaw APT snapshots." \
+            config/APT_snapshots.d/*/serial
+
+<a id="bump-expiration-date"></a>
+
+Bump expiration date
+--------------------
+
+We set `Valid-Until` of time-based snapshots 10 days after they are
+generated. In some cases, this can be too short, and we need to
+manually bump `Valid-Until` for a given time-based snapshot.
+
+Only release managers and sysadmins can do such operations.
+
+### Bump one specific snapshot's expiration date
+
+To bump `Valid-Until`, for a given snapshot (`$SERIAL`) of a given
+archive (`$ARCHIVE`), so that they are valid for `$DAYS_FROM_NOW` days
+from now:
+
+    ssh reprepro-time-based-snapshots@incoming.deb.tails.boum.org \
+       tails-bump-apt-snapshot-valid-until \
+           "${ARCHIVE:?}" "${SERIAL:?}" "${DAYS_FROM_NOW:?}"
+
+<a id="bump-expiration-date-for-all-snapshots"></a>
+
+### Bump all snapshots' expiration date
+
+To bump `Valid-Until` for every snapshot used by the currently frozen branch
+and the corresponding builder VM, so that they are valid for `$DAYS_FROM_NOW`
+days from now:
+
+    ./bin/bump-APT-snapshots-expiration-date "${DAYS_FROM_NOW:?}"
+
+<a id="stop-tracking-a-distribution"></a>
+
+Stop tracking a distribution
+----------------------------
+
+After we don't need snapshots for a given Debian distribution anymore,
+e.g. after we release Tails based on a new Debian, we need to stop
+including it in new snapshots, and to remove all corresponding
+time-based snapshots and the packages that are not referenced anymore.
+
+<div class="caution">
+Make sure the distribution you want to stop tracking is not used for
+building the last published Tails release (taking into account
+building the corresponding Vagrant box from scratch): if it is, then
+cleaning up that distribution would prevent independent build
+reproducibility verification.
+</div>
+
+1. In `puppet-code`, remove the bits about the distribution you want to
+   stop tracking from the reprepro configuration templates:
+   `site/profile/templates/tails/reprepro/snapshots/time_based/*/*`.
+
+2. In `puppet-code`, remove references to the distribution you want to
+   stop tracking from the `profile::tails::reprepro::params` class (or
+   the corresponding node's data file in hiera).
+
+3. Commit, push and deploy on the system that hosts our time-based
+   APT snapshots.
+
+4. In the directory for each repository (e.g. `debian`, `torproject`),
+   replace `jessie` to match the codename of the distribution you
+   want to remove in the following command and run it:
+
+        reprepro --delete clearvanished && \
+        reprepro export && \
+        reprepro dumpreferences \
+          | grep -E '^s=jessie' \
+          | awk '{print $1}' \
+          | sort -u \
+          | xargs -n 1 reprepro _removereferences && \
+        reprepro deleteunreferenced && \
+        reprepro --delete createsymlinks
+
+5. Delete `dists/$codename/` in the directory of each repository.
+
+6. In the directory for each repository, delete files in the `logs`
+   sub-directory that were about the distribution we just
+   stopped tracking.
+
+<a id="freeze-exception"></a>
+
+Freeze exception
+----------------
+
+### Grant a freeze exception
+
+1. Import the package you want to upgrade into our own
+   [[custom APT repository|contribute/APT repository/custom]], in the
+   suite corresponding to the branch that we want to see this
+   package in.
+
+   For example:
+
+           PBUILDER_OPTIONS='--basetgz /var/cache/pbuilder/base-buster-amd64.tgz' \
+           TARGET_DIST='testing' \
+           ./bin/import-package libgsecuredelete
+
+   See [[!tails_gitweb bin/import-package]] for more detailed usage information.
+
+2. If the imported package comes from a Debian distribution whose
+   pinning value is at least 990 in `config/chroot_apt/preferences`:
+   you can stop right here. Otherwise, read on.
+
+3. Add a pinning entry in `config/chroot_apt/preferences` for the
+   package you imported:
+
+        Explanation: freeze exception
+        Package: XYZ
+        Pin: origin deb.tails.boum.org
+        Pin-Priority: 999
+
+4. Commit:
+
+        git commit config/chroot_apt/preferences \
+            -m "Add freeze exceptions for $(dpkg-parsechangelog -SVersion)"
+
+5. Push to Git.
+
+<a id="freeze-exceptions-post-release"></a>
+
+### Post-release
+
+Thaw the packages that were granted freeze exceptions on the branches
+where they can be fetched from a newer time-based snapshot of the repository
+we've initially pulled it from. Usually that's only the case on the `devel`
+branch since the `stable` branch still uses older time-based snapshots.
+
+1. For each entry in `config/chroot_apt/preferences` that has
+   `Explanation: freeze exception`: set `Pin-Priority` to `-1`.
+
+2. Commit:
+
+        git commit config/chroot_apt/preferences \
+            -m "Remove freeze exceptions added for $(dpkg-parsechangelog -SVersion)"
+
+3. Push to Git.
+
+# Design notes
+
+## gensnapshot
+
+We use reprepro's `gensnapshot` command, that basically copies
+a distribution, keeping references to the packages it contains.
+
+Compared to the "snapshots as full-blown distributions + `reprepro
+pull`" option we
+[[!tails_ticket 6295#note-14 desc="used in our initial experiments"]],
+we are saving _a lot_ on database size, and thus in performance,
+because reprepro does less tracking on snapshots, than what it does
+for real distributions.
+
+The counterpart of using snapshots created with `gensnapshot` is that:
+
+ * garbage collecting expired snapshots is a bit more involved, i.e.
+   we have to
+   [[!tails_gitweb_puppet_code site/profile/files/tails/reprepro/snapshots/time_based/tails-delete-expired-apt-snapshots desc="do it ourselves"]];
+
+ * bumping `Valid-Until` for a given time-based snapshot has to be
+   done directly in `dist`, without any help from reprepro; so here
+   again, we
+   [[!tails_gitweb_puppet_code site/profile/files/tails/reprepro/snapshots/time_based/tails-bump-apt-snapshot-valid-until desc="do it ourselves"]]
+
+None of these problems warrant going back to the other option... and
+having to deal with 80GB+ Berkeley DB databases.
+
+## Garbage collection and Valid-Until
+
+We expire snapshots older than 10 days in order to save disk space,
+and to prevent the reprepro database from growing too much.
+
+To ensure that garbage collection doesn't delete a snapshot we still
+need, e.g. the one currently referenced in the frozen `testing`
+branch, we rely on the `Valid-Until` field found in `Release` files:
+the way to express "I want to keep this specific snapshot around" is to
+postpone its expiration date; i.e. we don't differentiate "keep
+a given snapshot around" from "keep a given snapshot usable".
+
+See [[above|time-based_snapshots#bump-expiration-date]] for how we
+manage `Valid-Until` manually.
+
+One advantage of this design is that we don't have to regularly update
+`Valid-Until` fields, and the corresponding signatures: we only do
+that on a case-by-case basis, when needed. And thus, we can actually
+benefit from the protections offered by APT when `Valid-Until` fields
+are present, as any snapshot will expire unless we do something
+about it.
+
+In practice, the main use case for keeping a given time-based APT
+repository snapshot around and valid is when it's being used by
+a release branch:
+
+ - `testing`: while it's frozen, that is for 5-10 days generally;
+
+ - `stable`: that's a corner case, since `stable` generally uses the
+   set of snapshots frozen during the last Tails freeze; if and when we
+   decide to manually point `stable` to a different set of snapshots,
+   then we bump `Valid-Until` manually.
+
+In passing, note that we ship an empty `/var/cache/apt/lists/` in the
+ISO ⇒ modifying `Release` and `Release.gpg` files on our APT
+repository won't prevent the ISO build from being deterministic.
+
+## APT vs. reprepro: dist names
+
+We need to encode in the APT sources' base URL the exact snapshot we
+want to use, in order to be able to pass it to `lb config --mirror-*`.
+But this doesn't match reprepro's directory structure as-is.
+
+Thankfully this problem can be workaround'ed with some symlinks or
+HTTP rewrite rules. Here's how.
+
+Let's assume:
+
+    lb config --distribution jessie
+    lb config --mirror-chroot \
+       http://time-based.snapshots.deb.tails.boum.org/debian/2016031101/
+    lb config --mirror-chroot-security \
+       http://time-based.snapshots.deb.tails.boum.org/debian-security/2016031102/
+    [...]
+
+Which generates this APT `sources.list`:
+
+    deb http://time-based.snapshots.deb.tails.boum.org/debian/2016031101/ jessie main
+    deb http://time-based.snapshots.deb.tails.boum.org/debian-security/2016031102/ jessie/updates main
+    [...]
+
+As a result APT sends HTTP requests with URLs such as:
+
+ * <http://time-based.snapshots.deb.tails.boum.org/debian/2016032401/dists/jessie/Release>
+ * <http://time-based.snapshots.deb.tails.boum.org/debian/2016032401/pool/XYZ>
+ * <http://time-based.snapshots.deb.tails.boum.org/debian-security/2016032402/dists/jessie/updates/Release>
+ * <http://time-based.snapshots.deb.tails.boum.org/debian-security/2016032402/pool/XYZ>
+
+The corresponding files in reprepro's filesystem (given that we have
+one reprepro instance per mirrored archive) are:
+
+ * in Debian archive's reprepro:
+   - `/srv/apt-snapshots/time-based/repositories/debian/dists/jessie/snapshots/2016032401/Release`,
+     that contains `Suite: jessie/snapshots/2016032401` and `Codename: jessie`
+   - `/srv/apt-snapshots/time-based/repositories/debian/pool/XYZ`
+
+ * in Debian security archive's reprepro:
+   - `/srv/apt-snapshots/time-based/repositories/debian-security/dists/jessie/updates/snapshots/2016031102/Release`,
+     that contains `Suite: jessie/updates/snapshots/2016031102` and
+     `Codename: jessie/updates`
+   - `/srv/apt-snapshots/time-based/repositories/debian-security/pool/XYZ`
+
+To have the above HTTP requests translate to access to these files,
+we use
+[[!tails_gitweb_puppet_code site/profile/manifests/tails/reprepro/snapshots/time_based/nginx.pp desc="a set of HTTP rewrite rules"]].
+
+Note: this works because APT only warns when the codename in the
+`Release` file doesn't match the one requested in `sources.list`.
+There's a code comment around this check, dating back from 2004, that
+says something like "This might become fatal in the future". We bet that if it
+becomes fatal some day, it will be possible to turn it back into
+a warning via configuration. This affects only development builds
+since we're not going to configure APT _in the Tails ISO_ to point to
+our own snapshots of the Debian archive anyway.
+
+<a id="design-freeze-exceptions"></a>
+
+## Freeze exceptions
+
+This is a new problem brought by using "frozen" snapshot of APT
+repositories during a Tails code freeze: some bug, that we want to see
+fixed in the release we are preparing, would be resolved if we pulled
+an upgraded package as-is from a freshest Debian APT repository.
+Before we could freeze APT repositories, we would have got this bugfix
+for free. Now we need to grant freeze exceptions.
+
+This is similar to "Upgrading to a new snapshot", except that we want
+to upgrade one package only. By definition, this only affects *frozen*
+release branches (`stable`, `testing`), and topic branches based on
+them: all other branches use the freshest set of APT repository
+snapshots available.
+
+Most of the time, a bugfix branch we want to merge into a frozen
+release branch doesn't need to upgrade packages from Debian, so this
+is a corner case for the time being. Moreover, so far we have always
+dealt with this problem entirely by hand, so it's not critical to
+provide much improved tools. What makes it tempting to improve the
+situation here is mostly:
+
+ * even though freeze exceptions will remain exceptions, frozen will
+   add one use case:
+
+ * this will become a relatively common operation if we are based on
+   Debian testing some day, so let's check that it's not only
+   possible, but also reasonably easy to handle with this design
+   (otherwise we may have to switch to more powerful tools, such as
+   dak + britney).
+
+To grant a freeze exception to a given package, we simply import it
+into our own
+[[custom APT repository|contribute/APT repository/custom]], in the
+suite corresponding to the branch that we want to see this package in
+⇒ in the general case, the upgraded package will be installed in the
+next Tails release.
+
+This works because our APT pinning ranks Tails custom APT suites at
+the same level as the other APT sources corresponding to the current
+version of Debian Tails is based on, and higher than other Debian
+distribution (which, in passing, implies that we have to manually pin,
+in Git, the packages from our custom APT suites, that we want to
+override the ones found in other repositories regardless of version
+numbers):
+
+ * if the imported package comes from Debian stable: it will be
+   installed simply because its version is greater than the version of
+   the same package from Debian stable; and once we have thawed the
+   corresponding snapshot, the package can be pulled equally from any
+   of these two sources (Debian, and our custom APT repository), until
+   a newer version of this package is uploaded to Debian, and then the
+   newer one will supersede the package we have in our custom APT
+   repository;
+
+ * if the imported package comes from another Debian distribution,
+   that has a pinning value strictly lower than 990, such as Debian
+   unstable: if we did nothing more, the package would be installed
+   because its pinning (`origin deb.tails.boum.org`) is higher than
+   the one from the Debian distribution we're importing it from;
+   *however*, in this case we need to track this package, and to
+   remove it from our custom repository after we have thawed the
+   corresponding snapshot — otherwise, due to this pinning
+   configuration, we would stick to the version of the package we have
+   one day imported, while in most cases we want to resume tracking
+   the version from Debian; so, we do this that way:
+
+   1. Import the package we want to upgrade into our own
+      [[custom APT repository|contribute/APT repository/custom]], in
+      the suite corresponding to the branch that we want to see this
+      package in.
+
+   2. Explicitly pin, in `config/chroot_apt/preferences`, the upgraded
+      package we have just imported to a value higher than 990, with
+      a proper `Explanation:` field; this pinning is not required at
+      this stage, but it is one way to encode in Git the packages we
+      have imported, which simplifies the following (clean up) step.
+
+   3. Once the corresponding APT snapshot has been thawed, that is
+      once the upgraded package can be fetched from a newer time-based
+      snapshot of the repository we've initially pulled it from: make
+      it so branches stop using the upgraded package, and resume
+      tracking the one available in Debian. To do that, we modify the
+      pinning entry added at the previous step, and give it a value of
+      `-1`. This should be done by the release manager, immediately
+      after a release, when they thaw the APT snapshots used for the
+      release, and merge it into other release branches.
+
+      Ideas for future improvements:
+
+      * At some point a helper tool can do this automatically,
+        assuming we always use the same `Explanation:` field to mark
+        these pinning entries. (Ideally we would simply use
+        a dedicated file under `apt/preferences.d/` for freeze
+        exceptions, but `live-build` 2.x doesn't support that.)
+
+      * Ideally we would remove these imported packages from our
+        custom APT repository at post-release time as well, so we can
+        get rid of the `-1` pinning entries, but it really needs to be
+        done in a 100% correct order, to ensure that after all the
+        merges we do post-release (and sometimes at other times)
+        between release branches, the imported packages are _not_
+        present anymore in any of the corresponding APT suites.

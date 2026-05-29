@@ -121,7 +121,7 @@ export function GameOperatorShell({
       }`}
       data-testid={surfaceTestId}
     >
-      <div className="rounded-2xl border border-border/35 bg-card/74 p-3 shadow-sm">
+      <div className="rounded-sm border border-border/35 bg-card/74 p-3 ">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] ${statusClass(
@@ -159,7 +159,7 @@ export function GameOperatorShell({
             type="button"
             variant={item.active ? "default" : "outline"}
             size="sm"
-            className="min-h-9 rounded-xl shadow-sm"
+            className="min-h-9 rounded-sm "
             data-testid={item.testId}
             disabled={!canSend || sending || item.disabled}
             onClick={() => onCommand(item.command)}
@@ -169,7 +169,7 @@ export function GameOperatorShell({
         ))}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border/35 bg-card/74 shadow-sm">
+      <div className="flex min-h-0 flex-1 flex-col rounded-sm border border-border/35 bg-card/74 ">
         <div className="flex items-center justify-between gap-2 border-b border-border/30 px-3 py-2">
           <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-muted">
             Game chat
@@ -186,7 +186,7 @@ export function GameOperatorShell({
         </div>
         <div className="min-h-40 flex-1 space-y-2 overflow-y-auto p-3">
           {visibleEvents.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border/45 bg-bg/45 px-3 py-4 text-xs leading-5 text-muted-strong">
+            <div className="rounded-sm border border-dashed border-border/45 bg-bg/45 px-3 py-4 text-xs leading-5 text-muted-strong">
               {emptyEventsLabel}
             </div>
           ) : (
@@ -195,7 +195,7 @@ export function GameOperatorShell({
               return (
                 <div
                   key={event.id}
-                  className={`rounded-xl border px-3 py-2 text-xs leading-5 ${toneClass(
+                  className={`rounded-sm border px-3 py-2 text-xs leading-5 ${toneClass(
                     event.tone,
                   )}`}
                 >
@@ -215,13 +215,13 @@ export function GameOperatorShell({
               value={draft}
               onChange={(event) => onDraftChange(event.target.value)}
               placeholder={inputPlaceholder}
-              className="min-h-10 rounded-xl"
+              className="min-h-10 rounded-sm"
               data-testid={chatInputTestId}
               disabled={!canSend}
             />
             <Button
               type="submit"
-              className="min-h-10 rounded-xl px-4 shadow-sm"
+              className="min-h-10 rounded-sm px-4 "
               data-testid={chatSendTestId}
               disabled={!canSend || sending || !draft.trim()}
             >
@@ -236,7 +236,7 @@ export function GameOperatorShell({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="min-h-8 rounded-xl px-3 shadow-sm"
+                  className="min-h-8 rounded-sm px-3 "
                   data-testid={item.testId}
                   disabled={!canSend || sending || item.disabled}
                   onClick={() => onCommand(item.command)}

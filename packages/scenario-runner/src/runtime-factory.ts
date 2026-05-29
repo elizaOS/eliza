@@ -1,8 +1,8 @@
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
  * (no SQL mocks) and registers either the first available live LLM provider
- * via `selectLiveProvider()` or the deterministic test LLM proxy when mock
- * mode is explicitly enabled.
+ * via the core testing live-provider selector or the deterministic test LLM
+ * proxy when mock mode is explicitly enabled.
  */
 
 import fs from "node:fs";
@@ -13,11 +13,13 @@ import {
   AgentRuntime as AgentRuntimeCtor,
   createBasicCapabilitiesPlugin,
   createCharacter,
+  logger,
+} from "@elizaos/core";
+import {
   type LiveProviderConfig,
   type LiveProviderName,
-  logger,
   selectLiveProvider,
-} from "@elizaos/core";
+} from "@elizaos/core/testing";
 
 // Test helpers loaded lazily so the build rootDir stays within src/.
 async function loadTestMocks() {

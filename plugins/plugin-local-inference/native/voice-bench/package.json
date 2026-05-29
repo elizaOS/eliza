@@ -21,7 +21,7 @@
   },
   "scripts": {
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "bench": "bun run bin/voice-bench",
     "generate-fixtures": "bun run scripts/generate-fixtures.ts"
   },

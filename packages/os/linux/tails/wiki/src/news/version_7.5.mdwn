@@ -1,0 +1,75 @@
+[[!meta title="Tails 7.5"]]
+[[!meta date="Thu, 26 Feb 2026 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [15.0.7](https://blog.torproject.org/new-release-tor-browser-1507/).
+
+- Simplify the home page of *Tor Browser*.
+
+  [[!img home.png class="screenshot" alt=""]]
+
+- Update the *Tor* client to 0.4.9.5.
+
+- Update *Thunderbird* to [140.7.1](https://www.thunderbird.net/en-US/thunderbird/140.7.1esr/releasenotes/).
+
+- Install *Thunderbird* as additional software to improve its security, if you
+  have both the [[Thunderbird Email
+  Client|doc/persistent_storage/configure#thunderbird]] and [[Additional
+  Software|doc/persistent_storage/configure#additional_software]] features of the
+  Persistent Storage turned on.
+
+  Until Tails 7.5, a new version of *Thunderbird* was released by Mozilla only a
+  few days after we released a new version of Tails. As a consequence, the
+  version of *Thunderbird* in Tails was almost always outdated, with known
+  security vulnerabilities.
+
+  By [[installing *Thunderbird* as additional software|doc/anonymous_internet/thunderbird/additional_software]], the latest version
+  of *Thunderbird* is installed automatically from your Persistent Storage each
+  time you start Tails.
+
+  If the **Thunderbird Migration** dialog below appears when you start
+  *Thunderbird*, it means that Tails successfully installed *Thunderbird* as
+  additional software.
+
+  [[!img doc/anonymous_internet/thunderbird/additional_software/success.png class="screenshot" alt="Thunderbird Migration: Tails installed Thunderbird as additional software to improve its security."]]
+
+- Include the language pack for Mexican Spanish in *Thunderbird* in addition to
+  the language pack for Spanish from Spain.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.5</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.5.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.5 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.5 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

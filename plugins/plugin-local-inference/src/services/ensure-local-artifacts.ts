@@ -5,14 +5,14 @@
  *
  *   - `runtime/ensure-local-inference-handler.ts` — fire-and-forget at agent
  *     boot whenever the resolved runtime mode is `local` or `local-only`.
- *   - `ui/src/onboarding/auto-download-recommended.ts` — when the user picks
- *     "Local" in the onboarding runtime gate, after the local agent's
+ *   - `ui/src/first-run/auto-download-recommended.ts` — when the user picks
+ *     "Local" in the first-run runtime setup, after the local agent's
  *     `/api/health` reports ready.
  *   - `POST /api/local-inference/ensure` — on-demand re-trigger from the
  *     settings UI / a CLI.
  *
  * Today every Eliza-1 tier ships every component (text + voice + asr +
- * embedding + dflash drafter + cache) as one HuggingFace bundle. The
+ * embedding + mtp drafter + cache) as one HuggingFace bundle. The
  * orchestrator picks a tier per artifact kind (always the same tier today —
  * tier resolution is centralised on the recommender) and triggers parallel
  * `service.startDownload(modelId)` calls per kind. The downloader is

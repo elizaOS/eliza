@@ -28,6 +28,15 @@ import {
   findCatalogModel,
   isDefaultEligibleId,
 } from "./catalog";
+import { deviceCapsFromProbe, probeHardware } from "./hardware";
+import {
+  type Eliza1DeviceCaps,
+  type Eliza1FileEntry,
+  type Eliza1Files,
+  type Eliza1Manifest,
+  parseManifestOrThrow,
+  SUPPORTED_BACKENDS_BY_TIER,
+} from "./manifest";
 import {
   downloadsStagingDir,
   elizaModelsDir,
@@ -51,27 +60,82 @@ interface ActiveJob {
 }
 
 type DownloadListener = (event: DownloadEvent) => void;
-type BundleFileKind =
-  | "text"
-  | "voice"
-  | "asr"
-  | "vision"
-  | "dflash"
-  | "cache"
-  | "embedding"
-  | "vad"
-  | "wakeword";
+type BundleFileKind = keyof Eliza1Files;
 
-interface BundleFileEntry {
-  path: string;
-  sha256: string;
-  ctx?: number;
+/**
+ * Thrown before any weight byte is fetched when an Eliza-1 bundle's manifest
+ * is incompatible with this device — wrong schema version, no overlapping
+ * verified backend, or a RAM budget that exceeds the device's memory. Per
+ * `packages/inference/AGENTS.md` §7 there is no "download anyway" path.
+ */
+export class BundleIncompatibleError extends Error {
+  readonly code = "ELIZA1_BUNDLE_INCOMPATIBLE" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "BundleIncompatibleError";
+  }
 }
 
-interface BundleManifest {
-  id: string;
-  version: string;
-  files: Record<BundleFileKind, BundleFileEntry[]>;
+/**
+ * One-time verify-on-device pass per `packages/inference/AGENTS.md` §7:
+ * load → 1-token text generation → 1-phrase voice generation → barge-in
+ * cancel. The downloader stays decoupled from the engine — the service
+ * layer injects this; when absent the bundle is materialized and registered
+ * but its `bundleVerifiedAt` stays unset and it does NOT auto-fill an empty
+ * default slot (an unverified bundle must not become the recommended
+ * default).
+ */
+export type VerifyBundleOnDevice = (args: {
+  modelId: string;
+  bundleRoot: string;
+  manifestPath: string;
+  textGgufPath: string;
+}) => Promise<void>;
+
+export interface DownloaderOptions {
+  /** Override the device-capability probe (tests / headless environments). */
+  probeDeviceCaps?: () => Promise<Eliza1DeviceCaps>;
+  /** Verify-on-device smoke run; see {@link VerifyBundleOnDevice}. */
+  verifyOnDevice?: VerifyBundleOnDevice;
+}
+
+async function defaultProbeDeviceCaps(): Promise<Eliza1DeviceCaps> {
+  return deviceCapsFromProbe(await probeHardware());
+}
+
+/**
+ * Reject bundles this device cannot run — runs against the manifest before
+ * any weight byte is fetched. Mirrors the publish-side `canSetAsDefault`
+ * device check, minus the `defaultEligible` flag (a user may explicitly
+ * install a non-default bundle, but only one the device can actually load).
+ */
+function assertBundleInstallable(
+  manifest: Eliza1Manifest,
+  device: Eliza1DeviceCaps,
+): void {
+  // Schema version is enforced upstream by `parseManifestOrThrow` — the Zod
+  // schema only accepts the current `$schema` URL, so a manifest with a
+  // future schema version is rejected before we get here.
+  if (manifest.ramBudgetMb.min > device.ramMb) {
+    throw new BundleIncompatibleError(
+      `Eliza-1 bundle ${manifest.id} needs at least ${manifest.ramBudgetMb.min} MB RAM; this device has ${device.ramMb} MB`,
+    );
+  }
+  const tierBackends = new Set(SUPPORTED_BACKENDS_BY_TIER[manifest.tier]);
+  const usable = device.availableBackends.filter(
+    (b) =>
+      tierBackends.has(b) &&
+      manifest.kernels.verifiedBackends[b].status === "pass",
+  );
+  if (usable.length === 0) {
+    const verified = Object.entries(manifest.kernels.verifiedBackends)
+      .filter(([, v]) => v.status === "pass")
+      .map(([b]) => b);
+    throw new BundleIncompatibleError(
+      `Eliza-1 bundle ${manifest.id}: no required-kernel backend is available on this device. ` +
+        `bundle verified [${verified.join(", ") || "none"}], device has [${device.availableBackends.join(", ")}], tier ${manifest.tier} supports [${[...tierBackends].join(", ")}]`,
+    );
+  }
 }
 
 interface DownloadedFile {
@@ -145,131 +209,45 @@ function bundleTargetPath(root: string, filePath: string): string {
   return target;
 }
 
-function parseBundleFileEntry(
-  value: unknown,
-  kind: BundleFileKind,
-): BundleFileEntry {
-  if (!value || typeof value !== "object") {
-    throw new Error(`Invalid Eliza-1 manifest file entry in files.${kind}`);
-  }
-  const entry = value as { path?: unknown; sha256?: unknown; ctx?: unknown };
-  if (typeof entry.path !== "string" || entry.path.length === 0) {
-    throw new Error(`Invalid Eliza-1 manifest file path in files.${kind}`);
-  }
-  if (
-    typeof entry.sha256 !== "string" ||
-    !/^[a-f0-9]{64}$/.test(entry.sha256)
-  ) {
-    throw new Error(`Invalid Eliza-1 manifest sha256 for ${entry.path}`);
-  }
-  const parsed: BundleFileEntry = {
-    path: entry.path,
-    sha256: entry.sha256,
-  };
-  if (typeof entry.ctx === "number") parsed.ctx = entry.ctx;
-  return parsed;
-}
-
 function parseBundleManifestOrThrow(
   input: unknown,
   catalogEntry: CatalogModel,
-): BundleManifest {
-  if (!input || typeof input !== "object") {
-    throw new Error("Invalid Eliza-1 manifest: expected object");
-  }
-  const raw = input as {
-    id?: unknown;
-    version?: unknown;
-    files?: unknown;
-    defaultEligible?: unknown;
-  };
-  if (raw.id !== catalogEntry.id) {
+): Eliza1Manifest {
+  const manifest = parseManifestOrThrow(input);
+  if (manifest.id !== catalogEntry.id) {
     throw new Error(
-      `Invalid Eliza-1 manifest: id ${String(raw.id)} does not match ${catalogEntry.id}`,
+      `Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id}`,
     );
   }
-  if (typeof raw.version !== "string" || raw.version.length === 0) {
-    throw new Error("Invalid Eliza-1 manifest: missing version");
-  }
-  if (raw.defaultEligible !== true) {
-    throw new Error("Invalid Eliza-1 manifest: defaultEligible must be true");
-  }
-  if (!raw.files || typeof raw.files !== "object") {
-    throw new Error("Invalid Eliza-1 manifest: missing files");
-  }
-
-  const filesRaw = raw.files as Record<string, unknown>;
-  const files = {} as Record<BundleFileKind, BundleFileEntry[]>;
-  for (const kind of [
-    "text",
-    "voice",
-    "asr",
-    "vision",
-    "dflash",
-    "cache",
-    "embedding",
-    "vad",
-    "wakeword",
-  ] as const) {
-    const value = filesRaw[kind];
-    if (value === undefined && (kind === "embedding" || kind === "wakeword")) {
-      files[kind] = [];
-      continue;
-    }
-    if (!Array.isArray(value)) {
-      throw new Error(
-        `Invalid Eliza-1 manifest: files.${kind} must be an array`,
-      );
-    }
-    files[kind] = value.map((entry) => parseBundleFileEntry(entry, kind));
-  }
-
-  for (const kind of [
-    "text",
-    "voice",
-    "asr",
-    "dflash",
-    "cache",
-    "vad",
-  ] as const) {
-    if (files[kind].length === 0) {
-      throw new Error(
-        `Invalid Eliza-1 manifest: files.${kind} must be non-empty`,
-      );
-    }
-  }
-  if (!files.text.some((entry) => entry.path === catalogEntry.ggufFile)) {
+  if (
+    !manifest.files.text.some((entry) => entry.path === catalogEntry.ggufFile)
+  ) {
     throw new Error(
       `Invalid Eliza-1 manifest: primary text file ${catalogEntry.ggufFile} is missing`,
     );
   }
 
-  return {
-    id: catalogEntry.id,
-    version: raw.version,
-    files,
-  };
+  return manifest;
 }
 
 function collectBundleFiles(
-  manifest: BundleManifest,
-): Array<{ kind: BundleFileKind; entry: BundleFileEntry }> {
+  manifest: Eliza1Manifest,
+): Array<{ kind: BundleFileKind; entry: Eliza1FileEntry }> {
   const seen = new Map<
     string,
-    { kind: BundleFileKind; entry: BundleFileEntry }
+    { kind: BundleFileKind; entry: Eliza1FileEntry }
   >();
   for (const kind of [
     "text",
     "voice",
     "asr",
     "vision",
-    "dflash",
     "cache",
     "embedding",
     "vad",
     "wakeword",
   ] as const) {
-    for (const entry of manifest.files[kind]) {
+    for (const entry of manifest.files[kind] ?? []) {
       const current = seen.get(entry.path);
       if (current && current.entry.sha256 !== entry.sha256) {
         throw new Error(
@@ -305,8 +283,12 @@ export class Downloader {
   private readonly terminal = new Map<string, DownloadJob>();
   private readonly listeners = new Set<DownloadListener>();
   private readonly lastEmit = new Map<string, number>();
+  private readonly probeDeviceCaps: () => Promise<Eliza1DeviceCaps>;
+  private readonly verifyOnDevice?: VerifyBundleOnDevice;
 
-  constructor() {
+  constructor(options: DownloaderOptions = {}) {
+    this.probeDeviceCaps = options.probeDeviceCaps ?? defaultProbeDeviceCaps;
+    this.verifyOnDevice = options.verifyOnDevice;
     this.loadTerminalDownloads();
   }
 
@@ -502,10 +484,7 @@ export class Downloader {
   ): Promise<void> {
     try {
       this.updateState(record, "downloading");
-      if (
-        catalogEntry.bundleManifestFile &&
-        catalogEntry.runtimeRole !== "dflash-drafter"
-      ) {
+      if (catalogEntry.bundleManifestFile) {
         await this.runBundleJob(catalogEntry, record);
         return;
       }
@@ -530,10 +509,9 @@ export class Downloader {
 
       if (response.statusCode >= 400) {
         throw new Error(
-          `HTTP ${response.statusCode} from HuggingFace for ${catalogEntry.hfRepo}`,
+          `HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}`,
         );
       }
-
       let effectiveStartByte = startByte;
       if (effectiveStartByte > 0 && response.statusCode !== 206) {
         effectiveStartByte = 0;
@@ -603,44 +581,14 @@ export class Downloader {
         ...(catalogEntry.runtimeRole
           ? { runtimeRole: catalogEntry.runtimeRole }
           : {}),
-        ...(catalogEntry.companionForModelId
-          ? { companionFor: catalogEntry.companionForModelId }
-          : {}),
       };
       await upsertElizaModel(installed);
 
       // First-light convenience: only default-eligible Eliza-1 downloads
       // can fill empty slots. Ad-hoc Hugging Face downloads remain
       // explicit opt-in even though Eliza owns the downloaded file.
-      if (
-        catalogEntry.runtimeRole !== "dflash-drafter" &&
-        isDefaultEligibleId(installed.id)
-      ) {
+      if (isDefaultEligibleId(installed.id)) {
         await ensureDefaultAssignment(installed.id);
-      }
-
-      for (const companionId of catalogEntry.companionModelIds ?? []) {
-        if (!this.isActive(companionId)) {
-          void this.start(companionId).catch((err) => {
-            const job: DownloadJob = {
-              jobId: randomUUID(),
-              modelId: companionId,
-              state: "failed",
-              received: 0,
-              total: 0,
-              bytesPerSec: 0,
-              etaMs: null,
-              startedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              error: err instanceof Error ? err.message : String(err),
-            };
-            this.rememberTerminalDownload(job);
-            this.emit({
-              type: "failed",
-              job,
-            });
-          });
-        }
       }
 
       this.updateState(record, "completed");
@@ -702,6 +650,11 @@ export class Downloader {
       catalogEntry,
     );
 
+    // §7: schema version, RAM budget, and kernel-backend availability are
+    // checked against this device BEFORE any weight byte is fetched. An
+    // incompatible bundle aborts here — there is no "download anyway" path.
+    assertBundleInstallable(manifest, await this.probeDeviceCaps());
+
     let completedBytes = manifestDownloaded.sizeBytes;
     const downloaded = new Map<string, DownloadedFile>();
     for (const { entry } of collectBundleFiles(manifest)) {
@@ -740,6 +693,22 @@ export class Downloader {
       );
     }
 
+    // §7: materialize the bundle, then run the one-time verify-on-device
+    // pass before the bundle is treated as ready. The hook is injected by
+    // the service layer so the downloader stays decoupled from the engine.
+    // When no hook is wired, `bundleVerifiedAt` stays unset and the bundle
+    // is registered but does NOT auto-fill an empty default slot.
+    let bundleVerifiedAt: string | undefined;
+    if (this.verifyOnDevice) {
+      await this.verifyOnDevice({
+        modelId: catalogEntry.id,
+        bundleRoot,
+        manifestPath,
+        textGgufPath: textFile.path,
+      });
+      bundleVerifiedAt = new Date().toISOString();
+    }
+
     const now = new Date().toISOString();
     const bundleMeta = {
       bundleRoot,
@@ -747,6 +716,7 @@ export class Downloader {
       manifestSha256: manifestDownloaded.sha256,
       bundleVersion: manifest.version,
       bundleSizeBytes: completedBytes,
+      ...(bundleVerifiedAt ? { bundleVerifiedAt } : {}),
     };
 
     const installed: InstalledModel = {
@@ -764,43 +734,10 @@ export class Downloader {
     };
     await upsertElizaModel(installed);
 
-    const companionId =
-      catalogEntry.runtime?.dflash?.drafterModelId ??
-      catalogEntry.companionModelIds?.[0];
-    const companion = companionId ? findCatalogModel(companionId) : undefined;
-    if (companion) {
-      const drafterEntry = manifest.files.dflash.find(
-        (entry) => entry.path === companion.ggufFile,
-      );
-      if (!drafterEntry) {
-        throw new Error(
-          `[local-inference] Bundle missing DFlash companion ${companion.ggufFile}`,
-        );
-      }
-      const drafterFile = downloaded.get(drafterEntry.path);
-      if (!drafterFile) {
-        throw new Error(
-          `[local-inference] Bundle did not install DFlash companion ${drafterEntry.path}`,
-        );
-      }
-      await upsertElizaModel({
-        id: companion.id,
-        displayName: companion.displayName,
-        path: drafterFile.path,
-        sizeBytes: drafterFile.sizeBytes,
-        hfRepo: companion.hfRepo,
-        installedAt: now,
-        lastUsedAt: null,
-        source: "eliza-download",
-        sha256: drafterFile.sha256,
-        lastVerifiedAt: now,
-        runtimeRole: "dflash-drafter",
-        companionFor: catalogEntry.id,
-        ...bundleMeta,
-      });
-    }
-
-    if (isDefaultEligibleId(installed.id)) {
+    // An empty default slot is filled only after the on-device verify pass
+    // succeeds. Without a verify hook the bundle is installed and visible,
+    // but it is not allowed to auto-fill defaults.
+    if (isDefaultEligibleId(installed.id) && bundleVerifiedAt !== undefined) {
       await ensureDefaultAssignment(installed.id);
     }
 
@@ -866,7 +803,7 @@ export class Downloader {
 
     if (response.statusCode >= 400) {
       throw new Error(
-        `HTTP ${response.statusCode} from HuggingFace for ${catalogEntry.hfRepo}/${remotePath}`,
+        `HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
       );
     }
     if (startByte > 0 && response.statusCode !== 206) {

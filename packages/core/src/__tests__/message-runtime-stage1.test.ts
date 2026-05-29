@@ -209,6 +209,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const firstCall = useModelCalls(runtime)[0];
 		const params = firstCall?.[1] as {
 			tools?: Array<{ name?: string; parameters?: { required?: string[] } }>;
+			messages?: Array<{ content?: unknown }>;
 			toolChoice?: string;
 			maxTokens?: number;
 			responseSchema?: unknown;
@@ -230,8 +231,125 @@ describe("runV5MessageRuntimeStage1", () => {
 			guidedDecode: true,
 			thinking: "off",
 		});
+		const systemMessage = params.messages?.[0] as
+			| { content?: unknown }
+			| undefined;
+		expect(String(systemMessage?.content ?? "")).toContain(
+			"prioritize syntactically valid runnable code",
+		);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
+		}
+	});
+
+	it("recovers a completed replyText when Stage 1 hits the completion cap with truncated JSON", async () => {
+		const runtime = makeRuntime([
+			{
+				text: [
+					'{"shouldRespond":"RESPOND","contexts":["simple"],',
+					'"replyText":"```python\\ndef fibonacci(n):\\n    a, b = 0, 1\\n    for _ in range(n):\\n        a, b = b, a + b\\n    return a\\n```",',
+					'"facts":[',
+				].join(""),
+				finishReason: "length",
+				usage: {
+					promptTokens: 100,
+					completionTokens: 2048,
+					totalTokens: 2148,
+				},
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "write a 5-line python function that returns fibonacci",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toContain(
+				"def fibonacci(n):",
+			);
+			expect(result.result.responseContent?.text).not.toContain(
+				"That answer got cut off",
+			);
+		}
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				src: "service:message",
+				finishReason: "length",
+				maxTokens: 2048,
+			}),
+			"[message] Stage 1 hit the completion-token limit",
+		);
+	});
+
+	it("surfaces a clear reply when Stage 1 truncates before a reply can be recovered", async () => {
+		const runtime = makeRuntime([
+			{
+				text: '{"shouldRespond":"RESPOND","contexts":["simple"],"replyText":"```python\\ndef fib',
+				finishReason: "length",
+				usage: {
+					promptTokens: 100,
+					completionTokens: 2048,
+					totalTokens: 2148,
+				},
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "write a 5-line python function that returns fibonacci",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.",
+			);
+		}
+	});
+
+	it("does not recover truncated action-planning envelopes as final replies", async () => {
+		const runtime = makeRuntime([
+			{
+				text: [
+					'{"shouldRespond":"RESPOND","contexts":["general"],',
+					'"replyText":"On it.",',
+					'"requiresTool":true,',
+					'"candidateActionNames":["TASKS_SPAWN_AGENT"],',
+					'"facts":[',
+				].join(""),
+				finishReason: "length",
+				usage: {
+					promptTokens: 100,
+					completionTokens: 2048,
+					totalTokens: 2148,
+				},
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "spawn a sub-agent to write a Python hello-world snippet",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.",
+			);
 		}
 	});
 
@@ -325,203 +443,40 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("routes image follow-up replies through ATTACHMENT before answering", async () => {
+	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
+		// Regression for the false-positive routing where a verb like "read"
+		// in a normal dev question ("read a large file line by line in node")
+		// was hijacked into the planner whenever any attachment lingered in
+		// the conversation state (e.g. from older probes in the same channel).
+		// The fix removes the bare-verb branch of
+		// `looksLikeAttachmentInspectionRequest` so only noun-anchored
+		// attachment references trigger the routing.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
-				replyText: "Yes, I can see the image you attached.",
+				replyText: "Use the built-in readline module to stream lines.",
 				extra: { requiresTool: false },
 			}),
-			{
-				thought: "Read the visible image attachment before answering.",
-				toolCalls: [
-					{
-						id: "read-image",
-						name: "ATTACHMENT",
-						args: { action: "read", attachmentId: "image-1" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Attachment was read before replying.",
-				messageToUser:
-					"I couldn't generate a readable description for that image.",
-			}),
 		]);
-		const attachmentHandler = vi.fn(async () => ({
-			success: true,
-			text: "I couldn't generate a readable description for that image.",
-			data: { actionName: "ATTACHMENT" },
-		}));
-		runtime.actions = [
-			{
-				name: "ATTACHMENT",
-				contexts: ["general", "media", "messaging"],
-				description: "Read current or recent attachments.",
-				parameters: [
-					{
-						name: "action",
-						description: "Attachment operation",
-						required: false,
-						schema: { type: "string" },
-					},
-					{
-						name: "attachmentId",
-						description: "Attachment id",
-						required: false,
-						schema: { type: "string" },
-					},
-				],
-				examples: [],
-				validate: async () => true,
-				handler: attachmentHandler,
-			},
-		] as never;
 		const state = makeAttachmentState();
 		runtime.composeState = vi.fn(async () => state) as never;
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
-				text: "Give me thoughts on it",
-				mentionContext: { isReply: true },
+				text: "what's a good way to read a large file line by line in node?",
 			}),
 			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		expect(attachmentHandler).toHaveBeenCalledTimes(1);
-		const calls = useModelCalls(runtime);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		expect(plannerUserContent).toContain('"candidateActions":["ATTACHMENT"]');
-		expect(plannerUserContent).not.toContain(
-			"Yes, I can see the image you attached.",
-		);
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"I couldn't generate a readable description for that image.",
-			);
-		}
-	});
-
-	it("routes short chat-entity identity lookups through recall instead of simple guessing", async () => {
-		const runtime = makeRuntime([
-			JSON.stringify({
-				processMessage: "RESPOND",
-				plan: {
-					contexts: ["simple"],
-					reply: "Queuebot is just the same assistant you've seen before.",
-					simple: true,
-					requiresTool: false,
-				},
-				extract: {
-					facts: [],
-					relationships: [],
-					addressedTo: [],
-				},
-			}),
-			JSON.stringify({
-				thought: "Identity lookup should be grounded in recalled chat context.",
-				toolCalls: [],
-				messageToUser:
-					"I don't have enough recalled chat context to identify queuebot.",
-			}),
-		]);
-		runtime.actions = [
-			{
-				name: "MESSAGE",
-				contexts: ["messaging", "memory"],
-				description: "Search and inspect stored conversation messages.",
-				validate: async () => true,
-				handler: async () => ({ success: true }),
-			},
-		] as never;
-		runtime.composeState = vi.fn(async () => ({
-			values: { availableContexts: "simple, general, memory, messaging" },
-			data: {
-				providers: {
-					RECENT_MESSAGES: {
-						text: "# Conversation Messages\nrecent provider text",
-						providerName: "RECENT_MESSAGES",
-					},
-				},
-			},
-			text: "",
-		})) as never;
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: [
-					"[Recent channel context]",
-					"e2e: queuebot came up earlier in the channel.",
-					"",
-					"[Discord #general | NUBot test server] @e2e (Sat 05/23/2026 10:25 UTC): assistant (@1490833425802854491) who is queuebot?",
-				].join("\n"),
-				source: "discord",
-			}),
-			state: {
-				values: { availableContexts: "simple, general, memory, messaging" },
-				data: {},
-				text: "",
-			},
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		const plannerCall = useModelCalls(runtime)[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain("identity_lookup_policy");
-		expect(plannerUserContent).toContain('"candidateActions":["MESSAGE"]');
-		expect(plannerUserContent).toContain("routing through recall context");
-		expect(plannerUserContent).not.toContain(
-			"Queuebot is just the same assistant",
-		);
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"I don't have enough recalled chat context to identify queuebot.",
-			);
-		}
-	});
-
-	it("does not reroute ordinary public identity questions through recall", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["simple"],
-				replyText: "Barack Obama is a former U.S. president.",
-				extra: { requiresTool: false },
-			}),
-		]);
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "assistant (@1490833425802854491) who is obama?",
-				source: "discord",
-			}),
-			state: {
-				values: { availableContexts: "simple, general, memory, messaging" },
-				data: {},
-				text: "",
-			},
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
 		expect(result.kind).toBe("direct_reply");
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"Barack Obama is a former U.S. president.",
+				"Use the built-in readline module to stream lines.",
 			);
 		}
+		// No planner reroute. Only Stage 1 should have run.
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 
@@ -599,48 +554,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"https://eliza.so\nhttps://app.eliza.so",
-			);
-		}
-	});
-
-	it("does not send an image-inspection ack when attachment tooling is unavailable", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["general"],
-				replyText: "On it.",
-				extra: { requiresTool: false },
-			}),
-			JSON.stringify({
-				thought: "No attachment action is exposed in this fixture.",
-				toolCalls: [],
-				messageToUser:
-					"I can see there is an image attachment, but I cannot inspect its contents from this context.",
-			}),
-		]);
-		const state = makeAttachmentState();
-		runtime.composeState = vi.fn(async () => state) as never;
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "what shape and color is in this image?",
-				mentionContext: { isMention: true },
-			}),
-			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		const calls = useModelCalls(runtime);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["ATTACHMENT"]');
-		expect(plannerUserContent).not.toContain('"reply":"On it."');
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toContain(
-				"cannot inspect its contents",
 			);
 		}
 	});
@@ -1828,6 +1741,31 @@ android smoke model works`,
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
 	});
 
+	it("does not force direct snippet replies when the user explicitly asks for a sub-agent", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: ["write snippet"],
+				replyText: "```python\nprint('hello world')\n```",
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [{ name: "TASKS" }],
+				messageText: "spawn a sub-agent to write a Python hello-world snippet",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("general");
+		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
 	it("falls back to the planner when an explicitly addressed Stage 1 turn is unparseable", async () => {
 		const runtime = makeRuntime([
 			"{not valid HANDLE_RESPONSE",
@@ -2119,6 +2057,63 @@ android smoke model works`,
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
+	});
+
+	it("current_turn_boundary allows recall questions to read from visible prior_message blocks", async () => {
+		// Live regression: on 2026-05-25 the bot replied "I'm not able to
+		// search the Discord channel history directly — there's no tool for
+		// that in this environment" when asked about a token that WAS in
+		// prior_message context (trajectory tj-b1ee98c2593f97.json). Root
+		// cause: the current_turn_boundary rule explicitly forbade merging
+		// prior_message context into the current task, with no exception for
+		// recall questions. The fix carves out an exception for
+		// who-mentioned-X / did-anyone-bring-up-Y / what-was-said-about-Z
+		// queries, bounded to what is literally visible in the rendered
+		// prior_message blocks (so the model cannot fabricate a search
+		// across messages it can't see).
+		const sourceText = await readFile(
+			join(import.meta.dirname, "..", "services", "message.ts"),
+			"utf-8",
+		);
+		expect(sourceText).toContain(
+			"Exception for visible-context recall: when the final message asks a recall question",
+		);
+		expect(sourceText).toContain(
+			"who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message",
+		);
+		expect(sourceText).toContain(
+			"you may scan the prior_message blocks above and answer from what is literally visible there",
+		);
+		expect(sourceText).toContain(
+			"Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly",
+		);
+		expect(sourceText).toContain(
+			"there is no separate chat-history search tool",
+		);
+	});
+
+	it("current_turn_boundary answers facts stated in the current message itself", async () => {
+		// Live regression: on 2026-05-28 the bot was asked "i told you my
+		// favorite color is teal, whats my favorite color?" and replied "I
+		// don't see any mention of your favorite color in the recent
+		// messages, so I don't know what it is." (trajectory
+		// tj-70a488a154fa31.json). Root cause: the recall exception directed
+		// the model to scan only the prior_message blocks; when the asserted
+		// fact lived in the CURRENT message it over-applied the "I don't see
+		// X" honesty escape and ignored the inline answer. The fix tells the
+		// model to read the final message:user itself before declaring it
+		// cannot find something.
+		const sourceText = await readFile(
+			join(import.meta.dirname, "..", "services", "message.ts"),
+			"utf-8",
+		);
+		expect(sourceText).toContain(
+			"Before saying you cannot find something, read the final message:user itself",
+		);
+		expect(sourceText).toContain(
+			"if the asker states a fact and asks about it in the same message",
+		);
+		expect(sourceText).toContain("answer from the current message directly");
 	});
 
 	it("renders platform reply references as current-turn context", async () => {
@@ -2962,7 +2957,86 @@ android smoke model works`,
 			'Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context.',
 		);
 		expect(systemContent).toContain(
-			"Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content.",
+			"Never claim searched/scanned/recalled unless tool returned it",
 		);
+		expect(systemContent).toContain('"I scanned the chat"');
+		expect(systemContent).toContain(
+			"Crisis/legal/medical/self-harm/police/CPS",
+		);
+		expect(systemContent).toContain(
+			"lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline",
+		);
+	});
+
+	it("routes high-stakes direct-message crisis prompts through Stage 1 instead of the fast reply path", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText:
+					"This is high-stakes. He should speak with a qualified criminal-defense lawyer before taking action.",
+				extra: { requiresTool: false },
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "my buddy's landlord found his grow and is threatening to call cops, what should he do?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const systemContent =
+			params.messages?.find((m) => m.role === "system")?.content ?? "";
+		expect(systemContent).toContain(
+			"Crisis/legal/medical/self-harm/police/CPS",
+		);
+		expect(systemContent).toContain("replyText deferral only");
+	});
+
+	it("keeps arithmetic word questions on the simple direct-reply path", async () => {
+		// Regression for the false-positive routing where "what is 17 times 23?"
+		// was hijacked into the planner by a regex-list-based identity-lookup
+		// evaluator that classified any "what is" + digit-bearing subject as a
+		// chat-local entity lookup. The structural contract is now in the
+		// Stage 1 prompt template alone: Stage 1 decides routing from intent,
+		// not a post-hoc pattern guard. Trivial arithmetic must stay on the
+		// simple shortcut without spawning a planner stage.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "17 times 23 is 391.",
+				extra: { requiresTool: false },
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "remilio nubilio (@1490833425802854491) what is 17 times 23?",
+				source: "discord",
+			}),
+			state: {
+				values: { availableContexts: "simple, general, memory, messaging" },
+				data: {},
+				text: "",
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("17 times 23 is 391.");
+		}
+		// Only Stage 1 should have run — no planner reroute, no extra model calls.
+		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 });

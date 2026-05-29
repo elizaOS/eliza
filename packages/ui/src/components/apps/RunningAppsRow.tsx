@@ -18,12 +18,12 @@ function getHealthTone(state: AppRunSummary["health"]["state"]): {
   ring: string;
 } {
   if (state === "healthy") {
-    return { dot: "bg-ok", ring: "shadow-[0_0_0_3px_rgba(16,185,129,0.35)]" };
+    return { dot: "bg-ok", ring: "" };
   }
   if (state === "degraded") {
-    return { dot: "bg-warn", ring: "shadow-[0_0_0_3px_rgba(245,158,11,0.35)]" };
+    return { dot: "bg-warn", ring: "" };
   }
-  return { dot: "bg-danger", ring: "shadow-[0_0_0_3px_rgba(239,68,68,0.35)]" };
+  return { dot: "bg-danger", ring: "" };
 }
 
 export function RunningAppsRow({
@@ -67,7 +67,7 @@ export function RunningAppsRow({
             <div
               key={run.runId}
               data-testid={`running-app-card-${run.runId}`}
-              className="group relative overflow-hidden rounded-2xl border border-accent/35 bg-card/72 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)] transition-all hover:border-accent/55 focus-within:ring-2 focus-within:ring-accent/35"
+              className="group relative overflow-hidden rounded-sm border border-accent/35 bg-card/72 transition-all hover:border-accent/55 focus-within:ring-2 focus-within:ring-accent/35"
             >
               <button
                 type="button"
@@ -82,7 +82,7 @@ export function RunningAppsRow({
                 />
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-4 pe-12">
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                    <div className="truncate text-sm font-semibold text-white">
                       {run.displayName}
                     </div>
                   </div>

@@ -254,7 +254,7 @@ async def main_async(args):
                         "agent_name": agent_name,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 pass
 
         for tn, tm in teams.items():

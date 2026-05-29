@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrl,
 	DEFAULT_ELIGIBLE_MODEL_IDS,
-	ELIZA_1_DFLASH_TIER_IDS,
+	ELIZA_1_MTP_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
@@ -58,7 +58,14 @@ describe("local inference catalog", () => {
 
 	it("does not expose hidden companion entries in the hub", () => {
 		const visible = localInferenceService.getCatalog();
-		expect(visible.some((model) => model.category === "drafter")).toBe(false);
+		const visibleIds = new Set(visible.map((model) => model.id));
+		const hiddenCompanionIds = MODEL_CATALOG.filter(
+			(model) => model.hiddenFromCatalog,
+		).map((model) => model.id);
+		expect(hiddenCompanionIds.filter((id) => visibleIds.has(id))).toEqual([]);
+		expect(visible.flatMap((model) => model.companionModelIds ?? [])).toEqual(
+			[],
+		);
 	});
 
 	it("keeps the visible model hub focused on Eliza-1 only", () => {
@@ -118,37 +125,20 @@ describe("local inference catalog", () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it("DFlash pairs share a tokenizer family when present", () => {
-		const dflashEntries = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
-		for (const entry of dflashEntries) {
-			const drafterId = entry.runtime?.dflash?.drafterModelId;
-			const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
-			expect(
-				drafter,
-				`drafter ${drafterId} of ${entry.id} not found in catalog`,
-			).toBeDefined();
-			expect(
-				entry.tokenizerFamily,
-				`target ${entry.id} missing tokenizerFamily`,
-			).toBeDefined();
-			expect(
-				drafter?.tokenizerFamily,
-				`drafter ${drafterId} missing tokenizerFamily`,
-			).toBeDefined();
-			expect(
-				entry.tokenizerFamily,
-				`tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) ≠ drafter ${drafterId} (${drafter?.tokenizerFamily})`,
-			).toBe(drafter?.tokenizerFamily);
+	it("declares native MTP on every Eliza-1 tier", () => {
+		for (const id of ELIZA_1_MTP_TIER_IDS) {
+			const model = findCatalogModel(id);
+			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
 		}
 	});
 
 	it("declares the mandatory local runtime contract for every default tier", () => {
 		const baseKernels = ["turbo3", "turbo4", "qjl_full", "polarquant"];
-		const dflashTierIds = new Set(ELIZA_1_DFLASH_TIER_IDS);
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
-				"llama-server",
+				"llama-cpp",
 			);
 			for (const kernel of baseKernels) {
 				expect(
@@ -156,23 +146,8 @@ describe("local inference catalog", () => {
 					`${id} kernel ${kernel}`,
 				).toContain(kernel);
 			}
-			if (dflashTierIds.has(id)) {
-				expect(model?.runtime?.dflash?.drafterModelId, `${id} drafter`).toBe(
-					`${id}-drafter`,
-				);
-				expect(model?.companionModelIds, `${id} companions`).toContain(
-					`${id}-drafter`,
-				);
-				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
-					"dflash",
-				);
-			} else {
-				expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
-				expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
-				expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
-					"dflash",
-				);
-			}
+			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
 			if ((model?.contextLength ?? 0) >= 65536) {
 				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
 					"turbo3_tcq",
@@ -184,17 +159,9 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("keeps drafter companions hidden and non-default", () => {
-		const drafters = MODEL_CATALOG.filter(
-			(m) => m.runtimeRole === "dflash-drafter",
-		);
-		expect(drafters.length).toBe(ELIZA_1_DFLASH_TIER_IDS.length);
-		for (const drafter of drafters) {
-			expect(drafter.hiddenFromCatalog).toBe(true);
-			expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
-			expect(drafter.companionForModelId).toBeTruthy();
-			expect(drafter.tokenizerFamily).toBe("qwen35");
-		}
+	it("does not publish external speculative drafter companions", () => {
+		const drafters = MODEL_CATALOG.filter((m) => m.companionModelIds?.length);
+		expect(drafters).toEqual([]);
 	});
 
 	it("declares the text quantization matrix and voice boundary by tier", () => {
@@ -239,7 +206,7 @@ describe("local inference catalog", () => {
 	});
 
 	it("does not leak implementation-family names in visible catalog copy", () => {
-		const banned = /\b(?:qwen|llama|turboquant|qjl|polarquant|dflash)\b/i;
+		const banned = /\b(?:qwen|llama|turboquant|qjl|polarquant)\b/i;
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			expect(model.displayName).not.toMatch(banned);
 			expect(model.quant).not.toMatch(banned);
@@ -269,7 +236,6 @@ describe("local inference catalog", () => {
 		expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(FIRST_RUN_DEFAULT_MODEL_ID)).toBe(
 			true,
 		);
-		expect(defaultModel?.runtimeRole).not.toBe("dflash-drafter");
 	});
 
 	it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {

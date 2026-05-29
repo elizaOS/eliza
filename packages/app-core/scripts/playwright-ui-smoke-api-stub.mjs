@@ -1697,12 +1697,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/onboarding/status") {
+  if (req.method === "GET" && url.pathname === "/api/first-run/status") {
     sendJson(req, res, 200, { complete: true });
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/onboarding/options") {
+  if (req.method === "GET" && url.pathname === "/api/first-run/options") {
     sendJson(req, res, 200, {
       names: [],
       styles: [],
@@ -1757,7 +1757,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/agent/status") {
-    sendJson(req, res, 200, { onboardingComplete: true, status: "running" });
+    sendJson(req, res, 200, { firstRunComplete: true, status: "running" });
     return;
   }
 

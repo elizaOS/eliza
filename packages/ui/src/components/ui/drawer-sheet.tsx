@@ -49,7 +49,7 @@ const DrawerSheetContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed left-[max(0.5rem,var(--safe-area-left,0px))] right-[max(0.5rem,var(--safe-area-right,0px))] bottom-[max(0.5rem,var(--safe-area-bottom,0px))] z-[170] flex max-h-[min(calc(100dvh_-_1rem_-_var(--safe-area-top,0px)_-_var(--safe-area-bottom,0px)),44rem)] flex-col overflow-hidden rounded-sm border border-border bg-bg shadow-sm duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-6 data-[state=open]:slide-in-from-bottom-6",
+          "fixed left-[max(0.5rem,var(--safe-area-left,0px))] right-[max(0.5rem,var(--safe-area-right,0px))] bottom-[max(0.5rem,var(--safe-area-bottom,0px))] z-[170] flex max-h-[min(calc(100dvh_-_1rem_-_var(--safe-area-top,0px)_-_var(--safe-area-bottom,0px)),44rem)] flex-col overflow-hidden rounded-sm border border-border bg-bg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:slide-out-to-bottom-6 data-[state=open]:slide-in-from-bottom-6",
           className,
         )}
         {...props}

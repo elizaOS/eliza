@@ -76,7 +76,7 @@ function buildConnectionString(creds: PostgresCredentials): string {
   const password = creds.password ? encodeURIComponent(creds.password) : "";
   const database = creds.database ?? "postgres";
   const auth = password ? `${user}:${password}` : user;
-  const sslParam = creds.ssl ? "?sslmode=require" : "";
+  const sslParam = creds.ssl ? "?sslmode=verify-full" : "";
   return `postgresql://${auth}@${host}:${port}/${database}${sslParam}`;
 }
 

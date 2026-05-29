@@ -8001,7 +8001,8 @@ route_domain_acceptance_matrix:
   - no KiCad routed USB2/CC/VBUS copper, DRC, length/skew, or USB attach evidence exists
   current_presence:
     nets_complete: true
-    required_outputs_complete: true
+    candidate_required_outputs_complete: true
+    release_required_outputs_complete: false
     route_execution_ready: false
     release_accepted: false
   next_unblock_action: USB_DP_DN concept Manhattan path is 122.5 mm, 32.5 mm over the current 90 mm target
@@ -8062,7 +8063,8 @@ route_domain_acceptance_matrix:
   - routed board STEP has not been reimported against the display stack
   current_presence:
     nets_complete: true
-    required_outputs_complete: true
+    candidate_required_outputs_complete: true
+    release_required_outputs_complete: false
     route_execution_ready: false
     release_accepted: false
   next_unblock_action: selected display connector land pattern, pinout, STEP, FPC bend, and stiffener
@@ -8120,7 +8122,8 @@ route_domain_acceptance_matrix:
   - no CSI route, length/skew/impedance report, capture log, or routed clearance result exists
   current_presence:
     nets_complete: true
-    required_outputs_complete: true
+    candidate_required_outputs_complete: true
+    release_required_outputs_complete: false
     route_execution_ready: false
     release_accepted: false
   next_unblock_action: camera module FPC pinouts, connector footprints, lens-axis datums, and STEP models
@@ -8199,7 +8202,8 @@ route_domain_acceptance_matrix:
   - antenna keepouts remain concept geometry only
   current_presence:
     nets_complete: true
-    required_outputs_complete: true
+    candidate_required_outputs_complete: true
+    release_required_outputs_complete: false
     route_execution_ready: false
     release_accepted: false
   next_unblock_action: cellular and Wi-Fi module pad maps, reference layouts, exact SKU constraints, RF
@@ -8261,7 +8265,8 @@ route_domain_acceptance_matrix:
   - no HDI escape, memory training, UFS link, decap placement, or PDN report exists
   current_presence:
     nets_complete: true
-    required_outputs_complete: true
+    candidate_required_outputs_complete: true
+    release_required_outputs_complete: false
     route_execution_ready: false
     release_accepted: false
   next_unblock_action: SoC, LPDDR, UFS, PMIC pin maps and layout guides are not captured as release footprints
@@ -8339,7 +8344,8 @@ route_domain_acceptance_matrix:
   - audio, microphone, haptic, gasket, and acoustic flex drawings are missing
   current_presence:
     nets_complete: true
-    required_outputs_complete: true
+    candidate_required_outputs_complete: true
+    release_required_outputs_complete: false
     route_execution_ready: false
     release_accepted: false
   next_unblock_action: exact flex or board-to-board connector family, pinout, stack height, and STEP are
@@ -8434,7 +8440,8 @@ route_domain_acceptance_matrix:
   - factory limits and first-article traveler are missing
   current_presence:
     nets_complete: true
-    required_outputs_complete: true
+    candidate_required_outputs_complete: true
+    release_required_outputs_complete: false
     route_execution_ready: false
     release_accepted: false
   next_unblock_action: no routed probe coordinates, local fiducials, panel rails, tooling holes, or coupon

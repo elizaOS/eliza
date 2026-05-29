@@ -7,7 +7,7 @@
  * Prerequisites:
  * - PostgreSQL running (DATABASE_URL set)
  * - Next.js dev server running at TEST_BASE_URL (default: http://localhost:3000)
- * - ALLOW_TEST_PRIVY_DID_AUTH=true (auto in NODE_ENV=development|test)
+ * - ALLOW_TEST_STEWARD_AUTH=true (auto in NODE_ENV=development|test)
  *
  * Run:
  *   bun test integration/waitlist-email-bonus-api.integration.test.ts \
@@ -62,7 +62,7 @@ async function createTestUser(overrides: Record<string, unknown> = {}) {
   const userId = await generateSnowflakeId();
   await db.insert(users).values({
     id: userId,
-    privyId: `did:privy:test-${userId}`,
+    privyId: `steward:test:test-${userId}`,
     username: `test-email-bonus-${userId}`,
     displayName: "Test Email Bonus User",
     reputationPoints: 100,
@@ -272,7 +272,7 @@ describe("POST /api/waitlist/bonus/email", () => {
         body: JSON.stringify({ email: "test@example.com" }),
         signal: AbortSignal.timeout(15000),
       });
-      // Dev: Privy not fully configured → 500; Prod: 401.
+      // Dev: Steward not fully configured → 500; Prod: 401.
       // Either way the request must not succeed.
       expect(res.status).not.toBe(200);
     });

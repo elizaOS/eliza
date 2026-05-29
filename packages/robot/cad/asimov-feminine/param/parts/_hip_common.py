@@ -37,6 +37,7 @@ sys.path.insert(0, PARAM_DIR)
 
 import paramlib as P  # noqa: E402
 import connections as C  # noqa: E402
+import warp2 as W  # noqa: E402
 
 ROBOT_ROOT = os.path.abspath(os.path.join(PARAM_DIR, "..", "..", ".."))
 MESH_DIR = os.path.join(ROBOT_ROOT, "assets/profiles/asimov-1/meshes")
@@ -45,6 +46,21 @@ OUT_DIR = os.path.join(ROBOT_ROOT, "cad/asimov-feminine/output/stl")
 
 def _gauss(z, center, sigma):
     return np.exp(-(((z - center) / sigma) ** 2))
+
+
+def _hip_yaw_flare(z):
+    # Upper thigh bulk sits Z ~ -0.07..+0.03 (hip end ~Z=0). Knee end at Z=-0.196.
+    return 1.0 + 0.13 * _gauss(z, -0.030, 0.050)
+
+
+def _hip_pitch_flare(mesh):
+    lo, hi = mesh.bounds[:, 1]
+    mid = 0.5 * (lo + hi)
+
+    def flare(y):
+        return 1.0 + 0.06 * _gauss(y, mid, 0.025)
+
+    return flare
 
 
 def build_hip_pitch(name):
@@ -59,13 +75,7 @@ def build_hip_pitch(name):
     reserved = C.reserved_levels(name)
     w = P.connection_weight(param, reserved, ramp=0.02)
 
-    lv = param.levels[param.valid]
-    mid = 0.5 * (lv.min() + lv.max())  # body center along the y-spine
-
-    def flare(y):
-        return 1.0 + 0.06 * _gauss(y, mid, 0.025)
-
-    P.radial_scale(param, flare, weight=w)
+    P.radial_scale(param, _hip_pitch_flare(orig), weight=w)
     return orig, param, reserved, spec
 
 
@@ -98,14 +108,10 @@ def build_hip_yaw(name):
     reserved = C.reserved_levels(name)  # [hip Z=0, knee Z=-0.19564]
     w = P.connection_weight(param, reserved, ramp=0.045)
 
-    # Upper thigh bulk sits Z ~ -0.07..+0.03 (hip end ~Z=0). Knee end at Z=-0.196.
     # Flare peaks just below the hip and decays well before the knee taper.
     # Coefficient 0.13 lands the in-band outer-Y widening near the +10% intent
     # once the connection_weight ramp at the hip (Z=0) is accounted for.
-    def flare(z):
-        return 1.0 + 0.13 * _gauss(z, -0.030, 0.050)
-
-    P.axis_scale(param, dim=1, fn=flare, weight=w)
+    P.axis_scale(param, dim=1, fn=_hip_yaw_flare, weight=w)
     return orig, param, reserved, spec
 
 
@@ -129,7 +135,58 @@ def process(name, render=False):
                                    n_angular=len(param.angles))
     ident = P.rings_to_mesh(ident_param)
 
-    rebuilt = P.rings_to_mesh(param)
+    if kind == "HIP_PITCH":
+        rebuilt = W.warp_similarity(
+            orig,
+            axis=spec["spine"],
+            scale_fn=_hip_pitch_flare(orig),
+            reserved=reserved,
+            ramp=0.02,
+            step=0.0025,
+            smooth_m=5,
+        )
+        rebuilt = W.separate_quantized_components(
+            rebuilt,
+            axis=spec["spine"],
+            epsilon=5e-4 if name.startswith("RIGHT_") else 1e-5,
+            merge_tolerance=1e-6,
+        )
+        rebuilt = W.remove_excess_quantized_nonmanifold_faces(
+            rebuilt,
+            merge_tolerance=1e-6,
+        )
+        rebuilt = W.cap_quantized_boundary_loops(
+            rebuilt,
+            merge_tolerance=1e-6,
+            max_loop_vertices=128,
+        )
+    elif kind == "HIP_ROLL":
+        rebuilt = W.warp_similarity(
+            orig,
+            axis=spec["spine"],
+            scale_fn=lambda _z: 0.97,
+            reserved=reserved,
+            ramp=0.03,
+            step=0.0025,
+            smooth_m=5,
+        )
+    elif kind == "HIP_YAW":
+        rebuilt = W.separate_quantized_components(
+            W.warp_similarity(
+                orig,
+                axis=spec["spine"],
+                scale_fn=_hip_yaw_flare,
+                reserved=reserved,
+                ramp=0.045,
+                step=0.0025,
+                smooth_m=5,
+            ),
+            axis=spec["spine"],
+            epsilon=5e-5,
+            merge_tolerance=1e-6,
+        )
+    else:
+        rebuilt = P.rings_to_mesh(param)
     out_path = os.path.join(OUT_DIR, name + ".STL")
     rebuilt.export(out_path)
 

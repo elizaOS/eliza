@@ -66,7 +66,7 @@ from lib_results_logger import log_task_error
 
 logger = logging.getLogger("osworld.eliza.runner")
 
-_DELEGATE_HARNESSES = {"hermes", "openclaw"}
+_DELEGATE_HARNESSES = {"hermes", "openclaw", "smithers"}
 
 
 def _selected_delegate_harness() -> str:

@@ -2,7 +2,7 @@
  * Synpress E2E Tests: NFT Mint Flow
  *
  * Tests the complete NFT minting experience with real wallet interactions:
- * - Login via Privy with MetaMask
+ * - Login via Steward dev auth
  * - Eligibility verification
  * - Mint transaction signing
  * - Reveal animation
@@ -16,7 +16,7 @@
  */
 
 import { expect, test } from "./fixtures";
-import { loginWithWallet } from "./helpers/privy-auth";
+import { loginWithWallet } from "./helpers/auth";
 
 // Test configuration
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";

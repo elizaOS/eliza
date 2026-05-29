@@ -30,7 +30,7 @@ function emptySnapshot(now: () => Date): LaunchSnapshot {
       checked: false,
       required: null,
     },
-    onboarding: {
+    firstRun: {
       checked: false,
       complete: null,
       requiredGate: null,

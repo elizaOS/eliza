@@ -17,7 +17,7 @@ The required distinction:
 All GPU runners require a small GGUF model:
 
 ```bash
-export ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf
+export ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf
 ```
 
 By default the smoke resolves and runs every advertised cache family:
@@ -31,13 +31,13 @@ By default the smoke resolves and runs every advertised cache family:
 Override only for bring-up:
 
 ```bash
-export ELIZA_DFLASH_SMOKE_CACHE_TYPES="tbq3_0 qjl1_256"
-export ELIZA_DFLASH_SMOKE_TOKENS=4
-export ELIZA_DFLASH_SMOKE_NGL=99
+export ELIZA_MTP_SMOKE_CACHE_TYPES="tbq3_0 qjl1_256"
+export ELIZA_MTP_SMOKE_TOKENS=4
+export ELIZA_MTP_SMOKE_NGL=99
 ```
 
 Logs land under `packages/inference/verify/hardware-results/` unless
-`ELIZA_DFLASH_HARDWARE_REPORT_DIR` is set.
+`ELIZA_MTP_HARDWARE_REPORT_DIR` is set.
 
 Every runner also supports machine-readable evidence:
 
@@ -69,13 +69,13 @@ Prereqs:
 - Linux x86_64.
 - NVIDIA driver with `nvidia-smi -L` showing at least one GPU.
 - CUDA Toolkit with `nvcc` on `PATH`.
-- GGUF smoke model in `ELIZA_DFLASH_SMOKE_MODEL`.
+- GGUF smoke model in `ELIZA_MTP_SMOKE_MODEL`.
 
 Run:
 
 ```bash
 cd packages/inference/verify
-ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh
+ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh
 ```
 
 The runner:
@@ -93,7 +93,7 @@ Remote CUDA host:
 cd packages/inference/verify
 CUDA_REMOTE=user@cuda-host \
 CUDA_REMOTE_DIR=~/code/eliza \
-ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
+ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
 ./cuda_runner.sh --report hardware-results/cuda-remote-evidence.json
 ```
 
@@ -126,14 +126,14 @@ Run:
 
 ```bash
 cd packages/inference/verify
-ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./gh200_runner.sh
+ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./gh200_runner.sh
 ```
 
 The runner pins:
 
 ```bash
 CUDA_TARGET=linux-aarch64-cuda
-ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=90a
+ELIZA_MTP_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=90a
 ```
 
 It then delegates to `cuda_runner.sh`, so the same fixture and graph-smoke
@@ -157,7 +157,7 @@ Run:
 
 ```bash
 cd packages/inference/verify
-ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./rocm_runner.sh
+ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./rocm_runner.sh
 ```
 
 The runner:
@@ -170,7 +170,7 @@ The runner:
 Default ROCm arch pin:
 
 ```bash
-ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_HIP_ARCHITECTURES=gfx90a;gfx942;gfx1100;gfx1101;gfx1102'
+ELIZA_MTP_CMAKE_FLAGS='-DCMAKE_HIP_ARCHITECTURES=gfx90a;gfx942;gfx1100;gfx1101;gfx1102'
 ```
 
 There is still no standalone HIP fixture harness equivalent to
@@ -200,8 +200,8 @@ The runner writes a timestamped evidence log under `hardware-results/`, runs
 the standalone fixture gate, builds `linux-x64-vulkan`, dumps
 `CAPABILITIES.json`, and then runs `make vulkan-dispatch-smoke` against the
 managed output directory
-`$ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-vulkan` unless
-`ELIZA_DFLASH_VULKAN_BIN_DIR` is explicitly set. If the build only produces
+`$ELIZA_STATE_DIR/local-inference/bin/mtp/linux-x64-vulkan` unless
+`ELIZA_MTP_VULKAN_BIN_DIR` is explicitly set. If the build only produces
 symbol/pipeline staging or exits through the required-kernel publish gate, the
 runner stops there and refuses to use stale binaries.
 
@@ -209,8 +209,8 @@ Direct `make vulkan-dispatch-smoke` is a native Linux graph-dispatch gate. It
 rejects macOS/MoltenVK by default, prints both the managed output and build-tree
 artifact candidates, and requires a directory containing `libggml-vulkan.so`.
 
-`ELIZA_DFLASH_SKIP_BUILD=1` is only accepted with
-`ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE=1` and an existing
+`ELIZA_MTP_SKIP_BUILD=1` is only accepted with
+`ELIZA_MTP_ALLOW_PREBUILT_VULKAN_SMOKE=1` and an existing
 `CAPABILITIES.json`; the graph-dispatch smoke still has to pass.
 
 ## Android Vulkan

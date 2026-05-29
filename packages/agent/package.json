@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -37,7 +37,7 @@
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
     "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "build:dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent",
     "test:sandbox-live": "bun run scripts/live-sandbox-smoke.ts",
     "lint": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
@@ -138,7 +138,6 @@
       "default": "./dist/auth/*.js"
     },
     "./services/app-session-gate": {
-      "types": "./src/services/app-session-gate.d.ts",
       "eliza-source": {
         "types": "./src/services/app-session-gate.ts",
         "import": "./src/services/app-session-gate.ts",
@@ -149,6 +148,7 @@
         "import": "./src/services/app-session-gate.ts",
         "default": "./src/services/app-session-gate.ts"
       },
+      "types": "./src/services/app-session-gate.d.ts",
       "import": "./dist/services/app-session-gate.js",
       "default": "./dist/services/app-session-gate.js"
     },
@@ -279,6 +279,7 @@
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-gitpathologist": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",

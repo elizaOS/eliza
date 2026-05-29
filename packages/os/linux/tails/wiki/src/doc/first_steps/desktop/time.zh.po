@@ -1,0 +1,111 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-21 08:55+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Why is the time wrong?\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When Tails starts, the system time zone is set to GMT (Greenwich Mean Time). "
+"This time zone might be a few hours in the future if you are west of the "
+"United Kingdom, or in the past if you are east of the UK. The minutes should "
+"be accurate."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img gmt.png class=\"screenshot\" alt=\"Time displayed with 'GMT' indication in top navigation bar\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We do this for anonymity reasons: if some application reveals your actual "
+"time zone, it might help identifying who you are."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Having all Tails users set to the same time zone makes it more difficult to "
+"distinguish you from other Tails users."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Displaying the time in your local time zone"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If connecting to Tor using a bridge fails and you have to [[set the clock "
+"and time zone|doc/anonymous_internet/tor/troubleshoot]] of your computer, "
+"the time is displayed in your time zone instead of in GMT."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img local.png class=\"screenshot\" alt=\"Time displayed without 'GMT' indication in top navigation bar\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Fixing the clock when Tails fails to connect to Tor is currently the only\n"
+"way of changing the time zone of the time displayed in the top navigation\n"
+"bar.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In the future, we want to make it possible to change this time zone\n"
+"([[!tails_ticket 10819]]) from the desktop and store it in the Persistent\n"
+"Storage ([[!tails_ticket 12094]]).</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Time used by applications"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Even if the time is displayed in your local time zone in the top navigation "
+"bar, the internal time used by all applications in Tails is still in GMT to "
+"protect your anonymity."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For example, the sending time of emails in *Thunderbird* or messages in "
+"*Pidgin* is always in GMT to avoid leaking your time zone to the people you "
+"write to."
+msgstr ""

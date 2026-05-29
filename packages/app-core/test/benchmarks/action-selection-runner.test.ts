@@ -4,6 +4,8 @@ import {
   ACTION_BENCHMARK_REPORT_SCHEMA,
   buildBenchmarkReportArtifact,
   caseMatches,
+  determineFailureMode,
+  isAcceptableNoActionResponse,
   parsePlannedActionsFromResponse,
   pickObservedAction,
   type ActionBenchmarkReport,
@@ -194,6 +196,29 @@ describe("action selection benchmark scoring helpers", () => {
     );
 
     expect(observed).toBeNull();
+  });
+
+  it("requires no-action cases to produce a real response", () => {
+    expect(isAcceptableNoActionResponse("hey there")).toBe(true);
+    expect(isAcceptableNoActionResponse("")).toBe(false);
+    expect(isAcceptableNoActionResponse("---\n---")).toBe(false);
+    expect(isAcceptableNoActionResponse("```\n```\n\nhello")).toBe(false);
+    expect(
+      isAcceptableNoActionResponse(
+        "# Response\n---\n\n# Direct Private Chat\nUser's Message",
+      ),
+    ).toBe(false);
+    expect(
+      determineFailureMode({
+        pass: false,
+        expected: null,
+        actual: null,
+        planned: null,
+        filtered: [],
+        hadError: false,
+        badNoActionResponse: true,
+      }),
+    ).toBe("no_response");
   });
 
   it("extracts AI SDK toolCalls from recorded native responses", () => {

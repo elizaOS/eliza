@@ -31,7 +31,7 @@ import {
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  patchAutonomousElizaOnboardingPresets,
+  patchAutonomousElizaCharacterPresets,
   patchBrokenElizaCoreRuntimeDists,
   patchCodexFolderApprovalPromptCompat,
   patchExtensionlessJsExports,
@@ -103,7 +103,7 @@ patchTsTsxJsGlobs(root, "@elizaos/agent");
 patchTsTsxJsGlobs(root, "@elizaos/ui");
 pruneNestedElizaPluginCoreCopies(root);
 try {
-  patchAutonomousElizaOnboardingPresets(root);
+  patchAutonomousElizaCharacterPresets(root);
 } catch {
   // Source file may not exist (moved to @elizaos/shared).
 }

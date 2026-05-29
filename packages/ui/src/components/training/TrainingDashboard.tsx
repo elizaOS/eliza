@@ -31,7 +31,7 @@ function JobsTable({
 }) {
   if (error) {
     return (
-      <div className="border border-border rounded p-4 bg-red-500/10">
+      <div className="border border-border rounded-sm p-4 bg-red-500/10">
         <div className="text-sm text-red-500">{error}</div>
       </div>
     );
@@ -39,7 +39,7 @@ function JobsTable({
 
   if (loading) {
     return (
-      <div className="border border-border rounded p-4 flex items-center gap-2">
+      <div className="border border-border rounded-sm p-4 flex items-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-sm">Loading jobs...</span>
       </div>
@@ -48,7 +48,7 @@ function JobsTable({
 
   if (!jobs || jobs.length === 0) {
     return (
-      <div className="border border-border rounded p-4 text-center">
+      <div className="border border-border rounded-sm p-4 text-center">
         <div className="text-sm text-muted">No training jobs</div>
       </div>
     );
@@ -140,7 +140,7 @@ function ModelsTable({
 }) {
   if (error) {
     return (
-      <div className="border border-border rounded p-4 bg-red-500/10">
+      <div className="border border-border rounded-sm p-4 bg-red-500/10">
         <div className="text-sm text-red-500">{error}</div>
       </div>
     );
@@ -148,7 +148,7 @@ function ModelsTable({
 
   if (loading) {
     return (
-      <div className="border border-border rounded p-4 flex items-center gap-2">
+      <div className="border border-border rounded-sm p-4 flex items-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin" />
         <span className="text-sm">Loading models...</span>
       </div>
@@ -157,7 +157,7 @@ function ModelsTable({
 
   if (!models || models.length === 0) {
     return (
-      <div className="border border-border rounded p-4 text-center">
+      <div className="border border-border rounded-sm p-4 text-center">
         <div className="text-sm text-muted">No models available</div>
       </div>
     );
@@ -328,12 +328,12 @@ export function TrainingDashboard() {
         />
 
         {createModal.open && createModal.model && (
-          <div className="border border-border rounded p-4 bg-card space-y-3">
+          <div className="border border-border rounded-sm p-4 bg-card space-y-3">
             <div className="text-sm font-semibold">
               Train {createModal.model.short_name}
             </div>
             {createError && (
-              <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded">
+              <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded-sm">
                 {createError}
               </div>
             )}

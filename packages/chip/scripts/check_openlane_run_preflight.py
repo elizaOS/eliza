@@ -201,6 +201,7 @@ def release_artifact_blockers(manifest: dict) -> list[str]:
     missing: list[str] = []
     dirty: list[str] = []
     unproven_clean: list[str] = []
+    files_by_artifact: dict[str, list[Path]] = {}
     for name, spec in required.items():
         if not isinstance(spec, dict):
             missing.append(str(name))
@@ -220,6 +221,7 @@ def release_artifact_blockers(manifest: dict) -> list[str]:
         if not files:
             missing.append(str(name))
             continue
+        files_by_artifact[str(name)] = files
 
         fail_regex = spec.get("fail_regex")
         pass_regex = spec.get("pass_regex")
@@ -249,7 +251,47 @@ def release_artifact_blockers(manifest: dict) -> list[str]:
             "release requires explicit clean markers in OpenLane reports: "
             + ", ".join(unproven_clean)
         )
+    run_roots = manifest.get("run_roots", [])
+    run_dirs = (
+        [path for run_root in run_roots for path in (ROOT / run_root).glob("*") if path.is_dir()]
+        if isinstance(run_roots, list)
+        else []
+    )
+    if run_dirs and files_by_artifact:
+        complete_run = False
+        for run_dir in run_dirs:
+            if all(
+                any(run_dir in file.parents for file in files)
+                for files in files_by_artifact.values()
+            ):
+                complete_run = True
+                break
+        if not complete_run:
+            gate_blockers.append(
+                "release artifacts must come from one selected OpenLane/OpenROAD run directory"
+            )
     return gate_blockers
+
+
+def native_openlane_release_blockers() -> list[str]:
+    native = shutil.which("openlane") or shutil.which("flow.tcl")
+    if not native:
+        return []
+    provenance = ROOT / "build/reports/openlane_native_runner_provenance.json"
+    if provenance.is_file():
+        try:
+            payload = json.loads(provenance.read_text())
+        except json.JSONDecodeError:
+            return [
+                f"native OpenLane runner provenance is invalid JSON: {provenance.relative_to(ROOT)}"
+            ]
+        if payload.get("release_credit") is True and payload.get("tool_path") == native:
+            return []
+    return [
+        "native OpenLane command is present, but release requires pinned runner provenance "
+        f"for {native}; archive build/reports/openlane_native_runner_provenance.json or use "
+        "the pinned Docker image digest"
+    ]
 
 
 def blocker_category(blocker: str) -> str:
@@ -262,8 +304,6 @@ def blocker_category(blocker: str) -> str:
         if "board_fabrication_release" in lowered:
             return "board_fabrication_release_gate_blocked"
         return "release_gate_blocked"
-    if "openlane command missing" in lowered or "docker image" in lowered:
-        return "runner_unavailable"
     if "latest openlane run" in lowered:
         return "run_incomplete_or_missing_final"
     if "release requires openlane signoff artifacts" in lowered:
@@ -272,6 +312,12 @@ def blocker_category(blocker: str) -> str:
         return "dirty_signoff_reports"
     if "explicit clean markers" in lowered:
         return "clean_markers_missing"
+    if "one selected openlane/openroad run directory" in lowered:
+        return "release_artifacts_cross_run"
+    if "native openlane command is present" in lowered:
+        return "runner_provenance_missing"
+    if "openlane command missing" in lowered or "docker image" in lowered:
+        return "runner_unavailable"
     if "stale openlane launcher lock" in lowered or "launcher lock is active" in lowered:
         return "orchestration_lock"
     if "active labeled openlane docker containers" in lowered:
@@ -420,6 +466,7 @@ def main() -> int:
     if args.release:
         blockers.extend(release_config_blockers(configs))
         blockers.extend(release_artifact_blockers(manifest if isinstance(manifest, dict) else {}))
+        blockers.extend(native_openlane_release_blockers())
 
     blockers.extend(run_orchestration_blockers())
 

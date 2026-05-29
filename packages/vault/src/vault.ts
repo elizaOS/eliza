@@ -12,10 +12,13 @@ export { VaultMissError } from "./vault-types.js";
  * empty, migrates any entries from the legacy `vault.json` file.
  */
 export function createVault(opts: CreateVaultOptions = {}): Vault {
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const root =
     opts.workDir ??
     process.env.ELIZA_STATE_DIR?.trim() ??
-    join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
+    (process.env.XDG_STATE_HOME?.trim()
+      ? join(process.env.XDG_STATE_HOME.trim(), namespace)
+      : join(homedir(), ".local", "state", namespace));
   const storePath = join(root, "vault.json");
   const auditPath = join(root, "audit", "vault.jsonl");
   const masterKey = opts.masterKey ?? defaultMasterKey();

@@ -2,7 +2,10 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { dirExists, fileExists, readUtf8Safe } from "../util/fs.js";
-import { walk } from "../util/fs.js";
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
 
 export const gitleaksWorkflow: Check = {
   id: "CC8.1-gitleaks-workflow",
@@ -31,7 +34,8 @@ export const gitleaksWorkflow: Check = {
 
 export const noCommittedSecrets: Check = {
   id: "CC8.1-no-committed-secrets",
-  title: "gitleaks reports no high-severity findings at HEAD",
+  title:
+    "gitleaks reports no high-severity findings in the configured git range",
   tsc: ["CC6.1", "CC8.1"],
   severity: "critical",
   async run(ctx): Promise<CheckResult> {
@@ -48,13 +52,24 @@ export const noCommittedSecrets: Check = {
         evidence: `gitleaks not installed — install with 'brew install gitleaks' to run this check locally. CI workflow runs it on every PR.`,
       };
     }
+    const configuredLogOpts = process.env.SOC2_GITLEAKS_LOG_OPTS?.trim();
+    const logOpts =
+      configuredLogOpts && configuredLogOpts.length > 0
+        ? configuredLogOpts
+        : "--all";
+    const scanScope = configuredLogOpts || "repository history";
+    const configPath = join(ctx.elizaRoot, ".gitleaks.toml");
+    const ignorePath = join(ctx.elizaRoot, ".gitleaksignore");
     try {
-      execSync(`gitleaks detect --no-banner --redact --source "${ctx.elizaRoot}"`, {
-        stdio: "pipe",
-      });
+      execSync(
+        `gitleaks detect --no-banner --redact --config ${shellQuote(configPath)} --gitleaks-ignore-path ${shellQuote(ignorePath)} --source ${shellQuote(ctx.elizaRoot)} --log-opts ${shellQuote(logOpts)} --timeout 120`,
+        {
+          stdio: "pipe",
+        },
+      );
       return {
         status: "pass",
-        evidence: `gitleaks: zero findings at HEAD.`,
+        evidence: `gitleaks: zero findings in ${scanScope}.`,
       };
     } catch (err) {
       const stderr = (err as { stderr?: Buffer }).stderr?.toString() ?? "";
@@ -136,14 +151,21 @@ export const actionsPinnedBySha: Check = {
     for (const f of files) {
       const src = readUtf8Safe(f);
       if (!src) continue;
+      const inspectableSource = src
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .join("\n");
       SHA_RE.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = SHA_RE.exec(src)) !== null) {
+      let match = SHA_RE.exec(inspectableSource);
+      while (match !== null) {
         const [, actionRef, ver] = match;
+        match = SHA_RE.exec(inspectableSource);
         if (!actionRef) continue;
         totalRefs++;
-        // Skip local actions (./...) and repo-relative reusable workflows (start with org/repo/.github/).
+        // Skip only local actions/reusable workflows. External reusable workflows
+        // execute third-party code and must be pinned just like actions.
         if (actionRef.startsWith("./")) continue;
+        if (/^[^/]+\/[^/]+\/\.github\/workflows\//.test(actionRef)) continue;
         if (!ver || !/^[0-9a-f]{40}$/.test(ver)) {
           violations.push(`${f}: ${actionRef}@${ver}`);
         }

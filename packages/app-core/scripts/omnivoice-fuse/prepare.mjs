@@ -3,12 +3,12 @@
  * and copy `src/` + `tools/` + selected `examples/` data into the
  * llama.cpp tree under `<llamaCppRoot>/omnivoice/`.
  *
- * Caller (build-llama-cpp-dflash.mjs):
+ * Caller (build-llama-cpp-mtp.mjs):
  *   import { prepareOmnivoiceFusion } from
  *     "./omnivoice-fuse/prepare.mjs";
  *   const { commit, ggmlSubmoduleCommit, sourceCount } =
  *     prepareOmnivoiceFusion({
- *       cacheRoot: "...", // ~/.cache/eliza-dflash
+ *       cacheRoot: "...", // ~/.cache/eliza-mtp
  *       llamaCppRoot: "...", // path to elizaOS/llama.cpp checkout
  *       omnivoiceRef: "38f824023d…",
  *     });
@@ -403,7 +403,7 @@ static bool eliza_is_region(const char * region_name) {
         (std::strcmp(region_name, "tts") == 0 ||
          std::strcmp(region_name, "asr") == 0 ||
          std::strcmp(region_name, "text") == 0 ||
-         std::strcmp(region_name, "dflash") == 0 ||
+         std::strcmp(region_name, "mtp") == 0 ||
          std::strcmp(region_name, "vad") == 0);
 }
 
@@ -532,7 +532,7 @@ static void eliza_apply_tts_env_overrides(ov_tts_params * params) {
 }
 
 /* ASR thread budget. The voice-realtime caps in eliza_thread_count() exist
- * so TTS + the DFlash drafter keep cores free during a streaming turn; the
+ * so TTS + the MTP drafter keep cores free during a streaming turn; the
  * ASR Whisper-style audio encoder (the mmproj prefill via
  * mtmd_helper_eval_chunks) and the short greedy text decode are *not*
  * barge-in-sensitive — they run once per utterance, before TTS competes —
@@ -1217,10 +1217,10 @@ void eliza_inference_asr_stream_close(EliAsrStream * stream) {
     (void) stream;
 }
 
-/* ---- Streaming TTS + DFlash verifier callback (ABI v2) ------------- *
+/* ---- Streaming TTS + MTP verifier callback (ABI v2) ------------- *
  *
  * TTS streaming is backed by OmniVoice's real \`ov_tts_params.on_chunk\`
- * path and cooperative cancel hook. The native DFlash verifier-event
+ * path and cooperative cancel hook. The native MTP verifier-event
  * callback is still not wired in this generated adapter, so the JS
  * scheduler continues to synthesize verifier events from llama-server SSE
  * deltas until that text-generation path moves in-process.
@@ -1327,7 +1327,7 @@ int eliza_inference_set_verifier_callback(
     (void) cb;
     (void) user_data;
     eliza_set_error(out_error,
-        "[libelizainference] native DFlash verifier callback is not implemented in this build; "
+        "[libelizainference] native MTP verifier callback is not implemented in this build; "
         "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
     return ELIZA_ERR_NOT_IMPLEMENTED;
 }

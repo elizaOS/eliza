@@ -194,7 +194,7 @@ export function VoiceProfileSection({
     <div
       data-testid="voice-profile-section"
       className={cn(
-        framed && "rounded-lg border border-border/40 bg-card/40",
+        framed && "rounded-sm border border-border/40 bg-card/40",
         className,
       )}
     >
@@ -234,7 +234,7 @@ export function VoiceProfileSection({
 
       {error ? (
         <div
-          className="mx-4 mb-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
+          className="mx-4 mb-2 rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
           data-testid="voice-profile-error"
         >
           {error}
@@ -255,7 +255,7 @@ export function VoiceProfileSection({
         >
           <Mic className="mx-auto mb-2 h-5 w-5 text-muted" aria-hidden />
           No voice profiles yet. They'll appear here automatically when the
-          agent hears a distinct voice (or you can add one in onboarding).
+          agent hears a distinct voice (or you can add one in first-run).
         </div>
       ) : (
         <ul
@@ -315,7 +315,7 @@ export function VoiceProfileSection({
                       }}
                       // biome-ignore lint/a11y/noAutofocus: this is an inline rename input the user just clicked into; focus must follow.
                       autoFocus
-                      className="w-full rounded border border-border/40 bg-bg/50 px-2 py-0.5 text-sm"
+                      className="w-full rounded-sm border border-border/40 bg-bg/50 px-2 py-0.5 text-sm"
                       data-testid={`voice-profile-rename-input-${profile.id}`}
                       aria-label="Rename voice profile"
                     />
@@ -339,7 +339,7 @@ export function VoiceProfileSection({
                     </span>
                     {profile.relationshipLabel ? (
                       <span
-                        className="rounded bg-bg/60 px-1 py-0.5"
+                        className="rounded-sm bg-bg/60 px-1 py-0.5"
                         data-testid={`voice-profile-relationship-${profile.id}`}
                       >
                         {profile.relationshipLabel}
@@ -360,7 +360,7 @@ export function VoiceProfileSection({
                           relationshipLabel: e.target.value || null,
                         })
                       }
-                      className="rounded border border-border/40 bg-bg/50 px-1 py-0.5 text-xs"
+                      className="rounded-sm border border-border/40 bg-bg/50 px-1 py-0.5 text-xs"
                       data-testid={`voice-profile-relationship-select-${profile.id}`}
                       aria-label="Set relationship"
                     >

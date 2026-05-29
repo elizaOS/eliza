@@ -102,6 +102,7 @@ export async function push(
   branch: string,
   options: PushOptions | undefined,
   log: (msg: string) => void,
+  env?: NodeJS.ProcessEnv,
 ): Promise<void> {
   const { execFileSync } = await import("node:child_process");
 
@@ -113,7 +114,7 @@ export async function push(
     args.push("--force");
   }
 
-  execFileSync("git", args, { cwd: workspacePath });
+  execFileSync("git", args, { cwd: workspacePath, env });
   log(`Pushed workspace at ${workspacePath}`);
 }
 

@@ -160,7 +160,7 @@ GPU-runner or the existing device-lab.
 **Current state.** No on-device runner. `vulkan_verify` is a
 desktop/lavapipe binary; cross-compile against the NDK Vulkan headers
 already works (the cmake flags in
-[`../../app-core/scripts/build-llama-cpp-dflash.mjs:670–689`](../../app-core/scripts/build-llama-cpp-dflash.mjs)
+[`../../app-core/scripts/build-llama-cpp-mtp.mjs:670–689`](../../app-core/scripts/build-llama-cpp-mtp.mjs)
 do exactly this for `android-arm64-vulkan`), but the `verify/Makefile`
 doesn't have an `android-vulkan` recipe.
 
@@ -232,7 +232,7 @@ blocker #1).
 **Status:** blocks `27b-256k` tier entirely (no target exists today).
 
 **Current state.** `SUPPORTED_TARGETS` in
-[`../../app-core/scripts/build-llama-cpp-dflash.mjs:82`](../../app-core/scripts/build-llama-cpp-dflash.mjs)
+[`../../app-core/scripts/build-llama-cpp-mtp.mjs:82`](../../app-core/scripts/build-llama-cpp-mtp.mjs)
 has no `linux-aarch64-*` triple. `parseTarget` would happily split
 `linux-aarch64-cuda` into the right shape, but the array doesn't
 include it.

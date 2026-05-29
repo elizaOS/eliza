@@ -1,0 +1,159 @@
+[[!meta title="Call for testing 4.19~rc1"]]
+[[!meta date="Fri, 14 May 2021 10:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Contribute to Tails by testing our release candidate for Tails 4.19!
+
+We are very excited about it and cannot wait to hear your feedback :)
+
+[[!toc levels=1]]
+
+<h1 id="new">What's new in 4.19~rc1?</h1>
+
+Tails 4.19, scheduled for June 1, will completely change how to connect to the
+Tor network from Tails. We would like as many people as possible to test this
+beta version to be able to fix as many problems as possible before we release
+4.19 to all users.
+
+[[!img tor-connection.png link="no" alt="" width="600"]]
+
+Over the years, we have identified many issues in how to connect to the Tor
+network from Tails, thanks to your feedback. With this beta, we are trying to
+solve the most important and pressing of these issues:
+
+- The lack of feedback while connecting to the Tor network.
+
+- The option to use Tor bridges has to be turned on in the Welcome Screen and
+  cannot be changed afterwards.
+
+- The lack of default Tor bridges.
+
+- The previous configuration screen for Tor bridges wasn't accessible to people
+  who use the screen reader.
+
+- The lack of guidance when Tails is not connected to a local network yet.
+
+<h1>What's new since 4.19~beta1?</h1>
+
+The Tor Connection experience has had several improvements and
+bugfixes since 4.19~beta1. For more details, read our
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/raw/4.19-rc1/debian/changelog).
+
+<div class="caution">
+
+<p>If you manually upgraded from Tails 4.12 or earlier to 4.19~beta1
+and did the Thunderbird OpenPGP
+migration then
+your keys are not protected by the master password ([[!tails_ticket
+18316]], <a
+href="https://bugzilla.mozilla.org/show_bug.cgi?id=1710290">Mozilla
+bug</a>). They are still protected by the persistent storage's
+encrypting, but once that is unlocked the keys are unprotected. This
+should be fixed in the final Tails 4.19.</p>
+
+</div>
+
+<h1>Get Tails 4.19~rc1</h1>
+
+<h2 id="upgrade">To upgrade your Tails USB stick and keep your Persistent Storage</h1>
+
+- Automatic upgrades to Tails 4.19~rc1 are available from versions 4.2
+  or later.
+
+  If you installed 4.19~beta1 you should automatically be asked to
+  upgrade the next time you start it.
+  
+  If you are running Tails 4.2 to 4.18, you can upgrade like this:
+
+  1. Start Tails and
+     [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+  
+  1. Run this command in a *Terminal*:
+  
+         echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+              tails-upgrade-frontend-wrapper
+  
+     Enter the administration password when asked for the "password
+     for amnesia".
+  
+  1. After the upgrade is applied, restart Tails and choose
+     **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+     to verify that you are running Tails 4.19~rc1.
+
+<h2 id="download">Download Tails 4.19~rc1</h1>
+
+Download and install Tails 4.19~rc1 as usually.
+
+<div class="caution">
+
+<p>All the data on this USB stick will be lost. Don't install Tails 4.19~rc1
+on any USB stick that already has a Persistent Storage, upgrade instead.</p>
+
+</div>
+
+### Direct download
+
+  - For USB sticks (USB image)
+    <small>OpenPGP signature<br/>SHA256SUM: f0d60fe7ff6bd29733937eee09e31a928e6cc0924ede33d688235a35c8a0042c</small>
+
+  - For DVDs and virtual machines (ISO image)<br/>
+    <small>OpenPGP signature<br/>SHA256SUM: 2ccd2c02836d5a2d840a07cbfa8f3b73246813b5f387ce5c12b3e30bf17bc4f1</small>
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+<h1 id="how-to-test">What to test in Tails 4.19~rc1?</h1>
+
+We know that Tails 4.19~rc1 still has many rough edges. But we still need
+your help to identify as many new problems as possible!
+
+We're particularly interested in you testing diverse and rare network
+configurations:
+
+- When connecting to Tor without bridges fails.
+
+- When Tails is not connected to a local network yet.
+
+- When disconnecting from a Wi-Fi network with Internet connectivity and then
+  reconnecting to a different Wi-Fi network without Internet connectivity.
+
+- When disconnecting from Wi-Fi network that don't require Tor bridges and the
+  reconnecting to different Wi-Fi network that requires Tor bridges.
+
+- When connecting to a Tor bridge that works at first but then stops working.
+
+- When connecting to the Internet using a proxy.
+
+Tell us if anything is unclear, confusing, or not working as you would expect.
+
+Please, send your feedback to <tails-testers@boum.org> (public mailing list).
+
+If you are comfortable with the command line, check our [hacking
+tips](https://gitlab.tails.boum.org/tails/tails/-/blob/devel/config/chroot_local-includes/usr/share/doc/tails/tca/HACKING.md).
+They contain firewall rules that can be used to block access to the Tor network
+without bridges or simulate a broken bridge.
+
+<h1 id="known-issues">Known issues in 4.19~rc1</h1>
+
+* Korean and Polish localization is not available ([[!tails_ticket
+  18319]]). We will attempt to fix this in the final Tailss 4.19
+  release.
+
+<h1 id="next">What's coming next?</h1>
+
+Tails 4.19 will be the first release of a series of improvements to connect to
+Tor. Next, we will work on:
+
+- Saving Tor bridges to the Persistent Storage ([[!tails_ticket 5461]])
+- Detecting better when the computer has no supported Wi-Fi hardware ([[!tails_ticket 14534]])
+- Detecting captive portals ([[!tails_ticket 5785]])
+- Helping people fixing their clock when failing to connect to `obfs4` bridges ([[!tails_ticket 15548]])
+
+The learn more about our plans, read our [[!tails_blueprint network_connection
+desc="blueprint on network connection"]].
+
+Happy testing!

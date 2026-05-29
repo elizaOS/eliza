@@ -1,0 +1,88 @@
+[[!meta title="Tails security issue response policy"]]
+
+[[!toc levels=2]]
+
+# Policy
+
+The Tails Team tries to follow the
+[Tor software security issue response policy](https://gitlab.torproject.org/tpo/core/team/-/wikis/NetworkTeam/SecurityPolicy) with the following exceptions:
+
+* Issues are reported & tracked in [[!tails_gitlab desc="Tails GitLab"]],
+  rather than in Tor's GitLab.
+
+* GitLab issues must be created using the *Security Issue* template.
+  See the [[!tails_gitlab help/user/project/description_templates.md#use-the-templates desc="GitLab documentation about using templates"]]
+
+* "If the issue is confidential, we will open a confidential ticket to discuss
+  the details, and a empty public ticket to track its progress.": we don't
+  create such empty public tickets. Note: in practice, this does not seem to be
+  done consistently at Tor, e.g. we could find no "empty public ticket"
+  corresponding to <https://gitlab.torproject.org/tpo/core/tor/-/issues/40976>.
+
+* "When we're about to release a fix, we may make an announcement in advance to
+  let people know about the upcoming security release. We'll always do this if
+  the issue is of high or critical severity.", and more generally the guidelines
+  about release coordination: at the time we're writing this, Tails has no
+  downstreams, e.g. packagers, who would benefit from such advance warnings, so
+  we don't send them.
+
+  We are open to reconsidering this in the light of new information.
+
+* "We'll get CVE-IDs for this issue." (for high or critical severity issues) and
+  "In all cases, we'll allocate a TROVE-ID to track our progress and identify
+  the issue.": Tails is an end-product, distributed only by Tails, mostly to
+  private individual users, and only the latest version is supported. So the
+  benefits of integrating with the generic CVE system, or with the TROVE system,
+  appear to be extremely slim.
+
+  We are open to reconsidering this in the light of new information.
+
+# Examples
+
+Note: all the caveats and interpretation guidelines from [Tor's
+policy](https://gitlab.torproject.org/tpo/core/team/-/wikis/NetworkTeam/SecurityPolicy#how-will-we-assess-the-severity-of-a-security-issue)
+apply here as well.
+
+Please refer to [the page about DSA in Tails Team' public
+wiki](https://gitlab.tails.boum.org/tails/team/-/wikis/roles/frontdesk/dsa) for more guidance on how to process
+DSAs.
+
+## research questions
+
+* Graphics cards volatile memory keeps traces of the user's activity after reboot/shutdown
+* An adversary who gains access to the accessibility bus can interact with Tails in the same way as the user could (modulo knowledge of confidential information), which can potentially lead to deanonymization.
+* Lack of fine-grained D-Bus mediation makes AppArmor policies less meaningful than they could be
+* Any application which is allowed to play audio is also allowed, if exploited, to record sound
+
+## low-severity
+
+Many of the low-severity examples from [Tor's
+policy](https://gitlab.torproject.org/tpo/core/team/-/wikis/NetworkTeam/SecurityPolicy#how-will-we-assess-the-severity-of-a-security-issue)
+apply to Tails as well.
+
+## medium-severity
+
+* Most local privilege escalation (even to root), that cannot be exploited from the execution context of Tor Browser.
+
+## high-severity
+
+* Local privilege escalation to root, that can be exploited from the execution context of Tor Browser.
+* Persistent arbitrary code execution outside of sandboxes, that can be exploited from the execution context of Tor Browser.
+* Any bug that can remotely cause Tails to de-anonymize its user, that can be exploited from the execution context of Tor Browser.
+* Any remote code-execution vulnerability that requires uncommon, but supported, user action.
+
+## critical-severity
+
+* Any remote code-execution vulnerability that can be exploited without uncommon user action.
+
+# Out of scope
+
+* Issues that affect non-Tails software that we include, or that also affect
+  non-Tails projects. For such issues, we shall follow responsible disclosure
+  practices to the corresponding upstream(s), to avoid putting at risk
+  non-Tails users.
+
+# Related pages
+
+- [[Security advisories|security]]
+- [[Decision-making process for emergency releases|contribute/working_together/roles/release_manager/#emergency-release]]

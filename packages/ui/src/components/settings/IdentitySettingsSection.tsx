@@ -358,7 +358,7 @@ export function IdentitySettingsSection() {
   return (
     <div className="flex flex-col gap-5">
       {showCharacterBootstrapping ? (
-        <div className="rounded border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
+        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted ">
           {t("settings.identity.loading", {
             defaultValue: "Loading identity settings…",
           })}
@@ -403,7 +403,7 @@ export function IdentitySettingsSection() {
                   })}
                 />
               </SelectTrigger>
-              <SelectContent className="border-border/60 bg-bg/92 shadow-sm ">
+              <SelectContent className="border-border/60 bg-bg/92 ">
                 {voiceGroups.map((group) => (
                   <SelectGroup key={group.label}>
                     <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">

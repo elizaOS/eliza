@@ -13,6 +13,7 @@ import {
   type Terminal,
   TUI,
 } from "@elizaos/tui";
+import { isTerminalTuiEnabled } from "./tui-enabled";
 
 interface ViewEntry {
   id: string;
@@ -43,16 +44,6 @@ function resolveDefaultApiBaseUrl(): string {
     : resolveServerOnlyPort(process.env);
   const displayHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   return `http://${displayHost}:${port}`;
-}
-
-function isTerminalTuiEnabled(): boolean {
-  const value = process.env.ELIZA_TERMINAL_TUI?.trim().toLowerCase();
-  if (value === "0" || value === "false" || value === "off") return false;
-  if (value === "1" || value === "true" || value === "on") return true;
-  if (process.env.CI === "true" || process.env.NODE_ENV === "test") {
-    return false;
-  }
-  return Boolean(process.stdin.isTTY && process.stdout.isTTY);
 }
 
 async function readJson<T>(

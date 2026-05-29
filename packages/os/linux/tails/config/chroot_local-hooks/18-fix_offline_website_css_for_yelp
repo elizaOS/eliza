@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -e
+
+echo "Tweaking the offline website's CSS"
+
+# Yelp becomes awfully slow when 'box-shadow' properties are used.
+# So let's just remove the bling-bling to get a better offline browsing
+# experience.
+
+sed -e '/box-shadow/d' -i /usr/share/doc/tails/website/local.css

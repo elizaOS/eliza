@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-console.error("[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs");
+console.log(
+  "\x1b[32m[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs\x1b[0m",
+);
 
 /**
  * Development script that starts:
@@ -7,7 +9,7 @@ console.error("[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs");
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Automatically kills zombie processes on both ports before starting.
- * Waits for the API server to be ready before launching vite so the proxy
+ * Waits for the API port to be open before launching vite so the proxy
  * doesn't flood the terminal with ECONNREFUSED errors.
  *
  * Usage:
@@ -255,6 +257,54 @@ function shellQuoteArg(value) {
   return /^[A-Za-z0-9_./:=+-]+$/.test(value) ? value : JSON.stringify(value);
 }
 
+function appendNodeOption(value, option) {
+  const current = value?.trim();
+  if (!current) return option;
+  if (current.split(/\s+/).includes(option)) return current;
+  return `${current} ${option}`;
+}
+
+function isCodexBundledNode(candidate) {
+  return (
+    process.platform === "darwin" &&
+    candidate.includes(
+      `${path.sep}Applications${path.sep}Codex.app${path.sep}Contents${path.sep}Resources${path.sep}node`,
+    )
+  );
+}
+
+function isUsableNode(candidate) {
+  if (!candidate || isCodexBundledNode(candidate) || !existsSync(candidate)) {
+    return false;
+  }
+  try {
+    execFileSync(candidate, ["-e", "process.stdout.write(process.platform)"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiNodeCommand(env) {
+  const pathCandidates = (env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) =>
+      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
+    );
+  const candidates = [
+    env.ELIZA_NODE_PATH,
+    env.npm_node_execpath,
+    ...pathCandidates,
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+  ].filter(Boolean);
+  return candidates.find(isUsableNode) ?? "node";
+}
+
 const visionDepsRetryCommand = [
   "node",
   path.relative(cwd, visionDepsScriptPath) || visionDepsScriptPath,
@@ -348,49 +398,33 @@ if (!hasNode) {
 // coerceBoolean — imported from ./lib/dev-ui-onchain.mjs
 
 function resolveElizaStateDir() {
-  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (brandedStateDir) {
-    return path.resolve(brandedStateDir);
-  }
+  const explicitStateDir =
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+  if (explicitStateDir) return path.resolve(explicitStateDir);
 
-  const upstreamStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (upstreamStateDir) {
-    return path.resolve(upstreamStateDir);
-  }
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const stateHome = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(os.homedir(), xdgStateHome)
+    : path.join(os.homedir(), ".local", "state");
 
-  const brandedDefault = path.join(os.homedir(), ".eliza");
-  if (existsSync(brandedDefault)) {
-    return brandedDefault;
-  }
+  return path.join(stateHome, resolveElizaNamespace());
+}
 
-  return path.join(os.homedir(), ".eliza");
+function resolveElizaNamespace() {
+  return process.env.ELIZA_NAMESPACE?.trim() || cliName || "eliza";
 }
 
 function resolveElizaConfigPath() {
   const explicitConfigPath =
     process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.ELIZA_CONFIG_PATH?.trim();
+    process.env.MILADY_CONFIG_PATH?.trim();
   if (explicitConfigPath) {
     return path.resolve(explicitConfigPath);
   }
 
-  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (brandedStateDir) {
-    return path.join(path.resolve(brandedStateDir), "eliza.json");
-  }
-
-  const upstreamStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (upstreamStateDir) {
-    return path.join(path.resolve(upstreamStateDir), "eliza.json");
-  }
-
-  const brandedDefault = path.join(os.homedir(), ".eliza", "eliza.json");
-  if (existsSync(brandedDefault)) {
-    return brandedDefault;
-  }
-
-  // Keep the legacy Eliza path as a fallback for older local dev setups.
-  return path.join(os.homedir(), ".eliza", "eliza.json");
+  return path.join(resolveElizaStateDir(), `${resolveElizaNamespace()}.json`);
 }
 
 function loadElizaConfigForDev() {
@@ -714,6 +748,22 @@ function waitForPort(port, { timeout = 300_000, interval = 500 } = {}) {
   });
 }
 
+function isPortListening(port) {
+  return new Promise((resolve) => {
+    const socket = createConnection({ port, host: "127.0.0.1" });
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(value);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.setTimeout(2000, () => done(false));
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Wait for the agent runtime to be ready (not just the TCP port).
 // Polls GET /api/health and resolves when { ready: true }.
@@ -818,15 +868,29 @@ function killOrphanedWorkspaceProcesses() {
 killOrphanedWorkspaceProcesses();
 killPort(UI_PORT);
 
-// Ensure vision dependencies are installed
-try {
-  execFileSync("node", [visionDepsScriptPath, `--name=${cliName}`], {
-    stdio: "inherit",
-  });
-} catch (error) {
+// Ensure vision dependencies are installed (non-blocking — just probes/installs
+// an optional camera binary; nothing in the boot path depends on its result, so
+// it must not gate API/Vite startup).
+const visionDepsChild = spawn(
+  "node",
+  [visionDepsScriptPath, `--name=${cliName}`],
+  { stdio: "inherit" },
+);
+visionDepsChild.on("error", (error) => {
   process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
   console.warn(buildVisionDepsFailureMessage(error, visionDepsRetryCommand));
-}
+});
+visionDepsChild.on("exit", (code) => {
+  if (code !== 0) {
+    process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
+    console.warn(
+      buildVisionDepsFailureMessage(
+        new Error(`vision deps check exited with code ${code}`),
+        visionDepsRetryCommand,
+      ),
+    );
+  }
+});
 
 if (!uiOnly) {
   killPort(API_PORT);
@@ -838,6 +902,8 @@ let shuttingDown = false;
 let vitePluginBuildAttempted = false;
 let viteRestartCount = 0;
 let viteRestartTimer = null;
+let viteHealthTimer = null;
+let viteStartedAt = 0;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -858,6 +924,10 @@ function cleanup(exitCode = 0) {
   if (viteRestartTimer) {
     clearTimeout(viteRestartTimer);
     viteRestartTimer = null;
+  }
+  if (viteHealthTimer) {
+    clearTimeout(viteHealthTimer);
+    viteHealthTimer = null;
   }
 
   setTimeout(() => {
@@ -891,10 +961,15 @@ function startVite() {
           process.env.ELIZA_DEV_PLUGIN_BUILD === "always";
         const skipPlugins =
           process.env.ELIZA_DEV_PLUGIN_BUILD === "0" ||
-          process.env.ELIZA_SKIP_PLUGIN_BUILD === "1";
+          process.env.ELIZA_SKIP_PLUGIN_BUILD === "1" ||
+          (process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins);
         if (skipPlugins) {
+          const skipReason =
+            process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins
+              ? "ELIZA_DEV_SOURCE=1"
+              : "ELIZA_SKIP_PLUGIN_BUILD=1";
           console.log(
-            `  ${green(logPrefix)} ${dim("Skipping Capacitor plugin build (ELIZA_SKIP_PLUGIN_BUILD=1).")}`,
+            `  ${green(logPrefix)} ${dim(`Skipping Capacitor plugin build (${skipReason}).`)}`,
           );
         } else if (
           forcePlugins ||
@@ -938,6 +1013,7 @@ function startVite() {
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
     );
   }
+  viteStartedAt = Date.now();
   viteProcess = spawn(viteCmd, viteArgs, {
     cwd: path.join(cwd, appDir),
     env: {
@@ -974,6 +1050,10 @@ function startVite() {
   viteProcess.on("exit", (code, signal) => {
     if (shuttingDown) return;
     viteProcess = null;
+    if (viteHealthTimer) {
+      clearTimeout(viteHealthTimer);
+      viteHealthTimer = null;
+    }
     const exitLabel = signal
       ? `signal ${signal}`
       : `code ${code === null ? "null" : code}`;
@@ -993,6 +1073,33 @@ function startVite() {
       if (!shuttingDown) startVite();
     }, 400);
   });
+
+  scheduleViteHealthCheck();
+}
+
+function scheduleViteHealthCheck(delayMs = 15_000) {
+  if (viteHealthTimer) clearTimeout(viteHealthTimer);
+  viteHealthTimer = setTimeout(async () => {
+    viteHealthTimer = null;
+    if (shuttingDown || !viteProcess) return;
+
+    const listening = await isPortListening(UI_PORT);
+    if (!listening) {
+      const ageMs = Date.now() - viteStartedAt;
+      if (ageMs > 60_000) {
+        console.log(
+          `  ${green(logPrefix)} ${dim(
+            `Vite process is running but port ${UI_PORT} is not accepting connections — restarting UI.`,
+          )}`,
+        );
+        terminateChild(viteProcess, "SIGTERM");
+        return;
+      }
+    }
+
+    scheduleViteHealthCheck();
+  }, delayMs);
+  viteHealthTimer.unref();
 }
 
 if (uiOnly) {
@@ -1059,8 +1166,9 @@ if (uiOnly) {
     }
   }
 
+  const apiNodeCmd = resolveApiNodeCommand(process.env);
   const apiCmd = [
-    "node",
+    apiNodeCmd,
     "--conditions=eliza-source",
     "--import",
     "tsx",
@@ -1085,6 +1193,10 @@ if (uiOnly) {
     {
       ...childEnv,
       NODE_ENV: "development",
+      NODE_OPTIONS: appendNodeOption(
+        childEnv.NODE_OPTIONS,
+        "--disable-warning=ExperimentalWarning",
+      ),
       ELIZA_NAMESPACE: cliName,
       ELIZA_API_PORT: String(API_PORT),
       ELIZA_UI_PORT: String(UI_PORT),
@@ -1095,6 +1207,10 @@ if (uiOnly) {
     },
     apiSpawnCwd,
   );
+
+  if (apiNodeCmd !== "node") {
+    apiSpawnEnv.PATH = `${path.dirname(apiNodeCmd)}${path.delimiter}${apiSpawnEnv.PATH ?? ""}`;
+  }
 
   const apiSupervisor = createApiSupervisor({
     spawnChild: () =>
@@ -1137,6 +1253,14 @@ if (uiOnly) {
 
   apiSupervisor.start();
 
+  // Start Vite immediately, in parallel with the API boot. The dev server only
+  // proxies to the API at request time — it has no startup dependency on the
+  // API being up — so gating it behind waitForPort(API_PORT) just stacked the
+  // full runtime+plugin boot in front of first paint. Booting both at once
+  // gives the browser a UI as soon as Vite is ready, and requests resolve once
+  // the API comes up moments later.
+  startVite();
+
   const startTime = Date.now();
   let phase = "port";
   const dots = setInterval(() => {
@@ -1165,7 +1289,6 @@ if (uiOnly) {
       console.log(
         `\r  ${green(logPrefix)} ${green(`Agent ready`)} ${dim(`(${elapsed}s)`)}          `,
       );
-      startVite();
     })
     .catch((err) => {
       clearInterval(dots);

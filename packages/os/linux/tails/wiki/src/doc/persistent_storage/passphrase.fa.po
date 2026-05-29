@@ -1,0 +1,172 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2023-03-11 13:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"first_steps_persiatence_passphrase/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Changing the passphrase of the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"تغییر گذرواژهٔ درایو مانا\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "To change the passphrase of your Persistent Storage:"
+msgstr "تغییر گذرواژهٔ درایو مانا\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the "
+"Persistent Storage settings."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click on the **Change Passphrase** button on the left of the title bar."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Enter the current passphrase in the **Current Passphrase** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Enter your new passphrase in the **New Passphrase** text box."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- Consider removing after #18736. -->\n"
+msgstr "   <!-- Consider removing after #18736. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To help you remember your passphrase, you can write it on a piece of\n"
+"   paper, store it in your wallet for a few days, and destroy it once\n"
+"   you know it well.</p>\n"
+"   </div>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter your new passphrase again in the **Confirm New Passphrase** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Change**."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"You can now restart Tails and try to unlock the Persistent Storage with the "
+"new passphrase."
+msgstr ""
+"حالا می‌توانید تیلز را دوباره راه‌اندازی کرده و درایو مانا را با گذرواژهٔ جدیدش "
+"فعال کنید."
+
+#, no-wrap
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#, no-wrap
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  1. Open *Disks* from the menu\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **Applications**&nbsp;▸\n"
+#~ "       **Utilities**&nbsp;▸\n"
+#~ "       **Disks**</span>.\n"
+#~ msgstr ""
+#~ "  ۱. *ابزار دیسک گنوم* را از فهرست باز کنید\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **ابزارها**&nbsp;◀\n"
+#~ "       **ابزارهای کمکی**&nbsp;◀\n"
+#~ "       **ابزار دیسک**\n"
+#~ "     </span>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "     *Disks* lists all the current storage\n"
+#~ "     devices in the left pane of the window. When you select one of these devices,\n"
+#~ "     detailed information about it is displayed in the right pane: its partitions,\n"
+#~ "     its brand, its size, etc.\n"
+#~ msgstr ""
+#~ "*ابزار دیسک* فهرستی از تمام\n"
+#~ "دستگاه‌های ذخیرهٔ فعلی در سمت راست پنجره دارد. با انتخاب یکی از این دستگاه‌ها\n"
+#~ "اطلاعات مشروح مربوط به آن سمت چپ پنجره دیده می‌شوند از جمله: بخش‌های آن،\n"
+#~ "مارک آن، حجمش و غیره.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Find which device is your Tails USB stick. It should have 2 partitions: "
+#~ "one labeled **Tails** and another one labeled **TailsData**, which "
+#~ "corresponds to the Persistent Storage."
+#~ msgstr ""
+#~ "دریابید که کدام دستگاه حاوی درایو مانا است. این درایو باید دو بخش مرتبط "
+#~ "با درایو مانا داشته باشد؛ یکی به نام <span class=\"guilabel\">Tails</"
+#~ "span> و دیگری به نام **TailsData**."
+
+#, fuzzy
+#~ msgid ""
+#~ "In the right pane, click on the Persistent Storage partition, labeled "
+#~ "**TailsData**."
+#~ msgstr ""
+#~ "در سمت چپ روی پارتیشن درایو مانا با عنوان <span "
+#~ "class=\"guilabel\">Encrypted</span> کلیک و آن را انتخاب کنید."
+
+#~ msgid "Type your current passphrase and then type twice a new one."
+#~ msgstr "ابتدا گذرواژهٔ فعلی خود و سپس دو بار گذرواژهٔ جدیدتان را تایپ کنید."
+
+#, fuzzy
+#~ msgid "Finally confirm by clicking **Change**."
+#~ msgstr "در مرحلهٔ آخر روی **تغییر گذرواژه** کلیک کنید."
+
+#, fuzzy
+#~ msgid "     Do not enable the persistent volume in the Welcome Screen.\n"
+#~ msgstr ""
+#~ "در سمت چپ روی پارتیشن درایو مانا با عنوان <span "
+#~ "class=\"guilabel\">Encrypted</span> کلیک و آن را انتخاب کنید."
+
+#~ msgid "[[!toc levels=2]]\n"
+#~ msgstr "[[!toc levels=2]]\n"
+
+#~ msgid "Start GNOME Disk utility\n"
+#~ msgstr "باز کردن ابزار دیسک گنوم\n"
+
+#~ msgid "Find out the device of the persistent volume\n"
+#~ msgstr "دستگاه درایو مانا را پیدا کنید\n"
+
+#~ msgid ""
+#~ "In the right pane of the window, verify that the device corresponds to "
+#~ "your device, its brand, its size, etc."
+#~ msgstr ""
+#~ "مطمئن شوید که این دستگاه، همان دستگاه مورد نظر شما است. در سمت چپ پنجره "
+#~ "مارک، اندازهٔ آن و غیره را بررسی کنید."
+
+#~ msgid "Click on **Change Passphrase**."
+#~ msgstr "روی **تغییر گذرواژه** کلیک کنید."

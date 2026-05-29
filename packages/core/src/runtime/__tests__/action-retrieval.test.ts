@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
+import { searchMessagesAction } from "../../features/messaging/triage/actions/searchMessages";
 import { buildActionCatalog } from "../action-catalog";
 import { retrieveActions, tokenizeActionSearchText } from "../action-retrieval";
 
@@ -308,6 +309,68 @@ describe("action catalogue and retrieval", () => {
 			name: "TASKS",
 			matchedBy: expect.arrayContaining(["bm25"]),
 		});
+	});
+
+	it("maps SEARCH_MESSAGES candidate hints to MESSAGE even when recent context is searched", () => {
+		const catalog = buildActionCatalog([
+			searchMessagesAction,
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+			{
+				name: "SHELL",
+				description: "Run local shell commands and inspect files.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "Can you find that in the chat again?",
+			candidateActions: ["SEARCH_MESSAGES"],
+			recentConversationText:
+				"Build a small app and inspect the project files.",
+		});
+
+		expect(response.query.parentActionHints).toEqual(["MESSAGE"]);
+		expect(response.results[0]).toMatchObject({
+			name: "MESSAGE",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+		expect(searchMessagesAction.similes).toContain("SEARCH_MESSAGES");
+		expect(searchMessagesAction.similes).toContain("MESSAGE_SEARCH");
+		expect(searchMessagesAction.similes).toContain("SEARCH_CHAT");
+		expect(searchMessagesAction.similes).toContain("FIND_MESSAGES");
+	});
+
+	it("maps all message-search simile hints to MESSAGE with recent context", () => {
+		const catalog = buildActionCatalog([
+			searchMessagesAction,
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+		]);
+
+		for (const candidateAction of [
+			"SEARCH_INBOX",
+			"SEARCH_EMAIL",
+			"CROSS_CHANNEL_SEARCH",
+		]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "Search there again",
+				candidateActions: [candidateAction],
+				recentConversationText: "Find email and chat history about launch",
+			});
+
+			expect(response.query.parentActionHints).toEqual(["MESSAGE"]);
+			expect(response.results[0]).toMatchObject({
+				name: "MESSAGE",
+				score: 1,
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
 	});
 
 	it("does not retrieve actions from context match alone", () => {

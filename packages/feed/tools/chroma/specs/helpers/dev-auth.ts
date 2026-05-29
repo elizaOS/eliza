@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
-const PRIVY_TOKEN_COOKIE_NAME = "privy-token";
+const STEWARD_TOKEN_COOKIE_NAME = "steward-token";
 const DEV_USER_ID_COOKIE_NAME = "feed-dev-user-id";
 const DEV_ADMIN_TOKEN_COOKIE_NAME = "feed-dev-admin-token";
 const PLAYWRIGHT_DEV_AUTH_STORAGE_KEY = "feed-playwright-dev-auth";
@@ -60,7 +60,7 @@ export async function installSynpressDevAuth(
 
   await page.context().addCookies([
     {
-      name: PRIVY_TOKEN_COOKIE_NAME,
+      name: STEWARD_TOKEN_COOKIE_NAME,
       value: session.accessToken,
       url: baseURL,
       sameSite: "Lax",
@@ -83,8 +83,8 @@ export async function installSynpressDevAuth(
     ({ storageKey, authSession }) => {
       window.localStorage.setItem(storageKey, JSON.stringify(authSession));
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = authSession.accessToken;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = authSession.accessToken;
     },
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,
@@ -97,8 +97,8 @@ export async function installSynpressDevAuth(
     ({ storageKey, authSession }) => {
       window.localStorage.setItem(storageKey, JSON.stringify(authSession));
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = authSession.accessToken;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = authSession.accessToken;
     },
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,

@@ -2,7 +2,7 @@
 
 In-process workflow engine for elizaOS agents. Generate and deploy automation workflows from natural language using a RAG pipeline. The plugin embeds its own execution engine — workflows run in the agent process, no separate sidecar.
 
-Built on shared workflow type contracts from `@elizaos/workflows`. Supports the bundled node catalog used by the in-process runtime for routing decisions, with intelligent credential resolution and lifecycle management.
+Built on Smithers-backed workflow execution with plugin-local workflow contracts. Supports the bundled node catalog used by the in-process runtime for routing decisions, with intelligent credential resolution and lifecycle management.
 
 ## Configuration
 

@@ -362,7 +362,7 @@ export function getUiSourceAliases(
   return [
     ...getWorkspacePackageExportAliases("ui", packageRoot),
     {
-      find: "@elizaos/ui/api",
+      find: /^@elizaos\/ui\/api$/,
       replacement: path.join(sourceRoot, "api", "index.ts"),
     },
     {

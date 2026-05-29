@@ -118,13 +118,13 @@ export function ConnectorAccountCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-lg border border-border/45 bg-card/35 px-3 py-3 transition-opacity",
+        "flex flex-col gap-3 rounded-sm border border-border/45 bg-card/35 px-3 py-3 transition-opacity",
         !enabled && "opacity-60",
         selected && "border-accent/70 bg-accent/5",
       )}
     >
       <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
           {account.avatarUrl ? (
             <img
               src={account.avatarUrl}

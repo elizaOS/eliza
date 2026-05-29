@@ -1,20 +1,20 @@
 /**
  * L6 — event-driven cancellation tests for `cancelToSignal` in
  * `pipeline-impls.ts`. The function is module-internal; we exercise it
- * through `LlamaServerDraftProposer.propose`, which is the only public
- * caller. The `DflashTextRunner` stub records the `AbortSignal` it
+ * through `MtpDraftProposer.propose`, which is the only public
+ * caller. The `MtpTextRunner` stub records the `AbortSignal` it
  * received so we can assert it aborts synchronously on `onCancel()`.
  */
 
 import { describe, expect, it } from "vitest";
 import {
 	type CancelTokenWithSignal,
-	type DflashTextRunner,
-	LlamaServerDraftProposer,
+	MtpDraftProposer,
+	type MtpTextRunner,
 } from "./pipeline-impls";
 import type { VerifierStreamEvent } from "./types";
 
-function runnerCapturingSignal(): DflashTextRunner & {
+function runnerCapturingSignal(): MtpTextRunner & {
 	capturedSignal: AbortSignal | null;
 	resolveDone: () => void;
 } {
@@ -43,7 +43,7 @@ function runnerCapturingSignal(): DflashTextRunner & {
 describe("L6 cancelToSignal — event-driven cancellation", () => {
 	it("aborts the AbortSignal synchronously when the cancel token's onCancel fires", async () => {
 		const runner = runnerCapturingSignal();
-		const proposer = new LlamaServerDraftProposer(runner);
+		const proposer = new MtpDraftProposer(runner);
 		const listeners = new Set<() => void>();
 		const token: CancelTokenWithSignal = {
 			cancelled: false,
@@ -72,7 +72,7 @@ describe("L6 cancelToSignal — event-driven cancellation", () => {
 
 	it("aborts immediately when the cancel token is already cancelled before the call", async () => {
 		const runner = runnerCapturingSignal();
-		const proposer = new LlamaServerDraftProposer(runner);
+		const proposer = new MtpDraftProposer(runner);
 		const token: CancelTokenWithSignal = {
 			cancelled: true,
 			onCancel: () => () => {},
@@ -91,7 +91,7 @@ describe("L6 cancelToSignal — event-driven cancellation", () => {
 
 	it("falls back to polling when the token has no onCancel hook", async () => {
 		const runner = runnerCapturingSignal();
-		const proposer = new LlamaServerDraftProposer(runner);
+		const proposer = new MtpDraftProposer(runner);
 		const token: CancelTokenWithSignal = { cancelled: false };
 		const promise = proposer.propose({
 			prefix: [{ index: 0, text: "hi" }],

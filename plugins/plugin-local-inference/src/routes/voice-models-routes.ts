@@ -96,8 +96,8 @@ interface PinsFile {
 
 /* ----------------------------------------------------------------- *
  * Owner gate — the cellular + metered toggles are OWNER-only.        *
- * The runtime writes `ELIZA_ADMIN_ENTITY_ID` after voice-onboarding  *
- * completes (see voice-onboarding-routes.ts §POST /complete).        *
+ * The runtime writes `ELIZA_ADMIN_ENTITY_ID` after voice-first-run  *
+ * completes (see voice-first-run-routes.ts §POST /complete).        *
  * ----------------------------------------------------------------- */
 
 /**
@@ -105,7 +105,7 @@ interface PinsFile {
  *
  * 1. If `ELIZA_ADMIN_ENTITY_ID` is unset, no OWNER exists yet — return
  *    `false` (gate stays locked). This is the safe default during first
- *    boot before voice onboarding completes.
+ *    boot before voice first-run completes.
  * 2. If the request carries `X-Eliza-Entity-Id` (set by the UI shell for
  *    authenticated sessions), compare against the admin id. Equality
  *    matches case-insensitively because entity ids are UUIDv4.

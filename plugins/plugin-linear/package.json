@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-linear",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "description": "Linear integration plugin for ElizaOS (TypeScript)",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -38,7 +38,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "repository": {
     "type": "git",

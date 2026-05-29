@@ -671,20 +671,26 @@ function nodeAutoscaleResponse(c: Context) {
     }
 
     if (decision.shouldScaleDownNodeIds.length > 0) {
-      const target = decision.shouldScaleDownNodeIds[0]!;
-      try {
-        await autoscaler.drainNode(target, { deprovision: true });
+      const target = decision.shouldScaleDownNodeIds.find(Boolean);
+      if (!target) {
         (result.actions as Array<Record<string, unknown>>).push({
-          type: "drained",
-          nodeId: target,
+          type: "scale_down_skipped",
+          reason: "No valid node id selected for scale down",
         });
-      } catch (error) {
-        (result.actions as Array<Record<string, unknown>>).push({
-          type: "drain_failed",
-          nodeId: target,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      } else
+        try {
+          await autoscaler.drainNode(target, { deprovision: true });
+          (result.actions as Array<Record<string, unknown>>).push({
+            type: "drained",
+            nodeId: target,
+          });
+        } catch (error) {
+          (result.actions as Array<Record<string, unknown>>).push({
+            type: "drain_failed",
+            nodeId: target,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
     }
 
     return c.json({ success: true, data: result });

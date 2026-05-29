@@ -634,7 +634,7 @@ function generateAlterColumnSQL(
     if (needsUsing) {
       // For complex type changes, use USING clause like Drizzle
       statements.push(
-        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" TYPE ${newType} USING "${column}"::text::${newType};`
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" TYPE ${newType} USING ${buildUsingExpression(column, changesFromType || "", newType)};`
       );
     } else {
       statements.push(
@@ -673,6 +673,22 @@ function generateAlterColumnSQL(
 }
 
 /**
+ * Build the USING expression for an ALTER COLUMN TYPE conversion.
+ *
+ * The generic `::text::<target>` bridge works for most conversions, but
+ * Postgres rejects boolean text ('true'/'false') as integer input, so
+ * boolean→integer must use the native cast (true→1, false→0) instead.
+ */
+function buildUsingExpression(column: string, fromType: string, toType: string): string {
+  const from = fromType.split("(")[0].toLowerCase().trim();
+  const to = toType.split("(")[0].toLowerCase().trim();
+  if (from === "boolean" && to === "integer") {
+    return `"${column}"::${toType}`;
+  }
+  return `"${column}"::text::${toType}`;
+}
+
+/**
  * Check if a type change needs a USING clause
  * Based on Drizzle's type conversion logic
  */
@@ -684,12 +700,20 @@ function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
     return true;
   }
 
-  const fromBase = fromType.split("(")[0].toLowerCase();
-  const toBase = toType.split("(")[0].toLowerCase();
+  // Postgres introspection reports the canonical "character varying";
+  // normalize to "varchar" so the pairs below (e.g. varchar→uuid) match.
+  // Without this, an ALTER COLUMN id TYPE uuid is emitted without a USING
+  // clause and Postgres rejects it ("cannot be cast automatically").
+  const normalizeType = (t: string) => {
+    const base = t.split("(")[0].toLowerCase().trim();
+    return base === "character varying" ? "varchar" : base;
+  };
+  const fromBase = normalizeType(fromType);
+  const toBase = normalizeType(toType);
 
   // Text/varchar to JSONB always needs USING
   if (
-    (fromBase === "text" || fromBase === "varchar" || fromBase === "character varying") &&
+    (fromBase === "text" || fromBase === "varchar") &&
     (toBase === "jsonb" || toBase === "json")
   ) {
     return true;
@@ -711,8 +735,6 @@ function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
     ["varchar", "uuid"],
     ["varchar", "jsonb"],
     ["varchar", "json"],
-    ["character varying", "jsonb"],
-    ["character varying", "json"],
     // Add more as needed based on PostgreSQL casting rules
   ];
 

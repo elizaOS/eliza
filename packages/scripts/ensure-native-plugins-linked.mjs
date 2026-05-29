@@ -1,20 +1,12 @@
 #!/usr/bin/env node
 /**
- * Workaround for a Bun workspace bug: packages declared via the
- * `plugins/plugin-native-*` workspace glob (formerly
- * `packages/native/plugins/*`) are recognised by `bun pm ls` but
- * never symlinked into `node_modules/@elizaos/...`, even on a fresh
- * `bun install --ignore-scripts` against a deleted node_modules tree.
+ * Ensure native plugin compatibility links exist after a Bun install.
  *
- * Symptom downstream: `bun run --cwd packages/agent build:mobile`
- * fails with `Could not resolve: "@elizaos/capacitor-contacts"`
- * (and the other native-plugin packages) because the agent's
- * static imports can't be linked at bundle time.
- *
- * This script runs after `bun install` (wired into the root
- * `postinstall`) and explicitly creates the missing
- * `node_modules/@elizaos/<name>` → `../../plugins/plugin-native-<dir>`
- * symlinks. Idempotent: existing correct symlinks are left alone.
+ * Native plugins now live at `plugins/plugin-native-*`, but several build and
+ * packaging paths still need the historical `packages/native/plugins/<name>`
+ * layout. Bun can also miss workspace links when installs run with
+ * --ignore-scripts, so mirror the package-name links into the node_modules roots
+ * that desktop/mobile builds resolve from.
  */
 
 import {
@@ -24,118 +16,127 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   unlinkSync,
 } from "node:fs";
-import path from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../..",
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const NATIVE_PLUGIN_PREFIX = "plugin-native-";
+const PLUGINS_ROOT = join(REPO_ROOT, "plugins");
+const LEGACY_NATIVE_PLUGINS_ROOT = join(
+  REPO_ROOT,
+  "packages",
+  "native",
+  "plugins",
 );
-const pluginsRoot = path.join(repoRoot, "plugins");
-const nodeModulesRoots = [
-  path.join(repoRoot, "node_modules"),
-  path.join(repoRoot, "packages", "app", "node_modules"),
-];
+const NODE_MODULES_DIRS = ["node_modules", "packages/app/node_modules"];
 
-if (!existsSync(pluginsRoot)) {
-  process.exit(0);
+function readPackageJson(pluginDir) {
+  try {
+    return JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf8"));
+  } catch {
+    return null;
+  }
 }
 
-let linked = 0;
-let alreadyOk = 0;
-let skipped = 0;
+function discoverNativePlugins() {
+  if (!existsSync(PLUGINS_ROOT)) return [];
 
-const removeTarget = (targetDir) => {
-  try {
-    const stat = lstatSync(targetDir);
-    if (stat.isSymbolicLink()) {
-      unlinkSync(targetDir);
-    } else {
-      rmSync(targetDir, { recursive: true, force: true });
-    }
-  } catch {}
-};
+  return readdirSync(PLUGINS_ROOT, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() && entry.name.startsWith(NATIVE_PLUGIN_PREFIX),
+    )
+    .map((entry) => {
+      const dir = join(PLUGINS_ROOT, entry.name);
+      const pkg = readPackageJson(dir);
+      return {
+        dir,
+        legacyName: entry.name.slice(NATIVE_PLUGIN_PREFIX.length),
+        packageName: typeof pkg?.name === "string" ? pkg.name : null,
+      };
+    })
+    .filter((plugin) => plugin.packageName?.startsWith("@elizaos/"));
+}
 
-for (const dirName of readdirSync(pluginsRoot)) {
-  if (!dirName.startsWith("plugin-native-")) continue;
-  const pkgDir = path.join(pluginsRoot, dirName);
-  const pkgJsonPath = path.join(pkgDir, "package.json");
-  if (!existsSync(pkgJsonPath)) {
-    skipped += 1;
-    continue;
-  }
-  let pkgName;
+function sameRealPath(left, right) {
   try {
-    pkgName = JSON.parse(readFileSync(pkgJsonPath, "utf8")).name;
+    return realpathSync(left) === realpathSync(right);
   } catch {
-    skipped += 1;
-    continue;
+    return false;
   }
-  if (typeof pkgName !== "string" || pkgName.length === 0) {
-    skipped += 1;
-    continue;
-  }
+}
 
-  for (const nodeModulesRoot of nodeModulesRoots) {
-    if (!existsSync(nodeModulesRoot)) continue;
-    const targetDir = path.join(nodeModulesRoot, ...pkgName.split("/"));
-    const parentDir = path.dirname(targetDir);
-    // Relative path from the symlink location to the workspace dir, so the
-    // symlink keeps working if node_modules is moved with the repo (it
-    // shouldn't be, but a stable target is more portable than an absolute
-    // /Users/... path).
-    const relativeTarget = path.relative(parentDir, pkgDir);
+function ensureDirSymlink(linkPath, targetDir) {
+  const existing = lstatSync(linkPath, { throwIfNoEntry: false });
+  if (existing) {
+    if (sameRealPath(linkPath, targetDir)) return "skipped";
 
-    // Already a correct symlink? Leave it. Broken symlinks make
-    // existsSync(targetDir) return false, so use lstatSync directly and
-    // repair stale workspace links before creating the new one.
-    let needLink = true;
+    if (!existing.isSymbolicLink()) {
+      return "conflict";
+    }
+
     try {
-      const stat = lstatSync(targetDir);
-      if (stat.isSymbolicLink()) {
-        const currentTarget = realpathSync(targetDir);
-        const expectedTarget = realpathSync(pkgDir);
-        if (currentTarget === expectedTarget) {
-          needLink = false;
-          alreadyOk += 1;
-        } else {
-          removeTarget(targetDir);
-        }
-      } else {
-        // Real directory at the same path — bun installed something
-        // unrelated under the same name. Leave it; printing here would
-        // surface a real conflict.
-        skipped += 1;
+      unlinkSync(linkPath);
+    } catch {
+      return "conflict";
+    }
+  }
+
+  mkdirSync(dirname(linkPath), { recursive: true });
+  symlinkSync(relative(dirname(linkPath), targetDir), linkPath, "dir");
+  return "created";
+}
+
+function main() {
+  const plugins = discoverNativePlugins();
+  const created = [];
+  const skipped = [];
+  const conflicts = [];
+  const missingRoots = [];
+
+  for (const plugin of plugins) {
+    const legacyLink = join(LEGACY_NATIVE_PLUGINS_ROOT, plugin.legacyName);
+    const legacyResult = ensureDirSymlink(legacyLink, plugin.dir);
+    if (legacyResult === "created") {
+      created.push(`packages/native/plugins/${plugin.legacyName}`);
+    } else if (legacyResult === "skipped") {
+      skipped.push(`packages/native/plugins/${plugin.legacyName}`);
+    } else {
+      conflicts.push(`packages/native/plugins/${plugin.legacyName}`);
+    }
+
+    for (const root of NODE_MODULES_DIRS) {
+      const nodeModulesRoot = join(REPO_ROOT, root);
+      if (!existsSync(nodeModulesRoot)) {
+        missingRoots.push(root);
         continue;
       }
-    } catch {
-      // Missing path or broken symlink — remove any stale directory entry
-      // and fall through to (re)create.
-      removeTarget(targetDir);
-    }
 
-    if (needLink) {
-      mkdirSync(parentDir, { recursive: true });
-      try {
-        symlinkSync(relativeTarget, targetDir, "dir");
-        linked += 1;
-      } catch (err) {
-        console.error(
-          `[ensure-native-plugins-linked] failed to link ${pkgName} → ${pkgDir}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+      const packageLink = join(nodeModulesRoot, plugin.packageName);
+      const packageResult = ensureDirSymlink(packageLink, plugin.dir);
+      if (packageResult === "created") {
+        created.push(`${root}/${plugin.packageName}`);
+      } else if (packageResult === "skipped") {
+        skipped.push(`${root}/${plugin.packageName}`);
+      } else {
+        conflicts.push(`${root}/${plugin.packageName}`);
       }
     }
   }
+
+  const missingUnique = new Set(missingRoots);
+  console.log(
+    `[ensure-native-plugins-linked] plugins=${plugins.length} created=${created.length} skipped=${skipped.length} conflicts=${conflicts.length} missing-roots=${missingUnique.size}`,
+  );
+
+  for (const conflict of conflicts) {
+    console.warn(
+      `[ensure-native-plugins-linked] existing non-symlink or unreadable path left unchanged: ${conflict}`,
+    );
+  }
 }
 
-if (linked > 0) {
-  console.log(
-    `[ensure-native-plugins-linked] linked ${linked} workspace package(s); ${alreadyOk} already in place; ${skipped} skipped.`,
-  );
-}
+main();

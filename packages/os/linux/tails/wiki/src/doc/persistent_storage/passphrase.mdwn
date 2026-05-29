@@ -1,0 +1,29 @@
+[[!meta title="Changing the passphrase of the Persistent Storage"]]
+
+To change the passphrase of your Persistent Storage:
+
+1. Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to
+   open the Persistent Storage settings.
+
+1. Click on the **Change Passphrase** button on the left of the title bar.
+
+1. Enter the current passphrase in the **Current Passphrase** text box.
+
+1. Enter your new passphrase in the **New Passphrase** text box.
+
+   <!-- Consider removing after #18736. -->
+
+   <div class="caution">
+   <p>It is impossible to recover your passphrase if you forget it!</p>
+
+   <p>To help you remember your passphrase, you can write it on a piece of
+   paper, store it in your wallet for a few days, and destroy it once
+   you know it well.</p>
+   </div>
+
+1. Enter your new passphrase again in the **Confirm New Passphrase** text box.
+
+1. Click **Change**.
+
+You can now restart Tails and try to unlock the Persistent Storage with the new
+passphrase.

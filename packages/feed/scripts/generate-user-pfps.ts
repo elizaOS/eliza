@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fal } from "@fal-ai/client";
 
 // ── Subjects (animals, mythical creatures, characters) ───────────────
 export const SUBJECTS = [
@@ -255,6 +254,7 @@ function slugify(s: string): string {
 }
 
 async function generateImage(spec: PfpSpec): Promise<void> {
+  const { fal } = await import("@fal-ai/client");
   const filename = `${String(spec.index).padStart(3, "0")}_${slugify(spec.subject)}_${slugify(spec.style)}.png`;
   const outPath = join(OUTPUT_DIR, filename);
 
