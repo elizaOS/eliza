@@ -136,7 +136,9 @@ describe("FirstRunShell", () => {
     await revealPrompt();
 
     expect(screen.getByTestId("first-run-runtime-cloud")).toBeTruthy();
-    expect(screen.queryByPlaceholderText("https://agent.example.com")).toBeNull();
+    expect(
+      screen.queryByPlaceholderText("https://agent.example.com"),
+    ).toBeNull();
     expect(screen.queryByTestId("first-run-runtime-remote")).toBeNull();
   });
 

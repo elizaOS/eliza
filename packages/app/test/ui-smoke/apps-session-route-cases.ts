@@ -38,7 +38,9 @@ function appCardTestId(appName: string): string {
   return `app-card-${appName.replace(/[^a-z0-9]+/gi, "-")}`;
 }
 
-function readyChecksForRoute(routeCase: DirectRouteCase): readonly ReadyCheck[] {
+function readyChecksForRoute(
+  routeCase: DirectRouteCase,
+): readonly ReadyCheck[] {
   if ("readyChecks" in routeCase) return routeCase.readyChecks;
   return [{ selector: routeCase.selector }];
 }
@@ -168,7 +170,8 @@ export const SAFE_APP_TILE_CASES: readonly SafeAppTileCase[] =
         testId: appCardTestId(routeCase.catalogAppName),
         name: `app tile ${routeCase.name}`,
         expectedPath,
-        readyChecks: routeCase.tileReadyChecks ?? readyChecksForRoute(routeCase),
+        readyChecks:
+          routeCase.tileReadyChecks ?? readyChecksForRoute(routeCase),
       },
     ];
   });

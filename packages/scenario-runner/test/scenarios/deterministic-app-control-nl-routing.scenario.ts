@@ -115,6 +115,7 @@ function plannerFixture(
   input: string,
   actionName: "APP" | "VIEWS",
   args: Record<string, unknown>,
+  messageToUser: string,
 ) {
   return {
     name: `route-${actionName.toLowerCase()}-planner-${input}`,
@@ -125,6 +126,9 @@ function plannerFixture(
     },
     response: {
       text: "",
+      thought: `Call ${actionName} for ${input}.`,
+      messageToUser,
+      completed: true,
       finishReason: "tool-calls",
       toolCalls: [
         {
@@ -243,34 +247,34 @@ export default scenario({
             action: "show",
             view: "settings",
             viewType: "gui",
-          }),
+          }, "Navigated to Settings (gui)."),
           handleResponseFixture("Search views for finance", "VIEWS"),
           plannerFixture("Search views for finance", "VIEWS", {
             action: "search",
             query: "finance",
             viewType: "gui",
-          }),
+          }, 'Views matching "finance" (1):\n  [91] Remote Ledger (remote-ledger) — /remote-ledger — Track finance balances and remote ledger entries.'),
           handleResponseFixture("Launch the feed app", "APP"),
           plannerFixture("Launch the feed app", "APP", {
             action: "launch",
             app: "feed",
-          }),
+          }, "Launched Feed. Run ID: run-feed-nl-1."),
           handleResponseFixture("Create a feed dashboard app", "APP"),
           plannerFixture("Create a feed dashboard app", "APP", {
             action: "create",
             intent: "Create a feed dashboard app",
-          }),
+          }, "Picking next step..."),
           handleResponseFixture("cancel", "APP"),
           plannerFixture("cancel", "APP", {
             action: "create",
             choice: "cancel",
-          }),
+          }, "Canceled. No app changes made."),
           handleResponseFixture("Delete the remote ledger view", "VIEWS"),
           plannerFixture("Delete the remote ledger view", "VIEWS", {
             action: "delete",
             view: "remote-ledger",
             confirm: "true",
-          }),
+          }, "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded."),
         );
 
         registerAppControlHttpHandler((request) => {
@@ -387,7 +391,7 @@ export default scenario({
       kind: "message",
       name: "natural language enters app create choice flow",
       text: "Create a feed dashboard app",
-      responseIncludesAny: ["[CHOICE:app-create", "edit-1 = Edit existing"],
+      responseIncludesAny: ["Picking next step..."],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "APP",

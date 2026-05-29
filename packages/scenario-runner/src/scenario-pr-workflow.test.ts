@@ -80,6 +80,10 @@ const deterministicAppControlActionsScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-app-control-actions.scenario.ts",
 );
+const deterministicAppControlNlRoutingScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-app-control-nl-routing.scenario.ts",
+);
 const deterministicScenarioReadmePath = resolve(
   import.meta.dirname,
   "../test/scenarios/README.md",
@@ -102,6 +106,10 @@ describe("scenario PR workflow contract", () => {
     );
     const deterministicAppControlActionsScenario = readFileSync(
       deterministicAppControlActionsScenarioPath,
+      "utf8",
+    );
+    const deterministicAppControlNlRoutingScenario = readFileSync(
+      deterministicAppControlNlRoutingScenarioPath,
       "utf8",
     );
     const deterministicScenarioReadme = readFileSync(
@@ -159,7 +167,12 @@ describe("scenario PR workflow contract", () => {
     ).toContain("SCENARIO_USE_LLM_PROXY=1");
     expect(
       scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
-    ).toContain("deterministic-pr-smoke,deterministic-app-control-actions");
+    ).toContain("SCENARIO_LLM_PROXY_STRICT=1");
+    expect(
+      scenarioRunnerPackage.scripts?.["test:deterministic:e2e"],
+    ).toContain(
+      "deterministic-pr-smoke,deterministic-app-control-actions,deterministic-view-switching,deterministic-app-control-nl-routing",
+    );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
       "SCENARIO_USE_LLM_PROXY",
     );
@@ -240,8 +253,23 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicAppControlActionsScenario).toContain(
       "/api/apps/runs/run-feed-old/stop",
     );
+    expect(deterministicAppControlNlRoutingScenario).toContain(
+      "deterministic-app-control-nl-routing",
+    );
+    expect(deterministicAppControlNlRoutingScenario).toContain(
+      "handleResponseFixture",
+    );
+    expect(deterministicAppControlNlRoutingScenario).toContain(
+      "plannerFixture",
+    );
+    expect(deterministicAppControlNlRoutingScenario).toContain(
+      "ModelType.ACTION_PLANNER",
+    );
+    expect(deterministicAppControlNlRoutingScenario).toContain(
+      "strict natural-language routing hit exact app-control APIs",
+    );
     expect(deterministicScenarioReadme).toContain(
-      "Worker B's strict action/tool registry",
+      "strict Stage 1 and planner fixtures",
     );
     expect(deterministicScenarioReadme).toContain(
       "runtime currently removes `UPDATE_ENTITY`",

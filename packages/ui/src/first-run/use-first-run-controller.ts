@@ -272,15 +272,12 @@ export function useFirstRunController(): FirstRunController {
     }),
     [cloudOnly, initialRuntimeTarget, firstRunName],
   );
-  const persistedFirstRunState = React.useMemo(
-    () => {
-      const state = initialRuntimeTarget
-        ? null
-        : loadPersistedFirstRunState(initialDraft);
-      return cloudOnly && state ? normalizeCloudOnlyFirstRunState(state) : state;
-    },
-    [cloudOnly, initialDraft, initialRuntimeTarget],
-  );
+  const persistedFirstRunState = React.useMemo(() => {
+    const state = initialRuntimeTarget
+      ? null
+      : loadPersistedFirstRunState(initialDraft);
+    return cloudOnly && state ? normalizeCloudOnlyFirstRunState(state) : state;
+  }, [cloudOnly, initialDraft, initialRuntimeTarget]);
   const [step, setStepState] = React.useState<FirstRunStep>(() => {
     if (cloudOnly) return "runtime";
     if (persistedFirstRunState) return persistedFirstRunState.step;

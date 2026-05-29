@@ -1,8 +1,8 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   DIRECT_ROUTE_CASES,
-  SAFE_APP_TILE_CASES,
   escapeRegExp,
+  SAFE_APP_TILE_CASES,
 } from "./apps-session-route-cases";
 import {
   assertReadyChecks,

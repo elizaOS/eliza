@@ -524,7 +524,8 @@ function FirstRunControls(props: {
             emphasis="muted"
             testId="first-run-runtime-remote"
             detail={t("firstrunshell.useAsRemoteDetail", {
-              defaultValue: "Connect to your local machine from another device.",
+              defaultValue:
+                "Connect to your local machine from another device.",
             })}
             onClick={() => {
               props.updateDraft("runtime", "remote");

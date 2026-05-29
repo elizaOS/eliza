@@ -1,17 +1,26 @@
 # Scenario Runner Deterministic PR Catalog
 
 `bun run --cwd packages/scenario-runner test:pr:e2e` runs the zero-cost PR
-catalog with `SCENARIO_USE_LLM_PROXY=1`:
+catalog with `SCENARIO_USE_LLM_PROXY=1` and
+`SCENARIO_LLM_PROXY_STRICT=1`:
 
 - `deterministic-pr-smoke` covers the deterministic LLM proxy reply plus
   VIEWS manager, pin, detached window, and mounted-view interact flows.
 - `deterministic-app-control-actions` covers VIEWS list, search, show, and
   broadcast plus APP list, launch, and relaunch.
+- `deterministic-view-switching` covers every built-in view route through the
+  VIEWS show action.
+- `deterministic-app-control-nl-routing` covers natural-language APP/VIEWS
+  routing with strict Stage 1 and planner fixtures, proving the real message
+  runtime selects APP/VIEWS and then executes the real handlers without a live
+  provider key.
 
-Both scenarios use direct `kind: "action"` turns for runtime action execution
-and assert handler parameters, `ActionResult` fields, and exact loopback
-request/response ledgers. The shared `_helpers/app-control-http-stub.ts`
-wrapper prevents one scenario's loopback stubs from leaking into the next.
+The direct action scenarios assert handler parameters, `ActionResult` fields,
+and exact loopback request/response ledgers. The natural-language scenario
+asserts the same handler side effects after strict `RESPONSE_HANDLER` and
+`ACTION_PLANNER` fixture JSON routes the message through the real runtime. The
+shared `_helpers/app-control-http-stub.ts` wrapper prevents one scenario's
+loopback stubs from leaking into the next.
 
 Live-mode scenario execution remains separate:
 
@@ -24,10 +33,6 @@ requires a real provider key for live natural-language planner runs.
 
 ## Residual Gaps
 
-- Natural-language APP/VIEWS action selection is not part of the deterministic
-  PR catalog yet. The direct action turns prove real handlers and side effects,
-  but deterministic NL routing needs Worker B's strict action/tool registry so
-  a prompt can fail closed when it maps to zero or multiple candidate actions.
 - APP `create`, APP `load_from_directory`, VIEWS `create`, VIEWS `edit`, and
   VIEWS `delete` are still excluded. They need temp repo/plugin fixtures,
   coding-worker fakes, protected-app assertions, and strict registry routing

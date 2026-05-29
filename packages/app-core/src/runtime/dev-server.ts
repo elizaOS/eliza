@@ -3,12 +3,12 @@ const SCRIPT_START = Date.now();
 
 import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
 import { formatError } from "@elizaos/shared/format-error";
+import { setRestartHandler } from "@elizaos/shared/restart";
 import {
   resolveApiToken,
   resolveDesktopApiPort,
   syncResolvedApiPort,
 } from "@elizaos/shared/runtime-env";
-import { setRestartHandler } from "@elizaos/shared/restart";
 import { getLogPrefix } from "@elizaos/shared/utils/log-prefix";
 import {
   formatUncaughtError,

@@ -122,15 +122,15 @@ async function getLocalInferenceRoutes() {
 }
 
 import {
+  isElizaSettingsDebugEnabled,
+  settingsDebugCloudSummary,
+} from "@elizaos/shared/settings-debug";
+import {
   ensureRuntimeSqlCompatibility,
   executeRawSql,
   sanitizeIdentifier,
   sqlLiteral,
 } from "@elizaos/shared/utils/sql-compat";
-import {
-  isElizaSettingsDebugEnabled,
-  settingsDebugCloudSummary,
-} from "@elizaos/shared/settings-debug";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";

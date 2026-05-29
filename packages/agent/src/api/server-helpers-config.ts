@@ -6,16 +6,16 @@ import type http from "node:http";
 import path from "node:path";
 import { logger, sendJsonError } from "@elizaos/core";
 import {
-  FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
-  FIRST_RUN_PROVIDER_CATALOG,
-} from "@elizaos/shared/contracts/first-run-options";
-import {
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
 } from "@elizaos/shared/character-presets";
+import {
+  FIRST_RUN_CLOUD_PROVIDER_OPTIONS,
+  FIRST_RUN_PROVIDER_CATALOG,
+} from "@elizaos/shared/contracts/first-run-options";
 import type { ElizaConfig } from "../config/config.ts";
-import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.ts";
+import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 
 // ---------------------------------------------------------------------------
 // Config redaction

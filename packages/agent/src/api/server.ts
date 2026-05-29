@@ -4373,13 +4373,9 @@ export async function startApiServer(opts?: {
         ? String(rt.agentId)
         : undefined;
     const { validateX402Startup } = await getX402Plugin();
-    const result = validateX402Startup(
-      rt.routes as Route[],
-      rt.character,
-      {
-        agentId,
-      },
-    );
+    const result = validateX402Startup(rt.routes as Route[], rt.character, {
+      agentId,
+    });
     if (!result || typeof result !== "object") {
       logger.warn(
         "[x402] startup validator returned no result; skipping x402 route validation",

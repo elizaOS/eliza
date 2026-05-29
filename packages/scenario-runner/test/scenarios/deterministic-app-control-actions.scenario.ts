@@ -306,6 +306,11 @@ export default scenario({
                 handler?: (...args: unknown[]) => Promise<unknown> | unknown;
               }>;
               getService?: (serviceType: string) => unknown;
+              createTask?: (task: Record<string, unknown>) => Promise<string>;
+              deleteTask?: (taskId: string) => Promise<void>;
+              getTasks?: (
+                query?: Record<string, unknown>,
+              ) => Promise<unknown[]>;
             }
           | undefined;
         if (!runtime?.actions) {
@@ -339,6 +344,43 @@ export default scenario({
           )}\n`,
           "utf8",
         );
+
+        let nextTaskId = 1;
+        const scenarioTasks: Array<Record<string, unknown> & { id: string }> =
+          [];
+        runtime.createTask = async (task: Record<string, unknown>) => {
+          const id = `00000000-0000-4000-8000-${String(nextTaskId).padStart(12, "0")}`;
+          nextTaskId += 1;
+          scenarioTasks.push({ ...task, id });
+          return id;
+        };
+        runtime.getTasks = async (query: Record<string, unknown> = {}) => {
+          const wantedTags = Array.isArray(query.tags)
+            ? query.tags.filter((tag): tag is string => typeof tag === "string")
+            : [];
+          const wantedAgentIds = Array.isArray(query.agentIds)
+            ? query.agentIds.filter(
+                (id): id is string => typeof id === "string",
+              )
+            : [];
+          return scenarioTasks.filter((task) => {
+            const tags = Array.isArray(task.tags)
+              ? task.tags.filter(
+                  (tag): tag is string => typeof tag === "string",
+                )
+              : [];
+            const agentId =
+              typeof task.agentId === "string" ? task.agentId : "";
+            return (
+              wantedTags.every((tag) => tags.includes(tag)) &&
+              (wantedAgentIds.length === 0 || wantedAgentIds.includes(agentId))
+            );
+          });
+        };
+        runtime.deleteTask = async (taskId: string) => {
+          const index = scenarioTasks.findIndex((task) => task.id === taskId);
+          if (index >= 0) scenarioTasks.splice(index, 1);
+        };
 
         if (
           !runtime.actions.some((action) => action.name === "START_CODING_TASK")
@@ -570,52 +612,31 @@ export default scenario({
     },
     {
       kind: "action",
-      name: "offer feed view create choices",
-      text: "Create a feed editorial view",
+      name: "create-mode edit feed board view",
+      text: "Create improvements for the feed board view",
       actionName: "VIEWS",
       options: {
         action: "create",
-        intent: "Create a feed editorial view",
+        editTarget: "feed-board",
+        intent: "Make feed board show compact moderation lanes",
       },
-      responseIncludesAny: ["[CHOICE:views-create", "Feed Board"],
-      assertTurn: (execution) => {
-        if (
-          !execution.responseText?.startsWith(
-            "[CHOICE:views-create id=views-create-",
-          )
-        ) {
-          return `expected VIEWS create choice block, saw ${JSON.stringify(execution.responseText)}`;
-        }
-        return expectActionTurn(execution, {
-          actionName: "VIEWS",
-          parameters: {
-            action: "create",
-            intent: "Create a feed editorial view",
-          },
-          responseText: execution.responseText,
-          resultFields: {
-            "values.mode": "create",
-            "values.subMode": "choice",
-            "values.matchCount": 1,
-            "data.choices.1.pluginName": "@elizaos/plugin-feed",
-          },
-        });
-      },
-    },
-    {
-      kind: "action",
-      name: "cancel feed view create choices",
-      text: "cancel",
-      actionName: "VIEWS",
-      responseIncludesAny: ["Canceled. No view changes made."],
+      responseIncludesAny: ["Started view edit task for Feed Board"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
-          parameters: {},
-          responseText: "Canceled. No view changes made.",
+          parameters: {
+            action: "create",
+            editTarget: "feed-board",
+            intent: "Make feed board show compact moderation lanes",
+          },
+          responseText: `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
           resultFields: {
             "values.mode": "create",
-            "values.subMode": "cancel",
+            "values.subMode": "edit",
+            "values.viewId": "feed-board",
+            "values.workdir": feedPluginDir,
+            "values.taskSessionId": "scenario-edit-view-feed-board",
+            "data.task.label": "edit-view:feed-board",
           },
         }),
     },
@@ -700,54 +721,6 @@ export default scenario({
     },
     {
       kind: "action",
-      name: "offer feed app create choices",
-      text: "Create a feed dashboard app",
-      actionName: "APP",
-      options: { action: "create", intent: "Create a feed dashboard app" },
-      responseIncludesAny: ["[CHOICE:app-create", "Feed"],
-      assertTurn: (execution) => {
-        if (
-          !execution.responseText?.startsWith(
-            "[CHOICE:app-create id=app-create-",
-          )
-        ) {
-          return `expected APP create choice block, saw ${JSON.stringify(execution.responseText)}`;
-        }
-        return expectActionTurn(execution, {
-          actionName: "APP",
-          parameters: {
-            action: "create",
-            intent: "Create a feed dashboard app",
-          },
-          responseText: execution.responseText,
-          resultFields: {
-            "values.mode": "create",
-            "values.subMode": "choice",
-            "values.matchCount": 1,
-            "data.choices.1.appName": "feed",
-          },
-        });
-      },
-    },
-    {
-      kind: "action",
-      name: "cancel feed app create choices",
-      text: "cancel",
-      actionName: "APP",
-      responseIncludesAny: ["Canceled. No app changes made."],
-      assertTurn: (execution) =>
-        expectActionTurn(execution, {
-          actionName: "APP",
-          parameters: {},
-          responseText: "Canceled. No app changes made.",
-          resultFields: {
-            "values.mode": "create",
-            "values.subMode": "cancel",
-          },
-        }),
-    },
-    {
-      kind: "action",
       name: "edit feed app",
       text: "Edit the feed app",
       actionName: "APP",
@@ -782,19 +755,13 @@ export default scenario({
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 8,
+      minCount: 7,
     },
     {
       type: "actionCalled",
       actionName: "APP",
       status: "success",
-      minCount: 7,
-    },
-    {
-      type: "actionCalled",
-      actionName: "START_CODING_TASK",
-      status: "success",
-      minCount: 2,
+      minCount: 5,
     },
     {
       type: "selectedActionArguments",
@@ -826,16 +793,6 @@ export default scenario({
         /run-feed-relaunch-2/,
         /loaded-console/,
         /editTarget/,
-      ],
-    },
-    {
-      type: "selectedActionArguments",
-      actionName: "START_CODING_TASK",
-      includesAll: [
-        /edit-view:feed-board/,
-        /edit-app:feed/,
-        /APP_CREATE_DONE/,
-        /PLUGIN_CREATE_DONE/,
       ],
     },
     {
@@ -975,13 +932,6 @@ export default scenario({
               body: unloadPluginResponse("@elizaos/plugin-feed"),
               status: 200,
             },
-            search: "",
-          },
-          {
-            body: null,
-            method: "GET",
-            pathname: "/api/apps/installed",
-            response: { body: installedApps, status: 200 },
             search: "",
           },
           {

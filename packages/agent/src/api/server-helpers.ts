@@ -20,13 +20,13 @@ import {
   sendJsonError,
   type UUID,
 } from "@elizaos/core";
-import type { ConversationMetadata } from "@elizaos/shared/contracts/conversation-routes";
 import {
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared/character-presets";
+import type { ConversationMetadata } from "@elizaos/shared/contracts/conversation-routes";
 import {
   normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
