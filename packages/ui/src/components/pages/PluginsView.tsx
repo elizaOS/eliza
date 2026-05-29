@@ -226,10 +226,19 @@ function PluginListView({
 
   const allowCustomOrder = !isSocialMode;
 
-  // Load plugins on mount
+  // Load plugins on mount — exactly once. `ensurePluginsLoaded` is recreated
+  // whenever the underlying `pluginsLoaded` flag flips (its useCallback depends
+  // on it), so depending on its identity here re-fires the effect on every such
+  // change and, combined with context re-renders, produces a render storm. Read
+  // the latest callback through a ref and gate on a one-shot flag instead.
+  const ensurePluginsLoadedRef = useRef(ensurePluginsLoaded);
+  ensurePluginsLoadedRef.current = ensurePluginsLoaded;
+  const didLoadPluginsRef = useRef(false);
   useEffect(() => {
-    void ensurePluginsLoaded();
-  }, [ensurePluginsLoaded]);
+    if (didLoadPluginsRef.current) return;
+    didLoadPluginsRef.current = true;
+    void ensurePluginsLoadedRef.current();
+  }, []);
 
   // Listen for install progress events via WebSocket
   useEffect(() => {

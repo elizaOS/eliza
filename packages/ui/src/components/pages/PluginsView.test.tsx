@@ -127,4 +127,43 @@ describe("PluginsView", () => {
       expect.any(Function),
     );
   });
+
+  // Regression: the real `ensurePluginsLoaded` from useApp() is a useCallback
+  // whose identity changes whenever the `pluginsLoaded` flag flips (it lists
+  // pluginsLoaded as a dep). Before the fix, the mount effect depended on that
+  // callback's identity, so each identity change re-fired the effect — and,
+  // combined with context-driven re-renders, this loaded plugins on a loop and
+  // tripped the render guard ("Loading…" storm). The mount load must run once
+  // regardless of how many times the callback identity changes or the tree
+  // re-renders.
+  it("loads plugins exactly once even when ensurePluginsLoaded identity churns across re-renders", async () => {
+    const ensureCalls = { count: 0 };
+    // Each render hands PluginsView a brand-new ensurePluginsLoaded, mimicking
+    // the unstable useCallback identity in the real app context.
+    const makeUnstableContext = () =>
+      makeContext({
+        ensurePluginsLoaded: vi.fn(async () => {
+          ensureCalls.count += 1;
+        }),
+      });
+
+    appMock.value = makeUnstableContext();
+    const view = render(<PluginsView />);
+
+    await waitFor(() => {
+      expect(ensureCalls.count).toBe(1);
+    });
+
+    // Force several re-renders with fresh callback identities. The one-shot
+    // guard must prevent any additional invocations.
+    for (let i = 0; i < 5; i += 1) {
+      appMock.value = makeUnstableContext();
+      view.rerender(<PluginsView />);
+    }
+
+    // Let any (incorrectly-armed) effects flush.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(ensureCalls.count).toBe(1);
+  });
 });

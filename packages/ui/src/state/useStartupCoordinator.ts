@@ -56,6 +56,14 @@ import {
   type StartingRuntimeDeps,
 } from "./startup-phase-runtime";
 
+// Auto-recovery backoff: probe the backend after a transient startup error,
+// backing off 2.5s → 5s → 10s → 20s → cap 30s, and give up after a bounded
+// number of attempts so a genuinely-down backend stops thrashing and the user
+// falls back to the manual Retry button.
+const RECOVERY_BASE_DELAY_MS = 2_500;
+const RECOVERY_MAX_DELAY_MS = 30_000;
+const RECOVERY_MAX_ATTEMPTS = 8;
+
 function isRecoverableStartupErrorReason(reason: StartupErrorReason): boolean {
   return (
     reason === "backend-timeout" ||
@@ -286,6 +294,9 @@ export function useStartupCoordinator(
   // health/status routes are ready. Once the backend later reports a running
   // agent, recover automatically instead of leaving the user stuck on the
   // startup failure card until they manually press Retry.
+  const errorReason: StartupErrorReason | null =
+    state.phase === "error" ? state.reason : null;
+
   useEffect(() => {
     if (state.phase !== "error" || !depsReady) return;
     if (!isRecoverableStartupErrorReason(state.reason)) return;
@@ -295,20 +306,44 @@ export function useStartupCoordinator(
     if (!currentDeps) return;
     const cancelled = { current: false };
 
-    const attemptRecovery = () => {
-      void recoverTerminalStartupError(currentDeps, dispatch, cancelled).catch(
-        () => {},
+    // Schedule probes with exponential backoff (2.5s → cap 30s) and stop after
+    // a fixed number of attempts. Depending on `[state, ...]` here would
+    // re-arm this loop on every dispatch (each mints a new state object),
+    // turning a degraded backend into a perpetual probe storm that re-renders
+    // every useApp() consumer. Gate on the specific primitives the effect uses;
+    // other state fields are read through depsRef when a probe fires.
+    let timer = 0;
+    let attempt = 0;
+    const scheduleNext = () => {
+      if (cancelled.current || attempt >= RECOVERY_MAX_ATTEMPTS) return;
+      const delay = Math.min(
+        RECOVERY_BASE_DELAY_MS * 2 ** attempt,
+        RECOVERY_MAX_DELAY_MS,
       );
+      attempt += 1;
+      timer = window.setTimeout(() => {
+        void recoverTerminalStartupError(currentDeps, dispatch, cancelled)
+          .then((recovered) => {
+            // On success the dispatched event transitions out of "error", which
+            // tears down this effect. Otherwise keep probing under backoff until
+            // the attempt cap is reached, leaving the user-actionable Retry path.
+            if (!recovered) scheduleNext();
+          })
+          .catch(() => {
+            scheduleNext();
+          });
+      }, delay);
     };
 
-    attemptRecovery();
-    const interval = window.setInterval(attemptRecovery, 2_500);
+    scheduleNext();
 
     return () => {
       cancelled.current = true;
-      window.clearInterval(interval);
+      if (timer) window.clearTimeout(timer);
     };
-  }, [state, depsReady]);
+    // `reason` exists only on the error variant; for other phases this is
+    // undefined, which is fine — the effect body early-returns on non-error.
+  }, [state.phase, errorReason, depsReady]);
 
   // ── Public interface ─────────────────────────────────────────────
 

@@ -77,6 +77,8 @@ const MEMORY_FEED_EMPTY_FEATURES = [
 ] as const;
 
 const FEED_PAGE_SIZE = 50;
+/** Max retained feed items (10 pages) so long sessions stay bounded. */
+const FEED_MAX_ITEMS = 500;
 const BROWSE_PAGE_SIZE = 50;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -199,7 +201,10 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
           before,
         });
         if (before) {
-          setFeed((prev) => [...prev, ...result.memories]);
+          // Cap retained items so a long pagination session can't grow the
+          // feed unboundedly. 500 covers many pages of scrollback while
+          // bounding memory; older items drop off the top.
+          setFeed((prev) => [...prev, ...result.memories].slice(-FEED_MAX_ITEMS));
         } else {
           setFeed(result.memories);
         }
