@@ -568,3 +568,35 @@ export interface AdminModerationActionResponse {
   message: string;
   admin?: Pick<AdminUserDto, "id" | "walletAddress" | "role">;
 }
+
+// API-route discovery DTOs (merged from develop; consumed by
+// cloud-ui/components/docs/api-route-explorer-client.tsx).
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | "HEAD";
+
+export interface ApiRouteMetaDto {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  requiresAuth: boolean;
+  pricing?: string | { type?: string; [key: string]: unknown };
+  rateLimit?:
+    | string
+    | { requests: number; window: string; [key: string]: unknown };
+  tags?: string[];
+}
+
+export interface DiscoveredApiRouteDto {
+  path: string;
+  methods: HttpMethod[];
+  filePath: string;
+  meta?: ApiRouteMetaDto;
+  metaByMethod?: Partial<Record<HttpMethod, ApiRouteMetaDto>>;
+}
