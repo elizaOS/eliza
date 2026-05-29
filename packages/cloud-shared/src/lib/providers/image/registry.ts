@@ -1,4 +1,5 @@
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
+import { openRouterImageProvider } from "./openrouter-image-generation";
 import type { ImageProvider } from "./types";
 
 const PROVIDERS = new Map<PricingBillingSource, ImageProvider>();
@@ -14,3 +15,5 @@ export function getImageProvider(billingSource: PricingBillingSource): ImageProv
   }
   return provider;
 }
+
+registerImageProvider(openRouterImageProvider);
