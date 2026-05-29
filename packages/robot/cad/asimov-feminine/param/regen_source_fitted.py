@@ -75,10 +75,29 @@ for _k in list(SLIM.keys()):
 # Y-axis drums across their z-span).
 TORSO = dict(
     cinch_y_min=0.82, cinch_z=0.135, cinch_sigma=0.075,   # waist width (Y)
-    bust_gain=1.30, bust_z=0.180, bust_sigma=0.055, bust_halfdeg=66.0,
     back_in=0.94, back_z=0.150, back_sigma=0.07, back_halfdeg=45.0,
     z_lo=0.02, z_hi=0.235,   # shaping confined between pelvis skirt and shoulders
 )
+
+# Two breast effectors: localized outward (+X) mounds at (+-Y0, Z0) with a 2-D
+# Gaussian falloff, gated to the front face so the lateral +-Y drums are untouched.
+# This gives two DISTINCT breasts instead of a single centre ridge.
+BREAST = dict(
+    amp=0.030,        # peak +X projection (m)
+    y0=0.050,         # lateral offset of each mound centre (m)
+    z0=0.190,         # height of the mounds (m)
+    sigma_y=0.034, sigma_z=0.045,
+    front_halfdeg=70.0,
+)
+
+# Surface features to erase by masked Laplacian smoothing (fills shallow
+# engravings without touching the rest of the shell). Boxes in link-local m.
+FEATURE_BOXES = dict(
+    chest_M=dict(x=(0.02, 0.12), y=(-0.045, 0.045), z=(0.150, 0.205), iters=40),
+    back_text=dict(x=(-0.12, -0.02), y=(-0.075, 0.075), z=(0.060, 0.170), iters=30),
+)
+# Handle: a grab-bar with a tunnel on the upper back; delete + cap to remove it.
+HANDLE_BOX = dict(x=(-0.115, -0.060), y=(-0.075, 0.075), z=(0.185, 0.285))
 
 
 def _slice_centroids(v, axis_z, lo, hi, step=0.005):

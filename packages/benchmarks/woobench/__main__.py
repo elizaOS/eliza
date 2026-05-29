@@ -109,7 +109,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--agent",
-        choices=["dummy", "dummy-charge", "eliza", "hermes", "openclaw"],
+        choices=["dummy", "dummy-charge", "eliza", "hermes", "openclaw", "smithers"],
         default="eliza",
         help=(
             "Agent under test. 'dummy' returns a fixed string (smoke test only). "
@@ -330,6 +330,13 @@ async def _run(args: argparse.Namespace) -> None:
         from openclaw_adapter.woobench import build_openclaw_woobench_agent_fn
 
         agent_fn = build_openclaw_woobench_agent_fn(model_name=args.model)
+    elif args.agent == "smithers":
+        _configure_bridge_model_env(args.model)
+        os.environ["BENCHMARK_HARNESS"] = "smithers"
+        os.environ["ELIZA_BENCH_HARNESS"] = "smithers"
+        from smithers_adapter.woobench import build_smithers_woobench_agent_fn
+
+        agent_fn = build_smithers_woobench_agent_fn(model_name=args.model)
     elif args.agent == "dummy-charge":
         agent_fn = _create_dummy_charge_agent(
             amount_usd=args.dummy_charge_amount,

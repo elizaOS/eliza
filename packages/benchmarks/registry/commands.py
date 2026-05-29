@@ -1616,7 +1616,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         payment_mode = extra.get("payment") is True or extra.get("payments") is True
         if agent_raw == "dummy" or extra.get("mock") is True or provider_lower == "mock":
             args.extend(["--agent", "dummy-charge" if payment_mode else "dummy"])
-        elif agent in {"eliza", "hermes", "openclaw"}:
+        elif agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--agent", agent])
         else:
             args.extend(["--agent", "eliza"])

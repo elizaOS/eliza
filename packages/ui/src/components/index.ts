@@ -219,6 +219,7 @@ export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
 // AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
+export * from "./pages/ChatModalView";
 export * from "./pages/ChatView";
 export * from "./pages/ConfigPageView";
 export * from "./pages/DatabasePageView";
