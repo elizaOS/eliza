@@ -15,38 +15,31 @@ import { ModelType, resolveStateDir } from "@elizaos/core";
  * Falls back to `npm` when no lockfile is present.
  */
 export function detectPackageManager(workdir) {
-    let current = path.resolve(workdir);
-    while (true) {
-        if (existsSync(path.join(current, "bun.lock")))
-            return "bun";
-        if (existsSync(path.join(current, "bun.lockb")))
-            return "bun";
-        if (existsSync(path.join(current, "package-lock.json")))
-            return "npm";
-        if (existsSync(path.join(current, "yarn.lock")))
-            return "npm"; // best fallback
-        const parent = path.dirname(current);
-        if (parent === current)
-            break;
-        current = parent;
-    }
-    return "npm";
+	let current = path.resolve(workdir);
+	while (true) {
+		if (existsSync(path.join(current, "bun.lock"))) return "bun";
+		if (existsSync(path.join(current, "bun.lockb"))) return "bun";
+		if (existsSync(path.join(current, "package-lock.json"))) return "npm";
+		if (existsSync(path.join(current, "yarn.lock"))) return "npm"; // best fallback
+		const parent = path.dirname(current);
+		if (parent === current) break;
+		current = parent;
+	}
+	return "npm";
 }
 /**
  * UTF-8 safe truncation. Appends a `...truncated N chars` suffix when the
  * input exceeds `max`.
  */
 export function truncate(text, max) {
-    if (typeof text !== "string")
-        return "";
-    // Use Array.from to count Unicode code points so we don't slice a
-    // surrogate pair in half.
-    const codePoints = Array.from(text);
-    if (codePoints.length <= max)
-        return text;
-    const head = codePoints.slice(0, max).join("");
-    const dropped = codePoints.length - max;
-    return `${head}\n...truncated ${dropped} chars`;
+	if (typeof text !== "string") return "";
+	// Use Array.from to count Unicode code points so we don't slice a
+	// surrogate pair in half.
+	const codePoints = Array.from(text);
+	if (codePoints.length <= max) return text;
+	const head = codePoints.slice(0, max).join("");
+	const dropped = codePoints.length - max;
+	return `${head}\n...truncated ${dropped} chars`;
 }
 /**
  * Parse `tsc --noEmit` style output. Both stdout and stderr can carry the
@@ -55,26 +48,25 @@ export function truncate(text, max) {
  * Format: `path/to/file.ts(line,col): error TS1234: message`
  */
 export function parseTscOutput(output) {
-    if (!output)
-        return [];
-    const diagnostics = [];
-    const re = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:\s+(.+)$/gm;
-    let match;
-    match = re.exec(output);
-    while (match !== null) {
-        const [, file, lineStr, colStr, severity, message] = match;
-        if (file && lineStr && colStr && severity && message) {
-            diagnostics.push({
-                file,
-                line: Number.parseInt(lineStr, 10),
-                column: Number.parseInt(colStr, 10),
-                message: message.trim(),
-                severity: severity === "warning" ? "warning" : "error",
-            });
-        }
-        match = re.exec(output);
-    }
-    return diagnostics;
+	if (!output) return [];
+	const diagnostics = [];
+	const re = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:\s+(.+)$/gm;
+	let match;
+	match = re.exec(output);
+	while (match !== null) {
+		const [, file, lineStr, colStr, severity, message] = match;
+		if (file && lineStr && colStr && severity && message) {
+			diagnostics.push({
+				file,
+				line: Number.parseInt(lineStr, 10),
+				column: Number.parseInt(colStr, 10),
+				message: message.trim(),
+				severity: severity === "warning" ? "warning" : "error",
+			});
+		}
+		match = re.exec(output);
+	}
+	return diagnostics;
 }
 /**
  * Parse eslint stylish output (the default for `eslint .`). Bails to `[]`
@@ -88,41 +80,41 @@ export function parseTscOutput(output) {
  * ```
  */
 export function parseEslintOutput(output) {
-    if (!output)
-        return [];
-    const diagnostics = [];
-    const lines = output.split(/\r?\n/);
-    let currentFile = null;
-    const issueRe = /^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)(?:\s+([\w@/-]+))?\s*$/;
-    for (const line of lines) {
-        if (!line.trim()) {
-            currentFile = null;
-            continue;
-        }
-        // Absolute or repo-relative path on its own line.
-        if (!line.startsWith(" ") &&
-            (line.startsWith("/") ||
-                /^[A-Za-z]:[\\/]/.test(line) ||
-                line.includes("/")) &&
-            !issueRe.test(line)) {
-            currentFile = line.trim();
-            continue;
-        }
-        const match = issueRe.exec(line);
-        if (!match || !currentFile)
-            continue;
-        const [, lineStr, colStr, severity, message] = match;
-        if (!lineStr || !colStr || !severity || !message)
-            continue;
-        diagnostics.push({
-            file: currentFile,
-            line: Number.parseInt(lineStr, 10),
-            column: Number.parseInt(colStr, 10),
-            message: message.trim(),
-            severity: severity === "warning" ? "warning" : "error",
-        });
-    }
-    return diagnostics;
+	if (!output) return [];
+	const diagnostics = [];
+	const lines = output.split(/\r?\n/);
+	let currentFile = null;
+	const issueRe =
+		/^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)(?:\s+([\w@/-]+))?\s*$/;
+	for (const line of lines) {
+		if (!line.trim()) {
+			currentFile = null;
+			continue;
+		}
+		// Absolute or repo-relative path on its own line.
+		if (
+			!line.startsWith(" ") &&
+			(line.startsWith("/") ||
+				/^[A-Za-z]:[\\/]/.test(line) ||
+				line.includes("/")) &&
+			!issueRe.test(line)
+		) {
+			currentFile = line.trim();
+			continue;
+		}
+		const match = issueRe.exec(line);
+		if (!match || !currentFile) continue;
+		const [, lineStr, colStr, severity, message] = match;
+		if (!lineStr || !colStr || !severity || !message) continue;
+		diagnostics.push({
+			file: currentFile,
+			line: Number.parseInt(lineStr, 10),
+			column: Number.parseInt(colStr, 10),
+			message: message.trim(),
+			severity: severity === "warning" ? "warning" : "error",
+		});
+	}
+	return diagnostics;
 }
 /**
  * Parse a vitest summary block. Vitest writes a `Test Files`/`Tests` block
@@ -133,58 +125,61 @@ export function parseEslintOutput(output) {
  * Returns zeroed counts on unrecognized output rather than throwing.
  */
 export function parseVitestOutput(output) {
-    const summary = { passed: 0, failed: 0, failures: [] };
-    if (!output)
-        return summary;
-    const testsLine = /^\s*Tests\s+(?:(\d+)\s+failed)?[\s|]*?(?:(\d+)\s+passed)?/m;
-    const match = testsLine.exec(output);
-    if (match) {
-        summary.failed = match[1] ? Number.parseInt(match[1], 10) : 0;
-        summary.passed = match[2] ? Number.parseInt(match[2], 10) : 0;
-    }
-    // Vitest prints `× <test name>` lines for failing tests in default reporter.
-    const failureRe = /^\s*[×✗xX]\s+(.+?)(?:\s+\d+ms)?$/gm;
-    let failureMatch;
-    const seen = new Set();
-    failureMatch = failureRe.exec(output);
-    while (failureMatch !== null) {
-        const name = failureMatch[1]?.trim();
-        if (name && !seen.has(name)) {
-            seen.add(name);
-            summary.failures.push(name);
-        }
-        failureMatch = failureRe.exec(output);
-    }
-    if (summary.failed === 0 && summary.failures.length > 0) {
-        summary.failed = summary.failures.length;
-    }
-    return summary;
+	const summary = { passed: 0, failed: 0, failures: [] };
+	if (!output) return summary;
+	const testsLine =
+		/^\s*Tests\s+(?:(\d+)\s+failed)?[\s|]*?(?:(\d+)\s+passed)?/m;
+	const match = testsLine.exec(output);
+	if (match) {
+		summary.failed = match[1] ? Number.parseInt(match[1], 10) : 0;
+		summary.passed = match[2] ? Number.parseInt(match[2], 10) : 0;
+	}
+	// Vitest prints `× <test name>` lines for failing tests in default reporter.
+	const failureRe = /^\s*[×✗xX]\s+(.+?)(?:\s+\d+ms)?$/gm;
+	let failureMatch;
+	const seen = new Set();
+	failureMatch = failureRe.exec(output);
+	while (failureMatch !== null) {
+		const name = failureMatch[1]?.trim();
+		if (name && !seen.has(name)) {
+			seen.add(name);
+			summary.failures.push(name);
+		}
+		failureMatch = failureRe.exec(output);
+	}
+	if (summary.failed === 0 && summary.failures.length > 0) {
+		summary.failed = summary.failures.length;
+	}
+	return summary;
 }
 /**
  * Resolve the root state directory honoring `ELIZA_STATE_DIR` >
  * `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence.
  */
 export function getStateDir() {
-    return resolveStateDir();
+	return resolveStateDir();
 }
 /**
  * Ensure `<stateDir>/app-verifications/<runId>/` exists and return the path.
  */
 export async function ensureVerificationDir(runId) {
-    const dir = path.join(getStateDir(), "app-verifications", runId);
-    await mkdir(dir, { recursive: true });
-    return dir;
+	const dir = path.join(getStateDir(), "app-verifications", runId);
+	await mkdir(dir, { recursive: true });
+	return dir;
 }
 function resolveLoopbackApiBase() {
-    const port = process.env.ELIZA_API_PORT?.trim() ||
-        process.env.ELIZA_PORT?.trim() ||
-        "31337";
-    return `http://127.0.0.1:${port}`;
+	const port =
+		process.env.ELIZA_API_PORT?.trim() ||
+		process.env.ELIZA_PORT?.trim() ||
+		"31337";
+	return `http://127.0.0.1:${port}`;
 }
 function resolveDevApiToken() {
-    return (process.env.ELIZA_API_TOKEN?.trim() ||
-        process.env.ELIZA_API_AUTH_TOKEN?.trim() ||
-        undefined);
+	return (
+		process.env.ELIZA_API_TOKEN?.trim() ||
+		process.env.ELIZA_API_AUTH_TOKEN?.trim() ||
+		undefined
+	);
 }
 /**
  * Capture a desktop screenshot via the dev `/api/dev/cursor-screenshot`
@@ -193,37 +188,34 @@ function resolveDevApiToken() {
  * a hard failure.
  */
 export async function captureScreenshotViaDevApi(token) {
-    const bearer = token ?? resolveDevApiToken();
-    const url = `${resolveLoopbackApiBase()}/api/dev/cursor-screenshot`;
-    let response;
-    try {
-        response = await fetch(url, {
-            headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
-            signal: AbortSignal.timeout(10_000),
-        });
-    }
-    catch {
-        return null;
-    }
-    if (!response.ok)
-        return null;
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length === 0)
-        return null;
-    return Buffer.from(bytes);
+	const bearer = token ?? resolveDevApiToken();
+	const url = `${resolveLoopbackApiBase()}/api/dev/cursor-screenshot`;
+	let response;
+	try {
+		response = await fetch(url, {
+			headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
+			signal: AbortSignal.timeout(10_000),
+		});
+	} catch {
+		return null;
+	}
+	if (!response.ok) return null;
+	const bytes = new Uint8Array(await response.arrayBuffer());
+	if (bytes.length === 0) return null;
+	return Buffer.from(bytes);
 }
 function extractImageDescription(raw) {
-    if (typeof raw === "string") {
-        const trimmed = raw.trim();
-        return trimmed.length > 0 ? trimmed : undefined;
-    }
-    if (raw && typeof raw === "object") {
-        const description = raw.description;
-        if (typeof description === "string" && description.trim().length > 0) {
-            return description.trim();
-        }
-    }
-    return undefined;
+	if (typeof raw === "string") {
+		const trimmed = raw.trim();
+		return trimmed.length > 0 ? trimmed : undefined;
+	}
+	if (raw && typeof raw === "object") {
+		const description = raw.description;
+		if (typeof description === "string" && description.trim().length > 0) {
+			return description.trim();
+		}
+	}
+	return undefined;
 }
 /**
  * Ask the runtime's vision model to describe a screenshot. Returns
@@ -231,25 +223,25 @@ function extractImageDescription(raw) {
  * advisory metadata, never gating verification on its presence.
  */
 export async function describeScreenshotWithVision(runtime, imagePath, prompt) {
-    try {
-        const fs = await import("node:fs/promises");
-        const bytes = await fs.readFile(imagePath);
-        const dataUri = `data:image/png;base64,${bytes.toString("base64")}`;
-        const runModel = runtime.useModel.bind(runtime);
-        const raw = (await runModel(ModelType.IMAGE_DESCRIPTION, {
-            imageUrl: dataUri,
-            prompt: prompt ??
-                [
-                    "task: describe_app_screenshot",
-                    "focus: visible UI, error banners, obvious failure states",
-                    "length: brief",
-                    "output: plain description",
-                ].join("\n"),
-        }));
-        return extractImageDescription(raw);
-    }
-    catch {
-        return undefined;
-    }
+	try {
+		const fs = await import("node:fs/promises");
+		const bytes = await fs.readFile(imagePath);
+		const dataUri = `data:image/png;base64,${bytes.toString("base64")}`;
+		const runModel = runtime.useModel.bind(runtime);
+		const raw = await runModel(ModelType.IMAGE_DESCRIPTION, {
+			imageUrl: dataUri,
+			prompt:
+				prompt ??
+				[
+					"task: describe_app_screenshot",
+					"focus: visible UI, error banners, obvious failure states",
+					"length: brief",
+					"output: plain description",
+				].join("\n"),
+		});
+		return extractImageDescription(raw);
+	} catch {
+		return undefined;
+	}
 }
 //# sourceMappingURL=verification-helpers.js.map
