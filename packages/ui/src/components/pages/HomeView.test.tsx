@@ -52,6 +52,8 @@ const controllerMock = vi.hoisted(() => ({
     recording: false,
     send: vi.fn(),
     toggleRecording: vi.fn(),
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(),
   },
 }));
 
@@ -78,6 +80,9 @@ afterEach(() => {
   cleanup();
   controllerMock.value.send.mockClear();
   controllerMock.value.toggleRecording.mockClear();
+  controllerMock.value.startRecording.mockClear();
+  controllerMock.value.stopRecording.mockClear();
+  controllerMock.value.recording = false;
   controllerMock.value.canSend = true;
   controllerMock.value.modelStatus = { ...NOT_REQUIRED_STATUS };
   backgroundRenders.count = 0;
@@ -214,22 +219,56 @@ describe("HomeView", () => {
     expect(panel.textContent).toContain("checksum mismatch");
   });
 
-  it("starts voice input from the home surface", () => {
+  it("renders the mic as the trailing control and opens voice on a quick tap", () => {
     render(<HomeView />);
 
     const input = screen.getByTestId("home-chat-input");
-    const voiceToggle = screen.getByRole("button", {
-      name: "Start voice input",
-    });
-    expect(voiceToggle.textContent).toBe("Not listening");
-    expect(voiceToggle.querySelector("svg")).toBeNull();
+    const mic = screen.getByRole("button", { name: "Start voice input" });
+    // The mic is a visual icon control that trails the text input in DOM order.
+    expect(mic.querySelector("svg")).not.toBeNull();
     expect(
-      voiceToggle.compareDocumentPosition(input) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      input.compareDocumentPosition(mic) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
-    fireEvent.click(voiceToggle);
-
+    // A quick (keyboard/synthetic) tap toggles open-voice capture — it must not
+    // start a push-to-talk session.
+    fireEvent.click(mic);
     expect(controllerMock.value.toggleRecording).toHaveBeenCalledTimes(1);
+    expect(controllerMock.value.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("push-to-talk records for the duration of the hold", () => {
+    vi.useFakeTimers();
+    try {
+      render(<HomeView />);
+      const mic = screen.getByRole("button", { name: "Start voice input" });
+
+      fireEvent.pointerDown(mic, { pointerId: 1, button: 0 });
+      // Held past the push-to-talk threshold (200ms) → capture begins.
+      vi.advanceTimersByTime(300);
+      expect(controllerMock.value.startRecording).toHaveBeenCalledTimes(1);
+
+      fireEvent.pointerUp(mic, { pointerId: 1, button: 0 });
+      // Release ends capture and must not also fire an open-voice toggle.
+      expect(controllerMock.value.stopRecording).toHaveBeenCalledTimes(1);
+      expect(controllerMock.value.toggleRecording).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("morphs the mic into a send button once the user types", () => {
+    render(<HomeView />);
+
+    expect(screen.queryByRole("button", { name: "Send message" })).toBeNull();
+
+    const input = screen.getByTestId("home-chat-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+
+    // The mic is replaced by send; there is a single morphing trailing control.
+    expect(
+      screen.queryByRole("button", { name: "Start voice input" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeTruthy();
   });
 });
