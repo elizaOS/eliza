@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { isAbsolute, relative } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -101,8 +101,18 @@ function parseNameStatus(out: string | undefined): string[] {
 function toWorkdirRelative(workdir: string, file: string): string {
   const trimmed = file.trim();
   if (!trimmed) return "";
-  const rel = isAbsolute(trimmed) ? relative(workdir, trimmed) : trimmed;
-  return rel.split("\\").join("/");
+  const absolute = isAbsolute(trimmed) ? trimmed : resolve(workdir, trimmed);
+  const rel = relative(workdir, absolute);
+  const normalized = rel.split("\\").join("/");
+  if (
+    !normalized ||
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    isAbsolute(normalized)
+  ) {
+    return "";
+  }
+  return normalized;
 }
 
 /** Unified diff for one file: real git diff if tracked, else new-file diff. */
@@ -148,15 +158,18 @@ export async function captureChangeSet(
 
   // Exclude files already dirty at spawn (pre-existing churn the agent didn't
   // touch) UNLESS the agent explicitly wrote them via a tool call this session.
+  const agentWrittenSet = new Set(
+    toolPaths
+      .map((file) => toWorkdirRelative(workdir, file))
+      .filter((file) => file.length > 0),
+  );
   const dirtyAtSpawn = new Set(
-    baselineDirty.filter((file) => !toolPaths.includes(file)),
+    baselineDirty.filter((file) => !agentWrittenSet.has(file)),
   );
   const tracked = parseNameStatus(
     await git(workdir, ["diff", "--name-status", base]),
   ).filter((file) => !dirtyAtSpawn.has(file));
-  const agentWritten = toolPaths
-    .map((file) => toWorkdirRelative(workdir, file))
-    .filter((file) => file.length > 0 && !file.startsWith("../"));
+  const agentWritten = [...agentWrittenSet];
 
   const changedFiles = [...new Set([...tracked, ...agentWritten])].slice(
     0,

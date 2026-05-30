@@ -54,7 +54,7 @@ export const codingSessionChangesProvider: Provider = {
   cacheStable: false,
   cacheScope: "turn",
 
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const acp = getAcpService(runtime);
     if (!acp) return { text: "", values: {}, data: {} };
 
@@ -74,13 +74,17 @@ export const codingSessionChangesProvider: Provider = {
       return { text: "", values: {}, data: {} };
     }
 
+    const scopedSessions = sessions.filter((session) =>
+      sessionMatchesMessage(session, message),
+    );
+
     // Surface the most recent ACTUAL change set within the recency window.
     // Only real change sets are persisted (a no-op completion stores nothing),
     // so this correctly picks the changing round of a multi-round task and
     // can't resurrect a stale diff older than the window. The session is kept
     // alongside its change set for the task label.
     const now = Date.now();
-    const top = sessions
+    const top = scopedSessions
       .map((s) => ({ session: s, changeSet: readChangeSet(s) }))
       .filter(
         (e): e is { session: SessionInfo; changeSet: WorkspaceChangeSet } =>
@@ -100,8 +104,8 @@ export const codingSessionChangesProvider: Provider = {
     // was captured — i.e. a newer task is the one the user is really asking
     // about — don't surface the stale set; ground the model to answer honestly.
     const capturedAt = top.changeSet.capturedAt;
-    const newerTaskSince = sessions.some((s) => {
-      const created = s.createdAt instanceof Date ? s.createdAt.getTime() : 0;
+    const newerTaskSince = scopedSessions.some((s) => {
+      const created = dateMs(s.createdAt);
       return s.id !== top.session.id && created > capturedAt;
     });
     if (newerTaskSince) {
@@ -155,3 +159,34 @@ export const codingSessionChangesProvider: Provider = {
     };
   },
 };
+
+function dateMs(value: Date | string | number | undefined): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function sessionMatchesMessage(session: SessionInfo, message: Memory): boolean {
+  const roomId = typeof message.roomId === "string" ? message.roomId : "";
+  if (!roomId) return false;
+  const metadata = session.metadata as Record<string, unknown> | undefined;
+  if (!metadata) return false;
+  if (
+    [metadata.roomId, metadata.taskRoomId, metadata.worktreeRoomId, metadata.originRoomId]
+      .filter((value): value is string => typeof value === "string")
+      .includes(roomId)
+  ) {
+    return true;
+  }
+  const swarmRooms = Array.isArray(metadata.swarmRooms)
+    ? metadata.swarmRooms
+    : [];
+  return swarmRooms.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    return (entry as { roomId?: unknown }).roomId === roomId;
+  });
+}

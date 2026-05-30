@@ -19,6 +19,7 @@ function uuid(): string {
 function session(
   createdMsAgo: number,
   changeSet?: { files: string[]; capturedMsAgo: number },
+  metadata: Record<string, unknown> = {},
 ): SessionInfo {
   const now = Date.now();
   return {
@@ -32,6 +33,8 @@ function session(
     lastActivityAt: new Date(now - createdMsAgo),
     metadata: {
       label: "task",
+      roomId: "room1",
+      ...metadata,
       ...(changeSet
         ? {
             lastChangeSet: {
@@ -85,6 +88,49 @@ describe("codingSessionChangesProvider — staleness guard", () => {
     );
     expect(r.text).not.toContain("fetch_bitcoin_price.py");
     expect(r.text).toContain("don't have a captured diff");
+  });
+
+  it("treats serialized createdAt strings as newer task timestamps", async () => {
+    const now = Date.now();
+    const olderWithDiff = session(300_000, {
+      files: ["fetch_bitcoin_price.py"],
+      capturedMsAgo: 240_000,
+    });
+    const newerNoDiff = {
+      ...session(60_000),
+      createdAt: new Date(now - 60_000).toISOString(),
+    } as unknown as SessionInfo;
+    const svc = serviceMock({
+      listSessions: () => [olderWithDiff, newerNoDiff],
+    });
+    const r = await codingSessionChangesProvider.get(
+      runtimeWith(svc),
+      memory(),
+      state,
+    );
+    expect(r.text).not.toContain("fetch_bitcoin_price.py");
+    expect(r.text).toContain("don't have a captured diff");
+  });
+
+  it("does not leak a recent change set from a different task room", async () => {
+    const svc = serviceMock({
+      listSessions: () => [
+        session(
+          60_000,
+          {
+            files: ["other-room-site/index.html"],
+            capturedMsAgo: 30_000,
+          },
+          { roomId: "room-other", taskRoomId: "room-other" },
+        ),
+      ],
+    });
+    const r = await codingSessionChangesProvider.get(
+      runtimeWith(svc),
+      memory(),
+      state,
+    );
+    expect(r.text).toBe("");
   });
 
   it("still surfaces the change set when the other session is older than the capture", async () => {

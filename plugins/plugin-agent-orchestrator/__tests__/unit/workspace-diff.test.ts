@@ -134,6 +134,14 @@ describe("workspace-diff — real git capture", () => {
     expect(cs?.changedFiles).toContain("out/app.js");
   });
 
+  it("rejects relative tool-call paths that escape the workdir after normalization", async () => {
+    const base = await captureBaselineSha(dir);
+    const cs = await captureChangeSet(dir, base, [
+      "subdir/../../outside.txt",
+    ]);
+    expect(cs).toBeUndefined();
+  });
+
   it("detects a tracked file DELETED since the baseline", async () => {
     writeFileSync(join(dir, "old.html"), "<p>doomed</p>\n");
     git(dir, ["add", "."]);
