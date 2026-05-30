@@ -149,6 +149,7 @@ export interface AppCreditDeductionResult {
   totalCost: number;
   creatorEarnings: number;
   newBalance: number;
+  transactionId?: string;
   message?: string;
 }
 
@@ -447,33 +448,62 @@ export class AppCreditsService {
       };
     }
 
-    // Track app user activity (creates/updates app_users record)
-    await this.trackAppUserActivity(app, userId, totalCost.toFixed(4), metadata);
+    try {
+      // Track app user activity (creates/updates app_users record)
+      await this.trackAppUserActivity(app, userId, totalCost.toFixed(4), metadata);
 
-    if (app.monetization_enabled && creatorMarkup > 0) {
-      await this.recordCreatorEarnings(
+      if (app.monetization_enabled && creatorMarkup > 0) {
+        await this.recordCreatorEarnings(
+          appId,
+          userId,
+          "inference_markup",
+          creatorMarkup,
+          {
+            baseCost,
+            markupPercentage,
+            totalCost,
+            description,
+            chargeTransactionId: orgDeduct.transaction?.id,
+            ...metadata,
+          },
+          app, // Pass app to avoid N+1 query
+        );
+
+        await dbWrite
+          .update(apps)
+          .set({
+            total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorMarkup}`,
+            total_platform_revenue: sql`${apps.total_platform_revenue} + ${baseCost}`,
+            updated_at: new Date(),
+          })
+          .where(eq(apps.id, appId));
+      }
+    } catch (postDebitError) {
+      logger.error("[AppCredits] Post-debit accounting failed, compensating charge", {
         appId,
         userId,
-        "inference_markup",
+        baseCost,
         creatorMarkup,
-        {
+        totalCost,
+        chargeTransactionId: orgDeduct.transaction?.id,
+        error: postDebitError instanceof Error ? postDebitError.message : String(postDebitError),
+      });
+      await creditsService.addCredits({
+        organizationId: user.organization_id,
+        amount: totalCost,
+        description: `Compensation refund for failed app inference (${app.name ?? appId})`,
+        metadata: {
+          appId,
+          userId,
           baseCost,
-          markupPercentage,
+          creatorMarkup,
           totalCost,
-          description,
+          originalChargeTransactionId: orgDeduct.transaction?.id,
+          reason: "post_debit_accounting_failed",
           ...metadata,
         },
-        app, // Pass app to avoid N+1 query
-      );
-
-      await dbWrite
-        .update(apps)
-        .set({
-          total_creator_earnings: sql`${apps.total_creator_earnings} + ${creatorMarkup}`,
-          total_platform_revenue: sql`${apps.total_platform_revenue} + ${baseCost}`,
-          updated_at: new Date(),
-        })
-        .where(eq(apps.id, appId));
+      });
+      throw postDebitError;
     }
 
     logger.info("[AppCredits] Deducted credits", {
@@ -492,6 +522,7 @@ export class AppCreditsService {
       totalCost,
       creatorEarnings: creatorMarkup,
       newBalance: orgDeduct.newBalance,
+      transactionId: orgDeduct.transaction?.id,
     };
   }
 
