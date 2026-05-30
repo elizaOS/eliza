@@ -347,13 +347,17 @@ def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, margin=0.0015, n_ang=64, dz=0.0
     shape = (R / rmean[:, None]).mean(axis=0)            # avg normalised section
     Fs = np.fft.rfft(shape); Fs[4:] = 0.0
     shape = np.fft.irfft(Fs, n_ang)                      # clean low-harmonic shape
-    deg = 3 if len(L) >= 8 else 1
-    taper = np.poly1d(np.polyfit(L, rmean, deg))(L) * slim + margin
-    C0 = np.poly1d(np.polyfit(L, C0, min(2, len(L) - 1)))(L)
-    C1 = np.poly1d(np.polyfit(L, C1, min(2, len(L) - 1)))(L)
-    # taper the tube ends inward so the rim tucks under the wider joint cap
-    end = np.clip(np.minimum(L - L[0], L[-1] - L) / 0.014, 0.0, 1.0)
-    taper = taper * (0.55 + 0.45 * end)
+    # STRONGLY smoothed radius -> a clean monotonic taper (no organic waviness),
+    # CLAMPED to the original so it never balloons past the joint (no funnel).
+    rsm = np.minimum(gaussian_filter1d(rmean, 12, mode="nearest"), rmean)
+    C0 = gaussian_filter1d(C0, 6, mode="nearest")
+    C1 = gaussian_filter1d(C1, 6, mode="nearest")
+    # FLARE to the original joint radius at each joint boundary so the slim shaft
+    # meets the joint flush (no gap/ledge); `slim` only through the mid-shaft.
+    zlo_j, zhi_j = L[0] + 0.014, L[-1] - 0.014
+    flare = np.clip(np.minimum(L - zlo_j, zhi_j - L) / 0.025, 0.0, 1.0)  # 0 at joint, 1 mid
+    sfac = slim + (1.0 - slim) * (1.0 - flare)
+    taper = np.minimum(rsm * sfac, rmean) + margin
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
     for i in range(len(L)):
