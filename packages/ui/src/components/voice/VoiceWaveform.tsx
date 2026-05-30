@@ -12,6 +12,16 @@ import { cn } from "../../lib/utils";
  */
 export type VoiceWaveformMode = "idle" | "listening" | "responding";
 
+/**
+ * Aesthetic treatment of the orb. All variants share geometry, displacement, and
+ * the particle swarm — only the color/material nodes differ:
+ * - `lumen`  white-hot core, accent only as a thin rim corona.
+ * - `nimbus` amorphous: white core dissolving to a transparent silhouette.
+ * - `halo`   smooth view-shaded liquid white with an accent fresnel edge.
+ * - `ember`  white body with sparse accent veins where the noise peaks.
+ */
+export type OrbStyle = "lumen" | "nimbus" | "halo" | "ember";
+
 /** Minimal analyser surface — lets tests supply a fake without a DOM audio graph. */
 export type FrequencyAnalyser = Pick<
   AnalyserNode,
@@ -37,6 +47,8 @@ export interface VoiceWaveformProps {
   className?: string;
   /** Accessible label. Default "Voice activity". */
   ariaLabel?: string;
+  /** Orb color treatment. Default "lumen". */
+  styleVariant?: OrbStyle;
 }
 
 const DEFAULT_SIZE = 220;
@@ -238,6 +250,7 @@ async function mountOrb(
   TSL: TSLModule,
   canvas: HTMLCanvasElement,
   size: number,
+  style: OrbStyle,
 ): Promise<OrbHandle> {
   const {
     uniform,
@@ -292,23 +305,36 @@ async function mountOrb(
   )
     .mul(0.5)
     .add(0.5);
-  const darkAccent = uAccent.mul(0.07);
-  // Hot zones push past the accent toward white so the core churns with bright
-  // plasma cells against deep troughs instead of reading as a flat fill.
-  const hotCore = mix(uAccent, vec3(1, 1, 1), float(0.6));
-  const plasma = mix(darkAccent, uAccent.mul(1.5), innerBands.pow(1.6));
-  // Keep the grazing rim accent-hot rather than milky white.
-  const litRim = mix(plasma, hotCore, fresnelTight.mul(0.6));
-  // Oil-slick rim shimmer — saturated cyan/magenta/gold cycling round the edge.
-  const shimmerPhase = fresnel.mul(8).add(uTime.mul(1.6));
-  const iridescence = vec3(
-    shimmerPhase.sin().mul(0.5).add(0.5),
-    shimmerPhase.add(2.094).sin().mul(0.5).add(0.5),
-    shimmerPhase.add(4.188).sin().mul(0.5).add(0.5),
-  );
-  const iridAmount = fresnel.mul(0.85).mul(float(0.5).add(uRespond.mul(0.6)));
-  const shimmered = mix(litRim, litRim.add(iridescence.mul(0.9)), iridAmount);
-  orbMat.colorNode = shimmered.mul(float(1).add(uEnergy.mul(0.8)));
+  // The orb reads as a body of white light; the accent lives at the rim/halo,
+  // never as the core fill. Each variant modulates luminance, not hue.
+  const energyLift = float(1).add(uEnergy.mul(0.6));
+  if (style === "nimbus") {
+    // Amorphous: white body that dissolves to a transparent silhouette, so it
+    // has no hard edge — a soft ball of light rather than a shaded sphere.
+    const body = mix(vec3(0.66, 0.68, 0.76), vec3(1, 1, 1), innerBands);
+    orbMat.colorNode = mix(body, uAccent, fresnelTight.mul(0.3)).mul(energyLift);
+    orbMat.transparent = true;
+    orbMat.depthWrite = false;
+    orbMat.opacityNode = fresnel
+      .oneMinus()
+      .pow(1.4)
+      .mul(float(0.82).add(uEnergy.mul(0.18)));
+  } else if (style === "halo") {
+    // Smooth liquid white: brightness from the view-facing term, accent edge.
+    const sheen = mix(vec3(0.5, 0.52, 0.6), vec3(1, 1, 1), fresnel.oneMinus().pow(0.7));
+    orbMat.colorNode = mix(sheen, uAccent, fresnelTight.mul(0.6)).mul(energyLift);
+  } else if (style === "ember") {
+    // White body with sparse accent veins where the surface noise peaks.
+    const veins = innerBands.smoothstep(0.6, 0.9);
+    const body = mix(vec3(0.74, 0.75, 0.82), vec3(1, 1, 1), innerBands.pow(1.4));
+    const veined = mix(body, uAccent.mul(1.25), veins.mul(0.85));
+    orbMat.colorNode = mix(veined, uAccent, fresnelTight.mul(0.45)).mul(energyLift);
+  } else {
+    // lumen: white-hot core with a faint cool-white churn, accent only as a
+    // thin warm corona at the grazing rim.
+    const warmWhite = mix(vec3(0.6, 0.61, 0.66), vec3(1, 1, 1), innerBands.pow(0.8));
+    orbMat.colorNode = mix(warmWhite, uAccent, fresnelTight.mul(0.75)).mul(energyLift);
+  }
 
   // --- glow halo: a larger back-faced sphere whose fresnel-weighted accent
   // bleeds past the orb silhouette, reading as bloom over the bright sky.
@@ -322,10 +348,18 @@ async function mountOrb(
     .abs()
     .oneMinus()
     .pow(2.0);
-  glowMat.colorNode = mix(uAccent, vec3(1, 1, 1), haloFresnel.mul(0.12));
-  glowMat.opacityNode = haloFresnel.mul(
-    float(0.32).add(uEnergy.mul(0.5)).add(uRespond.mul(0.18)),
-  );
+  if (style === "halo") {
+    glowMat.colorNode = uAccent;
+    glowMat.opacityNode = haloFresnel.mul(float(0.26).add(uEnergy.mul(0.45)));
+  } else if (style === "nimbus") {
+    glowMat.colorNode = mix(uAccent, vec3(1, 1, 1), haloFresnel.mul(0.35));
+    glowMat.opacityNode = haloFresnel.mul(float(0.4).add(uEnergy.mul(0.4)));
+  } else {
+    glowMat.colorNode = mix(uAccent, vec3(1, 1, 1), haloFresnel.mul(0.15));
+    glowMat.opacityNode = haloFresnel.mul(
+      float(0.3).add(uEnergy.mul(0.5)).add(uRespond.mul(0.16)),
+    );
+  }
 
   // --- particle swarm: points on a fibonacci sphere, displaced radially by
   // mode + amplitude. Pull inward when listening, burst outward when responding.
@@ -373,11 +407,20 @@ async function mountOrb(
   ptsMat.opacityNode = float(0.62)
     .add(uEnergy.mul(0.38))
     .mul(seed.mul(0.45).add(0.55));
-  ptsMat.colorNode = mix(
-    uAccent,
-    vec3(1, 1, 1),
-    seed.mul(0.55).add(uHigh.mul(0.5)).clamp(0, 1),
-  );
+  if (style === "ember") {
+    ptsMat.colorNode = mix(
+      uAccent,
+      vec3(1, 1, 1),
+      seed.mul(0.5).add(uHigh.mul(0.4)).clamp(0, 1),
+    );
+  } else {
+    // White-dominant motes; only a faint minority pick up the accent.
+    ptsMat.colorNode = mix(
+      uAccent,
+      vec3(1, 1, 1),
+      seed.mul(0.4).add(0.55).add(uHigh.mul(0.3)).clamp(0, 1),
+    );
+  }
 
   const scene = new THREE.Scene();
   const group = new THREE.Group();
@@ -452,6 +495,7 @@ export function VoiceWaveform({
   size = DEFAULT_SIZE,
   className,
   ariaLabel = "Voice activity",
+  styleVariant = "lumen",
 }: VoiceWaveformProps): React.JSX.Element {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const modeRef = React.useRef<VoiceWaveformMode>(mode);
@@ -504,7 +548,7 @@ export function VoiceWaveform({
           import("three/tsl"),
         ]);
         if (disposed) return;
-        const orb = await mountOrb(three, tsl, canvas, size);
+        const orb = await mountOrb(three, tsl, canvas, size, styleVariant);
         if (disposed) {
           orb.dispose();
           return;
@@ -560,7 +604,7 @@ export function VoiceWaveform({
       handle?.dispose();
       handle = null;
     };
-  }, [size]);
+  }, [size, styleVariant]);
 
   return (
     <canvas

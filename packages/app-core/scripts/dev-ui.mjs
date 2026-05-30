@@ -200,6 +200,8 @@ function getCliName() {
 
 const cliName = getCliName();
 const logPrefix = `[${cliName}]`;
+const API_PROCESS_SPAWNED_AT_ENV = "ELIZA_API_PROCESS_SPAWNED_AT_MS";
+const PROCESS_SPAWNED_AT_ENV = "ELIZA_PROCESS_SPAWNED_AT_MS";
 
 const bunAdvisory = getBunVersionAdvisory();
 if (bunAdvisory) console.warn(`${logPrefix} ${bunAdvisory}`);
@@ -1213,12 +1215,18 @@ if (uiOnly) {
   }
 
   const apiSupervisor = createApiSupervisor({
-    spawnChild: () =>
-      spawn(apiCmd[0], apiCmd.slice(1), {
+    spawnChild: () => {
+      const apiProcessSpawnedAtMs = String(Date.now());
+      return spawn(apiCmd[0], apiCmd.slice(1), {
         cwd: apiSpawnCwd,
-        env: apiSpawnEnv,
+        env: {
+          ...apiSpawnEnv,
+          [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+          [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+        },
         stdio: ["inherit", "pipe", "pipe"],
-      }),
+      });
+    },
     onSpawn: (child) => {
       apiProcess = child;
       child.on("error", (err) => {

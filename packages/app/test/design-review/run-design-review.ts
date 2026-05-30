@@ -7,17 +7,19 @@ import {
   chromium,
   type Page,
   type Request,
+  type Route,
 } from "@playwright/test";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import {
   type MockApiServer,
   startMockApiServer,
 } from "../electrobun-packaged/mock-api";
-import { getFreePort } from "../utils/get-free-port.mjs";
 import { captureScreenshotWithQualityRetry } from "../ui-smoke/helpers/screenshot-quality";
+import { getFreePort } from "../utils/get-free-port.mjs";
 
 type ShellMode = "companion" | "native";
 type ViewId =
+  | "first-run"
   | "companion"
   | "chat"
   | "stream"
@@ -32,7 +34,8 @@ type ViewStateId =
   | "default"
   | "navigation-open"
   | "chats-open"
-  | "customize-open";
+  | "customize-open"
+  | "first-run-local";
 type ViewportId =
   | "mobile-portrait"
   | "mobile-landscape"
@@ -62,6 +65,10 @@ interface ViewSpec {
   lastNativeTab: string;
   readyChecks: ReadyCheck[];
   readyCheckMode?: "all" | "any";
+  // The shared mock API boots with first-run already complete so the steady
+  // surfaces render. A view that needs the onboarding flow instead overrides
+  // `/api/first-run/status` per-context and seeds a fresh-device localStorage.
+  firstRunIncomplete?: boolean;
 }
 
 interface CaptureSpec {
@@ -181,6 +188,18 @@ const viewports: ViewportSpec[] = [
 
 const views: ViewSpec[] = [
   {
+    id: "first-run",
+    label: "First Run",
+    path: "/",
+    shellMode: "native",
+    lastNativeTab: "chat",
+    firstRunIncomplete: true,
+    readyChecks: [
+      { selector: '[data-testid="first-run-shell"]' },
+      { selector: '[data-testid="first-run-runtime-cloud"]' },
+    ],
+  },
+  {
     id: "companion",
     label: "Companion",
     path: "/companion",
@@ -296,6 +315,7 @@ function buildCaptureSpecs(filters: CliFilters): CaptureSpec[] {
       if (
         view.shellMode === "native" &&
         view.id !== "character" &&
+        view.id !== "first-run" &&
         viewport.width < CHAT_MOBILE_BREAKPOINT_PX
       ) {
         captures.push({
@@ -321,6 +341,14 @@ function buildCaptureSpecs(filters: CliFilters): CaptureSpec[] {
           stateLabel: "Customize Open",
         });
       }
+      if (view.id === "first-run") {
+        captures.push({
+          view,
+          viewport,
+          stateId: "first-run-local",
+          stateLabel: "Local Selected",
+        });
+      }
     }
   }
   return filters.state
@@ -336,7 +364,12 @@ async function startAppServer(apiBaseUrl: string): Promise<{
   const port = await getFreePort();
   const server = await createViteServer({
     configFile: path.join(appRoot, "vite.config.ts"),
-    server: { host: "127.0.0.1", port, strictPort: true },
+    // HMR is useless for a one-shot screenshot run, and the app's vite config
+    // defaults the HMR socket to the fixed UI port (2138). Leaving it on makes
+    // every captured page hammer ws://127.0.0.1:2138 — which collides with any
+    // concurrent `bun run dev` and floods the page with pageerrors that never
+    // let the DOM settle. Disable it so captures are isolated and quiet.
+    server: { host: "127.0.0.1", port, strictPort: true, hmr: false },
   });
   await server.listen();
   return { server, baseUrl: `http://127.0.0.1:${port}` };
@@ -398,6 +431,31 @@ function diagnosticStem(capture: CaptureSpec): string {
   return `${capture.view.id}--${capture.viewport.id}--${capture.stateId}`;
 }
 
+async function routeFirstRunIncomplete(page: Page): Promise<void> {
+  const fulfillJson = (route: Route, body: Record<string, unknown>) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(body),
+    });
+  await page.route("**/api/auth/status", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return fulfillJson(route, {
+      required: false,
+      authenticated: true,
+      loginRequired: false,
+      localAccess: true,
+      passwordConfigured: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+  });
+  await page.route("**/api/first-run/status", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return fulfillJson(route, { complete: false, cloudProvisioned: false });
+  });
+}
+
 async function createPage(
   browser: Browser,
   apiBaseUrl: string,
@@ -442,6 +500,9 @@ async function createPage(
           "eliza:chat:activeConversationId",
           "conv-1",
         );
+        if (init.firstRunIncomplete) {
+          window.localStorage.setItem("eliza:first-run-complete", "");
+        }
         window.sessionStorage.setItem("eliza_api_base", init.apiBaseUrl);
         window.__ELIZA_API_BASE__ = init.apiBaseUrl;
       } catch {
@@ -452,9 +513,13 @@ async function createPage(
       apiBaseUrl,
       shellMode: capture.view.shellMode,
       lastNativeTab: capture.view.lastNativeTab,
+      firstRunIncomplete: capture.view.firstRunIncomplete ?? false,
     },
   );
   const page = await context.newPage();
+  if (capture.view.firstRunIncomplete) {
+    await routeFirstRunIncomplete(page);
+  }
   const consoleLines: string[] = [];
   const network: NetworkTracker = {
     pendingRequests: new Set(),
@@ -644,6 +709,13 @@ async function applyState(page: Page, capture: CaptureSpec): Promise<void> {
   if (capture.stateId === "customize-open") {
     await page.getByText("Style", { exact: true }).first().click();
     await page.locator('[data-testid="style-section-all"]').waitFor({
+      state: "visible",
+      timeout: 10_000,
+    });
+  }
+  if (capture.stateId === "first-run-local") {
+    await page.locator('[data-testid="first-run-runtime-local"]').click();
+    await page.locator('[data-testid="first-run-local-all-local"]').waitFor({
       state: "visible",
       timeout: 10_000,
     });

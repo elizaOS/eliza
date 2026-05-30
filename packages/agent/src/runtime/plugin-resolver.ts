@@ -33,7 +33,11 @@ import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.t
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import type { PluginInstallRecord } from "../config/types.eliza.ts";
 import { diagnoseNoAIProvider } from "../services/version-compat.ts";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
+import {
+  BLOCKING_CORE_PLUGINS,
+  CORE_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "./core-plugins.ts";
 import {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
@@ -1374,13 +1378,16 @@ async function discoverPluginCandidates(): Promise<PluginManifestCandidate[]> {
  * Each plugin is loaded inside an error boundary so a single failing plugin
  * cannot crash the entire agent startup.
  */
+export type PluginResolutionPhase = "all" | "blocking" | "deferred";
+
 export async function resolvePlugins(
   config: ElizaConfig,
-  opts?: { quiet?: boolean },
+  opts?: { quiet?: boolean; phase?: PluginResolutionPhase },
 ): Promise<ResolvedPlugin[]> {
   const plugins: ResolvedPlugin[] = [];
   const failedPlugins: Array<{ name: string; error: string }> = [];
   const repairedInstallRecords = new Set<string>();
+  const phase = opts?.phase ?? "all";
 
   // NOTE: Auto-enable runs before dependency validation intentionally.
   // It returns a new config object (structuredClone under the hood) with
@@ -1441,6 +1448,7 @@ export async function resolvePlugins(
   const loadReasons: PluginLoadReasons = new Map();
   const pluginsToLoad = collectPluginNames(config, loadReasons);
   const corePluginSet = new Set<string>(CORE_PLUGINS);
+  const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
 
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
@@ -1513,6 +1521,22 @@ export async function resolvePlugins(
   if (customPluginNames.length > 0) {
     logger.info(
       `[eliza] Discovered ${customPluginNames.length} custom plugin(s): ${customPluginNames.join(", ")}`,
+    );
+  }
+
+  if (phase !== "all") {
+    const beforePhaseFilter = pluginsToLoad.size;
+    for (const pluginName of Array.from(pluginsToLoad)) {
+      const isBlocking = blockingPluginSet.has(pluginName);
+      if (
+        (phase === "blocking" && !isBlocking) ||
+        (phase === "deferred" && isBlocking)
+      ) {
+        pluginsToLoad.delete(pluginName);
+      }
+    }
+    logger.info(
+      `[eliza] Plugin resolution phase=${phase}: ${pluginsToLoad.size}/${beforePhaseFilter} plugin(s) selected`,
     );
   }
 
@@ -1819,14 +1843,16 @@ export async function resolvePlugins(
 
   // Diagnose version-skew issues when AI providers failed to load (#10)
   const loadedNames = plugins.map((p) => p.name);
-  const diagnostic = diagnoseNoAIProvider(loadedNames, failedPlugins);
-  if (diagnostic) {
-    if (opts?.quiet) {
-      // In headless/GUI mode before first-run setup, this is expected — the user
-      // will configure a provider through first-run setup and restart.
-      logger.info(`[eliza] ${diagnostic}`);
-    } else {
-      logger.error(`[eliza] ${diagnostic}`);
+  if (phase !== "blocking") {
+    const diagnostic = diagnoseNoAIProvider(loadedNames, failedPlugins);
+    if (diagnostic) {
+      if (opts?.quiet) {
+        // In headless/GUI mode before first-run setup, this is expected — the user
+        // will configure a provider through first-run setup and restart.
+        logger.info(`[eliza] ${diagnostic}`);
+      } else {
+        logger.error(`[eliza] ${diagnostic}`);
+      }
     }
   }
 

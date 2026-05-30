@@ -1,4 +1,7 @@
-export { MessagesAppView } from "./components/MessagesAppView";
+export {
+  MessagesAppView,
+  MessagesPluginView,
+} from "./components/MessagesAppView";
 export {
   MESSAGES_APP_NAME,
   messagesApp,

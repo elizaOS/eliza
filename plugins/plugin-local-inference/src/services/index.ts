@@ -23,8 +23,6 @@ export {
 	type BackendOverride,
 	type BackendPlan,
 	decideBackend,
-	type EmbedArgs,
-	type EmbedResult,
 	type GenerateArgs as BackendGenerateArgs,
 	type GenerateResult,
 	type LocalInferenceBackend,

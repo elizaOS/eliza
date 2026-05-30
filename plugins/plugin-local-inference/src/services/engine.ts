@@ -54,13 +54,6 @@ import { resolveGuidedDecodeForParams } from "./structured-output";
 import type { InstalledModel } from "./types";
 import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
-	buildLocalEmbeddingRoute,
-	EMBEDDING_FULL_DIM,
-	isValidEmbeddingDim,
-	type LocalEmbeddingRoute,
-	truncateMatryoshka,
-} from "./voice/embedding";
-import {
 	createKokoroSpeakerPreset,
 	createKokoroTtsBackend,
 	EngineVoiceBridge,
@@ -882,16 +875,11 @@ export class LocalInferenceEngine {
 	/**
 	 * The active Eliza-1 bundle (root dir + tier id), resolved at `load()`
 	 * from the InstalledModel path/id. `null` when the loaded model is not an
-	 * Eliza-1 bundle (a user-installed custom). Drives the local-embedding
-	 * route — see `embed()`.
+	 * Eliza-1 bundle (a user-installed custom). Drives bundle-relative voice
+	 * resolution — the Kokoro TTS root and the per-tier EOT turn-detector
+	 * revision.
 	 */
 	private activeEliza1Bundle: ActiveEliza1Bundle | null = null;
-	/**
-	 * Lazily-started embedding sidecar for the active bundle
-	 * (over the text GGUF on `0_8b` / `2b`, over the `embedding/` GGUF on larger
-	 * tiers). `null` until the first `embed()` call. Torn down on `unload()`.
-	 */
-	private embeddingServer: { stop: () => Promise<void> | void } | null = null;
 
 	/**
 	 * The general onload/offload coordinator for this engine. Exposed so the
@@ -1085,18 +1073,14 @@ export class LocalInferenceEngine {
 		const modelId = target?.id ?? resolved?.modelId;
 		const catalog = modelId ? findCatalogModel(modelId) : undefined;
 
-		// Resolve the active Eliza-1 bundle (root + tier) so `embed()` can build
-		// the local-embedding route. An Eliza-1 InstalledModel carries a
+		// Resolve the active Eliza-1 bundle (root + tier) so voice setup can
+		// find the bundle-relative Kokoro TTS root and the per-tier EOT
+		// turn-detector revision. An Eliza-1 InstalledModel carries a
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
-		// non-Eliza-1 model clears it (the local embedding handler then falls
-		// through to the operator-configured provider).
+		// non-Eliza-1 model clears it.
 		this.activeEliza1Bundle =
 			resolveActiveEliza1Bundle(target, catalog) ??
 			resolveDirectEliza1Bundle(resolved, catalog);
-		if (this.embeddingServer) {
-			void this.embeddingServer.stop();
-			this.embeddingServer = null;
-		}
 
 		// Resolved args (when provided) carry the merged catalog defaults +
 		// per-load overrides from the active-model coordinator. Project them
@@ -2124,73 +2108,6 @@ export class LocalInferenceEngine {
 			},
 			opts.events,
 		);
-	}
-
-	/**
-	 * Build the local-embedding route for an activated Eliza-1 bundle.
-	 * On `0_8b` / `2b` the embedding model is the text backbone with
-	 * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`
-	 * a dedicated 1024-dim Matryoshka `embedding/` region is used.
-	 * See AGENTS.md §1. Throws `VoiceStartupError` when a larger tier is
-	 * missing its dedicated region — no fallback to pooled text (which would
-	 * regress the dimension contract).
-	 */
-	localEmbeddingRoute(args?: {
-		bundleRoot?: string;
-		tierId?: Eliza1TierId;
-		textModelPath?: string;
-		/** Default Matryoshka width (one of {64,128,256,512,768,1024}); defaults to 1024. */
-		defaultDim?: number;
-	}): LocalEmbeddingRoute {
-		const bundleRoot = args?.bundleRoot ?? this.activeEliza1Bundle?.root;
-		const tierId = args?.tierId ?? this.activeEliza1Bundle?.tierId;
-		if (!bundleRoot || !tierId) {
-			throw new VoiceStartupError(
-				"missing-bundle-root",
-				"[embedding] no active Eliza-1 bundle; pass bundleRoot+tierId or load an Eliza-1 model first",
-			);
-		}
-		const textModelPath = args?.textModelPath ?? this.currentModelPath() ?? "";
-		return buildLocalEmbeddingRoute({
-			bundleRoot,
-			tierId,
-			textModelPath,
-			defaultDim: args?.defaultDim,
-		});
-	}
-
-	/** True when the loaded model is an Eliza-1 bundle (so `embed()` is wired). */
-	canEmbed(): boolean {
-		return this.activeEliza1Bundle !== null;
-	}
-
-	/**
-	 * Embed text via the active Eliza-1 bundle's local embedding model.
-	 *
-	 * Uses the active native backend directly. The result is
-	 * Matryoshka-truncated to `dim` (default 1024) and L2-normalized.
-	 *
-	 * Throws when no Eliza-1 bundle is active (the runtime's local embedding
-	 * handler then falls through to the operator-configured provider) — no
-	 * silent zero-vector (Commandment 8).
-	 */
-	async embed(
-		input: string | string[],
-		dim: number = EMBEDDING_FULL_DIM,
-	): Promise<number[][]> {
-		this.markActivity();
-		if (!isValidEmbeddingDim(dim)) {
-			throw new Error(
-				`[embedding] dim ${dim} is not a valid Matryoshka width (expected one of 64,128,256,512,768,1024)`,
-			);
-		}
-		const texts = Array.isArray(input) ? input : [input];
-		const vectors: number[][] = [];
-		for (const text of texts) {
-			const result = await this.dispatcher.embed({ input: text });
-			vectors.push(truncateMatryoshka(result.embedding, dim));
-		}
-		return vectors;
 	}
 
 	/**

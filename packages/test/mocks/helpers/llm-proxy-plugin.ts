@@ -71,6 +71,9 @@ export interface LlmProxyCallDiagnostic {
   latestUserText: string;
   prompt: string;
   toolNames: string[];
+  matchedFixtureName?: string;
+  fixtureValidation?: "schema" | "json" | "not-required" | "skipped";
+  selectedToolNames?: string[];
   responseSchemaFingerprint?: string;
   tools: Array<{
     name: string;
@@ -289,7 +292,8 @@ export function createDeterministicLlmFixtureRegistry(
   }
 
   function resolve(call: LlmProxyCall): string | undefined {
-    calls.push(callDiagnostic(call));
+    const diagnostic = callDiagnostic(call);
+    calls.push(diagnostic);
 
     const matched: Array<{
       entry: RegisteredLlmProxyFixture;
@@ -341,13 +345,21 @@ export function createDeterministicLlmFixtureRegistry(
     if (!selected) return undefined;
 
     selected.entry.consumed += 1;
-    return selected.entry.validateResponse === false
-      ? normalizeResolvedResponse(selected.response)
-      : normalizeAndValidateFixtureResponse(
-          selected.response,
-          call,
-          selected.entry.name,
-        );
+    diagnostic.matchedFixtureName = selected.entry.name;
+    diagnostic.fixtureValidation =
+      selected.entry.validateResponse === false
+        ? "skipped"
+        : fixtureValidationMode(call);
+    const normalized =
+      selected.entry.validateResponse === false
+        ? normalizeResolvedResponse(selected.response)
+        : normalizeAndValidateFixtureResponse(
+            selected.response,
+            call,
+            selected.entry.name,
+          );
+    diagnostic.selectedToolNames = selectedToolNamesFromResponse(normalized);
+    return normalized;
   }
 }
 
@@ -537,12 +549,7 @@ function validateFixtureResponse(
   call: LlmProxyCall,
   fixtureName: string,
 ): void {
-  const expectsStructuredJson =
-    call.modelType === ModelType.ACTION_PLANNER ||
-    call.modelType === ModelType.RESPONSE_HANDLER ||
-    call.params.responseSchema !== undefined ||
-    responseFormatExpectsJson(call.params.responseFormat);
-  if (!expectsStructuredJson) return;
+  if (!fixtureResponseRequiresStructuredJson(call)) return;
 
   const parsed = parseJsonWithFixtureName(normalized, fixtureName);
   const result = isGenerateTextResultLike(parsed) ? parsed : null;
@@ -570,6 +577,28 @@ function validateFixtureResponse(
   if (call.params.responseSchema) {
     validateSchemaOrThrow(parsed, call.params.responseSchema, fixtureName);
   }
+}
+
+function fixtureResponseRequiresStructuredJson(call: LlmProxyCall): boolean {
+  return (
+    call.modelType === ModelType.ACTION_PLANNER ||
+    call.modelType === ModelType.RESPONSE_HANDLER ||
+    call.params.responseSchema !== undefined ||
+    responseFormatExpectsJson(call.params.responseFormat)
+  );
+}
+
+function fixtureValidationMode(
+  call: LlmProxyCall,
+): NonNullable<LlmProxyCallDiagnostic["fixtureValidation"]> {
+  if (!fixtureResponseRequiresStructuredJson(call)) return "not-required";
+  if (
+    call.params.responseSchema ||
+    (call.params.tools ?? []).some((tool) => tool.parameters !== undefined)
+  ) {
+    return "schema";
+  }
+  return "json";
 }
 
 function validateToolCalls(
@@ -747,6 +776,20 @@ function parseJsonWithFixtureName(value: string, fixtureName: string): unknown {
       `response must be parseable JSON: ${error instanceof Error ? error.message : String(error)}`,
     ]);
   }
+}
+
+function selectedToolNamesFromResponse(normalized: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(normalized);
+  } catch {
+    return [];
+  }
+  if (!isObject(parsed) || !Array.isArray(parsed.toolCalls)) return [];
+  return parsed.toolCalls.flatMap((toolCall) => {
+    if (!isObject(toolCall) || typeof toolCall.name !== "string") return [];
+    return [toolCall.name];
+  });
 }
 
 function invalidFixtureResponseError(

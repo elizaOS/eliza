@@ -106,6 +106,25 @@ export const CORE_PLUGINS: readonly string[] = [
 ];
 
 /**
+ * Core plugins that must be imported and registered before the runtime can be
+ * considered ready. Keep this list intentionally small: everything else in
+ * CORE_PLUGINS should load in the deferred phase so slow feature/provider
+ * imports do not block API readiness.
+ */
+export const BLOCKING_CORE_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-sql", // required database adapter
+  "@elizaos/plugin-local-inference", // pre-init local model/embedding handler wiring
+];
+
+/**
+ * Core plugins loaded after runtime readiness. Dependency ordering is handled
+ * by preregisterCorePluginsInDependencyWaves() in eliza.ts.
+ */
+export const DEFERRED_CORE_PLUGINS: readonly string[] = CORE_PLUGINS.filter(
+  (pluginName) => !BLOCKING_CORE_PLUGINS.includes(pluginName),
+);
+
+/**
  * Plugins that can be enabled from the admin panel.
  * Not loaded by default — require explicit configuration or have platform dependencies.
  */

@@ -118,13 +118,14 @@ export function WorkspaceLayout({
       <div
         className={cn(
           "flex w-full min-h-0 min-w-0 flex-1 flex-col",
-          sidebar && "md:flex-row",
+          sidebar && isDesktop && "flex-row",
         )}
       >
         {desktopSidebarElement ? (
           <div
             className={cn(
-              "hidden min-h-0 w-full shrink-0 items-stretch px-0 pb-0 md:flex md:w-auto",
+              "min-h-0 w-full shrink-0 items-stretch px-0 pb-0",
+              isDesktop ? "flex w-auto" : "hidden",
               contentPadding && "pt-2 sm:pt-3 lg:pt-4",
             )}
           >

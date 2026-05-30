@@ -1,10 +1,11 @@
-import { ModelType, stringToUuid } from "@elizaos/core";
 import type {
+  Action,
   IAgentRuntime,
   Plugin,
   UUID,
   ViewDeclaration,
 } from "@elizaos/core";
+import { ModelType, stringToUuid } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -12,13 +13,16 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import WebSocket from "ws";
-import { encodeBinaryFrame } from "../../../../plugins/plugin-xr/src/protocol.ts";
-import type { XRServerControl } from "../../../../plugins/plugin-xr/src/protocol.ts";
 import {
   XR_SERVICE_TYPE,
   type XRSessionService,
   xrPlugin,
 } from "../../../../plugins/plugin-xr/src/index.ts";
+import { encodeBinaryFrame } from "../../../../plugins/plugin-xr/src/protocol.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures.ts";
 
 const SCENARIO_ID = "deterministic-xr-view-actions";
 const ROOM_ID = stringToUuid(`scenario-room:${SCENARIO_ID}:main`) as UUID;
@@ -27,21 +31,29 @@ const XR_VIEW_ID = "scenario-xr-console";
 const XR_VIEW_LABEL = "Scenario XR Console";
 const XR_VISION_DESCRIPTION =
   "deterministic-xr-vision: checkerboard frame with scenario console";
+const XR_LIST_TEXT = "Show the XR view catalog";
+const XR_OPEN_TEXT = `Open "${XR_VIEW_ID}" in XR`;
+const XR_SWITCH_TEXT = `Switch the XR view to "${XR_VIEW_ID}"`;
+const XR_RESIZE_TEXT = "Resize the XR view panel bigger and closer";
+const XR_CLOSE_TEXT = `Close "${XR_VIEW_ID}" in XR`;
+const XR_QUERY_VISION_TEXT =
+  "Use XR device vision to answer: what do you see through the XR camera?";
 
-type RuntimeWithRegistration = IAgentRuntime & {
-  plugins?: Plugin[];
-  createRoom: (room: Record<string, unknown>) => Promise<UUID>;
-  registerPlugin: (plugin: Plugin) => Promise<void>;
-  routes?: Array<{
-    path: string;
-    routeHandler?: (ctx: Record<string, unknown>) => Promise<{
-      status: number;
-      body?: unknown;
-      headers?: Record<string, string>;
+type RuntimeWithRegistration = IAgentRuntime &
+  RuntimeWithScenarioLlmFixtures & {
+    plugins?: Plugin[];
+    createRoom: (room: Record<string, unknown>) => Promise<UUID>;
+    registerPlugin: (plugin: Plugin) => Promise<void>;
+    routes?: Array<{
+      path: string;
+      routeHandler?: (ctx: Record<string, unknown>) => Promise<{
+        status: number;
+        body?: unknown;
+        headers?: Record<string, string>;
+      }>;
     }>;
-  }>;
-  setSetting: (key: string, value: string, secret?: boolean) => void;
-};
+    setSetting: (key: string, value: string, secret?: boolean) => void;
+  };
 
 type ScenarioState = {
   controls: Array<Record<string, unknown>>;
@@ -64,7 +76,8 @@ const scenarioState: ScenarioState = {
 const scenarioXrView: ViewDeclaration = {
   id: XR_VIEW_ID,
   label: XR_VIEW_LABEL,
-  description: "Scenario-only XR view declared through the real plugin registry",
+  description:
+    "Scenario-only XR view declared through the real plugin registry",
   icon: "BadgeCheck",
   path: "/scenario/xr-console",
   viewType: "xr",
@@ -94,6 +107,145 @@ const scenarioXrViewPlugin: Plugin = {
   description: "Scenario-only plugin contributing a fake registered XR view.",
   views: [scenarioXrView],
 };
+
+const scenarioXrActionParameters: Record<
+  string,
+  NonNullable<Action["parameters"]>
+> = {
+  XR_LIST_VIEWS: [
+    {
+      name: "sendCatalog",
+      description: "Whether to send the XR view catalog to the headset.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+  ],
+  XR_OPEN_VIEW: [
+    {
+      name: "viewId",
+      description: "The XR view id to open.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "scale",
+      description: "Initial panel scale.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
+  XR_SWITCH_VIEW: [
+    {
+      name: "viewId",
+      description: "The XR view id to foreground.",
+      required: true,
+      schema: { type: "string" },
+    },
+  ],
+  XR_RESIZE_VIEW: [
+    {
+      name: "viewId",
+      description: "The XR view id to resize.",
+      required: true,
+      schema: { type: "string" },
+    },
+    {
+      name: "scale",
+      description: "Requested panel scale.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "distance",
+      description: "Requested panel distance in meters.",
+      required: false,
+      schema: { type: "number" },
+    },
+  ],
+  XR_CLOSE_VIEW: [
+    {
+      name: "viewId",
+      description: "The XR view id to close.",
+      required: true,
+      schema: { type: "string" },
+    },
+  ],
+  XR_QUERY_VISION: [],
+};
+
+function withScenarioXrActionParameters(action: Action): Action {
+  const parameters = scenarioXrActionParameters[action.name];
+  if (!parameters) return action;
+  return {
+    ...action,
+    parameters,
+    handler: (async (runtime, message, state, options, callback, ...rest) => {
+      const optionRecord = toRecord(options);
+      const nestedParameters = toRecord(optionRecord.parameters);
+      const liftedOptions =
+        Object.keys(nestedParameters).length > 0 ? nestedParameters : options;
+      return action.handler.call(
+        action,
+        runtime,
+        message,
+        state,
+        liftedOptions,
+        callback,
+        ...rest,
+      );
+    }) as Action["handler"],
+  };
+}
+
+const scenarioXrPlugin: Plugin = {
+  ...xrPlugin,
+  actions: xrPlugin.actions?.map(withScenarioXrActionParameters),
+};
+
+const strictXrViewRoutes = [
+  {
+    actionName: "XR_LIST_VIEWS",
+    args: { sendCatalog: true },
+    contextIds: ["xr", "views"],
+    input: XR_LIST_TEXT,
+    messageToUser: `Available XR views:\n\u2022 ${XR_VIEW_LABEL} (id: ${XR_VIEW_ID})\n\nSay "open [view name]" to launch one.`,
+  },
+  {
+    actionName: "XR_OPEN_VIEW",
+    args: { viewId: XR_VIEW_ID, scale: 1.25 },
+    contextIds: ["xr", "views"],
+    input: XR_OPEN_TEXT,
+    messageToUser: `Opening ${XR_VIEW_ID} view on your headset.`,
+  },
+  {
+    actionName: "XR_SWITCH_VIEW",
+    args: { viewId: XR_VIEW_ID },
+    contextIds: ["xr", "views"],
+    input: XR_SWITCH_TEXT,
+    messageToUser: `Switched to ${XR_VIEW_ID}.`,
+  },
+  {
+    actionName: "XR_RESIZE_VIEW",
+    args: { viewId: XR_VIEW_ID, scale: 1.2, distance: 1.1 },
+    contextIds: ["xr", "views"],
+    input: XR_RESIZE_TEXT,
+    messageToUser: "Panel resized to 1.5\u00d7 at 0.8m.",
+  },
+  {
+    actionName: "XR_CLOSE_VIEW",
+    args: { viewId: XR_VIEW_ID },
+    contextIds: ["xr", "views"],
+    input: XR_CLOSE_TEXT,
+    messageToUser: `Closed ${XR_VIEW_ID}.`,
+  },
+  {
+    actionName: "XR_QUERY_VISION",
+    args: {},
+    contextIds: ["xr", "vision"],
+    input: XR_QUERY_VISION_TEXT,
+    messageToUser: XR_VISION_DESCRIPTION,
+  },
+];
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -147,9 +299,11 @@ function rawMessageToText(data: WebSocket.RawData): string {
 }
 
 function getWebSocketPort(service: XRSessionService): number | null {
-  const wss = (service as unknown as {
-    wss?: { address?: () => string | { port?: number } | null };
-  }).wss;
+  const wss = (
+    service as unknown as {
+      wss?: { address?: () => string | { port?: number } | null };
+    }
+  ).wss;
   const address = wss?.address?.();
   if (!address || typeof address === "string") return null;
   return typeof address.port === "number" ? address.port : null;
@@ -243,7 +397,9 @@ async function connectScenarioXrClient(
 
   const connection = service.getConnections()[0];
   if (!connection) {
-    throw new Error("XRSessionService accepted the socket but has no connection");
+    throw new Error(
+      "XRSessionService accepted the socket but has no connection",
+    );
   }
   connection.roomId = ROOM_ID;
 
@@ -255,7 +411,9 @@ async function connectScenarioXrClient(
   return ws;
 }
 
-async function seedXrScenario(ctx: ScenarioContext): Promise<string | undefined> {
+async function seedXrScenario(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
   resetScenarioState();
   const runtime = ctx.runtime as RuntimeWithRegistration | undefined;
   if (!runtime) return "scenario runtime was not available";
@@ -265,18 +423,20 @@ async function seedXrScenario(ctx: ScenarioContext): Promise<string | undefined>
   ensureXrRoomsHaveWorldId(runtime);
   await runtime.registerPlugin(deterministicVisionPlugin);
   await runtime.registerPlugin(scenarioXrViewPlugin);
-  await runtime.registerPlugin(xrPlugin);
+  await runtime.registerPlugin(scenarioXrPlugin);
 
   const service = await waitForService(runtime);
   boundXrServiceStop(service);
   scenarioState.service = service;
   scenarioState.ws = await connectScenarioXrClient(service);
+  registerStrictActionRouteFixtures(runtime, strictXrViewRoutes);
 
   return undefined;
 }
 
 function actionParameters(action: CapturedAction): Record<string, unknown> {
-  return toRecord(action.parameters);
+  const params = toRecord(action.parameters);
+  return toRecord(params.parameters ?? params);
 }
 
 function expectAction(
@@ -305,7 +465,9 @@ function expectAction(
   }
 
   const params = actionParameters(action);
-  for (const [key, expectedValue] of Object.entries(expected.parameters ?? {})) {
+  for (const [key, expectedValue] of Object.entries(
+    expected.parameters ?? {},
+  )) {
     if (stableStringify(params[key]) !== stableStringify(expectedValue)) {
       return `expected ${expected.actionName} parameter ${key}=${stableStringify(expectedValue)}, saw ${stableStringify(params[key])}`;
     }
@@ -409,7 +571,9 @@ async function finalLedgerCheck(
     return `expected XR route to include ${XR_VIEW_ID}, saw ${stableStringify(body)}`;
   }
   const connections = Array.isArray(body.connections) ? body.connections : [];
-  if (!connections.some((conn) => readPath(conn, "deviceType") === "simulator")) {
+  if (
+    !connections.some((conn) => readPath(conn, "deviceType") === "simulator")
+  ) {
     return `expected XR route to include simulator connection, saw ${stableStringify(body)}`;
   }
 
@@ -418,7 +582,10 @@ async function finalLedgerCheck(
     return `expected one IMAGE_DESCRIPTION call, saw ${stableStringify(scenarioState.modelCalls)}`;
   }
   const imageUrl = readPath(modelCall.payload, "imageUrl");
-  if (typeof imageUrl !== "string" || !imageUrl.startsWith("data:image/jpeg;base64,")) {
+  if (
+    typeof imageUrl !== "string" ||
+    !imageUrl.startsWith("data:image/jpeg;base64,")
+  ) {
     return `expected IMAGE_DESCRIPTION data URL payload, saw ${stableStringify(modelCall.payload)}`;
   }
   if (
@@ -455,17 +622,15 @@ export default scenario({
   rooms: [
     {
       id: "main",
-      source: "xr",
+      source: "client_chat",
       title: "Deterministic XR View Actions",
     },
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "list XR views",
-      text: "List XR views",
-      actionName: "XR_LIST_VIEWS",
-      options: { sendCatalog: true },
+      text: XR_LIST_TEXT,
       responseIncludesAny: [XR_VIEW_LABEL],
       assertTurn: async (execution) =>
         expectAction(execution, {
@@ -484,11 +649,9 @@ export default scenario({
         )),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "open scenario XR view",
-      text: `Open "${XR_VIEW_ID}" in XR`,
-      actionName: "XR_OPEN_VIEW",
-      options: { viewId: XR_VIEW_ID, scale: 1.25 },
+      text: XR_OPEN_TEXT,
       responseIncludesAny: [`Opening ${XR_VIEW_ID}`],
       assertTurn: async (execution) =>
         expectAction(execution, {
@@ -507,11 +670,9 @@ export default scenario({
         )),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "switch scenario XR view",
-      text: `Switch to "${XR_VIEW_ID}" in XR`,
-      actionName: "XR_SWITCH_VIEW",
-      options: { viewId: XR_VIEW_ID },
+      text: XR_SWITCH_TEXT,
       responseIncludesAny: [`Switched to ${XR_VIEW_ID}`],
       assertTurn: async (execution) =>
         expectAction(execution, {
@@ -526,11 +687,9 @@ export default scenario({
         )),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "resize scenario XR view",
-      text: "Make the scenario XR panel bigger and closer",
-      actionName: "XR_RESIZE_VIEW",
-      options: { viewId: XR_VIEW_ID, scale: 1.2, distance: 1.1 },
+      text: XR_RESIZE_TEXT,
       responseIncludesAny: ["Panel resized"],
       assertTurn: async (execution) =>
         expectAction(execution, {
@@ -548,11 +707,9 @@ export default scenario({
         )),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "close scenario XR view",
-      text: `Close "${XR_VIEW_ID}" in XR`,
-      actionName: "XR_CLOSE_VIEW",
-      options: { viewId: XR_VIEW_ID },
+      text: XR_CLOSE_TEXT,
       responseIncludesAny: [`Closed ${XR_VIEW_ID}`],
       assertTurn: async (execution) =>
         expectAction(execution, {
@@ -567,10 +724,9 @@ export default scenario({
         )),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "query XR vision",
-      text: "What do you see through the XR camera?",
-      actionName: "XR_QUERY_VISION",
+      text: XR_QUERY_VISION_TEXT,
       responseIncludesAny: [XR_VISION_DESCRIPTION],
       assertTurn: (execution) =>
         expectAction(execution, {

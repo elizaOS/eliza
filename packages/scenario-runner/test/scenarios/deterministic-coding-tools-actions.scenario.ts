@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -12,6 +11,10 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
 const execFileAsync = promisify(execFile);
 
@@ -23,9 +26,17 @@ const tmpRoot = path.join(
 const repoRoot = path.join(tmpRoot, "repo");
 const blockedRoot = path.join(tmpRoot, "_blocked");
 const notePath = path.join(repoRoot, "notes", "scenario-note.txt");
-const worktreePath = path.join(tmpRoot, "worktrees", "scenario-coding-worktree");
+const worktreePath = path.join(
+  tmpRoot,
+  "worktrees",
+  "scenario-coding-worktree",
+);
 const worktreeBranch = "scenario-coding-tools-branch";
 const roomId = stringToUuid(`scenario-room:${scenarioId}:main`);
+const worldId = stringToUuid(`scenario-runner-world:${scenarioId}`);
+const userId = stringToUuid(
+  `scenario-account:scenario-user:${scenarioId}:main`,
+);
 
 const writeParameters = {
   action: "write",
@@ -40,7 +51,8 @@ const readParameters = {
 
 const shellParameters = {
   action: "run",
-  command: "printf 'shell-ok:%s\\n' \"$(cat notes/scenario-note.txt | wc -l | tr -d ' ')\"",
+  command:
+    "printf 'shell-ok:%s\\n' \"$(cat notes/scenario-note.txt | wc -l | tr -d ' ')\"",
   cwd: repoRoot,
   timeout: 10_000,
 };
@@ -56,6 +68,45 @@ const exitWorktreeParameters = {
   action: "exit",
   cleanup: true,
 };
+
+const strictCodingToolRoutes = [
+  {
+    actionName: "FILE",
+    args: writeParameters,
+    contextIds: ["code"],
+    input: "Write the deterministic coding tools note file",
+    messageToUser: `Wrote ${notePath}`,
+  },
+  {
+    actionName: "FILE",
+    args: readParameters,
+    contextIds: ["code"],
+    input: "Read the deterministic coding tools note file",
+    messageToUser: "alpha coding-tools scenario",
+  },
+  {
+    actionName: "SHELL",
+    args: shellParameters,
+    contextIds: ["terminal"],
+    input:
+      "Run a shell command to count the deterministic coding tools note lines",
+    messageToUser: "shell-ok:2",
+  },
+  {
+    actionName: "WORKTREE",
+    args: enterWorktreeParameters,
+    contextIds: ["code"],
+    input: "Enter an isolated repo worktree",
+    messageToUser: `Entered worktree ${worktreeBranch}`,
+  },
+  {
+    actionName: "WORKTREE",
+    args: exitWorktreeParameters,
+    contextIds: ["code"],
+    input: "Exit and clean up the isolated repo worktree",
+    messageToUser: "Exited and removed worktree",
+  },
+];
 
 type JsonRecord = Record<string, unknown>;
 
@@ -122,11 +173,28 @@ function expectActionOptions(
   action: CapturedAction,
   expectedParameters: JsonRecord,
 ): string | undefined {
-  return expectEqual(
-    actionParameters(action),
-    { parameters: expectedParameters },
-    `${action.actionName} handler options`,
-  );
+  const actual = actionParameters(action);
+  if (
+    !expectEqual(
+      actual,
+      expectedParameters,
+      `${action.actionName} handler options`,
+    )
+  ) {
+    return undefined;
+  }
+  const nested = isRecord(actual.parameters) ? actual.parameters : null;
+  if (
+    nested &&
+    !expectEqual(
+      nested,
+      expectedParameters,
+      `${action.actionName} nested handler parameters`,
+    )
+  ) {
+    return undefined;
+  }
+  return `expected ${action.actionName} handler parameters to include ${stableStringify(expectedParameters)}, saw ${stableStringify(actual)}`;
 }
 
 function expectFileWriteTurn(
@@ -174,9 +242,7 @@ function expectFileReadTurn(
   );
 }
 
-function expectShellTurn(
-  execution: ScenarioTurnExecution,
-): string | undefined {
+function expectShellTurn(execution: ScenarioTurnExecution): string | undefined {
   const action = firstAction(execution, "SHELL");
   if (typeof action === "string") return action;
   return (
@@ -249,9 +315,13 @@ async function seedGitRepo(): Promise<void> {
   await fs.mkdir(blockedRoot, { recursive: true });
   await fs.writeFile(path.join(repoRoot, "README.md"), "scenario repo\n");
   await execFileAsync("git", ["init"], { cwd: repoRoot });
-  await execFileAsync("git", ["config", "user.email", "scenario@example.test"], {
-    cwd: repoRoot,
-  });
+  await execFileAsync(
+    "git",
+    ["config", "user.email", "scenario@example.test"],
+    {
+      cwd: repoRoot,
+    },
+  );
   await execFileAsync("git", ["config", "user.name", "Scenario Runner"], {
     cwd: repoRoot,
   });
@@ -309,12 +379,17 @@ export default scenario({
         process.env.CODING_TOOLS_BLOCKED_PATHS = blockedRoot;
 
         const runtime = ctx.runtime as
-          | {
+          | (RuntimeWithScenarioLlmFixtures & {
               plugins?: Array<{ name?: string }>;
-              registerPlugin?: (plugin: typeof codingToolsPlugin) => Promise<void>;
+              registerPlugin?: (
+                plugin: typeof codingToolsPlugin,
+              ) => Promise<void>;
               getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
               getService?: (serviceType: string) => unknown;
-            }
+              ensureConnection?: (
+                params: Record<string, unknown>,
+              ) => Promise<void>;
+            })
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
@@ -348,6 +423,20 @@ export default scenario({
         }
         sandbox.addRoot(roomId, tmpRoot);
         session.setCwd(roomId, repoRoot);
+        await runtime.ensureConnection?.({
+          entityId: userId,
+          roomId,
+          worldId,
+          userName: "Deterministic Coding Tools",
+          source: "telegram",
+          channelId: roomId,
+          type: "DM",
+          metadata: {
+            ownership: { ownerId: userId },
+            roles: { [userId]: "OWNER" },
+          },
+        });
+        registerStrictActionRouteFixtures(runtime, strictCodingToolRoutes);
         return undefined;
       },
     },
@@ -361,47 +450,37 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "write scenario file",
-      text: "Write the deterministic coding tools note",
-      actionName: "FILE",
-      options: { parameters: writeParameters },
+      text: "Write the deterministic coding tools note file",
       responseIncludesAny: ["Wrote", notePath],
       assertTurn: expectFileWriteTurn,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "read scenario file",
-      text: "Read the deterministic coding tools note",
-      actionName: "FILE",
-      options: { parameters: readParameters },
+      text: "Read the deterministic coding tools note file",
       responseIncludesAny: ["alpha coding-tools scenario"],
       assertTurn: expectFileReadTurn,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "run shell in seeded repo",
-      text: "Count the deterministic coding tools note lines",
-      actionName: "SHELL",
-      options: { parameters: shellParameters },
+      text: "Run a shell command to count the deterministic coding tools note lines",
       responseIncludesAny: ["shell-ok:2"],
       assertTurn: expectShellTurn,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "enter isolated worktree",
-      text: "Enter an isolated coding tools worktree",
-      actionName: "WORKTREE",
-      options: { parameters: enterWorktreeParameters },
+      text: "Enter an isolated repo worktree",
       responseIncludesAny: ["Entered worktree", worktreeBranch],
       assertTurn: expectWorktreeEnterTurn,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "exit isolated worktree",
-      text: "Exit and clean up the isolated coding tools worktree",
-      actionName: "WORKTREE",
-      options: { parameters: exitWorktreeParameters },
+      text: "Exit and clean up the isolated repo worktree",
       responseIncludesAny: ["Exited and removed worktree"],
       assertTurn: expectWorktreeExitTurn,
     },

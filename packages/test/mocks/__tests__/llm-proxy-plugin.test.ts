@@ -989,7 +989,56 @@ describe("deterministic LLM proxy plugin", () => {
     });
 
     expect(raw).toBe(JSON.stringify(exact));
+    expect(plugin.getFixtureDiagnostics().calls).toEqual([
+      expect.objectContaining({
+        modelType: ModelType.ACTION_PLANNER,
+        matchedFixtureName: "planner-create-ledger",
+        fixtureValidation: "schema",
+        selectedToolNames: ["CREATE_LEDGER_VIEW"],
+      }),
+    ]);
     plugin.assertFixturesConsumed();
+  });
+
+  it("rejects raw prose from strict ACTION_PLANNER fixtures", async () => {
+    const plugin = createDeterministicLlmProxyPlugin({
+      strict: true,
+      fixtures: [
+        {
+          name: "planner-raw-prose",
+          match: {
+            modelType: ModelType.ACTION_PLANNER,
+            input: "create the ledger view",
+            toolName: "CREATE_LEDGER_VIEW",
+          },
+          response: "Sure, I can create that view.",
+        },
+      ],
+    });
+
+    let thrown: unknown;
+    try {
+      await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+        messages: [{ role: "user", content: "create the ledger view" }],
+        tools: [{ name: "CREATE_LEDGER_VIEW" }],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      'deterministic LLM fixture "planner-raw-prose" returned invalid output',
+    );
+    expect((thrown as Error).message).toContain(
+      "response must be parseable JSON",
+    );
+    expect(plugin.getFixtureDiagnostics().calls).toEqual([
+      expect.objectContaining({
+        matchedFixtureName: "planner-raw-prose",
+        fixtureValidation: "json",
+      }),
+    ]);
   });
 
   it("lets tests register strict named resolver fixtures after plugin creation", async () => {

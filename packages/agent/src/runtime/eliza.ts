@@ -28,7 +28,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
-import { resolvePlugins } from "./plugin-resolver.ts";
+import {
+  type PluginResolutionPhase,
+  resolvePlugins,
+} from "./plugin-resolver.ts";
 import {
   CUSTOM_PLUGINS_DIRNAME as CUSTOM_RUNTIME_PLUGINS_DIRNAME,
   type ResolvedPlugin as RuntimeResolvedPlugin,
@@ -196,7 +199,6 @@ async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModul
   )) as E2BCapabilityRouterModule;
 }
 
-import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference/runtime/embedding-presets";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -239,7 +241,12 @@ import {
   resolveDefaultAgentWorkspaceDir,
   shouldBootstrapWorkspaceInitFiles,
 } from "../shared/workspace-resolution.ts";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
+import {
+  BLOCKING_CORE_PLUGINS,
+  CORE_PLUGINS,
+  DEFERRED_CORE_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "./core-plugins.ts";
 import { seedBundledDocuments } from "./default-documents.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
 import {
@@ -412,14 +419,228 @@ function getOptionalPlugin(packageName: string): Promise<unknown> {
 }
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
 
-let _coreStaticPluginsRegistered = false;
-let _coreStaticPluginsRegistrationPromise: Promise<void> | null = null;
+type CoreStaticPluginPhase = "blocking" | "deferred";
+
+type CoreStaticPluginRegistration = {
+  packageName: string;
+  registryName?: string;
+  phase: CoreStaticPluginPhase;
+  required: boolean;
+  load: () => Promise<unknown>;
+};
+
+const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] =
+  [
+    {
+      packageName: "@elizaos/plugin-sql",
+      phase: "blocking",
+      required: true,
+      load: () => getPluginSql(),
+    },
+    {
+      packageName: "@elizaos/plugin-local-inference",
+      phase: "blocking",
+      required: false,
+      load: () => getPluginLocalEmbedding(),
+    },
+    {
+      packageName: "@elizaos/plugin-agent-orchestrator",
+      registryName: "agent-orchestrator",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
+    },
+    {
+      packageName: "@elizaos/plugin-task-coordinator",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-task-coordinator"),
+    },
+    {
+      packageName: "@elizaos/plugin-shell",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-shell"),
+    },
+    {
+      packageName: "@elizaos/plugin-coding-tools",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
+    },
+    {
+      packageName: "@elizaos/plugin-commands",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-commands"),
+    },
+    {
+      packageName: "@elizaos/plugin-video",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-video"),
+    },
+    {
+      packageName: "@elizaos/plugin-background-runner",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-background-runner"),
+    },
+    {
+      packageName: "@elizaos/plugin-elizacloud",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-elizacloud"),
+    },
+    {
+      packageName: "@elizaos/plugin-ollama",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-ollama"),
+    },
+    {
+      packageName: "@elizaos/plugin-anthropic",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-anthropic"),
+    },
+    {
+      packageName: "@elizaos/plugin-openai",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-openai"),
+    },
+    {
+      packageName: "@elizaos/plugin-google",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-google"),
+    },
+    {
+      packageName: "@elizaos/plugin-gitpathologist",
+      phase: "deferred",
+      required: false,
+      load: () => getOptionalPlugin("@elizaos/plugin-gitpathologist"),
+    },
+  ];
+
+let _blockingStaticPluginsRegistered = false;
+let _deferredStaticPluginsRegistered = false;
+let _blockingStaticPluginsRegistrationPromise: Promise<void> | null = null;
+let _deferredStaticPluginsRegistrationPromise: Promise<void> | null = null;
+
+function isTruthyEnvFlag(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function shouldBlockDeferredPluginImports(): boolean {
+  return isTruthyEnvFlag(process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS);
+}
+
+async function registerStaticPluginPhase(
+  phase: CoreStaticPluginPhase,
+): Promise<void> {
+  const bootTimeoutMs = Number(
+    process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
+  );
+  const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
+    (registration) => registration.phase === phase,
+  );
+  logger.info(
+    `[boot] resolving ${phase} plugins (${registrations.length}, timeout=${bootTimeoutMs}ms)`,
+  );
+
+  const trackImport = async (
+    registration: CoreStaticPluginRegistration,
+  ): Promise<void> => {
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new Error(
+            `plugin ${registration.packageName} timed out after ${bootTimeoutMs}ms`,
+          ),
+        );
+      }, bootTimeoutMs);
+      if (typeof timer.unref === "function") timer.unref();
+    });
+
+    try {
+      const mod = await Promise.race([registration.load(), timeout]);
+      if (!mod) {
+        if (registration.required) {
+          throw new Error(`${registration.packageName} resolved to null`);
+        }
+        logger.warn(
+          `[boot] ${registration.packageName} skipped after ${Date.now() - startedAt}ms: module unavailable`,
+        );
+        return;
+      }
+      STATIC_ELIZA_PLUGINS[
+        registration.registryName ?? registration.packageName
+      ] = mod;
+      logger.info(
+        `[boot] ${registration.packageName} loaded in ${Date.now() - startedAt}ms`,
+      );
+    } catch (err) {
+      const elapsed = Date.now() - startedAt;
+      if (registration.required) {
+        logger.error(
+          `[boot] ${registration.packageName} FAILED after ${elapsed}ms: ${formatError(err)}`,
+        );
+        throw err;
+      }
+      logger.warn(
+        `[boot] ${registration.packageName} skipped after ${elapsed}ms: ${formatError(err)}`,
+      );
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  await Promise.all(registrations.map(trackImport));
+  if (phase === "blocking") {
+    _blockingStaticPluginsRegistered = true;
+  } else {
+    _deferredStaticPluginsRegistered = true;
+  }
+}
+
+async function ensureBlockingCoreStaticPluginsRegistered(): Promise<void> {
+  if (_blockingStaticPluginsRegistered) return;
+  if (!_blockingStaticPluginsRegistrationPromise) {
+    _blockingStaticPluginsRegistrationPromise =
+      registerStaticPluginPhase("blocking");
+  }
+  await _blockingStaticPluginsRegistrationPromise;
+}
+
+export async function ensureDeferredCoreStaticPluginsRegistered(): Promise<void> {
+  if (_deferredStaticPluginsRegistered) return;
+  if (!_deferredStaticPluginsRegistrationPromise) {
+    _deferredStaticPluginsRegistrationPromise =
+      registerStaticPluginPhase("deferred");
+  }
+  await _deferredStaticPluginsRegistrationPromise;
+}
 
 /**
  * Resolve and register the baseline `@elizaos/plugin-*` modules into the
  * shared `STATIC_ELIZA_PLUGINS` map. Called from every runtime entry point
  * (`startEliza`, `startInCloudMode`, `bootElizaRuntime`) before any caller
  * touches `loadSinglePlugin`. Memoized so repeated calls are free.
+ *
+ * Startup is intentionally two-phase:
+ * - blocking: only the database and local-inference pre-init hooks needed for
+ *   runtime readiness;
+ * - deferred: provider/feature modules that should not hold the API ready gate.
+ *
+ * Set ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS=1 to restore the legacy behavior and
+ * await both phases before plugin resolution. This is useful when debugging
+ * import-order or bundling issues.
  *
  * Why this isn't done at module init:
  * - Top-level `await` for these modules at module scope creates a
@@ -429,199 +650,15 @@ let _coreStaticPluginsRegistrationPromise: Promise<void> | null = null;
  *   ordering explicit and bundler-independent.
  */
 export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
-  if (_coreStaticPluginsRegistered) return;
-  if (_coreStaticPluginsRegistrationPromise) {
-    await _coreStaticPluginsRegistrationPromise;
-    return;
-  }
-  _coreStaticPluginsRegistrationPromise = (async () => {
-    // Per-plugin timing + timeout. Converts a silent boot hang into a named,
-    // attributable failure: the log line tells you which plugin is stuck,
-    // and the timeout prevents one bad module (e.g. plugin-sql opening
-    // PGlite on a locked data dir) from holding the container forever.
-    //
-    // plugin-sql is required — if it times out we throw. Optional plugins
-    // resolve to `null` on timeout so the boot continues without them.
-    const bootTimeoutMs = Number(
-      process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
+  await ensureBlockingCoreStaticPluginsRegistered();
+  if (shouldBlockDeferredPluginImports()) {
+    logger.info(
+      "[boot] ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS=1 — awaiting deferred plugin imports before readiness",
     );
-    logger.info(`[boot] resolving plugins (timeout=${bootTimeoutMs}ms)`);
-
-    const trackImport = async <T>(
-      name: string,
-      loader: () => Promise<T>,
-      { required }: { required: boolean },
-    ): Promise<T | null> => {
-      const startedAt = Date.now();
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          reject(
-            new Error(`plugin ${name} timed out after ${bootTimeoutMs}ms`),
-          );
-        }, bootTimeoutMs);
-        if (typeof timer.unref === "function") timer.unref();
-      });
-      try {
-        const result = await Promise.race([loader(), timeout]);
-        logger.info(`[boot] ${name} loaded in ${Date.now() - startedAt}ms`);
-        return result;
-      } catch (err) {
-        const elapsed = Date.now() - startedAt;
-        if (required) {
-          logger.error(
-            `[boot] ${name} FAILED after ${elapsed}ms: ${formatError(err)}`,
-          );
-          throw err;
-        }
-        logger.warn(
-          `[boot] ${name} skipped after ${elapsed}ms: ${formatError(err)}`,
-        );
-        return null;
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-    };
-
-    const [
-      pluginSql,
-      pluginLocalEmbedding,
-      pluginAgentOrchestrator,
-      pluginTaskCoordinator,
-      pluginShell,
-      pluginCodingTools,
-      pluginCommands,
-      pluginVideo,
-      pluginBackgroundRunner,
-      pluginElizacloud,
-      pluginOllama,
-      pluginAnthropic,
-      pluginOpenai,
-      pluginGoogle,
-      pluginGitpathologist,
-    ] = await Promise.all([
-      trackImport("@elizaos/plugin-sql", () => getPluginSql(), {
-        required: true,
-      }),
-      trackImport(
-        "@elizaos/plugin-local-inference",
-        () => getPluginLocalEmbedding(),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-agent-orchestrator",
-        () => getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-task-coordinator",
-        () => getOptionalPlugin("@elizaos/plugin-task-coordinator"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-shell",
-        () => getOptionalPlugin("@elizaos/plugin-shell"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-coding-tools",
-        () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-commands",
-        () => getOptionalPlugin("@elizaos/plugin-commands"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-video",
-        () => getOptionalPlugin("@elizaos/plugin-video"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-background-runner",
-        () => getOptionalPlugin("@elizaos/plugin-background-runner"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-elizacloud",
-        () => getOptionalPlugin("@elizaos/plugin-elizacloud"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-ollama",
-        () => getOptionalPlugin("@elizaos/plugin-ollama"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-anthropic",
-        () => getOptionalPlugin("@elizaos/plugin-anthropic"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-openai",
-        () => getOptionalPlugin("@elizaos/plugin-openai"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-google",
-        () => getOptionalPlugin("@elizaos/plugin-google"),
-        { required: false },
-      ),
-      trackImport(
-        "@elizaos/plugin-gitpathologist",
-        () => getOptionalPlugin("@elizaos/plugin-gitpathologist"),
-        { required: false },
-      ),
-    ]);
-
-    if (!pluginSql) {
-      throw new Error("[boot] @elizaos/plugin-sql failed to load");
-    }
-
-    Object.assign(STATIC_ELIZA_PLUGINS, {
-      "@elizaos/plugin-sql": pluginSql,
-      ...(pluginLocalEmbedding
-        ? { "@elizaos/plugin-local-inference": pluginLocalEmbedding }
-        : {}),
-      // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
-      ...(pluginAgentOrchestrator
-        ? { "agent-orchestrator": pluginAgentOrchestrator }
-        : {}),
-      ...(pluginTaskCoordinator
-        ? { "@elizaos/plugin-task-coordinator": pluginTaskCoordinator }
-        : {}),
-      ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
-      ...(pluginCodingTools
-        ? { "@elizaos/plugin-coding-tools": pluginCodingTools }
-        : {}),
-      // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
-      ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
-      ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
-      ...(pluginBackgroundRunner
-        ? { "@elizaos/plugin-background-runner": pluginBackgroundRunner }
-        : {}),
-      ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
-      ...(pluginGoogle ? { "@elizaos/plugin-google": pluginGoogle } : {}),
-      ...(pluginGitpathologist
-        ? { "@elizaos/plugin-gitpathologist": pluginGitpathologist }
-        : {}),
-      ...(pluginAnthropic
-        ? { "@elizaos/plugin-anthropic": pluginAnthropic }
-        : {}),
-      ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
-      ...(pluginElizacloud
-        ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
-        : {}),
-      // trust: now built-in core capability (ENABLE_TRUST)
-      // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
-      // omitted from the static map — see the comment near the top of this file.
-      // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
-      // personality: now built-in advanced capability (advancedCapabilities: true)
-    });
-    _coreStaticPluginsRegistered = true;
-  })();
-  await _coreStaticPluginsRegistrationPromise;
+    await ensureDeferredCoreStaticPluginsRegistered();
+  } else {
+    logger.info("[boot] deferred plugin imports scheduled after readiness");
+  }
 }
 
 type SignalShutdownContext = {
@@ -758,10 +795,13 @@ type SandboxFetchAuditEvent = {
   tokenIds: string[];
 };
 
-export function configureLocalEmbeddingPlugin(
+export async function configureLocalEmbeddingPlugin(
   _plugin: Plugin,
   config?: ElizaConfig,
-): void {
+): Promise<void> {
+  const { detectEmbeddingPreset } = await import(
+    "@elizaos/plugin-local-inference/runtime/embedding-presets"
+  );
   const detectedPreset = detectEmbeddingPreset();
   const SQL_COMPATIBLE_EMBEDDING_DIMENSIONS = new Set([
     384, 512, 768, 1024, 1536, 3072,
@@ -1450,7 +1490,12 @@ const CHANNEL_ENV_MAP = CONNECTOR_ENV_MAP;
 // Plugin resolution
 // ---------------------------------------------------------------------------
 
-export { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS };
+export {
+  BLOCKING_CORE_PLUGINS,
+  CORE_PLUGINS,
+  DEFERRED_CORE_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+};
 
 // CHANNEL_PLUGIN_MAP, PROVIDER_PLUGIN_MAP, and OPTIONAL_PLUGIN_MAP live in
 // ./plugin-collector.ts and are re-exported from this module for backward compatibility.
@@ -3140,11 +3185,11 @@ export async function startEliza(
   const bootTimer = new BootTimer("[eliza-boot]");
 
   // Resolve and register baseline `@elizaos/plugin-*` modules into the
-  // STATIC_ELIZA_PLUGINS map BEFORE any plugin resolution happens. See the
+  // STATIC_ELIZA_PLUGINS blocking map BEFORE any plugin resolution happens. See the
   // comment on `ensureCoreStaticPluginsRegistered()` for why this isn't a
   // module-init top-level await.
   await ensureCoreStaticPluginsRegistered();
-  bootTimer.lap("static-plugins-import");
+  bootTimer.lap("static-plugins-blocking-import");
 
   // Start buffering logs early so startup messages appear in the UI log viewer
   const { captureEarlyLogs } = await import("../api/early-logs.ts");
@@ -3606,10 +3651,14 @@ export async function startEliza(
   // provider yet.  Downgrade diagnostics so the expected "no AI provider"
   // state doesn't appear as a scary Error in the terminal.
   const preOnboarding = opts?.headless && !config.agents;
+  const blockDeferredPluginImports = shouldBlockDeferredPluginImports();
+  const initialPluginResolutionPhase: PluginResolutionPhase =
+    blockDeferredPluginImports ? "all" : "blocking";
   const resolvedPlugins = await resolvePlugins(config, {
     quiet: preOnboarding,
+    phase: initialPluginResolutionPhase,
   });
-  bootTimer.lap("resolve-plugins-import");
+  bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
 
   if (resolvedPlugins.length === 0) {
     if (preOnboarding) {
@@ -4017,7 +4066,7 @@ export async function startEliza(
   //     local embeddings require an active Eliza-1 bundle, and startup probes
   //     must not abort the app before the user can activate one.
   if (localEmbeddingPlugin) {
-    configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
+    await configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
     moveLocalInferenceModelsToRuntimeHandlers(localEmbeddingPlugin.plugin);
     await runtime.registerPlugin(localEmbeddingPlugin.plugin);
     await ensureLocalInferenceRuntimeHandlers(runtime);
@@ -4400,40 +4449,159 @@ export async function startEliza(
     });
   };
 
-  // Essential boot: only what the chat path needs to function (sql +
-  // local-inference are already registered above; runtime.initialize() brings
-  // the provider/connector plugins and core message handler online). The
-  // runtime is reported ready as soon as this resolves.
+  // Essential boot: only what the runtime needs to become reachable (sql +
+  // local-inference are already registered above; deferred provider/connector
+  // plugins continue after the ready gate unless legacy blocking mode is
+  // requested). The runtime is reported ready as soon as this resolves.
   const initializeRuntimeServices = async (): Promise<void> => {
     await runStewardEvmPreBoot();
     await registerConnectorSetupService();
     await registerRemoteCodingRunner();
     bootTimer.lap("svc:pre-init");
 
+    if (blockDeferredPluginImports) {
+      await preregisterCorePluginsInDependencyWaves({
+        runtime,
+        resolvedPlugins,
+        alreadyPreRegistered: new Set<string>([
+          "@elizaos/plugin-sql",
+          "@elizaos/plugin-local-inference",
+        ]),
+        label: "blocking",
+      });
+      bootTimer.lap("register-core-plugin-waves");
+    }
+
     await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");
   };
 
+  const registerDeferredRuntimePlugins = async (
+    deferredResolvedPlugins: RuntimeResolvedPlugin[],
+  ): Promise<void> => {
+    if (blockDeferredPluginImports) {
+      return;
+    }
+
+    const deferredPluginsForRuntime = deferredResolvedPlugins
+      .filter((p) => !PREREGISTER_PLUGINS.has(p.name))
+      .map((p) => p.plugin);
+    if (deferredPluginsForRuntime.length === 0) {
+      return;
+    }
+
+    if (preferredProviderPluginName) {
+      for (const plugin of deferredPluginsForRuntime) {
+        if (plugin.name === preferredProviderPluginName) {
+          plugin.priority = (plugin.priority ?? 0) + 10;
+          logger.info(
+            `[eliza] Boosted deferred plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
+          );
+          break;
+        }
+      }
+    }
+
+    for (const plugin of deferredPluginsForRuntime) {
+      if (
+        plugin.name === "@elizaos/plugin-agent-skills" &&
+        Array.isArray(plugin.providers)
+      ) {
+        const UPSTREAM_SKILL_PROVIDERS_TO_STRIP = new Set([
+          "agent_skills",
+          "agent_skill_instructions",
+          "agent_skills_catalog",
+        ]);
+        const before = plugin.providers.length;
+        plugin.providers = plugin.providers.filter(
+          (p: { name?: string }) =>
+            !UPSTREAM_SKILL_PROVIDERS_TO_STRIP.has(p.name ?? ""),
+        );
+        const removed = before - plugin.providers.length;
+        if (removed > 0) {
+          logger.info(
+            `[eliza] Stripped ${removed} deferred upstream skill provider(s) — using dynamic BM25-lite provider instead`,
+          );
+        }
+      }
+    }
+
+    deduplicatePluginActions([
+      basicCapabilitiesPlugin,
+      elizaPlugin,
+      ...(runtime.plugins ?? []),
+      ...deferredPluginsForRuntime,
+    ]);
+
+    const timeoutMs = 30_000;
+    await Promise.all(
+      deferredPluginsForRuntime.map(async (plugin) => {
+        const startedAt = Date.now();
+        try {
+          logger.info(
+            `[eliza] deferred: Registering plugin: ${plugin.name}...`,
+          );
+          await Promise.race([
+            runtime.registerPlugin(plugin),
+            new Promise<never>((_resolve, reject) =>
+              setTimeout(
+                () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
+                timeoutMs,
+              ),
+            ),
+          ]);
+          logger.info(
+            `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
+          );
+        } catch (err) {
+          logger.warn(
+            `[eliza] deferred: Plugin ${plugin.name} registration failed: ${formatError(err)}`,
+          );
+        }
+      }),
+    );
+  };
+
+  const resolveDeferredPluginsForBoot = async (): Promise<
+    RuntimeResolvedPlugin[]
+  > => {
+    if (blockDeferredPluginImports) {
+      return resolvedPlugins;
+    }
+    await ensureDeferredCoreStaticPluginsRegistered();
+    const deferredResolvedPlugins = await resolvePlugins(config, {
+      quiet: preOnboarding,
+      phase: "deferred",
+    });
+    bootTimer.lap("deferred:resolve-plugins-import");
+    return deferredResolvedPlugins;
+  };
+
   // Deferred boot: non-essential core plugins (companion, app-control,
   // device-filesystem, shell, coding-tools, agent-skills, commands, google,
-  // lifeops, browser, video) plus the post-init tail. Runs in the background
-  // after the runtime is ready so chat is usable immediately; the deferred
-  // capabilities (actions/providers) light up as each plugin registers. The 3
-  // intra-core dependency edges (coding-tools/agent-skills → shell, lifeops →
-  // google) live entirely within this group, so the existing wave algorithm
-  // preserves ordering.
+  // lifeops, browser, video), auto-enabled providers/connectors, custom
+  // plugins, plus the post-init tail. Runs in the background after the runtime
+  // is ready so the API can bind immediately; deferred capabilities light up as
+  // each plugin registers. The 3 intra-core dependency edges
+  // (coding-tools/agent-skills → shell, lifeops → google) live entirely within
+  // this group, so the existing wave algorithm preserves ordering.
   const runDeferredBoot = async (): Promise<void> => {
-    const alreadyPreRegistered = new Set<string>([
-      "@elizaos/plugin-sql",
-      "@elizaos/plugin-local-inference",
-    ]);
-    await preregisterCorePluginsInDependencyWaves({
-      runtime,
-      resolvedPlugins,
-      alreadyPreRegistered,
-      label: "deferred",
-    });
-    bootTimer.lap("deferred:core-plugin-waves");
+    if (!blockDeferredPluginImports) {
+      const deferredResolvedPlugins = await resolveDeferredPluginsForBoot();
+      await registerDeferredRuntimePlugins(deferredResolvedPlugins);
+      bootTimer.lap("deferred:runtime-plugins");
+
+      await preregisterCorePluginsInDependencyWaves({
+        runtime,
+        resolvedPlugins: deferredResolvedPlugins,
+        alreadyPreRegistered: new Set<string>([
+          "@elizaos/plugin-sql",
+          "@elizaos/plugin-local-inference",
+        ]),
+        label: "deferred",
+      });
+      bootTimer.lap("deferred:core-plugin-waves");
+    }
 
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
@@ -4750,7 +4918,7 @@ export async function startEliza(
             );
           }
           if (freshLocalEmbeddingPlugin) {
-            configureLocalEmbeddingPlugin(
+            await configureLocalEmbeddingPlugin(
               freshLocalEmbeddingPlugin.plugin,
               freshConfig,
             );

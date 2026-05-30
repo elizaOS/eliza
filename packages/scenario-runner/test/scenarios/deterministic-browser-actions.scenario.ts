@@ -3,11 +3,81 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { browserPlugin } from "../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,
-  browserPlugin,
   executeBrowserWorkspaceCommand,
-} from "../../../../plugins/plugin-browser/src/index.ts";
+} from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
+
+const strictBrowserRoutes = [
+  {
+    actionName: "BROWSER_GET",
+    args: { selector: "#scenario-title" },
+    contextIds: ["browser", "web"],
+    input: "Read the browser form heading",
+    messageToUser: "Browser get result (web):\nScenario Browser Form",
+  },
+  {
+    actionName: "BROWSER_WAIT",
+    args: { selector: "#scenario-input", timeoutMs: 4000 },
+    contextIds: ["browser", "web"],
+    input: "Wait for the browser form input",
+    messageToUser:
+      'Browser wait result (web):\n{\n  "findBy": null,\n  "selector": "#scenario-input",\n  "state": null,\n  "text": null,\n  "url": "https://scenario.test/form"\n}',
+  },
+  {
+    actionName: "BROWSER_TYPE",
+    args: {
+      selector: "#scenario-input",
+      text: "typed by strict browser scenario",
+    },
+    contextIds: ["browser", "web"],
+    input: "Type deterministic text into the browser form input",
+    messageToUser:
+      'Browser type result (web):\n{\n  "selector": "#scenario-input",\n  "value": "typed by strict browser scenario"\n}',
+  },
+  {
+    actionName: "BROWSER_CLICK",
+    args: { selector: "#scenario-button" },
+    contextIds: ["browser", "web"],
+    input: "Click the seeded browser form button",
+    messageToUser:
+      'Browser click result (web):\n{\n  "clickCount": 1,\n  "selector": "#scenario-button",\n  "text": "Submit"\n}',
+  },
+  {
+    actionName: "BROWSER_SCREENSHOT",
+    args: {},
+    contextIds: ["browser", "web"],
+    input: "Capture a browser workspace screenshot",
+    messageToUser: "Browser screenshot captured a preview in web mode.",
+  },
+  {
+    actionName: "BROWSER_OPEN",
+    args: { url: "about:blank" },
+    contextIds: ["browser", "web"],
+    input: "Open another browser tab",
+    messageToUser: "open completed in web mode.\nNew Tab\nabout:blank",
+  },
+  {
+    actionName: "BROWSER_LIST_TABS",
+    args: {},
+    contextIds: ["browser", "web"],
+    input: "List the browser workspace tabs",
+    messageToUser:
+      "Browser tabs (web):\n- Scenario Browser Form (https://scenario.test/form)\n- New Tab (about:blank)",
+  },
+  {
+    actionName: "BROWSER_CLOSE",
+    args: {},
+    contextIds: ["browser", "web"],
+    input: "Close the current browser workspace tab",
+    messageToUser: "Browser closed (web).",
+  },
+];
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -45,15 +115,15 @@ function expectActionTurn(
     resultFields: Record<string, unknown>;
   },
 ): string | undefined {
-  if (execution.responseText !== expected.responseText) {
-    return `expected responseText=${JSON.stringify(expected.responseText)}, saw ${JSON.stringify(execution.responseText)}`;
-  }
-
   const action = execution.actionsCalled.find(
     (candidate) => candidate.actionName === expected.actionName,
   ) as CapturedAction | undefined;
   if (!action) {
     return `expected ${expected.actionName} action, saw ${execution.actionsCalled.map((candidate) => candidate.actionName).join(", ") || "none"}`;
+  }
+
+  if (action.result?.text !== expected.responseText) {
+    return `expected ${expected.actionName} result.text=${JSON.stringify(expected.responseText)}, saw responseText=${JSON.stringify(execution.responseText)}, result.text=${JSON.stringify(action.result?.text)}`;
   }
 
   const params = actionParameters(action.parameters);
@@ -96,10 +166,10 @@ export default scenario({
         __resetBrowserWorkspaceStateForTests();
 
         const runtime = ctx.runtime as
-          | {
+          | ({
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (plugin: typeof browserPlugin) => Promise<void>;
-            }
+            } & RuntimeWithScenarioLlmFixtures)
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
@@ -152,6 +222,7 @@ export default scenario({
           url: "https://scenario.test/form",
         });
 
+        registerStrictActionRouteFixtures(runtime, strictBrowserRoutes);
         return undefined;
       },
     },
@@ -165,18 +236,15 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "read seeded browser form heading",
       text: "Read the browser form heading",
-      actionName: "BROWSER_GET",
-      options: { parameters: { selector: "#scenario-title" } },
       responseIncludesAny: ["Scenario Browser Form"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "BROWSER_GET",
           parameters: { selector: "#scenario-title" },
-          responseText:
-            "Browser get result (web):\nScenario Browser Form",
+          responseText: "Browser get result (web):\nScenario Browser Form",
           resultFields: {
             "values.mode": "web",
             "values.subaction": "get",
@@ -186,11 +254,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "wait for seeded browser input",
       text: "Wait for the browser form input",
-      actionName: "BROWSER_WAIT",
-      options: { parameters: { selector: "#scenario-input", timeoutMs: 4000 } },
       responseIncludesAny: ["#scenario-input"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
@@ -210,16 +276,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "type into seeded browser input",
       text: "Type deterministic text into the browser form input",
-      actionName: "BROWSER_TYPE",
-      options: {
-        parameters: {
-          selector: "#scenario-input",
-          text: "typed by strict browser scenario",
-        },
-      },
       responseIncludesAny: ["typed by strict browser scenario"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
@@ -240,11 +299,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "click seeded browser button",
       text: "Click the seeded browser form button",
-      actionName: "BROWSER_CLICK",
-      options: { parameters: { selector: "#scenario-button" } },
       responseIncludesAny: ["Submit"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
@@ -262,18 +319,15 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "capture seeded browser screenshot",
       text: "Capture a browser workspace screenshot",
-      actionName: "BROWSER_SCREENSHOT",
-      options: { parameters: {} },
       responseIncludesAny: ["captured a preview"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "BROWSER_SCREENSHOT",
           parameters: {},
-          responseText:
-            "Browser screenshot captured a preview in web mode.",
+          responseText: "Browser screenshot captured a preview in web mode.",
           resultFields: {
             "values.mode": "web",
             "values.subaction": "screenshot",
@@ -283,11 +337,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "open an additional browser tab",
       text: "Open another browser tab",
-      actionName: "BROWSER_OPEN",
-      options: { parameters: { url: "about:blank" } },
       responseIncludesAny: ["open completed in web mode"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
@@ -303,11 +355,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "list browser tabs",
       text: "List the browser workspace tabs",
-      actionName: "BROWSER_LIST_TABS",
-      options: { parameters: {} },
       responseIncludesAny: ["Scenario Browser Form", "New Tab"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
@@ -324,11 +374,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "close current browser tab",
       text: "Close the current browser workspace tab",
-      actionName: "BROWSER_CLOSE",
-      options: { parameters: {} },
       responseIncludesAny: ["Browser closed (web)."],
       assertTurn: (execution) =>
         expectActionTurn(execution, {

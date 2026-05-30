@@ -1,8 +1,4 @@
-import {
-  createServer,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import type { Plugin } from "@elizaos/core";
 import type {
   CapturedAction,
@@ -12,22 +8,24 @@ import type {
 import { scenario } from "@elizaos/scenario-runner/schema";
 import streamingPlugin, {
   handleStreamRoute,
-  streamStatusProvider,
   type StreamRouteState,
+  streamStatusProvider,
 } from "../../../../plugins/plugin-streaming/src/index.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures as RuntimeWithStrictLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
-const SCENARIO_ID = "deterministic-streaming-actions";
 const STREAM_TEXT = {
-  start: "Go live on Twitch",
-  liveStatus: "Check Twitch stream status",
-  stop: "Stop the Twitch stream",
-  offlineStatus: "Check Twitch stream status after stop",
+  start: "Run the Twitch stream start operation",
+  liveStatus: "Run the Twitch stream status operation",
+  stop: "Run the Twitch stream stop operation",
+  offlineStatus: "Run the Twitch stream status operation after stop",
 } as const;
 
 type JsonRecord = Record<string, unknown>;
 
-type RuntimeWithScenarioLlmFixtures = {
-  actions?: Array<{ name?: unknown }>;
+type RuntimeWithScenarioLlmFixtures = RuntimeWithStrictLlmFixtures & {
   plugins?: Array<{ name?: unknown }>;
   registerPlugin?: (plugin: Plugin) => Promise<void>;
   unregisterAction?: (name: string) => boolean;
@@ -46,6 +44,39 @@ type StreamRouteRequest = {
 const routeRequests: StreamRouteRequest[] = [];
 const managerEvents: Array<{ type: string; config?: JsonRecord }> = [];
 const destinationEvents: string[] = [];
+
+const strictStreamRoutes = [
+  {
+    actionName: "STREAM",
+    args: { action: "start", platform: "twitch" },
+    contextIds: ["media"],
+    input: STREAM_TEXT.start,
+    messageToUser: "Twitch stream started successfully! We're live.",
+  },
+  {
+    actionName: "STREAM",
+    args: { action: "status", platform: "twitch" },
+    contextIds: ["media"],
+    input: STREAM_TEXT.liveStatus,
+    messageToUser:
+      "Twitch stream status: LIVE | Uptime: 2m | Destination: Twitch",
+  },
+  {
+    actionName: "STREAM",
+    args: { action: "stop", platform: "twitch" },
+    contextIds: ["media"],
+    input: STREAM_TEXT.stop,
+    messageToUser: "Twitch stream stopped. We're offline now.",
+  },
+  {
+    actionName: "STREAM",
+    args: { action: "status", platform: "twitch" },
+    contextIds: ["media"],
+    input: STREAM_TEXT.offlineStatus,
+    messageToUser:
+      "Twitch stream status: OFFLINE | Uptime: 0m | Destination: Twitch",
+  },
+] as const;
 
 let routeServer: Server | null = null;
 let originalServerPort: string | undefined;
@@ -403,6 +434,23 @@ function routeRequestSummary(): StreamRouteRequest[] {
   }));
 }
 
+function routeMatches(
+  request: StreamRouteRequest | undefined,
+  expected: StreamRouteRequest,
+): boolean {
+  return expectEqual(request, expected, "route") === undefined;
+}
+
+function findRouteAfter(
+  requests: StreamRouteRequest[],
+  startIndex: number,
+  expected: StreamRouteRequest,
+): number {
+  return requests.findIndex(
+    (request, index) => index > startIndex && routeMatches(request, expected),
+  );
+}
+
 async function finalStreamingCheck(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
@@ -431,7 +479,7 @@ async function finalStreamingCheck(
       );
     }
 
-    const expectedFirstRoutes: StreamRouteRequest[] = [
+    const expectedActionRoutes: StreamRouteRequest[] = [
       {
         method: "POST",
         pathname: "/api/stream/live",
@@ -496,26 +544,45 @@ async function finalStreamingCheck(
       },
     ];
     const actualRoutes = routeRequestSummary();
-    const firstRouteFailure = expectEqual(
-      actualRoutes.slice(0, 4),
-      expectedFirstRoutes,
-      "STREAM route ledger",
-    );
-    if (firstRouteFailure) failures.push(firstRouteFailure);
 
-    const providerStatusRoutes = actualRoutes.slice(4);
-    if (
-      providerStatusRoutes.length !== 4 ||
-      providerStatusRoutes.some(
-        (request) =>
-          request.method !== "GET" ||
-          request.pathname !== "/api/stream/status" ||
-          request.response?.status !== 200,
-      )
-    ) {
-      failures.push(
-        `expected provider to hit four status routes after action turns, saw ${stableStringify(providerStatusRoutes)}`,
-      );
+    let routeIndex = -1;
+    for (const expectedRoute of expectedActionRoutes) {
+      routeIndex = findRouteAfter(actualRoutes, routeIndex, expectedRoute);
+      if (routeIndex === -1) {
+        failures.push(
+          `expected STREAM route sequence to include ${stableStringify(expectedRoute)} after prior matched routes, saw ${stableStringify(actualRoutes)}`,
+        );
+        break;
+      }
+    }
+
+    const expectedProviderStatusRoutes = Array.from({ length: 4 }, () => ({
+      method: "GET",
+      pathname: "/api/stream/status",
+      response: {
+        body: {
+          audioSource: "silent",
+          destination: { id: "twitch", name: "Twitch" },
+          ffmpegAlive: false,
+          frameCount: 0,
+          inputMode: null,
+          muted: false,
+          ok: true,
+          running: false,
+          uptime: 0,
+          volume: 80,
+        },
+        status: 200,
+      },
+      search: "",
+    }));
+    const providerStatusFailure = expectEqual(
+      actualRoutes.slice(-4),
+      expectedProviderStatusRoutes,
+      "final streamStatus provider routes",
+    );
+    if (providerStatusFailure) {
+      failures.push(providerStatusFailure);
     }
 
     const managerFailure = expectEqual(
@@ -581,14 +648,18 @@ export default scenario({
         process.env.SERVER_PORT = String(port);
 
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
-        if (!runtime.registerPlugin) return "runtime.registerPlugin unavailable";
+        if (!runtime.registerPlugin)
+          return "runtime.registerPlugin unavailable";
         if (
-          !runtime.plugins?.some((plugin) => plugin.name === streamingPlugin.name)
+          !runtime.plugins?.some(
+            (plugin) => plugin.name === streamingPlugin.name,
+          )
         ) {
           runtime.unregisterAction?.("STREAM");
           await runtime.registerPlugin(streamingPlugin);
         }
 
+        registerStrictActionRouteFixtures(runtime, strictStreamRoutes);
         return undefined;
       },
     },
@@ -602,11 +673,9 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "STREAM starts Twitch stream through loopback route",
       text: STREAM_TEXT.start,
-      actionName: "STREAM",
-      options: { action: "start", platform: "twitch" },
       responseIncludesAny: ["Twitch stream started successfully"],
       assertTurn: (execution) =>
         expectStreamAction(execution, {
@@ -615,11 +684,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "STREAM reads live Twitch status through loopback route",
       text: STREAM_TEXT.liveStatus,
-      actionName: "STREAM",
-      options: { action: "status", platform: "twitch" },
       responseIncludesAny: ["Twitch stream status: LIVE", "Uptime: 2m"],
       assertTurn: (execution) =>
         expectStreamAction(execution, {
@@ -635,11 +702,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "STREAM stops Twitch stream through loopback route",
       text: STREAM_TEXT.stop,
-      actionName: "STREAM",
-      options: { action: "stop", platform: "twitch" },
       responseIncludesAny: ["Twitch stream stopped"],
       assertTurn: (execution) =>
         expectStreamAction(execution, {
@@ -648,11 +713,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "STREAM reads offline Twitch status through loopback route",
       text: STREAM_TEXT.offlineStatus,
-      actionName: "STREAM",
-      options: { action: "status", platform: "twitch" },
       responseIncludesAny: ["Twitch stream status: OFFLINE", "Uptime: 0m"],
       assertTurn: (execution) =>
         expectStreamAction(execution, {

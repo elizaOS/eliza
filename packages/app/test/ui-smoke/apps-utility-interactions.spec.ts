@@ -13,6 +13,13 @@ type ReadyCheck =
 
 type RouteCase = (typeof DIRECT_ROUTE_CASES)[number];
 
+const FINANCE_COMMERCE_ROUTE_NAMES = [
+  "hyperliquid",
+  "polymarket",
+  "shopify",
+  "vincent",
+] as const;
+
 const APP_WINDOW_ROUTE_CASES = DIRECT_ROUTE_CASES.filter(
   (routeCase) =>
     !["phone", "contacts", "wifi"].includes(routeCase.name.toLowerCase()),
@@ -52,6 +59,14 @@ function installIssueGuards(page: Page): string[] {
   });
   page.on("pageerror", (error) => {
     issues.push(`pageerror: ${error.message}`);
+  });
+  page.on("response", (response) => {
+    const status = response.status();
+    if (status < 500) return;
+    const url = response.url();
+    const pathname = new URL(url).pathname;
+    if (!pathname.startsWith("/api/")) return;
+    issues.push(`http ${status}: ${pathname}`);
   });
   page.on("requestfailed", (request) => {
     const url = request.url();
@@ -105,19 +120,85 @@ async function openAppWindow(page: Page, routeCase: RouteCase): Promise<void> {
   );
 }
 
-async function clickIfUsable(locator: Locator): Promise<boolean> {
-  if ((await locator.count()) === 0) return false;
+async function clickRequired(locator: Locator, label: string): Promise<void> {
   const target = locator.first();
-  if (!(await target.isVisible().catch(() => false))) return false;
-  if (!(await target.isEnabled().catch(() => false))) return false;
+  await expect(target, `${label} should be visible`).toBeVisible();
+  await expect(target, `${label} should be enabled`).toBeEnabled();
   await target.click();
-  return true;
+}
+
+function visibleByTestId(page: Page, testId: string): Locator {
+  return page.locator(`[data-testid="${testId}"]:visible`).first();
+}
+
+async function ensurePageSidebarVisible(
+  page: Page,
+  testId: string,
+  label: string,
+  expandTestId?: string,
+): Promise<Locator> {
+  const visibleSidebar = visibleByTestId(page, testId);
+  if (await visibleSidebar.isVisible().catch(() => false)) {
+    return visibleSidebar;
+  }
+
+  if (expandTestId) {
+    const expandButton = visibleByTestId(page, expandTestId);
+    if (await expandButton.isVisible().catch(() => false)) {
+      await expandButton.click();
+      await expect(visibleSidebar, `${label} should expand`).toBeVisible();
+      return visibleSidebar;
+    }
+  }
+
+  const workspacePaneLeft = visibleByTestId(
+    page,
+    "app-workspace-mobile-pane-left",
+  );
+  if (await workspacePaneLeft.isVisible().catch(() => false)) {
+    if ((await workspacePaneLeft.getAttribute("aria-pressed")) !== "true") {
+      await workspacePaneLeft.click();
+    }
+    await expect(
+      visibleSidebar,
+      `${label} should open from workspace pane`,
+    ).toBeVisible();
+    return visibleSidebar;
+  }
+
+  const pageDrawerTrigger = visibleByTestId(
+    page,
+    "page-layout-mobile-sidebar-trigger",
+  );
+  if (await pageDrawerTrigger.isVisible().catch(() => false)) {
+    await pageDrawerTrigger.click();
+  }
+
+  await expect(visibleSidebar, `${label} should be visible`).toBeVisible();
+  return visibleSidebar;
+}
+
+function routeCaseByName(name: string) {
+  const routeCase = DIRECT_ROUTE_CASES.find((item) => item.name === name);
+  expect(
+    routeCase,
+    `${name} must be registered as a direct route case`,
+  ).toBeTruthy();
+  return routeCase as RouteCase;
 }
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page, {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
+    "eliza:wallet:enabled": "true",
+    "eliza:wallets:sidebar:collapsed": "false",
+    "eliza:wallets:sidebar:width": "352",
+    "app-workspace-chrome:chat-collapsed": "true",
+    "elizaos:ui:sidebar:primary-app-sidebar:collapsed": "false",
+    "elizaos:ui:sidebar:eliza:page-sidebar:wallets:tokens:collapsed": "false",
+    "elizaos:ui:sidebar:eliza:page-sidebar:wallets:defi:collapsed": "false",
+    "elizaos:ui:sidebar:eliza:page-sidebar:wallets:nfts:collapsed": "false",
   });
   await installDefaultAppRoutes(page);
 });
@@ -254,44 +335,284 @@ test("finance and commerce utility controls refresh and show fixture data", asyn
   page,
 }) => {
   test.skip(
-    !["hyperliquid", "polymarket", "shopify", "vincent"].every((name) =>
+    !FINANCE_COMMERCE_ROUTE_NAMES.every((name) =>
       DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === name),
     ),
     "Finance and commerce app routes are not registered in this smoke stack.",
   );
   const issues = installIssueGuards(page);
+  const openedRoutes = new Set<string>();
 
-  const hyperliquid = DIRECT_ROUTE_CASES.find(
-    (routeCase) => routeCase.name === "hyperliquid",
+  const hyperliquid = routeCaseByName("hyperliquid");
+  await openAppWindow(page, hyperliquid);
+  openedRoutes.add(hyperliquid.path);
+  await clickRequired(
+    page.getByRole("button", { name: "Refresh" }),
+    "Hyperliquid refresh",
   );
-  expect(hyperliquid).toBeTruthy();
-  await openAppWindow(page, hyperliquid as RouteCase);
-  await clickIfUsable(page.getByRole("button", { name: "Refresh" }));
-  await expect(page.getByText("BTC")).toBeVisible();
-  await expect(page.getByText("ETH")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Markets" })).toBeVisible();
+  await expect(page.getByText("BTC", { exact: true })).toBeVisible();
+  await expect(page.getByText("ETH", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Positions" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Open orders" }),
+  ).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "hyperliquid refresh");
 
-  const polymarket = DIRECT_ROUTE_CASES.find(
-    (routeCase) => routeCase.name === "polymarket",
+  const polymarket = routeCaseByName("polymarket");
+  await openAppWindow(page, polymarket);
+  openedRoutes.add(polymarket.path);
+  await clickRequired(
+    page.getByRole("button", { name: "Refresh" }),
+    "Polymarket refresh",
   );
-  expect(polymarket).toBeTruthy();
-  await openAppWindow(page, polymarket as RouteCase);
-  await clickIfUsable(page.getByRole("button", { name: "Refresh" }));
-  await clickIfUsable(
+  await clickRequired(
     page.getByRole("button", { name: /Will the UI smoke suite stay green/i }),
+    "Polymarket first market",
   );
   await expect(
     page.getByRole("heading", {
       name: /Will the UI smoke suite stay green/i,
     }),
   ).toBeVisible();
+  await clickRequired(
+    page.getByRole("button", { name: /Will fixture market selection work/i }),
+    "Polymarket second market",
+  );
+  await expect(
+    page.getByRole("heading", { name: /Will fixture market selection work/i }),
+  ).toBeVisible();
+  await expect(page.getByText("Up", { exact: true })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "polymarket refresh");
 
-  for (const name of ["shopify", "vincent"]) {
-    const routeCase = DIRECT_ROUTE_CASES.find((item) => item.name === name);
-    expect(routeCase).toBeTruthy();
-    await openAppWindow(page, routeCase as RouteCase);
-    await clickIfUsable(page.getByRole("button", { name: "Refresh" }));
-    await expectNoIssues(page, issues.splice(0), `${name} refresh`);
-  }
+  const shopify = routeCaseByName("shopify");
+  await openAppWindow(page, shopify);
+  openedRoutes.add(shopify.path);
+  await clickRequired(
+    page.getByRole("button", { name: "Refresh" }),
+    "Shopify refresh",
+  );
+  await expect(page.getByText("smoke-store.example").first()).toBeVisible();
+  await clickRequired(
+    page.getByRole("tab", { name: /Products/i }),
+    "Shopify products tab",
+  );
+  await expect(page.getByText("Milady Hoodie")).toBeVisible();
+  await page.getByPlaceholder("Search products…").fill("Sticker");
+  await expect(page.getByText("Agent Sticker Pack")).toBeVisible();
+  await clickRequired(
+    page.getByRole("button", { name: /^Create$/ }),
+    "Shopify create product",
+  );
+  await expect(
+    page.getByRole("dialog", { name: "Create product" }),
+  ).toBeVisible();
+  await page.getByLabel(/Title/).fill("Coverage Tee");
+  await page.getByLabel("Vendor").fill("Eliza Smoke Store");
+  await page.getByLabel("Product type").fill("Apparel");
+  await page.getByLabel("Base price").fill("21.38");
+  await clickRequired(
+    page.getByRole("button", { name: "Create product" }),
+    "Shopify submit product",
+  );
+  await expect(
+    page.getByRole("dialog", { name: "Create product" }),
+  ).toBeHidden();
+  await clickRequired(
+    page.getByRole("tab", { name: /Orders/i }),
+    "Shopify orders tab",
+  );
+  await clickRequired(
+    page.getByRole("button", { name: /#1001/i }),
+    "Shopify order row",
+  );
+  await expect(page.getByText("gid://shopify/Order/2001")).toBeVisible();
+  await clickRequired(
+    page.getByRole("tab", { name: /Inventory/i }),
+    "Shopify inventory tab",
+  );
+  await page.getByLabel("Location").selectOption("Main Warehouse");
+  await expect(page.getByText("MLDY-HOODIE")).toBeVisible();
+  await clickRequired(
+    page.getByRole("button", { name: "Increase inventory by 1" }).first(),
+    "Shopify inventory increase",
+  );
+  await clickRequired(
+    page.getByRole("tab", { name: /Customers/i }),
+    "Shopify customers tab",
+  );
+  await page
+    .getByPlaceholder("Search customers by name or email…")
+    .fill("Grace");
+  await expect(page.getByText("Grace Hopper")).toBeVisible();
+  await expectNoIssues(page, issues.splice(0), "shopify interactions");
+
+  const vincent = routeCaseByName("vincent");
+  await openAppWindow(page, vincent);
+  openedRoutes.add(vincent.path);
+  await clickRequired(
+    page.getByRole("button", { name: "Refresh" }),
+    "Vincent refresh",
+  );
+  await expect(page.getByText("Connected to Vincent")).toBeVisible();
+  await expect(page.getByText("Vincent Trading Agent")).toBeVisible();
+  await expect(page.getByText("Trading Profile")).toBeVisible();
+  await expect(page.getByText("Agent Wallet")).toBeVisible();
+  await clickRequired(
+    page.getByRole("button", { name: "Disconnect" }),
+    "Vincent disconnect",
+  );
+  await expect(page.getByText("Not connected to Vincent")).toBeVisible();
+  await expectNoIssues(page, issues.splice(0), "vincent interactions");
+
+  expect([...openedRoutes].sort()).toEqual(
+    FINANCE_COMMERCE_ROUTE_NAMES.map(
+      (name) => routeCaseByName(name).path,
+    ).sort(),
+  );
+});
+
+test("wallet inventory controls update visible deterministic state", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const issues = installIssueGuards(page);
+  let balanceRequestCount = 0;
+  await page.route("**/api/wallet/balances", async (route) => {
+    if (route.request().method() === "GET") {
+      balanceRequestCount += 1;
+    }
+    await route.fallback();
+  });
+  const inventory = routeCaseByName("inventory app window");
+
+  await openAppWindow(page, inventory);
+  const walletSidebar = await ensurePageSidebarVisible(
+    page,
+    "wallets-sidebar",
+    "wallet sidebar",
+    "wallets-sidebar-expand-toggle",
+  );
+  await expect(walletSidebar.getByText("$1,550.50")).toBeVisible();
+  await expect(
+    walletSidebar.getByText("USDC", { exact: true }).first(),
+  ).toBeVisible();
+
+  const requestCountBeforeRefresh = balanceRequestCount;
+  await clickRequired(
+    walletSidebar.getByRole("button", { name: "Refresh wallet" }),
+    "Wallet refresh",
+  );
+  await expect
+    .poll(() => balanceRequestCount, {
+      message: "wallet refresh should request deterministic balances",
+    })
+    .toBeGreaterThan(requestCountBeforeRefresh);
+
+  await clickRequired(
+    walletSidebar.getByRole("button", { name: "DeFi" }),
+    "Wallet DeFi tab",
+  );
+  await expect(walletSidebar.getByText("No positions")).toBeVisible();
+
+  await clickRequired(
+    walletSidebar.getByRole("button", { name: "NFTs" }),
+    "Wallet NFTs tab",
+  );
+  await expect(walletSidebar.getByText("Smoke Test NFT #42")).toBeVisible();
+  await expect(
+    walletSidebar.getByText("Smoke Solana Collectible"),
+  ).toBeVisible();
+
+  await clickRequired(
+    walletSidebar.getByRole("button", { name: "Tokens" }),
+    "Wallet tokens tab",
+  );
+  await clickRequired(
+    walletSidebar.getByRole("button", { name: "Swap USDC" }),
+    "Wallet token swap action",
+  );
+  await expect(
+    page.getByText("Prepared a swap request for USDC in wallet chat."),
+  ).toBeVisible();
+
+  await clickRequired(
+    walletSidebar.getByRole("button", { name: "Hide USDC" }),
+    "Wallet hide token action",
+  );
+  await expect(walletSidebar.getByText("USDC", { exact: true })).toHaveCount(0);
+
+  await clickRequired(
+    walletSidebar.getByRole("button", { name: "Open RPC settings" }),
+    "Wallet RPC settings action",
+  );
+  await expect(page).toHaveURL(/wallet-rpc/);
+  await expect(
+    page.locator("#wallet-rpc").getByText("Wallet & RPC"),
+  ).toBeVisible();
+  await expectNoIssues(page, issues.splice(0), "wallet inventory interactions");
+});
+
+test("steward approvals and history controls consume deterministic API stubs", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  const issues = installIssueGuards(page);
+
+  await openAppPath(page, "/steward");
+  const stewardSidebar = await ensurePageSidebarVisible(
+    page,
+    "steward-sidebar",
+    "steward sidebar",
+  );
+  await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible();
+  await expect(page.getByText("2 pending")).toBeVisible();
+  await expect(
+    page.getByText("Manual approval required for UI smoke.").first(),
+  ).toBeVisible();
+
+  await clickRequired(
+    page.getByRole("button", { name: "Refresh" }),
+    "Steward approvals refresh",
+  );
+  await clickRequired(
+    page.getByRole("button", { name: "Approve" }).first(),
+    "Steward approve pending transaction",
+  );
+  await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(1);
+
+  await clickRequired(
+    page.getByRole("button", { name: "Reject" }).first(),
+    "Steward reject pending transaction",
+  );
+  await page
+    .getByPlaceholder("e.g., Unauthorized recipient")
+    .fill("UI smoke deterministic rejection");
+  await clickRequired(
+    page.getByRole("button", { name: "Confirm Reject" }),
+    "Steward confirm reject",
+  );
+  await expect(page.getByText("No pending approvals")).toBeVisible();
+
+  await clickRequired(
+    stewardSidebar.getByRole("button", {
+      name: /History/,
+    }),
+    "Steward history tab",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Transaction History" }),
+  ).toBeVisible();
+  await expect(page.getByText("2 transactions")).toBeVisible();
+  const transactionTable = page.getByRole("table");
+  await expect(transactionTable.getByText("Confirmed")).toBeVisible();
+  await expect(transactionTable.getByText("Base")).toBeVisible();
+
+  await page.locator("select").first().selectOption("pending");
+  await expect(page.getByText("1 transaction")).toBeVisible();
+  await expect(transactionTable.getByText("BSC")).toBeVisible();
+
+  await page.locator("select").nth(1).selectOption("8453");
+  await expect(page.getByText("No transactions yet")).toBeVisible();
+  await expectNoIssues(page, issues.splice(0), "steward interactions");
 });

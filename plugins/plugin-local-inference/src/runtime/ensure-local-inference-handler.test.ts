@@ -5,10 +5,8 @@ const modeState = vi.hoisted(() => ({ mode: "local" }));
 const engineState = vi.hoisted(() => ({
 	activeBackendId: vi.fn(() => "llama-server"),
 	available: vi.fn(async () => true),
-	canEmbed: vi.fn(() => false),
 	conversation: vi.fn(() => null),
 	currentModelPath: vi.fn(() => null),
-	embed: vi.fn(async () => [[0.1, 0.2]]),
 	ensureActiveBundleVoiceReady: vi.fn(async () => undefined),
 	generate: vi.fn(async () => "ok"),
 	generateInConversation: vi.fn(async () => ({
@@ -167,7 +165,6 @@ beforeEach(() => {
 	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
-	engineState.canEmbed.mockReturnValue(false);
 	engineState.hasLoadedModel.mockReturnValue(false);
 	asrState.createStreamingTranscriber.mockReturnValue({
 		dispose: asrState.dispose,

@@ -669,7 +669,7 @@ test("automations overview empty state encourages creating tasks and workflows",
   await expect(
     page.getByRole("heading", { name: "Automations" }),
   ).toBeVisible();
-  await expect(page.getByText("0 tasks · 0 workflows")).toBeVisible();
+  await expect(page.getByText(/0 tasks? · 0 workflows?/)).toBeVisible();
   await expect(page.getByText("No automations yet.")).toBeVisible();
 
   await page.getByRole("button", { name: "New" }).click();

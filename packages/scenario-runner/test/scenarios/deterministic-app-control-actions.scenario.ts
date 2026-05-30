@@ -117,6 +117,15 @@ const views = [
   },
 ];
 
+const currentView = {
+  viewId: "remote-ledger",
+  viewPath: "/remote-ledger",
+  viewLabel: "Remote Ledger",
+  viewType: "gui",
+  action: "show",
+  updatedAt: "2026-05-29T12:00:30.000Z",
+};
+
 const installedApps = [
   {
     name: "feed",
@@ -228,6 +237,13 @@ export default scenario({
 
           if (
             request.method === "GET" &&
+            request.pathname === "/api/views/current"
+          ) {
+            return jsonResponse({ currentView });
+          }
+
+          if (
+            request.method === "GET" &&
             request.pathname === "/api/views/search"
           ) {
             return jsonResponse({
@@ -243,6 +259,17 @@ export default scenario({
               ok: true,
               navigated: true,
               viewId: "settings",
+            });
+          }
+
+          if (
+            request.method === "POST" &&
+            request.pathname === "/api/views/remote-ledger/navigate"
+          ) {
+            return jsonResponse({
+              ok: true,
+              navigated: true,
+              viewId: "remote-ledger",
             });
           }
 
@@ -538,6 +565,51 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "open remote ledger view",
+      text: "Open the remote ledger view",
+      actionName: "VIEWS",
+      options: { action: "open", view: "remote-ledger", viewType: "gui" },
+      responseIncludesAny: ["Navigated to Remote Ledger"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "open",
+            view: "remote-ledger",
+            viewType: "gui",
+          },
+          responseText: "Navigated to Remote Ledger (gui).",
+          resultFields: {
+            "values.mode": "show",
+            "values.viewId": "remote-ledger",
+            "values.label": "Remote Ledger",
+            "data.view.path": "/remote-ledger",
+          },
+        }),
+    },
+    {
+      kind: "action",
+      name: "read current view",
+      text: "What is the current view?",
+      actionName: "VIEWS",
+      options: { action: "current" },
+      responseIncludesAny: ["Current view: Remote Ledger"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: { action: "current" },
+          responseText:
+            "Current view: Remote Ledger (gui) — remote-ledger at /remote-ledger.",
+          resultFields: {
+            "values.mode": "current",
+            "values.viewId": "remote-ledger",
+            "values.viewType": "gui",
+            "data.currentView.viewPath": "/remote-ledger",
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "broadcast view refresh",
       text: "Tell the wallet view to refresh",
       actionName: "VIEWS",
@@ -712,6 +784,31 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "remove feed board view alias",
+      text: "Remove the feed board view",
+      actionName: "VIEWS",
+      options: { action: "remove", confirm: "true", view: "feed-board" },
+      responseIncludesAny: ["Deleted Feed Board"],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "remove",
+            confirm: "true",
+            view: "feed-board",
+          },
+          responseText:
+            "Deleted Feed Board (@elizaos/plugin-feed). Plugin @elizaos/plugin-feed unloaded.",
+          resultFields: {
+            "values.mode": "delete",
+            "values.viewId": "feed-board",
+            "values.pluginName": "@elizaos/plugin-feed",
+            "data.unloadResult.ok": true,
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "load apps from directory",
       text: "Load apps from the scenario directory",
       actionName: "APP",
@@ -771,7 +868,7 @@ export default scenario({
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 7,
+      minCount: 10,
     },
     {
       type: "actionCalled",
@@ -786,6 +883,8 @@ export default scenario({
         /"list"/,
         /"search"/,
         /"show"/,
+        /"open"/,
+        /"current"/,
         /"broadcast"/,
         /wallet:refresh/,
         /remote-ledger/,
@@ -794,6 +893,7 @@ export default scenario({
         /"create"/,
         /"edit"/,
         /"delete"/,
+        /"remove"/,
       ],
     },
     {
@@ -849,6 +949,30 @@ export default scenario({
               status: 200,
             },
             search: "?viewType=gui",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "?viewType=gui",
+          },
+          {
+            body: { path: "/remote-ledger", viewType: "gui" },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/navigate",
+            response: {
+              body: { ok: true, navigated: true, viewId: "remote-ledger" },
+              status: 200,
+            },
+            search: "?viewType=gui",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views/current",
+            response: { body: { currentView }, status: 200 },
+            search: "",
           },
           {
             body: { type: "wallet:refresh", payload: { source: "scenario" } },
@@ -931,6 +1055,23 @@ export default scenario({
             method: "GET",
             pathname: "/api/views",
             response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: { name: "@elizaos/plugin-feed" },
+            method: "POST",
+            pathname: "/api/apps/stop",
+            response: {
+              body: unloadPluginResponse("@elizaos/plugin-feed"),
+              status: 200,
+            },
             search: "",
           },
           {

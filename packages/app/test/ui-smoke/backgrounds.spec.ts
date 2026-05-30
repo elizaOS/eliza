@@ -42,39 +42,13 @@ const THEMES: readonly UiTheme[] = ["light", "dark"];
 const VIEWPORT_TOLERANCE_PX = 1;
 const RADIUS_TOLERANCE_PX = 0.5;
 
-async function installCompanionAppRoutes(page: Page) {
-  await installDefaultAppRoutes(page);
-  await page.route("**/api/apps**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (request.method() === "GET" && url.pathname === "/api/apps") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([]),
-      });
-      return;
-    }
-    if (request.method() === "GET" && url.pathname === "/api/apps/runs") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([]),
-      });
-      return;
-    }
-    await route.fallback();
-  });
-}
-
 async function openCompanionApp(page: Page, theme: UiTheme) {
   await seedAppStorage(page, {
     "eliza:ui-theme": theme,
     "elizaos:ui-theme": theme,
   });
-  await installCompanionAppRoutes(page);
-  await openAppPath(page, "/apps");
-  await page.getByTestId("app-card--elizaos-app-companion").click();
+  await installDefaultAppRoutes(page);
+  await openAppPath(page, "/apps/companion");
 
   const background = page.getByTestId("companion-background");
   await expect(background).toBeVisible();
@@ -182,10 +156,6 @@ for (const theme of THEMES) {
   test(`companion background fills the viewport in ${theme} mode`, async ({
     page,
   }) => {
-    test.skip(
-      true,
-      "Companion app card is not registered in this smoke stack.",
-    );
     await openCompanionApp(page, theme);
 
     const metrics = await readBackgroundLayoutMetrics(page);

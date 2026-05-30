@@ -14,7 +14,6 @@ import {
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
 } from "../workspace/browser-workspace.js";
-import { executeBrowserAutofillLogin } from "./browser-autofill-login.js";
 
 /**
  * Targets are the registered browser backends. The agent uses what is
@@ -357,6 +356,9 @@ export const browserAction: Action = {
     const subaction = inferBrowserSubaction(params, messageText);
 
     if (subaction === "autofill-login") {
+      const { executeBrowserAutofillLogin } = await import(
+        "./browser-autofill-login.js"
+      );
       return executeBrowserAutofillLogin(runtime, message, options);
     }
 

@@ -5577,7 +5577,6 @@
   "firstrunshell.localLabel": "ローカル",
   "firstrunshell.advanced": "詳細設定",
   "firstrunshell.localDetail": "このマシンで実行します。ローカル推論を使用するか Eliza Cloud を接続します。",
-  "firstrunshell.keepEmbeddingsLocal": "埋め込みをローカルに保持",
   "firstrunshell.useAsRemote": "リモートとして使用",
   "firstrunshell.useAsRemoteDetail": "別のデバイスからこのローカルマシンに接続します。",
   "firstrunshell.back": "戻る",

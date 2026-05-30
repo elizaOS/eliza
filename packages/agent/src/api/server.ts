@@ -253,49 +253,55 @@ import {
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
-import { handleAccountsRoutes } from "./accounts-routes.ts";
-import { handleAgentAdminRoutes } from "./agent-admin-routes.ts";
-import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
-import { handleAgentStatusRoutes } from "./agent-status-routes.ts";
-import { handleAgentTransferRoutes } from "./agent-transfer-routes.ts";
-import { handleAppPackageRoutes } from "./app-package-routes.ts";
-import { handleAuthRoutes } from "./auth-routes.ts";
-import { handleAvatarRoutes } from "./avatar-routes.ts";
-import { handleBackgroundTasksRoute } from "./background-tasks-routes.ts";
-import { handleBugReportRoutes } from "./bug-report-routes.ts";
-import { handleCharacterRoutes } from "./character-routes.ts";
-import {
-  initSse as initSseFromChatRoutes,
-  writeSseJson as writeSseJsonFromChatRoutes,
-} from "./chat-routes.ts";
 import { persistConfigEnv } from "./config-env.ts";
-import { handleConfigRoutes } from "./config-routes.ts";
-import { ConnectorHealthMonitor } from "./connector-health.ts";
-import { handleConnectorRoutes } from "./connector-routes.ts";
-import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
-import { handleFirstRunRoutes } from "./first-run-routes.ts";
-import { handleHealthRoutes } from "./health-routes.ts";
-import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
-import { handleMemoryRoutes } from "./memory-routes.ts";
-import { handleMiscRoutes } from "./misc-routes.ts";
-import { handleMobileOptionalRoutes } from "./mobile-optional-routes.ts";
-import { handleModelsRoutes } from "./models-routes.ts";
-import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.ts";
-import { handlePermissionRoutes } from "./permissions-routes.ts";
-import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
-import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
-import { handleRegistryRoutes } from "./registry-routes.ts";
-import { RegistryService } from "./registry-service.ts";
-import { handleRelationshipsRoutes } from "./relationships-routes.ts";
-import { handleRemoteCapabilityRoutes } from "./remote-capability-routes.ts";
 import {
+  createConnectorHealthMonitor,
+  extractConversationMetadataFromRoom,
+  handleAccountsRoutes,
+  handleAgentAdminRoutes,
+  handleAgentLifecycleRoutes,
+  handleAgentStatusRoutes,
+  handleAgentTransferRoutes,
+  handleAppPackageRoutes,
+  handleAuthRoutes,
+  handleAvatarRoutes,
+  handleBackgroundTasksRoute,
+  handleBugReportRoutes,
+  handleCharacterRoutes,
+  handleCloudAndCoreRouteGroup,
+  handleConversationRouteGroup,
+  handleDatabaseRouteGroup,
+  handleConfigRoutes,
+  handleConnectorRoutes,
+  handleDiagnosticsRoutes,
+  handleFirstRunRoutes,
+  handleHealthRoutes,
+  handleInboxAndCloudRelayRouteGroup,
+  handleLifeOpsRuntimePluginRoute,
+  handleMemoryRoutes,
+  handleMiscRoutes,
+  handleMobileOptionalRoutes,
+  handleModelsRoutes,
+  handlePermissionRoutes,
+  handlePermissionsExtraRoutes,
+  handleProviderSwitchRoutes,
+  handleRegistryRoutes,
+  handleRelationshipsRoutes,
+  handleRemoteCapabilityRoutes,
+  handleSandboxRouteGroup,
+  handleSubscriptionRoutes,
+  handleUpdateRoutes,
+  handleViewsRoutes,
+  handleWorkbenchRoutes,
   isPublicRuntimePluginRoute,
+  registerBuiltinViews,
+  tryHandleHonoRuntimeRoute,
+  tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
-} from "./runtime-plugin-routes.ts";
+} from "./server-lazy-routes.ts";
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
@@ -303,18 +309,6 @@ import {
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
-import {
-  handleCloudAndCoreRouteGroup,
-  handleConversationRouteGroup,
-  handleDatabaseRouteGroup,
-  handleInboxAndCloudRelayRouteGroup,
-  handleLifeOpsRuntimePluginRoute,
-  handleSandboxRouteGroup,
-} from "./server-route-dispatch.ts";
-import { handleSubscriptionRoutes } from "./subscription-routes.ts";
-import { handleUpdateRoutes } from "./update-routes.ts";
-import { registerBuiltinViews } from "./views-registry.ts";
-import { handleViewsRoutes } from "./views-routes.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -326,7 +320,6 @@ import {
   resolveWalletNetworkMode,
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.ts";
-import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
   executeFallbackParsedActions,
@@ -1288,6 +1281,7 @@ const resolvePluginConfigMutationRejections =
 interface RequestContext {
   onRestart: (() => Promise<AgentRuntime | null>) | null;
   onRuntimeSwapped?: () => void;
+  getAppManager?: () => Promise<AppManagerLike>;
 }
 
 import type { TrainingServiceWithRuntime } from "./server-types.ts";
@@ -1490,23 +1484,36 @@ async function handleRequest(
   const pathname = url.pathname;
   const isAuthEndpoint = pathname.startsWith("/api/auth/");
   const isHealthEndpoint = method === "GET" && pathname === "/api/health";
-  const { isCloudProvisionedContainer, handleCloudStatusRoutes } =
-    await getOptionalPluginApi<{
+  let isCloudProvisionedContainer = (): boolean => false;
+  let handleCloudStatusRoutes = async (_args: unknown): Promise<boolean> =>
+    false;
+  if (
+    pathname === "/api/first-run/status" ||
+    pathname.startsWith("/api/cloud") ||
+    pathname.startsWith("/api/coding-agents")
+  ) {
+    const cloudApi = await getOptionalPluginApi<{
       isCloudProvisionedContainer: () => boolean;
       handleCloudStatusRoutes: (args: unknown) => Promise<boolean>;
     }>("cloud");
-  const { resolveBlueBubblesWebhookPath } = await getOptionalPluginApi<{
-    resolveBlueBubblesWebhookPath: (args: unknown) => string;
-  }>("imessage");
+    isCloudProvisionedContainer = cloudApi.isCloudProvisionedContainer;
+    handleCloudStatusRoutes = cloudApi.handleCloudStatusRoutes;
+  }
   const isCloudProvisioned = isCloudProvisionedContainer();
   const isCloudFirstRunStatusEndpoint =
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
   const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
-  const blueBubblesWebhookPath =
-    typeof resolveBlueBubblesWebhookPath === "function"
-      ? resolveBlueBubblesWebhookPath({
+  let blueBubblesWebhookPath =
+    pathname === "/webhooks/bluebubbles" ? "/webhooks/bluebubbles" : null;
+  if (pathname.startsWith("/webhooks/")) {
+    const { resolveBlueBubblesWebhookPath } = await getOptionalPluginApi<{
+      resolveBlueBubblesWebhookPath: (args: unknown) => string;
+    }>("imessage");
+    blueBubblesWebhookPath =
+      typeof resolveBlueBubblesWebhookPath === "function"
+        ? resolveBlueBubblesWebhookPath({
           runtime: state.runtime
             ? {
                 getService: (type: string) =>
@@ -1515,8 +1522,9 @@ async function handleRequest(
                   ).getService(type),
               }
             : undefined,
-        })
-      : null;
+          })
+        : blueBubblesWebhookPath;
+  }
   const isBlueBubblesWebhookEndpoint =
     blueBubblesWebhookPath != null && pathname === blueBubblesWebhookPath;
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
@@ -1654,18 +1662,26 @@ async function handleRequest(
     return;
   }
 
-  const localInferenceServerApi = await getLocalInferenceServerApi();
   if (
-    typeof localInferenceServerApi.handleLocalInferenceRoutes === "function" &&
-    (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
-  ) {
-    return;
-  }
-  if (
-    localInferenceServerApi.handleLocalInferenceTtsRoute &&
-    (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
-      current: state.runtime,
-    }))
+    (pathname.startsWith("/api/local-inference") ||
+      pathname === "/api/tts/local-inference" ||
+      pathname === "/api/asr/local-inference") &&
+    (await (async () => {
+      const localInferenceServerApi = await getLocalInferenceServerApi();
+      if (
+        typeof localInferenceServerApi.handleLocalInferenceRoutes ===
+          "function" &&
+        (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
+      ) {
+        return true;
+      }
+      return Boolean(
+        localInferenceServerApi.handleLocalInferenceTtsRoute &&
+          (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
+            current: state.runtime,
+          })),
+      );
+    })())
   ) {
     return;
   }
@@ -1682,15 +1698,17 @@ async function handleRequest(
   ) {
     return;
   }
-  const { handleComputerUseRoutes } = await getOptionalPluginApi<{
-    handleComputerUseRoutes: (
-      req: http.IncomingMessage,
-      res: http.ServerResponse,
-      pathname: string,
-      method: string,
-    ) => Promise<boolean>;
-  }>("computerUse");
-  if (await handleComputerUseRoutes(req, res, pathname, method)) return;
+  if (pathname.startsWith("/api/computer-use/")) {
+    const { handleComputerUseRoutes } = await getOptionalPluginApi<{
+      handleComputerUseRoutes: (
+        req: http.IncomingMessage,
+        res: http.ServerResponse,
+        pathname: string,
+        method: string,
+      ) => Promise<boolean>;
+    }>("computerUse");
+    if (await handleComputerUseRoutes(req, res, pathname, method)) return;
+  }
 
   // ── Provider inference helpers ────────────────────────────────────────
   const _disableCloudInference = (): void => {
@@ -1874,35 +1892,40 @@ async function handleRequest(
     return;
   }
 
-  const { handleTriggerRoutes } = await getOptionalPluginApi<{
-    handleTriggerRoutes: (args: unknown) => Promise<boolean>;
-  }>("workflow");
-  const triggerHandled = await handleTriggerRoutes({
-    req,
-    res,
-    method,
-    pathname,
-    runtime: state.runtime,
-    readJsonBody,
-    json,
-    error,
-    executeTriggerTask,
-    getTriggerHealthSnapshot,
-    getTriggerLimit,
-    listTriggerTasks,
-    readTriggerConfig,
-    readTriggerRuns,
-    taskToTriggerSummary,
-    triggersFeatureEnabled,
-    buildTriggerConfig,
-    buildTriggerMetadata,
-    normalizeTriggerDraft,
-    DISABLED_TRIGGER_INTERVAL_MS,
-    TRIGGER_TASK_NAME,
-    TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
-  });
-  if (triggerHandled) {
-    return;
+  if (
+    pathname.startsWith("/api/triggers") ||
+    pathname.startsWith("/api/heartbeats")
+  ) {
+    const { handleTriggerRoutes } = await getOptionalPluginApi<{
+      handleTriggerRoutes: (args: unknown) => Promise<boolean>;
+    }>("workflow");
+    const triggerHandled = await handleTriggerRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
+      readJsonBody,
+      json,
+      error,
+      executeTriggerTask,
+      getTriggerHealthSnapshot,
+      getTriggerLimit,
+      listTriggerTasks,
+      readTriggerConfig,
+      readTriggerRuns,
+      taskToTriggerSummary,
+      triggersFeatureEnabled,
+      buildTriggerConfig,
+      buildTriggerMetadata,
+      normalizeTriggerDraft,
+      DISABLED_TRIGGER_INTERVAL_MS,
+      TRIGGER_TASK_NAME,
+      TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],
+    });
+    if (triggerHandled) {
+      return;
+    }
   }
 
   // Training routes (/api/training/*) and trajectory routes
@@ -2187,8 +2210,6 @@ async function handleRequest(
       readJsonBody,
       error,
       eventBuffer: state.eventBuffer,
-      initSse: initSseFromChatRoutes,
-      writeSseJson: writeSseJsonFromChatRoutes,
       json,
       auditEventTypes: AUDIT_EVENT_TYPES,
       auditSeverities: AUDIT_SEVERITIES,
@@ -2318,42 +2339,47 @@ async function handleRequest(
   //  ERC-8004 Registry, Agent self-status, Privy — delegated to agent-status-routes.ts
   // ═══════════════════════════════════════════════════════════════════════
   if (
-    await handleAgentStatusRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      state: coerce<AgentStatusRouteArg["state"]>(state),
-      json,
-      error,
-      readJsonBody,
-      deps: {
-        getWalletAddresses:
-          pathname === "/api/agent/self-status"
-            ? (await getCoreWalletApi()).getWalletAddresses
-            : () => ({ evmAddress: null, solanaAddress: null }),
-        resolveWalletCapabilityStatus: coerce<
-          AgentStatusRouteArg["deps"]["resolveWalletCapabilityStatus"]
-        >(resolveWalletCapabilityStatus),
-        resolveWalletRpcReadiness: coerce<
-          AgentStatusRouteArg["deps"]["resolveWalletRpcReadiness"]
-        >(resolveWalletRpcReadiness),
-        resolveTradePermissionMode,
-        canUseLocalTradeExecution: coerce<
-          AgentStatusRouteArg["deps"]["canUseLocalTradeExecution"]
-        >(canUseLocalTradeExecution),
-        detectRuntimeModel:
-          coerce<AgentStatusRouteArg["deps"]["detectRuntimeModel"]>(
-            detectRuntimeModel,
-          ),
-        resolveProviderFromModel,
-        getGlobalAwarenessRegistry: coerce<
-          AgentStatusRouteArg["deps"]["getGlobalAwarenessRegistry"]
-        >(getGlobalAwarenessRegistry),
-        RegistryService,
-      },
-    })
+    (pathname === "/api/agent/self-status" ||
+      pathname.startsWith("/api/registry")) &&
+    (await (async () => {
+      const { RegistryService } = await import("./registry-service.ts");
+      return handleAgentStatusRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        state: coerce<AgentStatusRouteArg["state"]>(state),
+        json,
+        error,
+        readJsonBody,
+        deps: {
+          getWalletAddresses:
+            pathname === "/api/agent/self-status"
+              ? (await getCoreWalletApi()).getWalletAddresses
+              : () => ({ evmAddress: null, solanaAddress: null }),
+          resolveWalletCapabilityStatus: coerce<
+            AgentStatusRouteArg["deps"]["resolveWalletCapabilityStatus"]
+          >(resolveWalletCapabilityStatus),
+          resolveWalletRpcReadiness: coerce<
+            AgentStatusRouteArg["deps"]["resolveWalletRpcReadiness"]
+          >(resolveWalletRpcReadiness),
+          resolveTradePermissionMode,
+          canUseLocalTradeExecution: coerce<
+            AgentStatusRouteArg["deps"]["canUseLocalTradeExecution"]
+          >(canUseLocalTradeExecution),
+          detectRuntimeModel:
+            coerce<AgentStatusRouteArg["deps"]["detectRuntimeModel"]>(
+              detectRuntimeModel,
+            ),
+          resolveProviderFromModel,
+          getGlobalAwarenessRegistry: coerce<
+            AgentStatusRouteArg["deps"]["getGlobalAwarenessRegistry"]
+          >(getGlobalAwarenessRegistry),
+          RegistryService,
+        },
+      });
+    })())
   ) {
     return;
   }
@@ -2434,29 +2460,32 @@ async function handleRequest(
     return;
   }
 
-  const { handleTtsRoutes } = await getOptionalPluginApi<{
-    handleTtsRoutes: (args: TtsRouteArg) => Promise<boolean>;
-  }>("streaming");
   if (
-    await handleTtsRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      state,
-      json,
-      error,
-      readJsonBody,
-      isRedactedSecretValue,
-      fetchWithTimeoutGuard,
-      streamResponseBodyWithByteLimit: coerce<
-        TtsRouteArg["streamResponseBodyWithByteLimit"]
-      >(streamResponseBodyWithByteLimit),
-      responseContentLength,
-      isAbortError,
-      ELEVENLABS_FETCH_TIMEOUT_MS: 30_000,
-      ELEVENLABS_AUDIO_MAX_BYTES: 20 * 1_048_576,
-    })
+    pathname.startsWith("/api/tts/") &&
+    (await (async () => {
+      const { handleTtsRoutes } = await getOptionalPluginApi<{
+        handleTtsRoutes: (args: TtsRouteArg) => Promise<boolean>;
+      }>("streaming");
+      return handleTtsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        state,
+        json,
+        error,
+        readJsonBody,
+        isRedactedSecretValue,
+        fetchWithTimeoutGuard,
+        streamResponseBodyWithByteLimit: coerce<
+          TtsRouteArg["streamResponseBodyWithByteLimit"]
+        >(streamResponseBodyWithByteLimit),
+        responseContentLength,
+        isAbortError,
+        ELEVENLABS_FETCH_TIMEOUT_MS: 30_000,
+        ELEVENLABS_AUDIO_MAX_BYTES: 20 * 1_048_576,
+      });
+    })())
   ) {
     return;
   }
@@ -2660,96 +2689,100 @@ async function handleRequest(
   }
 
   // ── App routes (/api/apps/*) ──────────────────────────────────────────
-  const { handleAppsRoutes } = await getAppManagerApi();
-  const appManager = state.appManager as AppManagerLike;
-  if (
-    await handleAppsRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      appManager: {
-        listAvailable: (pluginManager) =>
-          appManager.listAvailable(pluginManager),
-        search: (pluginManager, query, limit) =>
-          appManager.search(pluginManager, query, limit),
-        listInstalled: (pluginManager) =>
-          appManager.listInstalled(pluginManager),
-        listRuns: (runtime) =>
-          appManager.listRuns(
-            runtime && typeof runtime === "object"
-              ? (runtime as IAgentRuntime)
-              : null,
-          ),
-        getRun: (runId, runtime) =>
-          appManager.getRun(
-            runId,
-            runtime && typeof runtime === "object"
-              ? (runtime as IAgentRuntime)
-              : null,
-          ),
-        attachRun: (runId, runtime) =>
-          appManager.attachRun(
-            runId,
-            runtime && typeof runtime === "object"
-              ? (runtime as IAgentRuntime)
-              : null,
-          ),
-        detachRun: (runId) => appManager.detachRun(runId),
-        launch: (pluginManager, name, onProgress, runtime) =>
-          appManager.launch(
-            pluginManager,
-            name,
-            onProgress,
-            runtime && typeof runtime === "object"
-              ? (runtime as IAgentRuntime)
-              : null,
-          ),
-        stop: (pluginManager, name, runId, runtime) =>
-          appManager.stop(
-            pluginManager,
-            name,
-            runId,
-            runtime && typeof runtime === "object"
-              ? (runtime as IAgentRuntime)
-              : null,
-          ),
-        recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
-        startStaleRunSweeper: (getRuntime) =>
-          appManager.startStaleRunSweeper(getRuntime),
-        getInfo: (pluginManager, name) =>
-          appManager.getInfo(pluginManager, name),
-      } satisfies AppManagerLike,
-      getPluginManager: () => getPluginManagerForState(state),
-      parseBoundedLimit,
-      readJsonBody,
-      json,
-      error,
-      runtime: state.runtime,
-      favoriteApps: {
-        read: () => readFavoriteAppsFromConfig(state.config),
-        write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
-      } satisfies FavoriteAppsStore,
-    })
-  ) {
-    return;
-  }
+  if (pathname.startsWith("/api/apps")) {
+    const { handleAppsRoutes } = await getAppManagerApi();
+    const appManager = ctx?.getAppManager
+      ? await ctx.getAppManager()
+      : (state.appManager as AppManagerLike);
+    if (
+      await handleAppsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        appManager: {
+          listAvailable: (pluginManager) =>
+            appManager.listAvailable(pluginManager),
+          search: (pluginManager, query, limit) =>
+            appManager.search(pluginManager, query, limit),
+          listInstalled: (pluginManager) =>
+            appManager.listInstalled(pluginManager),
+          listRuns: (runtime) =>
+            appManager.listRuns(
+              runtime && typeof runtime === "object"
+                ? (runtime as IAgentRuntime)
+                : null,
+            ),
+          getRun: (runId, runtime) =>
+            appManager.getRun(
+              runId,
+              runtime && typeof runtime === "object"
+                ? (runtime as IAgentRuntime)
+                : null,
+            ),
+          attachRun: (runId, runtime) =>
+            appManager.attachRun(
+              runId,
+              runtime && typeof runtime === "object"
+                ? (runtime as IAgentRuntime)
+                : null,
+            ),
+          detachRun: (runId) => appManager.detachRun(runId),
+          launch: (pluginManager, name, onProgress, runtime) =>
+            appManager.launch(
+              pluginManager,
+              name,
+              onProgress,
+              runtime && typeof runtime === "object"
+                ? (runtime as IAgentRuntime)
+                : null,
+            ),
+          stop: (pluginManager, name, runId, runtime) =>
+            appManager.stop(
+              pluginManager,
+              name,
+              runId,
+              runtime && typeof runtime === "object"
+                ? (runtime as IAgentRuntime)
+                : null,
+            ),
+          recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
+          startStaleRunSweeper: (getRuntime) =>
+            appManager.startStaleRunSweeper(getRuntime),
+          getInfo: (pluginManager, name) =>
+            appManager.getInfo(pluginManager, name),
+        } satisfies AppManagerLike,
+        getPluginManager: () => getPluginManagerForState(state),
+        parseBoundedLimit,
+        readJsonBody,
+        json,
+        error,
+        runtime: state.runtime,
+        favoriteApps: {
+          read: () => readFavoriteAppsFromConfig(state.config),
+          write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
+        } satisfies FavoriteAppsStore,
+      })
+    ) {
+      return;
+    }
 
-  if (
-    await handleAppPackageRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      readJsonBody,
-      json,
-      error,
-      runtime: state.runtime,
-    })
-  ) {
-    return;
+    if (
+      await handleAppPackageRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        readJsonBody,
+        json,
+        error,
+        runtime: state.runtime,
+      })
+    ) {
+      return;
+    }
   }
 
   // ── View routes (/api/views/*) ────────────────────────────────────────────
@@ -2900,7 +2933,7 @@ async function handleRequest(
 
   // ── Music player compatibility fallback ─────────────────────────────────
   if (
-    tryHandleMusicPlayerStatusFallback({
+    await tryHandleMusicPlayerStatusFallbackLazy({
       pathname,
       method,
       runtime: state.runtime,
@@ -3093,7 +3126,6 @@ export async function startApiServer(opts?: {
     : resolveDefaultAgentName(config);
 
   const deletedConversationIds = readDeletedConversationIdsFromState();
-  const { AppManager } = await getAppManagerApi();
 
   const state: ServerState = {
     runtime: opts?.runtime ?? null,
@@ -3122,7 +3154,7 @@ export async function startApiServer(opts?: {
     deletedConversationIds,
     cloudManager: null,
     sandboxManager: null,
-    appManager: new AppManager(),
+    appManager: null,
     trainingService: null,
     shareIngestQueue: [],
     broadcastStatus: null,
@@ -3137,6 +3169,15 @@ export async function startApiServer(opts?: {
     connectorRouteHandlers: [],
     connectorHealthMonitor: null,
     whatsappPairingSessions: new Map(),
+  };
+  const ensureAppManager = async (): Promise<AppManagerLike> => {
+    if (state.appManager) {
+      return state.appManager as AppManagerLike;
+    }
+    const { AppManager } = await getAppManagerApi();
+    const appManager = new AppManager();
+    state.appManager = appManager;
+    return appManager as AppManagerLike;
   };
   const trainingServiceOptions = {
     getRuntime: () => state.runtime,
@@ -3172,21 +3213,6 @@ export async function startApiServer(opts?: {
       `[eliza-api] Ignoring invalid agents.defaults.adminEntityId "${configuredAdminEntityId}"`,
     );
   }
-
-  // Wire the app manager to the runtime if already running
-  if (state.runtime) {
-    // AppManager doesn't need a runtime reference — it just installs plugins
-  }
-
-  // Start the periodic stale-run sweeper that stops app runs whose UI
-  // heartbeat has gone silent (e.g. the user closed the tab without
-  // pressing Stop). Without this, plugins that own a setInterval — like
-  // the Defense-of-the-Agents game loop — would tick forever after the
-  // browser disappeared. The sweeper invokes the same `stopRun` route
-  // hook the Stop button uses so plugins have one shutdown path.
-  (state.appManager as AppManagerLike).startStaleRunSweeper(
-    () => state.runtime,
-  );
 
   const addLog = (
     level: string,
@@ -3343,10 +3369,6 @@ export async function startApiServer(opts?: {
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
 
-  // Register built-in first-party shell views in the view registry so
-  // GET /api/views always includes them and the agent can navigate to them.
-  registerBuiltinViews();
-
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
@@ -3365,6 +3387,7 @@ export async function startApiServer(opts?: {
             logger,
           });
         },
+        getAppManager: ensureAppManager,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "internal error";
@@ -3553,7 +3576,28 @@ export async function startApiServer(opts?: {
 
   // ── Deferred startup work (non-blocking) ────────────────────────────────
   // Keep API startup fast: listen first, then warm optional subsystems.
-  const startDeferredStartupWork = () => {
+  const startDeferredStartupWork = async (): Promise<void> => {
+    void registerBuiltinViews().catch((err) => {
+      logger.warn(
+        `[eliza-api] Built-in view registration failed after listen: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    });
+
+    void ensureAppManager()
+      .then((appManager) => {
+        // Stop app runs whose UI heartbeat has gone silent.
+        appManager.startStaleRunSweeper(() => state.runtime);
+      })
+      .catch((err) => {
+        logger.warn(
+          `[eliza-api] App manager startup work failed after listen: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
+
     if (!blockOnStewardWalletCache) {
       void getCoreWalletApi()
         .then(({ initStewardWalletCache }) => initStewardWalletCache())
@@ -3613,12 +3657,20 @@ export async function startApiServer(opts?: {
 
     // ── Connector health monitoring ──────────────────────────────────────────
     if (state.runtime && state.config.connectors) {
-      state.connectorHealthMonitor = new ConnectorHealthMonitor({
-        runtime: state.runtime,
-        config: state.config,
-        broadcastWs,
-      });
-      state.connectorHealthMonitor.start();
+      try {
+        state.connectorHealthMonitor = await createConnectorHealthMonitor({
+          runtime: state.runtime,
+          config: state.config,
+          broadcastWs,
+        });
+        state.connectorHealthMonitor.start();
+      } catch (err) {
+        logger.warn(
+          `[eliza-api] Connector health monitor failed after listen: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
 
     // ── Dynamic streaming + connector route loading ────────────────────────
@@ -4255,7 +4307,7 @@ export async function startApiServer(opts?: {
           // non-fatal — use current time
         }
 
-        const conversationMetadata = extractConversationMetadataFromRoom(
+        const conversationMetadata = await extractConversationMetadataFromRoom(
           room,
           convId,
         );
@@ -4530,7 +4582,7 @@ export async function startApiServer(opts?: {
         `[eliza-api] Listening on http://${displayHost}:${actualPort}`,
       );
       if (!opts?.skipDeferredStartupWork) {
-        startDeferredStartupWork();
+        void startDeferredStartupWork();
       }
       resolve({
         port: actualPort,

@@ -1639,6 +1639,11 @@ function resolveAppWindowSlug(): string | null {
   return slug.length > 0 ? slug : null;
 }
 
+function shouldLoadModelTesterShellRoute(): boolean {
+  const path = getWindowNavigationPath().replace(/[?#].*$/, "");
+  return path === "/model-tester" || path === "/model-tester/tui";
+}
+
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
@@ -2186,6 +2191,13 @@ async function main(): Promise<void> {
     setupPlatformStyles();
     mountReactApp();
     return;
+  }
+
+  if (shouldLoadModelTesterShellRoute()) {
+    await importSideEffectAppModule(
+      "@elizaos/app-model-tester",
+      () => import("@elizaos/app-model-tester"),
+    );
   }
 
   if (isVoicePillShellMode()) {

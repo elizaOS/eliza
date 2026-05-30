@@ -9,6 +9,9 @@
 // Env:
 //   ELIZA_DEV_STARTUP_BUDGET_MS  hard ceiling, default 60000 (the "1 minute" gate)
 //   ELIZA_DEV_STARTUP_HARD_KILL_MS  grace before SIGKILL on teardown, default 8000
+//
+// Emits one compact machine-readable line prefixed with:
+//   [dev-startup-smoke:metrics]
 
 import { spawn } from "node:child_process";
 import { createConnection, createServer } from "node:net";
@@ -69,7 +72,7 @@ async function waitForAgentReady(port, deadline) {
     }
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error(`API /api/health never reported ready on port ${port}`);
+  throw new Error(`API /api/health.ready never reported true on port ${port}`);
 }
 
 async function waitForUiServing(port, deadline) {
@@ -102,6 +105,55 @@ async function main() {
     `[dev-startup-smoke] budget=${BUDGET_MS}ms api=${apiPort} ui=${uiPort}`,
   );
 
+  const metrics = {
+    status: "running",
+    budgetMs: BUDGET_MS,
+    ports: {
+      api: apiPort,
+      ui: uiPort,
+    },
+    milestonesMs: {
+      processSpawn: null,
+      apiListen: null,
+      healthReady: null,
+      uiServed: null,
+      total: null,
+    },
+    segmentsMs: {
+      processSpawnToApiListen: null,
+      apiListenToHealthReady: null,
+      processSpawnToUiServed: null,
+    },
+  };
+
+  let start = 0;
+  const elapsedMs = () => Date.now() - start;
+  const markMilestone = (name, label) => {
+    if (metrics.milestonesMs[name] !== null) return metrics.milestonesMs[name];
+    const elapsed = elapsedMs();
+    metrics.milestonesMs[name] = elapsed;
+    console.log(`[dev-startup-smoke] ${label}: ${elapsed}ms`);
+    return elapsed;
+  };
+  const finalizeMetrics = (status, error) => {
+    metrics.status = status;
+    metrics.milestonesMs.total = elapsedMs();
+    const { processSpawn, apiListen, healthReady, uiServed } =
+      metrics.milestonesMs;
+    if (processSpawn !== null && apiListen !== null) {
+      metrics.segmentsMs.processSpawnToApiListen = apiListen - processSpawn;
+    }
+    if (apiListen !== null && healthReady !== null) {
+      metrics.segmentsMs.apiListenToHealthReady = healthReady - apiListen;
+    }
+    if (processSpawn !== null && uiServed !== null) {
+      metrics.segmentsMs.processSpawnToUiServed = uiServed - processSpawn;
+    }
+    if (error) metrics.error = error;
+    console.log(`[dev-startup-smoke:metrics] ${JSON.stringify(metrics)}`);
+  };
+
+  start = Date.now();
   const child = spawn("bun", ["run", "dev"], {
     cwd: repoRoot,
     stdio: ["ignore", "inherit", "inherit"],
@@ -122,6 +174,7 @@ async function main() {
       NODE_NO_WARNINGS: "1",
     },
   });
+  markMilestone("processSpawn", "process spawned");
 
   let exitedEarly = null;
   child.on("exit", (code, signal) => {
@@ -142,7 +195,6 @@ async function main() {
       });
     });
 
-  const start = Date.now();
   const deadline = start + BUDGET_MS;
 
   // Race readiness against the process dying or the budget elapsing.
@@ -165,22 +217,25 @@ async function main() {
   try {
     await Promise.race([
       Promise.all([
-        waitForPort(apiPort, deadline).then(() =>
-          waitForAgentReady(apiPort, deadline),
-        ),
-        waitForPort(uiPort, deadline).then(() =>
-          waitForUiServing(uiPort, deadline),
-        ),
+        waitForPort(apiPort, deadline)
+          .then(() => markMilestone("apiListen", "API listen"))
+          .then(() => waitForAgentReady(apiPort, deadline))
+          .then(() => markMilestone("healthReady", "/api/health.ready")),
+        waitForPort(uiPort, deadline)
+          .then(() => waitForUiServing(uiPort, deadline))
+          .then(() => markMilestone("uiServed", "UI served")),
       ]),
       diedOrTimedOut,
     ]);
   } catch (err) {
+    finalizeMetrics("fail", err.message);
     await teardown();
     console.error(`[dev-startup-smoke] FAIL: ${err.message}`);
     process.exit(1);
   }
 
   const elapsed = Date.now() - start;
+  finalizeMetrics("pass");
   await teardown();
   console.log(
     `[dev-startup-smoke] PASS: dev stack ready in ${(elapsed / 1000).toFixed(1)}s (budget ${(BUDGET_MS / 1000).toFixed(0)}s)`,

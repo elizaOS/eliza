@@ -749,9 +749,10 @@ async function handleCompatRoute(
     return handleCloudTtsPreviewRoute(req, res);
   }
 
-  // Onboarding voice: synthesize the fixed first-run script lines with edge-tts
-  // (free, no-key neural TTS) before any agent exists. The client falls back to
-  // browser speechSynthesis if this route fails, so onboarding never goes silent.
+  // Onboarding voice: serve the pre-generated OmniVoice presets for the fixed
+  // first-run lines (committed WAVs) before any agent exists. The client falls
+  // back to browser speechSynthesis if this route fails, so onboarding never
+  // goes silent.
   if (method === "POST" && url.pathname === "/api/tts/first-run/speak") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     return handleFirstRunTtsRoute(req, res);

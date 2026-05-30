@@ -108,9 +108,49 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "model tester app window",
+    path: "/apps/model-tester",
+    readyChecks: [
+      { selector: '[data-testid="model-tester-shell"]' },
+      { text: "Model Tester" },
+      { text: "Text" },
+    ],
+    timeoutMs: 90_000,
+  },
+  {
     name: "inventory app window",
     path: "/apps/inventory",
     selector: '[data-testid="wallet-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "wallet app shell page",
+    path: "/inventory",
+    selector: '[data-testid="wallet-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "hyperliquid",
+    path: "/hyperliquid",
+    selector: '[data-testid="hyperliquid-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "polymarket",
+    path: "/polymarket",
+    selector: '[data-testid="polymarket-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "shopify",
+    path: "/shopify",
+    selector: '[data-testid="shopify-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "vincent",
+    path: "/vincent",
+    selector: '[data-testid="vincent-shell"]',
     timeoutMs: 90_000,
   },
   {
@@ -147,15 +187,39 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "phone companion app shell page",
+    path: "/phone-companion",
+    readyChecks: [{ text: "Eliza" }, { text: "Pair" }],
+    timeoutMs: 90_000,
+  },
+  {
     name: "facewear app window",
     path: "/apps/hearwear",
     readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
     timeoutMs: 90_000,
   },
   {
+    name: "facewear tui app shell page",
+    path: "/apps/hearwear/tui",
+    readyChecks: [
+      { text: "elizaos://facewear --type=tui" },
+      { text: "connect-device" },
+    ],
+    timeoutMs: 90_000,
+  },
+  {
     name: "smartglasses app window",
     path: "/apps/smartglasses",
     readyChecks: [{ text: "Smartglasses" }, { text: "Connect Headset" }],
+    timeoutMs: 90_000,
+  },
+  {
+    name: "smartglasses tui app shell page",
+    path: "/apps/smartglasses/tui",
+    readyChecks: [
+      { text: "elizaos://smartglasses --type=tui" },
+      { text: "connect-headset" },
+    ],
     timeoutMs: 90_000,
   },
 ];

@@ -5577,7 +5577,6 @@
   "firstrunshell.localLabel": "로컬",
   "firstrunshell.advanced": "고급",
   "firstrunshell.localDetail": "기기에서 실행합니다. 로컬 추론을 사용하거나 Eliza Cloud에 연결하세요.",
-  "firstrunshell.keepEmbeddingsLocal": "임베딩 로컬 유지",
   "firstrunshell.useAsRemote": "원격으로 사용",
   "firstrunshell.useAsRemoteDetail": "다른 기기에서 로컬 기기에 연결합니다.",
   "firstrunshell.back": "뒤로",

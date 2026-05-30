@@ -1,5 +1,9 @@
 import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
-import { FacewearView } from "./ui/FacewearView.tsx";
+import {
+  FacewearTuiView,
+  FacewearView,
+  SmartglassesTuiView,
+} from "./ui/FacewearView.tsx";
 import { SmartglassesView } from "./ui/SmartglassesView.tsx";
 
 registerAppShellPage({
@@ -14,6 +18,17 @@ registerAppShellPage({
 });
 
 registerAppShellPage({
+  id: "hearwear.tui",
+  pluginId: "@elizaos/plugin-facewear",
+  label: "Hearwear TUI",
+  icon: "Terminal",
+  path: "/apps/hearwear/tui",
+  order: 80.1,
+  group: "hardware",
+  Component: FacewearTuiView,
+});
+
+registerAppShellPage({
   id: "smartglasses",
   pluginId: "@elizaos/plugin-facewear",
   label: "Smartglasses",
@@ -24,5 +39,20 @@ registerAppShellPage({
   Component: SmartglassesView,
 });
 
-export { FacewearView } from "./ui/FacewearView.tsx";
+registerAppShellPage({
+  id: "smartglasses.tui",
+  pluginId: "@elizaos/plugin-facewear",
+  label: "Smartglasses TUI",
+  icon: "Terminal",
+  path: "/apps/smartglasses/tui",
+  order: 81.1,
+  group: "hardware",
+  Component: SmartglassesTuiView,
+});
+
+export {
+  FacewearTuiView,
+  FacewearView,
+  SmartglassesTuiView,
+} from "./ui/FacewearView.tsx";
 export { SmartglassesView } from "./ui/SmartglassesView.tsx";

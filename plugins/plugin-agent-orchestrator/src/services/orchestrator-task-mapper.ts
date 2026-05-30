@@ -75,6 +75,7 @@ export interface TaskSessionDto {
   inputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
+  totalTokens: number;
   cacheTokens: number;
   costUsd: number;
   usageState: UsageState;
@@ -322,6 +323,8 @@ export function toTaskThreadDetail(
       inputTokens: session.inputTokens,
       outputTokens: session.outputTokens,
       reasoningTokens: session.reasoningTokens,
+      totalTokens:
+        session.inputTokens + session.outputTokens + session.reasoningTokens,
       cacheTokens: session.cacheTokens,
       costUsd: session.costUsd,
       usageState: session.usageState,

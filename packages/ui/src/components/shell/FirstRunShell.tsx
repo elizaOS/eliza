@@ -4,7 +4,9 @@ import {
   Cloud,
   HardDrive,
   Loader2,
+  MicOff,
   Network,
+  Volume2,
 } from "lucide-react";
 import * as React from "react";
 import {
@@ -18,6 +20,7 @@ import {
   type TranslationContextValue,
   useTranslation,
 } from "../../state/TranslationContext";
+import { StatusBadge } from "../ui/status-badge";
 
 type TranslateFn = TranslationContextValue["t"];
 
@@ -59,6 +62,8 @@ function RuntimeCard(props: {
   label: string;
   detail: string;
   badge?: string;
+  /** When set, renders a green "connected" status chip alongside the badge. */
+  connectedLabel?: string;
   emphasis?: "primary" | "muted";
   testId: string;
   onClick: () => void;
@@ -104,16 +109,26 @@ function RuntimeCard(props: {
             >
               {props.label}
             </span>
-            {props.badge ? (
-              <span
-                className={[
-                  "ml-auto rounded-full border px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide",
-                  props.emphasis === "primary"
-                    ? "border-accent/40 bg-accent/10 text-accent"
-                    : "border-[var(--first-run-card-border)] text-[var(--first-run-text-muted)]",
-                ].join(" ")}
-              >
-                {props.badge}
+            {props.badge || props.connectedLabel ? (
+              <span className="ml-auto flex items-center gap-1.5">
+                {props.connectedLabel ? (
+                  <StatusBadge
+                    label={props.connectedLabel}
+                    variant="success"
+                    withDot
+                  />
+                ) : null}
+                {props.badge ? (
+                  <StatusBadge
+                    label={props.badge}
+                    variant="muted"
+                    className={
+                      props.emphasis === "primary"
+                        ? "border-accent/40 bg-accent/10 text-accent"
+                        : undefined
+                    }
+                  />
+                ) : null}
               </span>
             ) : null}
           </span>
@@ -286,6 +301,18 @@ function useTypedPrompt(text: string): { rendered: string; complete: boolean } {
   const [complete, setComplete] = React.useState(false);
 
   React.useEffect(() => {
+    // Respect prefers-reduced-motion: render the full prompt instantly instead
+    // of animating it character by character.
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      setRendered(text);
+      setComplete(true);
+      return;
+    }
+
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const characters = Array.from(text);
@@ -345,13 +372,19 @@ function FirstRunVoiceControl(props: {
   t: TranslateFn;
 }) {
   const { t } = props;
-  const buttonLabel = props.voice.speaking
-    ? t("firstrunshell.voiceSpeaking", { defaultValue: "Speaking" })
+  const state = props.voice.speaking
+    ? "speaking"
     : props.voice.listening
-      ? t("firstrunshell.voiceListening", { defaultValue: "Listening" })
-      : t("firstrunshell.voiceNotListening", {
-          defaultValue: "Not listening",
-        });
+      ? "listening"
+      : "idle";
+  const label =
+    state === "speaking"
+      ? t("firstrunshell.voiceSpeaking", { defaultValue: "Speaking" })
+      : state === "listening"
+        ? t("firstrunshell.voiceListening", { defaultValue: "Listening" })
+        : t("firstrunshell.voiceNotListening", {
+            defaultValue: "Not listening",
+          });
   const detail = props.voice.error ?? props.voice.transcript;
 
   return (
@@ -371,9 +404,27 @@ function FirstRunVoiceControl(props: {
                 defaultValue: "Start voice input",
               })
         }
-        className="inline-flex min-h-11 min-w-[8.5rem] items-center justify-center bg-transparent px-2 py-2 text-sm font-semibold text-txt transition hover:text-accent focus-visible:outline-none focus-visible:underline"
+        className="inline-flex min-h-11 items-center justify-center rounded-full bg-transparent px-1 py-2 transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        {buttonLabel}
+        <StatusBadge
+          label={label}
+          variant={
+            state === "speaking"
+              ? "info"
+              : state === "listening"
+                ? "success"
+                : "muted"
+          }
+          pulse={state === "listening"}
+          withDot={state === "listening"}
+          icon={
+            state === "speaking" ? (
+              <Volume2 />
+            ) : state === "idle" ? (
+              <MicOff />
+            ) : undefined
+          }
+        />
       </button>
       {detail ? (
         <p className="max-w-[30rem] text-center text-sm font-medium">
@@ -451,27 +502,22 @@ function FirstRunControls(props: {
           badge={t("firstrunshell.recommended", {
             defaultValue: "Recommended",
           })}
+          connectedLabel={
+            props.elizaCloudConnected
+              ? t("firstrunshell.connected", { defaultValue: "Connected" })
+              : undefined
+          }
           emphasis="primary"
           testId="first-run-runtime-cloud"
-          detail={
-            props.elizaCloudConnected
-              ? t("firstrunshell.cloudDetailConnected", {
-                  defaultValue:
-                    "Runs 24/7 persistent agents that never sleep. Account connected.",
-                })
-              : t("firstrunshell.cloudDetail", {
-                  defaultValue: "Runs 24/7 persistent agents that never sleep.",
-                })
-          }
+          detail={t("firstrunshell.cloudDetail", {
+            defaultValue: "Runs 24/7 persistent agents that never sleep.",
+          })}
           onClick={() => props.updateDraft("runtime", "cloud")}
         />
 
         {props.localRuntimeAvailable ? (
           <RuntimeCard
-            active={
-              props.draft.runtime === "local" &&
-              props.draft.localInference === "all-local"
-            }
+            active={props.draft.runtime === "local"}
             icon={HardDrive}
             label={t("firstrunshell.localLabel", { defaultValue: "Local" })}
             badge={t("firstrunshell.advanced", { defaultValue: "Advanced" })}
@@ -554,13 +600,8 @@ export function FirstRunShell({
   const { rendered: renderedPrompt, complete: promptComplete } =
     useTypedPrompt(promptText);
 
-  // `onPromptReady` calls setVoice, which re-renders this component. Its
-  // identity is unstable (it ultimately derives from app-context callbacks like
-  // completeFirstRun, which change when first-run state churns during agent
-  // start). Depending on it here would re-fire the effect on every such render,
-  // re-entering setVoice → re-render → infinite loop that freezes onboarding.
-  // The intent is "fire once when the typed prompt finishes, keyed on its
-  // text", so call the latest handler through a ref and gate on the prompt.
+  // `onPromptReady` has an unstable identity, so fire it through a ref and key
+  // the effect on the prompt text only — once per completed prompt.
   const onPromptReadyRef = React.useRef(onPromptReady);
   onPromptReadyRef.current = onPromptReady;
   React.useEffect(() => {

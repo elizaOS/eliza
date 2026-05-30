@@ -5577,7 +5577,6 @@
   "firstrunshell.localLabel": "Lokal",
   "firstrunshell.advanced": "Advanced",
   "firstrunshell.localDetail": "Tumatakbo sa iyong makina. Gumamit ng lokal na inference o ikonekta ang Eliza Cloud.",
-  "firstrunshell.keepEmbeddingsLocal": "Panatilihing lokal ang mga embedding",
   "firstrunshell.useAsRemote": "Gamitin bilang remote",
   "firstrunshell.useAsRemoteDetail": "Kumonekta sa iyong lokal na makina mula sa ibang device.",
   "firstrunshell.back": "Bumalik",

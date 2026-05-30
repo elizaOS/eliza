@@ -5577,7 +5577,6 @@
   "firstrunshell.localLabel": "本地",
   "firstrunshell.advanced": "高级",
   "firstrunshell.localDetail": "在您的机器上运行。使用本地推理或连接 Eliza Cloud。",
-  "firstrunshell.keepEmbeddingsLocal": "保持嵌入向量在本地",
   "firstrunshell.useAsRemote": "用作远程",
   "firstrunshell.useAsRemoteDetail": "从其他设备连接到您的本地机器。",
   "firstrunshell.back": "返回",

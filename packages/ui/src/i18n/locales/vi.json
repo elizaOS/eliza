@@ -5577,7 +5577,6 @@
   "firstrunshell.localLabel": "Cục bộ",
   "firstrunshell.advanced": "Nâng cao",
   "firstrunshell.localDetail": "Chạy trên máy của bạn. Dùng suy luận cục bộ hoặc kết nối Eliza Cloud.",
-  "firstrunshell.keepEmbeddingsLocal": "Giữ embedding cục bộ",
   "firstrunshell.useAsRemote": "Dùng làm máy từ xa",
   "firstrunshell.useAsRemoteDetail": "Kết nối đến máy cục bộ của bạn từ thiết bị khác.",
   "firstrunshell.back": "Quay lại",

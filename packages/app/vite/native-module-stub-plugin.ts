@@ -721,7 +721,7 @@ export function nativeModuleStubPlugin(
         const capPkg = strippedId.split("/").slice(0, 2).join("/");
         if (capPkg === "@capacitor/haptics") {
           return [
-            "const noop = () => {};const noopObj = new Proxy({}, { get: () => noop });",
+            "const noop = async () => {};const noopObj = new Proxy({}, { get: () => noop });",
             "export const Haptics = noopObj;",
             "export const ImpactStyle = Object.freeze({ Heavy: 'HEAVY', Medium: 'MEDIUM', Light: 'LIGHT' });",
             "export const NotificationType = Object.freeze({ Success: 'SUCCESS', Warning: 'WARNING', Error: 'ERROR' });",
@@ -768,8 +768,19 @@ export function nativeModuleStubPlugin(
         }
         if (capPkg === "@capacitor/barcode-scanner") {
           return [
-            "const asyncNoop = async () => ({ ScanResult: '' });",
-            "export const CapacitorBarcodeScanner = { scanBarcode: asyncNoop };",
+            "const scanBarcode = async (options) => {",
+            "  const root = typeof window !== 'undefined' ? window : globalThis;",
+            "  const hook = root.__elizaUiSmokeBarcodeScanner;",
+            "  if (hook && typeof hook.scanBarcode === 'function') {",
+            "    return hook.scanBarcode(options);",
+            "  }",
+            "  const raw = root.localStorage?.getItem('__elizaUiSmokeBarcodeScannerResult');",
+            "  if (raw) {",
+            "    return JSON.parse(raw);",
+            "  }",
+            "  return { ScanResult: '' };",
+            "};",
+            "export const CapacitorBarcodeScanner = { scanBarcode };",
             "export const CapacitorBarcodeScannerTypeHint = Object.freeze({ QR_CODE: 'QR_CODE' });",
             "export default CapacitorBarcodeScanner;",
           ].join("\n");

@@ -140,15 +140,6 @@ export interface GenerateArgs extends StructuredGenerateParams {
 
 export type GenerateResult = string;
 
-export interface EmbedArgs {
-	input: string;
-}
-
-export interface EmbedResult {
-	embedding: number[];
-	tokens: number;
-}
-
 export interface LocalGenerateWithUsageResult {
 	text: string;
 	usage?: {
@@ -197,7 +188,6 @@ export interface LocalInferenceBackend {
 	load(plan: BackendPlan): Promise<void>;
 	unload(): Promise<void>;
 	generate(args: GenerateArgs): Promise<GenerateResult>;
-	embed?(args: EmbedArgs): Promise<EmbedResult>;
 	hasLoadedModel(): boolean;
 	currentModelPath(): string | null;
 
@@ -543,20 +533,6 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			);
 		}
 		return this.active.generate(args);
-	}
-
-	async embed(args: EmbedArgs): Promise<EmbedResult> {
-		if (!this.active) {
-			throw new Error(
-				"[local-inference] No backend loaded. Call load() before embed().",
-			);
-		}
-		if (!this.active.embed) {
-			throw new Error(
-				`[local-inference] Active backend (${this.active.id}) does not implement embed.`,
-			);
-		}
-		return this.active.embed(args);
 	}
 
 	// === Forwarders for the optional methods on LocalInferenceBackend.

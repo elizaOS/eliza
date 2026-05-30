@@ -7,19 +7,57 @@ import type {
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { emoteAction } from "../../../../plugins/plugin-companion/src/actions/emote.ts";
 import { generateMediaAction } from "../../../../plugins/plugin-local-inference/src/actions/generate-media.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";
 const wavBytes = new Uint8Array([
-  0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45,
-  0x66, 0x6d, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
-  0x40, 0x1f, 0x00, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x02, 0x00, 0x10, 0x00,
-  0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00,
+  0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66,
+  0x6d, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x40, 0x1f,
+  0x00, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74,
+  0x61, 0x00, 0x00, 0x00, 0x00,
 ]);
 
 let restoreFetch: (() => void) | null = null;
 const modelCalls: Array<{ modelType: string; payload: unknown }> = [];
 const emoteRequests: Array<{ url: string; body: unknown }> = [];
+
+const imageGenerateMediaParameters = {
+  mediaType: "image",
+  prompt: "scenario sunset",
+};
+const audioGenerateMediaParameters = {
+  mediaType: "audio",
+  prompt: "scenario audio",
+};
+const playEmoteParameters = { emote: "wave" };
+
+const strictMediaEmoteRoutes = [
+  {
+    actionName: "GENERATE_MEDIA",
+    args: imageGenerateMediaParameters,
+    contextIds: ["media"],
+    input: "Draw scenario sunset",
+    messageToUser: "Here's the image you asked for.",
+  },
+  {
+    actionName: "GENERATE_MEDIA",
+    args: audioGenerateMediaParameters,
+    contextIds: ["media"],
+    input: "Say scenario audio",
+    messageToUser: "Here's the audio you asked for.",
+  },
+  {
+    actionName: "PLAY_EMOTE",
+    args: playEmoteParameters,
+    contextIds: ["general"],
+    input: "Run the companion avatar wave emote action",
+    messageToUser: "Playing wave emote.",
+  },
+];
 
 type JsonRecord = Record<string, unknown>;
 
@@ -28,7 +66,8 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 function actionParameters(action: CapturedAction): JsonRecord {
-  return isRecord(action.parameters) ? action.parameters : {};
+  const params = isRecord(action.parameters) ? action.parameters : {};
+  return isRecord(params.parameters) ? params.parameters : params;
 }
 
 function stableStringify(value: unknown): string {
@@ -91,12 +130,23 @@ function expectAction(
 ): string | undefined {
   const action = firstAction(execution, expected.actionName);
   if (typeof action === "string") return action;
+  const actualParameters = actionParameters(action);
+  const directParametersFailure = expectEqual(
+    actualParameters,
+    expected.parameters,
+    `${expected.actionName} handler options`,
+  );
+  const wrappedParametersFailure = expectEqual(
+    actualParameters,
+    { parameters: expected.parameters },
+    `${expected.actionName} handler options`,
+  );
+  const parametersFailure =
+    directParametersFailure && wrappedParametersFailure
+      ? directParametersFailure
+      : undefined;
   return (
-    expectEqual(
-      actionParameters(action),
-      { parameters: expected.parameters },
-      `${expected.actionName} handler options`,
-    ) ??
+    parametersFailure ??
     (action.result?.success === true
       ? undefined
       : `expected ${expected.actionName} ActionResult.success=true, saw ${stableStringify(action.result)}`) ??
@@ -128,7 +178,7 @@ function installEmoteFetchMock(): void {
           : input.url;
     const url = new URL(href);
     if (url.hostname === "localhost" && url.pathname === "/api/emote") {
-      let body: unknown = undefined;
+      let body: unknown;
       if (typeof init?.body === "string") {
         body = JSON.parse(init.body) as unknown;
       }
@@ -227,11 +277,11 @@ export default scenario({
         installEmoteFetchMock();
 
         const runtime = ctx.runtime as
-          | {
+          | (RuntimeWithScenarioLlmFixtures & {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (plugin: Plugin) => Promise<void>;
               unregisterAction?: (name: string) => boolean;
-            }
+            })
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
@@ -245,6 +295,7 @@ export default scenario({
           runtime.unregisterAction?.("PLAY_EMOTE");
           await runtime.registerPlugin(deterministicMediaPlugin);
         }
+        registerStrictActionRouteFixtures(runtime, strictMediaEmoteRoutes);
         return undefined;
       },
     },
@@ -258,16 +309,14 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "generate deterministic image attachment",
       text: "Draw scenario sunset",
-      actionName: "GENERATE_MEDIA",
-      options: { parameters: {} },
       responseIncludesAny: ["Here's the image you asked for."],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "GENERATE_MEDIA",
-          parameters: {},
+          parameters: imageGenerateMediaParameters,
           resultFields: {
             "data.source": "generate-media",
             "data.computerUseAction": "GENERATE_MEDIA_IMAGE",
@@ -280,16 +329,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "generate deterministic audio attachment",
       text: "Say scenario audio",
-      actionName: "GENERATE_MEDIA",
-      options: { parameters: {} },
       responseIncludesAny: ["Here's the audio you asked for."],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "GENERATE_MEDIA",
-          parameters: {},
+          parameters: audioGenerateMediaParameters,
           resultFields: {
             "data.source": "generate-media",
             "data.computerUseAction": "GENERATE_MEDIA_AUDIO",
@@ -302,15 +349,13 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "post deterministic companion emote request",
-      text: "Wave in the companion avatar",
-      actionName: "PLAY_EMOTE",
-      options: { parameters: { emote: "wave" } },
+      text: "Run the companion avatar wave emote action",
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "PLAY_EMOTE",
-          parameters: { emote: "wave" },
+          parameters: playEmoteParameters,
           resultFields: {
             "data.emoteId": "wave",
           },

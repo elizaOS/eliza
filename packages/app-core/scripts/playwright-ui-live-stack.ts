@@ -486,6 +486,8 @@ async function ensureUiDistReady(): Promise<void> {
     return;
   }
 
+  await rm(path.join(APP_DIR, ".vite"), { force: true, recursive: true });
+
   const logs: string[] = [];
   const child = spawn(resolveBunCommand(), ["run", "build:web"], {
     cwd: APP_DIR,

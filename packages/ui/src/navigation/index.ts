@@ -16,6 +16,7 @@ import {
   UserRound,
   Wallet,
 } from "lucide-react";
+import { listAppShellPages } from "../app-shell-registry";
 import { resolveDefaultLandingTab } from "./main-tab";
 
 type RuntimeImportMeta = ImportMeta & {
@@ -347,6 +348,15 @@ const PATH_TO_TAB = new Map(
   Object.entries(TAB_PATHS).map(([tab, p]) => [p, tab as Tab]),
 );
 
+const APP_SHELL_PATH_TAB_ALIASES: Record<string, Tab> = {
+  "/inventory": "inventory",
+  "/phone-companion": "phone-companion",
+};
+
+const APP_SHELL_REGISTRATION_TAB_ALIASES: Record<string, Tab> = {
+  "wallet.inventory": "inventory",
+};
+
 function normalizePathForLookup(pathname: string, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   let p = pathname || "/";
@@ -444,6 +454,18 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // /views — the views tab (ViewManagerPage)
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
+  }
+
+  const appShellAlias = APP_SHELL_PATH_TAB_ALIASES[normalized];
+  if (appShellAlias) return appShellAlias;
+  const registeredAppShellPage = listAppShellPages().find(
+    (entry) => normalizePath(entry.path).toLowerCase() === normalized,
+  );
+  if (registeredAppShellPage) {
+    return (
+      APP_SHELL_REGISTRATION_TAB_ALIASES[registeredAppShellPage.id] ??
+      registeredAppShellPage.id
+    );
   }
 
   // /apps/<sub> — known tool tabs resolve to their tab; everything else is an app slug

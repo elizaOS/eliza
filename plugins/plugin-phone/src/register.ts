@@ -1,12 +1,14 @@
 /**
- * Side-effect entry point — registers the Phone overlay app on ElizaOS only.
+ * Side-effect entry point for bundled phone surfaces.
  *
- * Stock Android, web, iOS, and desktop register a no-op so loading this
- * module never throws on those platforms.
+ * The Phone Companion is an app-shell page and must register on every host
+ * where the app shell can route to `/phone-companion`. The Android overlay app
+ * still only registers on ElizaOS.
  */
 
 import { isElizaOS } from "@elizaos/ui";
 import { registerPhoneApp } from "./components/phone-app";
+import "./register-companion-page";
 
 if (isElizaOS()) {
   registerPhoneApp();

@@ -1,8 +1,8 @@
-import type http from "node:http";
 import { readFileSync } from "node:fs";
+import type http from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ModelType, type IAgentRuntime, type Plugin } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -13,8 +13,15 @@ import mcpPlugin, {
   handleMcpRoutes,
   type McpRouteConfig,
 } from "../../../../plugins/plugin-mcp/src/index.ts";
-import { MCP_SERVICE_NAME, type McpServer } from "../../../../plugins/plugin-mcp/src/types.ts";
 import type { McpService } from "../../../../plugins/plugin-mcp/src/service.ts";
+import {
+  MCP_SERVICE_NAME,
+  type McpServer,
+} from "../../../../plugins/plugin-mcp/src/types.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
 const MCP_SERVER_NAME = "scenario_mcp";
 const TOOL_NAME = "echo_code";
@@ -24,31 +31,131 @@ const TOOL_REASONING_TEXT = "mcp-tool-analysis: alpha-42 echoed";
 const RESOURCE_URI = "fixture://mcp-note";
 const RESOURCE_TEXT = "mcp-resource-note:alpha-42";
 const RESOURCE_ANALYSIS_TEXT = "mcp-resource-analysis: alpha-42 is present";
+const readResourceInput = `Fetch the ${RESOURCE_URI} MCP resource file from the scenario MCP server.`;
+const callToolInput = `Execute the scenario MCP ${TOOL_NAME} tool with ${TOOL_CODE}.`;
+const parentListConnectionsInput =
+  "Fetch deterministic MCP connections through the parent action.";
+const searchActionsInput = "Search deterministic MCP actions.";
+const listConnectionsInput = "Fetch deterministic MCP connections.";
 const scenarioDir = dirname(fileURLToPath(import.meta.url));
 const fixturePath = resolve(scenarioDir, "../fixtures/mcp-stdio-fixture.mjs");
 const fixtureSource = readFileSync(fixturePath, "utf8");
 
 type JsonRecord = Record<string, unknown>;
 
-type RuntimeWithMcpScenario = IAgentRuntime & {
-  plugins?: Plugin[];
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-  registerPlugin: (plugin: Plugin) => Promise<void>;
-  routes?: Array<{
-    type?: string;
-    path: string;
-    handler?: (
-      req: http.IncomingMessage,
-      res: http.ServerResponse,
-      runtime: unknown,
-    ) => Promise<void> | void;
-    __scenarioMcpRoute?: boolean;
-  }>;
-  scenarioLlmFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
-  setSetting: (key: string, value: unknown, secret?: boolean) => void;
+const readResourceParameters = {
+  action: "read_resource",
+  serverName: MCP_SERVER_NAME,
+  uri: RESOURCE_URI,
 };
+
+const callToolParameters = {
+  action: "call_tool",
+  serverName: MCP_SERVER_NAME,
+  toolName: TOOL_NAME,
+};
+
+const parentListConnectionsParameters = {
+  action: "list_connections",
+};
+
+const searchActionsParameters = {
+  action: "search_actions",
+  query: "echo",
+};
+
+const listConnectionsParameters = {
+  action: "list_connections",
+};
+
+const strictMcpRoutes = [
+  {
+    actionName: "MCP_READ_RESOURCE",
+    args: readResourceParameters,
+    contextIds: ["mcp"],
+    input: readResourceInput,
+    messageToUser: RESOURCE_ANALYSIS_TEXT,
+  },
+  {
+    actionName: "MCP_CALL_TOOL",
+    args: callToolParameters,
+    contextIds: ["mcp"],
+    input: callToolInput,
+    messageToUser: TOOL_REASONING_TEXT,
+  },
+  {
+    actionName: "MCP",
+    args: parentListConnectionsParameters,
+    contextIds: ["mcp"],
+    input: parentListConnectionsInput,
+    messageToUser:
+      "MCP op=list_connections is only available in the cloud runtime.",
+  },
+  {
+    actionName: "MCP_SEARCH_ACTIONS",
+    args: searchActionsParameters,
+    contextIds: ["mcp"],
+    input: searchActionsInput,
+    messageToUser:
+      "MCP op=search_actions is only available in the cloud runtime.",
+  },
+  {
+    actionName: "MCP_LIST_CONNECTIONS",
+    args: listConnectionsParameters,
+    contextIds: ["mcp"],
+    input: listConnectionsInput,
+    messageToUser:
+      "MCP op=list_connections is only available in the cloud runtime.",
+  },
+];
+
+function matchesUnsupportedMcpEvaluation(expectedInput: string) {
+  return (value: string) =>
+    value.includes(`message:user:\n${expectedInput}`) &&
+    value.includes("event:message_handler:") &&
+    value.includes(
+      "Stage 1 router marked this current turn as requiring a tool",
+    );
+}
+
+function unsupportedMcpEvaluationFixture(input: string, op: string) {
+  const text = `MCP op=${op} is only available in the cloud runtime.`;
+  return {
+    name: `mcp-unsupported-${op}-evaluator-${input}`,
+    match: {
+      modelType: ModelType.RESPONSE_HANDLER,
+      input: matchesUnsupportedMcpEvaluation(input),
+    },
+    response: {
+      success: false,
+      decision: "FINISH",
+      thought: `The ${op} action reported the local-runtime boundary.`,
+      messageToUser: text,
+    },
+    times: 1,
+  };
+}
+
+type RuntimeWithMcpScenario = IAgentRuntime &
+  RuntimeWithScenarioLlmFixtures & {
+    plugins?: Plugin[];
+    getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+    registerPlugin: (plugin: Plugin) => Promise<void>;
+    routes?: Array<{
+      type?: string;
+      path: string;
+      handler?: (
+        req: http.IncomingMessage,
+        res: http.ServerResponse,
+        runtime: unknown,
+      ) => Promise<void> | void;
+      __scenarioMcpRoute?: boolean;
+    }>;
+    scenarioLlmFixtures?: {
+      register: (...fixtures: Array<Record<string, unknown>>) => void;
+    };
+    setSetting: (key: string, value: unknown, secret?: boolean) => void;
+  };
 
 type RouteStatusBody = {
   ok?: unknown;
@@ -106,6 +213,19 @@ function actionParameters(action: CapturedAction): JsonRecord {
   return toRecord(action.parameters);
 }
 
+function expectActionParameters(
+  action: CapturedAction,
+  expectedParameters: JsonRecord,
+): string | undefined {
+  const actual = actionParameters(action);
+  const parameters = isRecord(actual.parameters) ? actual.parameters : actual;
+  return expectEqual(
+    parameters,
+    expectedParameters,
+    `${action.actionName} handler parameters`,
+  );
+}
+
 function firstAction(
   execution: ScenarioTurnExecution,
   actionName: string,
@@ -124,9 +244,15 @@ function expectMcpReadResourceAction(
 ): string | undefined {
   const action = firstAction(execution, "MCP_READ_RESOURCE");
   if (typeof action === "string") return action;
+  const parametersFailure = expectActionParameters(
+    action,
+    readResourceParameters,
+  );
+  if (parametersFailure) return parametersFailure;
 
   const params = actionParameters(action);
   for (const [path, expected] of Object.entries({
+    "parameters.action": "read_resource",
     "parameters.serverName": MCP_SERVER_NAME,
     "parameters.uri": RESOURCE_URI,
   })) {
@@ -152,7 +278,10 @@ function expectMcpReadResourceAction(
     const failure = expectEqual(readPath(action.result, path), expected, path);
     if (failure) return failure;
   }
-  if (Number(readPath(action.result, "data.contentLength")) !== RESOURCE_TEXT.length) {
+  if (
+    Number(readPath(action.result, "data.contentLength")) !==
+    RESOURCE_TEXT.length
+  ) {
     return `expected contentLength=${RESOURCE_TEXT.length}, saw ${String(readPath(action.result, "data.contentLength"))}`;
   }
   if (!execution.responseText?.includes(RESOURCE_ANALYSIS_TEXT)) {
@@ -166,6 +295,8 @@ function expectMcpCallToolAction(
 ): string | undefined {
   const action = firstAction(execution, "MCP_CALL_TOOL");
   if (typeof action === "string") return action;
+  const parametersFailure = expectActionParameters(action, callToolParameters);
+  if (parametersFailure) return parametersFailure;
 
   if (action.result?.success !== true) {
     return `expected MCP_CALL_TOOL result.success=true, saw ${stableStringify(action.result)}`;
@@ -200,10 +331,16 @@ function expectMcpCallToolAction(
 function expectUnsupportedMcpCloudOp(
   actionName: "MCP" | "MCP_SEARCH_ACTIONS" | "MCP_LIST_CONNECTIONS",
   op: "search_actions" | "list_connections",
+  expectedParameters: JsonRecord,
 ): (execution: ScenarioTurnExecution) => string | undefined {
   return (execution) => {
     const action = firstAction(execution, actionName);
     if (typeof action === "string") return action;
+    const parametersFailure = expectActionParameters(
+      action,
+      expectedParameters,
+    );
+    if (parametersFailure) return parametersFailure;
     const text = `MCP op=${op} is only available in the cloud runtime.`;
     if (action.result?.success !== false) {
       return `expected ${actionName} result.success=false, saw ${stableStringify(action.result)}`;
@@ -214,7 +351,11 @@ function expectUnsupportedMcpCloudOp(
       "data.op": op,
       "values.error": "OP_NOT_SUPPORTED",
     })) {
-      const failure = expectEqual(readPath(action.result, path), expected, path);
+      const failure = expectEqual(
+        readPath(action.result, path),
+        expected,
+        path,
+      );
       if (failure) return failure;
     }
     return execution.responseText === text
@@ -262,7 +403,11 @@ async function readJsonBody<T extends object>(
   try {
     return JSON.parse(raw) as T;
   } catch (err) {
-    error(res, `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`, 400);
+    error(
+      res,
+      `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      400,
+    );
     return null;
   }
 }
@@ -278,7 +423,8 @@ function cloneWithoutBlockedObjectKeys<T>(value: T): T {
   if (!isRecord(value)) return value;
   const out: JsonRecord = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (!isBlockedObjectKey(key)) out[key] = cloneWithoutBlockedObjectKeys(entry);
+    if (!isBlockedObjectKey(key))
+      out[key] = cloneWithoutBlockedObjectKeys(entry);
   }
   return out as T;
 }
@@ -357,56 +503,74 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   }
 
   runtime.setSetting("mcp", mcpConfig().mcp, false);
-  runtime.scenarioLlmFixtures?.register({
-    name: "mcp-resource-analysis",
-    match: {
-      modelType: ModelType.TEXT_SMALL,
-      prompt: (prompt: string) =>
-        prompt.includes(RESOURCE_URI) && prompt.includes(RESOURCE_TEXT),
+  registerStrictActionRouteFixtures(runtime, strictMcpRoutes);
+  runtime.scenarioLlmFixtures?.register(
+    {
+      name: "mcp-resource-analysis",
+      match: {
+        modelType: ModelType.TEXT_SMALL,
+        prompt: (prompt: string) =>
+          prompt.includes(RESOURCE_URI) && prompt.includes(RESOURCE_TEXT),
+      },
+      response: RESOURCE_ANALYSIS_TEXT,
+      times: 1,
     },
-    response: RESOURCE_ANALYSIS_TEXT,
-    times: 1,
-  }, {
-    name: "mcp-tool-selection-name",
-    match: {
-      modelType: ModelType.TEXT_LARGE,
-      prompt: (prompt: string) =>
-        prompt.includes("# TASK: Select the Most Appropriate Tool and Server") &&
-        prompt.includes(MCP_SERVER_NAME) &&
-        prompt.includes(TOOL_NAME),
+    {
+      name: "mcp-tool-selection-name",
+      match: {
+        modelType: ModelType.TEXT_LARGE,
+        prompt: (prompt: string) =>
+          prompt.includes(
+            "# TASK: Select the Most Appropriate Tool and Server",
+          ) &&
+          prompt.includes(MCP_SERVER_NAME) &&
+          prompt.includes(TOOL_NAME),
+      },
+      response: JSON.stringify({
+        serverName: MCP_SERVER_NAME,
+        toolName: TOOL_NAME,
+        reasoning:
+          "The user asked to echo alpha-42 through the deterministic MCP fixture.",
+        noToolAvailable: false,
+      }),
+      times: 1,
     },
-    response: JSON.stringify({
-      serverName: MCP_SERVER_NAME,
-      toolName: TOOL_NAME,
-      reasoning: "The user asked to echo alpha-42 through the deterministic MCP fixture.",
-      noToolAvailable: false,
-    }),
-    times: 1,
-  }, {
-    name: "mcp-tool-selection-arguments",
-    match: {
-      modelType: ModelType.TEXT_LARGE,
-      prompt: (prompt: string) =>
-        prompt.includes("# TASK: Generate Tool Arguments for Tool Execution") &&
-        prompt.includes(TOOL_NAME) &&
-        prompt.includes('"code"'),
+    {
+      name: "mcp-tool-selection-arguments",
+      match: {
+        modelType: ModelType.TEXT_LARGE,
+        prompt: (prompt: string) =>
+          prompt.includes(
+            "# TASK: Generate Tool Arguments for Tool Execution",
+          ) &&
+          prompt.includes(TOOL_NAME) &&
+          prompt.includes('"code"'),
+      },
+      response: JSON.stringify({
+        toolArguments: { code: TOOL_CODE },
+        reasoning: "The requested code is alpha-42.",
+      }),
+      times: 1,
     },
-    response: JSON.stringify({
-      toolArguments: { code: TOOL_CODE },
-      reasoning: "The requested code is alpha-42.",
-    }),
-    times: 1,
-  }, {
-    name: "mcp-tool-reasoning",
-    match: {
-      modelType: ModelType.TEXT_SMALL,
-      prompt: (prompt: string) =>
-        prompt.includes(`Synthesize the result from the "${TOOL_NAME}" tool`) &&
-        prompt.includes(TOOL_OUTPUT),
+    {
+      name: "mcp-tool-reasoning",
+      match: {
+        modelType: ModelType.TEXT_SMALL,
+        prompt: (prompt: string) =>
+          prompt.includes(
+            `Synthesize the result from the "${TOOL_NAME}" tool`,
+          ) && prompt.includes(TOOL_OUTPUT),
+      },
+      response: TOOL_REASONING_TEXT,
+      times: 1,
     },
-    response: TOOL_REASONING_TEXT,
-    times: 1,
-  });
+    unsupportedMcpEvaluationFixture(
+      parentListConnectionsInput,
+      "list_connections",
+    ),
+    unsupportedMcpEvaluationFixture(searchActionsInput, "search_actions"),
+    unsupportedMcpEvaluationFixture(listConnectionsInput, "list_connections"),
+  );
 
   const registered = (runtime.plugins ?? []).some(
     (plugin) => plugin.name === mcpPlugin.name,
@@ -419,7 +583,9 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
       | McpService
       | undefined) ?? runtime.getService<McpService>(MCP_SERVICE_NAME);
   await service?.waitForInitialization?.();
-  const server = service?.getServers().find((candidate) => candidate.name === MCP_SERVER_NAME);
+  const server = service
+    ?.getServers()
+    .find((candidate) => candidate.name === MCP_SERVER_NAME);
   if (!server) return `MCP server ${MCP_SERVER_NAME} was not registered`;
   if (server.status !== "connected") {
     return `MCP server ${MCP_SERVER_NAME} status was ${server.status}`;
@@ -447,7 +613,11 @@ function expectMcpStatus(status: number, body: unknown): string | undefined {
     toolCount: 1,
     resourceCount: 1,
   })) {
-    const failure = expectEqual(readPath(server, path), expected, `server.${path}`);
+    const failure = expectEqual(
+      readPath(server, path),
+      expected,
+      `server.${path}`,
+    );
     if (failure) return failure;
   }
   return undefined;
@@ -461,7 +631,9 @@ async function finalMcpCheck(
   if (!runtime) return "scenario runtime was not available in final check";
   const service = runtime.getService<McpService>(MCP_SERVICE_NAME);
   if (!service) return "McpService was not registered";
-  const server = service.getServers().find((candidate: McpServer) => candidate.name === MCP_SERVER_NAME);
+  const server = service
+    .getServers()
+    .find((candidate: McpServer) => candidate.name === MCP_SERVER_NAME);
   if (!server) return `expected ${MCP_SERVER_NAME}, saw no MCP servers`;
   if ((server.tools?.length ?? 0) !== 1) {
     return `expected one MCP tool, saw ${server.tools?.length ?? 0}`;
@@ -501,61 +673,46 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "read deterministic MCP resource through promoted virtual action",
-      text: `Read ${RESOURCE_URI} from the scenario MCP server.`,
-      actionName: "MCP_READ_RESOURCE",
-      options: {
-        parameters: {
-          serverName: MCP_SERVER_NAME,
-          uri: RESOURCE_URI,
-        },
-      },
+      text: readResourceInput,
       assertTurn: expectMcpReadResourceAction,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "call deterministic MCP tool through promoted virtual action",
-      text: `Use the scenario MCP ${TOOL_NAME} tool with ${TOOL_CODE}.`,
-      actionName: "MCP_CALL_TOOL",
+      text: callToolInput,
       assertTurn: expectMcpCallToolAction,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "parent MCP action reports local-only list-connections boundary",
-      text: "List deterministic MCP connections through the parent action.",
-      actionName: "MCP",
-      options: {
-        parameters: {
-          action: "list_connections",
-        },
-      },
-      assertTurn: expectUnsupportedMcpCloudOp("MCP", "list_connections"),
+      text: parentListConnectionsInput,
+      assertTurn: expectUnsupportedMcpCloudOp(
+        "MCP",
+        "list_connections",
+        parentListConnectionsParameters,
+      ),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "MCP search-actions virtual action reports local-only boundary",
-      text: "Search deterministic MCP actions.",
-      actionName: "MCP_SEARCH_ACTIONS",
-      options: {
-        parameters: {
-          action: "search_actions",
-          query: "echo",
-        },
-      },
-      assertTurn: expectUnsupportedMcpCloudOp("MCP_SEARCH_ACTIONS", "search_actions"),
+      text: searchActionsInput,
+      assertTurn: expectUnsupportedMcpCloudOp(
+        "MCP_SEARCH_ACTIONS",
+        "search_actions",
+        searchActionsParameters,
+      ),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "MCP list-connections virtual action reports local-only boundary",
-      text: "List deterministic MCP connections.",
-      actionName: "MCP_LIST_CONNECTIONS",
-      options: {
-        parameters: {
-          action: "list_connections",
-        },
-      },
-      assertTurn: expectUnsupportedMcpCloudOp("MCP_LIST_CONNECTIONS", "list_connections"),
+      text: listConnectionsInput,
+      assertTurn: expectUnsupportedMcpCloudOp(
+        "MCP_LIST_CONNECTIONS",
+        "list_connections",
+        listConnectionsParameters,
+      ),
     },
     {
       kind: "api",
@@ -567,6 +724,33 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "actionCalled",
+      actionName: "MCP_READ_RESOURCE",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "MCP_CALL_TOOL",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "MCP",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "MCP_SEARCH_ACTIONS",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "MCP_LIST_CONNECTIONS",
+      minCount: 1,
+    },
     {
       type: "custom",
       name: "real MCP stdio service discovered the fixture tool and resource",

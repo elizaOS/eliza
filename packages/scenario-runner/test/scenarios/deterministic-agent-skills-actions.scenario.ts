@@ -4,9 +4,22 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
 const scenarioGuidanceSlug = "scenario-guidance";
 const registrySkillSlug = "registry-weather";
+const searchSkillsText = "Search skills for weather";
+const registrySearchText = "Find registry-backed skills";
+const registryDetailsText = "registry-weather details skill";
+const registryInstallText = 'Install skill "registry-weather"';
+const registryDisableText = 'Disable skill "registry-weather"';
+const useGuidanceText = "Run USE_SKILL for scenario-guidance in guidance mode";
+const syncCatalogText = "Update the skill catalog";
+const uninstallPromptText = 'Uninstall skill "registry-weather"';
+const uninstallConfirmText = 'yes, run skill uninstall for "registry-weather"';
 
 const scenarioGuidanceSkillMd = [
   "---",
@@ -71,6 +84,72 @@ const registryDetails = {
     displayName: "Scenario Runner",
   },
 };
+
+const strictAgentSkillRoutes = [
+  {
+    actionName: "SKILL",
+    args: { action: "search" },
+    contextIds: ["knowledge"],
+    input: searchSkillsText,
+    messageToUser: `Found ${registrySkillSlug}.`,
+  },
+  {
+    actionName: "SKILL_SEARCH",
+    args: { action: "search" },
+    contextIds: ["knowledge"],
+    input: registrySearchText,
+    messageToUser: `Found ${registrySkillSlug}.`,
+  },
+  {
+    actionName: "SKILL_DETAILS",
+    args: { action: "details" },
+    contextIds: ["knowledge"],
+    input: registryDetailsText,
+    messageToUser: "Registry Weather details.",
+  },
+  {
+    actionName: "SKILL_INSTALL",
+    args: { action: "install" },
+    contextIds: ["settings"],
+    input: registryInstallText,
+    messageToUser: `Skill ${registrySkillSlug} installed successfully.`,
+  },
+  {
+    actionName: "SKILL_TOGGLE",
+    args: { action: "toggle" },
+    contextIds: ["settings"],
+    input: registryDisableText,
+    messageToUser: `Skill ${registrySkillSlug} has been disabled.`,
+  },
+  {
+    actionName: "USE_SKILL",
+    args: { slug: scenarioGuidanceSlug, mode: "guidance" },
+    contextIds: ["knowledge"],
+    input: useGuidanceText,
+    messageToUser: "scenario-guidance-ok",
+  },
+  {
+    actionName: "SKILL_SYNC",
+    args: { action: "sync" },
+    contextIds: ["settings"],
+    input: syncCatalogText,
+    messageToUser: "Skill catalog synced successfully.",
+  },
+  {
+    actionName: "SKILL_UNINSTALL",
+    args: { action: "uninstall" },
+    contextIds: ["settings"],
+    input: uninstallPromptText,
+    messageToUser: `Reply "yes" to confirm uninstalling ${registrySkillSlug}.`,
+  },
+  {
+    actionName: "SKILL_UNINSTALL",
+    args: { action: "uninstall" },
+    contextIds: ["settings"],
+    input: uninstallConfirmText,
+    messageToUser: `Skill ${registrySkillSlug} has been uninstalled.`,
+  },
+];
 
 let restoreFetch: (() => void) | null = null;
 const registryFetchCalls: string[] = [];
@@ -153,11 +232,7 @@ function expectAction(
   if (typeof action === "string") return action;
   return (
     (expected.parameters
-      ? expectEqual(
-          actionParameters(action),
-          { parameters: expected.parameters },
-          `${expected.actionName} handler options`,
-        )
+      ? expectActionParameters(action, expected.parameters)
       : undefined) ??
     expectSuccess(action) ??
     (() => {
@@ -175,6 +250,30 @@ function expectAction(
       return undefined;
     })()
   );
+}
+
+function expectActionParameters(
+  action: CapturedAction,
+  expectedParameters: JsonRecord,
+): string | undefined {
+  const actual = actionParameters(action);
+  const directFailure = expectEqual(
+    actual,
+    expectedParameters,
+    `${action.actionName} handler options`,
+  );
+  if (!directFailure) return undefined;
+  const nested = isRecord(actual.parameters) ? actual.parameters : null;
+  const nestedFailure = nested
+    ? expectEqual(
+        nested,
+        expectedParameters,
+        `${action.actionName} nested handler parameters`,
+      )
+    : directFailure;
+  return nestedFailure
+    ? `expected ${action.actionName} handler parameters to include ${stableStringify(expectedParameters)}, saw ${stableStringify(actual)}`
+    : undefined;
 }
 
 function crc32(bytes: Uint8Array): number {
@@ -444,6 +543,10 @@ export default scenario({
           return "AgentSkillsService unavailable";
         }
         await seedScenarioSkill(service);
+        registerStrictActionRouteFixtures(
+          runtime as RuntimeWithScenarioLlmFixtures,
+          strictAgentSkillRoutes,
+        );
         return undefined;
       },
     },
@@ -457,16 +560,14 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "parent skill action routes search op",
-      text: "Search skills for weather",
-      actionName: "SKILL",
-      options: { parameters: { action: "search", query: "weather", limit: 2 } },
+      text: searchSkillsText,
       responseIncludesAny: [registrySkillSlug],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL",
-          parameters: { action: "search", query: "weather", limit: 2 },
+          parameters: { action: "search" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "search",
@@ -476,16 +577,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "virtual skill search action hits registry",
-      text: "Find registry-backed skills",
-      actionName: "SKILL_SEARCH",
-      options: { parameters: { query: "registry", limit: 2 } },
+      text: registrySearchText,
       responseIncludesAny: [registrySkillSlug],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_SEARCH",
-          parameters: { query: "registry", limit: 2 },
+          parameters: { action: "search" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "search",
@@ -495,16 +594,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "virtual skill details action reads registry details",
-      text: "Show skill details for registry-weather",
-      actionName: "SKILL_DETAILS",
-      options: { parameters: { slug: registrySkillSlug } },
+      text: registryDetailsText,
       responseIncludesAny: ["Registry Weather"],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_DETAILS",
-          parameters: { slug: registrySkillSlug },
+          parameters: { action: "details" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "details",
@@ -514,16 +611,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "virtual skill install action downloads and scans package",
-      text: 'Install skill "registry-weather"',
-      actionName: "SKILL_INSTALL",
-      options: { parameters: {} },
+      text: registryInstallText,
       responseIncludesAny: ["installed successfully", registrySkillSlug],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_INSTALL",
-          parameters: {},
+          parameters: { action: "install" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "install",
@@ -533,16 +628,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "virtual skill toggle action disables installed package",
-      text: 'Disable skill "registry-weather"',
-      actionName: "SKILL_TOGGLE",
-      options: { parameters: {} },
+      text: registryDisableText,
       responseIncludesAny: ["has been disabled", registrySkillSlug],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_TOGGLE",
-          parameters: {},
+          parameters: { action: "toggle" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "toggle",
@@ -552,13 +645,9 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "use seeded local guidance skill",
-      text: "Use the seeded scenario guidance skill",
-      actionName: "USE_SKILL",
-      options: {
-        parameters: { slug: scenarioGuidanceSlug, mode: "guidance" },
-      },
+      text: useGuidanceText,
       responseIncludesAny: ["scenario-guidance-ok"],
       assertTurn: (execution) =>
         expectAction(execution, {
@@ -572,16 +661,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "virtual skill sync action refreshes mocked catalog",
-      text: "Refresh the skill catalog",
-      actionName: "SKILL_SYNC",
-      options: { parameters: {} },
+      text: syncCatalogText,
       responseIncludesAny: ["Skill catalog synced successfully"],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_SYNC",
-          parameters: {},
+          parameters: { action: "sync" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "sync",
@@ -594,16 +681,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "virtual skill uninstall action asks for confirmation",
-      text: 'Uninstall skill "registry-weather"',
-      actionName: "SKILL_UNINSTALL",
-      options: { parameters: {} },
-      responseIncludesAny: ["Reply \"yes\" to confirm", registrySkillSlug],
+      text: uninstallPromptText,
+      responseIncludesAny: ['Reply "yes" to confirm', registrySkillSlug],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_UNINSTALL",
-          parameters: {},
+          parameters: { action: "uninstall" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "uninstall",
@@ -613,16 +698,14 @@ export default scenario({
         }),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "virtual skill uninstall action deletes confirmed package",
-      text: 'yes "registry-weather"',
-      actionName: "SKILL_UNINSTALL",
-      options: { parameters: {} },
+      text: uninstallConfirmText,
       responseIncludesAny: ["has been uninstalled", registrySkillSlug],
       assertTurn: (execution) =>
         expectAction(execution, {
           actionName: "SKILL_UNINSTALL",
-          parameters: {},
+          parameters: { action: "uninstall" },
           resultFields: {
             "data.actionName": "SKILL",
             "data.op": "uninstall",
@@ -632,7 +715,12 @@ export default scenario({
     },
   ],
   finalChecks: [
-    { type: "actionCalled", actionName: "SKILL", status: "success", minCount: 1 },
+    {
+      type: "actionCalled",
+      actionName: "SKILL",
+      status: "success",
+      minCount: 1,
+    },
     {
       type: "actionCalled",
       actionName: "SKILL_SEARCH",

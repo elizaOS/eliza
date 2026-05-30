@@ -93,6 +93,16 @@ interface BunFFIModule {
 		byteOffset?: number,
 		byteLength?: number,
 	) => string;
+	/**
+	 * Zero-copy view over native memory at `ptr`. Used to read the pooled
+	 * embedding `float*` returned by `llama_get_embeddings_seq` without an
+	 * extra FFI round-trip per element.
+	 */
+	toArrayBuffer: (
+		ptr: number,
+		byteOffset?: number,
+		byteLength?: number,
+	) => ArrayBuffer;
 }
 
 function isBunFFIModule(value: unknown): value is BunFFIModule {
@@ -118,6 +128,14 @@ interface LlamaSymbols {
 	llama_n_ctx: (ctx: Pointer) => number;
 	llama_vocab_is_eog: (vocab: Pointer, token: number) => boolean;
 	llama_set_embeddings: (ctx: Pointer, embeddings: boolean) => void;
+	/** Embedding dimension of the model (`n_embd`). */
+	llama_model_n_embd: (model: Pointer) => number;
+	/**
+	 * Pooled sequence embedding for `seq_id`, valid after a decode in
+	 * embeddings mode with pooling != NONE. Returns a `float*` into
+	 * ctx-owned memory — copy out before the next decode invalidates it.
+	 */
+	llama_get_embeddings_seq: (ctx: Pointer, seq_id: number) => Pointer;
 	llama_get_memory: (ctx: Pointer) => Pointer;
 	llama_memory_clear: (mem: Pointer, data: boolean) => void;
 	llama_tokenize: (
@@ -197,6 +215,12 @@ interface ShimSymbols {
 		v: number,
 	) => void;
 	eliza_llama_context_params_set_embeddings: (p: Pointer, v: boolean) => void;
+	/**
+	 * Pooling strategy for embeddings (`enum llama_pooling_type`): 0=none,
+	 * 1=mean, 2=cls, 3=last, 4=rank. Must be != none for
+	 * `llama_get_embeddings_seq` to return a pooled vector.
+	 */
+	eliza_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
 	eliza_llama_context_params_set_offload_kqv: (p: Pointer, v: boolean) => void;
 	eliza_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
 
@@ -433,6 +457,8 @@ function bindLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
 		llama_n_ctx: { args: [T.ptr], returns: T.u32 },
 		llama_vocab_is_eog: { args: [T.ptr, T.i32], returns: T.bool },
 		llama_set_embeddings: { args: [T.ptr, T.bool], returns: T.void },
+		llama_model_n_embd: { args: [T.ptr], returns: T.i32 },
+		llama_get_embeddings_seq: { args: [T.ptr, T.i32], returns: T.ptr },
 		llama_get_memory: { args: [T.ptr], returns: T.ptr },
 		llama_memory_clear: { args: [T.ptr, T.bool], returns: T.void },
 		llama_tokenize: {
@@ -510,6 +536,10 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 		},
 		eliza_llama_context_params_set_embeddings: {
 			args: [T.ptr, T.bool],
+			returns: T.void,
+		},
+		eliza_llama_context_params_set_pooling_type: {
+			args: [T.ptr, T.i32],
 			returns: T.void,
 		},
 		eliza_llama_context_params_set_offload_kqv: {
@@ -644,7 +674,39 @@ function normalizeBatchSize(value: number | undefined): number {
 	return Number.isFinite(normalized) && normalized > 0 ? normalized : 1;
 }
 
+/**
+ * Replicates llama.cpp's `common_embd_normalize` so desktop FFI embeddings
+ * match the mobile capacitor path (which normalizes in C). `embdNormalize`:
+ * -1 = none, 0 = max-abs (int16 rescale), 2 = euclidean (L2), otherwise
+ * p-norm (1 = taxicab/L1). Normalizes `vec` in place.
+ */
+function normalizeEmbedding(vec: Float32Array, embdNormalize: number): void {
+	const n = vec.length;
+	let sum = 0;
+	if (embdNormalize === -1) {
+		sum = 1;
+	} else if (embdNormalize === 0) {
+		for (let i = 0; i < n; i++) sum = Math.max(sum, Math.abs(vec[i]));
+		sum /= 32760; // int16 range, per llama.cpp
+	} else if (embdNormalize === 2) {
+		for (let i = 0; i < n; i++) sum += vec[i] * vec[i];
+		sum = Math.sqrt(sum);
+	} else {
+		for (let i = 0; i < n; i++) sum += Math.abs(vec[i]) ** embdNormalize;
+		sum = sum ** (1 / embdNormalize);
+	}
+	const norm = sum > 0 ? 1 / sum : 0;
+	for (let i = 0; i < n; i++) vec[i] *= norm;
+}
+
 // === Adapter ===============================================================
+
+/**
+ * `enum llama_pooling_type` MEAN. gte-small (and the GTE/BERT bi-encoder
+ * family) pools token embeddings by mean; forcing MEAN (rather than leaving
+ * UNSPECIFIED) guarantees `llama_get_embeddings_seq` returns a pooled vector.
+ */
+const LLAMA_POOLING_TYPE_MEAN = 1;
 
 export interface DesktopLlamaLoadOptions {
 	modelPath: string;
@@ -655,6 +717,15 @@ export interface DesktopLlamaLoadOptions {
 	threads?: number;
 	useMmap?: boolean;
 	useMlock?: boolean;
+	/**
+	 * Load the context in embeddings mode. Forces a non-causal single-ubatch
+	 * layout (`n_batch == n_ubatch == n_ctx`) so the whole sequence is encoded
+	 * at once, and enables `embed()`. Text generation is unavailable on an
+	 * embeddings context.
+	 */
+	embedding?: boolean;
+	/** `enum llama_pooling_type` (defaults to MEAN when `embedding` is set). */
+	poolingType?: number;
 }
 
 interface DesktopSession {
@@ -1089,17 +1160,25 @@ export class DesktopLlamaAdapter {
 		const cp = this.shim.eliza_llama_context_params_default();
 		try {
 			const ctxSize = opts.contextSize ?? 4096;
-			const nBatch = normalizeBatchSize(opts.nBatch);
+			const embedding = opts.embedding ?? false;
 			const threads = opts.threads ?? defaultThreads();
+			// Encoder/BERT embeddings are non-causal: the whole sequence must fit
+			// in a single ubatch (no causal KV streaming), so batch == ubatch ==
+			// ctx. Generation contexts keep the smaller default batch.
+			const nBatch = embedding ? ctxSize : normalizeBatchSize(opts.nBatch);
+			const nUBatch = embedding ? ctxSize : (opts.nUBatch ?? nBatch);
 			this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
 			this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
-			this.shim.eliza_llama_context_params_set_n_ubatch(
-				cp,
-				opts.nUBatch ?? nBatch,
-			);
+			this.shim.eliza_llama_context_params_set_n_ubatch(cp, nUBatch);
 			this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
 			this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
-			this.shim.eliza_llama_context_params_set_embeddings(cp, false);
+			this.shim.eliza_llama_context_params_set_embeddings(cp, embedding);
+			if (embedding) {
+				this.shim.eliza_llama_context_params_set_pooling_type(
+					cp,
+					opts.poolingType ?? LLAMA_POOLING_TYPE_MEAN,
+				);
+			}
 			this.shim.eliza_llama_context_params_set_offload_kqv(cp, true);
 			this.ctxPtr = this.shim.eliza_llama_init_from_model(this.modelPtr, cp);
 		} finally {
@@ -1190,6 +1269,90 @@ export class DesktopLlamaAdapter {
 			);
 		}
 		return out.subarray(0, written);
+	}
+
+	// === Embeddings =======================================================
+
+	/** Embedding dimension (`n_embd`) of the loaded model. */
+	embedDim(): number {
+		if (!this.modelPtr) {
+			throw new Error("[desktop-llama] embedDim() before loadModel()");
+		}
+		return this.llama.llama_model_n_embd(this.modelPtr);
+	}
+
+	/**
+	 * Compute a pooled sentence embedding for `text`. Requires the model to
+	 * have been loaded with `embedding: true` (which forces the non-causal
+	 * single-ubatch layout and a pooling type). Returns a plain `number[]` of
+	 * length `embedDim()`, normalized per `embdNormalize` (default 2 = L2, the
+	 * gte-small convention).
+	 *
+	 * Each call clears the ctx KV first so embeddings are independent. The
+	 * embedding ctx is single-sequence (seq_id 0).
+	 */
+	embed(text: string, embdNormalize = 2): number[] {
+		if (!this.modelPtr || !this.vocabPtr) {
+			throw new Error("[desktop-llama] embed() before loadModel()");
+		}
+		if (!this.loadOpts?.embedding) {
+			throw new Error(
+				"[desktop-llama] embed() requires loadModel({ embedding: true })",
+			);
+		}
+		const ctx = this.ctxPtr;
+		if (!ctx) {
+			throw new Error("[desktop-llama] embed(): ctx gone");
+		}
+
+		// BERT/encoder embeddings are non-causal: the whole sequence is decoded
+		// in one ubatch sized to n_ctx, so input longer than ctxSize cannot be
+		// encoded — truncate the tail.
+		const ctxSize = this.loadOpts.contextSize ?? 512;
+		const all = this.tokenize(text);
+		const tokens = all.length > ctxSize ? all.subarray(0, ctxSize) : all;
+		if (tokens.length === 0) {
+			throw new Error("[desktop-llama] embed(): empty token sequence");
+		}
+
+		// Fresh KV per call so a previous embedding can't bleed into this one.
+		this.llama.llama_memory_clear(this.llama.llama_get_memory(ctx), true);
+
+		// Copy into an owned buffer so the batch ptr stays valid across decode.
+		const owned = new Int32Array(tokens.length);
+		owned.set(tokens);
+		const batch = this.shim.eliza_llama_batch_get_one(
+			this.ffi.ptr(owned),
+			owned.length,
+		);
+		if (!batch) {
+			throw new Error("[desktop-llama] embed(): batch allocation failed");
+		}
+		try {
+			const rc = this.shim.eliza_llama_decode(ctx, batch);
+			if (rc !== 0) {
+				throw new Error(`[desktop-llama] embed(): decode rc=${rc}`);
+			}
+		} finally {
+			this.shim.eliza_llama_batch_free(batch);
+		}
+		this.hasDecoded = true;
+
+		const nEmbd = this.llama.llama_model_n_embd(this.modelPtr);
+		const ptr = this.llama.llama_get_embeddings_seq(ctx, 0);
+		if (!ptr) {
+			throw new Error(
+				"[desktop-llama] embed(): llama_get_embeddings_seq returned null " +
+					"(pooling_type must not be NONE)",
+			);
+		}
+		// Zero-copy view over ctx-owned memory. Copy out into a fresh buffer
+		// immediately — the next decode invalidates the underlying storage.
+		const view = new Float32Array(
+			this.ffi.toArrayBuffer(ptr, 0, nEmbd * Float32Array.BYTES_PER_ELEMENT),
+		).slice();
+		normalizeEmbedding(view, embdNormalize);
+		return Array.from(view);
 	}
 
 	// === LlmStreamingBinding plumbing =====================================
