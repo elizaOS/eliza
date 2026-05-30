@@ -189,6 +189,17 @@ describe("OrchestratorTaskService — lifecycle", () => {
     );
     expect(updated.priority).toBe("urgent");
     expect(updated.acceptanceCriteria).toEqual(["ci green"]);
+    const preserved = must(
+      await service.updateTask(id, {
+        title: undefined,
+        goal: undefined,
+        summary: "real update",
+      }),
+      "preserved",
+    );
+    expect(preserved.title).toBe("Ship feature");
+    expect(preserved.goal).toBe("Ship the feature");
+    expect(preserved.summary).toBe("real update");
     expect(await service.updateTask("missing", { priority: "low" })).toBeNull();
   });
 
