@@ -354,6 +354,43 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(props).not.toBe("[object Object]");
 	});
 
+	it("keeps URL-like empty-entry objects on the string fallback path", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-url-arg",
+			rootMessage: { id: "msg-url-arg", text: "inspect url" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-url-arg",
+			kind: "planner",
+			iteration: 1,
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "gpt-oss-120b",
+				provider: "cerebras",
+				prompt: "p",
+				response: "",
+				toolCalls: [
+					{
+						id: "c1",
+						name: "FETCH_URL",
+						args: new URL("https://example.com/a?b=1"),
+					},
+				],
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		const planner = trajectory?.stages.find((s) => s.kind === "planner");
+		expect(planner?.model?.toolCalls?.[0]?.args).toBe(
+			"https://example.com/a?b=1",
+		);
+	});
+
 	it("does not count terminal task failure as evaluator failure", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({
