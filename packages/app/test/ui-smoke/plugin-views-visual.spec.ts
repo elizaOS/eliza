@@ -76,6 +76,7 @@ const VIEW_CASES: ViewCase[] = [
   ["task-coordinator", "gui", "/task-coordinator"],
   ["task-coordinator", "tui", "/task-coordinator/tui"],
   ["orchestrator", "gui", "/orchestrator"],
+  ["orchestrator", "tui", "/orchestrator/tui"],
   ["trajectory-logger", "gui", "/trajectory-logger"],
   ["trajectory-logger", "tui", "/trajectory-logger/tui"],
   ["training", "gui", "/training"],

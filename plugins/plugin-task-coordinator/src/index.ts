@@ -138,6 +138,83 @@ const taskCoordinatorPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "orchestrator",
+      label: "Orchestrator XR",
+      description: "Multi-agent task orchestration workbench",
+      icon: "Layers",
+      path: "/orchestrator",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "OrchestratorWorkbench",
+      tags: ["developer", "coding-agent", "orchestrator"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "orchestrator",
+      label: "Orchestrator TUI",
+      description: "Terminal multi-agent task orchestration workbench",
+      icon: "Layers",
+      path: "/orchestrator/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "OrchestratorWorkbench",
+      capabilities: [
+        { id: "orchestrator-status", description: "Get orchestrator status" },
+        {
+          id: "orchestrator-list-tasks",
+          description: "List orchestrator task threads",
+        },
+        {
+          id: "orchestrator-open-task",
+          description: "Open an orchestrator task thread",
+        },
+        {
+          id: "orchestrator-create-task",
+          description: "Create an orchestrator task",
+        },
+        {
+          id: "orchestrator-pause-task",
+          description: "Pause an orchestrator task",
+        },
+        {
+          id: "orchestrator-resume-task",
+          description: "Resume an orchestrator task",
+        },
+        {
+          id: "orchestrator-pause-all",
+          description: "Pause all active orchestrator tasks",
+        },
+        {
+          id: "orchestrator-resume-all",
+          description: "Resume all paused orchestrator tasks",
+        },
+        {
+          id: "orchestrator-delete-task",
+          description: "Delete an orchestrator task",
+        },
+        {
+          id: "orchestrator-fork-task",
+          description: "Fork an orchestrator task",
+        },
+        {
+          id: "orchestrator-add-agent",
+          description: "Add a sub-agent to an orchestrator task",
+        },
+        {
+          id: "orchestrator-stop-agent",
+          description: "Stop a sub-agent on an orchestrator task",
+        },
+        {
+          id: "orchestrator-send-message",
+          description: "Send a message to an orchestrator task",
+        },
+      ],
+      tags: ["developer", "coding-agent", "orchestrator", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };
 

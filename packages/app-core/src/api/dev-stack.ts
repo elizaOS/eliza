@@ -47,12 +47,6 @@ export type DevStackPayload = {
   hints: string[];
 };
 
-function parsePositivePort(raw: string | undefined): number | null {
-  if (raw == null || raw === "") return null;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 && n < 65536 ? n : null;
-}
-
 /**
  * Build the JSON body for `GET /api/dev/stack`.
  */
@@ -60,10 +54,10 @@ export function resolveDevStackFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): DevStackPayload {
   const apiPort = resolveDesktopApiPort(env);
-  const uiPort =
-    parsePositivePort(env.ELIZA_UI_PORT) ??
-    parsePositivePort(env.ELIZA_PORT) ??
-    resolveDesktopUiPort(env);
+  // Delegate to the canonical UI-port resolver so /api/dev/stack reports the
+  // same uiPort clients actually use. The previous inline ELIZA_PORT fallback
+  // conflated the server/API-only port with the UI port.
+  const uiPort = resolveDesktopUiPort(env);
 
   const rendererUrl = env.ELIZA_RENDERER_URL?.trim() || null;
   const desktopApiBase = env.ELIZA_DESKTOP_API_BASE?.trim() || null;
