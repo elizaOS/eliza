@@ -27,6 +27,7 @@ import {
 } from "./goal-prompt.js";
 import {
   summarizeUsage,
+  summarizeUsageRows,
   type TaskThreadDetailDto,
   type TaskThreadDto,
   toTaskThread,
@@ -35,7 +36,7 @@ import {
 import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type CreateTaskInput,
-  type OrchestratorTaskDocument,
+  type OrchestratorTaskUsage,
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
   type OrchestratorTaskStatus,
@@ -840,15 +841,7 @@ export class OrchestratorTaskService extends Service {
 
     let sessionCount = 0;
     let activeSessionCount = 0;
-    const usageDocs: OrchestratorTaskDocument = {
-      task: docs[0]?.task ?? ({} as OrchestratorTaskRecord),
-      sessions: [],
-      events: [],
-      messages: [],
-      usage: [],
-      artifacts: [],
-      decisions: [],
-    };
+    const usageRows: OrchestratorTaskUsage[] = [];
 
     for (const doc of docs) {
       byStatus[doc.task.status] += 1;
@@ -856,7 +849,7 @@ export class OrchestratorTaskService extends Service {
       activeSessionCount += doc.sessions.filter(
         (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
       ).length;
-      usageDocs.usage.push(...doc.usage);
+      usageRows.push(...doc.usage);
     }
 
     return {
@@ -867,7 +860,7 @@ export class OrchestratorTaskService extends Service {
       validatingTaskCount: byStatus.validating,
       sessionCount,
       activeSessionCount,
-      usage: docs.length > 0 ? summarizeUsage(usageDocs) : EMPTY_USAGE,
+      usage: usageRows.length > 0 ? summarizeUsageRows(usageRows) : EMPTY_USAGE,
       byStatus,
     };
   }

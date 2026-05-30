@@ -1003,9 +1003,8 @@ export function OrchestratorTuiView() {
         "orchestrator-send-message",
       ]}
       endpoints={[
-        "/api/coding-agents/orchestrator/status",
-        "/api/coding-agents/coordinator/threads",
-        "/api/coding-agents/orchestrator/tasks",
+        "/api/orchestrator/status",
+        "/api/orchestrator/tasks",
       ]}
     />
   );

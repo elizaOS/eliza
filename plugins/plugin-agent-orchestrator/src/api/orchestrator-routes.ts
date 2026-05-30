@@ -157,10 +157,6 @@ export async function handleOrchestratorRoutes(
       sendError(res, "title is required", 400);
       return true;
     }
-    if (!goal) {
-      sendError(res, "goal is required", 400);
-      return true;
-    }
     const input: CreateTaskInput = {
       title,
       goal,

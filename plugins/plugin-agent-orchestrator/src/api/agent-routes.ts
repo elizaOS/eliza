@@ -19,7 +19,11 @@ import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
-import type { AgentType, ApprovalPreset } from "../services/types.js";
+import {
+  TERMINAL_SESSION_STATUSES,
+  type AgentType,
+  type ApprovalPreset,
+} from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendError, sendJson } from "./route-utils.js";
 
@@ -278,7 +282,30 @@ export async function handleAgentRoutes(
       sendError(res, "ACP service not available", 503);
       return true;
     }
-    sendJson(res, {});
+    try {
+      const sessions = await ctx.acpService.listSessions();
+      const byStatus: Record<string, number> = {};
+      const byAgentType: Record<string, number> = {};
+      for (const session of sessions) {
+        byStatus[session.status] = (byStatus[session.status] ?? 0) + 1;
+        byAgentType[session.agentType] =
+          (byAgentType[session.agentType] ?? 0) + 1;
+      }
+      sendJson(res, {
+        sessionCount: sessions.length,
+        activeSessionCount: sessions.filter(
+          (session) => !TERMINAL_SESSION_STATUSES.has(session.status),
+        ).length,
+        byStatus,
+        byAgentType,
+      });
+    } catch (error) {
+      sendError(
+        res,
+        error instanceof Error ? error.message : "Failed to load metrics",
+        500,
+      );
+    }
     return true;
   }
 
