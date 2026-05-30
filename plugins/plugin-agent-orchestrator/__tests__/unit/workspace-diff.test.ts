@@ -136,9 +136,7 @@ describe("workspace-diff — real git capture", () => {
 
   it("rejects relative tool-call paths that escape the workdir after normalization", async () => {
     const base = await captureBaselineSha(dir);
-    const cs = await captureChangeSet(dir, base, [
-      "subdir/../../outside.txt",
-    ]);
+    const cs = await captureChangeSet(dir, base, ["subdir/../../outside.txt"]);
     expect(cs).toBeUndefined();
   });
 

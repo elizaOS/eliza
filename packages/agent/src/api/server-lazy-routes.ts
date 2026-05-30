@@ -1,4 +1,3 @@
-import type http from "node:http";
 import type { AgentRuntime, Route } from "@elizaos/core";
 
 type RouteContext = {
@@ -206,7 +205,7 @@ export async function handleAppPackageRoutes(
   ...args: Parameters<AppPackageRoutesModule["handleAppPackageRoutes"]>
 ): ReturnType<AppPackageRoutesModule["handleAppPackageRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/apps/")) return false;
+  if (!ctx?.pathname.startsWith("/api/apps/")) return false;
   return (await import("./app-package-routes.ts")).handleAppPackageRoutes(
     ...args,
   );
@@ -217,7 +216,7 @@ export async function handleAuthRoutes(
   ...args: Parameters<AuthRoutesModule["handleAuthRoutes"]>
 ): ReturnType<AuthRoutesModule["handleAuthRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/auth/")) return false;
+  if (!ctx?.pathname.startsWith("/api/auth/")) return false;
   return (await import("./auth-routes.ts")).handleAuthRoutes(...args);
 }
 
@@ -226,16 +225,14 @@ export async function handleAvatarRoutes(
   ...args: Parameters<AvatarRoutesModule["handleAvatarRoutes"]>
 ): ReturnType<AvatarRoutesModule["handleAvatarRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/avatar/")) return false;
+  if (!ctx?.pathname.startsWith("/api/avatar/")) return false;
   return (await import("./avatar-routes.ts")).handleAvatarRoutes(...args);
 }
 
 type BackgroundTasksRoutesModule =
   typeof import("./background-tasks-routes.ts");
 export async function handleBackgroundTasksRoute(
-  ...args: Parameters<
-    BackgroundTasksRoutesModule["handleBackgroundTasksRoute"]
-  >
+  ...args: Parameters<BackgroundTasksRoutesModule["handleBackgroundTasksRoute"]>
 ): ReturnType<BackgroundTasksRoutesModule["handleBackgroundTasksRoute"]> {
   const ctx = routeContext(args);
   if (!ctx || ctx.pathname !== "/api/background/run-due-tasks") return false;
@@ -251,8 +248,10 @@ export async function handleBugReportRoutes(
   const ctx = routeContext(args);
   if (
     !ctx ||
-    !(ctx.pathname === "/api/bug-report" ||
-      ctx.pathname === "/api/bug-report/info")
+    !(
+      ctx.pathname === "/api/bug-report" ||
+      ctx.pathname === "/api/bug-report/info"
+    )
   ) {
     return false;
   }
@@ -266,7 +265,7 @@ export async function handleCharacterRoutes(
   ...args: Parameters<CharacterRoutesModule["handleCharacterRoutes"]>
 ): ReturnType<CharacterRoutesModule["handleCharacterRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/character")) return false;
+  if (!ctx?.pathname.startsWith("/api/character")) return false;
   return (await import("./character-routes.ts")).handleCharacterRoutes(...args);
 }
 
@@ -277,11 +276,9 @@ export async function handleConfigRoutes(
   const ctx = routeContext(args);
   if (
     !ctx ||
-    ![
-      "/api/config",
-      "/api/config/schema",
-      "/api/config/reload",
-    ].includes(ctx.pathname)
+    !["/api/config", "/api/config/schema", "/api/config/reload"].includes(
+      ctx.pathname,
+    )
   ) {
     return false;
   }
@@ -293,7 +290,7 @@ export async function handleConnectorRoutes(
   ...args: Parameters<ConnectorRoutesModule["handleConnectorRoutes"]>
 ): ReturnType<ConnectorRoutesModule["handleConnectorRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/connectors")) return false;
+  if (!ctx?.pathname.startsWith("/api/connectors")) return false;
   return (await import("./connector-routes.ts")).handleConnectorRoutes(...args);
 }
 
@@ -446,7 +443,7 @@ export async function handlePermissionRoutes(
   ...args: Parameters<PermissionsRoutesModule["handlePermissionRoutes"]>
 ): ReturnType<PermissionsRoutesModule["handlePermissionRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/permissions")) return false;
+  if (!ctx?.pathname.startsWith("/api/permissions")) return false;
   return (await import("./permissions-routes.ts")).handlePermissionRoutes(
     ...args,
   );
@@ -460,7 +457,7 @@ export async function handlePermissionsExtraRoutes(
   >
 ): ReturnType<PermissionsExtraRoutesModule["handlePermissionsExtraRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/permissions/")) return false;
+  if (!ctx?.pathname.startsWith("/api/permissions/")) return false;
   return (
     await import("./permissions-routes-extra.ts")
   ).handlePermissionsExtraRoutes(...args);
@@ -472,9 +469,9 @@ export async function handleProviderSwitchRoutes(
 ): ReturnType<ProviderSwitchRoutesModule["handleProviderSwitchRoutes"]> {
   const ctx = routeContext(args);
   if (!ctx || ctx.pathname !== "/api/provider/switch") return false;
-  return (await import("./provider-switch-routes.ts")).handleProviderSwitchRoutes(
-    ...args,
-  );
+  return (
+    await import("./provider-switch-routes.ts")
+  ).handleProviderSwitchRoutes(...args);
 }
 
 type RegistryRoutesModule = typeof import("./registry-routes.ts");
@@ -482,7 +479,7 @@ export async function handleRegistryRoutes(
   ...args: Parameters<RegistryRoutesModule["handleRegistryRoutes"]>
 ): ReturnType<RegistryRoutesModule["handleRegistryRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/registry")) return false;
+  if (!ctx?.pathname.startsWith("/api/registry")) return false;
   return (await import("./registry-routes.ts")).handleRegistryRoutes(...args);
 }
 
@@ -491,7 +488,7 @@ export async function handleRelationshipsRoutes(
   ...args: Parameters<RelationshipsRoutesModule["handleRelationshipsRoutes"]>
 ): ReturnType<RelationshipsRoutesModule["handleRelationshipsRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/relationships")) return false;
+  if (!ctx?.pathname.startsWith("/api/relationships")) return false;
   return (await import("./relationships-routes.ts")).handleRelationshipsRoutes(
     ...args,
   );
@@ -505,7 +502,7 @@ export async function handleRemoteCapabilityRoutes(
   >
 ): ReturnType<RemoteCapabilityRoutesModule["handleRemoteCapabilityRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/capability-router")) return false;
+  if (!ctx?.pathname.startsWith("/api/capability-router")) return false;
   return (
     await import("./remote-capability-routes.ts")
   ).handleRemoteCapabilityRoutes(...args);
@@ -513,9 +510,7 @@ export async function handleRemoteCapabilityRoutes(
 
 type RouteDispatchModule = typeof import("./server-route-dispatch.ts");
 export async function handleInboxAndCloudRelayRouteGroup(
-  ...args: Parameters<
-    RouteDispatchModule["handleInboxAndCloudRelayRouteGroup"]
-  >
+  ...args: Parameters<RouteDispatchModule["handleInboxAndCloudRelayRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleInboxAndCloudRelayRouteGroup"]> {
   const ctx = routeContext(args);
   if (
@@ -536,7 +531,7 @@ export async function handleCloudAndCoreRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleCloudAndCoreRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleCloudAndCoreRouteGroup"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/cloud/")) return false;
+  if (!ctx?.pathname.startsWith("/api/cloud/")) return false;
   return (
     await import("./server-route-dispatch.ts")
   ).handleCloudAndCoreRouteGroup(...args);
@@ -546,7 +541,7 @@ export async function handleSandboxRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleSandboxRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleSandboxRouteGroup"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/sandbox")) return false;
+  if (!ctx?.pathname.startsWith("/api/sandbox")) return false;
   return (await import("./server-route-dispatch.ts")).handleSandboxRouteGroup(
     ...args,
   );
@@ -576,7 +571,7 @@ export async function handleDatabaseRouteGroup(
   ...args: Parameters<RouteDispatchModule["handleDatabaseRouteGroup"]>
 ): ReturnType<RouteDispatchModule["handleDatabaseRouteGroup"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/database/")) return false;
+  if (!ctx?.pathname.startsWith("/api/database/")) return false;
   return (await import("./server-route-dispatch.ts")).handleDatabaseRouteGroup(
     ...args,
   );
@@ -608,7 +603,7 @@ export async function handleSubscriptionRoutes(
   ...args: Parameters<SubscriptionRoutesModule["handleSubscriptionRoutes"]>
 ): ReturnType<SubscriptionRoutesModule["handleSubscriptionRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/subscription/")) return false;
+  if (!ctx?.pathname.startsWith("/api/subscription/")) return false;
   return (await import("./subscription-routes.ts")).handleSubscriptionRoutes(
     ...args,
   );
@@ -619,7 +614,7 @@ export async function handleUpdateRoutes(
   ...args: Parameters<UpdateRoutesModule["handleUpdateRoutes"]>
 ): ReturnType<UpdateRoutesModule["handleUpdateRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/update/")) return false;
+  if (!ctx?.pathname.startsWith("/api/update/")) return false;
   return (await import("./update-routes.ts")).handleUpdateRoutes(...args);
 }
 
@@ -628,7 +623,7 @@ export async function handleViewsRoutes(
   ...args: Parameters<ViewsRoutesModule["handleViewsRoutes"]>
 ): ReturnType<ViewsRoutesModule["handleViewsRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/views")) return false;
+  if (!ctx?.pathname.startsWith("/api/views")) return false;
   const [{ registerBuiltinViews }, { handleViewsRoutes }] = await Promise.all([
     import("./views-registry.ts"),
     import("./views-routes.ts"),
@@ -646,21 +641,19 @@ export async function handleWorkbenchRoutes(
   ...args: Parameters<WorkbenchRoutesModule["handleWorkbenchRoutes"]>
 ): ReturnType<WorkbenchRoutesModule["handleWorkbenchRoutes"]> {
   const ctx = routeContext(args);
-  if (!ctx || !ctx.pathname.startsWith("/api/workbench")) return false;
+  if (!ctx?.pathname.startsWith("/api/workbench")) return false;
   return (await import("./workbench-routes.ts")).handleWorkbenchRoutes(...args);
 }
 
 type RuntimePluginRoutesModule = typeof import("./runtime-plugin-routes.ts");
 export async function tryHandleRuntimePluginRoute(
-  ...args: Parameters<
-    RuntimePluginRoutesModule["tryHandleRuntimePluginRoute"]
-  >
+  ...args: Parameters<RuntimePluginRoutesModule["tryHandleRuntimePluginRoute"]>
 ): ReturnType<RuntimePluginRoutesModule["tryHandleRuntimePluginRoute"]> {
   const options = args[0];
   if (!matchesRuntimeRoute(options)) return false;
-  return (await import("./runtime-plugin-routes.ts")).tryHandleRuntimePluginRoute(
-    ...args,
-  );
+  return (
+    await import("./runtime-plugin-routes.ts")
+  ).tryHandleRuntimePluginRoute(...args);
 }
 
 type HonoMountModule = typeof import("./hono-mount.ts");

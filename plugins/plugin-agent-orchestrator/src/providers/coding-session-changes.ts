@@ -176,7 +176,12 @@ function sessionMatchesMessage(session: SessionInfo, message: Memory): boolean {
   const metadata = session.metadata as Record<string, unknown> | undefined;
   if (!metadata) return false;
   if (
-    [metadata.roomId, metadata.taskRoomId, metadata.worktreeRoomId, metadata.originRoomId]
+    [
+      metadata.roomId,
+      metadata.taskRoomId,
+      metadata.worktreeRoomId,
+      metadata.originRoomId,
+    ]
       .filter((value): value is string => typeof value === "string")
       .includes(roomId)
   ) {

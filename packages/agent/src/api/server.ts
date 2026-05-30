@@ -258,6 +258,13 @@ import { persistConfigEnv } from "./config-env.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import {
+  cloneWithoutBlockedObjectKeys,
+  decodePathComponent,
+  hasPersistedFirstRunState,
+  isUuidLike,
+  patchTouchesProviderSelection,
+} from "./server-helpers.ts";
+import {
   createConnectorHealthMonitor,
   extractConversationMetadataFromRoom,
   handleAccountsRoutes,
@@ -272,10 +279,10 @@ import {
   handleBugReportRoutes,
   handleCharacterRoutes,
   handleCloudAndCoreRouteGroup,
-  handleConversationRouteGroup,
-  handleDatabaseRouteGroup,
   handleConfigRoutes,
   handleConnectorRoutes,
+  handleConversationRouteGroup,
+  handleDatabaseRouteGroup,
   handleDiagnosticsRoutes,
   handleFirstRunRoutes,
   handleHealthRoutes,
@@ -302,13 +309,6 @@ import {
   tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
-import {
-  cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
-  hasPersistedFirstRunState,
-  isUuidLike,
-  patchTouchesProviderSelection,
-} from "./server-helpers.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
@@ -1514,14 +1514,14 @@ async function handleRequest(
     blueBubblesWebhookPath =
       typeof resolveBlueBubblesWebhookPath === "function"
         ? resolveBlueBubblesWebhookPath({
-          runtime: state.runtime
-            ? {
-                getService: (type: string) =>
-                  (
-                    state.runtime as { getService: (t: string) => unknown }
-                  ).getService(type),
-              }
-            : undefined,
+            runtime: state.runtime
+              ? {
+                  getService: (type: string) =>
+                    (
+                      state.runtime as { getService: (t: string) => unknown }
+                    ).getService(type),
+                }
+              : undefined,
           })
         : blueBubblesWebhookPath;
   }
@@ -1677,9 +1677,13 @@ async function handleRequest(
       }
       return Boolean(
         localInferenceServerApi.handleLocalInferenceTtsRoute &&
-          (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
-            current: state.runtime,
-          })),
+          (await localInferenceServerApi.handleLocalInferenceTtsRoute(
+            req,
+            res,
+            {
+              current: state.runtime,
+            },
+          )),
       );
     })())
   ) {
