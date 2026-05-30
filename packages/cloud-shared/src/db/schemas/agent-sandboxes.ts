@@ -111,6 +111,15 @@ export const agentSandboxes = pgTable(
     web_ui_port: integer("web_ui_port"),
     headscale_ip: text("headscale_ip"),
     docker_image: text("docker_image"),
+    /**
+     * Registry-resolved sha256 digest of the image this agent is actually
+     * running. Stamped at provision time (and re-stamped after a successful
+     * fleet upgrade). The reconciler compares this against the current
+     * registry digest of the configured tag to decide who needs an upgrade.
+     * Null on rows provisioned before the fleet-upgrade feature shipped —
+     * those are treated as "upgrade on next cycle".
+     */
+    image_digest: text("image_digest"),
     // Billing tracking fields (mirrors containers table pattern)
     billing_status: text("billing_status").$type<AgentBillingStatus>().notNull().default("active"),
     last_billed_at: timestamp("last_billed_at", { withTimezone: true }),
