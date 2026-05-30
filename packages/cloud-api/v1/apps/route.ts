@@ -88,20 +88,36 @@ app.post("/", async (c) => {
         githubRepoCreated: result.githubRepoCreated,
       });
 
+      const warnings = [...result.errors];
+
       // Apply monetization settings at creation when requested, so metered apps
       // are usable immediately (markup is read on every inference/generate call).
       if (
         data.monetization_enabled !== undefined ||
         data.inference_markup_percentage !== undefined
       ) {
-        await appCreditsService.updateMonetizationSettings(result.app.id, {
-          ...(data.monetization_enabled !== undefined && {
-            monetizationEnabled: data.monetization_enabled,
-          }),
-          ...(data.inference_markup_percentage !== undefined && {
-            inferenceMarkupPercentage: data.inference_markup_percentage,
-          }),
-        });
+        try {
+          await appCreditsService.updateMonetizationSettings(result.app.id, {
+            ...(data.monetization_enabled !== undefined && {
+              monetizationEnabled: data.monetization_enabled,
+            }),
+            ...(data.inference_markup_percentage !== undefined && {
+              inferenceMarkupPercentage: data.inference_markup_percentage,
+            }),
+          });
+        } catch (monetizationError) {
+          logger.error("[Apps API] Failed to apply initial monetization", {
+            appId: result.app.id,
+            userId: user.id,
+            error:
+              monetizationError instanceof Error
+                ? monetizationError.message
+                : String(monetizationError),
+          });
+          warnings.push(
+            "App was created, but initial monetization settings could not be applied. Retry via the app monetization endpoint.",
+          );
+        }
       }
 
       const freshApp = await appsService.getById(result.app.id);
@@ -111,7 +127,7 @@ app.post("/", async (c) => {
         apiKey: result.apiKey,
       };
       if (result.githubRepo) response.githubRepo = result.githubRepo;
-      if (result.errors.length > 0) response.warnings = result.errors;
+      if (warnings.length > 0) response.warnings = warnings;
 
       return c.json(response);
     } catch (err) {

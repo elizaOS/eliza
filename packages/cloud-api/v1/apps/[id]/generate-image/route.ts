@@ -15,6 +15,10 @@ import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  addCorsHeaders,
+  createPreflightResponse,
+} from "@/lib/middleware/cors-apps";
+import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -66,6 +70,26 @@ interface GeneratedImage {
   text: string;
   mimeType: string;
   sizeBytes: number;
+}
+
+async function deleteStoredImages(
+  env: AppEnv["Bindings"],
+  images: Pick<GeneratedImage, "key">[],
+  logPrefix: string,
+): Promise<void> {
+  await Promise.all(
+    images.map((image) =>
+      env.BLOB.delete(image.key).catch((deleteError) => {
+        logger.error(`${logPrefix} Failed to delete generated image`, {
+          key: image.key,
+          error:
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError),
+        });
+      }),
+    ),
+  );
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -162,11 +186,19 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
+app.options("/", (c) =>
+  createPreflightResponse(c.req.header("origin") ?? null, ["POST", "OPTIONS"]),
+);
+
 app.post("/", async (c) => {
+  const origin = c.req.header("origin") ?? null;
+  const withCors = (response: Response): Response =>
+    addCorsHeaders(response, origin, ["POST", "OPTIONS"]);
+
   try {
     const appId = c.req.param("id") ?? "";
     if (!appId) {
-      return jsonError(c, 400, "Missing app id", "validation_error");
+      return withCors(jsonError(c, 400, "Missing app id", "validation_error"));
     }
 
     const [appRecord, user] = await Promise.all([
@@ -175,7 +207,7 @@ app.post("/", async (c) => {
     ]);
 
     if (!appRecord) {
-      return jsonError(c, 404, "App not found", "resource_not_found");
+      return withCors(jsonError(c, 404, "App not found", "resource_not_found"));
     }
 
     // Access control: non-monetized apps are internal (same org only); monetized
@@ -184,35 +216,33 @@ app.post("/", async (c) => {
       !appRecord.monetization_enabled &&
       appRecord.organization_id !== user.organization_id
     ) {
-      return jsonError(c, 403, "Access denied to this app", "access_denied");
+      return withCors(
+        jsonError(c, 403, "Access denied to this app", "access_denied"),
+      );
     }
 
     if (!c.env.BLOB) {
-      return jsonError(
-        c,
-        503,
-        "R2 storage is not configured",
-        "internal_error",
+      return withCors(
+        jsonError(c, 503, "R2 storage is not configured", "internal_error"),
       );
     }
 
     const request = imageRequestSchema.parse(await c.req.json());
     const definition = getSupportedImageModelDefinition(request.model);
     if (!definition) {
-      return jsonError(
-        c,
-        400,
-        `Unsupported image model: ${request.model}`,
-        "validation_error",
-        { supportedModels: SUPPORTED_IMAGE_MODEL_IDS },
+      return withCors(
+        jsonError(
+          c,
+          400,
+          `Unsupported image model: ${request.model}`,
+          "validation_error",
+          { supportedModels: SUPPORTED_IMAGE_MODEL_IDS },
+        ),
       );
     }
     if (!hasLanguageModelProviderConfigured(request.model)) {
-      return jsonError(
-        c,
-        503,
-        getAiProviderConfigurationError(),
-        "internal_error",
+      return withCors(
+        jsonError(c, 503, getAiProviderConfigurationError(), "internal_error"),
       );
     }
 
@@ -254,21 +284,22 @@ app.post("/", async (c) => {
     });
 
     if (!deduction.success) {
-      return c.json(
-        {
-          success: false,
-          error: deduction.message || "Insufficient app credits",
-          code: "insufficient_app_credits",
-          required: deduction.totalCost,
-          balance: deduction.newBalance,
-        },
-        402,
+      return withCors(
+        c.json(
+          {
+            success: false,
+            error: deduction.message || "Insufficient app credits",
+            code: "insufficient_app_credits",
+            required: deduction.totalCost,
+            balance: deduction.newBalance,
+          },
+          402,
+        ),
       );
     }
 
-    let images: GeneratedImage[];
+    const images: GeneratedImage[] = [];
     try {
-      images = [];
       for (let index = 0; index < request.numImages; index += 1) {
         const generated = await generateOneImage(request);
         const ext = extensionForMimeType(generated.mimeType);
@@ -320,6 +351,7 @@ app.post("/", async (c) => {
         });
       }
     } catch (generationError) {
+      await deleteStoredImages(c.env, images, "[App GenerateImage]");
       // Generation failed after charging — refund the full reserved amount.
       await appCreditsService
         .reconcileCredits({
@@ -422,12 +454,16 @@ app.post("/", async (c) => {
       },
     });
   } catch (error) {
-    return failureResponse(c, error);
+    return withCors(failureResponse(c, error));
   }
 });
 
-app.all("*", (c) =>
-  c.json({ success: false, error: "Method not allowed" }, 405),
-);
+app.all("*", (c) => {
+  const response = c.json({ success: false, error: "Method not allowed" }, 405);
+  return addCorsHeaders(response, c.req.header("origin") ?? null, [
+    "POST",
+    "OPTIONS",
+  ]);
+});
 
 export default app;
