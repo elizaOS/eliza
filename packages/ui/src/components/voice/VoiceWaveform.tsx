@@ -202,7 +202,7 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
 }
 
 type WebGPUModule = typeof import("three/webgpu");
-type TSLModule = Record<string, any>;
+type TSLModule = typeof import("three/tsl");
 
 // Camera framing. The orb sits at the origin; these constants let the orb be
 // scaled to a stable on-screen pixel diameter regardless of viewport size.
@@ -220,7 +220,9 @@ function worldPerPixel(heightPx: number): number {
  * warm bloom) so the glass has a reflective rim and surface sheen. Without an
  * environment the glass reads as matte jelly rather than a refractive orb.
  */
-function makeStudioEnv(THREE: WebGPUModule): InstanceType<WebGPUModule["Texture"]> {
+function makeStudioEnv(
+  THREE: WebGPUModule,
+): InstanceType<WebGPUModule["Texture"]> {
   const c = document.createElement("canvas");
   c.width = 512;
   c.height = 256;
@@ -291,7 +293,6 @@ async function mountOrb(
     Break,
     If,
     uniform,
-    vec2,
     vec3,
     vec4,
     float,
@@ -316,29 +317,38 @@ async function mountOrb(
   const uAccent = uniform(new THREE.Color(1, 0.34, 0));
 
   // --- volumetric cloud field (iq XslGRr, ported to TSL) ---------------------
-  const fbm = Fn(([p]: [ReturnType<typeof vec3>]) =>
-    mx_fractal_noise_float(p, 5, 2.02, 0.5).mul(0.5).add(0.5),
-  );
+  // `normalLocal` is typed as the base `Node<"vec3">`; reuse that as the vec3
+  // node type so the density sampler accepts plain vec3 expressions (the result
+  // of `.add()`/`.mul()`) without tripping TSL's proxied-argument narrowing.
+  type Vec3Node = typeof normalLocal;
 
-  // Cloud density at a world point: noise carved into a soft horizontal slab so
-  // clouds form a layer with a flat-ish base and billowing top, drifting on wind.
-  const densityAt = Fn(([p]: [ReturnType<typeof vec3>]) => {
+  // Cloud density at a world point: drifting multi-octave noise carved into a
+  // soft horizontal slab so clouds form a layer with a flat-ish base and a
+  // billowing top. Returns a scalar density node in [0,1].
+  const densityAt = (p: Vec3Node) => {
     const wind = vec3(uTime.mul(0.22), uTime.mul(-0.015), uTime.mul(0.06));
-    const n = fbm(p.mul(0.62).add(wind));
+    const noise = mx_fractal_noise_float(p.mul(0.62).add(wind), 5, 2.02, 0.5)
+      .mul(0.5)
+      .add(0.5);
     const slab = float(1.0).sub(p.y.sub(3.0).abs().div(1.7)).clamp(0, 1);
-    return n.mul(slab).sub(0.34).mul(1.7).clamp(0, 1);
-  });
+    return noise.mul(slab).sub(0.34).mul(1.7).clamp(0, 1);
+  };
 
-  // Raymarch the cloud field for one screen pixel and composite over the sky.
+  // Raymarch the cloud field across the screen and composite front-to-back over
+  // a sky gradient. Zero-arg so it closes over `screenUV` and the uniforms.
   const sunDir = normalize(vec3(0.55, 0.62, -0.55));
-  const cloudColor = Fn(([scUV]: [ReturnType<typeof vec2>]) => {
-    const ndc = scUV.sub(0.5).mul(2.0);
+  const cloudColor = Fn(() => {
+    const ndc = screenUV.sub(0.5).mul(2.0);
     const rd = normalize(
-      vec3(ndc.x.mul(uAspect).mul(0.62), ndc.y.mul(0.62).add(0.12), float(-1.0)),
+      vec3(
+        ndc.x.mul(uAspect).mul(0.62),
+        ndc.y.mul(0.62).add(0.12),
+        float(-1.0),
+      ),
     );
     const ro = vec3(uTime.mul(0.08), 1.25, 6.0);
 
-    const horizon = clamp(scUV.y.sub(0.18).mul(1.4), 0, 1);
+    const horizon = clamp(screenUV.y.sub(0.18).mul(1.4), 0, 1);
     const sky = mix(
       vec3(0.74, 0.86, 1.0),
       vec3(0.2, 0.45, 0.86),
@@ -377,7 +387,7 @@ async function mountOrb(
 
   const bgGeo = new THREE.PlaneGeometry(120, 120);
   const bgMat = new THREE.MeshBasicNodeMaterial();
-  bgMat.colorNode = cloudColor(screenUV);
+  bgMat.colorNode = cloudColor();
   const backdrop = new THREE.Mesh(bgGeo, bgMat);
   backdrop.position.set(0, 0, -10);
 
