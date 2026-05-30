@@ -276,6 +276,7 @@ const clientDetailReference: CodingAgentTaskThreadDetail = {
       outputTokens: 0,
       reasoningTokens: 0,
       cacheTokens: 0,
+      totalTokens: 0,
       costUsd: 0,
       usageState: "measured",
       metadata: {},

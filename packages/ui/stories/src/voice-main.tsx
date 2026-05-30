@@ -26,37 +26,80 @@ interface GlassTreatment {
   roughness: number;
   thickness: number;
   dispersion: number;
+  clearcoat: number;
 }
 
 const TREATMENTS: GlassTreatment[] = [
   {
     id: "clear",
     title: "clear",
-    blurb: "ior 1.45 · roughness 0 — sharp inverted lens",
-    ior: 1.45,
+    blurb: "ior 1.5 · roughness 0 — sharp inverted lens",
+    ior: 1.5,
     roughness: 0.0,
-    thickness: 1.4,
+    thickness: 2.8,
     dispersion: 0,
+    clearcoat: 1,
   },
   {
     id: "frosted",
     title: "frosted",
-    blurb: "roughness 0.34 — soft diffuse, milky body",
+    blurb: "roughness 0.55 — milky satin diffusion",
     ior: 1.45,
-    roughness: 0.34,
-    thickness: 1.7,
+    roughness: 0.55,
+    thickness: 1.6,
     dispersion: 0,
+    clearcoat: 0.3,
   },
   {
     id: "prismatic",
     title: "prismatic",
-    blurb: "dispersion 4 — chromatic split at the rim",
-    ior: 1.5,
-    roughness: 0.04,
-    thickness: 1.5,
-    dispersion: 4,
+    blurb: "dispersion 14 — rainbow split at the rim",
+    ior: 1.52,
+    roughness: 0.0,
+    thickness: 2.6,
+    dispersion: 14,
+    clearcoat: 1,
   },
 ];
+
+/**
+ * Studio-gradient equirectangular environment: bright sky → dark ground with a
+ * warm horizon bloom. Drawn on a 2D canvas. Without an environment the glass
+ * has no reflections and reads as matte jelly; this gives it the bright
+ * reflective rim and surface sheen that make it read unmistakably as glass.
+ */
+function makeEnvTexture(THREE: typeof import("three/webgpu")): {
+  texture: InstanceType<typeof import("three/webgpu").Texture>;
+} {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  if (!ctx) throw new Error("2d context unavailable");
+  const sky = ctx.createLinearGradient(0, 0, 0, 256);
+  sky.addColorStop(0, "#ffffff");
+  sky.addColorStop(0.42, "#b9a79f");
+  sky.addColorStop(0.5, "#3a2c34");
+  sky.addColorStop(0.54, "#1c1620");
+  sky.addColorStop(1, "#050506");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, 512, 256);
+  const bloom = ctx.createRadialGradient(150, 64, 0, 150, 64, 150);
+  bloom.addColorStop(0, "rgba(255,176,110,0.95)");
+  bloom.addColorStop(1, "rgba(255,176,110,0)");
+  ctx.fillStyle = bloom;
+  ctx.fillRect(0, 0, 512, 256);
+  const cool = ctx.createRadialGradient(390, 90, 0, 390, 90, 120);
+  cool.addColorStop(0, "rgba(255,255,255,0.7)");
+  cool.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = cool;
+  ctx.fillRect(0, 0, 512, 256);
+  const texture = new THREE.Texture(c);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return { texture };
+}
 
 interface GlassHandle {
   dispose: () => void;
@@ -102,19 +145,25 @@ async function mountGlass(
   const bgMat = new THREE.MeshBasicNodeMaterial();
   const flow = vec3(uTime.mul(0.05), uTime.mul(0.035), uTime.mul(0.09));
   const bguv = uv();
-  const coord = vec3(bguv.x, bguv.y, float(0)).mul(3.0).add(flow);
-  const field = mx_fractal_noise_float(coord, 4, 2.0, 0.5).mul(0.5).add(0.5);
-  const warmth = mx_noise_float(coord.mul(1.7).add(11)).mul(0.5).add(0.5);
-  const blob = mx_noise_float(coord.mul(0.8).sub(flow.mul(2.0)))
+  const coord = vec3(bguv.x, bguv.y, float(0)).mul(4.5).add(flow);
+  const field = mx_fractal_noise_float(coord, 5, 2.0, 0.55)
     .mul(0.5)
     .add(0.5)
-    .smoothstep(0.62, 0.96);
-  const dark = vec3(0.02, 0.02, 0.03);
-  const violet = vec3(0.16, 0.05, 0.22);
+    .smoothstep(0.25, 0.75);
+  const warmth = mx_noise_float(coord.mul(2.1).add(11))
+    .mul(0.5)
+    .add(0.5)
+    .smoothstep(0.3, 0.85);
+  const blob = mx_noise_float(coord.mul(1.1).sub(flow.mul(2.0)))
+    .mul(0.5)
+    .add(0.5)
+    .smoothstep(0.66, 0.92);
+  const dark = vec3(0.015, 0.015, 0.025);
+  const violet = vec3(0.22, 0.06, 0.3);
   const orange = vec3(1.0, 0.42, 0.06);
   let bg = mix(dark, violet, field);
-  bg = mix(bg, orange, warmth.pow(1.5));
-  bg = mix(bg, vec3(1, 1, 1), blob.mul(0.75));
+  bg = mix(bg, orange, warmth.pow(1.4));
+  bg = mix(bg, vec3(1, 1, 1), blob);
   bgMat.colorNode = bg;
   const backdrop = new THREE.Mesh(bgGeo, bgMat);
   backdrop.position.set(0, 0, -3);
@@ -129,6 +178,9 @@ async function mountGlass(
   glassMat.roughness = treatment.roughness;
   glassMat.metalness = 0;
   glassMat.dispersion = treatment.dispersion;
+  glassMat.clearcoat = treatment.clearcoat;
+  glassMat.clearcoatRoughness = 0.04;
+  glassMat.envMapIntensity = 1.0;
   glassMat.color = new THREE.Color(1, 1, 1);
 
   const drift = vec3(0, uTime.mul(0.2), uTime.mul(0.06));
@@ -143,19 +195,19 @@ async function mountGlass(
   const glass = new THREE.Mesh(sphereGeo, glassMat);
 
   const scene = new THREE.Scene();
+  const env = makeEnvTexture(THREE);
+  scene.environment = env.texture;
   scene.add(backdrop);
   scene.add(glass);
 
-  // Lights give the glass its specular glints and fresnel edge; the refraction
-  // itself carries the body. Key white + warm accent fill.
-  const key = new THREE.DirectionalLight(0xffffff, 2.6);
+  // The environment supplies the reflective rim and surface sheen (the "glass"
+  // read); a single key light adds one defined specular streak, and a low warm
+  // point light gives an on-brand accent glint at the lower edge.
+  const key = new THREE.DirectionalLight(0xffffff, 1.8);
   key.position.set(2.5, 3, 4);
   scene.add(key);
-  const rim = new THREE.PointLight(0xffffff, 26, 0, 2);
-  rim.position.set(-3.5, -1.5, 2.5);
-  scene.add(rim);
-  const accentLight = new THREE.PointLight(0xff5800, 20, 0, 2);
-  accentLight.position.set(0.5, -2.5, 3);
+  const accentLight = new THREE.PointLight(0xff6a1a, 14, 0, 2);
+  accentLight.position.set(-1.5, -2.4, 2.6);
   scene.add(accentLight);
 
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
@@ -196,6 +248,7 @@ async function mountGlass(
       bgMat.dispose();
       sphereGeo.dispose();
       glassMat.dispose();
+      env.texture.dispose();
       renderer.dispose();
     },
   };
@@ -293,7 +346,16 @@ const container = document.getElementById("root");
 if (!container) {
   throw new Error("root element missing");
 }
-createRoot(container).render(
+// Reuse a single root across HMR re-evaluations. Without this, every hot update
+// re-runs this module and calls createRoot again on the same container, mounting
+// duplicate React trees that each spin up a WebGPURenderer on the same canvas —
+// the renderers collide and every orb goes black.
+const rootHost = window as unknown as {
+  __glassRoot?: ReturnType<typeof createRoot>;
+};
+const root = rootHost.__glassRoot ?? createRoot(container);
+rootHost.__glassRoot = root;
+root.render(
   <StrictMode>
     <main className="gallery-main">
       <header className="gallery-hero">

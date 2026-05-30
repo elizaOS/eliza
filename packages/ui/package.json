@@ -63,6 +63,11 @@
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
     },
+    "./app-shell-registry": {
+      "types": "./dist/app-shell-registry.d.ts",
+      "import": "./dist/app-shell-registry.js",
+      "default": "./dist/app-shell-registry.js"
+    },
     "./button": {
       "types": "./dist/cloud-ui/components/button.d.ts",
       "import": "./dist/cloud-ui/components/button.js",

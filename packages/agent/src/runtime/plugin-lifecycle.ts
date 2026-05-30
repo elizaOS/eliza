@@ -1,15 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
-  Action,
   AgentContext,
   AgentRuntime,
   Plugin,
+  PluginEventRegistration,
   PluginModelRegistration,
-  Provider,
-  RegisteredEvaluator,
-  Route,
+  PluginOwnership,
+  PluginServiceRegistration,
   Service,
-  ServiceClass,
   ServiceTypeName,
 } from "@elizaos/core";
 import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
@@ -24,41 +22,6 @@ import {
   wrapActionWithCache,
 } from "./tool-call-cache-wrapper.ts";
 
-/** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
-type ElizaPluginOwnership = {
-  pluginName: string;
-  plugin: Plugin;
-  registeredPlugin: Plugin | null;
-  actions: Action[];
-  providers: Provider[];
-  evaluators: RegisteredEvaluator[];
-  routes: Route[];
-  events: ElizaPluginEventRegistration[];
-  models: ElizaPluginModelRegistration[];
-  services: ElizaPluginServiceRegistration[];
-  sendHandlerSources: string[];
-  hasAdapter: boolean;
-  registeredAt: number;
-};
-
-type RuntimeEventHandler = NonNullable<AgentRuntime["events"][string]>[number];
-
-type ElizaPluginEventRegistration = {
-  eventName: string;
-  handler: RuntimeEventHandler;
-};
-
-type ElizaPluginModelRegistration = {
-  modelType: string;
-  handler: PluginModelRegistration["handler"];
-  provider: string;
-};
-
-type ElizaPluginServiceRegistration = {
-  serviceType: ServiceTypeName;
-  serviceClass: ServiceClass;
-};
-
 type ContextScoped = {
   contexts?: AgentContext[];
 };
@@ -68,9 +31,9 @@ type RuntimeProvider = NonNullable<Plugin["providers"]>[number] & ContextScoped;
 type RuntimeEvaluator = NonNullable<Plugin["evaluators"]>[number];
 type RuntimeRoute = NonNullable<Plugin["routes"]>[number];
 type RuntimeServiceClass = NonNullable<Plugin["services"]>[number];
-type RuntimeEventRegistration = ElizaPluginEventRegistration;
-type RuntimeModelRegistration = ElizaPluginModelRegistration;
-type RuntimeServiceRegistration = ElizaPluginServiceRegistration;
+type RuntimeEventRegistration = PluginEventRegistration;
+type RuntimeModelRegistration = PluginModelRegistration;
+type RuntimeServiceRegistration = PluginServiceRegistration;
 
 type RuntimeSendHandler = (
   runtime: unknown,
@@ -118,7 +81,7 @@ type RuntimePluginServiceStartCapture = {
   pluginName: string;
 };
 
-export type RuntimePluginOwnership = ElizaPluginOwnership;
+export type RuntimePluginOwnership = PluginOwnership;
 
 type RuntimeWithPluginLifecycle = AgentRuntime & {
   __elizaPluginLifecycleInstalled?: boolean;
@@ -438,7 +401,7 @@ function removeOwnedEvents(
 ): void {
   if (ownership.events.length === 0) return;
 
-  const eventGroups = new Map<string, RuntimeEventHandler[]>();
+  const eventGroups = new Map<string, RuntimeEventRegistration["handler"][]>();
   for (const ownedEvent of ownership.events) {
     const nextGroup = eventGroups.get(ownedEvent.eventName) ?? [];
     nextGroup.push(ownedEvent.handler);

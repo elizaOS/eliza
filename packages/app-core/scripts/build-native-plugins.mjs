@@ -132,22 +132,34 @@ const BUILD_INPUT_FILES = [
   "rollup.config.mjs",
   "build.ts",
 ];
+// Directories under `src/` that hold build-generated artifacts, not authored
+// inputs. Some packages (notably @elizaos/core) emit generated TS and `.d.ts`
+// back into `src/` during their build, so these must be excluded when deciding
+// whether a package's source has changed.
 const BUILD_INPUT_IGNORED_DIRS = new Set([
   "node_modules",
   "dist",
   ".turbo",
   ".cache",
+  "generated",
 ]);
+
+function isDeclarationFile(name) {
+  return name.endsWith(".d.ts") || name.endsWith(".d.ts.map");
+}
 
 /**
  * Largest file mtime (ms) under a path, walking directories iteratively.
  * Symlinks are skipped to avoid cycles. Returns 0 when nothing is found.
  *
  * @param {string} target
- * @param {Set<string>} [ignoreDirs] directory basenames to skip
+ * @param {object} [options]
+ * @param {Set<string>} [options.ignoreDirs] directory basenames to skip
+ * @param {boolean} [options.skipDeclarations] ignore emitted `.d.ts(.map)` files
  * @returns {number}
  */
-function newestMtimeMs(target, ignoreDirs) {
+function newestMtimeMs(target, options = {}) {
+  const { ignoreDirs, skipDeclarations = false } = options;
   let newest = 0;
   const stack = [target];
   while (stack.length > 0) {
@@ -174,6 +186,8 @@ function newestMtimeMs(target, ignoreDirs) {
       for (const entry of entries) {
         stack.push(path.join(current, entry));
       }
+    } else if (skipDeclarations && isDeclarationFile(path.basename(current))) {
+      // emitted declaration file — a build output, not an authored input
     } else if (stat.mtimeMs > newest) {
       newest = stat.mtimeMs;
     }
@@ -212,7 +226,10 @@ function isPackageBuildFresh(packageDir) {
   let inputNewest = 0;
   const srcDir = path.join(packageDir, "src");
   if (fs.existsSync(srcDir)) {
-    inputNewest = newestMtimeMs(srcDir, BUILD_INPUT_IGNORED_DIRS);
+    inputNewest = newestMtimeMs(srcDir, {
+      ignoreDirs: BUILD_INPUT_IGNORED_DIRS,
+      skipDeclarations: true,
+    });
   }
   for (const file of BUILD_INPUT_FILES) {
     try {

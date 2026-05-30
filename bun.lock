@@ -2591,6 +2591,7 @@
         "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/plugin-xr": "workspace:*",
+        "ws": "^8.19.0",
       },
       "devDependencies": {
         "typescript": "^6.0.3",

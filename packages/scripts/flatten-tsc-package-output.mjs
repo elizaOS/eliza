@@ -84,14 +84,24 @@ for (const entry of entries) {
     continue;
   }
   const targetEntry = path.join(distDir, entry);
+  const stagingEntry = path.join(
+    distDir,
+    `.flatten-${process.pid}-${Date.now()}-${entry}`,
+  );
+
+  try {
+    await retryTransientFsOperation(() => fs.rename(nestedEntry, stagingEntry));
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      continue;
+    }
+    throw error;
+  }
+
   await retryTransientFsOperation(() =>
     fs.rm(targetEntry, { recursive: true, force: true }),
   );
-  try {
-    await retryTransientFsOperation(() => fs.rename(nestedEntry, targetEntry));
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-  }
+  await retryTransientFsOperation(() => fs.rename(stagingEntry, targetEntry));
 }
 
 await retryTransientFsOperation(() =>

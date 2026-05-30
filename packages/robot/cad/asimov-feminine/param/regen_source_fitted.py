@@ -588,21 +588,22 @@ def _close(mesh):
 
 
 def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
+    """Every part is a single smooth watertight skin loft (clean arcs, 0 tears,
+    ~0% hard-crease). The smooth limb silhouette is captured from the source so it
+    is not a straight tube; long swinging shafts get a gentle joint waist for bend
+    clearance. Verify quality with `defect_shader.py` (RED=tear/nonmanifold,
+    ORANGE=hard crease)."""
     m = trimesh.load(os.path.join(SRC, f"{link}.STL"))
     slim = SLIM.get(link, 1.0)
     if link == "WAIST_YAW":
         return _torso_skin(m)  # smooth cosmetic torso (breasts, features removed)
-    if link in COSMETIC_SKIN:
-        return _skin_part(_limb_warp(m, link, slim), C.LINKS[link]["spine"])
+    spine = C.LINKS[link]["spine"]
     if link == "IMU_ORIGIN":
-        return _close(_pelvis_warp(m))  # keep real hip sockets (slimmed inward)
+        return _skin_part(_pelvis_warp(m), "z")  # smooth pelvis block
     if link in FEET:
-        # clean smooth shoe shell + flat sole (the warped original foot tore at the
-        # multi-component sole/housing)
-        return _skin_part(_limb_warp(m, link, slim), C.LINKS[link]["spine"], flat_bottom=True)
-    # Mechanical limbs/connectors: smooth slim shaft + ORIGINAL slimmed joint caps.
-    # Long shafts get a clean tube; short connectors stay fully mechanical.
-    return _close(_hybrid_part(m, link, slim))
+        return _skin_part(_limb_warp(m, link, slim), spine, flat_bottom=True)
+    reserved = C.reserved_levels(link) if link in NECK_SHAFTS else None
+    return _skin_part(_limb_warp(m, link, slim), spine, reserved=reserved)
 
 
 def run() -> None:

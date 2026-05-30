@@ -594,7 +594,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   type="button"
                   onClick={() => testMcpServer(selectedServer)}
                   disabled={testingServer === selectedServer.id}
-                  className="flex items-center gap-2 px-6 py-2 bg-[#FF5800] text-black hover:bg-black hover:text-white transition-colors rounded-sm text-sm disabled:opacity-50"
+                  className="flex items-center gap-2 px-6 py-2 bg-[#FF5800] text-black hover:bg-[#e54f00] transition-colors rounded-sm text-sm disabled:opacity-50"
                 >
                   {testingServer === selectedServer.id ? (
                     <span className="h-4 w-4 border-2 border-[#FF5800]/30 border-t-[#FF5800] rounded-full animate-spin" />

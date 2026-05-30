@@ -443,4 +443,79 @@ test.describe("assistant home app flow", () => {
     );
     expect(assistantApi.streamRequests).toEqual(["show me my pinned views"]);
   });
+
+  test("morphs the home mic into send and submits a typed turn", async ({
+    page,
+  }) => {
+    await seedAppStorage(page);
+    const assistantApi = await installAssistantFlowRoutes(page);
+
+    await openAppPath(page, "/");
+    await expect(page.getByTestId("home-view")).toBeVisible();
+
+    // The trailing control defaults to the mic; there is no send button until
+    // the user types into the composer.
+    await expect(
+      page.getByRole("button", { name: /start voice input/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Send message" }),
+    ).toHaveCount(0);
+
+    await page.getByTestId("home-chat-input").fill("open wallet by typing");
+
+    // Typing morphs the single trailing control from mic into send.
+    await expect(
+      page.getByRole("button", { name: /start voice input/i }),
+    ).toHaveCount(0);
+    const send = page.getByRole("button", { name: "Send message" });
+    await expect(send).toBeVisible();
+
+    await send.click();
+    await expect(page.getByTestId("home-chat-input")).toHaveValue("");
+    await expect(
+      page.getByText("Opening the right view now and keeping voice ready."),
+    ).toBeVisible();
+    expect(assistantApi.streamRequests).toEqual(["open wallet by typing"]);
+  });
+
+  test("push-to-talk records while the mic is held and submits on release", async ({
+    page,
+  }) => {
+    await seedAppStorage(page);
+    await installHomeSpeechRecognitionShim(page);
+    const assistantApi = await installAssistantFlowRoutes(page);
+
+    await openAppPath(page, "/");
+    await expect(page.getByTestId("home-view")).toBeVisible();
+
+    const mic = page.getByRole("button", { name: /start voice input/i });
+    const box = await mic.boundingBox();
+    if (!box) throw new Error("home mic button has no bounding box");
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    // Holding past the push-to-talk threshold (200ms) begins capture, which
+    // flips the trailing control into its "stop" state.
+    await expect(
+      page.getByRole("button", { name: /stop voice input/i }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    const accepted = await page.evaluate(() => {
+      const simulate = (
+        window as unknown as {
+          __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
+        }
+      ).__homeVoiceSimulate;
+      return simulate?.("push to talk works", true) ?? false;
+    });
+    expect(accepted, "home voice shim must receive the held turn").toBe(true);
+
+    // Releasing the hold ends capture and submits the buffered transcript.
+    await page.mouse.up();
+    await expect(page.getByTestId("home-assistant-transcript")).toContainText(
+      "Opening the right view now and keeping voice ready",
+    );
+    expect(assistantApi.streamRequests).toEqual(["push to talk works"]);
+  });
 });

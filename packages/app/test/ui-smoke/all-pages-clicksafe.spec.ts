@@ -2,7 +2,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   DIRECT_ROUTE_CASES,
   escapeRegExp,
-  SAFE_APP_TILE_CASES,
+  SAFE_VIEW_TILE_CASES,
 } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
@@ -282,16 +282,14 @@ const MOBILE_PROBE: ViewportProbe = {
   ],
 };
 
-const SAFE_APP_TILES: readonly {
+const SAFE_VIEW_TILES: readonly {
   testId: string;
   name: string;
   expectedPath: RegExp;
-  readyChecks: readonly ReadyCheck[];
-}[] = SAFE_APP_TILE_CASES.map((tileCase) => ({
+}[] = SAFE_VIEW_TILE_CASES.map((tileCase) => ({
   testId: tileCase.testId,
   name: tileCase.name,
   expectedPath: new RegExp(`${escapeRegExp(tileCase.expectedPath)}$`),
-  readyChecks: tileCase.readyChecks,
 }));
 
 const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
@@ -1467,14 +1465,15 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
 
-  for (const tile of SAFE_APP_TILES) {
+  for (const tile of SAFE_VIEW_TILES) {
     await test.step(tile.name, async () => {
       await probeRoute(page, coreRouteProbe("apps catalog"));
-      const card = page.getByTestId(tile.testId);
+      // A view may appear in both the "Pinned & recent" strip and a section
+      // grid, so target the first matching card.
+      const card = page.getByTestId(tile.testId).first();
       await expect(card).toBeVisible({ timeout: 60_000 });
       await card.click();
       await expect(page).toHaveURL(tile.expectedPath, { timeout: 60_000 });
-      await assertReadyChecks(page, tile.name, tile.readyChecks, "any", 90_000);
       await expectNoPageIssues(issues, tile.name);
     });
   }

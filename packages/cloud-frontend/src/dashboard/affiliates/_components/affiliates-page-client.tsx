@@ -452,7 +452,7 @@ export function AffiliatesPageClient() {
             disabled={
               isSaving || markupPercent === affiliateData?.markup_percent
             }
-            className="bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white min-w-[100px]"
+            className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white min-w-[100px]"
           >
             {isSaving
               ? t("cloud.affiliates.saving", { defaultValue: "Saving..." })

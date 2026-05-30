@@ -402,7 +402,7 @@ export function EarningsPageClient() {
             </div>
           </div>
           <Button
-            className="w-full mt-4 bg-[var(--brand-orange)] hover:bg-black hover:text-white"
+            className="w-full mt-4 bg-[var(--brand-orange)] hover:bg-[#e54f00]"
             disabled={!balance?.eligibility.canRedeem}
             onClick={() => setShowRedeemDialog(true)}
           >
@@ -906,7 +906,7 @@ export function EarningsPageClient() {
                 submitting ||
                 !balance?.eligibility?.canRedeem
               }
-              className="bg-[var(--brand-orange)] hover:bg-black hover:text-white"
+              className="bg-[var(--brand-orange)] hover:bg-[#e54f00]"
             >
               {submitting ? (
                 <>
