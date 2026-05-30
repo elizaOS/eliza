@@ -178,7 +178,7 @@ def _torso_skin(mesh, n_ang=96, dz=0.005):
     R_arr = np.array(rings_r)            # (N, n_ang)
     bins = rings_b[0]
     # genuinely smooth base surface: low Fourier order + axial low-pass
-    R_arr, cxs, cys = _smooth_field(R_arr, cxs, cys, harmonics=6, axial_sigma=4.0)
+    R_arr, cxs, cys = _smooth_field(R_arr, cxs, cys, harmonics=4, axial_sigma=6.0)
 
     P, B = TORSO, BREAST
     reserved = C.reserved_levels("WAIST_YAW")
@@ -254,7 +254,7 @@ def _skin_part(mesh, spine, n_ang=72, dz=0.004, taubin=8, flat_bottom=False,
     # short connectors are barely smoothed so their joint ends are not shrunk away
     # (over-smoothing short parts was what opened the joint gaps).
     sig = float(np.clip(len(L) / 12.0, 1.0, 5.0))
-    Rs, C0, C1 = _smooth_field(Rs, C0, C1, harmonics=5, axial_sigma=sig)
+    Rs, C0, C1 = _smooth_field(Rs, C0, C1, harmonics=3, axial_sigma=max(sig, 5.0))
     # neck the radius in toward each joint level -> rotation clearance
     for lvl in (reserved or []):
         Rs = Rs * (1.0 - neck_depth * np.exp(-(((L - lvl) / neck_sigma) ** 2)))[:, None]
@@ -337,19 +337,30 @@ def _smooth_tube(mesh, ai, pd, z_lo, z_hi, slim, margin=0.0015, n_ang=64, dz=0.0
     if len(L) < 2:
         return None
     R = np.array(R); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
-    F = np.fft.rfft(R, axis=1); F[:, 6:] = 0.0; R = np.fft.irfft(F, n_ang, axis=1)
-    R = gaussian_filter1d(R, 3, axis=0, mode="nearest") + margin
-    C0 = gaussian_filter1d(C0, 3, mode="nearest"); C1 = gaussian_filter1d(C1, 3, mode="nearest")
-    # taper the tube ends inward so the end rim tucks under the wider joint cap
-    # (softens the sleeve<->joint seam instead of a hard overlapping rim)
+    # SIZE/SHAPE separation for genuinely clean industrial lines:
+    #  * shape  = ONE clean low-harmonic cross-section (the mean normalised ring)
+    #             -> smooth-curve sections, identical along the shaft (no wobble)
+    #  * size   = a low-order POLYNOMIAL taper of the radius along the axis
+    #             -> clean straight/gently-curved profile lines (no organic waviness)
+    rmean = R.mean(axis=1)
+    rmean[rmean < 1e-6] = 1e-6
+    shape = (R / rmean[:, None]).mean(axis=0)            # avg normalised section
+    Fs = np.fft.rfft(shape); Fs[4:] = 0.0
+    shape = np.fft.irfft(Fs, n_ang)                      # clean low-harmonic shape
+    deg = 3 if len(L) >= 8 else 1
+    taper = np.poly1d(np.polyfit(L, rmean, deg))(L) * slim + margin
+    C0 = np.poly1d(np.polyfit(L, C0, min(2, len(L) - 1)))(L)
+    C1 = np.poly1d(np.polyfit(L, C1, min(2, len(L) - 1)))(L)
+    # taper the tube ends inward so the rim tucks under the wider joint cap
     end = np.clip(np.minimum(L - L[0], L[-1] - L) / 0.014, 0.0, 1.0)
-    R = R * (0.55 + 0.45 * end)[:, None]
+    taper = taper * (0.55 + 0.45 * end)
     cosb, sinb = np.cos(bins), np.sin(bins)
     verts = []
     for i in range(len(L)):
+        ring = taper[i] * shape
         p = np.zeros((n_ang, 3))
-        p[:, pd[0]] = C0[i] + R[i] * cosb
-        p[:, pd[1]] = C1[i] + R[i] * sinb
+        p[:, pd[0]] = C0[i] + ring * cosb
+        p[:, pd[1]] = C1[i] + ring * sinb
         p[:, ai] = L[i]
         verts.append(p)
     return _loft_rings(np.array(verts))
@@ -366,29 +377,28 @@ def _hybrid_part(mesh, link, slim, joint_margin=0.030):
     spine = C.LINKS[link]["spine"]
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
-    # _limb_warp keeps the joint interfaces FULL WIDTH (collar) so offset joints
-    # (wrist, toe) keep the overlap the source had -- plain affine separated them.
-    base = _limb_warp(mesh, link, slim)
+    # The JOINTS stay PRISTINE (unwarped original) so their round bores / bolt
+    # circles / condyles are not distorted. Only the featureless mid-shaft is
+    # slimmed and covered by a clean smooth tube.
+    base = mesh.copy()
     res = sorted(C.reserved_levels(link))
     z_lo, z_hi = res[0] + joint_margin, res[-1] - joint_margin
     if z_hi - z_lo < 0.03:
-        return base  # too short for a shaft -> keep the real slimmed mechanism
-    # Smooth tube sized to the slim shaft envelope (this is the visible shaft).
-    tube = _smooth_tube(base, ai, pd, z_lo - 0.012, z_hi + 0.012, slim, margin=0.0)
+        return base  # too short for a shaft -> keep the pristine mechanism
+    tube = _smooth_tube(base, ai, pd, z_lo - 0.014, z_hi + 0.014, slim, margin=0.0)
     if tube is None:
         return base
-    # Tuck the original shaft INSIDE the tube (extra inward scale, ramped to 1.0 at
-    # the joints) so nothing pokes through -- NO slicing, so no open boundary/tear.
-    V = base.vertices.copy()
-    t = V[:, ai]
-    levels, cx, cy = _centerline_xy(V, ai, pd)
-    c0 = np.interp(t, levels, cx); c1 = np.interp(t, levels, cy)
-    ramp = (np.clip((t - z_lo) / 0.018, 0, 1) * np.clip((z_hi - t) / 0.018, 0, 1))
-    f = 1.0 - 0.18 * ramp  # up to 18% extra-slim in the mid-shaft, 0 at joints
-    V[:, pd[0]] = c0 + (V[:, pd[0]] - c0) * f
-    V[:, pd[1]] = c1 + (V[:, pd[1]] - c1) * f
-    base.vertices = V
-    return trimesh.util.concatenate([base, tube])
+    # Keep only the PRISTINE joint caps (cut in the simple-cross-section shaft, not
+    # through the joint detail) and let the clean tube be the shaft -> no original
+    # shaft to poke through, joint round features untouched.
+    nrm_hi = np.zeros(3); nrm_hi[ai] = 1.0
+    nrm_lo = np.zeros(3); nrm_lo[ai] = -1.0
+    o_hi = np.zeros(3); o_hi[ai] = z_hi
+    o_lo = np.zeros(3); o_lo[ai] = z_lo
+    top = trimesh.intersections.slice_mesh_plane(base, plane_normal=nrm_hi, plane_origin=o_hi, cap=True)
+    bot = trimesh.intersections.slice_mesh_plane(base, plane_normal=nrm_lo, plane_origin=o_lo, cap=True)
+    parts = [p for p in (top, bot, tube) if p is not None and len(p.faces) > 0]
+    return trimesh.util.concatenate(parts)
 
 
 def _loft_rings(rings):
@@ -497,6 +507,22 @@ def _joint_centerline(link, spine_i):
         c0 = np.array([0.0, 0.0])
         c1 = np.array([0.0, 0.0])
     return levels, c0, c1
+
+
+def _inner_slim(mesh, link, factor=0.80):
+    """Flatten the MEDIAL (inner, toward body-centreline) side of a leg part so the
+    left/right legs clear each other on hip-roll adduction. Left leg inner = -Y,
+    right leg inner = +Y. Joints/lateral side untouched."""
+    m = mesh.copy()
+    v = m.vertices.copy()
+    cy = float(np.median(v[:, 1]))
+    if link.startswith("LEFT_"):
+        sel = v[:, 1] < cy            # medial side of the left leg is -Y
+    else:
+        sel = v[:, 1] > cy            # medial side of the right leg is +Y
+    v[sel, 1] = cy + (v[sel, 1] - cy) * factor
+    m.vertices = v
+    return m
 
 
 def _limb_warp(mesh, link, factor):
@@ -611,7 +637,7 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
         return _close(_pelvis_warp(m))  # REAL hip sockets so the hips mate
     if link in FEET:
         return _skin_part(_limb_warp(m, link, slim), spine, flat_bottom=True)  # clean shoe
-    # Limbs: REAL mechanical joints (original clevis/condyle/socket) + smooth slim
+    # Limbs: PRISTINE mechanical joints (unwarped original) + clean smooth slim
     # shaft tube. Short connectors stay fully mechanical (no shaft).
     return _close(_hybrid_part(m, link, slim))
 
