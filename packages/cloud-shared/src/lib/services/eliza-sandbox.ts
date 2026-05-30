@@ -94,8 +94,7 @@ function digestPinnedImageRef(imageRef: string, digest: string): string {
   if (imageRef.includes("@sha256:")) return imageRef;
   const lastColon = imageRef.lastIndexOf(":");
   const lastSlash = imageRef.lastIndexOf("/");
-  const withoutTag =
-    lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
+  const withoutTag = lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
   return `${withoutTag}@${digest}`;
 }
 

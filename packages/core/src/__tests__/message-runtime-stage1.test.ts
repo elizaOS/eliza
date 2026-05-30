@@ -2205,9 +2205,7 @@ android smoke model works`,
 		const dateParams = useModelCalls(dateRuntime)[0]?.[1] as {
 			messages?: Array<{ content?: string | null }>;
 		};
-		expect(dateParams.messages?.[1]?.content ?? "").toContain(
-			"# Current Time",
-		);
+		expect(dateParams.messages?.[1]?.content ?? "").toContain("# Current Time");
 
 		const genericRuntime = makeRuntime([response()]);
 		await runV5MessageRuntimeStage1({

@@ -606,16 +606,17 @@ export function VoiceWaveform({
         handle = orb;
         orb.setAccent(...resolveAccentRgb());
 
-        if (reduced) {
-          orb.renderFrame({
-            time: 0,
-            energy: 0,
-            low: 0,
-            listen: modeRef.current === "listening" ? 1 : 0,
-            respond: modeRef.current === "responding" ? 1 : 0,
-          });
-          return;
-        }
+        // Paint one frame immediately so the orb appears on mount instead of
+        // staying blank until the first animation tick — which a backgrounded
+        // tab defers indefinitely (rAF is paused while hidden).
+        orb.renderFrame({
+          time: 0,
+          energy: 0,
+          low: 0,
+          listen: modeRef.current === "listening" ? 1 : 0,
+          respond: modeRef.current === "responding" ? 1 : 0,
+        });
+        if (reduced) return;
 
         let t = 0;
         let frame = 0;

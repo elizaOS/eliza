@@ -264,7 +264,7 @@ export function AppMonetizationSettings({
                 >
                   {t("cloud.monetization.earned", {
                     amount: settings.totalCreatorEarnings.toFixed(2),
-                    defaultValue: "${{amount}} earned",
+                    defaultValue: "$" + "{{amount}}" + " earned",
                   })}
                   <ChevronRight className="h-3 w-3" />
                 </button>

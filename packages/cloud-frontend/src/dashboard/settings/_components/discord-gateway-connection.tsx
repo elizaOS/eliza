@@ -515,12 +515,10 @@ export function DiscordGatewayConnection() {
                           </div>
                           <div className="text-sm text-muted-foreground">
                             {character ? (
-                              <>
-                                {t("cloud.discord.characterLabel", {
-                                  name: character.name,
-                                  defaultValue: "Character: {{name}}",
-                                })}
-                              </>
+                              t("cloud.discord.characterLabel", {
+                                name: character.name,
+                                defaultValue: "Character: {{name}}",
+                              })
                             ) : (
                               <span className="text-yellow-600">
                                 {t("cloud.discord.noCharacterLinked", {

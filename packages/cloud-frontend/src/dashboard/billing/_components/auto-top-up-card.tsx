@@ -71,12 +71,12 @@ export function AutoTopUpCard() {
     if (!Number.isFinite(parsedAmount) || parsedAmount < limits.minAmount)
       return t("cloud.autoTopUp.amountMin", {
         min: limits.minAmount,
-        defaultValue: "Amount must be at least ${{min}}",
+        defaultValue: "Amount must be at least $" + "{{min}}",
       });
     if (parsedAmount > limits.maxAmount)
       return t("cloud.autoTopUp.amountMax", {
         max: limits.maxAmount,
-        defaultValue: "Amount can't exceed ${{max}}",
+        defaultValue: "Amount can't exceed $" + "{{max}}",
       });
     if (
       !Number.isFinite(parsedThreshold) ||
@@ -84,12 +84,12 @@ export function AutoTopUpCard() {
     )
       return t("cloud.autoTopUp.thresholdMin", {
         min: limits.minThreshold,
-        defaultValue: "Threshold must be ≥ ${{min}}",
+        defaultValue: "Threshold must be ≥ $" + "{{min}}",
       });
     if (parsedThreshold > limits.maxThreshold)
       return t("cloud.autoTopUp.thresholdMax", {
         max: limits.maxThreshold,
-        defaultValue: "Threshold can't exceed ${{max}}",
+        defaultValue: "Threshold can't exceed $" + "{{max}}",
       });
     return null;
   }, [enabled, limits, parsedAmount, parsedThreshold, t]);

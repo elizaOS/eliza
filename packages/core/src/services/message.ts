@@ -3097,7 +3097,8 @@ export async function renderMessageHandlerStablePrefix(
 		state,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: stage1ProviderExclusionsForMessage(syntheticMessage),
+		extraProviderExclusions:
+			stage1ProviderExclusionsForMessage(syntheticMessage),
 	});
 	const rendered = renderContextObject(context);
 	const stableSegments = rendered.promptSegments.filter(

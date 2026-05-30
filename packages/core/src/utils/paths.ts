@@ -1,13 +1,6 @@
 import { join } from "node:path";
 import { resolveStateDir } from "./state-dir";
 
-function getCwd(): string {
-	if (typeof process !== "undefined" && process.cwd) {
-		return process.cwd();
-	}
-	return ".";
-}
-
 function getEnvVar(key: string): string | undefined {
 	if (typeof process !== "undefined" && process.env) {
 		return process.env[key];

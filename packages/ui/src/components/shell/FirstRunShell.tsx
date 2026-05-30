@@ -188,27 +188,30 @@ function LocalInferenceChoice(props: {
       {options.map((option) => {
         const active = props.value === option.value;
         return (
-          <button
+          <label
             key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            data-testid={`first-run-local-${option.value}`}
-            onClick={() => props.onChange(option.value)}
             className={[
-              "flex flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
+              "flex cursor-pointer flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
               active
                 ? "border-accent bg-accent/10"
                 : "border-[var(--first-run-card-border)] hover:bg-[var(--first-run-card-bg-hover)]",
             ].join(" ")}
           >
+            <input
+              type="radio"
+              name="first-run-local-mode"
+              checked={active}
+              data-testid={`first-run-local-${option.value}`}
+              onChange={() => props.onChange(option.value)}
+              className="sr-only"
+            />
             <span className="text-sm font-semibold text-[var(--first-run-text-primary)]">
               {option.label}
             </span>
             <span className="text-xs text-[var(--first-run-text-muted)]">
               {option.detail}
             </span>
-          </button>
+          </label>
         );
       })}
     </div>

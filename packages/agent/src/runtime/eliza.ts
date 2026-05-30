@@ -638,7 +638,8 @@ async function ensureStaticPluginsRegisteredByName(
 
   await Promise.all(
     registrations.map(async (registration) => {
-      const registryName = registration.registryName ?? registration.packageName;
+      const registryName =
+        registration.registryName ?? registration.packageName;
       if (STATIC_ELIZA_PLUGINS[registryName]) {
         return;
       }

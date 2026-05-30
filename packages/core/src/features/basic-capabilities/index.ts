@@ -92,7 +92,6 @@ import { generateMediaAction } from "../advanced-capabilities/actions/generateMe
 // Import advanced capabilities
 import {
 	advancedActions,
-	advancedCapabilities,
 	advancedEvaluators,
 	advancedProviders,
 	advancedServices,

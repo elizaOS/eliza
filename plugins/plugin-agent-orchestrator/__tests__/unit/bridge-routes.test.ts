@@ -5,8 +5,8 @@ import {
   type BridgeCredentialAdapter,
   handleBridgeRoutes,
 } from "../../src/api/bridge-routes.ts";
-import { handleCodingAgentRoutes } from "../../src/api/routes.ts";
 import type { RouteContext } from "../../src/api/route-utils.ts";
+import { handleCodingAgentRoutes } from "../../src/api/routes.ts";
 
 function fakeRequest(opts: {
   method: string;

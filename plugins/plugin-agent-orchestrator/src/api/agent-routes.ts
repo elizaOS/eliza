@@ -19,9 +19,9 @@ import { logger } from "@elizaos/core";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 import {
-  TERMINAL_SESSION_STATUSES,
   type AgentType,
   type ApprovalPreset,
+  TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
 import type { RouteContext } from "./route-utils.js";

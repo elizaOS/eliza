@@ -265,7 +265,7 @@ export function PolicyControlsView() {
           autoApprovePolicy?.enabled
             ? t("policycontrols.autoApprove.desc", {
                 threshold: autoApproveConfig.threshold ?? "5",
-                defaultValue: "Under ${{threshold}}",
+                defaultValue: "Under $" + "{{threshold}}",
               })
             : t("policycontrols.off", { defaultValue: "Off" })
         }
@@ -305,7 +305,13 @@ export function PolicyControlsView() {
                 perDay: spendingConfig.maxPerDay,
                 perWeek: spendingConfig.maxPerWeek,
                 defaultValue:
-                  "${{perTx}}/tx · ${{perDay}}/day · ${{perWeek}}/wk",
+                  "$" +
+                  "{{perTx}}" +
+                  "/tx · $" +
+                  "{{perDay}}" +
+                  "/day · $" +
+                  "{{perWeek}}" +
+                  "/wk",
               })
             : t("policycontrols.off", { defaultValue: "Off" })
         }

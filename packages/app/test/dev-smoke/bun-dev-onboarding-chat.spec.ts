@@ -140,7 +140,7 @@ async function submitFirstRun(): Promise<void> {
 }
 
 async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((apiBase) => {
     localStorage.setItem("eliza:first-run-complete", "1");
     localStorage.setItem("eliza:setup:step", "activate");
     localStorage.setItem("eliza:ui-shell-mode", "native");
@@ -148,12 +148,13 @@ async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
     localStorage.setItem(
       "elizaos:active-server",
       JSON.stringify({
-        id: "local:embedded",
-        kind: "local",
-        label: "This device",
+        id: `remote:${apiBase}`,
+        kind: "remote",
+        label: "Dev smoke API",
+        apiBase,
       }),
     );
-  });
+  }, API_BASE);
 }
 
 test.describe("bun run dev onboarding chat smoke", () => {
@@ -179,6 +180,10 @@ test.describe("bun run dev onboarding chat smoke", () => {
     await waitForJson<FirstRunStatus>(
       `${API_BASE}/api/first-run/status`,
       (status) => status.complete === true,
+    );
+    await waitForJson<HealthStatus>(
+      `${API_BASE}/api/health`,
+      (health) => health.ready === true,
     );
 
     await seedCompletedFirstRunStorage(page);

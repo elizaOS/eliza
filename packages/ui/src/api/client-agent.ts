@@ -3681,14 +3681,11 @@ ElizaClient.prototype.postOrchestratorTaskMessage = async function (
     recorded: boolean;
     forwardedTo: string[];
     failedTo?: Array<{ sessionId: string; error: string }>;
-  }>(
-    `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/messages`,
-    {
-      method: "POST",
-      body: JSON.stringify({ content }),
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+  }>(`/api/orchestrator/tasks/${encodeURIComponent(taskId)}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+    headers: { "Content-Type": "application/json" },
+  });
   return result.recorded && (result.failedTo?.length ?? 0) === 0;
 };
 
