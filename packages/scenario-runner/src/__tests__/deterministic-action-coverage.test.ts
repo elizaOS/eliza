@@ -225,7 +225,6 @@ const COVERED_FLOOR = COVERED_ACTIONS.length;
  * — see COVERED_ACTIONS — so the reason describes only the remainder.
  */
 const LIVE_ONLY_REMAINDER: Record<string, string> = {
-  "@elizaos/plugin-google": "All actions require Google OAuth credentials.",
   "@elizaos/plugin-lifeops":
     "Beyond SCHEDULED_TASKS, actions need live connector creds (Gmail, calendar, messaging, owner data).",
   "@elizaos/plugin-browser":
