@@ -222,11 +222,6 @@ const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
 // runtime is still bootstrapping, leaving PGlite locked by the previous
 // process. The supervisor still restarts the API on explicit restart exits.
 const skipBunWatch = process.env.ELIZA_DEV_NO_WATCH !== "0";
-// dev:fast — resolve @elizaos/{core,agent,shared} from prebuilt dist instead of
-// transpiling their TypeScript src on every boot. Trades upstream source
-// hot-reload for a faster cold boot; use plain `dev` to edit those packages.
-const devFast =
-  process.env.ELIZA_DEV_FAST === "1" || process.env.MILADY_DEV_FAST === "1";
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -1126,14 +1121,6 @@ if (uiOnly) {
     )}`,
   );
 
-  if (devFast) {
-    console.log(
-      `  ${green(logPrefix)} ${orange("dev:fast")} ${dim(
-        "— @elizaos/core, agent, shared load from prebuilt dist (no upstream source hot-reload). Use plain dev or rebuild dist to edit those packages.",
-      )}`,
-    );
-  }
-
   // Security default: stealth shims are disabled unless explicitly enabled
   // via env vars or plugin config in eliza.json.
   const stealth = resolveStealthImportFlags();
@@ -1184,7 +1171,7 @@ if (uiOnly) {
   const apiNodeCmd = resolveApiNodeCommand(process.env);
   const apiCmd = [
     apiNodeCmd,
-    ...(devFast ? [] : ["--conditions=eliza-source"]),
+    "--conditions=eliza-source",
     "--import",
     "tsx",
     ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
