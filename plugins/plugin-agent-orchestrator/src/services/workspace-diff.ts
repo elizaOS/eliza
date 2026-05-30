@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
-import { isAbsolute, relative, resolve } from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
@@ -35,22 +34,46 @@ async function git(
   workdir: string,
   args: string[],
 ): Promise<string | undefined> {
-  try {
-    const { stdout } = await execFileAsync("git", args, {
+  const direct = spawnSync("git", args, {
+    cwd: workdir,
+    timeout: GIT_TIMEOUT_MS,
+    maxBuffer: GIT_MAX_BUFFER,
+    windowsHide: true,
+  });
+  const directStdout = outputToString(direct.stdout);
+  if (directStdout && directStdout.length > 0) return directStdout;
+
+  // Bun's test runner can report a successful git process with an empty stdout
+  // pipe. In that environment only, ask the shell to redirect stdout itself.
+  if (direct.status !== 0 && !process.versions.bun) return undefined;
+  if (!process.versions.bun) return directStdout;
+
+  const outDir = mkdtempSync(join(tmpdir(), "workspace-diff-git-"));
+  const outPath = join(outDir, "stdout");
+  writeFileSync(outPath, "");
+  const result = spawnSync(
+    "sh",
+    ["-c", 'git "$@" > "$WORKSPACE_DIFF_GIT_STDOUT"', "git", ...args],
+    {
       cwd: workdir,
+      env: { ...process.env, WORKSPACE_DIFF_GIT_STDOUT: outPath },
       timeout: GIT_TIMEOUT_MS,
       maxBuffer: GIT_MAX_BUFFER,
+      stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,
-    });
-    return outputToString(stdout);
-  } catch (err) {
-    // `git diff --no-index` exits 1 when files differ — that's the success
-    // case for us and the diff is on stdout. Everything else (not a repo, git
-    // missing, detached state) is best-effort: change capture must never
-    // disturb the session lifecycle.
-    const stdout = outputToString((err as { stdout?: unknown }).stdout);
-    if (stdout && stdout.length > 0) return stdout;
+    },
+  );
+
+  // `git diff --no-index` exits 1 when files differ — that's the success case
+  // for us and the diff is on stdout. Everything else (not a repo, git missing,
+  // detached state) is best-effort: change capture must never disturb the
+  // session lifecycle.
+  try {
+    const stdout = readFileSync(outPath, "utf8");
+    if (result.status === 0 || stdout.length > 0) return stdout;
     return undefined;
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
   }
 }
 
