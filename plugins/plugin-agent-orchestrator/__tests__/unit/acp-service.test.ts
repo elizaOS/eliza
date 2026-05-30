@@ -109,6 +109,7 @@ vi.mock("node:child_process", () => ({
     },
   ),
   execFileSync: vi.fn(),
+  spawnSync: vi.fn(() => ({ status: 1, stdout: "", stderr: "" })),
   spawn: vi.fn(),
 }));
 

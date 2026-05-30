@@ -73,7 +73,8 @@
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
