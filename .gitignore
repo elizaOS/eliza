@@ -744,6 +744,7 @@ storybook-static
 .next-dev/
 .env.preview
 .env.local.bak-*
+.env.local.*-backup-*
 .wrangler
 .wrangler-dry-run
 swe-bench-workspace-opencode/
