@@ -105,6 +105,49 @@ const ORCHESTRATOR_CAPABILITIES: ViewCapability[] = [
     },
   },
   {
+    id: "orchestrator-update-task",
+    description:
+      "Update an orchestrator task's title, goal, summary, priority, or acceptance criteria",
+    params: {
+      taskId: { type: "string", description: "Task thread id to update" },
+      title: { type: "string", description: "New task title" },
+      goal: { type: "string", description: "New durable goal" },
+      summary: { type: "string", description: "New task summary" },
+      priority: {
+        type: "string",
+        description: "Priority: low, normal, high, or urgent",
+      },
+      acceptanceCriteria: {
+        type: "array",
+        description: "List of acceptance-criteria strings",
+      },
+    },
+  },
+  {
+    id: "orchestrator-validate-task",
+    description: "Record a validation result for an orchestrator task",
+    params: {
+      taskId: { type: "string", description: "Task thread id to validate" },
+      passed: {
+        type: "boolean",
+        description: "Whether validation passed",
+      },
+      summary: { type: "string", description: "Validation summary" },
+      evidence: {
+        type: "string",
+        description: "Evidence supporting the result",
+      },
+      verifier: {
+        type: "string",
+        description: "Who or what performed validation",
+      },
+      humanOverride: {
+        type: "boolean",
+        description: "Whether a human explicitly overrode the result",
+      },
+    },
+  },
+  {
     id: "orchestrator-add-agent",
     description: "Add a sub-agent to an orchestrator task",
     params: {

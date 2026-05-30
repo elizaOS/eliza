@@ -21,7 +21,7 @@ line numbers.
 3. **Folded durable task threads into `getCodingAgentStatus`** (`packages/ui` client) — was
    hardcoded to `taskThreadCount:0`. Documented the two genuinely-vestigial ACP stubs
    (`/metrics`, `/workspace-files`) pointing at the real `/api/orchestrator/*` usage surface.
-4. **Declared capability param schemas** for the 13 orchestrator view capabilities so
+4. **Declared capability param schemas** for the 15 orchestrator view capabilities so
    voice/NL routing can pass `taskId`/`title`/`goal`/etc. **Mounted the sensitive-request
    REST routes** (`packages/app-core/src/api/server.ts`) — the secret create/submit/fulfill
    path that orchestrator provider setup will use.
