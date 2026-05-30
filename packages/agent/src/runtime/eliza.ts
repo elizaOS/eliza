@@ -609,6 +609,57 @@ async function registerStaticPluginPhase(
   }
 }
 
+async function ensureStaticPluginsRegisteredByName(
+  packageNames: readonly string[],
+): Promise<void> {
+  const requested = new Set(packageNames);
+  if (requested.size === 0) return;
+
+  const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
+    (registration) =>
+      requested.has(registration.packageName) ||
+      (registration.registryName
+        ? requested.has(registration.registryName)
+        : false),
+  );
+  const missing = [...requested].filter(
+    (packageName) =>
+      !registrations.some(
+        (registration) =>
+          registration.packageName === packageName ||
+          registration.registryName === packageName,
+      ),
+  );
+  if (missing.length > 0) {
+    logger.debug(
+      `[boot] no static registration for preferred provider plugin(s): ${missing.join(", ")}`,
+    );
+  }
+
+  await Promise.all(
+    registrations.map(async (registration) => {
+      const registryName =
+        registration.registryName ?? registration.packageName;
+      if (STATIC_ELIZA_PLUGINS[registryName]) {
+        return;
+      }
+      try {
+        const mod = await registration.load();
+        if (mod) {
+          STATIC_ELIZA_PLUGINS[registryName] = mod;
+          logger.info(
+            `[boot] preferred provider plugin ${registration.packageName} loaded before runtime initialization`,
+          );
+        }
+      } catch (err) {
+        logger.warn(
+          `[boot] preferred provider plugin ${registration.packageName} unavailable before runtime initialization: ${formatError(err)}`,
+        );
+      }
+    }),
+  );
+}
+
 async function ensureBlockingCoreStaticPluginsRegistered(): Promise<void> {
   if (_blockingStaticPluginsRegistered) return;
   if (!_blockingStaticPluginsRegistrationPromise) {
@@ -3654,9 +3705,15 @@ export async function startEliza(
   const blockDeferredPluginImports = shouldBlockDeferredPluginImports();
   const initialPluginResolutionPhase: PluginResolutionPhase =
     blockDeferredPluginImports ? "all" : "blocking";
+  const initialForceIncludePluginNames =
+    !blockDeferredPluginImports && preferredProviderPluginName
+      ? [preferredProviderPluginName]
+      : [];
+  await ensureStaticPluginsRegisteredByName(initialForceIncludePluginNames);
   const resolvedPlugins = await resolvePlugins(config, {
     quiet: preOnboarding,
     phase: initialPluginResolutionPhase,
+    forceIncludePluginNames: initialForceIncludePluginNames,
   });
   bootTimer.lap(`resolve-plugins-${initialPluginResolutionPhase}-import`);
 
@@ -4483,8 +4540,14 @@ export async function startEliza(
       return;
     }
 
+    const alreadyRegisteredPluginNames = new Set(
+      (runtime.plugins ?? [])
+        .map((plugin) => plugin.name)
+        .filter((name): name is string => typeof name === "string"),
+    );
     const deferredPluginsForRuntime = deferredResolvedPlugins
       .filter((p) => !PREREGISTER_PLUGINS.has(p.name))
+      .filter((p) => !alreadyRegisteredPluginNames.has(p.plugin.name ?? p.name))
       .map((p) => p.plugin);
     if (deferredPluginsForRuntime.length === 0) {
       return;

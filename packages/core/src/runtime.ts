@@ -7123,8 +7123,20 @@ ${section_end}`;
 
 		// Pass null to get a test vector for dimension detection
 		// Model handlers should return a zero-filled vector of the correct dimension when null is passed
-		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-		if (!embedding.length) {
+		let embedding: unknown;
+		try {
+			embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+		} catch (error) {
+			if (error instanceof NoModelProviderConfiguredError) {
+				this.logger.warn(
+					{ src: "agent", agentId: this.agentId },
+					"No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
+				);
+				return;
+			}
+			throw error;
+		}
+		if (!Array.isArray(embedding) || embedding.length === 0) {
 			throw new Error("Invalid embedding received");
 		}
 
