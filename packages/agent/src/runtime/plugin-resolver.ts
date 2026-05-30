@@ -1382,7 +1382,11 @@ export type PluginResolutionPhase = "all" | "blocking" | "deferred";
 
 export async function resolvePlugins(
   config: ElizaConfig,
-  opts?: { quiet?: boolean; phase?: PluginResolutionPhase },
+  opts?: {
+    quiet?: boolean;
+    phase?: PluginResolutionPhase;
+    forceIncludePluginNames?: readonly string[];
+  },
 ): Promise<ResolvedPlugin[]> {
   const plugins: ResolvedPlugin[] = [];
   const failedPlugins: Array<{ name: string; error: string }> = [];
@@ -1449,6 +1453,7 @@ export async function resolvePlugins(
   const pluginsToLoad = collectPluginNames(config, loadReasons);
   const corePluginSet = new Set<string>(CORE_PLUGINS);
   const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
+  const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
 
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
@@ -1527,6 +1532,9 @@ export async function resolvePlugins(
   if (phase !== "all") {
     const beforePhaseFilter = pluginsToLoad.size;
     for (const pluginName of Array.from(pluginsToLoad)) {
+      if (forceIncludePluginNames.has(pluginName)) {
+        continue;
+      }
       const isBlocking = blockingPluginSet.has(pluginName);
       if (
         (phase === "blocking" && !isBlocking) ||
