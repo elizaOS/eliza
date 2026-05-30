@@ -8,9 +8,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import githubPlugin, {
-  GitHubService,
-} from "../../../../plugins/plugin-github/src/index.ts";
+import githubPlugin, { GitHubService } from "@elizaos/plugin-github";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
