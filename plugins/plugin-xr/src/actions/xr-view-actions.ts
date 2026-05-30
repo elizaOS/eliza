@@ -352,6 +352,7 @@ function extractViewId(text: string): string {
     "companion",
     "training",
     "task-coordinator",
+    "orchestrator",
     "views-manager",
     "polymarket",
     "vincent",

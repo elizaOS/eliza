@@ -9,7 +9,7 @@
  *   - URL parameter extraction works correctly
  *   - Route handler serializes the HTML response over a real socket
  *   - Content-Type and Content-Security-Policy headers are present in HTTP
- *   - All 24 registered XR view IDs produce valid HTTP 200 responses
+ *   - All 25 registered XR view IDs produce valid HTTP 200 responses
  */
 
 import { createServer } from "node:http";
@@ -17,12 +17,13 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { xrViewHostRoute } from "../routes/xr-view-host.ts";
 
-// All 24 registered XR view IDs
+// All 25 registered XR view IDs
 const ALL_VIEW_IDS = [
   "wallet",
   "companion",
   "training",
   "task-coordinator",
+  "orchestrator",
   "views-manager",
   "polymarket",
   "vincent",
@@ -187,7 +188,7 @@ describe("xrViewHostRoute — real HTTP server integration", () => {
     }
   });
 
-  it("all 24 view-host pages embed the correct bundle URL for the elizaOS views API", async () => {
+  it("all 25 view-host pages embed the correct bundle URL for the elizaOS views API", async () => {
     const failures: string[] = [];
     for (const id of ALL_VIEW_IDS) {
       const res = await fetch(
@@ -205,7 +206,7 @@ describe("xrViewHostRoute — real HTTP server integration", () => {
     expect(failures).toEqual([]);
   });
 
-  it("all 24 view-host pages load React from CDN importmap (not bundled)", async () => {
+  it("all 25 view-host pages load React from CDN importmap (not bundled)", async () => {
     const failures: string[] = [];
     for (const id of ALL_VIEW_IDS) {
       const res = await fetch(
@@ -244,7 +245,7 @@ describe("xrViewHostRoute — real HTTP server integration", () => {
     expect(failures).toEqual([]);
   });
 
-  it("concurrent requests for all 24 view ids resolve correctly in parallel", async () => {
+  it("concurrent requests for all 25 view ids resolve correctly in parallel", async () => {
     // Proves the server handles concurrent requests without state corruption
     const responses = await Promise.all(
       ALL_VIEW_IDS.map((id) =>
