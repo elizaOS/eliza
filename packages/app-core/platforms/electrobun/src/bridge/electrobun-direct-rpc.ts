@@ -315,12 +315,11 @@ function installRendererLogMirror(): void {
 
       try {
         const response = await originalFetch(...args);
-        // Skip 404 (a normal app-handled outcome, e.g. probing /api/vincent/status
-        // before the plugin route registers); 5xx still errors, other 4xx still
-        // warns. See httpErrorDiagnosticLevel for the rationale.
+        // Suppress only known optional boot-probe 404s; keep all other
+        // renderer missing-route diagnostics visible.
         const level = response.ok
           ? null
-          : httpErrorDiagnosticLevel(response.status);
+          : httpErrorDiagnosticLevel(response.status, { url, method });
         if (level) {
           reportDiagnostic(
             level,
@@ -381,9 +380,13 @@ function installRendererLogMirror(): void {
         if (!diag) {
           return;
         }
-        // Skip 404 — a normal, app-handled status (see the fetch wrapper above).
         const level =
-          xhr.status >= 400 ? httpErrorDiagnosticLevel(xhr.status) : null;
+          xhr.status >= 400
+            ? httpErrorDiagnosticLevel(xhr.status, {
+                url: diag.url,
+                method: diag.method,
+              })
+            : null;
         if (level) {
           reportDiagnostic(level, "xhr", `HTTP ${xhr.status}`, {
             url: diag.url,

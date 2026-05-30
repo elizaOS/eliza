@@ -51,12 +51,9 @@ export function redactDetailsSecrets(details: unknown): unknown {
  * Map an HTTP response status the renderer fetch/XHR mirror has already
  * classified as a failure to its diagnostic level, or `null` to skip logging.
  *
- * `404` is deliberately suppressed: a missing optional route — e.g. probing
- * `/api/vincent/status` during the boot window before the plugin registers its
- * routes, or any optional-resource check — is a normal, application-handled
- * outcome, not a fault, and logging every one as a warning is false-positive
- * noise. Genuine failures still surface: `5xx` as `"error"`, every other status
- * (incl. `401`/`403`/`410`/`429`) as `"warn"`.
+ * Known optional boot probes may return 404 while plugins register. Those
+ * specific misses are suppressed; all other 404s still warn so broken renderer
+ * routes/assets remain visible in desktop diagnostics.
  *
  * Callers keep their own "is this a failure at all" guard (the fetch wrapper
  * uses `!response.ok`, the XHR wrapper uses `status >= 400`) and ask this only
@@ -64,11 +61,29 @@ export function redactDetailsSecrets(details: unknown): unknown {
  */
 export function httpErrorDiagnosticLevel(
   status: number,
+  context?: { url?: string; method?: string },
 ): "warn" | "error" | null {
-  if (status === 404) {
+  if (status === 404 && isOptionalBootProbe404(context)) {
     return null;
   }
   return status >= 500 ? "error" : "warn";
+}
+
+function isOptionalBootProbe404(context?: {
+  url?: string;
+  method?: string;
+}): boolean {
+  const method = context?.method?.toUpperCase() ?? "GET";
+  if (method !== "GET" && method !== "HEAD") return false;
+  const rawUrl = context?.url;
+  if (!rawUrl) return false;
+  let pathname = rawUrl;
+  try {
+    pathname = new URL(rawUrl, "http://localhost").pathname;
+  } catch {
+    pathname = rawUrl.split("?")[0] ?? rawUrl;
+  }
+  return pathname === "/api/vincent/status";
 }
 
 export function formatRendererDiagnosticLine(
