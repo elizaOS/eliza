@@ -714,7 +714,8 @@ Domain routing (when context is available):
 - explicit phone/call/dial third party -> phone + contacts; not calendar just because appointment mentioned
 - device/broadcast reminders ("to my phone", "all devices", "broadcast") -> automation + connectors; tasks secondary
 - owner password/saved-login lookup -> settings + secrets; CREDENTIALS handles; never raw secret in Stage 1
-- website/social focus block -> automation + settings; app block -> automation + settings; screen_time only reports
+- build/create/make/update/edit/fix/redeploy a website/web page/app/site/landing page/feature, or any imperative code/repo/file change ("add X to the site", "fix the about page", "update my landing page") -> code (SPAWN_AGENT / TASKS spawn_agent); NOT tasks/automation/settings/scheduled. This is hands-on build work for a coding sub-agent, not a scheduled task or a focus block.
+- screen-time FOCUS BLOCK only (blocking/limiting a distracting website or app, e.g. "block twitter after 9pm", "limit instagram") -> automation + settings; screen_time only reports. Does NOT apply to building/updating a site or app.
 - real flight/hotel/trip booking -> browser + calendar + payments + tasks; PERSONAL_ASSISTANT action=book_travel owns
 - Calendly availability/single-use booking links -> calendar + connectors, even with Calendly API URL
 - health/wearable reads (steps/sleep/heart rate/workouts) -> health

@@ -65,7 +65,6 @@ import {
   labelFor,
   listSessionsWithin,
   logger,
-  looksLikeTaskAgentRequest,
   messageText,
   newestSession,
   paramsRecord,
@@ -2835,9 +2834,15 @@ export const tasksAction: Action & {
       ])
     )
       return true;
+    // Availability gate only: the orchestrator service is present and this is
+    // not a personal-lifeops to-do. WHETHER the coding parent actually surfaces
+    // to the planner is decided structurally — by the action's declared
+    // contexts (["tasks","code","automation",...]), retrieval scoring against
+    // the action description/similes, and the Stage-1 context router — not by
+    // keyword-matching the request text here.
     const text = messageText(message);
     if (looksLikePersonalLifeOpsTask(text)) return false;
-    return looksLikeTaskAgentRequest(text);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
