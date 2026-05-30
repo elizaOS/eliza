@@ -58,6 +58,8 @@ import type {
   CodingAgentTaskPage,
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
+  CodingAgentUpdateTaskInput,
+  CodingAgentValidateTaskInput,
   ConfigSchemaResponse,
   CorePluginsResponse,
   CreateTriggerRequest,
@@ -989,6 +991,14 @@ declare module "./client-base" {
       taskId: string,
       options?: { cursor?: string; limit?: number },
     ): Promise<CodingAgentTaskPage<CodingAgentTaskEventRecord>>;
+    updateOrchestratorTask(
+      taskId: string,
+      input: CodingAgentUpdateTaskInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
+    validateOrchestratorTask(
+      taskId: string,
+      input: CodingAgentValidateTaskInput,
+    ): Promise<CodingAgentTaskThreadDetail | null>;
     pauseAllOrchestratorTasks(): Promise<number>;
     resumeAllOrchestratorTasks(): Promise<number>;
     stopCodingAgent(sessionId: string): Promise<boolean>;
@@ -3565,6 +3575,46 @@ ElizaClient.prototype.forkOrchestratorTask = async function (
       {
         method: "POST",
         body: JSON.stringify(input ?? {}),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.updateOrchestratorTask = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+};
+
+ElizaClient.prototype.validateOrchestratorTask = async function (
+  this: ElizaClient,
+  taskId,
+  input,
+) {
+  try {
+    return await this.fetch<CodingAgentTaskThreadDetail>(
+      `/api/orchestrator/tasks/${encodeURIComponent(taskId)}/validate`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
         headers: { "Content-Type": "application/json" },
       },
     );

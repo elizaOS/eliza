@@ -69,6 +69,36 @@ function makeCtx(acp: Partial<AcpMock>): RouteContext {
 }
 
 describe("agent-routes goal wrapper", () => {
+  it("GET /metrics returns real session counts instead of an empty object", async () => {
+    const ctx = makeCtx({
+      listSessions: vi.fn().mockResolvedValue([
+        { id: "a", status: "ready", agentType: "codex" },
+        { id: "b", status: "completed", agentType: "claude" },
+      ]),
+    });
+    const req = fakeRequest({
+      method: "GET",
+      url: "/api/coding-agents/metrics",
+    });
+    const { res, status, body } = fakeResponse();
+
+    const handled = await handleAgentRoutes(
+      req,
+      res,
+      "/api/coding-agents/metrics",
+      ctx,
+    );
+
+    expect(handled).toBe(true);
+    expect(status()).toBe(200);
+    expect(body()).toMatchObject({
+      sessionCount: 2,
+      activeSessionCount: 1,
+      byStatus: { ready: 1, completed: 1 },
+      byAgentType: { codex: 1, claude: 1 },
+    });
+  });
+
   it("POST /spawn wraps the raw task via buildGoalPrompt and stores the bare goal", async () => {
     const spawnSession = vi.fn().mockResolvedValue({
       id: "sess-1",

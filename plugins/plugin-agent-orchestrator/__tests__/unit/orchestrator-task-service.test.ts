@@ -198,7 +198,7 @@ describe("OrchestratorTaskService — lifecycle", () => {
       "preserved",
     );
     expect(preserved.title).toBe("Ship feature");
-    expect(preserved.goal).toBe("Ship the feature");
+    expect(preserved.goal).toBe("Implement and verify");
     expect(preserved.summary).toBe("real update");
     expect(await service.updateTask("missing", { priority: "low" })).toBeNull();
   });
