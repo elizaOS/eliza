@@ -201,8 +201,8 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
   return { analyser, stop };
 }
 
-type WebGPUModule = typeof import("three/webgpu");
-type TSLModule = typeof import("three/tsl");
+type WebGPUModule = Record<string, any>;
+type TSLModule = Record<string, any>;
 
 // Camera framing. The orb sits at the origin; these constants let the orb be
 // scaled to a stable on-screen pixel diameter regardless of viewport size.
@@ -220,9 +220,7 @@ function worldPerPixel(heightPx: number): number {
  * warm bloom) so the glass has a reflective rim and surface sheen. Without an
  * environment the glass reads as matte jelly rather than a refractive orb.
  */
-function makeStudioEnv(
-  THREE: WebGPUModule,
-): InstanceType<WebGPUModule["Texture"]> {
+function makeStudioEnv(THREE: WebGPUModule): any {
   const c = document.createElement("canvas");
   c.width = 512;
   c.height = 256;
