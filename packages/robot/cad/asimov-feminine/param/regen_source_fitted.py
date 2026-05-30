@@ -602,14 +602,15 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link == "WAIST_YAW":
         return _torso_skin(m)  # smooth cosmetic torso (breasts, features removed)
     spine = C.LINKS[link]["spine"]
+    if link in COSMETIC_SKIN:
+        return _skin_part(_limb_warp(m, link, slim), spine)  # head/neck/hands smooth
     if link == "IMU_ORIGIN":
-        return _skin_part(_pelvis_warp(m), "z")  # smooth pelvis block
+        return _close(_pelvis_warp(m))  # REAL hip sockets so the hips mate
     if link in FEET:
-        return _skin_part(_limb_warp(m, link, slim), spine, flat_bottom=True)
-    # No joint necking: keep the segment ends FULL WIDTH so neighbouring parts
-    # overlap solidly and read as a real mate (necking made the joints look pinched
-    # / barely connected).
-    return _skin_part(_limb_warp(m, link, slim), spine)
+        return _skin_part(_limb_warp(m, link, slim), spine, flat_bottom=True)  # clean shoe
+    # Limbs: REAL mechanical joints (original clevis/condyle/socket) + smooth slim
+    # shaft tube. Short connectors stay fully mechanical (no shaft).
+    return _close(_hybrid_part(m, link, slim))
 
 
 def run() -> None:
