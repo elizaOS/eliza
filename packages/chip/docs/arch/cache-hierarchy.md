@@ -171,10 +171,30 @@ L1 and L2 do not compress (latency tax). Only SLC.
 ## Replacement
 
 DRRIP is the default for L3 and SLC. The L3 module parameter
-`REPLACEMENT_POLICY` selects DRRIP/Hawkeye/Mockingjay/LRU. Mockingjay is
-the primary academic-quality port, validated functionally against the LRU
-reference path in the cocotb harness. Its productized DPC-3/IPC evidence
-requires follow-on work; see `docs/evidence/cache/cache-evidence-gate.yaml`.
+`REPLACEMENT_POLICY` selects the policy and the cache delegates victim
+selection and access training to a dedicated replacement sub-module — the
+choice is single-source-of-truth, not an inline reimplementation:
+
+| `REPLACEMENT_POLICY` | Policy     | Delegated module     |
+| -------------------- | ---------- | -------------------- |
+| `2'd0` (default)     | DRRIP      | `e1_drrip`           |
+| `2'd1`               | Hawkeye    | `e1_hawkeye`         |
+| `2'd2`               | Mockingjay | `e1_mockingjay_prod` |
+| `2'd3`               | LRU        | in-module tree-PLRU  |
+
+Policies 0–2 instantiate their real sub-modules over the flattened
+`{bank,set}` index space; each maintains its own way-state and the L3 FSM
+emits only the hit/install access events the sub-modules train on. The L3
+directory carries no PC, so the PC-keyed structures in Hawkeye/Mockingjay
+see a constant PC; Mockingjay's line-address-keyed STT still trains on the
+real `(set,tag)`. `verify/cocotb/cache/test_l3_replacement_distinct.py`
+proves the three delegated policies are live (each reacts to its own
+training) and pairwise-distinct (they do not collapse onto one another or
+onto tree-PLRU). Mockingjay is the primary academic-quality port,
+validated functionally against the LRU reference path in
+`verify/cocotb/cache/test_mockingjay_accuracy.py`. Productized DPC-3/IPC
+evidence requires follow-on work; see
+`docs/evidence/cache/cache-evidence-gate.yaml`.
 
 ## HPM events
 

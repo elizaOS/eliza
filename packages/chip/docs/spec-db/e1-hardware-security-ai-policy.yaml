@@ -1,6 +1,12 @@
 schema: eliza.hardware_security_ai_policy.v1
 status: DRAFT_CAPTURE_ONLY
 claim_boundary: hardware_security_policy_only_no_scanner_fuzzer_trojan_or_vulnerability_claim
+security_scanner_claim_allowed: false
+fuzzer_claim_allowed: false
+trojan_detection_claim_allowed: false
+vulnerability_claim_allowed: false
+no_vulnerability_claim_allowed: false
+release_or_tapeout_security_claim_allowed: false
 description: |
   Governing policy for AI/EDA-assisted hardware-security work on the Eliza E1
   SoC: vulnerability triage, RTL/netlist security scanning, hardware fuzzing,

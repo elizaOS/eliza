@@ -247,6 +247,11 @@ class ChipOsOptimizationGapInventoryTests(unittest.TestCase):
         self.assertIn("optimization_evidence_weak_scope", codes)
         self.assertNotIn("optimization_evidence_blocked_or_placeholder_text", codes)
 
+    def test_mvp_npu_scale_sim_skips_modeled_capability_blocked_text(self) -> None:
+        spec = next(artifact for artifact in opt.ARTIFACTS if artifact.ident == "mvp_npu_scale_sim")
+        self.assertFalse(spec.scan_blocked_text)
+        self.assertFalse(spec.must_pass)
+
     def test_artifact_skipping_blocked_text_keeps_nonpass_status_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

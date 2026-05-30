@@ -18,6 +18,15 @@ PADFRAME = ROOT / "pd/padframe/e1_demo_padframe.yaml"
 REPORT = ROOT / "build/reports/antenna_metadata.json"
 SCHEMA = "eliza.antenna_metadata.v1"
 CLAIM_BOUNDARY = "antenna_metadata_validation_only_not_padframe_or_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "padframe_claim_allowed": False,
+    "antenna_release_claim_allowed": False,
+    "openlane_signoff_claim_allowed": False,
+    "foundry_io_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 FAIL_EXIT = 1
 BLOCKED_EXIT = 2
 ANTENNA_REPORT_GLOB = "*/*-odb-checkdesignantennaproperties/report.yaml"
@@ -64,6 +73,7 @@ def write_report(
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "mode": "release" if release else "preflight",
         "source_report": evidence,
         "release_credit": False,

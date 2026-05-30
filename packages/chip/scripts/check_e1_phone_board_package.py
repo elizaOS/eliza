@@ -5869,7 +5869,10 @@ def check_footprint_3d_model_library_map() -> None:
 
     if library_map["schema"] != "eliza.e1_phone_footprint_3d_model_library_map.v1":
         raise SystemExit(f"unexpected footprint/3D map schema: {library_map['schema']}")
-    if library_map["status"] != "library_match_preparation_not_release_not_routed":
+    if (
+        library_map["status"]
+        != "library_match_preparation_with_local_routed_candidate_not_release"
+    ):
         raise SystemExit(f"unexpected footprint/3D map status: {library_map['status']}")
     rel = "board/kicad/e1-phone/footprint-3d-model-library-map.yaml"
     if rel not in manifest["current_artifacts"]["planning"]:
@@ -5948,6 +5951,26 @@ def check_footprint_3d_model_library_map() -> None:
         raise SystemExit("footprint/3D map footprint-only summary count stale")
     if summary["total_bom_lines_considered"] < len(components):
         raise SystemExit("footprint/3D map total BOM line count stale")
+    expected_routed_board = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+    routed_board_text = expected_routed_board.read_text(encoding="utf-8")
+    if summary.get("concept_board_placeholder_footprint_count") != 87:
+        raise SystemExit("footprint/3D map concept placeholder count stale")
+    concept_board = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    concept_board_text = concept_board.read_text(encoding="utf-8")
+    if summary.get("concept_board_placeholder_marker_count") != (
+        concept_board_text.count("E1_PHONE_PLACEHOLDER")
+    ):
+        raise SystemExit("footprint/3D map concept placeholder marker count stale")
+    if summary.get("routed_local_development_footprint_count") != 89:
+        raise SystemExit("footprint/3D map routed development footprint count stale")
+    if summary.get("routed_local_development_placeholder_marker_count") != (
+        routed_board_text.count("E1_PHONE_PLACEHOLDER")
+    ):
+        raise SystemExit("footprint/3D map routed placeholder marker count stale")
+    if summary.get("routed_local_development_non_release_pattern_count") != (
+        routed_board_text.count("NON_RELEASE_DEVELOPMENT_PATTERN")
+    ):
+        raise SystemExit("footprint/3D map routed development pattern count stale")
     if "needs_custom_or_supplier_step" not in status_counts:
         raise SystemExit("footprint/3D map must preserve supplier-defined component class")
 
@@ -11970,6 +11993,7 @@ def check_routed_board_step_export_contract() -> None:
         ROOT / "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml"
     )
     enclosure_fit = load_yaml(ROOT / "board/kicad/e1-phone/enclosure-fit-execution-package.yaml")
+    layout_utilization = load_yaml(ROOT / "board/kicad/e1-phone/layout-utilization.yaml")
     board_step = load_yaml(ROOT / "mechanical/e1-phone/review/board-step-readiness.json")
     routed_clearance = load_yaml(ROOT / "mechanical/e1-phone/review/routed-board-clearance.json")
     full_cad_boolean = load_yaml(
@@ -12116,6 +12140,22 @@ def check_routed_board_step_export_contract() -> None:
         raise SystemExit("routed board STEP contract cannot allow placeholder footprints")
     if not export["board_geometry_required"]["production_tracks_required"]:
         raise SystemExit("routed board STEP contract must require routed tracks")
+    geometry_required = export["board_geometry_required"]
+    edge_cut_islands = layout_utilization["edge_cut_islands"]
+    if len(edge_cut_islands) != 2:
+        raise SystemExit("layout utilization must expose exactly two split-board islands")
+    expected_geometry = {
+        "board_bbox_mm": {
+            "width": layout_utilization["board_bbox_mm"]["width"],
+            "height": layout_utilization["board_bbox_mm"]["height"],
+        },
+        "top_island_mm": edge_cut_islands[0],
+        "bottom_island_mm": edge_cut_islands[1],
+        "battery_window_mm": layout_utilization["battery_window_mm"],
+    }
+    for key, expected in expected_geometry.items():
+        if geometry_required.get(key) != expected:
+            raise SystemExit(f"routed board STEP contract geometry stale: {key}")
 
     selected_bindings = {item["function"]: item for item in export["selected_hardware_3d_binding"]}
     expected_usb_stack = usb_sidekey_selection["selected_hardware_stack"]
@@ -12287,8 +12327,14 @@ def check_screen_back_camera_collision_review() -> None:
             if result.get("pass") is not True or int(result.get("interference_count") or 0) != 0:
                 raise SystemExit(f"full CAD review AABB pair collision remains: {key}")
     else:
-        if full_cad.get("overall_status") != "pass" or full_cad.get("release_blocked") is not False:
+        if full_cad.get("overall_status") != "pass":
             raise SystemExit("full CAD B-rep boolean interference report is not passing")
+        if full_cad.get("release_credit") is not False:
+            raise SystemExit("full CAD B-rep boolean report must not grant release credit")
+        if full_cad.get("release_blocked") is not True:
+            raise SystemExit("full CAD B-rep boolean report must remain release-blocked")
+        if full_cad.get("release_blocker_category") != "routed_supplier_boolean_rerun_missing":
+            raise SystemExit("full CAD B-rep boolean release blocker category stale")
         if full_cad.get("unintentional_clashes"):
             raise SystemExit("full CAD B-rep boolean report still has unintentional clashes")
         if int(full_cad.get("parts_loaded") or 0) < 200:
@@ -14803,12 +14849,15 @@ def check_release_gates_fail_closed(manifest: dict) -> None:
     if int(routed_pcb.get("local_candidate_evidence", {}).get("segment_count") or 0) != 306:
         raise SystemExit("routed_pcb release gate local route segment count stale")
     if enclosure["status"] != (
-        "blocked_local_cad_passes_but_release_requires_supplier_models_routed_clearance_and_first_article"
+        "blocked_local_cad_incomplete_and_release_requires_supplier_models_routed_clearance_and_first_article"
     ):
         raise SystemExit("enclosure release gate status must track local CAD/release blocker split")
     if enclosure.get("local_candidate_evidence", {}).get("release_credit") is not False:
         raise SystemExit("enclosure local candidate evidence cannot grant release credit")
-    if enclosure.get("local_candidate_evidence", {}).get("full_cad_boolean_status") != "pass":
+    if (
+        enclosure.get("local_candidate_evidence", {}).get("full_cad_boolean_status")
+        != "blocked_boolean_interference_incomplete"
+    ):
         raise SystemExit("enclosure release gate full CAD boolean status stale")
     print("release gates ok: fabrication/enclosure readiness remains fail-closed")
 
@@ -15356,6 +15405,39 @@ def check_development_pattern_pinout_step_coverage() -> None:
             raise SystemExit(f"public CAD source intake record lacks sources: {record['id']}")
         if not isinstance(record.get("required_next_actions"), list) or not record.get("required_next_actions"):
             raise SystemExit(f"public CAD source intake record lacks next actions: {record['id']}")
+        if record.get("local_download_status") == "downloaded_and_hashed":
+            downloaded_artifacts = record.get("downloaded_artifacts")
+            if not isinstance(downloaded_artifacts, list) or not downloaded_artifacts:
+                raise SystemExit(
+                    f"public CAD source intake downloaded record lacks artifacts: {record['id']}"
+                )
+            for artifact in downloaded_artifacts:
+                if not isinstance(artifact, dict):
+                    raise SystemExit(
+                        f"public CAD source intake downloaded artifact must be a mapping: {record['id']}"
+                    )
+                artifact_path = artifact.get("path")
+                if not isinstance(artifact_path, str) or not artifact_path.startswith(
+                    "board/kicad/e1-phone/"
+                ):
+                    raise SystemExit(
+                        f"public CAD source intake downloaded artifact path invalid: {record['id']}"
+                    )
+                artifact_abs = ROOT / artifact_path
+                if not artifact_abs.is_file():
+                    raise SystemExit(
+                        f"public CAD source intake downloaded artifact missing: {artifact_path}"
+                    )
+                if int(artifact.get("bytes") or 0) != artifact_abs.stat().st_size:
+                    raise SystemExit(
+                        f"public CAD source intake downloaded artifact size stale: {artifact_path}"
+                    )
+                expected_sha = artifact.get("sha256")
+                actual_sha = hashlib.sha256(artifact_abs.read_bytes()).hexdigest()
+                if expected_sha != actual_sha:
+                    raise SystemExit(
+                        f"public CAD source intake downloaded artifact hash stale: {artifact_path}"
+                    )
     if public_bom_cost.get("schema") != "eliza.e1_phone_public_market_bom_cost_bands.v1":
         raise SystemExit("public market BOM cost band schema stale")
     if public_bom_cost.get("status") != "public_market_cost_bands_not_avl_quote":
@@ -15911,6 +15993,12 @@ def check_component_model_directory_filesystem_coverage() -> None:
             "supplier_sourcing_lane",
             "supplier_step_intake_status",
             "supplier_approved",
+            "public_cad_step_overlay_status",
+            "public_cad_step_overlay_file",
+            "public_cad_step_overlay_sha256",
+            "public_cad_step_overlay_bytes",
+            "public_cad_source_record",
+            "public_cad_step_overlay_release_credit",
             "pad_contract_covered_count",
             "all_pad_visuals_have_contract",
             "release_credit",
@@ -16191,9 +16279,14 @@ def check_routed_board_step_intake_template() -> None:
     expected_preflight = {
         "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
         "tool": "kicad-cli",
-        "available": False,
-        "drc_status": "blocked_tool_unavailable",
-        "erc_status": "blocked_tool_unavailable",
+        "available": True,
+        "sch_erc_available": False,
+        "pcb_drc_available": False,
+        "pcb_step_export_available": True,
+        "required_release_commands_available": False,
+        "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
+        "erc_status": "blocked_kicad_cli_lacks_sch_erc",
+        "step_export_status": "blocked_kicad_cli_7_cannot_open_current_board",
         "release_credit": False,
     }
     for field, expected in expected_preflight.items():
@@ -16268,9 +16361,9 @@ def check_routed_board_step_intake_template() -> None:
         "kicad_cli_preflight_artifact": (
             "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
         ),
-        "kicad_cli_available": "false",
-        "drc_status": "blocked_tool_unavailable",
-        "erc_status": "blocked_tool_unavailable",
+        "kicad_cli_available": "true",
+        "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
+        "erc_status": "blocked_kicad_cli_lacks_sch_erc",
         "component_3d_model_manifest": (
             "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
         ),
@@ -16338,9 +16431,9 @@ def check_routed_board_step_intake_template() -> None:
         "routed_step_artifact": row["routed_step_artifact"],
         "routed_step_sha256": row["routed_step_sha256"],
         "kicad_cli_preflight": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
-        "kicad_cli_available": False,
-        "drc_status": "blocked_tool_unavailable",
-        "erc_status": "blocked_tool_unavailable",
+        "kicad_cli_available": True,
+        "drc_status": "blocked_kicad_cli_lacks_pcb_drc",
+        "erc_status": "blocked_kicad_cli_lacks_sch_erc",
         "release_credit": False,
         "route_visual_record_count": int(row["route_segment_visual_count"]),
         "component_model_record_count": int(row["component_model_count"]),
@@ -16387,6 +16480,146 @@ def check_routed_board_step_intake_template() -> None:
         f"{row['cad_connection_count']} CAD connections, "
         f"{row['component_model_count']} component models, "
         f"{intake_detail['route_visual_record_count']} detailed route records"
+    )
+
+
+def check_routed_board_clearance_release_intake() -> None:
+    intake_path = ROOT / "mechanical/e1-phone/review/routed-board-clearance-release-intake.yaml"
+    board_step_path = ROOT / "mechanical/e1-phone/review/board-step-readiness.json"
+    candidate_metadata_path = (
+        ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml"
+    )
+    component_directory_manifest_path = (
+        ROOT / "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+    )
+    component_model_manifest_path = (
+        ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+    )
+    for path in [
+        intake_path,
+        board_step_path,
+        candidate_metadata_path,
+        component_directory_manifest_path,
+        component_model_manifest_path,
+    ]:
+        require_path(path)
+
+    def repo_path_from_packaged(value: str) -> Path:
+        return ROOT / value.removeprefix("packages/chip/")
+
+    intake = load_yaml(intake_path)
+    board_step = load_yaml(board_step_path)
+    candidate_metadata = load_yaml(candidate_metadata_path)
+    component_directory_manifest = load_yaml(component_directory_manifest_path)
+    component_model_manifest = load_yaml(component_model_manifest_path)
+    detailed_candidate = board_step.get("detailed_routed_step_candidate", {})
+    if intake["schema"] != "eliza.e1_phone_routed_board_clearance_release_intake.v1":
+        raise SystemExit("routed-board clearance release intake schema diverges")
+    if (
+        intake["status"]
+        != "local_candidate_intake_blocked_waiting_supplier_geometry_and_clearance_measurements"
+    ):
+        raise SystemExit(f"unexpected routed-board clearance intake status: {intake['status']}")
+
+    metadata = intake["intake_metadata"]
+    expected_paths = {
+        "routed_pcb_path": (
+            "packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+        ),
+        "routed_board_step_path": (
+            "packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step"
+        ),
+        "component_model_bundle_path": (
+            "packages/chip/board/kicad/e1-phone/production/step/component-models/"
+            "release-manifest.yaml"
+        ),
+        "component_model_manifest_path": (
+            "packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
+        ),
+    }
+    for key, expected in expected_paths.items():
+        if metadata.get(key) != expected:
+            raise SystemExit(f"routed-board clearance intake path stale: {key}")
+        require_path(repo_path_from_packaged(expected))
+
+    expected_hashes = {
+        "routed_pcb_sha256": metadata["routed_pcb_path"],
+        "routed_board_step_sha256": metadata["routed_board_step_path"],
+        "component_model_bundle_sha256": metadata["component_model_bundle_path"],
+        "component_model_manifest_sha256": metadata["component_model_manifest_path"],
+    }
+    for hash_key, path_value in expected_hashes.items():
+        actual = file_sha256(repo_path_from_packaged(path_value))
+        if metadata.get(hash_key) != actual:
+            raise SystemExit(f"routed-board clearance intake hash stale: {hash_key}")
+    step_file = repo_path_from_packaged(metadata["routed_board_step_path"])
+    if metadata.get("routed_board_step_size_bytes") != step_file.stat().st_size:
+        raise SystemExit("routed-board clearance intake STEP size stale")
+    if metadata.get("routed_board_step_sha256") != detailed_candidate.get("sha256"):
+        raise SystemExit("routed-board clearance intake STEP hash diverges from board-step readiness")
+    if candidate_metadata.get("artifact_sha256") != metadata.get("routed_board_step_sha256"):
+        raise SystemExit("routed-board clearance intake STEP hash diverges from metadata sidecar")
+
+    context = intake.get("local_candidate_context", {})
+    routed_step_visual_detail = candidate_metadata.get("routed_step_visual_detail", {})
+    if not isinstance(routed_step_visual_detail, dict):
+        routed_step_visual_detail = {}
+    expected_context = {
+        "evidence_class": "blocked_local_candidate_outputs_not_release",
+        "release_credit": False,
+        "routed_output_metadata": (
+            "packages/chip/board/kicad/e1-phone/production/step/"
+            "routed-board-with-components.step.metadata.yaml"
+        ),
+        "board_step_readiness": (
+            "packages/chip/mechanical/e1-phone/review/board-step-readiness.json"
+        ),
+        "kicad_cli_preflight": (
+            "packages/chip/mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json"
+        ),
+        "route_count": detailed_candidate.get("route_count"),
+        "segment_count": detailed_candidate.get("segment_count"),
+        "via_count": routed_step_visual_detail.get("board_via_count"),
+        "component_model_count": component_model_manifest.get("component_model_count"),
+        "cad_connection_count": detailed_candidate.get("cad_connection_record_count"),
+    }
+    for key, expected in expected_context.items():
+        if context.get(key) != expected:
+            raise SystemExit(f"routed-board clearance intake local candidate context stale: {key}")
+    if component_directory_manifest.get("release_allowed") is not False:
+        raise SystemExit("component model directory must remain non-release")
+
+    cases = intake.get("clearance_cases", [])
+    if len(cases) != 12:
+        raise SystemExit("routed-board clearance intake must track 12 clearance cases")
+    if any(case.get("pass") is not False or case.get("result") != "not_reviewed" for case in cases):
+        raise SystemExit("routed-board clearance intake must keep all cases unpassed")
+    expected_flags = {
+        "routed_board_step_present": True,
+        "routed_board_step_release_credit": False,
+        "routed_board_step_blocked_local_candidate": True,
+        "supplier_geometry_complete": False,
+        "boolean_interference_passed": False,
+        "all_clearance_cases_measured": False,
+        "all_clearance_cases_passed": False,
+        "reviewer_signed": False,
+        "release_allowed": False,
+    }
+    flags = intake["release_flags"]
+    for key, expected in expected_flags.items():
+        if flags.get(key) != expected:
+            raise SystemExit(f"routed-board clearance intake release flag stale: {key}")
+    for claim in [
+        "routed_clearance_passed",
+        "enclosure_ready",
+        "fabrication_ready",
+        "end_to_end_phone_ready",
+    ]:
+        if claim not in intake["forbidden_claims"]:
+            raise SystemExit(f"routed-board clearance intake missing forbidden claim {claim}")
+    print(
+        "routed-board clearance release intake ok: "
+        f"local STEP candidate present, {len(cases)} clearance cases unpassed fail-closed"
     )
 
 
@@ -16966,6 +17199,7 @@ def main() -> int:
     check_enclosure_readiness_gap_map_consistency()
     check_component_model_directory_filesystem_coverage()
     check_routed_board_step_intake_template()
+    check_routed_board_clearance_release_intake()
     check_kicad_cad_stub_audit()
     check_release_gates_fail_closed(manifest)
     check_no_orphaned_board_files()

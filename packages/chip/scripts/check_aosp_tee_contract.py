@@ -51,6 +51,14 @@ REPORT = ROOT / "build/reports/aosp_tee_contract.json"
 
 SCHEMA = "eliza.aosp_tee_contract.v1"
 CLAIM_BOUNDARY = "aosp_tee_contract_bringup_only_not_confidential_boot"
+FALSE_CLAIM_FLAGS = {
+    "aosp_confidential_boot_claim_allowed": False,
+    "attestation_claim_allowed": False,
+    "memory_encryption_claim_allowed": False,
+    "io_protection_claim_allowed": False,
+    "npu_protection_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 # Mirror packages/os/scripts/os-release-lib.mjs requiredTeeMeasurementNames and
 # packages/agent/src/services/tee-evidence.ts TeeKind / detectSimulatedEvidence.
@@ -524,6 +532,7 @@ def run_check(_args: argparse.Namespace | None = None) -> dict[str, Any]:
         "schema": SCHEMA,
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "confidentiality_claim": "BLOCKED",
         "confidentiality_reason": (
             "riscv64 has no CoVE-capable KVM/crosvm path and the 16 KB-page "

@@ -3,10 +3,13 @@
   "date": "2026-05-28",
   "claim_boundary": "Local execution and public-source reconnaissance only; not supplier-approved release evidence.",
   "tool_preflight": {
-    "kicad_cli_available": false,
+    "kicad_cli_available": true,
+    "kicad_cli_version": "7.0.11",
+    "kicad_cli_required_release_commands_available": false,
+    "step_export_status": "blocked_kicad_cli_7_cannot_open_current_board",
     "pcbnew_available": false,
-    "drc_status": "blocked_tool_unavailable",
-    "erc_status": "blocked_tool_unavailable",
+    "drc_status": "blocked_kicad_cli_7_lacks_pcb_drc",
+    "erc_status": "blocked_kicad_cli_7_lacks_sch_erc",
     "preflight_artifact": "mechanical/e1-phone/review/routed-board-kicad-cli-preflight.json",
     "required_commands": [
       "kicad-cli pcb drc board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output board/kicad/e1-phone/production/reports/drc.json",
@@ -70,7 +73,8 @@
   ],
   "remaining_blockers": [
     "supplier_approved_land_patterns_and_step_models_missing",
-    "kicad_cli_missing_for_drc_erc",
+    "kicad_cli_present_but_lacks_release_drc_erc_commands",
+    "kicad_cli_7_cannot_open_current_routed_board_for_step_export",
     "physical_routed_board_clearance_results_missing",
     "supplier_response_packs_missing",
     "production_release_intake_artifacts_missing"

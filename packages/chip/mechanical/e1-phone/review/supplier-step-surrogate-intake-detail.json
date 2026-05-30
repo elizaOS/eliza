@@ -2,16 +2,16 @@
   "all_lane_component_records_reference_surrogate": true,
   "all_lane_component_records_release_credit_false": true,
   "all_lane_component_reference_counts_match_manifest": true,
-  "all_lane_surrogate_hashes_match": true,
-  "all_lane_surrogate_sizes_match": true,
+  "all_lane_surrogate_hashes_match": false,
+  "all_lane_surrogate_sizes_match": false,
   "all_lane_surrogates_present": true,
   "all_lane_surrogates_release_credit_false": true,
   "claim_boundary": "Lane STEP files are local surrogate geometry for CAD continuity only; they are not supplier-returned, approved, or release evidence.",
   "component_model_record_count": 89,
   "lane_records": [
     {
-      "actual_bytes": 15716,
-      "actual_sha256": "03e4abb8c75de93d757483732aebc7c7d4048e1497ad709239f452e306cc7d70",
+      "actual_bytes": 15691,
+      "actual_sha256": "68513e91205083739b95bd27316302a8f8fc75a035b01a8c00c4b3b5e4339a2f",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15716,
@@ -45,20 +45,20 @@
         "R0402_DEV",
         "TVS_DIODE_2P_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "audio_speaker_microphone_flexes",
       "manifest_model_reference_count": 8,
       "release_credit": false,
-      "sha256": "03e4abb8c75de93d757483732aebc7c7d4048e1497ad709239f452e306cc7d70",
-      "size_matches_file": true,
+      "sha256": "d73dc798e0692cbde23e259c215aea53ad6f2fb2653f700cdc269ff44f792b33",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15574,
-      "actual_sha256": "ba0c76b15987c80b869b11552eb048c900cc5fd101c3df1fe4f7460745bc16f5",
+      "actual_bytes": 15549,
+      "actual_sha256": "c4f6d74e76273fb9e6f1c7c914e19247bb2586dac33207bccc6656ea524a504a",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
@@ -77,20 +77,20 @@
         "BATTERY_4P_1P00_DEV",
         "FUEL_GAUGE_WLCSP_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "battery_pack",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "ba0c76b15987c80b869b11552eb048c900cc5fd101c3df1fe4f7460745bc16f5",
-      "size_matches_file": true,
+      "sha256": "432460e6b1cb489a64c54fcfd53334f43c12c699de7958b00633922b7a2a86e6",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15608,
-      "actual_sha256": "d57f60184d4b9b8685abba02bdfccc50ce9b6d4a90498849bcdd2982b8e43bd6",
+      "actual_bytes": 15583,
+      "actual_sha256": "57d55c45b78c0482a7f574ab223c68b3a3ab5ba50027c052a5ceaf2c65ce8334",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15608,
@@ -123,20 +123,20 @@
         "QUECTEL_RG255C_GEOMETRY_DEV",
         "TESTPOINT_1MM_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "cellular",
       "manifest_model_reference_count": 8,
       "release_credit": false,
-      "sha256": "d57f60184d4b9b8685abba02bdfccc50ce9b6d4a90498849bcdd2982b8e43bd6",
-      "size_matches_file": true,
+      "sha256": "e61d1d8b156b682a45454d825c6c6b75e93b4cc9d7d8fcca214a1902e6b409b3",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15600,
-      "actual_sha256": "6772d689030ed296ad2fb1ab90e7d84badd7d2ce9bf7fefa4be335adb8a05206",
+      "actual_bytes": 15575,
+      "actual_sha256": "c8005d007b1878ce046bd4dae7f857c9437bb2190044b0fea529010897422c39",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15600,
@@ -152,20 +152,20 @@
       "footprints": [
         "ADI_MAX77860_WLP81_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "charger_power_path",
       "manifest_model_reference_count": 1,
       "release_credit": false,
-      "sha256": "6772d689030ed296ad2fb1ab90e7d84badd7d2ce9bf7fefa4be335adb8a05206",
-      "size_matches_file": true,
+      "sha256": "f880d15d87293b8fc97ed06b6ddae8ee7bc20dee15d0b0f55eea8a93fbb48422",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15660,
-      "actual_sha256": "a431e5f72fd4d9146b8cb769b3be1ed915966303da55e7f3559f4953db32b097",
+      "actual_bytes": 15635,
+      "actual_sha256": "1c02aa2cf7353993bee704ebe49fef71cb021621a16afc1af5c1385eb7293386",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15660,
@@ -186,20 +186,20 @@
         "DISPLAY_40P_0P30_DEV",
         "ESD_ARRAY_6CH_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "display_touch",
       "manifest_model_reference_count": 3,
       "release_credit": false,
-      "sha256": "a431e5f72fd4d9146b8cb769b3be1ed915966303da55e7f3559f4953db32b097",
-      "size_matches_file": true,
+      "sha256": "8c052a4f968b0c5a207473a641cd1b877299be91a4a4a829d4023eac6baa8ad0",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15574,
-      "actual_sha256": "26d608b39b29e199c81bf1993c4f1113b5b840bedefc311df488eb26284212bf",
+      "actual_bytes": 15549,
+      "actual_sha256": "b0ee4ccfd78f7d58cf936ceac12a5eb2799f61ab49fe452adc836ba3810de1df",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
@@ -218,20 +218,20 @@
         "CAMERA_30P_0P50_DEV",
         "ESD_ARRAY_6CH_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "front_camera",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "26d608b39b29e199c81bf1993c4f1113b5b840bedefc311df488eb26284212bf",
-      "size_matches_file": true,
+      "sha256": "9890de5cbb0965c60551336e2742d6b0d22ead21f03b1e13ac5e584a4ff88b7f",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15694,
-      "actual_sha256": "9cae4c18777c2ae4c70702bba5c7b12b57c7dc85e3e8612906e7f843a269870d",
+      "actual_bytes": 15669,
+      "actual_sha256": "88bd4e0466fb9fda74f9beff74159c3a23cb57625ba47c1851a81c0164c75738",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15694,
@@ -264,20 +264,20 @@
         "C0402_DEV",
         "TESTPOINT_1MM_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "pmic",
       "manifest_model_reference_count": 9,
       "release_credit": false,
-      "sha256": "9cae4c18777c2ae4c70702bba5c7b12b57c7dc85e3e8612906e7f843a269870d",
-      "size_matches_file": true,
+      "sha256": "232821ceaca70722ebc1c556b5e056445bdcab153bf83bda060a248113f2bd83",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15574,
-      "actual_sha256": "25375f8c57e7f101a799f783640ca6113af058dc5d4f2d1caa2d1f8f68b49cd9",
+      "actual_bytes": 15549,
+      "actual_sha256": "513d2fa8f1d53100b66ed91f774478ad32a8a8653c5e996a754a0128494efefd",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15574,
@@ -296,20 +296,20 @@
         "CAMERA_24P_0P50_DEV",
         "ESD_ARRAY_6CH_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "rear_camera",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "25375f8c57e7f101a799f783640ca6113af058dc5d4f2d1caa2d1f8f68b49cd9",
-      "size_matches_file": true,
+      "sha256": "32c0f16adc2f71e6466d6f0819f20afe7e0eb739d826f3073057bb419af9413e",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15716,
-      "actual_sha256": "60604605560e15058541a2274e2383fbb58a42021d5d9a349f51c8679309d50f",
+      "actual_bytes": 15691,
+      "actual_sha256": "01d7f0eaf75d9cc7013fb1c075852ee8b469c2e8284bd8eab698e169e33f9e8e",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15716,
@@ -331,20 +331,20 @@
         "HAPTIC_DRIVER_WLCSP_DEV",
         "PANASONIC_EVQ_P7_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "side_buttons",
       "manifest_model_reference_count": 3,
       "release_credit": false,
-      "sha256": "60604605560e15058541a2274e2383fbb58a42021d5d9a349f51c8679309d50f",
-      "size_matches_file": true,
+      "sha256": "aa7610603349c62dc4d3469a50a8660a695acf9442b74cc44d29cd16d19e7cf0",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15546,
-      "actual_sha256": "a724d696f4ffcfe32039785dd8b15e233df5cc4c97415e3cbc7ca6722802908e",
+      "actual_bytes": 15521,
+      "actual_sha256": "85051c3ebc420f9321548f2a1a9b610db23dda36b0c847465af95811cada456d",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15546,
@@ -362,20 +362,20 @@
       "footprints": [
         "HIROSE_DF40_80P_0P4_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "top_bottom_interconnect",
       "manifest_model_reference_count": 2,
       "release_credit": false,
-      "sha256": "a724d696f4ffcfe32039785dd8b15e233df5cc4c97415e3cbc7ca6722802908e",
-      "size_matches_file": true,
+      "sha256": "6b708d3878caba5f0d07e721c0cbaaf6ba0be41b5503f95e453e3df08bb9e19f",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15576,
-      "actual_sha256": "4339c70bb8c5de3ae9c1e8ef5ca8c3b75992008d57b92dad624cf9d189e96598",
+      "actual_bytes": 15551,
+      "actual_sha256": "7d83da1d63d491588ed02cc142898af36f30dec6e335ea58215503ed490cd3d1",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15576,
@@ -391,20 +391,20 @@
       "footprints": [
         "GCT_USB4105_GF_A_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "usb_c_receptacle_evt0",
       "manifest_model_reference_count": 1,
       "release_credit": false,
-      "sha256": "4339c70bb8c5de3ae9c1e8ef5ca8c3b75992008d57b92dad624cf9d189e96598",
-      "size_matches_file": true,
+      "sha256": "00a6fd5be45f2ad4e1fbaf0d54247b6af2f0b32755e09d0bc4f31817cd144225",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15538,
-      "actual_sha256": "aa3ebb0db009df7250d97e45788b75ad24e3d98591fc276ecc7b57ad803ab38e",
+      "actual_bytes": 15513,
+      "actual_sha256": "6d330ddb41507f152c1bb7b1d11a601d722f8c8792515356ec00208a06a8fdee",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15538,
@@ -420,20 +420,20 @@
       "footprints": [
         "TI_TPS65987_RSH_56QFN_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "usb_pd_controller",
       "manifest_model_reference_count": 1,
       "release_credit": false,
-      "sha256": "aa3ebb0db009df7250d97e45788b75ad24e3d98591fc276ecc7b57ad803ab38e",
-      "size_matches_file": true,
+      "sha256": "7b9905e0da4c790f17e1428d2b0c4fc9f3f6655403af49711f966b694ef6469e",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"
       ]
     },
     {
-      "actual_bytes": 15640,
-      "actual_sha256": "02092155682114ac5180eacd96e808f3da187e1d1b344f385cf4ff4c48d7bb8b",
+      "actual_bytes": 15615,
+      "actual_sha256": "9ebafa884b496ddf0909e9ee5acf98298468518f7713d3abaa6331ed4330516d",
       "all_component_records_reference_this_surrogate": true,
       "all_component_records_release_credit_false": true,
       "bytes": 15640,
@@ -459,12 +459,12 @@
         "PI_MATCH_0402_DEV",
         "TESTPOINT_1MM_DEV"
       ],
-      "hash_matches_file": true,
+      "hash_matches_file": false,
       "lane": "wifi_bluetooth",
       "manifest_model_reference_count": 5,
       "release_credit": false,
-      "sha256": "02092155682114ac5180eacd96e808f3da187e1d1b344f385cf4ff4c48d7bb8b",
-      "size_matches_file": true,
+      "sha256": "322ff386b0f214b286af12ff4c1ab004891f2ea18986581d46ed4c104cb1004a",
+      "size_matches_file": false,
       "status": "present_local_surrogate_step_not_supplier_approved",
       "supplier_step_intake_statuses": [
         "present_local_surrogate_step_not_supplier_approved"

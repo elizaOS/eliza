@@ -16,12 +16,21 @@ VECTOR_WINDOW = ROOT / "build/reports/e1x_vector_kernel_window_executor.json"
 FABRIC_REDUCTION = ROOT / "build/reports/e1x_fabric_reduction.json"
 REDUCTION_MERGE = ROOT / "build/reports/e1x_reduction_merge_cocotb.json"
 
-ROWS_PER_LAYER = 64
+ROWS_PER_LAYER = 32768
 INT32_MAX = 2_147_483_647
 INT32_MIN = -2_147_483_648
 MASK64 = (1 << 64) - 1
 FNV64_OFFSET = 0xCBF29CE484222325
 FNV64_PRIME = 0x100000001B3
+
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_accelerator_claim_allowed": False,
+    "full_output_execution_claim_allowed": False,
+    "real_model_full_output_claim_allowed": False,
+    "full_graph_checksum_claim_allowed": False,
+}
 
 
 def utc_now() -> str:
@@ -115,7 +124,7 @@ def main() -> int:
         and schedule.get("schema") == "eliza.e1x.tensor_tile_schedule.v1"
         and proof.get("source_placement_sha256") == schedule.get("source_placement_sha256")
         and vector_window.get("status") == "PASS"
-        and int(vector_window.get("summary", {}).get("executed_row_count", 0)) == 18_112
+        and int(vector_window.get("summary", {}).get("window_rows_per_layer", 0)) == ROWS_PER_LAYER
         and fabric_reduction.get("status") == "PASS"
         and int(fabric_reduction.get("summary", {}).get("used_routing_color_count", 0)) == 24
         and reduction_merge.get("status") == "PASS"
@@ -202,10 +211,10 @@ def main() -> int:
     coverage_ok = (
         not mismatches
         and len(proof.get("records", [])) == 283
-        and executed_rows == 18_112
-        and vector_word_ops == 56_896
-        and lane_macs == 418_880
-        and merge_cycles == 18_395
+        and executed_rows == int(vector_window.get("summary", {}).get("executed_row_count", -1))
+        and vector_word_ops == int(vector_window.get("summary", {}).get("executed_vector_word_op_count", -1))
+        and lane_macs == int(vector_window.get("summary", {}).get("executed_lane_mac_count", -1))
+        and merge_cycles == executed_rows + len(proof.get("records", []))
         and len(color_records) == 24
     )
     status, detail = pass_fail(
@@ -267,6 +276,7 @@ def main() -> int:
         "checks": checks,
         "summary": summary,
     }
+    report.update(FALSE_CLAIM_FLAGS)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if failures:

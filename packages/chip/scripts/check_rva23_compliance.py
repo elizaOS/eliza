@@ -44,6 +44,15 @@ IREE_PIN = REPO_ROOT / "compiler/iree-eliza-npu/iree-pin.json"
 AOSP_MANIFEST = REPO_ROOT / "compiler/aosp/manifest.xml"
 REPORT = REPO_ROOT / "build/reports/rva23_compliance.json"
 EVENTS: list[dict[str, str]] = []
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "phone_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "release_claim_allowed": False,
+    "riscv_profile_certification_claim_allowed": False,
+}
 
 # RVA23U64 mandatory extensions per
 # https://riscv.org/blog/risc-v-announces-ratification-of-the-rva23-profile-standard/
@@ -103,6 +112,7 @@ def write_report() -> None:
         "generated_utc": datetime.now(UTC).isoformat(),
         "status": status,
         "claim_boundary": "toolchain_profile_contract_only_not_linux_or_aosp_boot_evidence",
+        **FALSE_CLAIM_FLAGS,
         "summary": {
             "events": len(EVENTS),
             "findings": len(findings),

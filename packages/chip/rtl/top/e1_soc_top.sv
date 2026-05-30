@@ -79,6 +79,56 @@ module e1_soc_top
     output logic        platform_released_o,
     output logic        rot_halted_o,
 `endif
+`ifdef E1_SOC_AIA_SG
+    // Scatter-gather DMA + RISC-V AIA (APLIC -> IMSIC) production fabric.
+    // These leaves (rtl/dma/e1_dma_sg.sv, rtl/interrupts/e1_aplic.sv,
+    // rtl/interrupts/e1_imsic.sv) are otherwise verified only standalone; this
+    // config instantiates them in the synthesizable SoC hierarchy, routes their
+    // register/config ports to the shared MMIO fabric, wires the wired-IRQ
+    // sources through the AIA, and exports the SG-DMA's AXI4 data-mover master
+    // to the system-memory fabric.
+    //   sg_dma_irq_o : scatter-gather DMA chain/error completion IRQ.
+    //   aia_eip_o    : per IMSIC flat-file external-interrupt-pending lines
+    //                  (file 0 = hart0 S/host file, file 1 = secure/monitor
+    //                  file). Bit 0 is the host MEIP/SEIP delivered by the
+    //                  AIA wire->MSI path; the SoC owner maps file->context.
+    //   sg_dma_m_*   : AXI4 master the SG-DMA uses to fetch descriptors and
+    //                  move payload; the SoC owner attaches it to the system
+    //                  memory NoC (a burst-capable DRAM model in simulation).
+    output logic        sg_dma_irq_o,
+    output logic [1:0]  aia_eip_o,
+    // AXI4 master -- read address/data channels
+    output logic        sg_dma_m_arvalid,
+    input  logic        sg_dma_m_arready,
+    output logic [31:0] sg_dma_m_araddr,
+    output logic [7:0]  sg_dma_m_arlen,
+    output logic [2:0]  sg_dma_m_arsize,
+    output logic [1:0]  sg_dma_m_arburst,
+    output logic [3:0]  sg_dma_m_arcache,
+    output logic [2:0]  sg_dma_m_arprot,
+    input  logic        sg_dma_m_rvalid,
+    output logic        sg_dma_m_rready,
+    input  logic [31:0] sg_dma_m_rdata,
+    input  logic        sg_dma_m_rlast,
+    input  logic [1:0]  sg_dma_m_rresp,
+    // AXI4 master -- write address/data/response channels
+    output logic        sg_dma_m_awvalid,
+    input  logic        sg_dma_m_awready,
+    output logic [31:0] sg_dma_m_awaddr,
+    output logic [7:0]  sg_dma_m_awlen,
+    output logic [2:0]  sg_dma_m_awsize,
+    output logic [1:0]  sg_dma_m_awburst,
+    output logic [3:0]  sg_dma_m_awcache,
+    output logic [2:0]  sg_dma_m_awprot,
+    output logic        sg_dma_m_wvalid,
+    input  logic        sg_dma_m_wready,
+    output logic [31:0] sg_dma_m_wdata,
+    output logic [3:0]  sg_dma_m_wstrb,
+    output logic        sg_dma_m_wlast,
+    input  logic        sg_dma_m_bvalid,
+    output logic        sg_dma_m_bready,
+    input  logic [1:0]  sg_dma_m_bresp,
+`endif
     output logic [7:0]  gpio_out
 );
     logic [31:0] bootrom_rdata;
@@ -163,6 +213,17 @@ module e1_soc_top
         .clint_sel          (clint_sel),
         .dram_sel           (dram_sel)
     );
+
+`ifdef E1_SOC_AIA_SG
+    // Local decode for the scatter-gather DMA register window (0x1005_0xxx)
+    // and the AIA APLIC config window (0x1006_0xxx). These layer on top of the
+    // shared e1_mmio_decode selects, matching the pattern e1_soc_integrated
+    // uses for its cross-domain windows.
+    logic sgdma_sel;
+    logic aplic_cfg_sel;
+    assign sgdma_sel     = implemented_window && fab_addr[31:12] == 20'h1005_0;
+    assign aplic_cfg_sel = implemented_window && fab_addr[31:12] == 20'h1006_0;
+`endif
 
     // Bring-up CLINT outputs feed the CPU only in the legacy config. In the
     // E1_SOC_REAL_IRQ config the real e1_clint (in e1_soc_real_subsys) drives
@@ -885,11 +946,212 @@ module e1_soc_top
             dma_sel:                             fab_rdata = dma_rdata;
             npu_sel:                             fab_rdata = npu_rdata;
             display_sel:                         fab_rdata = display_rdata;
+`ifdef E1_SOC_AIA_SG
+            sgdma_sel:                           fab_rdata = sgdma_rdata;
+            aplic_cfg_sel:                       fab_rdata = aplic_cfg_rdata;
+`endif
             wbuf_sel:                            fab_rdata = wbuf_rdata;
             (clint_sel && !real_clint_region):   fab_rdata = clint_rdata;
             (dram_sel  && !real_dram_region):    fab_rdata = mmio_dram_rdata;
             default:                             fab_rdata = 32'hDEAD_BEEF;
         endcase
     end
+
+`ifdef E1_SOC_AIA_SG
+    // ── Scatter-gather DMA + RISC-V AIA production fabric ───────────────────
+    //
+    // This block instantiates three production leaves that are otherwise
+    // verified only by standalone testbenches:
+    //   * e1_dma_sg   — descriptor-ring AXI4 scatter-gather DMA (rtl/dma).
+    //   * e1_aplic    — AIA Advanced PLIC, wire->MSI bridge (rtl/interrupts).
+    //   * e1_imsic    — AIA Incoming MSI Controller (rtl/interrupts).
+    //
+    // The SG-DMA register port hangs off the shared MMIO fabric (sgdma_sel @
+    // 0x1005_0xxx); its full-AXI4 burst master (sg_dma_m_*) is exported to the
+    // system-memory fabric so descriptor fetch + payload copy + status
+    // writeback ride the SoC's real memory path (a burst-capable DRAM model in
+    // simulation).
+    //
+    // The AIA path turns the SoC's wired peripheral IRQs into the modern
+    // RISC-V MSI delivery the kernel programs via riscv,aplic + riscv,imsics:
+    // the APLIC config window (aplic_cfg_sel @ 0x1006_0xxx) programs per-source
+    // mode/enable/target; an asserted+enabled source emits an MSI to the IMSIC
+    // doorbell; the IMSIC raises the per-file external IRQ (aia_eip_o).
+
+    // --- SG-DMA register read data (single-cycle combinational, like e1_dma).
+    logic [31:0] sgdma_rdata;
+    logic        sg_dma_irq;
+
+    e1_dma_sg #(
+        .ADDR_W   (32),
+        .DATA_W   (32),
+        .MAX_BEATS(16)
+    ) u_dma_sg (
+        .clk      (clk),
+        .rst_n    (rst_n),
+        .valid    (fab_valid && sgdma_sel),
+        .write    (fab_write),
+        .addr     (fab_addr[7:2]),
+        .wdata    (fab_wdata),
+        .rdata    (sgdma_rdata),
+        .irq      (sg_dma_irq),
+        .m_arvalid(sg_dma_m_arvalid),
+        .m_arready(sg_dma_m_arready),
+        .m_araddr (sg_dma_m_araddr),
+        .m_arlen  (sg_dma_m_arlen),
+        .m_arsize (sg_dma_m_arsize),
+        .m_arburst(sg_dma_m_arburst),
+        .m_arcache(sg_dma_m_arcache),
+        .m_arprot (sg_dma_m_arprot),
+        .m_rvalid (sg_dma_m_rvalid),
+        .m_rready (sg_dma_m_rready),
+        .m_rdata  (sg_dma_m_rdata),
+        .m_rlast  (sg_dma_m_rlast),
+        .m_rresp  (sg_dma_m_rresp),
+        .m_awvalid(sg_dma_m_awvalid),
+        .m_awready(sg_dma_m_awready),
+        .m_awaddr (sg_dma_m_awaddr),
+        .m_awlen  (sg_dma_m_awlen),
+        .m_awsize (sg_dma_m_awsize),
+        .m_awburst(sg_dma_m_awburst),
+        .m_awcache(sg_dma_m_awcache),
+        .m_awprot (sg_dma_m_awprot),
+        .m_wvalid (sg_dma_m_wvalid),
+        .m_wready (sg_dma_m_wready),
+        .m_wdata  (sg_dma_m_wdata),
+        .m_wstrb  (sg_dma_m_wstrb),
+        .m_wlast  (sg_dma_m_wlast),
+        .m_bvalid (sg_dma_m_bvalid),
+        .m_bready (sg_dma_m_bready),
+        .m_bresp  (sg_dma_m_bresp)
+    );
+
+    assign sg_dma_irq_o = sg_dma_irq;
+
+    // --- RISC-V AIA: APLIC (wire->MSI) -> IMSIC (per-hart interrupt files).
+    localparam int unsigned AIA_NUM_SOURCES = 4;  // timer, dma(sg), npu, vsync
+    localparam int unsigned AIA_NUM_IDS     = 63;
+    localparam int unsigned AIA_NUM_FILES   = 2;   // host S file + secure file
+    localparam int unsigned AIA_NUM_FLAT    = AIA_NUM_FILES;  // NUM_HARTS=1
+    localparam int unsigned AIA_ID_W        = $clog2(AIA_NUM_IDS + 1);
+    localparam int unsigned AIA_SRC_W       = $clog2(AIA_NUM_SOURCES + 1);
+
+    // Wired AIA sources: source id 1=timer, 2=sg-dma, 3=npu, 4=vsync. The
+    // scatter-gather DMA's completion IRQ replaces the word-copy DMA on the
+    // AIA path (the production DMA is the SG engine).
+    wire [AIA_NUM_SOURCES-1:0] aia_sources = {irq_vsync, irq_npu,
+                                              sg_dma_irq, irq_timer};
+
+    // APLIC config register-port decode. The config window write maps the
+    // 32-bit word index to {domain, field, source}:
+    //   fab_addr[2]        -> domain   (0=M, 1=S)
+    //   fab_addr[4:3]      -> field    (0=sourcecfg, 1=ie, 2=target)
+    //   fab_addr[4+SRC_W:5]-> source id (1..NUM_SOURCES)
+    // and fab_wdata is the field payload. This is a minimal programming shim;
+    // the full riscv,aplic MMIO layout is generated at DT-binding time.
+    logic                  aplic_cfg_we;
+    logic                  aplic_cfg_domain;
+    logic [AIA_SRC_W-1:0]  aplic_cfg_src;
+    logic [1:0]            aplic_cfg_field;
+    logic [31:0]           aplic_cfg_rdata;
+
+    assign aplic_cfg_we     = fab_valid && fab_write && aplic_cfg_sel;
+    assign aplic_cfg_domain = fab_addr[2];
+    assign aplic_cfg_field  = fab_addr[4:3];
+    assign aplic_cfg_src    = fab_addr[5 +: AIA_SRC_W];
+    // Read returns the live source-line vector for observability/bring-up.
+    assign aplic_cfg_rdata  = {{(32-AIA_NUM_SOURCES){1'b0}}, aia_sources};
+
+    // APLIC -> IMSIC MSI channel.
+    logic        aplic_msi_we;
+    logic [31:0] aplic_msi_addr;
+    logic [31:0] aplic_msi_id;
+    logic        aplic_msi_world;
+
+    e1_aplic #(
+        .NUM_SOURCES     (AIA_NUM_SOURCES),
+        .NUM_IDS         (AIA_NUM_IDS),
+        .NUM_TARGETS     (AIA_NUM_FLAT),
+        .IMSIC_PAGE_BYTES(4096)
+    ) u_aplic (
+        .clk        (clk),
+        .rst_n      (rst_n),
+        .irq_sources(aia_sources),
+        .cfg_we_i   (aplic_cfg_we),
+        .cfg_domain_i(aplic_cfg_domain),
+        .cfg_src_i  (aplic_cfg_src),
+        .cfg_field_i(aplic_cfg_field),
+        .cfg_wdata_i(fab_wdata),
+        .msi_we_o   (aplic_msi_we),
+        .msi_addr_o (aplic_msi_addr),
+        .msi_id_o   (aplic_msi_id),
+        .msi_world_o(aplic_msi_world)
+    );
+
+    // IMSIC interrupt files. eie/threshold/claim are driven by the hart's CSR
+    // accessor in silicon; in this integration they are tied to a deliver-all
+    // policy (threshold disabled, claim idle) so an APLIC-delivered MSI raises
+    // the file IRQ, and the per-id enable is programmed via eie below.
+    logic [AIA_NUM_FLAT-1:0]            imsic_eip_any;
+    logic [AIA_ID_W-1:0]               imsic_topei_id   [AIA_NUM_FLAT];
+    logic [AIA_ID_W-1:0]               imsic_topei_prio [AIA_NUM_FLAT];
+    logic [AIA_NUM_FLAT-1:0]            imsic_irq;
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic                              imsic_msi_accept;
+    logic                              imsic_msi_reject;
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    // CSR-side enable programming reuses the APLIC config window: a target
+    // write (field=2) to source s also enables EIID s on the targeted file so
+    // the delivered MSI is deliverable. The eithreshold stays 0 (no masking).
+    logic [AIA_NUM_FLAT-1:0] imsic_eie_we;
+    logic [AIA_ID_W-1:0]     imsic_eie_id;
+    logic [AIA_NUM_FLAT-1:0] imsic_eie_val;
+    // Enable EIID = source id on the host file (file 0) when the M-domain
+    // target for that source is programmed.
+    assign imsic_eie_we  = {{(AIA_NUM_FLAT-1){1'b0}},
+                            (aplic_cfg_we && aplic_cfg_field == 2'd2
+                             && !aplic_cfg_domain)};
+    assign imsic_eie_id  = {{(AIA_ID_W-AIA_SRC_W){1'b0}}, aplic_cfg_src};
+    assign imsic_eie_val = {AIA_NUM_FLAT{1'b1}};
+
+    e1_imsic #(
+        .NUM_HARTS  (1),
+        .NUM_IDS    (AIA_NUM_IDS),
+        .NUM_GUESTS (0),
+        .SECURE_FILE(1'b1),
+        .PAGE_BYTES (4096)
+    ) u_imsic (
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .msi_we_i     (aplic_msi_we),
+        .msi_addr_i   (aplic_msi_addr),
+        .msi_id_i     (aplic_msi_id),
+        .msi_world_i  (aplic_msi_world),
+        .msi_accept_o (imsic_msi_accept),
+        .msi_reject_o (imsic_msi_reject),
+        .eip_any_o    (imsic_eip_any),
+        .topei_id_o   (imsic_topei_id),
+        .topei_prio_o (imsic_topei_prio),
+        .topei_claim_i('0),
+        .eie_we_i     (imsic_eie_we),
+        .eie_id_i     (imsic_eie_id),
+        .eie_val_i    (imsic_eie_val),
+        .thr_we_i     ('0),
+        .thr_val_i    ('0),
+        .irq_o        (imsic_irq)
+    );
+
+    assign aia_eip_o = imsic_irq;
+
+    // topei id/prio are claimed by the hart CSR accessor in silicon; absorb
+    // them here so the integration top lints clean without that consumer.
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic unused_aia;
+    /* verilator lint_on UNUSEDSIGNAL */
+    assign unused_aia = ^{imsic_eip_any, imsic_topei_id[0], imsic_topei_id[1],
+                          imsic_topei_prio[0], imsic_topei_prio[1],
+                          imsic_msi_accept, imsic_msi_reject};
+`endif
 
 endmodule

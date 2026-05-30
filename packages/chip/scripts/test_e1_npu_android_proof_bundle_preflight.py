@@ -68,6 +68,15 @@ class AndroidProofBundlePreflightTests(unittest.TestCase):
             report["tradefed_build_command"],
             "scripts/android/build_cts_vts_tradefed.sh",
         )
+        for claim_key in (
+            "runtime_nnapi_claim_allowed",
+            "android_boot_claim_allowed",
+            "release_claim_allowed",
+            "phone_claim_allowed",
+            "silicon_claim_allowed",
+            "production_readiness_claim_allowed",
+        ):
+            self.assertIs(report[claim_key], False, claim_key)
 
     def test_tradefed_blockers_point_to_build_helper(self) -> None:
         with tempfile.TemporaryDirectory() as td:

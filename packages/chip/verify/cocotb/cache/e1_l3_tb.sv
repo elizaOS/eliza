@@ -20,7 +20,11 @@ module e1_l3_tb #(
     parameter int unsigned LINE_BYTES = 64,
     parameter int unsigned BANKS      = 2,
     parameter int unsigned NUM_L2     = 2,
-    parameter int unsigned PADDR_W    = 40
+    parameter int unsigned PADDR_W    = 40,
+    // 0=DRRIP 1=Hawkeye 2=Mockingjay 3=LRU. Default keeps the DRRIP path
+    // exercised by the existing functional and cache-pressure tests; the
+    // replacement-distinctness test overrides it via REPLACEMENT_POLICY=N.
+    parameter logic [1:0] REPLACEMENT_POLICY = 2'd0
 )(
     input  logic                       clk,
     input  logic                       rst_n,
@@ -86,7 +90,7 @@ module e1_l3_tb #(
         .BANKS      (BANKS),
         .NUM_L2     (NUM_L2),
         .PADDR_W    (PADDR_W),
-        .REPLACEMENT_POLICY (2'd0) // DRRIP/SRRIP path; pick_victim uses RRPV
+        .REPLACEMENT_POLICY (REPLACEMENT_POLICY)
     ) u_l3 (
         .clk                    (clk),
         .rst_n                  (rst_n),

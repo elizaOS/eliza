@@ -81,6 +81,14 @@ REQUIRED_CONTEXT_INPUTS = frozenset(
 )
 
 REQUIRED_QUARANTINE_ROOT = "build/ai_eda/power_thermal/"
+FALSE_CLAIM_FLAGS = {
+    "power_map_claim_allowed": False,
+    "thermal_map_claim_allowed": False,
+    "ir_drop_claim_allowed": False,
+    "pdn_signoff_claim_allowed": False,
+    "tops_per_watt_claim_allowed": False,
+    "release_or_tapeout_claim_allowed": False,
+}
 
 
 def fail(message: str, errors: list[str]) -> None:
@@ -122,6 +130,9 @@ def main() -> int:
         fail("unsafe claim boundary", errors)
     if policy.get("status") != "DRAFT_CAPTURE_ONLY":
         fail("status must be DRAFT_CAPTURE_ONLY", errors)
+    for flag, expected in FALSE_CLAIM_FLAGS.items():
+        if policy.get(flag) is not expected:
+            fail(f"{flag} must be false", errors)
 
     require_set(
         policy.get("blocked_actions"), "blocked_actions", set(REQUIRED_BLOCKED_ACTIONS), errors

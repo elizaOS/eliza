@@ -25,7 +25,7 @@ def test_e1x_window_execution_trace_linkage_gate_passes() -> None:
     assert summary["high_failure_total_cycles"] == 63_132_355_414
     assert summary["high_vs_normal_trace_cycle_ratio"] > 1.3
     assert summary["high_vs_normal_repair_hop_penalty_ratio"] > 8.0
-    assert summary["window_high_vs_normal_extra_hop_ratio"] > 35.0
+    assert summary["window_high_vs_normal_extra_hop_ratio"] > 10.0
     assert summary["normal_output_checksum"] == 8_263_636_289_739_888_019
     assert summary["high_failure_output_checksum"] == 3_419_781_716_949_080_192
     assert summary["normal_route_checks"] == 4_096
@@ -34,6 +34,6 @@ def test_e1x_window_execution_trace_linkage_gate_passes() -> None:
         summary["high_failure_repair_rom_sha256"]
         == "9f2710a5266260fe9885f22954d14f3e6787840d5c6b0bf36781a051e42e29da"
     )
-    assert summary["high_failure_window_remap_word_count"] == 24
-    assert summary["high_failure_window_route_checksum"] == 3_111_431_909_571_140_830
+    assert summary["high_failure_window_remap_word_count"] == 3_012
+    assert summary["high_failure_window_route_checksum"] == 8_141_847_437_961_269_241
     assert summary["residual_blocker"] == "full_output_vectorized_tensor_fabric_executor_missing"

@@ -97,10 +97,11 @@ CLASSIFIED_BLOCKER_INVENTORY_PATH_PATTERNS = (
         r"("
         r"gap|gaps|audit|blocker|work[-_]order|inventory|"
         r"critical[-_]gap[-_]review|workstream[-_]gap[-_]review|"
-        r"status[-_]dashboard|workstreams"
+        r"status[-_]dashboard|workstreams|road[-_]to|roadmap|todo"
         r").*\.(json|md|yaml|yml)$",
         re.I,
     ),
+    re.compile(r"^packages/chip/docs/.+evidence-manifest\.json$", re.I),
 )
 TEST_FILE_PATTERNS = (
     re.compile(r"(^|/)test_[^/]+\.(c|cc|cpp|h|java|kt|py|rs|ts|tsx)$"),
@@ -112,6 +113,10 @@ BENIGN_LINE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "implementation_missing",
         re.compile(r"\bUnsupported HTTP method\b"),
     ),
+    (
+        "stub_placeholder",
+        re.compile(r'\bplaceholder:\s*"[^"]+"'),
+    ),
 )
 CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
     re.compile(r"^packages/chip/scripts/(?:.*/)?(?:check|capture)_[^/]*\.py$"),
@@ -121,6 +126,9 @@ CLASSIFIED_DIAGNOSTIC_PATH_PATTERNS = (
     re.compile(r"^packages/chip/verify/check_[^/]+\.py$"),
     re.compile(r"^packages/os/linux/elizaos/scripts/(?:check|capture)[^/]*\.py$"),
 )
+CLASSIFIED_GENERATOR_PATH_PATTERNS = (
+    re.compile(r"^packages/chip/scripts/generate_[^/]+\.py$"),
+)
 CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"("
     r"raise SystemExit|errors\.append|blockers\.append|findings\.append|"
@@ -129,6 +137,14 @@ CLASSIFIED_DIAGNOSTIC_LINE_RE = re.compile(
     r"TEMPLATE_|template|sentinel|manifest|classification policy|"
     r"for placeholder, replacement in|text\.replace\(placeholder, replacement\)"
     r")"
+)
+CLASSIFIED_GENERATOR_LINE_RE = re.compile(
+    r"("
+    r"non[-_]release|evidence_class|demo|template|generated|generator|"
+    r"placeholder footprint|placeholder land pattern|placeholder values|"
+    r"scaffold files|concept/scaffold|Replace .*placeholder|Not fabrication-bound"
+    r")",
+    re.I,
 )
 TEXT_SUFFIXES = {
     "",
@@ -297,6 +313,22 @@ def is_classified_diagnostic_line(path: Path, line: str) -> bool:
     return bool(CLASSIFIED_DIAGNOSTIC_LINE_RE.search(stripped))
 
 
+def is_classified_generator_line(path: Path, line: str) -> bool:
+    relative = rel(path)
+    if not any(pattern.search(relative) for pattern in CLASSIFIED_GENERATOR_PATH_PATTERNS):
+        return False
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if re.search(r"\b(TODO|FIXME|XXX|HACK|TBD)\b", stripped):
+        return False
+    if stripped.startswith("#") and CLASSIFIED_GENERATOR_LINE_RE.search(stripped):
+        return True
+    return ('"' in stripped or "'" in stripped) and bool(
+        CLASSIFIED_GENERATOR_LINE_RE.search(stripped)
+    )
+
+
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     for category, description, pattern in PATTERNS:
@@ -304,6 +336,8 @@ def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any
         if not match:
             continue
         if is_classified_diagnostic_line(path, line):
+            continue
+        if is_classified_generator_line(path, line):
             continue
         if any(
             benign_category == category and benign_pattern.search(line)

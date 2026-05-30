@@ -29,8 +29,31 @@ COMPONENT_3D_BINDING_MATRIX = (
     ROOT / "board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv"
 )
 ZONE_FILL_REPORT = ROOT / "board/kicad/e1-phone/production/reports/zone-fill.json"
+RAW_KICAD_REPORT_REQUIREMENTS = {
+    "board/kicad/e1-phone/production/reports/drc.json": {
+        "kind": "drc",
+        "source_hash_field": "source_board_sha256",
+        "required_command_fragments": ("kicad-cli", "pcb", "drc"),
+    },
+    "board/kicad/e1-phone/production/reports/erc.json": {
+        "kind": "erc",
+        "source_hash_field": "source_schematic_sha256",
+        "required_command_fragments": ("kicad-cli", "sch", "erc"),
+    },
+}
 REPORT = ROOT / "build/reports/e1_phone_routed_output_content.json"
 EXPECTED_SCHEMA = "eliza.e1_phone_routed_board_release_acceptance_matrix.v1"
+CLAIM_BOUNDARY = (
+    "routed_output_content_validation_only_not_board_fabrication_or_production_release_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "routed_board_release_claim_allowed": False,
+    "board_fabrication_claim_allowed": False,
+    "kicad_release_claim_allowed": False,
+    "supplier_approval_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 COMMON_FIELDS = {
     "artifact_id",
     "source_requirement_id",
@@ -363,6 +386,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def write_report(payload: dict[str, Any], report_path: Path) -> None:
+    payload.setdefault("claim_boundary", CLAIM_BOUNDARY)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        payload.setdefault(key, expected)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -1111,6 +1137,37 @@ def text_artifact_release_failures(path: Path, text: str) -> list[str]:
     )
 
 
+def raw_kicad_report_failures(path_text: str, parsed: Any) -> list[str]:
+    requirements = RAW_KICAD_REPORT_REQUIREMENTS.get(path_text)
+    if not requirements:
+        return []
+    failures: list[str] = []
+    if not isinstance(parsed, dict):
+        return [f"raw_kicad_{requirements['kind']}_report_not_mapping"]
+    if parsed.get("raw_kicad_report_kind") != requirements["kind"]:
+        failures.append(f"raw_kicad_{requirements['kind']}_report_kind_missing")
+    command = str(parsed.get("raw_kicad_cli_command") or "")
+    for fragment in requirements["required_command_fragments"]:
+        if fragment not in command:
+            failures.append(f"raw_kicad_{requirements['kind']}_command_missing:{fragment}")
+    if not parsed.get("kicad_cli_version"):
+        failures.append(f"raw_kicad_{requirements['kind']}_tool_version_missing")
+    if not parsed.get(requirements["source_hash_field"]):
+        failures.append(
+            f"raw_kicad_{requirements['kind']}_{requirements['source_hash_field']}_missing"
+        )
+    if parsed.get("tool_exit_code") != 0:
+        failures.append(f"raw_kicad_{requirements['kind']}_tool_exit_code_not_zero")
+    raw_payload = parsed.get("raw_kicad_cli_report")
+    if not isinstance(raw_payload, (dict, list)) or not raw_payload:
+        failures.append(f"raw_kicad_{requirements['kind']}_payload_missing")
+    if parsed.get("schema") == "eliza.e1_phone_routed_output_candidate_report.v1":
+        failures.append(f"raw_kicad_{requirements['kind']}_is_candidate_metadata_not_cli_report")
+    if str(parsed.get("claim_boundary") or "").lower().find("candidate") >= 0:
+        failures.append(f"raw_kicad_{requirements['kind']}_claim_boundary_candidate")
+    return failures
+
+
 def collect_required_outputs(
     matrix: dict[str, Any],
     *,
@@ -1161,6 +1218,7 @@ def content_failures(path_text: str) -> list[str]:
         failures.extend(
             f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
         )
+        failures.extend(raw_kicad_report_failures(path_text, parsed))
         if isinstance(parsed, dict) and parsed.get("disposition") != "approved":
             failures.append("disposition_not_approved")
     elif suffix == ".csv":

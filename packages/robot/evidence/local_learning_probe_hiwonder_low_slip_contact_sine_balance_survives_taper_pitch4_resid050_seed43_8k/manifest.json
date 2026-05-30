@@ -1,0 +1,1112 @@
+{
+  "regime": "alberta_streaming",
+  "controller_type": "cbp",
+  "phase_promotion_schema": "alberta-phase-promotion-v1",
+  "curriculum_version": 2,
+  "pca_dim": 32,
+  "active_tasks": [
+    "walk_forward"
+  ],
+  "obs_dim": 88,
+  "action_dim": 12,
+  "output_dim": 24,
+  "profile_id": "hiwonder-ainex",
+  "profile_version": "1.0.0",
+  "proprio_dim": 56,
+  "text_dim": 32,
+  "ckpt": "alberta_policy.npz",
+  "requested_total_steps": 8000,
+  "steps_per_task": 8000,
+  "total_steps": 8000,
+  "episode_steps": 400,
+  "action_scale": 1.0,
+  "action_scale_schedule": {
+    "schema": "alberta-action-scale-schedule-v1",
+    "mode": "full_physical_success_gate_ramp",
+    "enabled": false,
+    "initial_scale": 1.0,
+    "target_scale": 1.0,
+    "increment": 0.05,
+    "criteria": {
+      "failure_rate_lte": 0.0,
+      "success_rate_gte": 1.0,
+      "physical_success": true
+    },
+    "rationale": "start at a stable small action scale, then ramp only after full GoalChecker physical success",
+    "final_scale": 1.0,
+    "events": [
+      {
+        "phase": null,
+        "task": null,
+        "step": 0,
+        "from_scale": null,
+        "to_scale": 1.0,
+        "reason": "initial_stability_scale",
+        "gate_passed": true
+      }
+    ]
+  },
+  "eval_episodes": 1,
+  "seed": 43,
+  "domain_rand": false,
+  "locomotion_action_prior": "hiwonder_low_slip_contact_sine",
+  "locomotion_prior_residual_scale": 0.5,
+  "locomotion_prior_residual_mode": "hiwonder_stride_mod",
+  "locomotion_prior_residual_scale_schedule": {
+    "schema": "alberta-locomotion-prior-residual-schedule-v1",
+    "mode": "full_physical_success_gate_ramp",
+    "enabled": false,
+    "initial_scale": 0.5,
+    "target_scale": 0.5,
+    "increment": 0.01,
+    "criteria": {
+      "failure_rate_lte": 0.0,
+      "physical_success": true
+    },
+    "rationale": "when using a locomotion prior, start with no residual override so the robot first demonstrates stable prior gait, then admit learned residual control only after full GoalChecker physical success; actor updates are scaled by current residual authority so the residual policy only learns while its actions are causal",
+    "final_scale": 0.5,
+    "events": [
+      {
+        "phase": null,
+        "task": null,
+        "step": 0,
+        "from_scale": null,
+        "to_scale": 0.5,
+        "reason": "initial_prior_residual_scale",
+        "gate_passed": true
+      }
+    ]
+  },
+  "locomotion_prior_feedback": {
+    "pitch": 4.0,
+    "roll": 0.5,
+    "yaw": 0.0
+  },
+  "phase_promotion": {
+    "gate": "curriculum_goal_checker",
+    "status": "failed",
+    "success_threshold": 1.0,
+    "eval_episodes": 1,
+    "eval_interval_steps": 2000,
+    "max_phase_attempts": 1,
+    "promoted_phase_count": 0,
+    "requested_phase_count": 1,
+    "failed_phase": 0,
+    "enabled": false,
+    "min_success_rate": 1.0,
+    "all_promoted": false,
+    "phases": [
+      {
+        "phase": 0,
+        "task": "walk_forward",
+        "attempt": 1,
+        "action_scale_start": 1.0,
+        "action_scale_end": 1.0,
+        "action_scale_target": 1.0,
+        "action_scale_events": [],
+        "locomotion_prior_residual_scale_start": 0.5,
+        "locomotion_prior_residual_scale_end": 0.5,
+        "locomotion_prior_residual_scale_target": 0.5,
+        "locomotion_prior_residual_scale_events": [],
+        "steps_trained": 8000,
+        "cumulative_steps": 8000,
+        "eval_episodes": 1,
+        "pre_eval_mean_return": -235.00151865775328,
+        "pre_eval_success_rate": 0.0,
+        "eval_mean_return": -232.3711627622397,
+        "success_rate": 0.0,
+        "eval_success_rate": 0.0,
+        "failure_rate": 1.0,
+        "physical_fall_rate": 0.0,
+        "support_contract_failure_rate": 1.0,
+        "termination_summary": {
+          "done_reason_counts": {
+            "support_contract": 1
+          },
+          "physical_fall_rate": 0.0,
+          "support_contract_failure_rate": 1.0
+        },
+        "mean_final_delta_x_m": 0.22451990726420776,
+        "mean_final_delta_y_m": -0.0029577737744331707,
+        "mean_final_delta_yaw_rad": 0.07385835351289113,
+        "mean_final_torso_z_m": 0.1906535537984972,
+        "tracked_body_name": "body_link",
+        "mean_final_tracked_delta_x_m": 0.2229569876696633,
+        "mean_final_tracked_delta_y_m": -0.002793980885047488,
+        "mean_final_tracked_delta_z_m": -0.04790401469040956,
+        "mean_final_tracked_z_m": 0.19209598530959043,
+        "physical_success": false,
+        "physical_checks": {
+          "tracked_height_present": true,
+          "tracked_delta_x_forward": false,
+          "tracked_lateral_drift_bound": true,
+          "yaw_drift_bound": true,
+          "min_swing_foot_clearance_m": true,
+          "max_foot_slip_m_s": true,
+          "max_self_collision_count": true,
+          "no_fall": true,
+          "hold_s": false,
+          "min_alternating_foot_contacts": true
+        },
+        "movement_summary": {
+          "delta_x_m": {
+            "min": 0.22451990726420776,
+            "max": 0.22451990726420776,
+            "mean": 0.22451990726420776,
+            "final": 0.22451990726420776
+          },
+          "delta_y_m": {
+            "min": -0.0029577737744331707,
+            "max": -0.0029577737744331707,
+            "mean": -0.0029577737744331707,
+            "final": -0.0029577737744331707
+          },
+          "delta_yaw_rad": {
+            "min": 0.07385835351289113,
+            "max": 0.07385835351289113,
+            "mean": 0.07385835351289113,
+            "final": 0.07385835351289113
+          },
+          "torso_z_m": {
+            "min": 0.1906535537984972,
+            "max": 0.1906535537984972,
+            "mean": 0.1906535537984972,
+            "final": 0.1906535537984972
+          },
+          "tracked_delta_x_m": {
+            "min": 0.2229569876696633,
+            "max": 0.2229569876696633,
+            "mean": 0.2229569876696633,
+            "final": 0.2229569876696633
+          },
+          "tracked_delta_y_m": {
+            "min": -0.002793980885047488,
+            "max": -0.002793980885047488,
+            "mean": -0.002793980885047488,
+            "final": -0.002793980885047488
+          },
+          "tracked_delta_z_m": {
+            "min": -0.04790401469040956,
+            "max": -0.04790401469040956,
+            "mean": -0.04790401469040956,
+            "final": -0.04790401469040956
+          },
+          "tracked_z_m": {
+            "min": 0.19209598530959043,
+            "max": 0.19209598530959043,
+            "mean": 0.19209598530959043,
+            "final": 0.19209598530959043
+          },
+          "tracked_translation_drift_m": {
+            "min": 0.22297449333929745,
+            "max": 0.22297449333929745,
+            "mean": 0.22297449333929745,
+            "final": 0.22297449333929745
+          },
+          "max_tracked_delta_x_m": {
+            "min": 0.2229569876696633,
+            "max": 0.2229569876696633,
+            "mean": 0.2229569876696633,
+            "final": 0.2229569876696633
+          },
+          "min_tracked_delta_x_m": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "max_tracked_delta_y_m": {
+            "min": 0.020126293194480938,
+            "max": 0.020126293194480938,
+            "mean": 0.020126293194480938,
+            "final": 0.020126293194480938
+          },
+          "min_tracked_delta_y_m": {
+            "min": -0.03228184161194004,
+            "max": -0.03228184161194004,
+            "mean": -0.03228184161194004,
+            "final": -0.03228184161194004
+          },
+          "max_abs_delta_yaw_rad": {
+            "min": 0.17849148715587487,
+            "max": 0.17849148715587487,
+            "mean": 0.17849148715587487,
+            "final": 0.17849148715587487
+          },
+          "foot_contact_switches": {
+            "min": 2.0,
+            "max": 2.0,
+            "mean": 2.0,
+            "final": 2.0
+          },
+          "max_swing_foot_clearance_m": {
+            "min": 0.07740454375743866,
+            "max": 0.07740454375743866,
+            "mean": 0.07740454375743866,
+            "final": 0.07740454375743866
+          },
+          "max_foot_slip_m_s": {
+            "min": 0.26211419701576233,
+            "max": 0.26211419701576233,
+            "mean": 0.26211419701576233,
+            "final": 0.26211419701576233
+          },
+          "max_self_collision_count": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          }
+        },
+        "reward_term_summary": {
+          "action_rate": {
+            "min": -0.0005255883212021219,
+            "max": -0.0005255883212021219,
+            "mean": -0.0005255883212021219,
+            "final": -0.0005255883212021219
+          },
+          "alive": {
+            "min": 81.0,
+            "max": 81.0,
+            "mean": 81.0,
+            "final": 81.0
+          },
+          "alternating_contact": {
+            "min": 47.391376243797424,
+            "max": 47.391376243797424,
+            "mean": 47.391376243797424,
+            "final": 47.391376243797424
+          },
+          "contact_cadence": {
+            "min": 8.996752442245182,
+            "max": 8.996752442245182,
+            "mean": 8.996752442245182,
+            "final": 8.996752442245182
+          },
+          "double_support": {
+            "min": -7.0,
+            "max": -7.0,
+            "mean": -7.0,
+            "final": -7.0
+          },
+          "drift": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "energy": {
+            "min": -0.002424446688033641,
+            "max": -0.002424446688033641,
+            "mean": -0.002424446688033641,
+            "final": -0.002424446688033641
+          },
+          "foot_clearance": {
+            "min": 8.633872720674814,
+            "max": 8.633872720674814,
+            "mean": 8.633872720674814,
+            "final": 8.633872720674814
+          },
+          "foot_slip": {
+            "min": -3.336469092173502,
+            "max": -3.336469092173502,
+            "mean": -3.336469092173502,
+            "final": -3.336469092173502
+          },
+          "foot_spacing": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "gait_prior": {
+            "min": 22.282169875949105,
+            "max": 22.282169875949105,
+            "mean": 22.282169875949105,
+            "final": 22.282169875949105
+          },
+          "goal_hold_brake": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "goal_hold_slip": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "goal_hold_support": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "height_track": {
+            "min": 38.833869827812705,
+            "max": 38.833869827812705,
+            "mean": 38.833869827812705,
+            "final": 38.833869827812705
+          },
+          "late_hold_instability": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "late_hold_speed": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "movement_progress": {
+            "min": 47.86649262163917,
+            "max": 47.86649262163917,
+            "mean": 47.86649262163917,
+            "final": 47.86649262163917
+          },
+          "no_progress": {
+            "min": -327.4212840528185,
+            "max": -327.4212840528185,
+            "mean": -327.4212840528185,
+            "final": -327.4212840528185
+          },
+          "no_support": {
+            "min": -3.0,
+            "max": -3.0,
+            "mean": -3.0,
+            "final": -3.0
+          },
+          "residual_energy": {
+            "min": -0.019613219671100524,
+            "max": -0.019613219671100524,
+            "mean": -0.019613219671100524,
+            "final": -0.019613219671100524
+          },
+          "residual_guard_suppression": {
+            "min": -0.001145420578723133,
+            "max": -0.001145420578723133,
+            "mean": -0.001145420578723133,
+            "final": -0.001145420578723133
+          },
+          "residual_tilt_guard": {
+            "min": -0.00022155674818956562,
+            "max": -0.00022155674818956562,
+            "mean": -0.00022155674818956562,
+            "final": -0.00022155674818956562
+          },
+          "residual_yaw_guard": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "self_collision": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "stance_contact": {
+            "min": 8.996752442245182,
+            "max": 8.996752442245182,
+            "mean": 8.996752442245182,
+            "final": 8.996752442245182
+          },
+          "support_contract": {
+            "min": -8.0,
+            "max": -8.0,
+            "mean": -8.0,
+            "final": -8.0
+          },
+          "support_contract_after_progress": {
+            "min": -59.45519671191021,
+            "max": -59.45519671191021,
+            "mean": -59.45519671191021,
+            "final": -59.45519671191021
+          },
+          "support_contract_remaining_horizon": {
+            "min": -79.75,
+            "max": -79.75,
+            "mean": -79.75,
+            "final": -79.75
+          },
+          "support_contract_terminal_penalty": {
+            "min": -100.0,
+            "max": -100.0,
+            "mean": -100.0,
+            "final": -100.0
+          },
+          "tilt_margin": {
+            "min": -1.0295858128521738,
+            "max": -1.0295858128521738,
+            "mean": -1.0295858128521738,
+            "final": -1.0295858128521738
+          },
+          "upright": {
+            "min": 77.18787820807114,
+            "max": 77.18787820807114,
+            "mean": 77.18787820807114,
+            "final": 77.18787820807114
+          },
+          "velocity_track": {
+            "min": 25.00847288628374,
+            "max": 25.00847288628374,
+            "mean": 25.00847288628374,
+            "final": 25.00847288628374
+          },
+          "yaw_drift_margin": {
+            "min": -9.552334129196435,
+            "max": -9.552334129196435,
+            "mean": -9.552334129196435,
+            "final": -9.552334129196435
+          },
+          "yaw_track": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          }
+        },
+        "support_collision_diagnostics": {
+          "self_collision_count_sum": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "self_collision_active_steps": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "self_collision_pre_fall_max": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "self_collision_terminal_max": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          },
+          "support_contract_pre_fall_sum": {
+            "min": -8.0,
+            "max": -8.0,
+            "mean": -8.0,
+            "final": -8.0
+          },
+          "support_contract_terminal_sum": {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "final": 0.0
+          }
+        },
+        "action_summary": {
+          "l2_norm": {
+            "min": 1.651173710823059,
+            "max": 2.293412446975708,
+            "mean": 1.8808185171197962,
+            "final": 1.7755248546600342
+          },
+          "mean_abs": {
+            "min": 0.3890920877456665,
+            "max": 0.5524657964706421,
+            "mean": 0.4731313306608318,
+            "final": 0.4580440819263458
+          },
+          "max_abs": {
+            "min": 0.8051402568817139,
+            "max": 1.0,
+            "mean": 0.9503255861776846,
+            "final": 0.9775903224945068
+          },
+          "effective_max_abs": {
+            "min": 0.1994217336177826,
+            "max": 0.4625534117221832,
+            "mean": 0.31050869509761714,
+            "final": 0.2581098973751068
+          },
+          "locomotion_prior_max_abs": {
+            "min": 0.20194247364997864,
+            "max": 0.4791001081466675,
+            "mean": 0.31066216877949093,
+            "final": 0.2589189410209656
+          },
+          "locomotion_prior_residual_max_abs": {
+            "min": 0.0020241611637175083,
+            "max": 0.04948370158672333,
+            "mean": 0.02233917444921386,
+            "final": 0.0020241611637175083
+          },
+          "locomotion_prior_residual_pre_guard_max_abs": {
+            "min": 0.00368451327085495,
+            "max": 0.04948370158672333,
+            "mean": 0.022549631694952648,
+            "final": 0.01121155358850956
+          },
+          "locomotion_prior_residual_stability_scale": {
+            "min": 0.18054242445129276,
+            "max": 1.0,
+            "mean": 0.9836576243797174,
+            "final": 0.18054242445129276
+          },
+          "locomotion_prior_residual_scale": {
+            "min": 0.5,
+            "max": 0.5,
+            "mean": 0.5,
+            "final": 0.5
+          }
+        },
+        "learning_return_delta": 2.6303558955135884,
+        "learning_success_rate_delta": 0.0,
+        "learning_delta_x_m": 0.01578961682256308,
+        "learning_delta_y_m": -0.027848409644956357,
+        "learning_delta_yaw_rad": -0.037664560250571355,
+        "eval_failures": 1,
+        "promoted": false,
+        "promotion_passed": false,
+        "first_promotion_step": null,
+        "trained_full_phase_budget": true,
+        "promotion_reason": "phase_success_rate_below_threshold",
+        "blocker": "phase_success_rate_below_threshold"
+      }
+    ]
+  },
+  "controller": {
+    "type": "cbp_stream_ac_v1",
+    "obs_dim": 88,
+    "action_dim": 12,
+    "hidden_sizes": [
+      128,
+      128
+    ],
+    "gamma": 0.97,
+    "actor_step_size": 0.005,
+    "critic_step_size": 0.01,
+    "actor_lamda": 0.8,
+    "critic_lamda": 0.8,
+    "log_sigma_init": -1.0,
+    "log_sigma_min": -5.0,
+    "log_sigma_max": 0.5,
+    "learn_log_sigma": false,
+    "action_low": -1.0,
+    "action_high": 1.0,
+    "obgd_kappa": 2.0,
+    "sparsity": 0.9,
+    "leaky_relu_slope": 0.01,
+    "use_layer_norm": true,
+    "normalize": true,
+    "normalizer_decay": 0.999,
+    "seed": 43,
+    "cbp": {
+      "enabled": true,
+      "decay_rate": 0.99,
+      "replacement_rate": 0.0001,
+      "maturity_threshold": 100
+    },
+    "retention": {
+      "mode": "multihead",
+      "n_slots": 2,
+      "embed_dim": 32,
+      "trunk_step_scale": 0.5,
+      "trunk_freeze_after": 0,
+      "proto_seed": 12388
+    }
+  },
+  "trained_at": "2026-05-30T17:05:04",
+  "history": [
+    {
+      "phase": 0,
+      "task": "walk_forward",
+      "action_scale_start": 1.0,
+      "action_scale_end": 1.0,
+      "action_scale_target": 1.0,
+      "action_scale_events": [],
+      "locomotion_prior_residual_scale_start": 0.5,
+      "locomotion_prior_residual_scale_end": 0.5,
+      "locomotion_prior_residual_scale_target": 0.5,
+      "locomotion_prior_residual_scale_events": [],
+      "train_steps": 8000,
+      "train_episodes": 58,
+      "train_mean_return": -294.44745928083245,
+      "pre_eval_mean_return": -235.00151865775328,
+      "pre_eval_success_rate": 0.0,
+      "eval_mean_return": -232.3711627622397,
+      "eval_success_rate": 0.0,
+      "eval_failure_rate": 1.0,
+      "eval_physical_fall_rate": 0.0,
+      "eval_support_contract_failure_rate": 1.0,
+      "termination_summary": {
+        "done_reason_counts": {
+          "support_contract": 1
+        },
+        "physical_fall_rate": 0.0,
+        "support_contract_failure_rate": 1.0
+      },
+      "eval_mean_length": 81.0,
+      "pre_mean_final_delta_x_m": 0.20873029044164468,
+      "eval_mean_final_delta_x_m": 0.22451990726420776,
+      "pre_mean_final_delta_y_m": 0.024890635870523186,
+      "eval_mean_final_delta_y_m": -0.0029577737744331707,
+      "pre_mean_final_delta_yaw_rad": 0.11152291376346249,
+      "eval_mean_final_delta_yaw_rad": 0.07385835351289113,
+      "pre_mean_final_torso_z_m": 0.20262961441599195,
+      "eval_mean_final_torso_z_m": 0.1906535537984972,
+      "tracked_body_name": "body_link",
+      "eval_mean_final_tracked_delta_x_m": 0.2229569876696633,
+      "eval_mean_final_tracked_delta_y_m": -0.002793980885047488,
+      "eval_mean_final_tracked_delta_z_m": -0.04790401469040956,
+      "eval_mean_final_tracked_z_m": 0.19209598530959043,
+      "physical_success": false,
+      "physical_checks": {
+        "tracked_height_present": true,
+        "tracked_delta_x_forward": false,
+        "tracked_lateral_drift_bound": true,
+        "yaw_drift_bound": true,
+        "min_swing_foot_clearance_m": true,
+        "max_foot_slip_m_s": true,
+        "max_self_collision_count": true,
+        "no_fall": true,
+        "hold_s": false,
+        "min_alternating_foot_contacts": true
+      },
+      "movement_summary": {
+        "delta_x_m": {
+          "min": 0.22451990726420776,
+          "max": 0.22451990726420776,
+          "mean": 0.22451990726420776,
+          "final": 0.22451990726420776
+        },
+        "delta_y_m": {
+          "min": -0.0029577737744331707,
+          "max": -0.0029577737744331707,
+          "mean": -0.0029577737744331707,
+          "final": -0.0029577737744331707
+        },
+        "delta_yaw_rad": {
+          "min": 0.07385835351289113,
+          "max": 0.07385835351289113,
+          "mean": 0.07385835351289113,
+          "final": 0.07385835351289113
+        },
+        "torso_z_m": {
+          "min": 0.1906535537984972,
+          "max": 0.1906535537984972,
+          "mean": 0.1906535537984972,
+          "final": 0.1906535537984972
+        },
+        "tracked_delta_x_m": {
+          "min": 0.2229569876696633,
+          "max": 0.2229569876696633,
+          "mean": 0.2229569876696633,
+          "final": 0.2229569876696633
+        },
+        "tracked_delta_y_m": {
+          "min": -0.002793980885047488,
+          "max": -0.002793980885047488,
+          "mean": -0.002793980885047488,
+          "final": -0.002793980885047488
+        },
+        "tracked_delta_z_m": {
+          "min": -0.04790401469040956,
+          "max": -0.04790401469040956,
+          "mean": -0.04790401469040956,
+          "final": -0.04790401469040956
+        },
+        "tracked_z_m": {
+          "min": 0.19209598530959043,
+          "max": 0.19209598530959043,
+          "mean": 0.19209598530959043,
+          "final": 0.19209598530959043
+        },
+        "tracked_translation_drift_m": {
+          "min": 0.22297449333929745,
+          "max": 0.22297449333929745,
+          "mean": 0.22297449333929745,
+          "final": 0.22297449333929745
+        },
+        "max_tracked_delta_x_m": {
+          "min": 0.2229569876696633,
+          "max": 0.2229569876696633,
+          "mean": 0.2229569876696633,
+          "final": 0.2229569876696633
+        },
+        "min_tracked_delta_x_m": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "max_tracked_delta_y_m": {
+          "min": 0.020126293194480938,
+          "max": 0.020126293194480938,
+          "mean": 0.020126293194480938,
+          "final": 0.020126293194480938
+        },
+        "min_tracked_delta_y_m": {
+          "min": -0.03228184161194004,
+          "max": -0.03228184161194004,
+          "mean": -0.03228184161194004,
+          "final": -0.03228184161194004
+        },
+        "max_abs_delta_yaw_rad": {
+          "min": 0.17849148715587487,
+          "max": 0.17849148715587487,
+          "mean": 0.17849148715587487,
+          "final": 0.17849148715587487
+        },
+        "foot_contact_switches": {
+          "min": 2.0,
+          "max": 2.0,
+          "mean": 2.0,
+          "final": 2.0
+        },
+        "max_swing_foot_clearance_m": {
+          "min": 0.07740454375743866,
+          "max": 0.07740454375743866,
+          "mean": 0.07740454375743866,
+          "final": 0.07740454375743866
+        },
+        "max_foot_slip_m_s": {
+          "min": 0.26211419701576233,
+          "max": 0.26211419701576233,
+          "mean": 0.26211419701576233,
+          "final": 0.26211419701576233
+        },
+        "max_self_collision_count": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        }
+      },
+      "reward_term_summary": {
+        "action_rate": {
+          "min": -0.0005255883212021219,
+          "max": -0.0005255883212021219,
+          "mean": -0.0005255883212021219,
+          "final": -0.0005255883212021219
+        },
+        "alive": {
+          "min": 81.0,
+          "max": 81.0,
+          "mean": 81.0,
+          "final": 81.0
+        },
+        "alternating_contact": {
+          "min": 47.391376243797424,
+          "max": 47.391376243797424,
+          "mean": 47.391376243797424,
+          "final": 47.391376243797424
+        },
+        "contact_cadence": {
+          "min": 8.996752442245182,
+          "max": 8.996752442245182,
+          "mean": 8.996752442245182,
+          "final": 8.996752442245182
+        },
+        "double_support": {
+          "min": -7.0,
+          "max": -7.0,
+          "mean": -7.0,
+          "final": -7.0
+        },
+        "drift": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "energy": {
+          "min": -0.002424446688033641,
+          "max": -0.002424446688033641,
+          "mean": -0.002424446688033641,
+          "final": -0.002424446688033641
+        },
+        "foot_clearance": {
+          "min": 8.633872720674814,
+          "max": 8.633872720674814,
+          "mean": 8.633872720674814,
+          "final": 8.633872720674814
+        },
+        "foot_slip": {
+          "min": -3.336469092173502,
+          "max": -3.336469092173502,
+          "mean": -3.336469092173502,
+          "final": -3.336469092173502
+        },
+        "foot_spacing": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "gait_prior": {
+          "min": 22.282169875949105,
+          "max": 22.282169875949105,
+          "mean": 22.282169875949105,
+          "final": 22.282169875949105
+        },
+        "goal_hold_brake": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "goal_hold_slip": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "goal_hold_support": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "height_track": {
+          "min": 38.833869827812705,
+          "max": 38.833869827812705,
+          "mean": 38.833869827812705,
+          "final": 38.833869827812705
+        },
+        "late_hold_instability": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "late_hold_speed": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "movement_progress": {
+          "min": 47.86649262163917,
+          "max": 47.86649262163917,
+          "mean": 47.86649262163917,
+          "final": 47.86649262163917
+        },
+        "no_progress": {
+          "min": -327.4212840528185,
+          "max": -327.4212840528185,
+          "mean": -327.4212840528185,
+          "final": -327.4212840528185
+        },
+        "no_support": {
+          "min": -3.0,
+          "max": -3.0,
+          "mean": -3.0,
+          "final": -3.0
+        },
+        "residual_energy": {
+          "min": -0.019613219671100524,
+          "max": -0.019613219671100524,
+          "mean": -0.019613219671100524,
+          "final": -0.019613219671100524
+        },
+        "residual_guard_suppression": {
+          "min": -0.001145420578723133,
+          "max": -0.001145420578723133,
+          "mean": -0.001145420578723133,
+          "final": -0.001145420578723133
+        },
+        "residual_tilt_guard": {
+          "min": -0.00022155674818956562,
+          "max": -0.00022155674818956562,
+          "mean": -0.00022155674818956562,
+          "final": -0.00022155674818956562
+        },
+        "residual_yaw_guard": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "self_collision": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "stance_contact": {
+          "min": 8.996752442245182,
+          "max": 8.996752442245182,
+          "mean": 8.996752442245182,
+          "final": 8.996752442245182
+        },
+        "support_contract": {
+          "min": -8.0,
+          "max": -8.0,
+          "mean": -8.0,
+          "final": -8.0
+        },
+        "support_contract_after_progress": {
+          "min": -59.45519671191021,
+          "max": -59.45519671191021,
+          "mean": -59.45519671191021,
+          "final": -59.45519671191021
+        },
+        "support_contract_remaining_horizon": {
+          "min": -79.75,
+          "max": -79.75,
+          "mean": -79.75,
+          "final": -79.75
+        },
+        "support_contract_terminal_penalty": {
+          "min": -100.0,
+          "max": -100.0,
+          "mean": -100.0,
+          "final": -100.0
+        },
+        "tilt_margin": {
+          "min": -1.0295858128521738,
+          "max": -1.0295858128521738,
+          "mean": -1.0295858128521738,
+          "final": -1.0295858128521738
+        },
+        "upright": {
+          "min": 77.18787820807114,
+          "max": 77.18787820807114,
+          "mean": 77.18787820807114,
+          "final": 77.18787820807114
+        },
+        "velocity_track": {
+          "min": 25.00847288628374,
+          "max": 25.00847288628374,
+          "mean": 25.00847288628374,
+          "final": 25.00847288628374
+        },
+        "yaw_drift_margin": {
+          "min": -9.552334129196435,
+          "max": -9.552334129196435,
+          "mean": -9.552334129196435,
+          "final": -9.552334129196435
+        },
+        "yaw_track": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        }
+      },
+      "support_collision_diagnostics": {
+        "self_collision_count_sum": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "self_collision_active_steps": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "self_collision_pre_fall_max": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "self_collision_terminal_max": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        },
+        "support_contract_pre_fall_sum": {
+          "min": -8.0,
+          "max": -8.0,
+          "mean": -8.0,
+          "final": -8.0
+        },
+        "support_contract_terminal_sum": {
+          "min": 0.0,
+          "max": 0.0,
+          "mean": 0.0,
+          "final": 0.0
+        }
+      },
+      "action_summary": {
+        "l2_norm": {
+          "min": 1.651173710823059,
+          "max": 2.293412446975708,
+          "mean": 1.8808185171197962,
+          "final": 1.7755248546600342
+        },
+        "mean_abs": {
+          "min": 0.3890920877456665,
+          "max": 0.5524657964706421,
+          "mean": 0.4731313306608318,
+          "final": 0.4580440819263458
+        },
+        "max_abs": {
+          "min": 0.8051402568817139,
+          "max": 1.0,
+          "mean": 0.9503255861776846,
+          "final": 0.9775903224945068
+        },
+        "effective_max_abs": {
+          "min": 0.1994217336177826,
+          "max": 0.4625534117221832,
+          "mean": 0.31050869509761714,
+          "final": 0.2581098973751068
+        },
+        "locomotion_prior_max_abs": {
+          "min": 0.20194247364997864,
+          "max": 0.4791001081466675,
+          "mean": 0.31066216877949093,
+          "final": 0.2589189410209656
+        },
+        "locomotion_prior_residual_max_abs": {
+          "min": 0.0020241611637175083,
+          "max": 0.04948370158672333,
+          "mean": 0.02233917444921386,
+          "final": 0.0020241611637175083
+        },
+        "locomotion_prior_residual_pre_guard_max_abs": {
+          "min": 0.00368451327085495,
+          "max": 0.04948370158672333,
+          "mean": 0.022549631694952648,
+          "final": 0.01121155358850956
+        },
+        "locomotion_prior_residual_stability_scale": {
+          "min": 0.18054242445129276,
+          "max": 1.0,
+          "mean": 0.9836576243797174,
+          "final": 0.18054242445129276
+        },
+        "locomotion_prior_residual_scale": {
+          "min": 0.5,
+          "max": 0.5,
+          "mean": 0.5,
+          "final": 0.5
+        }
+      },
+      "learning_return_delta": 2.6303558955135884,
+      "learning_success_rate_delta": 0.0,
+      "learning_delta_x_m": 0.01578961682256308,
+      "learning_delta_y_m": -0.027848409644956357,
+      "learning_delta_yaw_rad": -0.037664560250571355,
+      "promoted": false,
+      "promotion_passed": false,
+      "first_promotion_step": null,
+      "trained_full_phase_budget": true,
+      "promotion_blocker": "phase_success_rate_below_threshold",
+      "promotion_reasons": [
+        "env_terminated_before_goal_success:support_contract"
+      ]
+    }
+  ],
+  "non_production": true
+}

@@ -7,11 +7,15 @@ flush internal windows, SINGLE lens each direction. This is an EVT-stage design
 review for sourcing/layout planning — NOT a production-release sign-off.
 
 Reference inputs: `cad/e1_phone_params.yaml`, `review/design-change-flush-back.md`,
-`board/kicad/e1-phone/preliminary-bom.yaml`, `review/bom-unit-cost.yaml`.
+`board/kicad/e1-phone/preliminary-bom.yaml`, `review/bom-unit-cost.yaml`, and
+the current `review/full-cad-boolean-interference.json` concept-envelope B-rep
+run.
 
 Z-stack reminder (origin at mid-plane, +Z toward screen): back outer plane
--5.600 mm, back inner wall -4.450 mm, 1.15 mm back wall, 0.30 mm internal
-clearance over the buried camera module.
+-5.900 mm, back inner wall -4.700 mm, 1.15 mm back wall, 0.40 mm current
+boolean burial clearance over the rear camera module. This review remains
+EVT planning evidence only; release credit still requires routed-board STEP and
+supplier B-rep reruns through the enclosure gate.
 
 ---
 
@@ -33,8 +37,8 @@ OV13855 / OV13850 / OV13858 builds on the same FPC.
 **Margins & tolerances:**
 - Module height budget is 5.1 mm in spec; OV13B10 AF module ships at Z < 4.0 mm,
   giving ~1.1 mm of unused z-headroom — burial is comfortable, not marginal.
-- Burial clearance to back inner wall = 0.30 mm (module back face -4.150 mm vs
-  inner wall -4.450 mm). With a sub-4 mm module the back face can sit deeper,
+- Current local CAD burial clearance to back inner wall = 0.40 mm (module back
+  face Zmin -4.300 mm vs inner wall -4.700 mm). With a sub-4 mm module the back face can sit deeper,
   raising clearance to ~1.4 mm. Reduce the modeled 5.1 mm envelope to the real
   module z once the vendor drawing lands.
 - Flush window (`rear_camera_glass`, 9.2 × 9.2 × 0.55) outer face coplanar with

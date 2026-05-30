@@ -78,6 +78,14 @@ REQUIRED_PROCESS_CORNER_KEYS = {
     "claim_boundary",
     "release_use",
 }
+FALSE_CLAIM_FLAGS = {
+    "rtl_dma_claim_allowed": False,
+    "android_nnapi_claim_allowed": False,
+    "silicon_performance_claim_allowed": False,
+    "phone_class_throughput_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "release_claim_allowed": False,
+}
 
 
 def main() -> int:
@@ -102,6 +110,9 @@ def main() -> int:
 
     if data.get("schema") != "eliza.npu_scale_sim.v1":
         errors.append("scale simulator schema mismatch")
+    for flag, expected in FALSE_CLAIM_FLAGS.items():
+        if data.get(flag) is not expected:
+            errors.append(f"scale simulator must keep {flag}=false")
     config = data.get("config", {})
     if not isinstance(config, dict):
         errors.append("scale simulator config must be an object")

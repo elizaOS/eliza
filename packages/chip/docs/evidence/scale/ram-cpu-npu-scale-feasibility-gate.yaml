@@ -17,6 +17,12 @@ claim_rules:
 - Raising any group to evidence_passed requires executable commands and immutable
   report artifacts from the scaled configuration.
 generated_utc: '2026-05-20T10:12:30Z'
+linux_capable_cpu_claim_allowed: false
+npu_2028_class_claim_allowed: false
+physical_feasibility_claim_allowed: false
+production_ram_claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
 required_evidence_groups:
 - artifact_paths:
   - verify/cocotb/results/scale_ram_cpu_npu_contract.json

@@ -97,7 +97,8 @@ parameterized mesh-fabric, mesh route-discipline/liveness evidence,
 power/thermal planning, formal, and RTL-contract reports as one top-level
 architecture-simulation evidence bundle.
 It also verifies that each required report declares evidence paths and that
-those files, including archived cocotb result XMLs, are present. Run it with:
+those files, including the model-shard sample executor report and archived
+cocotb result XMLs, are present. Run it with:
 
 ```sh
 python3 scripts/check_e1x_evidence_bundle.py
@@ -183,6 +184,15 @@ operation, K wave, core wave, and routing color without claiming execution, with
 
 ```sh
 python3 scripts/check_e1x_full_output_workplan.py
+```
+
+Run the full-output checksum-manifest gate, which commits every scheduled
+real-graph output row identity and links the sampled-output, routed-window, and
+normal/high repaired-run checksum sidecars while preserving the missing
+full-output real-weight checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_full_output_checksum_manifest.py
 ```
 
 Run the vector-kernel template gate, which emits a concrete RV64IM unrolled W4A8
@@ -299,6 +309,73 @@ shard-loader cocotb sample, with:
 
 ```sh
 python3 scripts/check_e1x_model_load_stream.py
+```
+
+Run the model-shard sample executor gate, which executes the checked
+high-failure model-shard sample payload through W4A8 vector semantics: every W4
+word from one complete per-core weight shard plus the capacity-end sentinel
+word, with the loader checksum tied back to the full model-load stream, full
+scheduled-row deterministic window, and local-SRAM loader cocotb evidence. This
+is actual loaded shard-sample execution; it still preserves the missing full
+6.5GB quantized weight-payload executor and full-output real-weight checksum
+blocker.
+
+```sh
+python3 scripts/check_e1x_model_shard_sample_executor.py
+```
+
+Run the layer-shard sweep executor gate, which executes generated W4 payloads
+for the first, middle, and last shard record from every placed real-graph layer
+through W4A8 semantics. This covers all 283 layers and all 8 layer kinds across
+687 sampled shard records, linking the sweep to the full model-load stream and
+window-shard evidence while preserving the missing full 6.5GB payload execution
+and full-output real-weight checksum blocker.
+
+```sh
+python3 scripts/check_e1x_layer_shard_sweep_executor.py
+```
+
+Run the full-payload manifest gate, which enumerates every placed real-graph
+model shard record and commits deterministic first/middle/last W4 probe words
+for each shard. This covers all 151,367 shard records and all 1,627,034,880
+loader-word transactions as a compact whole-graph payload identity manifest,
+while preserving the missing full payload execution and full-output
+real-weight checksum blocker.
+
+```sh
+python3 scripts/check_e1x_full_payload_manifest.py
+```
+
+Run the full-payload repair mapping gate, which maps every committed payload
+shard through the generated normal and high-failure repair manifests, verifies
+the physical targets avoid blocked cores, and links the result to the repaired
+route checksums. This proves the full resident payload placement survives the
+modeled defect maps while preserving the missing full payload execution and
+silicon/foundry evidence blockers.
+
+```sh
+python3 scripts/check_e1x_full_payload_repair_mapping.py
+```
+
+Run the full-payload repair-ROM gate, which proves the boot-programmable normal
+and high-failure repair ROM images contain the remap words required by every
+remapped resident payload shard, and links those ROM payloads to the RTL
+repair-ROM loader cocotb plus boot firmware evidence. This preserves the
+silicon fuse/OTP and foundry evidence blockers.
+
+```sh
+python3 scripts/check_e1x_full_payload_repair_rom.py
+```
+
+Run the full-payload repaired-run linkage gate, which ties the full resident
+payload manifest, normal/high repair mapping, boot-programmable repair ROMs,
+benchmark summary, and normal/high real-graph execution traces into one
+modeled repaired-run consistency report. This validates the modeled high-failure
+slowdown and output-checksum path while preserving the missing full-output
+real-weight checksum blocker.
+
+```sh
+python3 scripts/check_e1x_full_payload_repaired_run.py
 ```
 
 Run the power/thermal planning gate, which estimates dense-peak and real-graph
@@ -627,8 +704,11 @@ silicon benchmark evidence, or a production compiler for arbitrary LLM graphs.
   MACs out of 13015864320 full graph MACs, preserving the full-output blocker
   as measured evidence. The `e1x-execution-coverage-ladder` gate keeps that real
   sampled-output lane separate from the deterministic vector-window fabric lane,
-  which now covers 18112 rows and 418880 lane MACs, a 16x row/MAC gain over the
-  real sampled output lane while still leaving 2590528 rows unexecuted by the
+  which now covers all 2608640 scheduled rows and 70620160 lane MACs, more than
+  a 2300x row gain over the real sampled output lane while leaving no scheduled
+  row outside the deterministic window. This still preserves the real-weight
+  full-output blocker because the window uses deterministic W4A8 test weights
+  rather than the full quantized model tensor payload. The
   deterministic window. The `e1x-full-output-workplan` gate now hashes a compact
   full-output workplan covering all 2608640 rows, 13015864320 MACs,
   1627345920 packed vector-word operations, 4187241 scheduled core waves, 5481
@@ -646,23 +726,23 @@ silicon benchmark evidence, or a production compiler for arbitrary LLM graphs.
   as 3556 packed int4 vector-word operations across all 283 proof layers and
   verifies 26180 lane MACs against the proof accumulators/requantized outputs;
   the `e1x-vector-kernel-window-executor` gate expands deterministic packed
-  vector execution to 18112 rows and 56896 vector-word operations across the
+  vector execution to 2608640 rows and 9190400 vector-word operations across the
   same 283 layers. The `e1x-vector-window-fabric-checksum` gate now routes that
   expanded window across all 24 routing colors, merges 283 layer groups with
   RTL-reduction-equivalent saturation semantics, and records routed checksum
-  15818110737476397592. The `e1x-window-shard-linkage` gate maps those executed
-  rows onto 1169 real loaded local-SRAM shard records and 11060496 loader words,
-  proving the window is inside the resident placement/load stream without
+  4718384912712357942. The `e1x-window-shard-linkage` gate maps those executed
+  rows onto all 151367 real loaded local-SRAM shard records and all 1627034880
+  loader words, proving the deterministic window spans the resident load stream without
   claiming the full weight tensors were executed. The
-  `e1x-window-repair-linkage` gate maps the same 1169 touched logical cores
-  through normal/high repair manifests: 2 window cores remap under normal defects
-  and 24 remap under high failure, with all touched cores landing on usable
-  physical targets. The `e1x-window-route-validation` gate then recomputes 963
+  `e1x-window-repair-linkage` gate maps the same 151367 touched logical cores
+  through normal/high repair manifests: 279 window cores remap under normal defects
+  and 3012 remap under high failure, with all touched cores landing on usable
+  physical targets. The `e1x-window-route-validation` gate then recomputes 301949
   repaired physical neighbor routes inside that touched-core set; high-failure
-  routes accumulate 6571 extra hops versus 185 for normal defects while avoiding
+  routes accumulate 1809664 extra hops versus 167619 for normal defects while avoiding
   blocked cores and links. The `e1x-window-repair-rom-linkage` gate verifies the
   generated repair ROM payloads contain the remap words needed by that window:
-  2 under normal defects and 24 under high failure, tied to RTL repair-ROM cocotb
+  279 under normal defects and 3012 under high failure, tied to RTL repair-ROM cocotb
   and boot repair firmware evidence. The `e1x-window-execution-trace-linkage`
   gate ties that repair evidence to the normal/high real-graph execution traces:
   high failure runs 63132355414 cycles versus 47501642583 normal cycles, with a

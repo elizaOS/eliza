@@ -36,6 +36,13 @@ def test_blocked_check_emits_finding() -> None:
     print("PASS RoT blocked checks emit structured findings")
 
 
+def test_false_claim_flags_stay_false() -> None:
+    for key, value in check_rot_integration.FALSE_CLAIM_FLAGS.items():
+        if value is not False:
+            raise AssertionError(f"{key} must be false")
+    print("PASS RoT false claim flags stay false")
+
+
 def test_shim_and_physical_blocker_emit_findings() -> None:
     findings = check_rot_integration.structured_findings(
         checks=[],
@@ -56,6 +63,7 @@ def test_shim_and_physical_blocker_emit_findings() -> None:
 
 def main() -> None:
     test_blocked_check_emits_finding()
+    test_false_claim_flags_stay_false()
     test_shim_and_physical_blocker_emit_findings()
 
 

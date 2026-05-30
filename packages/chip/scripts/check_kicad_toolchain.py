@@ -2,10 +2,50 @@
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL = ROOT / ".tools" / "kicad-local"
+ROUTED_BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+
+
+def release_cli_checks(run_cmd, label: str) -> int:
+    checks: list[tuple[str, list[str]]] = [
+        ("schematic ERC command", ["kicad-cli", "sch", "erc", "--help"]),
+        ("PCB DRC command", ["kicad-cli", "pcb", "drc", "--help"]),
+        ("PCB STEP export command", ["kicad-cli", "pcb", "export", "step", "--help"]),
+    ]
+    for name, cmd in checks:
+        code, out = run_cmd(cmd)
+        if code != 0:
+            print(
+                f"FAIL: {label} lacks required release KiCad capability: {name}\n{out}",
+                file=sys.stderr,
+            )
+            return code or 1
+        print(f"{label} release capability ok: {name}")
+    with tempfile.TemporaryDirectory(prefix="e1-phone-kicad-step-") as tmp:
+        step_path = Path(tmp) / "routed-board.step"
+        code, out = run_cmd(
+            [
+                "kicad-cli",
+                "pcb",
+                "export",
+                "step",
+                "-o",
+                str(step_path),
+                str(ROUTED_BOARD),
+            ]
+        )
+        if code != 0 or not step_path.exists() or step_path.stat().st_size <= 0:
+            print(
+                f"FAIL: {label} cannot load/export routed E1 phone board STEP\n{out}",
+                file=sys.stderr,
+            )
+            return code or 1
+        print(f"{label} routed board STEP smoke export ok: {step_path.stat().st_size} bytes")
+    return 0
 
 
 def run(cmd: list[str]) -> tuple[int, str]:
@@ -50,11 +90,20 @@ def run_local(tool: str, *args: str) -> tuple[int, str]:
         return 127, str(exc)
 
 
+def run_local_cmd(cmd: list[str]) -> tuple[int, str]:
+    if not cmd:
+        return 1, "empty command"
+    return run_local(cmd[0], *cmd[1:])
+
+
 def main() -> int:
     host = shutil.which("kicad-cli")
     if host:
         code, out = run(["kicad-cli", "version"])
         print(f"host kicad-cli: {out if code == 0 else 'FAILED'}")
+        if code != 0:
+            return code
+        code = release_cli_checks(run, "host kicad-cli")
         if code != 0:
             return code
         rsvg = shutil.which("rsvg-convert")
@@ -87,6 +136,9 @@ def main() -> int:
             print(f"FAIL: local kicad-cli failed\n{out}", file=sys.stderr)
             return code
         print(f"local kicad-cli: {out}")
+        code = release_cli_checks(run_local_cmd, "local kicad-cli")
+        if code != 0:
+            return code
         local_checks = [
             ("rsvg-convert", "--version"),
         ]

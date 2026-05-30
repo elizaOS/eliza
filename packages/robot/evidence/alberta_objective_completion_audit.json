@@ -1,7 +1,7 @@
 {
   "schema": "robot-alberta-objective-completion-audit-v1",
   "ok": false,
-  "generated_at": "2026-05-29T06:39:27.930690Z",
+  "generated_at": "2026-05-29T08:00:08.722414Z",
   "package_root": "/home/shaw/milady/eliza/packages/robot",
   "nebius_run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "passed": [

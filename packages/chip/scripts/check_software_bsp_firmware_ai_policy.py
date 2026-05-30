@@ -87,6 +87,14 @@ REQUIRED_GATES = frozenset(
     }
 )
 REQUIRED_QUARANTINE_ROOT = "build/ai_eda/software_bsp_firmware/"
+FALSE_CLAIM_FLAGS = {
+    "patch_claim_allowed": False,
+    "boot_success_claim_allowed": False,
+    "bsp_readiness_claim_allowed": False,
+    "kernel_performance_claim_allowed": False,
+    "vulnerability_claim_allowed": False,
+    "release_or_tapeout_claim_allowed": False,
+}
 
 
 def fail(errors: list[str], message: str) -> None:
@@ -128,6 +136,9 @@ def main() -> int:
         fail(errors, "unsafe claim boundary")
     if policy.get("status") != "DRAFT_CAPTURE_ONLY":
         fail(errors, "status must be DRAFT_CAPTURE_ONLY")
+    for flag, expected in FALSE_CLAIM_FLAGS.items():
+        if policy.get(flag) is not expected:
+            fail(errors, f"{flag} must be false")
 
     require_set(policy.get("blocked_actions"), "blocked_actions", REQUIRED_BLOCKED_ACTIONS, errors)
     require_set(

@@ -7,7 +7,12 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_RUN = ROOT / "pd/openlane/runs/RUN_2026-05-18_05-41-42"
+# Default points at the surviving local run that has a complete signoff-run.yaml
+# manifest. It is the e1_pd_smoke_top reduced smoke top, not the e1_chip_top
+# release top, so this default proves the closure mechanics only. The release
+# gate (scripts/check_pd_signoff.py) separately enforces design == e1_chip_top.
+# Pass --run <chip-top-run-dir> to check a real chip-top closure.
+DEFAULT_RUN = ROOT / "pd/openlane/runs/RUN_2026-05-19_05-01-02"
 
 ZERO_METRICS = {
     "antenna__violating__nets": "antenna violating nets",

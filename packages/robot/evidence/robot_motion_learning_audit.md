@@ -99,6 +99,17 @@ Promotion blocker: `phase_success_rate_below_threshold`
 | `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_scale1_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -994.5 | 0.166 | 1.00 | `tracked_delta_x_forward, max_self_collision_count, no_fall, hold_s, min_alternating_foot_contacts` | 0.583 | 0.025 / 0.024 | 0.955 | 1.000 | `1.0` | `not_walking_after_progress_8k` |
 | `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -4.5 | 0.296 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, no_fall, hold_s, min_alternating_foot_contacts` | 0.670 | 0.024 / 0.022 | 0.933 | 0.250 | `1.0` | `not_walking_after_progress_8k` |
 | `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_yaw055_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 4.4 | 0.301 | 1.00 | `yaw_drift_bound, no_fall, hold_s, min_alternating_foot_contacts` | 0.673 | 0.021 / 0.019 | 0.939 | 0.250 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_honest_stride_mod_resid025_yaw055_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -0.0 | 0.284 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, max_foot_slip_m_s, no_fall, hold_s, min_alternating_foot_contacts` | 0.689 | 0.017 / 0.016 | 0.954 | 0.250 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_cadence_honest_stride_mod_resid025_yaw055_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -2.7 | 0.262 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, no_fall, hold_s, min_alternating_foot_contacts` | 0.671 | 0.021 / 0.019 | 0.944 | 0.250 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contract_honest_stride_mod_resid025_yaw055_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | -3.4 | 0.302 | 1.00 | `yaw_drift_bound, max_foot_slip_m_s, no_fall, hold_s, min_alternating_foot_contacts` | 0.675 | 0.018 / 0.017 | 0.946 | 0.250 | `1.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_stride_mod_resid025_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 5.2 | 0.268 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, no_fall, hold_s` | 0.611 | 0.024 / 0.023 | 0.935 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_stride_mod_resid050_seed27_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 3.9 | 0.259 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, no_fall, hold_s` | 0.616 | 0.016 / 0.016 | 0.955 | 0.500 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_no_progress_honest_resid025_seed28_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 2.4 | 0.282 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, no_fall, hold_s` | 0.628 | 0.017 / 0.016 | 0.936 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_active_prior_reward_resid025_seed29_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 4.4 | 0.269 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, no_fall, hold_s` | 0.617 | 0.036 / 0.035 | 0.944 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_max_slip_aligned_resid025_seed30_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 2.3 | 0.285 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, no_fall, hold_s` | 0.632 | 0.028 / 0.026 | 0.936 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_hold_taper_support_resid025_seed31_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 19.4 | 0.275 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, no_fall, hold_s` | 0.596 | 0.039 / 0.036 | 0.936 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_terminal_support_resid025_seed32_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 22.9 | 0.208 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, no_fall, hold_s` | 0.611 | 0.033 / 0.033 | 1.000 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
+| `local_learning_probe_hiwonder_contact_sine_terminal_support_evalsplit_resid025_seed33_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 17.2 | 0.228 | 1.00 | `tracked_delta_x_forward, max_foot_slip_m_s, hold_s` | 0.631 | 0.020 / 0.020 | 1.000 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
 | `local_learning_probe_hiwonder_collision_safe_sagittal_stride_mod_resid025_pitch3_yaw075_8k` | `linear` | 1.000 | `hiwonder_stride_mod` | `False` | `False` | 167.5 | 0.118 | 1.00 | `tracked_delta_x_forward, yaw_drift_bound, max_self_collision_count, no_fall, hold_s` | 0.578 | 0.026 / 0.023 | 0.897 | 0.250 | `2.0` | `not_walking_after_progress_8k` |
 
 ## Open-loop Task Feasibility
@@ -263,6 +274,14 @@ Fresh smoke trace consistency: `True`
 Fresh smoke has successful final clear trace: `True`
 Fresh smoke Alberta final clear rate: `0.6666666666666666`
 Fresh smoke Alberta majority final clear: `True`
+Fresh smoke Alberta step trace reaches obstacle x: `True`
+Fresh smoke Alberta step trace clears obstacle centerline: `True`
+Fresh smoke Alberta step trace passes obstacle: `True`
+Fresh smoke Alberta step trace has no collision: `True`
+Fresh smoke Alberta step clearance matches summary: `True`
+Fresh smoke Alberta step clearance stays positive: `True`
+Fresh smoke Alberta samples obstacle band: `True`
+Fresh smoke Alberta detours outside obstacle radius in band: `True`
 Fresh smoke demo frames: `6`
 Fresh smoke demo video bytes json/file: `151820` / `151820`
 Fresh smoke demo video: `/home/shaw/milady/eliza/packages/robot/evidence/obstacle_motion_trajectory_audit_smoke/obstacle_course_demo.mp4`

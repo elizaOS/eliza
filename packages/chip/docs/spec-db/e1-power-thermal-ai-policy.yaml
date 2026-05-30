@@ -1,6 +1,12 @@
 schema: eliza.power_thermal_ai_policy.v1
 status: DRAFT_CAPTURE_ONLY
 claim_boundary: power_thermal_policy_only_no_map_pdn_ir_thermal_or_power_claim
+power_map_claim_allowed: false
+thermal_map_claim_allowed: false
+ir_drop_claim_allowed: false
+pdn_signoff_claim_allowed: false
+tops_per_watt_claim_allowed: false
+release_or_tapeout_claim_allowed: false
 title: E1 power / thermal / PDN / IR-drop AI-EDA use policy
 description: >
   Fail-closed policy for any AI/ML or generative assistance touching E1 power,

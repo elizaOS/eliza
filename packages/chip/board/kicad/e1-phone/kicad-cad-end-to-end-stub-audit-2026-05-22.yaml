@@ -302,7 +302,7 @@ kicad_package_state:
   detailed_routed_step_candidate_component_model_manifest: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   detailed_routed_step_candidate_component_envelope_count: 89
   full_cad_boolean_status: blocked_boolean_interference_incomplete
-  full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+  full_cad_boolean_evidence_class: incomplete_brep_boolean_interference_result
   full_cad_boolean_parts_loaded: 0
   full_cad_boolean_pair_count_brep_evaluated: 0
   full_cad_boolean_unintentional_clash_count: 0
@@ -324,10 +324,10 @@ kicad_package_state:
   component_model_directory_release_allowed: false
   public_sourcing_intake_ready: true
   public_sourcing_intake_scope: public_cad_and_market_cost_intake_not_release_evidence
-  public_cad_source_record_count: 7
-  public_cad_source_step_or_3d_observed_count: 5
-  public_cad_source_footprint_or_eda_observed_count: 7
-  public_cad_source_local_downloaded_hashed_count: 0
+  public_cad_source_record_count: 16
+  public_cad_source_step_or_3d_observed_count: 8
+  public_cad_source_footprint_or_eda_observed_count: 16
+  public_cad_source_local_downloaded_hashed_count: 1
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
   public_market_bom_cost_volume_count: 5

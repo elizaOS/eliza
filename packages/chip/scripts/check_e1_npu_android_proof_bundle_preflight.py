@@ -33,6 +33,14 @@ REQUIRED_COUNTER_ENVS = (
 CLAIM_BOUNDARY = (
     "android_e1_npu_proof_bundle_preflight_only_not_runtime_nnapi_or_release_evidence"
 )
+FALSE_CLAIM_FLAGS = {
+    "runtime_nnapi_claim_allowed": False,
+    "android_boot_claim_allowed": False,
+    "release_claim_allowed": False,
+    "phone_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 HOST_LOCAL_PATH = re.compile(r"(?<![\w/])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
 
 
@@ -200,6 +208,7 @@ def build_report(args: argparse.Namespace, env: dict[str, str]) -> tuple[int, di
         "generated_utc": utc_now(),
         "claim_boundary": CLAIM_BOUNDARY,
         "status": "pass" if not blockers else "blocked",
+        **FALSE_CLAIM_FLAGS,
         "aosp_tree": str(aosp_tree) if aosp_tree else "",
         "adb": adb,
         "model": str(model),

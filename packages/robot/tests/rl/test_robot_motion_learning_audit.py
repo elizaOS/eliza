@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.audit_robot_motion_learning import (
     DEFAULT_TASK_FEASIBILITY_PATH,
     _fresh_obstacle_smoke_summary,
@@ -848,14 +850,25 @@ def test_fresh_obstacle_smoke_summary_surfaces_demo_and_trace_facts(
                                     "forward_progress_m": 0.0,
                                     "passed_obstacle": False,
                                     "collision": False,
+                                    "obstacle_clearance_m": 0.75,
                                 },
                                 {
                                     "step": 1,
+                                    "x": 0.0,
+                                    "y": 0.35,
+                                    "forward_progress_m": 1.0,
+                                    "passed_obstacle": False,
+                                    "collision": False,
+                                    "obstacle_clearance_m": 0.1,
+                                },
+                                {
+                                    "step": 2,
                                     "x": 0.3,
                                     "y": 0.1,
                                     "forward_progress_m": 1.3,
                                     "passed_obstacle": True,
                                     "collision": False,
+                                    "obstacle_clearance_m": 0.1,
                                 },
                             ],
                         }
@@ -886,6 +899,9 @@ def test_fresh_obstacle_smoke_summary_surfaces_demo_and_trace_facts(
     assert trace["reached_obstacle_x"] is True
     assert trace["cleared_obstacle_centerline"] is True
     assert trace["passed_obstacle_ever"] is True
+    assert trace["clearance_summary_matches_steps"] is True
+    assert trace["obstacle_band_sample_count"] == 1
+    assert trace["max_abs_y_in_obstacle_band_m"] == pytest.approx(0.35)
     assert trace["matrix_row"] == 0
     assert trace["matrix_col"] == 0
 
@@ -937,6 +953,7 @@ def test_fresh_obstacle_smoke_summary_prefers_successful_clear_sample(
                 "collision": False,
                 "passed_obstacle": False,
                 "forward_progress_m": 0.0,
+                "obstacle_clearance_m": 0.75,
             },
             {
                 "x": -0.1,
@@ -944,6 +961,7 @@ def test_fresh_obstacle_smoke_summary_prefers_successful_clear_sample(
                 "collision": True,
                 "passed_obstacle": False,
                 "forward_progress_m": 0.9,
+                "obstacle_clearance_m": -0.04,
             },
         ],
     }
@@ -956,6 +974,7 @@ def test_fresh_obstacle_smoke_summary_prefers_successful_clear_sample(
             "collision_rate": 0.0,
             "passed_obstacle_rate": 1.0,
             "mean_forward_progress_m": 2.2,
+            "min_obstacle_clearance_m": 0.1,
         },
         "steps": [
             {
@@ -964,6 +983,15 @@ def test_fresh_obstacle_smoke_summary_prefers_successful_clear_sample(
                 "collision": False,
                 "passed_obstacle": False,
                 "forward_progress_m": 0.0,
+                "obstacle_clearance_m": 0.75,
+            },
+            {
+                "x": 0.0,
+                "y": 0.35,
+                "collision": False,
+                "passed_obstacle": False,
+                "forward_progress_m": 1.0,
+                "obstacle_clearance_m": 0.1,
             },
             {
                 "x": 1.2,
@@ -972,6 +1000,7 @@ def test_fresh_obstacle_smoke_summary_prefers_successful_clear_sample(
                 "passed_obstacle": True,
                 "goal_reached": True,
                 "forward_progress_m": 2.2,
+                "obstacle_clearance_m": 0.1,
             },
         ],
     }
@@ -998,6 +1027,95 @@ def test_fresh_obstacle_smoke_summary_prefers_successful_clear_sample(
     assert trace["matrix_col"] == 0
     assert trace["passed_obstacle_ever"] is True
     assert trace["collision_ever"] is False
+
+
+def test_fresh_obstacle_smoke_summary_rejects_summary_only_obstacle_success(
+    tmp_path: Path,
+) -> None:
+    video_path = tmp_path / "obstacle_course_demo.mp4"
+    video_path.write_bytes(b"0" * 12_000)
+    smoke_report = {
+        "ok": True,
+        "configured_learners": ["alberta"],
+        "obstacle_baseline": {
+            "baseline_is_control": True,
+            "learning_beats_baseline": True,
+        },
+        "obstacle_trace_rollouts": {
+            "ok": True,
+            "all_trace_summaries_consistent": True,
+            "any_required_learner_successful_final_clear": True,
+            "alberta_successful_final_clear": True,
+            "alberta_successful_final_clear_rate": 1.0,
+            "alberta_majority_final_clear": True,
+            "alberta_final_clear_advantage": True,
+        },
+        "demo": {
+            "schema": "robot-alberta-obstacle-demo-v1",
+            "ok": True,
+            "frames": 3,
+            "video": str(video_path),
+            "video_bytes": 12_000,
+            "learner_results": {
+                "alberta": {"has_trajectory_traces": True},
+            },
+        },
+    }
+    smoke_bundle = {
+        "results": [
+            {
+                "name": "alberta",
+                "trajectory_matrix": [
+                    [
+                        {
+                            "task_id": 0,
+                            "obstacle": {"x": 0.0, "y": 0.0, "radius": 0.25},
+                            "summary": {
+                                "success_rate": 1.0,
+                                "collision_rate": 0.0,
+                                "passed_obstacle_rate": 1.0,
+                                "mean_forward_progress_m": 1.4,
+                                "min_obstacle_clearance_m": 0.1,
+                            },
+                            "steps": [
+                                {
+                                    "step": 0,
+                                    "x": -1.0,
+                                    "y": 0.0,
+                                    "passed_obstacle": False,
+                                    "collision": False,
+                                    "obstacle_clearance_m": 0.75,
+                                },
+                                {
+                                    "step": 1,
+                                    "x": -0.5,
+                                    "y": 0.0,
+                                    "passed_obstacle": False,
+                                    "collision": False,
+                                    "obstacle_clearance_m": 0.25,
+                                },
+                            ],
+                        }
+                    ]
+                ],
+            }
+        ],
+    }
+
+    summary = _fresh_obstacle_smoke_summary(
+        smoke_report,
+        smoke_bundle,
+        fresh_obstacle_dir=tmp_path,
+    )
+
+    assert summary["artifact_ok"] is False
+    assert summary["proves_alberta_obstacle_learning"] is False
+    assert "alberta_trace_reaches_obstacle_x" in summary["failed_checks"]
+    assert "alberta_trace_clears_obstacle_centerline" in summary["failed_checks"]
+    assert "alberta_trace_passes_obstacle_by_steps" in summary["failed_checks"]
+    assert "alberta_trace_clearance_summary_matches_steps" in summary["failed_checks"]
+    assert "alberta_trace_samples_obstacle_band" in summary["failed_checks"]
+    assert "alberta_trace_detours_around_obstacle" in summary["failed_checks"]
 
 
 def test_fresh_obstacle_smoke_summary_rejects_missing_demo_video(

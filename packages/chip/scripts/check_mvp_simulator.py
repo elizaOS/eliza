@@ -30,6 +30,14 @@ REQUIRED_ON_CHIP_BOOT_STEPS = {
     "chipyard_verilator_linux_attempt",
     "chipyard_verilator_linux_smoke",
 }
+FALSE_CLAIM_FLAGS = {
+    "phone_claim_allowed",
+    "release_claim_allowed",
+    "fabrication_claim_allowed",
+    "phone_performance_claim_allowed",
+    "hardware_boot_claim_allowed",
+    "production_readiness_claim_allowed",
+}
 
 
 def display_path(path: Path) -> str:
@@ -91,6 +99,9 @@ def main() -> int:
         errors.append("integrated_linux_npu_ml_claim must be bool")
     if not isinstance(data.get("minimum_linux_npu_target_claim"), bool):
         errors.append("minimum_linux_npu_target_claim must be bool")
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be false")
     if data.get("minimum_linux_npu_target_claim") != (
         bool(data.get("on_chip_os_boot_claim"))
         and bool(data.get("npu_ml_smoke_claim"))

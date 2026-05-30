@@ -1,5 +1,12 @@
 verification_scope: pd_package_si_pi_board_manufacturing
 status: release_blocked
+claim_allowed: false
+phone_claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
+board_fabrication_claim_allowed: false
+silicon_claim_allowed: false
+production_readiness_claim_allowed: false
 owner: product_physical_closure
 last_updated: 2026-05-17
 evidence_root: docs/manufacturing/evidence

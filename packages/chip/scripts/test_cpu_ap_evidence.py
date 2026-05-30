@@ -1506,6 +1506,19 @@ def test_scaffold_check_lists_new_missing_evidence_paths() -> None:
     if result.returncode != 0:
         raise AssertionError(result.stdout + result.stderr)
     assert_contains(result.stdout, "STATUS: PASS cpu_ap.scaffold")
+    report = json.loads((ROOT / "build/reports/cpu_ap_stale_evidence.json").read_text())
+    for key in (
+        "phone_2028_ap_claim_allowed",
+        "release_claim_allowed",
+        "linux_capable_cpu_claim_allowed",
+        "android_boot_claim_allowed",
+        "privileged_boot_claim_allowed",
+        "generated_cpu_ap_completion_claim_allowed",
+    ):
+        if report.get(key) is not False:
+            raise AssertionError(f"{key} must be false in CPU/AP stale evidence report")
+    if report.get("summary", {}).get("release_ready") is not False:
+        raise AssertionError("CPU/AP stale evidence report must not claim release readiness")
     if "STATUS: PASS cpu_ap.linux_evidence" in result.stdout:
         return
     assert_contains(result.stdout, "eliza_e1_isa_cache_mmu.log")

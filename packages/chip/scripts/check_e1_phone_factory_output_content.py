@@ -25,6 +25,17 @@ FIRST_ARTICLE_MATRIX = (
     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_production_factory_required_output_presence_inventory.v1"
+CLAIM_BOUNDARY = (
+    "factory_output_content_validation_only_not_factory_or_production_release_evidence"
+)
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "factory_release_claim_allowed": False,
+    "factory_output_claim_allowed": False,
+    "first_article_claim_allowed": False,
+    "supplier_approval_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 COMMON_FIELDS = {
     "artifact_id",
     "source_requirement_id",
@@ -229,6 +240,9 @@ def has_placeholder(value: Any) -> bool:
 
 
 def write_report(payload: dict[str, Any]) -> None:
+    payload.setdefault("claim_boundary", CLAIM_BOUNDARY)
+    for key, expected in FALSE_CLAIM_FLAGS.items():
+        payload.setdefault(key, expected)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

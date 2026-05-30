@@ -21,19 +21,19 @@ def test_e1x_vector_kernel_window_executor_gate_passes() -> None:
     assert report["status"] == "PASS"
     summary = report["summary"]
     assert summary["failing_check_count"] == 0
-    assert summary["window_rows_per_layer"] == 64
+    assert summary["window_rows_per_layer"] == 32_768
     assert summary["proof_layer_count"] == 283
-    assert summary["executed_row_count"] == 18_112
-    assert summary["executed_vector_word_op_count"] == 56_896
-    assert summary["executed_lane_mac_count"] == 418_880
+    assert summary["executed_row_count"] == 2_608_640
+    assert summary["executed_vector_word_op_count"] == 9_190_400
+    assert summary["executed_lane_mac_count"] == 70_620_160
     assert summary["full_output_row_count"] == 2_608_640
     assert summary["full_output_vector_word_op_count"] == 1_627_345_920
-    assert summary["window_output_checksum"] == 3_343_337_413_686_647_285
+    assert summary["window_output_checksum"] == 4_033_574_925_821_332_798
     assert (
         summary["window_record_sha256"]
-        == "092bb967317f1d7b65941a642e5a37264e490e6ce1f09948f22a3b2da4bd9313"
+        == "199aaf62b4087ce224234c27bd0f4a8595535c21278f832de4f25bc47c23640f"
     )
-    assert 0.006 < summary["window_row_coverage_fraction"] < 0.007
+    assert summary["window_row_coverage_fraction"] == 1.0
     assert (
         summary["sampled_vector_trace_sha256"]
         == "f26180ab548688b9ff9f8f47bde426285c160ce99b08a55e6b35eed459ae607c"

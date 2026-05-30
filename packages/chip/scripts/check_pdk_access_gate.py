@@ -16,6 +16,16 @@ PORTABILITY_INDEX = ROOT / "pd/openlane/portability-index.yaml"
 REPORT = ROOT / "build/reports/pdk_access_gate.json"
 EXPECTED_SCHEMA = "eliza.process_pdk_access_gate.v1"
 EXPECTED_STUB_SCHEMA = "eliza.pd_advanced_node_access_gate.v1"
+CLAIM_BOUNDARY = "foundry_access_gate_only_not_pdk_license_or_tapeout_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "pdk_license_claim_allowed": False,
+    "foundry_access_claim_allowed": False,
+    "advanced_node_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "mask_nre_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 REQUIRED_TARGETS = {"primary", "stretch", "second_source", "backup"}
 REQUIRED_GLOBAL_UNBLOCKS = {
     "At_least_one_executed_foundry_agreement",
@@ -55,7 +65,8 @@ def write_report(status: str, findings: list[dict[str, Any]], summary: dict[str,
                 "schema": "eliza.pdk_access_gate_report.v1",
                 "status": status,
                 "generated_utc": datetime.now(UTC).isoformat(),
-                "claim_boundary": "foundry_access_gate_only_not_pdk_license_or_tapeout_evidence",
+                "claim_boundary": CLAIM_BOUNDARY,
+                **FALSE_CLAIM_FLAGS,
                 "summary": {"release_ready": False, **summary},
                 "findings": findings,
             },

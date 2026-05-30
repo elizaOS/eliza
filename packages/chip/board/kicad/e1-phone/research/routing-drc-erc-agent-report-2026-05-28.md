@@ -2,7 +2,7 @@
 
 Lane: KiCad production routing plus DRC/ERC evidence feasibility.
 
-Status: blocked. I did not generate or claim DRC/ERC evidence because `kicad-cli`, `kicad`, `pcbnew`, and `eeschema` are not installed or not on PATH in this environment.
+Status: blocked. Current follow-up found a local KiCad CLI extraction at `packages/chip/.tools/kicad-local`, but it is KiCad `7.0.11` and is not sufficient for release DRC/ERC/STEP evidence. The release gate now requires a KiCad CLI capable of `kicad-cli sch erc`, `kicad-cli pcb drc`, and routed-board STEP export from `e1-phone-mainboard-routed.kicad_pcb`.
 
 ## Tool Preflight
 
@@ -18,13 +18,23 @@ command -v freerouting || true
 command -v java || true
 ```
 
-Observed result:
+Original observed result:
 
 ```text
 /home/shaw/.sdkman/candidates/java/current/bin/java
 ```
 
 Only Java resolved. No KiCad CLI, KiCad GUI command, KiKit, or freerouting executable resolved. That prevents a real local ERC, DRC, zone-refill, Gerber, drill, IPC, or KiCad STEP export run.
+
+Follow-up observed result:
+
+```text
+local kicad-cli: 7.0.11
+FAIL: local kicad-cli lacks required release KiCad capability: schematic ERC command
+Usage: sch [-h] {export}
+```
+
+This changes the blocker from "no KiCad CLI exists" to "the available KiCad CLI is too old for the required release commands and board export smoke test."
 
 The official KiCad CLI documentation shows the relevant command families are `kicad-cli pcb drc`, `kicad-cli sch erc`, and `kicad-cli pcb export step`: https://docs.kicad.org/9.0/en/cli/cli.html
 
@@ -112,7 +122,7 @@ They include local CAD connection coverage and non-release metadata. I found no 
 
 ## Commands Not Run
 
-These were not run because `kicad-cli` is unavailable:
+These remain not run as release evidence because the available `kicad-cli` is KiCad 7.0.11 and lacks the required commands:
 
 ```bash
 kicad-cli pcb drc packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb \
@@ -131,7 +141,7 @@ I did not overwrite any existing production output paths.
 
 ## Promotion Blockers
 
-- No local KiCad CLI/tooling exists to generate real ERC, DRC, zone-refill, export, or KiCad STEP artifacts.
+- No sufficiently new local KiCad CLI/tooling exists to generate real ERC, DRC, zone-refill, export, or KiCad STEP artifacts.
 - `e1-phone-mainboard-routed.kicad_pcb` is SHA-identical to `e1-phone-mainboard-real-footprint-development.kicad_pcb`.
 - The KiCad project and root schematic are explicitly non-release scaffolds.
 - The root schematic still says multiple subsheets are text scaffolds wired in a later pass.
@@ -143,6 +153,7 @@ I did not overwrite any existing production output paths.
 ## Next Routing Steps
 
 1. Install the repo-approved KiCad release with `kicad-cli` available in PATH.
+   The preflight must pass `python3 scripts/check_kicad_toolchain.py`, including `sch erc`, `pcb drc`, and routed-board STEP export from the current routed board.
 2. Resolve the schematic hierarchy and replace remaining text scaffold sheets with real symbols and reviewed pin maps.
 3. Replace supplier-pending footprints and pad orders with approved land patterns and STEP/B-rep models.
 4. Generate a fresh production board source from the approved schematic netlist.

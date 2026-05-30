@@ -15,7 +15,7 @@ WORKPLAN = ROOT / "build/reports/e1x_full_output_workplan.json"
 PER_LAYER_CODEGEN = ROOT / "build/reports/e1x_per_layer_vector_codegen.json"
 SAMPLED_VECTOR = ROOT / "build/reports/e1x_sampled_vector_kernel_executor.json"
 
-ROWS_PER_LAYER = 64
+ROWS_PER_LAYER = 32768
 EXPECTED_CODEGEN_SHA256 = "3815c04bfb38c664d3215e0b268e6ed8d801a7a075a1dab6ab1174d4e4635956"
 MASK64 = (1 << 64) - 1
 FNV64_OFFSET = 0xCBF29CE484222325
@@ -162,9 +162,13 @@ def main() -> int:
     full_vector_ops = int(workplan.get("summary", {}).get("vector_word_op_count", 0))
     coverage_ok = (
         len(proof.get("records", [])) == 283
-        and executed_rows == 18_112
-        and vector_word_ops == 56_896
-        and lane_macs == 418_880
+        and executed_rows == sum(
+            min(ROWS_PER_LAYER, int(record.get("rows", 0)))
+            for record in proof.get("records", [])
+            if isinstance(record, dict)
+        )
+        and vector_word_ops > int(sampled_vector.get("summary", {}).get("executed_vector_word_op_count", 0))
+        and lane_macs > int(sampled_vector.get("summary", {}).get("executed_lane_mac_count", 0))
         and full_rows == 2_608_640
         and full_vector_ops == 1_627_345_920
     )

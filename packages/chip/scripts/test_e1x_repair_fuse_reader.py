@@ -21,6 +21,14 @@ def test_e1x_repair_fuse_reader_gate_passes() -> None:
     assert report["schema"] == "eliza.gate_status.v1"
     assert report["gate"] == "e1x-repair-fuse-reader"
     assert report["status"] == "PASS"
+    for claim_key in (
+        "silicon_fuse_burning_claim_allowed",
+        "foundry_otp_macro_claim_allowed",
+        "wafer_sort_claim_allowed",
+        "measured_silicon_claim_allowed",
+        "release_claim_allowed",
+    ):
+        assert report[claim_key] is False
     assert report["summary"]["failing_check_count"] == 0
     assert report["summary"]["rom_case_count"] == 3
     assert report["summary"]["production_fuse_window_words"] == 4096

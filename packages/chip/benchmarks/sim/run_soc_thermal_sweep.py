@@ -11,6 +11,17 @@ ROOT = Path(__file__).resolve().parents[2]
 PROCESS_EFFECTS = ROOT / "docs/spec-db/process-14a-effects.yaml"
 DEFAULT_OUT = ROOT / "benchmarks/results/soc-thermal-sweep.json"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "phone_score_claim_allowed": False,
+    "rtl_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "sustained_power_thermal_claim_allowed": False,
+    "aosp_runtime_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 @dataclass(frozen=True)
 class ProcessCorner:
@@ -251,6 +262,7 @@ def build_report(args: argparse.Namespace) -> dict:
     return {
         "schema": "eliza.soc_cpu_npu_thermal_sweep.v1",
         "status": "pass",
+        **FALSE_CLAIM_FLAGS,
         "evidence_class": "deterministic_combined_cpu_npu_arch_model",
         "claim_boundary": "modeled_only_not_rtl_pdk_silicon_sustained_or_phone_score_evidence",
         "benchmark_success_allowed": True,

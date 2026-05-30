@@ -27,6 +27,17 @@ REQUIRED_EFFECT_IDS = {
     "dft_yield_and_debug_lock",
 }
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "pdk_signoff_claim_allowed": False,
+    "physical_signoff_claim_allowed": False,
+    "manufacturing_claim_allowed": False,
+    "reliability_qualification_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def check_row(row_id: str, status: str, evidence: str) -> dict[str, str]:
     return {"id": row_id, "status": status, "evidence": evidence}
@@ -266,6 +277,7 @@ def build_report() -> dict[str, Any]:
         else "modeled_process_eval_release_blocked"
         if blocked
         else "pass",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "Deterministic CPU/NPU 14A process-effects evaluation only; not PDK, extracted "
             "parasitics, physical signoff, manufacturing, reliability qualification, or tapeout evidence."
@@ -307,6 +319,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("process eval must remain modeled_process_eval_release_blocked")
     if "not PDK" not in str(data.get("claim_boundary", "")):
         errors.append("claim boundary must block PDK/signoff claims")
+    for flag in FALSE_CLAIM_FLAGS:
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be exactly false")
     effect_results = data.get("effect_results")
     if not isinstance(effect_results, list):
         errors.append("effect_results must be a list")

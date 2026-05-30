@@ -2,6 +2,12 @@
   "schema": "eliza.e1_npu_runtime_contract.v1",
   "as_of": "2026-05-17",
   "claim_boundary": "prototype_mmio_runtime_contract_only_not_phone_class_ai_accelerator",
+  "android_nnapi_claim_allowed": false,
+  "phone_class_ai_accelerator_claim_allowed": false,
+  "production_compiler_claim_allowed": false,
+  "production_dma_tensor_execution_claim_allowed": false,
+  "release_claim_allowed": false,
+  "sustained_performance_claim_allowed": false,
   "current_capability": {
     "classification": "L0_RTL_UNIT",
     "rtl": "rtl/npu/e1_npu.sv",

@@ -6,7 +6,9 @@
   "claim_boundary": "Local feasibility and evidence audit only. This is not DRC evidence, ERC evidence, production routing signoff, fabrication release, or routed-board promotion approval.",
   "workspace": "/home/shaw/milady/eliza",
   "tool_preflight": {
-    "kicad_cli_available": false,
+    "kicad_cli_available": true,
+    "kicad_cli_version": "7.0.11",
+    "kicad_cli_required_release_commands_available": false,
     "kicad_available": false,
     "pcbnew_available": false,
     "eeschema_available": false,
@@ -59,8 +61,18 @@
   "commands_run": [
     {
       "command": "command -v kicad-cli || true; command -v kicad || true; command -v pcbnew || true; command -v eeschema || true; command -v kikit || true; command -v freerouting || true; command -v java || true",
-      "summary": "Only Java resolved; KiCad CLI, KiCad GUI binaries, KiKit, and freerouting were not found on PATH.",
+      "summary": "The repo wrapper resolves kicad-cli 7.0.11, but its sch/pcb command families expose only export subcommands here; KiCad GUI binaries, KiKit, and freerouting were not found on PATH.",
       "exit_code": 0
+    },
+    {
+      "command": "scripts/kicad_run.sh kicad-cli version; scripts/kicad_run.sh kicad-cli sch --help; scripts/kicad_run.sh kicad-cli pcb --help",
+      "summary": "Local wrapper reports kicad-cli 7.0.11. Help output for sch and pcb only lists export, so required release commands sch erc and pcb drc are unavailable. A temp STEP export attempt also fails because the routed board was created by a newer KiCad file format.",
+      "exit_code": 0
+    },
+    {
+      "command": "scripts/kicad_run.sh kicad-cli pcb export step --subst-models board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output build/e1-phone-kicad-raw-check/e1-phone-mainboard-routed-kicad7.step",
+      "summary": "Blocked: KiCad 7.0.11 cannot open the routed board because it was created with a newer KiCad file format. No release STEP output was generated.",
+      "exit_code": 255
     },
     {
       "command": "find packages/chip/board/kicad/e1-phone -maxdepth 3 -type f \\( -name '*.kicad_pro' -o -name '*.kicad_pcb' -o -name '*.kicad_sch' -o -name '*.ses' -o -name '*.dsn' -o -name '*.rpt' -o -name '*.step' -o -name '*.wrl' \\) -print | sort",
@@ -86,19 +98,20 @@
   "commands_not_run": [
     {
       "command": "kicad-cli pcb drc packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output packages/chip/board/kicad/e1-phone/production/reports/drc.json",
-      "reason": "kicad-cli is not installed or not on PATH in this environment."
+      "reason": "repo wrapper resolves kicad-cli 7.0.11, but this CLI lacks the required pcb drc command."
     },
     {
       "command": "kicad-cli sch erc packages/chip/board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output packages/chip/board/kicad/e1-phone/production/reports/erc.json",
-      "reason": "kicad-cli is not installed or not on PATH in this environment."
+      "reason": "repo wrapper resolves kicad-cli 7.0.11, but this CLI lacks the required sch erc command."
     },
     {
       "command": "kicad-cli pcb export step packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step",
-      "reason": "kicad-cli is not installed or not on PATH in this environment; existing STEP is a local candidate artifact and must not be overwritten without a real release export run."
+      "reason": "repo wrapper resolves kicad-cli 7.0.11, but a temp export attempt failed because the routed board requires a newer KiCad file format; existing STEP is a local candidate artifact and must not be overwritten without a real release export run."
     }
   ],
   "promotion_blockers": [
-    "No kicad-cli/pcbnew/eeschema binary is available locally, so real DRC/ERC cannot be generated here.",
+    "The available repo-wrapper kicad-cli is 7.0.11 and lacks sch erc / pcb drc, so real release DRC/ERC cannot be generated here.",
+    "The available repo-wrapper kicad-cli is also too old to open the routed board for STEP export; a temp export attempt failed with a newer-file-format error.",
     "The routed candidate board is byte-identical to the real-footprint development board, so it has not been promoted as an independent production routed source.",
     "The root KiCad project declares a non-release schematic scaffold claim boundary.",
     "The root schematic explicitly says display_camera, radios, audio_buttons, and split_interconnect remain text scaffolds wired in a later pass.",

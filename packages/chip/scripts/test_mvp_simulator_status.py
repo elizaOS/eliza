@@ -244,6 +244,20 @@ def test_qemu_boot_cannot_be_best_executable_evidence() -> None:
     )
 
 
+def test_false_claim_flags_are_required() -> None:
+    payload = report_payload()
+    payload["release_claim_allowed"] = True
+    payload.pop("phone_claim_allowed", None)
+    write_report(payload)
+    result = run_check()
+    if result.returncode != 1:
+        raise AssertionError(
+            f"expected false claim flag rejection, got {result.returncode}\n{result.stdout}"
+        )
+    assert_contains(result.stdout, "phone_claim_allowed must be false")
+    assert_contains(result.stdout, "release_claim_allowed must be false")
+
+
 def test_generator_treats_failed_chip_prereqs_as_on_chip_blockers() -> None:
     results = required_results()
     for item in results:
@@ -287,6 +301,7 @@ def main() -> int:
             test_on_chip_claim_requires_prerequisite_steps,
             test_on_chip_pass_report_is_valid,
             test_qemu_boot_cannot_be_best_executable_evidence,
+            test_false_claim_flags_are_required,
             test_generator_treats_failed_chip_prereqs_as_on_chip_blockers,
             test_generator_requires_chip_prereqs_for_on_chip_claim,
         ):

@@ -15,6 +15,7 @@ import json
 import math
 import re
 import shutil
+import subprocess
 import sys
 from collections.abc import Sequence
 from contextlib import suppress
@@ -3041,6 +3042,36 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         "connections": connection_rows,
     }
     coverage_path.write_text(json.dumps(connection_coverage, indent=2) + "\n")
+    coverage_lines = [
+        "# E1 Phone CAD Connection Coverage",
+        "",
+        f"Status: {connection_coverage['status']}.",
+        "",
+        "## Summary",
+        "",
+        f"- Required connections: {connection_coverage['required_connection_count']}",
+        f"- Passing connections: {connection_coverage['passing_connection_count']}",
+        f"- Terminal markers: {connection_coverage['required_connection_terminal_marker_count']}",
+        f"- Solid STEP connection parts: {connection_coverage['required_connection_solid_step_part_count']}",
+        f"- Represented nets: {connection_coverage['represented_net_count_total']}",
+        f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
+        f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
+        f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
+        "",
+        "## Connections",
+        "",
+    ]
+    for row in connection_rows:
+        result = "PASS" if row["pass"] else "BLOCKED"
+        coverage_lines.append(
+            f"- {result}: `{row['id']}` uses `{row['cad_part']}` from `{row['from']}` "
+            f"to `{row['to']}`; nets={row['represented_net_count']}, "
+            f"routes={row['represented_route_count']}, "
+            f"terminals=`{row['from_terminal_part']}`/`{row['to_terminal_part']}`, "
+            f"span={row['visual_route_span_mm']} mm, "
+            f"endpoint_distance={row['endpoint_center_distance_mm']} mm"
+        )
+    (REVIEW_DIR / "cad-connection-coverage.md").write_text("\n".join(coverage_lines) + "\n")
     return connection_coverage
 
 
@@ -6178,6 +6209,17 @@ def write_solid_cad_handoff_artifacts(
         "# E1 Phone CAD Connection Coverage",
         "",
         f"Status: {connection_coverage['status']}.",
+        "",
+        "## Summary",
+        "",
+        f"- Required connections: {connection_coverage['required_connection_count']}",
+        f"- Passing connections: {connection_coverage['passing_connection_count']}",
+        f"- Terminal markers: {connection_coverage['required_connection_terminal_marker_count']}",
+        f"- Solid STEP connection parts: {connection_coverage['required_connection_solid_step_part_count']}",
+        f"- Represented nets: {connection_coverage['represented_net_count_total']}",
+        f"- Represented route records: {connection_coverage['represented_route_record_count_total']}",
+        f"- Route classification gaps: {connection_coverage['represented_route_classification_gap_count']}",
+        f"- Release credit: {str(connection_coverage['release_credit']).lower()}",
         "",
         "## Connections",
         "",
@@ -15911,6 +15953,50 @@ def write_board_step_readiness_artifacts(
     if not isinstance(component_models_for_intake, list):
         component_models_for_intake = []
     kicad_cli_path = shutil.which("kicad-cli")
+    kicad_cli_runner = ROOT / "scripts/kicad_run.sh"
+    kicad_cli_available = bool(kicad_cli_path) or kicad_cli_runner.is_file()
+
+    def kicad_command(*args: str) -> list[str]:
+        if kicad_cli_path:
+            return [kicad_cli_path, *args]
+        return [str(kicad_cli_runner), "kicad-cli", *args]
+
+    def kicad_probe(*args: str) -> tuple[int | None, str]:
+        if not kicad_cli_available:
+            return None, ""
+        with suppress(Exception):
+            completed = subprocess.run(
+                kicad_command(*args),
+                cwd=ROOT,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+            )
+            return completed.returncode, completed.stdout
+        return None, ""
+
+    version_rc, kicad_version_output = kicad_probe("version")
+    sch_help_rc, sch_help = kicad_probe("sch", "--help")
+    pcb_help_rc, pcb_help = kicad_probe("pcb", "--help")
+    step_help_rc, step_help = kicad_probe("pcb", "export", "step", "--help")
+    sch_erc_available = sch_help_rc == 0 and "erc" in sch_help
+    pcb_drc_available = pcb_help_rc == 0 and "drc" in pcb_help
+    pcb_step_export_available = (
+        step_help_rc in {0, 1} and "Usage: step" in step_help and "--subst-models" in step_help
+    )
+    kicad_version = kicad_version_output.strip()
+    pcb_step_export_status = (
+        "blocked_kicad_cli_lacks_pcb_export_step"
+        if not pcb_step_export_available
+        else "blocked_kicad_cli_7_cannot_open_current_board"
+        if kicad_version.startswith("7.")
+        else "available_not_release_validated"
+    )
+    required_release_commands_available = (
+        sch_erc_available and pcb_drc_available and pcb_step_export_available
+    )
     kicad_cli_preflight = {
         "schema": "eliza.e1_phone_routed_board_kicad_cli_preflight.v1",
         "claim_boundary": (
@@ -15918,23 +16004,36 @@ def write_board_step_readiness_artifacts(
             "environment evidence only and does not grant release credit."
         ),
         "tool": "kicad-cli",
-        "available": bool(kicad_cli_path),
-        "resolved_path": kicad_cli_path or "",
+        "available": kicad_cli_available,
+        "resolved_path": kicad_cli_path
+        or ("scripts/kicad_run.sh kicad-cli" if kicad_cli_runner.is_file() else ""),
+        "version": kicad_version,
+        "sch_erc_available": sch_erc_available,
+        "pcb_drc_available": pcb_drc_available,
+        "pcb_step_export_available": pcb_step_export_available,
+        "required_release_commands_available": required_release_commands_available,
         "required_for": [
             "board/kicad/e1-phone/production/reports/drc.json",
             "board/kicad/e1-phone/production/reports/erc.json",
+            "board/kicad/e1-phone/production/step/routed-board-with-components.step",
         ],
         "attempted_commands": [
             "kicad-cli pcb drc board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --format json --output board/kicad/e1-phone/production/reports/drc.json",
             "kicad-cli sch erc board/kicad/e1-phone/schematic/e1-phone.kicad_sch --format json --output board/kicad/e1-phone/production/reports/erc.json",
+            "kicad-cli pcb export step --subst-models board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb --output board/kicad/e1-phone/production/step/routed-board-with-components.step",
         ],
-        "drc_status": "blocked_tool_unavailable" if not kicad_cli_path else "not_run",
-        "erc_status": "blocked_tool_unavailable" if not kicad_cli_path else "not_run",
+        "drc_status": (
+            "not_run" if pcb_drc_available else "blocked_kicad_cli_lacks_pcb_drc"
+        ),
+        "erc_status": (
+            "not_run" if sch_erc_available else "blocked_kicad_cli_lacks_sch_erc"
+        ),
+        "step_export_status": pcb_step_export_status,
         "release_credit": False,
         "next_action": (
-            "Install KiCad CLI in the release environment and run DRC/ERC against "
-            "the routed KiCad board and schematic; archive raw JSON plus waivers "
-            "before promoting the routed-board intake."
+            "Install a release-capable KiCad CLI with sch erc, pcb drc, and pcb "
+            "export step; rerun DRC/ERC/STEP against the approved routed board "
+            "and archive raw JSON plus waivers before promoting the routed-board intake."
         ),
     }
     routed_kicad_preflight_path.write_text(json.dumps(kicad_cli_preflight, indent=2) + "\n")

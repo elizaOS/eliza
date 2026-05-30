@@ -36,6 +36,15 @@ REPORT = ROOT / "build/reports/pd_signoff.json"
 MANIFEST_REPORT = ROOT / "build/reports/pd_signoff_manifest.json"
 SCHEMA = "eliza.pd_signoff.v1"
 CLAIM_BOUNDARY = "pd_signoff_artifact_validation_only_not_tapeout_release_evidence"
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "tapeout_claim_allowed": False,
+    "physical_signoff_claim_allowed": False,
+    "drc_lvs_antenna_sta_claim_allowed": False,
+    "ir_em_claim_allowed": False,
+    "foundry_release_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
 
 ARTIFACT_LABELS = {
     "run_manifest": "run manifest",
@@ -214,6 +223,7 @@ def write_report(
         "status": status,
         "generated_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "mode": mode,
         "manifest": evidence,
         "summary": {

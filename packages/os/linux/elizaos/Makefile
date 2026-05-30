@@ -87,6 +87,12 @@ endif
 riscv64-agent-runtime-smoke:
 	RISCV64_AGENT_RUNTIME_REPORT="$(RISCV64_AGENT_RUNTIME_REPORT)" RISCV64_AGENT_RUNTIME_TRANSCRIPT="$(RISCV64_AGENT_RUNTIME_TRANSCRIPT)" scripts/check-riscv64-agent-runtime-artifact.sh "$(HERE)/artifacts/riscv64"
 
+release-check:
+	python3 scripts/check_release_manifest.py
+
+release-check-strict:
+	python3 scripts/check_release_manifest.py --strict
+
 lint:
 	scripts/static-smoke.sh
 	python3 -m py_compile scripts/check-multiarch-boot-contract.py

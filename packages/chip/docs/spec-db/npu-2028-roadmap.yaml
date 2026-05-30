@@ -3,6 +3,12 @@ as_of: 2026-05-17
 target_spec: docs/spec-db/npu-2028-target.yaml
 runtime_contract: docs/spec-db/e1-npu-runtime-contract.json
 claim_boundary: roadmap_phase_gates_only_no_android_boot_or_phone_class_accelerator_claim
+android_boot_claim_allowed: false
+android_nnapi_claim_allowed: false
+phone_class_accelerator_claim_allowed: false
+release_claim_allowed: false
+sustained_performance_claim_allowed: false
+silicon_claim_allowed: false
 
 current_phase: L0_MMIO_PROTOTYPE
 phase_order:

@@ -84,6 +84,26 @@ class ReleaseManifestRuntimeEvidenceTests(unittest.TestCase):
             self.assertIn("staged riscv64 Bun provenance missing", messages)
             self.assertTrue(any(result.status == "FAIL" for result in results))
 
+    def test_collected_evidence_rows_require_existing_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "evidence").mkdir()
+            (root / "evidence/qemu_virt_boot.json").write_text("{}", encoding="utf-8")
+            manifest = manifest_with_runtime("evidence/missing_runtime.json")
+            for row in manifest["validation"]["evidence"]:
+                if row["id"] in {
+                    "qemu-virt-boot",
+                    "grub-efi-riscv64-boot",
+                    "elizaos-agent-live",
+                }:
+                    row["path"] = "evidence/qemu_virt_boot.json"
+
+            results = gate.check_collected_evidence_paths(manifest, root)
+
+            messages = "\n".join(result.message for result in results)
+            self.assertIn("riscv64-agent-runtime", messages)
+            self.assertTrue(any(result.status == "BLOCKED" for result in results))
+
     def test_runtime_smoke_accepts_matching_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -28,6 +28,7 @@ VERILOG_SOURCES := \
 	$(PWD)/e1_l2_tb.sv \
 	$(PWD)/e1_l1i_dual_miss_to_l2_tb.sv \
 	$(PWD)/e1_l3_tb.sv \
+	$(PWD)/e1_l3_replacement_tb.sv \
 	$(PWD)/e1_slc_tb.sv \
 	$(PWD)/e1_mockingjay_prod_tb.sv \
 	$(PWD)/e1_coherence_smp_tb.sv

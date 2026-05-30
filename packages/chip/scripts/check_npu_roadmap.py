@@ -106,6 +106,15 @@ REQUIRED_CAPABILITY_TOKENS = {
     },
 }
 
+FALSE_ROADMAP_CLAIM_FLAGS = {
+    "android_boot_claim_allowed": False,
+    "android_nnapi_claim_allowed": False,
+    "phone_class_accelerator_claim_allowed": False,
+    "release_claim_allowed": False,
+    "sustained_performance_claim_allowed": False,
+    "silicon_claim_allowed": False,
+}
+
 
 def main() -> int:
     errors: list[str] = []
@@ -128,6 +137,9 @@ def main() -> int:
         errors.append(
             "roadmap claim_boundary must fail closed for Android boot and phone-class claims"
         )
+    for flag, expected in FALSE_ROADMAP_CLAIM_FLAGS.items():
+        if roadmap.get(flag) is not expected:
+            errors.append(f"roadmap must keep {flag}=false")
     if roadmap.get("current_phase") != "L0_MMIO_PROTOTYPE":
         errors.append("current_phase must remain L0_MMIO_PROTOTYPE until higher evidence exists")
     if roadmap.get("phase_order") != EXPECTED_PHASES:

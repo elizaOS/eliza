@@ -27,6 +27,10 @@ def test_manual_review_checker_passes() -> None:
     result = run_check()
     if result.returncode != 0:
         raise AssertionError(result.stdout)
+    data = yaml.safe_load(REVIEW.read_text(encoding="utf-8"))
+    flags = {key: value for key, value in data.items() if key.endswith("_claim_allowed")}
+    if not flags or any(value is not False for value in flags.values()):
+        raise AssertionError(flags)
 
 
 def test_manual_review_rejects_release_claim() -> None:

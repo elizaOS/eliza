@@ -1,0 +1,868 @@
+diff --git a/bun.lock b/bun.lock
+index e270570..38b1b5f 100644
+--- a/bun.lock
++++ b/bun.lock
+@@ -9,6 +9,7 @@
+         "@lezer/cpp": "^1.1.3",
+         "@types/bun": "workspace:*",
+         "bun-tracestrings": "github:oven-sh/bun.report#912ca63e26c51429d3e6799aa2a6ab079b188fd8",
++        "bun-types": "",
+         "esbuild": "^0.21.5",
+         "mitata": "^0.1.14",
+         "peechy": "0.4.34",
+diff --git a/package.json b/package.json
+index fda02bd..382c09d 100644
+--- a/package.json
++++ b/package.json
+@@ -11,6 +11,7 @@
+     "@lezer/cpp": "^1.1.3",
+     "@types/bun": "workspace:*",
+     "bun-tracestrings": "github:oven-sh/bun.report#912ca63e26c51429d3e6799aa2a6ab079b188fd8",
++    "bun-types": "workspace:*",
+     "esbuild": "^0.21.5",
+     "mitata": "^0.1.14",
+     "peechy": "0.4.34",
+diff --git a/scripts/build.ts b/scripts/build.ts
+index 6818deb..1ea3538 100644
+--- a/scripts/build.ts
++++ b/scripts/build.ts
+@@ -3,6 +3,10 @@
+  *
+  *   bun scripts/build.ts --profile=debug
+  *   bun scripts/build.ts --profile=release
++ *   bun scripts/build.ts --profile=release --arch=riscv64 --abi=musl
++ *     # cross-compile to linux-riscv64-musl. Requires:
++ *     #   - $BUN_WEBKIT_PATH pointing at a built WebKitBuild dir
++ *     #   - cross-clang + riscv64-linux-musl sysroot in PATH
+  *   bun scripts/build.ts --asan=off test foo.test.ts    # override + build + run
+  *   bun scripts/build.ts --target tinycc                # build one dep
+  *   bun scripts/build.ts --configure-only               # emit ninja, don't run
+diff --git a/scripts/build/bun.ts b/scripts/build/bun.ts
+index 4b9b4f3..0100e69 100644
+--- a/scripts/build/bun.ts
++++ b/scripts/build/bun.ts
+@@ -670,6 +670,8 @@ function emitSmokeTest(n: Ninja, cfg: Config, exe: string, exeName: string): voi
+   if (cfg.linux && cfg.asan) {
+     const arch = cfg.x64 ? "x86_64" : "aarch64";
+     testCmd = `${envWrap} setarch ${arch} -R ${exe} --revision || ${envWrap} ${exe} --revision`;
++  } else if (cfg.riscv64) {
++    testCmd = `${envWrap} qemu-riscv64-static -L /sysroot ${exe} --revision`;
+   } else if (cfg.windows) {
+     // Windows: no setarch, no env wrapper syntax differences matter for
+     // this simple case. cmd /c handles the pipe.
+diff --git a/scripts/build/config.ts b/scripts/build/config.ts
+index 3805759..6a1ce6f 100644
+--- a/scripts/build/config.ts
++++ b/scripts/build/config.ts
+@@ -18,7 +18,7 @@ import { clangTargetArch } from "./tools.ts";
+ import { cyan, dim, green } from "./tty.ts";
+ 
+ export type OS = "linux" | "darwin" | "windows" | "freebsd";
+-export type Arch = "x64" | "aarch64";
++export type Arch = "x64" | "aarch64" | "riscv64";
+ export type Abi = "gnu" | "musl" | "android";
+ export type BuildType = "Debug" | "Release" | "RelWithDebInfo" | "MinSizeRel";
+ export type BuildMode = "full" | "cpp-only" | "rust-only" | "link-only";
+@@ -87,6 +87,8 @@ export interface Config {
+   kqueue: boolean;
+   x64: boolean;
+   arm64: boolean;
++  /** RISC-V 64 (rv64gc/lp64d). Cross-compile only — no host build. */
++  riscv64: boolean;
+ 
+   /**
+    * What's running the build. Differs from os/arch/windows (target) in
+@@ -489,9 +491,13 @@ export function detectHost(): Host {
+       ? "x64"
+       : a === "arm64"
+         ? "aarch64"
+-        : (() => {
+-            throw new BuildError(`Unsupported host architecture: ${a}`, { hint: "Bun builds on x64 or arm64" });
+-          })();
++        : a === "riscv64"
++          ? "riscv64"
++          : (() => {
++              throw new BuildError(`Unsupported host architecture: ${a}`, {
++                hint: "Bun builds on x64, arm64, or riscv64",
++              });
++            })();
+ 
+   // rustTriple is stamped later from Toolchain.rustHostTriple in resolveConfig
+   // (the rustc probe is authoritative — distinguishes glibc/musl host etc.).
+@@ -690,6 +696,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   const kqueue = darwin || freebsd;
+   const x64 = arch === "x64";
+   const arm64 = arch === "aarch64";
++  const riscv64 = arch === "riscv64";
+   // Darwin target on a non-darwin host (Linux CI box building macOS
+   // binaries). Same host-clang + --target/-isysroot model as Android/FreeBSD,
+   // with ld64.lld doing the Mach-O link. See the cross block further down.
+@@ -856,7 +863,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   // TinyCC: off on Windows ARM64 (not supported), Android (no upstream
+   // bionic support; FFI cc() falls back to dlopen-only), and FreeBSD
+   // (oven-sh/tinycc has no FreeBSD target).
+-  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd);
++  const tinycc = partial.tinycc ?? !((windows && arm64) || abi === "android" || freebsd || riscv64);
+ 
+   const valgrind = partial.valgrind ?? false;
+   const fuzzilli = partial.fuzzilli ?? false;
+@@ -894,6 +901,9 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+ 
+   // ─── Validation ───
+   assert(!baseline || x64, "baseline=true requires arch=x64 (baseline disables AVX which is x64-only)");
++  // riscv64 only supported on linux-musl right now (cross-compile target
++  // for the Android agent; Alpine v3.21 sysroot). Reassess when adding glibc.
++  assert(!riscv64 || (linux && abi === "musl"), "arch=riscv64 currently requires os=linux abi=musl");
+   assert(!valgrind || linux, "valgrind=true requires os=linux");
+   assert(!(asan && valgrind), "Cannot enable both asan and valgrind simultaneously");
+   assert(os !== "linux" || abi !== undefined, "Linux builds require an abi (gnu, musl, or android)");
+@@ -1021,6 +1031,16 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+   const nodejsAbiVersion = partial.nodejsAbiVersion ?? versionDefaults.nodejsAbiVersion;
+   const webkitVersion = partial.webkitVersion ?? versionDefaults.webkitVersion;
+ 
++  // riscv64 cross-builds drive their own GCC/musl toolchain through BUN_CC
++  // etc. (the LLVM/clang toolchain probe doesn't apply). Resolve those env
++  // overrides to absolute paths; non-riscv64 builds keep the probed tools.
++  const riscv64Tool = (envName: string, fallback: string): string => {
++    if (!riscv64) return fallback;
++    const value = process.env[envName];
++    if (!value) return fallback;
++    return resolve(cwd, value);
++  };
++
+   // ─── macOS SDK ───
+   // Must be passed to nested cmake builds or they'll pick the wrong SDK.
+   // Native darwin: ask xcode-select/xcrun. Cross-compiling from a non-darwin
+@@ -1097,6 +1117,7 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     kqueue,
+     x64,
+     arm64,
++    riscv64,
+     host,
+     exeSuffix,
+     objSuffix,
+@@ -1126,25 +1147,29 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     timeTrace: partial.timeTrace ?? false,
+     ci,
+     buildkite,
+-    webkit: partial.webkit ?? "prebuilt",
++    // WebKit mode:
++    //   riscv64: force local (no prebuilt tarball exists for riscv64;
++    //            BUN_WEBKIT_PATH must point at a built WebKitBuild dir).
++    //   else:    prebuilt unless overridden.
++    webkit: partial.webkit ?? (riscv64 ? "local" : "prebuilt"),
+     cwd,
+     buildDir,
+     codegenDir,
+     cacheDir,
+     vendorDir,
+-    cc: toolchain.cc,
+-    cxx: toolchain.cxx,
++    cc: riscv64Tool("BUN_CC", toolchain.cc),
++    cxx: riscv64Tool("BUN_CXX", toolchain.cxx),
+     hostCc: toolchain.hostCc ?? toolchain.cc,
+     hostCxx: toolchain.hostCxx ?? toolchain.cxx,
+     clangVersion: toolchain.clangVersion,
+     clangResourceDir: toolchain.clangResourceDir,
+-    ar: toolchain.ar,
+-    ranlib: toolchain.ranlib,
+-    ld: ld64StripSwap?.ld ?? ld,
++    ar: riscv64Tool("BUN_AR", toolchain.ar),
++    ranlib: riscv64Tool("BUN_RANLIB", toolchain.ranlib ?? ""),
++    ld: riscv64Tool("BUN_LD", ld64StripSwap?.ld ?? ld),
+     rustLld: toolchain.rustLld,
+     rustLlvmVersion: toolchain.rustLlvmVersion,
+     rustSysroot: toolchain.rustSysroot,
+-    strip: ld64StripSwap?.strip ?? toolchain.strip,
++    strip: riscv64Tool("BUN_STRIP", ld64StripSwap?.strip ?? toolchain.strip),
+     dsymutil: toolchain.dsymutil,
+     bun: toolchain.bun,
+     jsRuntime: toolchain.jsRuntime,
+diff --git a/scripts/build/deps/tinycc.ts b/scripts/build/deps/tinycc.ts
+index 499a83b..2b3544f 100644
+--- a/scripts/build/deps/tinycc.ts
++++ b/scripts/build/deps/tinycc.ts
+@@ -31,6 +31,11 @@ export const tinycc: Dependency = {
+   patches: ["patches/tinycc/tcc.h.patch"],
+ 
+   build: cfg => {
++    if (cfg.riscv64) {
++      throw new Error(
++        "deps/tinycc: oven-sh/tinycc has no riscv64 backend. Build with --tinycc=off (default on riscv64).",
++      );
++    }
+     const sources = ["libtcc.c", "tccpp.c", "tccgen.c", "tccdbg.c", "tccelf.c", "tccasm.c", "tccrun.c"];
+     if (cfg.arm64) sources.push("arm64-gen.c", "arm64-link.c", "arm64-asm.c");
+     else sources.push("x86_64-gen.c", "x86_64-link.c", "i386-asm.c");
+diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
+index c49031a..f200576 100644
+--- a/scripts/build/deps/webkit.ts
++++ b/scripts/build/deps/webkit.ts
+@@ -74,6 +74,11 @@ function prebuiltSuffix(cfg: Config): string {
+ }
+ 
+ function prebuiltUrl(cfg: Config): string {
++  if (cfg.riscv64) {
++    throw new Error(
++      "deps/webkit: no prebuilt WebKit tarball for riscv64. Use --webkit=local with BUN_WEBKIT_PATH set.",
++    );
++  }
+   const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : cfg.freebsd ? "freebsd" : "linux";
+   const arch = cfg.arm64 ? "arm64" : "amd64";
+   const name = `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}`;
+@@ -229,6 +234,14 @@ export const webkit: Dependency = {
+       return { kind: "none" };
+     }
+ 
++    // The riscv64 artifact driver builds WebKit out-of-band in C_LOOP mode
++    // and symlinks the completed build into build/<profile>/deps/WebKit.
++    // No nested cmake here — WebKit is treated as an externally-prebuilt dep;
++    // resolveDep consumes provides.libs from depBuildDir().
++    if (cfg.riscv64) {
++      return { kind: "none" };
++    }
++
+     // Local: nested cmake, target=jsc.
+     //
+     // CMAKE_C_FLAGS/CMAKE_CXX_FLAGS: overrides the global dep flags source.ts
+diff --git a/scripts/build/deps/zlib.ts b/scripts/build/deps/zlib.ts
+index 2ee3470..d05a4f4 100644
+--- a/scripts/build/deps/zlib.ts
++++ b/scripts/build/deps/zlib.ts
+@@ -203,6 +203,13 @@ export const zlib: Dependency = {
+       }
+       sources.push(...GENERIC.map(s => `arch/generic/${s}.c`));
+       sources.push("arch/arm/arm_features.c");
++    } else if (cfg.riscv64) {
++      // No RVV SIMD kernels are wired up here; build the portable generic C
++      // fallbacks only (zlib-ng selects them via WITH_ALL_FALLBACKS).
++      kernels = [];
++      archDir = "generic";
++      defines.WITH_ALL_FALLBACKS = true;
++      sources.push(...GENERIC.map(s => `arch/generic/${s}.c`));
+     } else {
+       throw new Error(`zlib: no SIMD kernel table for arch ${cfg.arch}`);
+     }
+diff --git a/scripts/build/flags.ts b/scripts/build/flags.ts
+index 7759c75..0cf8f28 100644
+--- a/scripts/build/flags.ts
++++ b/scripts/build/flags.ts
+@@ -67,6 +67,11 @@ export const cpuTargetFlags: Flag[] = [
+     when: c => c.windows && c.arm64,
+     desc: "ARM64 Windows: clang-cl prefix required (/clang: passes to clang)",
+   },
++  {
++    flag: ["-march=rv64gc", "-mabi=lp64d"],
++    when: c => c.linux && c.riscv64,
++    desc: "RISC-V 64 Linux: rv64gc (IMAFDC + Zicsr/Zifencei) + lp64d ABI",
++  },
+   {
+     flag: "-march=nehalem",
+     when: c => c.x64 && c.baseline,
+diff --git a/scripts/build/rust.ts b/scripts/build/rust.ts
+index 698ae95..a2328dd 100644
+--- a/scripts/build/rust.ts
++++ b/scripts/build/rust.ts
+@@ -46,7 +46,10 @@ import { streamPath } from "./stream.ts";
+  *   - Cross-compiles (Android/FreeBSD) need it anyway
+  */
+ export function rustTarget(cfg: Config): string {
+-  const arch = cfg.x64 ? "x86_64" : "aarch64";
++  // riscv64 is linux-musl/gnu only (asserted in config.ts); the rust triple
++  // arch token is `riscv64gc` (Tier-2 prebuilt std exists for
++  // riscv64gc-unknown-linux-{musl,gnu}).
++  const arch = cfg.x64 ? "x86_64" : cfg.riscv64 ? "riscv64gc" : "aarch64";
+   if (cfg.darwin) return `${arch}-apple-darwin`;
+   if (cfg.windows) return `${arch}-pc-windows-msvc`;
+   if (cfg.freebsd) return `${arch}-unknown-freebsd`;
+@@ -118,6 +121,7 @@ export const allRustTargets = [
+   "aarch64-unknown-linux-gnu",
+   "x86_64-unknown-linux-musl",
+   "aarch64-unknown-linux-musl",
++  "riscv64gc-unknown-linux-musl",
+   "x86_64-apple-darwin",
+   "aarch64-apple-darwin",
+   "x86_64-pc-windows-msvc",
+diff --git a/scripts/build/source.ts b/scripts/build/source.ts
+index d43493a..e9afea2 100644
+--- a/scripts/build/source.ts
++++ b/scripts/build/source.ts
+@@ -852,9 +852,14 @@ export function resolveDep(
+   } else {
+     // No build step. Source stamp is the only output. For deps with
+     // provides.sources (picohttpparser), emitBun adds a phony pointing at
+-    // the compiled .o files so `--target <name>` actually compiles them.
+-    libs = [];
+-    outputs = [sourceStamp];
++    // the compiled .o files so `--target <name>` actually compiles them. Some
++    // deps can also point at externally built libs, such as riscv64 WebKit
++    // (built out-of-band and symlinked into depBuildDir).
++    const buildDir = depBuildDir(cfg, dep.name);
++    libs = provides.libs.map(lib =>
++      lib.includes(".") ? resolve(buildDir, lib) : resolve(buildDir, `${cfg.libPrefix}${lib}${cfg.libSuffix}`),
++    );
++    outputs = libs.length > 0 ? libs : [sourceStamp];
+   }
+ 
+   // ─── Resolve include paths ───
+@@ -1142,6 +1147,15 @@ function emitNestedCmake(
+     args.push(`-DCMAKE_EXE_LINKER_FLAGS=--ld-path=${cfg.ld}`);
+     args.push(`-DCMAKE_SHARED_LINKER_FLAGS=--ld-path=${cfg.ld}`);
+   }
++  if (cfg.linux && cfg.riscv64) {
++    // riscv64 deps cross-build on an x86_64 host: tell cmake the target
++    // system + processor, point try_compile at the riscv64 sysroot, and run
++    // compiled probe executables under qemu so feature detection works.
++    args.push(`-DCMAKE_SYSTEM_NAME=Linux`);
++    args.push(`-DCMAKE_SYSTEM_PROCESSOR=riscv64`);
++    args.push(`-DCMAKE_SYSROOT=${process.env.BUN_SYSROOT ?? "/sysroot"}`);
++    args.push(`-DCMAKE_CROSSCOMPILING_EMULATOR=qemu-riscv64-static;-L;${process.env.BUN_SYSROOT ?? "/sysroot"}`);
++  }
+   if (cfg.windows) {
+     // Windows-specific toolchain forwarding. When CMAKE_C_COMPILER is
+     // an explicit path, cmake's find_program for the supporting tools
+diff --git a/scripts/glob-sources.ts b/scripts/glob-sources.ts
+index 1f794a2..8cec92a 100644
+--- a/scripts/glob-sources.ts
++++ b/scripts/glob-sources.ts
+@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
+ import { assert } from "./build/error.ts";
+ 
+ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
++const forceRiscv64CLoop = process.env.BUN_RISCV64_FORCE_CLOOP === "1";
+ 
+ interface SourcePattern {
+   paths: string[];
+@@ -116,6 +117,7 @@ const patterns = {
+       "src/jsc/bindings/vm/*.cpp",
+       "packages/bun-usockets/src/crypto/*.cpp",
+     ],
++    exclude: forceRiscv64CLoop ? ["src/jsc/bindings/webcore/JSWasmStreamingCompiler.cpp"] : [],
+   },
+   /** all `*.c` compiled into bun (usockets, llhttp, uv polyfills) */
+   c: {
+diff --git a/src/jsc/bindings/BunCPUProfiler.cpp b/src/jsc/bindings/BunCPUProfiler.cpp
+index 3166d2e..bb0de3c 100644
+--- a/src/jsc/bindings/BunCPUProfiler.cpp
++++ b/src/jsc/bindings/BunCPUProfiler.cpp
+@@ -1,3 +1,37 @@
++#if defined(__riscv) && __riscv_xlen == 64
++// riscv64 builds use the C_LOOP interpreter (no JIT) and therefore have no
++// sampling profiler. Provide no-op stubs for the CPU profiler API so the rest
++// of the runtime links cleanly.
++#include "root.h"
++#include "BunCPUProfiler.h"
++#include "BunString.h"
++#include "helpers.h"
++
++extern "C" void Bun__setSamplingInterval(int) { }
++
++namespace Bun {
++void setSamplingInterval(int) { }
++bool isCPUProfilerRunning() { return false; }
++void startCPUProfiler(JSC::VM&) { }
++void stopCPUProfiler(JSC::VM&, WTF::String* outJSON, WTF::String* outText)
++{
++    if (outJSON)
++        *outJSON = WTF::String();
++    if (outText)
++        *outText = WTF::String();
++}
++} // namespace Bun
++
++extern "C" void Bun__startCPUProfiler(JSC::VM*) { }
++extern "C" void Bun__stopCPUProfiler(JSC::VM*, BunString* outJSON, BunString* outText)
++{
++    if (outJSON)
++        *outJSON = Bun::toStringRef(WTF::String());
++    if (outText)
++        *outText = Bun::toStringRef(WTF::String());
++}
++
++#else
+ #include "root.h"
+ #include "BunCPUProfiler.h"
+ #include "ZigGlobalObject.h"
+@@ -945,3 +979,4 @@ extern "C" void Bun__stopCPUProfiler(JSC::VM* vm, BunString* outJSON, BunString*
+     if (outText)
+         *outText = Bun::toStringRef(textResult);
+ }
++#endif
+diff --git a/src/jsc/bindings/BunProcess.cpp b/src/jsc/bindings/BunProcess.cpp
+index 6935f0c..56da7f0 100644
+--- a/src/jsc/bindings/BunProcess.cpp
++++ b/src/jsc/bindings/BunProcess.cpp
+@@ -183,6 +183,8 @@ static JSValue constructArch(VM& vm, JSObject* processObject)
+     return JSC::jsString(vm, makeAtomString("x64"_s));
+ #elif CPU(ARM64)
+     return JSC::jsString(vm, makeAtomString("arm64"_s));
++#elif CPU(RISCV64)
++    return JSC::jsString(vm, makeAtomString("riscv64"_s));
+ #else
+ #error "Unknown architecture"
+ #endif
+@@ -2556,6 +2558,9 @@ static JSValue constructProcessConfigObject(VM& vm, JSObject* processObject)
+ #elif CPU(ARM64)
+     variables->putDirect(vm, JSC::Identifier::fromString(vm, "host_arch"_s), JSC::jsString(vm, String("arm64"_s)), 0);
+     variables->putDirect(vm, JSC::Identifier::fromString(vm, "target_arch"_s), JSC::jsString(vm, String("arm64"_s)), 0);
++#elif CPU(RISCV64)
++    variables->putDirect(vm, JSC::Identifier::fromString(vm, "host_arch"_s), JSC::jsString(vm, String("riscv64"_s)), 0);
++    variables->putDirect(vm, JSC::Identifier::fromString(vm, "target_arch"_s), JSC::jsString(vm, String("riscv64"_s)), 0);
+ #else
+ #error "Unsupported architecture"
+ #endif
+diff --git a/src/jsc/bindings/CPUFeatures.cpp b/src/jsc/bindings/CPUFeatures.cpp
+index d1b1560..6f43bcf 100644
+--- a/src/jsc/bindings/CPUFeatures.cpp
++++ b/src/jsc/bindings/CPUFeatures.cpp
+@@ -136,6 +136,8 @@ extern "C" uint8_t bun_cpu_features()
+     return x86_cpu_features();
+ #elif CPU(ARM64)
+     return aarch64_cpu_features();
++#elif CPU(RISCV64)
++    return 0;
+ #else
+ #error "Unknown architecture"
+ #endif
+diff --git a/src/jsc/bindings/ConsoleObject.cpp b/src/jsc/bindings/ConsoleObject.cpp
+index 6d8fdda..95b6e5f 100644
+--- a/src/jsc/bindings/ConsoleObject.cpp
++++ b/src/jsc/bindings/ConsoleObject.cpp
+@@ -34,11 +34,13 @@ void ConsoleObject::messageWithTypeAndLevel(MessageType type, MessageLevel level
+     JSC::JSGlobalObject* globalObject,
+     Ref<ScriptArguments>&& arguments)
+ {
++#if !(defined(__riscv) && __riscv_xlen == 64)
+     if (globalObject->inspectable()) {
+         if (auto client = globalObject->inspectorController().consoleClient()) {
+             client->messageWithTypeAndLevel(type, level, globalObject, arguments.copyRef());
+         }
+     }
++#endif
+     auto& vm = JSC::getVM(globalObject);
+     auto args = arguments.ptr();
+     JSC::EncodedJSValue jsArgs[255];
+@@ -112,20 +114,24 @@ void ConsoleObject::warnUnimplemented(const String& method) {}
+ 
+ void ConsoleObject::profile(JSC::JSGlobalObject* globalObject, const String& title)
+ {
++#if !(defined(__riscv) && __riscv_xlen == 64)
+     if (globalObject->inspectable()) {
+         if (auto client = globalObject->inspectorController().consoleClient()) {
+             client->profile(globalObject, title);
+         }
+     }
++#endif
+ }
+ 
+ void ConsoleObject::profileEnd(JSC::JSGlobalObject* globalObject, const String& title)
+ {
++#if !(defined(__riscv) && __riscv_xlen == 64)
+     if (globalObject->inspectable()) {
+         if (auto client = globalObject->inspectorController().consoleClient()) {
+             client->profileEnd(globalObject, title);
+         }
+     }
++#endif
+ }
+ 
+ }
+diff --git a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp
+index 4cc5e4c..e9951b8 100644
+--- a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp
++++ b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.cpp
+@@ -22,8 +22,13 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(InspectorBunFrontendDevServerAgent);
+ InspectorBunFrontendDevServerAgent::InspectorBunFrontendDevServerAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("BunFrontendDevServer"_s)
+     // , m_globalobject(globalObject)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(BunFrontendDevServerBackendDispatcher::create(globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<BunFrontendDevServerFrontendDispatcher>(const_cast<FrontendRouter&>(globalObject.inspectorController().frontendRouter())))
++#endif
+     , m_enabled(false)
+ {
+     UNUSED_PARAM(globalObject);
+diff --git a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h
+index 2ba0e33..a9c04bf 100644
+--- a/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h
++++ b/src/jsc/bindings/InspectorBunFrontendDevServerAgent.h
+@@ -46,7 +46,7 @@ public:
+ private:
+     // JSC::JSGlobalObject& m_globalobject;
+     std::unique_ptr<BunFrontendDevServerFrontendDispatcher> m_frontendDispatcher;
+-    Ref<BunFrontendDevServerBackendDispatcher> m_backendDispatcher;
++    RefPtr<BunFrontendDevServerBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+ };
+ 
+diff --git a/src/jsc/bindings/InspectorHTTPServerAgent.cpp b/src/jsc/bindings/InspectorHTTPServerAgent.cpp
+index e1e1278..b53fdfa 100644
+--- a/src/jsc/bindings/InspectorHTTPServerAgent.cpp
++++ b/src/jsc/bindings/InspectorHTTPServerAgent.cpp
+@@ -25,10 +25,16 @@ void Bun__HTTPServerAgent__setEnabled(Inspector::InspectorHTTPServerAgent* agent
+ 
+ InspectorHTTPServerAgent::InspectorHTTPServerAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("HTTPServer"_s)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(HTTPServerBackendDispatcher::create(globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<HTTPServerFrontendDispatcher>(const_cast<FrontendRouter&>(globalObject.inspectorController().frontendRouter())))
++#endif
+     , m_enabled(false)
+ {
++    UNUSED_PARAM(globalObject);
+ }
+ 
+ InspectorHTTPServerAgent::~InspectorHTTPServerAgent()
+diff --git a/src/jsc/bindings/InspectorHTTPServerAgent.h b/src/jsc/bindings/InspectorHTTPServerAgent.h
+index 432a5fc..bfdd94b 100644
+--- a/src/jsc/bindings/InspectorHTTPServerAgent.h
++++ b/src/jsc/bindings/InspectorHTTPServerAgent.h
+@@ -52,7 +52,7 @@ public:
+ private:
+     WTF::HashMap<int, AnyServerPtr> m_serverIdToServerInstance;
+     std::unique_ptr<HTTPServerFrontendDispatcher> m_frontendDispatcher;
+-    Ref<HTTPServerBackendDispatcher> m_backendDispatcher;
++    RefPtr<HTTPServerBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+ };
+ 
+diff --git a/src/jsc/bindings/InspectorLifecycleAgent.cpp b/src/jsc/bindings/InspectorLifecycleAgent.cpp
+index 761f7a6..1d8eb5d 100644
+--- a/src/jsc/bindings/InspectorLifecycleAgent.cpp
++++ b/src/jsc/bindings/InspectorLifecycleAgent.cpp
+@@ -51,8 +51,13 @@ void Bun__LifecycleAgentStopPreventingExit(Inspector::InspectorLifecycleAgent* a
+ InspectorLifecycleAgent::InspectorLifecycleAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("LifecycleReporter"_s)
+     , m_globalObject(globalObject)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(LifecycleReporterBackendDispatcher::create(m_globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<LifecycleReporterFrontendDispatcher>(const_cast<FrontendRouter&>(m_globalObject.inspectorController().frontendRouter())))
++#endif
+ {
+ }
+ 
+diff --git a/src/jsc/bindings/InspectorLifecycleAgent.h b/src/jsc/bindings/InspectorLifecycleAgent.h
+index d598e70..585a69d 100644
+--- a/src/jsc/bindings/InspectorLifecycleAgent.h
++++ b/src/jsc/bindings/InspectorLifecycleAgent.h
+@@ -43,7 +43,7 @@ public:
+ private:
+     JSC::JSGlobalObject& m_globalObject;
+     std::unique_ptr<LifecycleReporterFrontendDispatcher> m_frontendDispatcher;
+-    Ref<LifecycleReporterBackendDispatcher> m_backendDispatcher;
++    RefPtr<LifecycleReporterBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+     bool m_preventingExit { false };
+ };
+diff --git a/src/jsc/bindings/InspectorTestReporterAgent.cpp b/src/jsc/bindings/InspectorTestReporterAgent.cpp
+index 968e5fa..30eacc2 100644
+--- a/src/jsc/bindings/InspectorTestReporterAgent.cpp
++++ b/src/jsc/bindings/InspectorTestReporterAgent.cpp
+@@ -118,8 +118,13 @@ void Bun__TestReporterAgentReportTestEnd(Inspector::InspectorTestReporterAgent*
+ InspectorTestReporterAgent::InspectorTestReporterAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("TestReporter"_s)
+     , m_globalObject(globalObject)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(TestReporterBackendDispatcher::create(m_globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<TestReporterFrontendDispatcher>(const_cast<FrontendRouter&>(m_globalObject.inspectorController().frontendRouter())))
++#endif
+ {
+ }
+ 
+diff --git a/src/jsc/bindings/InspectorTestReporterAgent.h b/src/jsc/bindings/InspectorTestReporterAgent.h
+index 9c165c1..8665928 100644
+--- a/src/jsc/bindings/InspectorTestReporterAgent.h
++++ b/src/jsc/bindings/InspectorTestReporterAgent.h
+@@ -41,7 +41,7 @@ public:
+ private:
+     JSC::JSGlobalObject& m_globalObject;
+     std::unique_ptr<TestReporterFrontendDispatcher> m_frontendDispatcher;
+-    Ref<TestReporterBackendDispatcher> m_backendDispatcher;
++    RefPtr<TestReporterBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+ };
+ 
+diff --git a/src/jsc/bindings/NodeVMScript.cpp b/src/jsc/bindings/NodeVMScript.cpp
+index 178c0ea..e9ba530 100644
+--- a/src/jsc/bindings/NodeVMScript.cpp
++++ b/src/jsc/bindings/NodeVMScript.cpp
+@@ -8,6 +8,7 @@
+ #include "JavaScriptCore/JSWeakMapInlines.h"
+ #include "JavaScriptCore/ProgramCodeBlock.h"
+ #include "JavaScriptCore/SourceCodeKey.h"
++#include "JavaScriptCore/Watchdog.h"
+ 
+ #include "NodeVMScriptFetcher.h"
+ #include "../vm/SigintWatcher.h"
+@@ -163,6 +164,10 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+                 codeBlock = JSC::ProgramCodeBlock::create(vm, executable, unlinkedBlock, jsScope);
+                 RETURN_IF_EXCEPTION(scope, {});
+             }
++#if defined(__riscv) && __riscv_xlen == 64
++            UNUSED_PARAM(codeBlock);
++            script->cachedDataRejected(TriState::True);
++#else
+             JSC::CompilationResult compilationResult = JIT::compileSync(vm, codeBlock, JITCompilationEffort::JITCompilationCanFail);
+             if (compilationResult != JSC::CompilationResult::CompilationFailed) {
+                 executable->installCode(codeBlock);
+@@ -170,6 +175,7 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+             } else {
+                 script->cachedDataRejected(TriState::True);
+             }
++#endif
+         }
+     } else if (produceCachedData) {
+         script->cacheBytecode();
+@@ -301,6 +307,15 @@ static bool checkForTermination(JSC::VM& vm, JSC::JSGlobalObject* globalObject,
+ 
+ void setupWatchdog(VM& vm, double timeout, double* oldTimeout, double* newTimeout)
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(vm);
++    if (oldTimeout) {
++        *oldTimeout = timeout;
++    }
++    if (newTimeout) {
++        *newTimeout = timeout;
++    }
++#else
+     JSC::JSLockHolder locker(vm);
+     JSC::Watchdog& dog = vm.ensureWatchdog();
+     dog.enteredVM();
+@@ -320,6 +335,7 @@ void setupWatchdog(VM& vm, double timeout, double* oldTimeout, double* newTimeou
+     if (newTimeout) {
+         *newTimeout = timeout;
+     }
++#endif
+ }
+ 
+ static JSC::EncodedJSValue runInContext(NodeVMGlobalObject* globalObject, NodeVMScript* script, JSObject* contextifiedObject, JSValue optionsArg, bool allowStringInPlaceOfOptions = false)
+@@ -366,7 +382,9 @@ static JSC::EncodedJSValue runInContext(NodeVMGlobalObject* globalObject, NodeVM
+     RETURN_IF_EXCEPTION(scope, {});
+ 
+     if (options.timeout) {
++#if !(defined(__riscv) && __riscv_xlen == 64)
+         vm.watchdog()->setTimeLimit(WTF::Seconds::fromMilliseconds(*oldLimit));
++#endif
+     }
+ 
+     if (checkForTermination(vm, globalObject, scope, script, newLimit)) {
+@@ -429,7 +447,9 @@ JSC_DEFINE_HOST_FUNCTION(scriptRunInThisContext, (JSGlobalObject * globalObject,
+     }
+ 
+     if (options.timeout) {
++#if !(defined(__riscv) && __riscv_xlen == 64)
+         vm.watchdog()->setTimeLimit(WTF::Seconds::fromMilliseconds(*oldLimit));
++#endif
+     }
+ 
+     if (checkForTermination(vm, globalObject, scope, script, newLimit)) {
+diff --git a/src/jsc/bindings/NodeVMSourceTextModule.cpp b/src/jsc/bindings/NodeVMSourceTextModule.cpp
+index 7835e6d..11539ec 100644
+--- a/src/jsc/bindings/NodeVMSourceTextModule.cpp
++++ b/src/jsc/bindings/NodeVMSourceTextModule.cpp
+@@ -140,12 +140,16 @@ NodeVMSourceTextModule* NodeVMSourceTextModule::create(VM& vm, JSGlobalObject* g
+             RETURN_IF_EXCEPTION(scope, nullptr);
+         }
+         if (codeBlock) {
++#if defined(__riscv) && __riscv_xlen == 64
++            UNUSED_PARAM(codeBlock);
++#else
+             CompilationResult compilationResult = JIT::compileSync(vm, codeBlock, JITCompilationEffort::JITCompilationCanFail);
+             RETURN_IF_EXCEPTION(scope, nullptr);
+             if (compilationResult != CompilationResult::CompilationFailed) {
+                 executable->installCode(codeBlock);
+                 return ptr;
+             }
++#endif
+         }
+     }
+ 
+diff --git a/src/jsc/bindings/webcore/JSPerformance.cpp b/src/jsc/bindings/webcore/JSPerformance.cpp
+index 8f0fa04..f3c3a3c 100644
+--- a/src/jsc/bindings/webcore/JSPerformance.cpp
++++ b/src/jsc/bindings/webcore/JSPerformance.cpp
+@@ -267,11 +267,19 @@ size_t JSPerformance::estimatedSize(JSCell* cell, VM& vm)
+ void JSPerformance::finishCreation(VM& vm)
+ {
+     Base::finishCreation(vm);
++#if defined(__riscv) && __riscv_xlen == 64
++    // riscv64 builds use the C_LOOP interpreter with no DFG, so there is no
++    // DOMJIT path for Performance.now — register the function without a
++    // DOMJIT signature.
++    const JSC::DOMJIT::Signature* DOMJITSignatureForPerformanceNowPtr = nullptr;
++#else
+     static const JSC::DOMJIT::Signature DOMJITSignatureForPerformanceNow(
+         functionPerformanceNowWithoutTypeCheck,
+         JSPerformance::info(),
+         JSC::DOMJIT::Effect::forWriteKinds(DFG::AbstractHeapKind::SideState),
+         SpecDoubleReal);
++    const JSC::DOMJIT::Signature* DOMJITSignatureForPerformanceNowPtr = &DOMJITSignatureForPerformanceNow;
++#endif
+ 
+     JSFunction* now = JSFunction::create(
+         vm,
+@@ -279,7 +287,7 @@ void JSPerformance::finishCreation(VM& vm)
+         0,
+         String("now"_s),
+         functionPerformanceNow, ImplementationVisibility::Public, NoIntrinsic, callHostFunctionAsConstructor,
+-        &DOMJITSignatureForPerformanceNow);
++        DOMJITSignatureForPerformanceNowPtr);
+     this->putDirect(vm, JSC::Identifier::fromString(vm, "now"_s), now, 0);
+ 
+     this->putDirect(
+diff --git a/src/jsc/bindings/webcore/SerializedScriptValue.cpp b/src/jsc/bindings/webcore/SerializedScriptValue.cpp
+index 6452cea..f1f2cba 100644
+--- a/src/jsc/bindings/webcore/SerializedScriptValue.cpp
++++ b/src/jsc/bindings/webcore/SerializedScriptValue.cpp
+@@ -3447,12 +3447,13 @@ private:
+         ptr += length * sizeof(char16_t);
+ #else
+         std::span<char16_t> characters;
+-        str = String::createUninitialized(length, characters);
++        String identifierString = String::createUninitialized(length, characters);
+         for (unsigned i = 0; i < length; ++i) {
+             uint16_t c;
+             readLittleEndian(ptr, end, c);
+             characters[i] = c;
+         }
++        str = Identifier::fromString(vm, identifierString);
+ #endif
+         return true;
+     }
+diff --git a/src/jsc/bindings/wtf-bindings.cpp b/src/jsc/bindings/wtf-bindings.cpp
+index 53ff9ba..b192fc3 100644
+--- a/src/jsc/bindings/wtf-bindings.cpp
++++ b/src/jsc/bindings/wtf-bindings.cpp
+@@ -3,6 +3,7 @@
+ #include <wtf/StackBounds.h>
+ #include <wtf/StackCheck.h>
+ #include <wtf/StackTrace.h>
++#include <wtf/RunLoop.h>
+ #include <wtf/dtoa.h>
+ #include <wtf/NumberOfCores.h>
+ #include <atomic>
+@@ -281,6 +282,11 @@ extern "C" void WTF__DumpStackTrace(void** stack, size_t stack_count)
+     WTFPrintBacktrace({ stack, stack_count });
+ }
+ 
++extern "C" void WTFTimer__fire(WTF::RunLoop::TimerBase* timer)
++{
++    timer->fired();
++}
++
+ extern "C" int WTF__numberOfProcessorCores()
+ {
+     return WTF::numberOfProcessorCores();
+diff --git a/src/jsc/modules/BunJSCModule.h b/src/jsc/modules/BunJSCModule.h
+index deb683b..61e54ce 100644
+--- a/src/jsc/modules/BunJSCModule.h
++++ b/src/jsc/modules/BunJSCModule.h
+@@ -437,6 +437,11 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame* callFrame))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(callFrame);
++    return JSC::JSValue::encode(jsUndefined());
++#else
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -469,6 +474,7 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+     samplingProfiler.noticeCurrentThreadAsJSCExecutionThread();
+     samplingProfiler.start();
+     return JSC::JSValue::encode(jsUndefined());
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionSamplingProfilerStackTraces);
+@@ -476,6 +482,10 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame*))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(globalObject);
++    return JSC::JSValue::encode(jsUndefined());
++#else
+     auto& vm = JSC::getVM(globalObject);
+     JSC::DeferTermination deferScope(vm);
+     auto scope = DECLARE_THROW_SCOPE(vm);
+@@ -489,6 +499,7 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     JSC::EncodedJSValue result = JSC::JSValue::encode(JSONParse(globalObject, jsonString));
+     scope.releaseAssertNoException();
+     return result;
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGetRandomSeed);
+@@ -582,7 +593,11 @@ JSC_DECLARE_HOST_FUNCTION(functionTotalCompileTime);
+ JSC_DEFINE_HOST_FUNCTION(functionTotalCompileTime,
+     (JSGlobalObject*, CallFrame*))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    return JSValue::encode(jsNumber(0));
++#else
+     return JSValue::encode(jsNumber(JIT::totalCompileTime().milliseconds()));
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGetProtectedObjects);
+@@ -660,6 +675,11 @@ JSC_DEFINE_HOST_FUNCTION(functionSetTimeZone, (JSGlobalObject * globalObject, Ca
+ 
+ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, CallFrame* callFrame))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(callFrame);
++    return JSValue::encode(jsUndefined());
++#else
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -772,6 +792,7 @@ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, Ca
+ 
+     JSValue result = report(vm, globalObject);
+     RELEASE_AND_RETURN(throwScope, JSValue::encode(result));
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGenerateHeapSnapshotForDebugging);
+diff --git a/src/sys/sys.zig b/src/sys/sys.zig
+index a2f89b4..b4b39cf 100644
+--- a/src/sys/sys.zig
++++ b/src/sys/sys.zig
+@@ -125,8 +125,9 @@ pub const O = switch (Environment.os) {
+ 
+         pub const toPacked = toPackedO;
+     },
+-    .linux, .wasm => switch (Environment.isX86) {
+-        true => struct {
++    .linux, .wasm => switch (builtin.target.cpu.arch) {
++        // x86 and riscv64 both use asm-generic-compatible Linux open flags.
++        .x86, .x86_64, .riscv64 => struct {
+             pub const RDONLY = 0x0000;
+             pub const WRONLY = 0x0001;
+             pub const RDWR = 0x0002;
+@@ -154,7 +155,7 @@ pub const O = switch (Environment.os) {
+ 
+             pub const toPacked = toPackedO;
+         },
+-        false => struct {
++        else => struct {
+             pub const RDONLY = 0x0000;
+             pub const WRONLY = 0x0001;
+             pub const RDWR = 0x0002;
