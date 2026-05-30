@@ -72,6 +72,12 @@ plugins/plugin-lifeops/test/helpers/*.js.map
 packages/contracts/src/**/*.d.ts
 packages/contracts/src/**/*.d.ts.map
 
+# Accidental JS/declaration emit next to TS in @elizaos/plugin-app-control (build output is dist/)
+plugins/plugin-app-control/src/**/*.js
+plugins/plugin-app-control/src/**/*.js.map
+plugins/plugin-app-control/src/**/*.d.ts
+plugins/plugin-app-control/src/**/*.d.ts.map
+
 *.gguf
 *.onnx
 *.wav
