@@ -24,7 +24,7 @@ STL_ROOT = ROBOT / "cad/asimov-feminine/output/stl"
 OUT_MJCF = ROBOT / "cad/asimov-feminine/output/mjcf/asimov_fembot_slim_visuals.xml"
 OUT_DIR = ROBOT / "cad/asimov-feminine/output/media/fembot-slim"
 
-HIP_SPACING = 0.80  # scale pelvis->hip_pitch Y offset (narrow stance / leg base)
+HIP_SPACING = float(os.environ.get("HIP_SPACING", "0.80"))  # scale pelvis->hip_pitch Y
 
 
 def _link_from_visual(name: str) -> str | None:
