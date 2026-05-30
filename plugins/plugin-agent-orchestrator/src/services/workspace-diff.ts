@@ -10,6 +10,12 @@ const MAX_DIFF_CHARS = 6_000;
 const MAX_CHANGED_FILES = 60;
 const MAX_FILE_DIFFS = 12;
 
+function outputToString(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value instanceof Uint8Array) return Buffer.from(value).toString("utf8");
+  return undefined;
+}
+
 /**
  * What a sub-agent actually changed in its workspace, captured as ground
  * truth from git (plus the agent's own edit/write tool calls) rather than from
@@ -36,14 +42,14 @@ async function git(
       maxBuffer: GIT_MAX_BUFFER,
       windowsHide: true,
     });
-    return stdout;
+    return outputToString(stdout);
   } catch (err) {
     // `git diff --no-index` exits 1 when files differ — that's the success
     // case for us and the diff is on stdout. Everything else (not a repo, git
     // missing, detached state) is best-effort: change capture must never
     // disturb the session lifecycle.
-    const stdout = (err as { stdout?: unknown }).stdout;
-    if (typeof stdout === "string" && stdout.length > 0) return stdout;
+    const stdout = outputToString((err as { stdout?: unknown }).stdout);
+    if (stdout && stdout.length > 0) return stdout;
     return undefined;
   }
 }

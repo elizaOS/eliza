@@ -46,7 +46,7 @@ describe("TASKS:create", () => {
     expect(
       await createTaskAction.validate(
         runtimeWith(serviceMock()),
-        memory({ text: "remind me to call mom tomorrow" }),
+        memory({ text: "set a reminder to call mom tomorrow" }),
         state,
       ),
     ).toBe(false);
