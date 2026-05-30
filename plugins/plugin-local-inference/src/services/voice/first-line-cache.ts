@@ -34,9 +34,10 @@
  * rename so partials never reach the index.
  *
  * SQLite resolution mirrors `packages/app-core/src/api/training-benchmarks.ts`:
- * `node:sqlite` is a Node 22.5+ / Bun ≥1.3.13 builtin. When unavailable, the
- * cache silently no-ops (`get` returns null, `put` returns false) — the
- * caller's fallback path (synthesize fresh) still works.
+ * try `node:sqlite` (Node ≥22.5), then `bun:sqlite` (Bun). Neither runtime
+ * ships both. When neither is present the cache silently no-ops (`get` returns
+ * null, `put` returns false) — the caller's fallback path (synthesize fresh)
+ * still works.
  */
 
 import crypto from "node:crypto";
@@ -381,8 +382,8 @@ export class FirstLineCache {
 
 	/**
 	 * Lazy-init the SQLite index and blob directory. Returns `false` if
-	 * sqlite is unavailable (e.g. older Bun without `node:sqlite`) — the
-	 * cache then no-ops on every call.
+	 * neither `node:sqlite` nor `bun:sqlite` is available — the cache then
+	 * no-ops on every call.
 	 */
 	private ensureInit(): boolean {
 		if (this.disabled) return false;
