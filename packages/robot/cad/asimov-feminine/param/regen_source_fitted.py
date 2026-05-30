@@ -366,7 +366,9 @@ def _hybrid_part(mesh, link, slim, joint_margin=0.030):
     spine = C.LINKS[link]["spine"]
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
-    base = W.warp_affine(mesh, spine=spine, factor=slim, center=(0.0, 0.0))
+    # _limb_warp keeps the joint interfaces FULL WIDTH (collar) so offset joints
+    # (wrist, toe) keep the overlap the source had -- plain affine separated them.
+    base = _limb_warp(mesh, link, slim)
     res = sorted(C.reserved_levels(link))
     z_lo, z_hi = res[0] + joint_margin, res[-1] - joint_margin
     if z_hi - z_lo < 0.03:
