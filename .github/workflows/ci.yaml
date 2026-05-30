@@ -170,7 +170,7 @@ jobs:
         run: bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts
 
       - name: Build workspace packages for scenario resolution
-        run: bun run build:core
+        run: bun run build:core && bunx turbo run build --filter=@elizaos/plugin-github
 
       - name: Zero-cost scenario e2e
         run: bun run --cwd packages/scenario-runner test:pr:e2e
