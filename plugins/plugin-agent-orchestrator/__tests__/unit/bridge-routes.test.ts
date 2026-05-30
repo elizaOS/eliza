@@ -260,8 +260,10 @@ describe("coding-agent dispatcher — credential bridge", () => {
     const req = fakeRequest({
       method: "POST",
       url: "/api/coding-agents/session-1/credentials/request",
-      body: { credentialKeys: ["OPENAI_API_KEY"] },
     });
+    (req as IncomingMessage & { body?: unknown }).body = {
+      credentialKeys: ["OPENAI_API_KEY"],
+    };
     const { res, status, body } = fakeResponse();
 
     const handled = await handleCodingAgentRoutes(

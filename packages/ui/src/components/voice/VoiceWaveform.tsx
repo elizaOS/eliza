@@ -1,5 +1,6 @@
 import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
 import * as React from "react";
+import type { Node } from "three/tsl";
 
 import { cn } from "../../lib/utils";
 
