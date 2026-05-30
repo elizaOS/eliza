@@ -177,7 +177,7 @@ jobs:
           mkdir -p "$OUT_DIR"
           node packages/scripts/benchmark/profile-inference.mjs \
             --target "http://127.0.0.1:31337" \
-            --config scripts/benchmark/configs/host-cpu.json \
+            --config packages/scripts/benchmark/configs/host-cpu.json \
             --label "ci-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
             --out "$OUT_DIR"
           echo "REPORT_DIR=$OUT_DIR" >> "$GITHUB_ENV"
@@ -302,7 +302,7 @@ jobs:
           mkdir -p "$OUT_DIR"
           node packages/scripts/benchmark/profile-inference.mjs \
             --target "http://127.0.0.1:31337" \
-            --config scripts/benchmark/configs/aosp-arm64.json \
+            --config packages/scripts/benchmark/configs/aosp-arm64.json \
             --label "cuttlefish-${GITHUB_RUN_ID}" \
             --out "$OUT_DIR"
 
