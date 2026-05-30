@@ -1,6 +1,9 @@
 import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 
+const FAL_IMAGE_DOWNLOAD_TIMEOUT_MS = 30_000;
+const FAL_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 0x8000;
@@ -11,14 +14,56 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function readImageWithLimit(response: Response): Promise<Uint8Array> {
+  const declaredLength = Number(response.headers.get("content-length") ?? "0");
+  if (declaredLength > FAL_IMAGE_MAX_BYTES) {
+    throw new Error("fal image download exceeded maximum size");
+  }
+
+  if (!response.body) {
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > FAL_IMAGE_MAX_BYTES) {
+      throw new Error("fal image download exceeded maximum size");
+    }
+    return new Uint8Array(buffer);
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    received += value.byteLength;
+    if (received > FAL_IMAGE_MAX_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("fal image download exceeded maximum size");
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 async function imageUrlToGeneratedImage(url: string, text = ""): Promise<GeneratedImage> {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(FAL_IMAGE_DOWNLOAD_TIMEOUT_MS) });
   if (!response.ok) {
     throw new Error(`fal image download failed: ${response.status}`);
   }
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const mimeType = response.headers.get("content-type")?.split(";")[0] || "image/png";
+  const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  if (!mimeType?.startsWith("image/")) {
+    throw new Error("fal image download returned non-image content");
+  }
+
+  const bytes = await readImageWithLimit(response);
   const dataUrl = `data:${mimeType};base64,${bytesToBase64(bytes)}`;
   return { dataUrl, bytes, mimeType, text };
 }

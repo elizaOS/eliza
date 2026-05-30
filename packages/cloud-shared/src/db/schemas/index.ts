@@ -30,6 +30,7 @@ export * from "./app-credit-balances";
 export * from "./app-databases";
 export * from "./app-domains";
 export * from "./app-earnings";
+export * from "./app-image-generation-idempotency";
 export * from "./apps";
 export * from "./auth-events";
 export * from "./cli-auth-sessions";
