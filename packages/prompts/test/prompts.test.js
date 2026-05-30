@@ -156,7 +156,9 @@ describe("prompt templates (src/index.ts)", () => {
 
   it("messageHandlerTemplate answers date/time/year from CURRENT_TIME without stale-knowledge refusal", () => {
     const src = readSrc();
-    const body = src.match(/export const messageHandlerTemplate = `([^`]+)`/)[1];
+    const body = src.match(
+      /export const messageHandlerTemplate = `([^`]+)`/,
+    )[1];
     assert.match(
       body,
       /EXCEPTION — the current date, time, and year: your runtime context always carries a CURRENT_TIME signal/,
@@ -176,7 +178,9 @@ describe("prompt templates (src/index.ts)", () => {
 
   it("messageHandlerTemplate routes site/app build requests to coding, not scheduled tasks", () => {
     const src = readSrc();
-    const body = src.match(/export const messageHandlerTemplate = `([^`]+)`/)[1];
+    const body = src.match(
+      /export const messageHandlerTemplate = `([^`]+)`/,
+    )[1];
     assert.match(
       body,
       /build\/create\/make\/update\/edit\/fix\/redeploy a website\/web page\/app\/site\/landing page\/feature/,

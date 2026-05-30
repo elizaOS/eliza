@@ -312,7 +312,9 @@ async function mountOrb(
     // Amorphous: white body that dissolves to a transparent silhouette, so it
     // has no hard edge — a soft ball of light rather than a shaded sphere.
     const body = mix(vec3(0.66, 0.68, 0.76), vec3(1, 1, 1), innerBands);
-    orbMat.colorNode = mix(body, uAccent, fresnelTight.mul(0.3)).mul(energyLift);
+    orbMat.colorNode = mix(body, uAccent, fresnelTight.mul(0.3)).mul(
+      energyLift,
+    );
     orbMat.transparent = true;
     orbMat.depthWrite = false;
     orbMat.opacityNode = fresnel
@@ -321,19 +323,37 @@ async function mountOrb(
       .mul(float(0.82).add(uEnergy.mul(0.18)));
   } else if (style === "halo") {
     // Smooth liquid white: brightness from the view-facing term, accent edge.
-    const sheen = mix(vec3(0.5, 0.52, 0.6), vec3(1, 1, 1), fresnel.oneMinus().pow(0.7));
-    orbMat.colorNode = mix(sheen, uAccent, fresnelTight.mul(0.6)).mul(energyLift);
+    const sheen = mix(
+      vec3(0.5, 0.52, 0.6),
+      vec3(1, 1, 1),
+      fresnel.oneMinus().pow(0.7),
+    );
+    orbMat.colorNode = mix(sheen, uAccent, fresnelTight.mul(0.6)).mul(
+      energyLift,
+    );
   } else if (style === "ember") {
     // White body with sparse accent veins where the surface noise peaks.
     const veins = innerBands.smoothstep(0.6, 0.9);
-    const body = mix(vec3(0.74, 0.75, 0.82), vec3(1, 1, 1), innerBands.pow(1.4));
+    const body = mix(
+      vec3(0.74, 0.75, 0.82),
+      vec3(1, 1, 1),
+      innerBands.pow(1.4),
+    );
     const veined = mix(body, uAccent.mul(1.25), veins.mul(0.85));
-    orbMat.colorNode = mix(veined, uAccent, fresnelTight.mul(0.45)).mul(energyLift);
+    orbMat.colorNode = mix(veined, uAccent, fresnelTight.mul(0.45)).mul(
+      energyLift,
+    );
   } else {
     // lumen: white-hot core with a faint cool-white churn, accent only as a
     // thin warm corona at the grazing rim.
-    const warmWhite = mix(vec3(0.6, 0.61, 0.66), vec3(1, 1, 1), innerBands.pow(0.8));
-    orbMat.colorNode = mix(warmWhite, uAccent, fresnelTight.mul(0.75)).mul(energyLift);
+    const warmWhite = mix(
+      vec3(0.6, 0.61, 0.66),
+      vec3(1, 1, 1),
+      innerBands.pow(0.8),
+    );
+    orbMat.colorNode = mix(warmWhite, uAccent, fresnelTight.mul(0.75)).mul(
+      energyLift,
+    );
   }
 
   // --- glow halo: a larger back-faced sphere whose fresnel-weighted accent
