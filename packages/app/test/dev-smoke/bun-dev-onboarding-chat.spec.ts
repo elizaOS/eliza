@@ -181,6 +181,10 @@ test.describe("bun run dev onboarding chat smoke", () => {
       `${API_BASE}/api/first-run/status`,
       (status) => status.complete === true,
     );
+    await waitForJson<HealthStatus>(
+      `${API_BASE}/api/health`,
+      (health) => health.ready === true,
+    );
 
     await seedCompletedFirstRunStorage(page);
     await page.goto("/chat");
