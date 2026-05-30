@@ -974,8 +974,8 @@ export function TaskCoordinatorTuiView() {
       ]}
       endpoints={[
         "/api/coding-agents",
-        "/api/coding-agents/coordinator/threads",
-        "/api/coding-agents/coordinator/status",
+        "/api/orchestrator/tasks",
+        "/api/orchestrator/status",
       ]}
     />
   );
