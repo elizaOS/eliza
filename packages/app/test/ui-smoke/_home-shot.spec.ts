@@ -8,7 +8,9 @@ import {
 } from "./helpers";
 
 const LABEL = process.env.HOME_SHOT_LABEL ?? "before";
-const OUT = path.join(process.cwd(), "test-results", "home-shots");
+// Write outside test-results so Playwright's per-run outputDir cleanup never
+// wipes a prior label's screenshots (before/after live side by side).
+const OUT = process.env.HOME_SHOT_OUT ?? "/tmp/home-shots";
 
 test("capture home view desktop + mobile", async ({ page }) => {
   await mkdir(OUT, { recursive: true });
