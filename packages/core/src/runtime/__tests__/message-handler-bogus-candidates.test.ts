@@ -619,7 +619,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
 	});
 
-	it("adds a real lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
+	it("answers directly when Stage 1 emits only a synthetic current-price candidate and no search action exists", () => {
 		const handler = messageHandlerFromFieldResult(
 			{
 				shouldRespond: "RESPOND",
@@ -637,13 +637,12 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			},
 		);
 
-		expect(handler.plan.simple).toBe(false);
-		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.contexts).toEqual(["general"]);
-		expect(handler.plan.candidateActions).toEqual([
-			"GET_CRYPTO_PRICE",
-			"SHELL",
-		]);
+		// GET_CRYPTO_PRICE is bogus (not a registered action) and a shell is not
+		// a web-lookup tool, so no real lookup action is substituted in (no
+		// SHELL fallback). The turn is not force-routed through a tool the
+		// planner can't fulfill — it stays a direct reply.
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.candidateActions).not.toContain("SHELL");
 		expect(handler.plan.reply).toBe("On it.");
 	});
 

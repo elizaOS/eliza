@@ -1475,7 +1475,7 @@ android smoke model works`,
 		}
 	});
 
-	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+	it("declines current-info acknowledgements when only a shell is registered (no web-lookup action)", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -1547,24 +1547,21 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		// A shell is not a web-lookup tool. With no real search action
+		// registered, a live-info ask is not force-routed to SHELL as a
+		// required tool — a weak planner can't drive it, so it would loop on
+		// the required-tool cap and surface a generic failure. The model
+		// answers directly instead. Genuine shell requests still route via the
+		// separate looksLikeLocalShellRequest path.
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["SHELL"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
-			);
-		}
+		expect(calls.every((call) => call[0] !== ModelType.ACTION_PLANNER)).toBe(
+			true,
+		);
 	});
 
-	it("routes synthetic current-price Stage 1 candidates to a real shell lookup action", async () => {
+	it("declines synthetic current-price candidates when only a shell lookup is registered", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: [],
@@ -1638,24 +1635,17 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		// GET_CRYPTO_PRICE is not a registered action, and a shell is not a
+		// web-lookup tool — so there is no real lookup action to force. The
+		// model answers directly rather than looping on an unfulfillable
+		// required SHELL call.
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		expect(browserHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain(
-			'"candidateActions":["GET_CRYPTO_PRICE","SHELL"]',
+		expect(calls.every((call) => call[0] !== ModelType.ACTION_PLANNER)).toBe(
+			true,
 		);
-		expect(plannerUserContent).toContain('"tierAParents":["SHELL"]');
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
-			);
-		}
 	});
 
 	it("routes text HANDLE_RESPONSE acknowledgements for current-info requests through web search", async () => {
@@ -1741,7 +1731,7 @@ android smoke model works`,
 		}
 	});
 
-	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+	it("declines current-info acknowledgements when only a shell is registered (no web-lookup action)", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -1813,21 +1803,18 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		// A shell is not a web-lookup tool. With no real search action
+		// registered, a live-info ask is not force-routed to SHELL as a
+		// required tool — a weak planner can't drive it, so it would loop on
+		// the required-tool cap and surface a generic failure. The model
+		// answers directly instead. Genuine shell requests still route via the
+		// separate looksLikeLocalShellRequest path.
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["SHELL"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
-			);
-		}
+		expect(calls.every((call) => call[0] !== ModelType.ACTION_PLANNER)).toBe(
+			true,
+		);
 	});
 
 	it("routes progress-only coding delegation replies through the planner", () => {
