@@ -918,6 +918,23 @@ const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = [
 ] as const;
 
 const STRUCTURED_RESPONSE_STATE_PROVIDERS = ["ACTIONS", "PROVIDERS"];
+
+function isCurrentTimeQuestion(message: Memory): boolean {
+	const text = message.content.text?.toLowerCase() ?? "";
+	if (!text) return false;
+	return /\b(?:what(?:'s| is)?|tell me|give me|do you know|current)\b[\s\S]{0,80}\b(?:date|time|year|day|today)\b/.test(
+		text,
+	);
+}
+
+function stage1ProviderExclusionsForMessage(message: Memory): string[] {
+	const exclusions = [...STAGE1_EXTRA_PROVIDER_EXCLUSIONS];
+	if (isCurrentTimeQuestion(message)) {
+		const index = exclusions.indexOf("CURRENT_TIME");
+		if (index >= 0) exclusions.splice(index, 1);
+	}
+	return exclusions;
+}
 const FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS = ["CHARACTER", "RECENT_MESSAGES"];
 
 function hasInboundBenchmarkContext(message: Memory): boolean {
@@ -2850,6 +2867,13 @@ function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	return false;
 }
 
+function canKeepStage1ReplyWhenRegenerationIsEmpty(
+	reply: string | undefined,
+): boolean {
+	const trimmed = typeof reply === "string" ? reply.trim() : "";
+	return /^\d+$/.test(trimmed);
+}
+
 /**
  * Format the role-filtered context catalog as a compact bullet list for the
  * Stage 1 prompt. Each line includes the id plus compressed metadata that helps
@@ -3073,7 +3097,8 @@ export async function renderMessageHandlerStablePrefix(
 		state,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+		extraProviderExclusions:
+			stage1ProviderExclusionsForMessage(syntheticMessage),
 	});
 	const rendered = renderContextObject(context);
 	const stableSegments = rendered.promptSegments.filter(
@@ -4733,7 +4758,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+		extraProviderExclusions: stage1ProviderExclusionsForMessage(args.message),
 	});
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
@@ -5289,11 +5314,13 @@ export async function runV5MessageRuntimeStage1(args: {
 					messageHandler,
 				});
 				// Regeneration is an enhancement (terse fragment -> fuller reply).
-				// If it yields nothing usable, keep the original Stage-1 reply so a
-				// valid-but-terse answer (e.g. "144" to a math question) is never
-				// dropped to an empty message.
+				// If it yields nothing usable, keep only terse-but-valid originals
+				// such as numeric answers. Known junk/scaffold triggers must not leak
+				// to users just because the cleanup pass failed.
 				if (typeof regenerated === "string" && regenerated.trim().length > 0) {
 					reply = regenerated;
+				} else if (!canKeepStage1ReplyWhenRegenerationIsEmpty(route.reply)) {
+					reply = "I'm not sure how to answer that.";
 				}
 			}
 			return {

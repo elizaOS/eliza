@@ -13,13 +13,17 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, readFile, realpath, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
 import { buildGoalFollowUp, buildGoalPrompt } from "../services/goal-prompt.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
-import type { AgentType, ApprovalPreset } from "../services/types.js";
+import {
+  type AgentType,
+  type ApprovalPreset,
+  TERMINAL_SESSION_STATUSES,
+} from "../services/types.js";
+import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
 import type { RouteContext } from "./route-utils.js";
 import { parseBody, sendError, sendJson } from "./route-utils.js";
 
@@ -283,7 +287,30 @@ export async function handleAgentRoutes(
       sendError(res, "ACP service not available", 503);
       return true;
     }
-    sendJson(res, {});
+    try {
+      const sessions = await ctx.acpService.listSessions();
+      const byStatus: Record<string, number> = {};
+      const byAgentType: Record<string, number> = {};
+      for (const session of sessions) {
+        byStatus[session.status] = (byStatus[session.status] ?? 0) + 1;
+        byAgentType[session.agentType] =
+          (byAgentType[session.agentType] ?? 0) + 1;
+      }
+      sendJson(res, {
+        sessionCount: sessions.length,
+        activeSessionCount: sessions.filter(
+          (session) => !TERMINAL_SESSION_STATUSES.has(session.status),
+        ).length,
+        byStatus,
+        byAgentType,
+      });
+    } catch (error) {
+      sendError(
+        res,
+        error instanceof Error ? error.message : "Failed to load metrics",
+        500,
+      );
+    }
     return true;
   }
 
@@ -497,37 +524,18 @@ export async function handleAgentRoutes(
             ? initialTask
             : undefined;
 
-      // Validate workdir: must be within workspace base dir or cwd
-      const workspaceBaseDir = path.join(os.homedir(), ".eliza", "workspaces");
-      const workspaceBaseDirResolved = path.resolve(workspaceBaseDir);
-      const cwdResolved = path.resolve(process.cwd());
-      const workspaceBaseDirReal = await realpath(
-        workspaceBaseDirResolved,
-      ).catch(() => workspaceBaseDirResolved);
-      const cwdReal = await realpath(cwdResolved).catch(() => cwdResolved);
-      const allowedPrefixes = [workspaceBaseDirReal, cwdReal];
       let workdir = rawWorkdir as string | undefined;
       if (workdir) {
-        const resolved = path.resolve(workdir);
-        const resolvedReal = await realpath(resolved).catch(() => null);
-        if (!resolvedReal) {
-          sendError(res, "workdir must exist", 403);
-          return true;
-        }
-        const isAllowed = allowedPrefixes.some(
-          (prefix) =>
-            resolvedReal === prefix ||
-            resolvedReal.startsWith(prefix + path.sep),
-        );
-        if (!isAllowed) {
+        try {
+          workdir = await resolveAllowedWorkdir(workdir);
+        } catch (error) {
           sendError(
             res,
-            "workdir must be within workspace base directory or cwd",
+            error instanceof Error ? error.message : "invalid workdir",
             403,
           );
           return true;
         }
-        workdir = resolvedReal;
       }
 
       // Check concurrency limit before spawning

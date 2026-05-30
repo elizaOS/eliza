@@ -20,6 +20,7 @@ import {
   ArrowDownToLine,
   ArrowLeft,
   Bot,
+  Check,
   CircleStop,
   Copy,
   Eye,
@@ -261,6 +262,8 @@ export const ORCHESTRATOR_CAPABILITY_IDS: ReadonlySet<string> = new Set([
   "orchestrator-resume-all",
   "orchestrator-delete-task",
   "orchestrator-fork-task",
+  "orchestrator-update-task",
+  "orchestrator-validate-task",
   "orchestrator-add-agent",
   "orchestrator-stop-agent",
   "orchestrator-send-message",
@@ -349,6 +352,26 @@ export async function runOrchestratorCapability(
         priority: paramPriority(params?.priority),
         acceptanceCriteria: paramStringArray(params?.acceptanceCriteria),
       });
+    case "orchestrator-update-task":
+      return client.updateOrchestratorTask(requireTaskId(params), {
+        title: paramString(params?.title),
+        goal: paramString(params?.goal),
+        summary: paramString(params?.summary),
+        priority: paramPriority(params?.priority),
+        acceptanceCriteria: paramStringArray(params?.acceptanceCriteria),
+      });
+    case "orchestrator-validate-task": {
+      if (typeof params?.passed !== "boolean") {
+        throw new Error("passed (boolean) is required to validate a task.");
+      }
+      return client.validateOrchestratorTask(requireTaskId(params), {
+        passed: params.passed,
+        summary: paramString(params?.summary),
+        evidence: paramString(params?.evidence),
+        verifier: paramString(params?.verifier),
+        humanOverride: params?.humanOverride === true,
+      });
+    }
     case "orchestrator-add-agent":
       return client.addOrchestratorAgent(requireTaskId(params), {
         framework: paramString(params?.framework),
@@ -1218,6 +1241,7 @@ function AddAgentForm({
   const [label, setLabel] = useState("");
   const [framework, setFramework] = useState("");
   const [model, setModel] = useState("");
+  const [workdir, setWorkdir] = useState("");
   const [repo, setRepo] = useState("");
   const [task, setTask] = useState("");
 
@@ -1229,8 +1253,11 @@ function AddAgentForm({
       defaultValue: "Framework",
     }),
     model: t("orchestrator.addAgent.model", { defaultValue: "Model" }),
+    workdir: t("orchestrator.addAgent.workdir", {
+      defaultValue: "Workdir (optional)",
+    }),
     repo: t("orchestrator.addAgent.repo", {
-      defaultValue: "Repo or workdir (optional)",
+      defaultValue: "Repo URL (optional)",
     }),
     task: t("orchestrator.addAgent.task", {
       defaultValue: "Sub-task for this agent (optional)",
@@ -1264,6 +1291,13 @@ function AddAgentForm({
         />
       </div>
       <input
+        value={workdir}
+        onChange={(event) => setWorkdir(event.target.value)}
+        className={FIELD_CLASS}
+        placeholder={fieldLabels.workdir}
+        aria-label={fieldLabels.workdir}
+      />
+      <input
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
         className={FIELD_CLASS}
@@ -1295,6 +1329,7 @@ function AddAgentForm({
               label: label.trim() || undefined,
               framework: framework.trim() || undefined,
               model: model.trim() || undefined,
+              workdir: workdir.trim() || undefined,
               repo: repo.trim() || undefined,
               task: task.trim() || undefined,
             })
@@ -1355,6 +1390,8 @@ function TaskInspector({
   onReopen,
   onDelete,
   onFork,
+  onValidate,
+  onSetPriority,
   onToggleAddAgent,
   onAddAgent,
   onStopAgent,
@@ -1374,6 +1411,8 @@ function TaskInspector({
   onReopen: () => void;
   onDelete: () => void;
   onFork: () => void;
+  onValidate: (passed: boolean) => void;
+  onSetPriority: (priority: TaskPriority) => void;
   onToggleAddAgent: () => void;
   onAddAgent: (input: CodingAgentAddAgentInput) => void;
   onStopAgent: (sessionId: string) => void;
@@ -1387,6 +1426,8 @@ function TaskInspector({
   );
   const artifacts = [...detail.artifacts].reverse().slice(0, 12);
   const archived = detail.status === "archived";
+  const terminal =
+    archived || detail.status === "done" || detail.status === "failed";
   const providerPolicyLine = detail.providerPolicy
     ? [
         detail.providerPolicy.preferredFramework,
@@ -1422,6 +1463,29 @@ function TaskInspector({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1">
+        {detail.status === "validating" ? (
+          <>
+            <ControlButton
+              icon={<Check className="h-3 w-3" />}
+              label={t("orchestrator.action.approve", {
+                defaultValue: "Approve",
+              })}
+              onClick={() => onValidate(true)}
+              disabled={busy}
+              testId="orchestrator-approve"
+            />
+            <ControlButton
+              icon={<X className="h-3 w-3" />}
+              label={t("orchestrator.action.reject", {
+                defaultValue: "Reject",
+              })}
+              onClick={() => onValidate(false)}
+              disabled={busy}
+              tone="danger"
+              testId="orchestrator-reject"
+            />
+          </>
+        ) : null}
         {archived ? (
           <ControlButton
             icon={<RotateCcw className="h-3 w-3" />}
@@ -1430,7 +1494,7 @@ function TaskInspector({
             disabled={busy}
             testId="orchestrator-reopen"
           />
-        ) : detail.paused ? (
+        ) : terminal ? null : detail.paused ? (
           <ControlButton
             icon={<Play className="h-3 w-3" />}
             label={t("orchestrator.action.resume", { defaultValue: "Resume" })}
@@ -1485,6 +1549,26 @@ function TaskInspector({
           disabled={busy}
           testId="orchestrator-copy-link"
         />
+        {terminal ? null : (
+          <select
+            aria-label={t("orchestrator.action.setPriority", {
+              defaultValue: "Set priority",
+            })}
+            value={detail.priority}
+            disabled={busy}
+            onChange={(event) => {
+              const next = paramPriority(event.target.value);
+              if (next && next !== detail.priority) onSetPriority(next);
+            }}
+            className="rounded-md border border-border/50 bg-transparent px-2 py-1 text-2xs text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt disabled:opacity-50"
+            data-testid="orchestrator-priority-select"
+          >
+            <option value="low">{labelPriority("low", t)}</option>
+            <option value="normal">{labelPriority("normal", t)}</option>
+            <option value="high">{labelPriority("high", t)}</option>
+            <option value="urgent">{labelPriority("urgent", t)}</option>
+          </select>
+        )}
         <ControlButton
           icon={<Trash2 className="h-3 w-3" />}
           label={t("orchestrator.action.delete", { defaultValue: "Delete" })}
@@ -1889,10 +1973,20 @@ export function OrchestratorWorkbench() {
     const content = composer.trim();
     if (!current || !content) return;
     void runMutation(async () => {
-      await client.postOrchestratorTaskMessage(current, content);
+      const delivered = await client.postOrchestratorTaskMessage(
+        current,
+        content,
+      );
+      if (!delivered) {
+        throw new Error(
+          t("orchestrator.messageDeliveryFailed", {
+            defaultValue: "Message was recorded, but no active agent accepted it.",
+          }),
+        );
+      }
       setComposer("");
     });
-  }, [composer, runMutation]);
+  }, [composer, runMutation, t]);
 
   const handleCreate = useCallback(
     (input: {
@@ -2232,6 +2326,19 @@ export function OrchestratorWorkbench() {
                 const forked = await client.forkOrchestratorTask(detail.id);
                 if (forked) setSelectedId(forked.id);
               })
+            }
+            onValidate={(passed) =>
+              runMutation(() =>
+                client.validateOrchestratorTask(detail.id, {
+                  passed,
+                  humanOverride: true,
+                }),
+              )
+            }
+            onSetPriority={(priority) =>
+              runMutation(() =>
+                client.updateOrchestratorTask(detail.id, { priority }),
+              )
             }
             onToggleAddAgent={() => setAddAgentOpen((prev) => !prev)}
             onAddAgent={(input) =>

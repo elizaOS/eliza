@@ -57,9 +57,9 @@ function formatBalance(balance: number | null | undefined): string {
 const NEUTRAL_CARD =
   "group relative flex h-full flex-col justify-between gap-4 rounded-sm border border-white/10 bg-white/[0.04] p-5 text-white transition-colors duration-200 hover:bg-white/[0.07] hover:border-white/20";
 
-// Orange resting → black on hover (color inversion).
+// Orange resting → darker orange on hover (brand: orange never flashes to black).
 const ACCENT_CARD =
-  "group relative flex h-full flex-col justify-between gap-4 rounded-sm bg-[#FF5800] p-5 text-black transition-colors duration-200 hover:bg-black hover:text-white";
+  "group relative flex h-full flex-col justify-between gap-4 rounded-sm bg-[#FF5800] p-5 text-black transition-colors duration-200 hover:bg-[#e54f00]";
 
 interface StatCardProps {
   to: string;

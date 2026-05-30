@@ -162,6 +162,14 @@ function cloneDocument(
   return structuredClone(doc);
 }
 
+function omitUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      ([, entry]) => entry !== undefined,
+    ),
+  ) as Partial<T>;
+}
+
 function matchesFilter(
   task: OrchestratorTaskRecord,
   filter: TaskListFilter,
@@ -229,13 +237,14 @@ export class InMemoryTaskStore {
     return this.enqueue(async () => {
       const doc = this.docs.get(id);
       if (!doc) return null;
+      const nextPatch = omitUndefined(patch);
       doc.task = {
         ...doc.task,
-        ...patch,
+        ...nextPatch,
         id: doc.task.id,
         createdAt: doc.task.createdAt,
         updatedAt: nowIso(),
-        lastActivityAt: patch.lastActivityAt ?? Date.now(),
+        lastActivityAt: nextPatch.lastActivityAt ?? Date.now(),
       };
       await this.afterWrite();
       return structuredClone(doc.task);
@@ -535,12 +544,7 @@ export class RuntimeDbTaskStore {
   private initPromise: Promise<void> | undefined;
   private tail = Promise.resolve();
 
-  constructor(
-    private readonly adapter: SqlDatabaseAdapter,
-    private readonly logger?: Logger,
-  ) {
-    void this.logger;
-  }
+  constructor(private readonly adapter: SqlDatabaseAdapter) {}
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const run = this.tail.then(operation, operation);
@@ -759,7 +763,7 @@ export class OrchestratorTaskStore {
       isSqlDatabaseAdapter(adapter)
     ) {
       this.backend = "runtime-db";
-      this.delegate = new RuntimeDbTaskStore(adapter, logger);
+      this.delegate = new RuntimeDbTaskStore(adapter);
       return;
     }
     if (options.backend === "memory") {

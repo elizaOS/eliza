@@ -206,9 +206,13 @@ export async function captureChangeSet(
   );
   if (changedFiles.length === 0) return undefined;
 
-  // Real stat from git (tracked changes); independent of how much diff text we
-  // render. Falls back to a file count for a purely gitignored/untracked set.
-  const shortstat = (await git(workdir, ["diff", "--shortstat", base]))?.trim();
+  // Real stat from git for the same filtered file set rendered to the user.
+  // This avoids counting files that were already dirty at spawn and excluded
+  // from `changedFiles`. Falls back to a file count for gitignored/untracked
+  // tool-written files.
+  const shortstat = (
+    await git(workdir, ["diff", "--shortstat", base, "--", ...changedFiles])
+  )?.trim();
   const diffStat =
     shortstat && shortstat.length > 0
       ? shortstat

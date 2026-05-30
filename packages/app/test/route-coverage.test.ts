@@ -3,11 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildRouteCatalog } from "../../app-core/src/api/dev-route-catalog";
-import { shouldShowAppInAppsView } from "../../ui/src/components/apps/helpers";
-import { getInternalToolAppDescriptors } from "../../ui/src/components/apps/internal-tool-apps";
 import {
   DIRECT_ROUTE_CASES,
-  SAFE_APP_TILE_CASES,
+  SAFE_VIEW_TILE_CASES,
 } from "./ui-smoke/apps-session-route-cases";
 
 /**
@@ -434,16 +432,27 @@ function sorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort();
 }
 
-function defaultVisibleInternalToolAppNames(): string[] {
-  return getInternalToolAppDescriptors()
-    .filter((app) => app.windowPath)
-    .filter((app) =>
-      shouldShowAppInAppsView(
-        { name: app.name, category: "utility" },
-        { isProd: false, showAllApps: false, walletEnabled: false },
-      ),
-    )
-    .map((app) => app.name);
+/**
+ * Manager-visible gui views, keyed by id → declared path, parsed from the same
+ * plugin manifests that feed GET /api/views. This is the static source of truth
+ * for which tiles the View Manager renders.
+ */
+function managerVisibleGuiViewPaths(): Map<string, string> {
+  const byId = new Map<string, string>();
+  for (const manifestPath of PLUGIN_VIEW_MANIFESTS) {
+    const source = readFileSync(path.resolve(REPO_ROOT, manifestPath), "utf8");
+    for (const object of viewObjects(source)) {
+      const id = stringField(object, "id");
+      const pathValue = stringField(object, "path");
+      const viewType = stringField(object, "viewType") ?? "gui";
+      const visibleInManager = /visibleInManager:\s*true/.test(object);
+      if (!id || !pathValue || viewType !== "gui" || !visibleInManager) {
+        continue;
+      }
+      if (!byId.has(id)) byId.set(id, pathValue);
+    }
+  }
+  return byId;
 }
 
 describe("app route coverage gate", () => {
@@ -481,41 +490,25 @@ describe("app route coverage gate", () => {
     ).toEqual([]);
   });
 
-  it("app tile smoke matrix covers default visible app catalog routes", () => {
-    const expectedAppNames = unique([
-      ...defaultVisibleInternalToolAppNames(),
-      "@elizaos/plugin-companion",
-    ]);
-    const tileAppNames = SAFE_APP_TILE_CASES.map(
-      (tileCase) => tileCase.appName,
-    );
-    const directRouteTileAppNames = DIRECT_ROUTE_CASES.flatMap((routeCase) =>
-      routeCase.catalogAppName ? [routeCase.catalogAppName] : [],
-    );
-
-    const missing = expectedAppNames.filter(
-      (appName) => !tileAppNames.includes(appName),
-    );
-    const stale = tileAppNames.filter(
-      (appName) => !expectedAppNames.includes(appName),
-    );
+  it("safe view tile smoke matrix targets manager-visible gui views", () => {
+    const managerViews = managerVisibleGuiViewPaths();
 
     expect(
-      SAFE_APP_TILE_CASES.length,
-      "SAFE_APP_TILE_CASES must be generated from visible catalog route cases, not left empty",
+      SAFE_VIEW_TILE_CASES.length,
+      "SAFE_VIEW_TILE_CASES must not be empty",
     ).toBeGreaterThan(0);
-    expect(
-      missing,
-      `Missing click-safe app tile coverage for: ${missing.join(", ")}`,
-    ).toEqual([]);
-    expect(
-      stale,
-      `Stale click-safe app tile coverage for hidden/non-default apps: ${stale.join(", ")}`,
-    ).toEqual([]);
-    expect(
-      tileAppNames,
-      "SAFE_APP_TILE_CASES should stay generated from DIRECT_ROUTE_CASES catalogAppName metadata",
-    ).toEqual(directRouteTileAppNames);
+
+    for (const tile of SAFE_VIEW_TILE_CASES) {
+      const viewPath = managerViews.get(tile.viewId);
+      expect(
+        viewPath,
+        `Safe view tile "${tile.viewId}" must map to a manager-visible gui view in the plugin manifests`,
+      ).toBeDefined();
+      expect(
+        tile.expectedPath,
+        `Safe view tile "${tile.viewId}" expectedPath must match its manifest view path`,
+      ).toBe(viewPath);
+    }
   });
 
   it("plugin views visual matrix covers every bundled gui/tui view", () => {

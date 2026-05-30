@@ -1139,6 +1139,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/asr/local-inference/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ready: false }),
+    });
+  });
+
   await page.route("**/api/hyperliquid/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

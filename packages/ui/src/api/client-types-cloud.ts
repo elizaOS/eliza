@@ -1238,6 +1238,26 @@ export interface CodingAgentAddAgentInput {
   task?: string;
 }
 
+/** Structured payload for updating a task via `PATCH /api/orchestrator/tasks/:id`. */
+export interface CodingAgentUpdateTaskInput {
+  title?: string;
+  goal?: string;
+  summary?: string;
+  acceptanceCriteria?: string[];
+  priority?: CodingAgentTaskThread["priority"];
+  providerPolicy?: CodingAgentTaskProviderPolicy;
+}
+
+/** Structured payload for submitting a validation verdict via
+ * `POST /api/orchestrator/tasks/:id/validate`. */
+export interface CodingAgentValidateTaskInput {
+  passed: boolean;
+  summary?: string;
+  evidence?: string;
+  verifier?: string;
+  humanOverride?: boolean;
+}
+
 export interface CodingAgentFrameworkAvailability {
   id: string;
   label: string;

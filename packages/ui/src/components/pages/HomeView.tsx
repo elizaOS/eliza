@@ -8,9 +8,8 @@ import {
   Wallet,
 } from "lucide-react";
 import type * as React from "react";
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 
-import { CloudVideoBackground } from "../../backgrounds/CloudVideoBackground";
 import { cn } from "../../lib/utils";
 import type { Tab } from "../../navigation";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
@@ -25,18 +24,27 @@ import { formatEta } from "../local-inference/hub-utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { VoiceWaveform } from "../voice/VoiceWaveform";
+import {
+  type FrequencyAnalyser,
+  VoiceWaveform,
+  type VoiceWaveformMode,
+} from "../voice/VoiceWaveform";
 
-// Mounted once and never re-rendered. The background takes no volatile props
-// and no children, so React.memo keeps it stable across every home-view state
-// change (typing, focus, new messages). Load-bearing for perf: the cloud video
-// must never re-render on state changes.
-const HomeBackground = memo(function HomeBackground(): React.JSX.Element {
+// The home hero background: a full-bleed WebGPU cloudscape with the voice orb
+// refracting it. Memoized on its mode + analyser so the heavy WebGPU layer never
+// re-renders on the composer's keystroke/focus state churn — only when the voice
+// phase or audio source actually changes.
+const HomeVoiceBackground = memo(function HomeVoiceBackground({
+  mode,
+  analyser,
+}: {
+  mode: VoiceWaveformMode;
+  analyser: FrequencyAnalyser | null;
+}): React.JSX.Element {
   return (
-    <CloudVideoBackground
-      scrim={0.08}
-      style={{ position: "absolute", inset: 0, height: "100%", width: "100%" }}
-    />
+    <div className="absolute inset-0">
+      <VoiceWaveform mode={mode} analyser={analyser} />
+    </div>
   );
 });
 
@@ -130,7 +138,10 @@ export function HomeView(): React.JSX.Element {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <HomeBackground />
+      <HomeVoiceBackground
+        mode={mode}
+        analyser={controller?.analyser ?? null}
+      />
       <div
         data-testid="home-view"
         className="relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 pb-8 text-txt"
@@ -139,14 +150,6 @@ export function HomeView(): React.JSX.Element {
 
         <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
           <DefaultApps onLaunch={setTab} />
-
-          <div className="relative grid h-[min(38vh,260px)] min-h-44 w-full place-items-center">
-            <VoiceWaveform
-              mode={mode}
-              analyser={controller?.analyser ?? null}
-              size={240}
-            />
-          </div>
 
           {showModelStatus && modelStatus ? (
             <ModelStatusPanel
@@ -157,7 +160,7 @@ export function HomeView(): React.JSX.Element {
             <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
           ) : (
             <p
-              className="min-h-6 max-w-xl text-center text-sm text-muted"
+              className="min-h-6 max-w-xl text-center text-sm font-medium text-white/90 [text-shadow:0_2px_10px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.6)]"
               aria-live="polite"
               data-testid="home-assistant-transcript"
             >
@@ -243,7 +246,7 @@ function DefaultApps({
             }}
             className="rounded-sm transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
           >
-            <AppIdentityTile app={app} size="md" imageOnly />
+            <AppIdentityTile app={app} size="md" glyph />
           </button>
         );
       })}
@@ -409,15 +412,114 @@ function ModelRecoveryPanel({
   );
 }
 
+// Distinguishes a quick tap from a press-and-hold on the mic. A press shorter
+// than this is "open voice" (toggle continuous capture); a longer press is
+// push-to-talk (capture for the duration of the hold).
+const PUSH_TO_TALK_HOLD_MS = 200;
+
+// The home composer's primary control while the draft is empty: a microphone
+// that supports two gestures. Quick tap → open voice; press-and-hold → push to
+// talk (record while held, submit on release). Keyboard activation maps to a
+// tap so the control stays operable without a pointer.
+function MicButton({
+  recording,
+  onTap,
+  onHoldStart,
+  onHoldEnd,
+  startLabel,
+  stopLabel,
+}: {
+  recording: boolean;
+  onTap: () => void;
+  onHoldStart: () => void;
+  onHoldEnd: () => void;
+  startLabel: string;
+  stopLabel: string;
+}): React.JSX.Element {
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdActive = useRef(false);
+
+  const clearHoldTimer = useCallback(() => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }, []);
+
+  const beginPress = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (event.button > 0) return; // ignore non-primary (e.g. right-click)
+      holdActive.current = false;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Detached node mid-gesture — capture is best-effort, release still works.
+      }
+      clearHoldTimer();
+      holdTimer.current = setTimeout(() => {
+        holdActive.current = true;
+        onHoldStart();
+      }, PUSH_TO_TALK_HOLD_MS);
+    },
+    [clearHoldTimer, onHoldStart],
+  );
+
+  const endPress = useCallback(() => {
+    clearHoldTimer();
+    if (holdActive.current) {
+      holdActive.current = false;
+      onHoldEnd();
+    } else {
+      onTap();
+    }
+  }, [clearHoldTimer, onHoldEnd, onTap]);
+
+  const cancelPress = useCallback(() => {
+    clearHoldTimer();
+    if (holdActive.current) {
+      holdActive.current = false;
+      onHoldEnd();
+    }
+  }, [clearHoldTimer, onHoldEnd]);
+
+  return (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      data-testid="home-mic"
+      aria-label={recording ? stopLabel : startLabel}
+      aria-pressed={recording}
+      onPointerDown={beginPress}
+      onPointerUp={endPress}
+      onPointerCancel={cancelPress}
+      onClick={(event) => {
+        // Pointer taps are resolved on pointerup (detail >= 1). Only keyboard
+        // activation reaches here with detail 0 — route it to a tap.
+        if (event.detail === 0) onTap();
+      }}
+      className={cn(
+        "shrink-0 rounded-full text-txt/70 hover:bg-white/20 hover:text-txt",
+        recording &&
+          "animate-pulse bg-accent/20 text-accent hover:bg-accent/25 hover:text-accent",
+      )}
+    >
+      <Mic className="h-4 w-4" aria-hidden />
+    </Button>
+  );
+}
+
 // Owns the volatile draft/focus state so keystrokes re-render only the composer
-// — never HomeView or the memoized background behind it.
+// — never HomeView or the memoized background behind it. The trailing control is
+// a microphone until the user types, then it morphs into a send button.
 function HomeComposer(): React.JSX.Element {
   const controller = useShellControllerContext();
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const [focused, setFocused] = useState(false);
   const trimmed = draft.trim();
-  const canSend = Boolean(controller?.canSend && trimmed.length > 0);
+  const hasDraft = trimmed.length > 0;
+  const canSend = Boolean(controller?.canSend && hasDraft);
   const recentMessages = useMemo(
     () => controller?.messages.slice(-4) ?? [],
     [controller?.messages],
@@ -429,12 +531,11 @@ function HomeComposer(): React.JSX.Element {
     setDraft("");
   }
 
-  const draftPreview = trimmed;
-  const showRecent = focused || draftPreview.length > 0;
+  const showRecent = focused || hasDraft;
 
   return (
     <div className="w-full max-w-2xl shrink-0 pb-[calc(var(--safe-area-bottom,0px)+0.25rem)]">
-      {showRecent && (recentMessages.length > 0 || draftPreview.length > 0) ? (
+      {showRecent && (recentMessages.length > 0 || hasDraft) ? (
         <ol
           className="mb-3 flex max-h-32 flex-col gap-1 overflow-hidden"
           data-testid="home-recent-chats"
@@ -455,38 +556,15 @@ function HomeComposer(): React.JSX.Element {
               {message.content}
             </li>
           ))}
-          {draftPreview.length > 0 ? (
+          {hasDraft ? (
             <li className="ml-auto max-w-[82%] truncate rounded-sm border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs text-txt backdrop-blur">
-              {draftPreview}
+              {trimmed}
             </li>
           ) : null}
         </ol>
       ) : null}
 
       <div className="flex items-center gap-1.5 rounded-full border border-white/30 bg-white/12 p-2 text-txt shadow-[0_6px_28px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-colors focus-within:border-white/50 focus-within:bg-white/20">
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          aria-label={
-            controller?.recording
-              ? t("homeview.composer.stopVoice", {
-                  defaultValue: "Stop voice input",
-                })
-              : t("homeview.composer.startVoice", {
-                  defaultValue: "Start voice input",
-                })
-          }
-          aria-pressed={controller?.recording ?? false}
-          onClick={() => controller?.toggleRecording()}
-          className={cn(
-            "shrink-0 rounded-full text-txt/70 hover:bg-white/20 hover:text-txt",
-            controller?.recording &&
-              "animate-pulse bg-accent/20 text-accent hover:bg-accent/25 hover:text-accent",
-          )}
-        >
-          <Mic className="h-4 w-4" aria-hidden />
-        </Button>
         <Input
           type="text"
           value={draft}
@@ -509,18 +587,33 @@ function HomeComposer(): React.JSX.Element {
           style={{ outline: "none" }}
           className="min-w-0 flex-1 border-0 bg-transparent px-3 text-txt placeholder:text-muted focus-visible:ring-0 focus-visible:ring-offset-0"
         />
-        <Button
-          type="button"
-          size="icon"
-          aria-label={t("homeview.composer.send", {
-            defaultValue: "Send message",
-          })}
-          disabled={!canSend}
-          onClick={sendDraft}
-          className="shrink-0 rounded-full text-bg disabled:opacity-45"
-        >
-          <Send className="h-4 w-4" aria-hidden />
-        </Button>
+        {hasDraft ? (
+          <Button
+            type="button"
+            size="icon"
+            aria-label={t("homeview.composer.send", {
+              defaultValue: "Send message",
+            })}
+            disabled={!canSend}
+            onClick={sendDraft}
+            className="shrink-0 rounded-full text-bg disabled:opacity-45"
+          >
+            <Send className="h-4 w-4" aria-hidden />
+          </Button>
+        ) : (
+          <MicButton
+            recording={controller?.recording ?? false}
+            onTap={() => controller?.toggleRecording()}
+            onHoldStart={() => controller?.startRecording()}
+            onHoldEnd={() => controller?.stopRecording()}
+            startLabel={t("homeview.composer.startVoice", {
+              defaultValue: "Start voice input",
+            })}
+            stopLabel={t("homeview.composer.stopVoice", {
+              defaultValue: "Stop voice input",
+            })}
+          />
+        )}
       </div>
     </div>
   );

@@ -1206,6 +1206,13 @@ if (uiOnly) {
       ELIZA_HEADLESS: "1",
       ELIZA_DEV_AUTH_BYPASS: "1",
       LOG_LEVEL: devLogLevel,
+      // Dev boots happen on developer machines that may be busy (concurrent
+      // builds, test suites, other agents). plugin-sql pulls in native pglite
+      // bindings whose dynamic import can exceed the 30s production default
+      // under CPU contention, false-failing the whole boot into a retry loop.
+      // Give dev generous headroom; an explicit env value still wins.
+      ELIZA_PLUGIN_BOOT_TIMEOUT_MS:
+        process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? "90000",
     },
     apiSpawnCwd,
   );

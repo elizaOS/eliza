@@ -120,6 +120,134 @@ function logVerbose(message) {
   }
 }
 
+// Force a full rebuild regardless of on-disk freshness (escape hatch for the
+// rare case where output is stale but its mtime says otherwise).
+const forcePluginBuild = process.env.ELIZA_FORCE_PLUGIN_BUILD === "1";
+
+// Files outside `src/` that, when changed, invalidate a package's build.
+const BUILD_INPUT_FILES = [
+  "package.json",
+  "tsconfig.json",
+  "tsconfig.build.json",
+  "rollup.config.mjs",
+  "build.ts",
+];
+// Directories under `src/` that hold build-generated artifacts, not authored
+// inputs. Some packages (notably @elizaos/core) emit generated TS and `.d.ts`
+// back into `src/` during their build, so these must be excluded when deciding
+// whether a package's source has changed.
+const BUILD_INPUT_IGNORED_DIRS = new Set([
+  "node_modules",
+  "dist",
+  ".turbo",
+  ".cache",
+  "generated",
+]);
+
+function isDeclarationFile(name) {
+  return name.endsWith(".d.ts") || name.endsWith(".d.ts.map");
+}
+
+/**
+ * Largest file mtime (ms) under a path, walking directories iteratively.
+ * Symlinks are skipped to avoid cycles. Returns 0 when nothing is found.
+ *
+ * @param {string} target
+ * @param {object} [options]
+ * @param {Set<string>} [options.ignoreDirs] directory basenames to skip
+ * @param {boolean} [options.skipDeclarations] ignore emitted `.d.ts(.map)` files
+ * @returns {number}
+ */
+function newestMtimeMs(target, options = {}) {
+  const { ignoreDirs, skipDeclarations = false } = options;
+  let newest = 0;
+  const stack = [target];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let stat;
+    try {
+      stat = fs.lstatSync(current);
+    } catch {
+      continue;
+    }
+    if (stat.isSymbolicLink()) {
+      continue;
+    }
+    if (stat.isDirectory()) {
+      if (ignoreDirs?.has(path.basename(current))) {
+        continue;
+      }
+      let entries;
+      try {
+        entries = fs.readdirSync(current);
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        stack.push(path.join(current, entry));
+      }
+    } else if (skipDeclarations && isDeclarationFile(path.basename(current))) {
+      // emitted declaration file — a build output, not an authored input
+    } else if (stat.mtimeMs > newest) {
+      newest = stat.mtimeMs;
+    }
+  }
+  return newest;
+}
+
+/**
+ * A package build is "fresh" when its `dist/` output exists and every output
+ * file is at least as new as the newest build input (`src/` plus the config
+ * files in {@link BUILD_INPUT_FILES}). Lets warm dev boots skip rebuilding
+ * unchanged packages — the single largest boot-time cost.
+ *
+ * @param {string} packageDir absolute path to the package root
+ * @returns {boolean}
+ */
+function isPackageBuildFresh(packageDir) {
+  if (forcePluginBuild) {
+    return false;
+  }
+  const distDir = path.join(packageDir, "dist");
+  let distEntries;
+  try {
+    distEntries = fs.readdirSync(distDir);
+  } catch {
+    return false;
+  }
+  if (distEntries.length === 0) {
+    return false;
+  }
+  const outputNewest = newestMtimeMs(distDir);
+  if (outputNewest === 0) {
+    return false;
+  }
+
+  let inputNewest = 0;
+  const srcDir = path.join(packageDir, "src");
+  if (fs.existsSync(srcDir)) {
+    inputNewest = newestMtimeMs(srcDir, {
+      ignoreDirs: BUILD_INPUT_IGNORED_DIRS,
+      skipDeclarations: true,
+    });
+  }
+  for (const file of BUILD_INPUT_FILES) {
+    try {
+      const stat = fs.statSync(path.join(packageDir, file));
+      if (stat.mtimeMs > inputNewest) {
+        inputNewest = stat.mtimeMs;
+      }
+    } catch {
+      // input file absent — not part of this package's build
+    }
+  }
+  // No recognizable inputs — build to stay safe.
+  if (inputNewest === 0) {
+    return false;
+  }
+  return outputNewest >= inputNewest;
+}
+
 function hasPackageDependency(pkg, packageName) {
   if (!pkg || typeof pkg !== "object") return false;
   for (const field of [
@@ -159,6 +287,12 @@ async function buildWorkspaceRuntimePackagesForPlugins(pluginEntries) {
       throw new Error(
         `[plugins] ${packageName} dependency is required but has no build script`,
       );
+    }
+    if (isPackageBuildFresh(packageDir)) {
+      console.log(
+        `[plugins] workspace dependency ${packageName} up to date — skipping`,
+      );
+      continue;
     }
     console.log(`[plugins] building workspace dependency ${packageName}`);
     await run("bun", ["run", "build"], packageDir);
@@ -202,12 +336,24 @@ async function main() {
 
   await buildWorkspaceRuntimePackagesForPlugins(buildablePlugins);
 
+  let builtCount = 0;
+  let freshCount = 0;
   await Promise.all(
     buildablePlugins.map(async ({ name }) => {
+      const pluginDir = pluginDirFor(pluginsDir, name);
+      if (isPackageBuildFresh(pluginDir)) {
+        freshCount += 1;
+        logVerbose(`[plugin:${name}] up to date — skipping`);
+        return;
+      }
+      builtCount += 1;
       logVerbose(`[plugin:${name}] building...`);
-      await run("bun", ["run", "build"], pluginDirFor(pluginsDir, name));
+      await run("bun", ["run", "build"], pluginDir);
       logVerbose(`[plugin:${name}] done`);
     }),
+  );
+  console.log(
+    `[plugins] native plugins: built ${builtCount}, skipped ${freshCount} (up to date)`,
   );
 }
 

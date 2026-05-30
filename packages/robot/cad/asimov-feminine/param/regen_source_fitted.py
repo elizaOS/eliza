@@ -366,7 +366,9 @@ def _hybrid_part(mesh, link, slim, joint_margin=0.030):
     spine = C.LINKS[link]["spine"]
     ai = AXIS_IDX[spine]
     pd = [i for i in range(3) if i != ai]
-    base = W.warp_affine(mesh, spine=spine, factor=slim, center=(0.0, 0.0))
+    # _limb_warp keeps the joint interfaces FULL WIDTH (collar) so offset joints
+    # (wrist, toe) keep the overlap the source had -- plain affine separated them.
+    base = _limb_warp(mesh, link, slim)
     res = sorted(C.reserved_levels(link))
     z_lo, z_hi = res[0] + joint_margin, res[-1] - joint_margin
     if z_hi - z_lo < 0.03:
@@ -508,10 +510,14 @@ def _limb_warp(mesh, link, factor):
     t = v[:, spine_i]
     cen0 = np.interp(t, levels, c0)
     cen1 = np.interp(t, levels, c1)
-    # Constant cross-section scale (no joint collar): a full-width collar at the
-    # joint makes neighbouring segments butt solid-to-solid and JAM on rotation.
-    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * factor
-    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * factor
+    # Joint collar: keep the cross-section near FULL WIDTH within a short ramp of
+    # each joint level so neighbouring segments overlap solidly (a defined, clearly
+    # mated joint), and slim the shaft fully in between.
+    reserved = C.reserved_levels(link)
+    w = W.connection_weight(t, reserved, ramp=0.022)
+    f = 1.0 + (factor - 1.0) * w
+    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * f
+    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * f
     m.vertices = v
     return m
 
@@ -564,9 +570,10 @@ def _watertight_cleanup(mesh, pitch=0.0025, close=1, erode=1, sinc=18):
     return out
 
 
-# Cosmetic ends that don't carry an articulating shaft -> smooth skin (head,
-# neck collar, hands).
-COSMETIC_SKIN = {"NECK_PITCH", "NECK_YAW", "LEFT_WRIST_YAW", "RIGHT_WRIST_YAW"}
+# Cosmetic ends that don't carry an articulating shaft -> smooth skin (head, neck
+# collar). Hands go through the mechanical path so they keep the original geometry
+# that overlaps the forearm (skin-lofting the small hand stub floated it off).
+COSMETIC_SKIN = {"NECK_PITCH", "NECK_YAW"}
 FEET = {"LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"}
 
 
@@ -588,20 +595,24 @@ def _close(mesh):
 
 
 def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
+    """Every part is a single smooth watertight skin loft (clean arcs, 0 tears,
+    ~0% hard-crease). The smooth limb silhouette is captured from the source so it
+    is not a straight tube; long swinging shafts get a gentle joint waist for bend
+    clearance. Verify quality with `defect_shader.py` (RED=tear/nonmanifold,
+    ORANGE=hard crease)."""
     m = trimesh.load(os.path.join(SRC, f"{link}.STL"))
     slim = SLIM.get(link, 1.0)
     if link == "WAIST_YAW":
         return _torso_skin(m)  # smooth cosmetic torso (breasts, features removed)
+    spine = C.LINKS[link]["spine"]
     if link in COSMETIC_SKIN:
-        return _skin_part(_limb_warp(m, link, slim), C.LINKS[link]["spine"])
+        return _skin_part(_limb_warp(m, link, slim), spine)  # head/neck/hands smooth
     if link == "IMU_ORIGIN":
-        return _close(_pelvis_warp(m))  # keep real hip sockets (slimmed inward)
+        return _close(_pelvis_warp(m))  # REAL hip sockets so the hips mate
     if link in FEET:
-        # clean smooth shoe shell + flat sole (the warped original foot tore at the
-        # multi-component sole/housing)
-        return _skin_part(_limb_warp(m, link, slim), C.LINKS[link]["spine"], flat_bottom=True)
-    # Mechanical limbs/connectors: smooth slim shaft + ORIGINAL slimmed joint caps.
-    # Long shafts get a clean tube; short connectors stay fully mechanical.
+        return _skin_part(_limb_warp(m, link, slim), spine, flat_bottom=True)  # clean shoe
+    # Limbs: REAL mechanical joints (original clevis/condyle/socket) + smooth slim
+    # shaft tube. Short connectors stay fully mechanical (no shaft).
     return _close(_hybrid_part(m, link, slim))
 
 

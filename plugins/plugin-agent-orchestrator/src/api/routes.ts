@@ -33,42 +33,30 @@ export async function handleCodingAgentRoutes(
     ? pathname.replace(/^\/api\/task-agents/, "/api/coding-agents")
     : pathname;
 
-  // Durable orchestrator task surface. Distinct `/api/orchestrator/*` prefix,
-  // so it matches first and never collides with the ACP session routes below.
   if (await handleOrchestratorRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to parent-runtime bridge routes before generic :id agent routes.
   if (await handleParentContextRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Sub-agent credential bridge (loopback-only, additive). Mounted after the
-  // parent-context dispatcher and before the generic `:id` agent routes so the
-  // `/credentials/*` sub-paths are not shadowed. Responds 503 when no
-  // credential-tunnel adapter is registered on the runtime, so mounting it is
-  // safe even where credential tunneling is unsupported.
   if (await handleBridgeRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to agent routes
   if (await handleAgentRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to workspace routes
   if (await handleWorkspaceRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Delegate to issue routes
   if (await handleIssueRoutes(req, res, normalizedPathname, ctx)) {
     return true;
   }
 
-  // Route not handled
   return false;
 }
 

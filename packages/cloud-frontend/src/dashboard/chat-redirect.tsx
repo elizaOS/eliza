@@ -85,7 +85,7 @@ export default function DashboardChatRedirectPage() {
         <div className="flex items-center justify-center gap-2">
           <Link
             to="/dashboard/agents"
-            className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium bg-[#FF5800] text-black hover:bg-black hover:text-white transition-colors"
+            className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium bg-[#FF5800] text-black hover:bg-[#e54f00] transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
             {t("cloud.chatRedirect.createAgent", {

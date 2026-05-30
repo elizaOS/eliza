@@ -54,8 +54,6 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
       }
     }
 
-    // 1. Full orchestrator dispatcher — covers ACP spawn, send, output,
-    //    bridge, parent-context, workspace, and issue routes.
     const ctx = buildRouteContext(agentRuntime);
     const handled = await handleCodingAgentRoutes(
       httpReq,
@@ -124,13 +122,11 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/coding-agents/:sessionId/parent-context" },
   { type: "GET", path: "/api/coding-agents/:sessionId/memory" },
   { type: "GET", path: "/api/coding-agents/:sessionId/active-workspaces" },
-  // Sub-agent credential bridge. Registered so the runtime route matcher (which
-  // requires an exact-segment-count template) actually reaches handleBridgeRoutes
-  // over HTTP; the dispatcher mount alone is not enough. Same auth class as the
-  // parent-context bridge above (child carries the parent bearer token); the
-  // handler then enforces loopback + single-use scopedToken.
   { type: "POST", path: "/api/coding-agents/:sessionId/credentials/request" },
-  { type: "GET", path: "/api/coding-agents/:sessionId/credentials/:key" },
+  {
+    type: "GET",
+    path: "/api/coding-agents/:sessionId/credentials/:key",
+  },
   // Workspace routes
   { type: "POST", path: "/api/workspace/provision" },
   { type: "GET", path: "/api/workspace/:workspaceId" },
@@ -146,17 +142,9 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "POST", path: "/api/issues/:owner/:repo/:number/close" },
 ];
 
-const seen = new Set<string>();
-const dedupedPaths = CODING_AGENT_ROUTE_PATHS.filter((entry) => {
-  const key = `${entry.type} ${entry.path}`;
-  if (seen.has(key)) return false;
-  seen.add(key);
-  return true;
-});
-
 const sharedHandler = codingAgentRouteHandler();
 
-const codingAgentRoutes: Route[] = dedupedPaths.map(
+const codingAgentRoutes: Route[] = CODING_AGENT_ROUTE_PATHS.map(
   (r) =>
     ({
       type: r.type as Route["type"],

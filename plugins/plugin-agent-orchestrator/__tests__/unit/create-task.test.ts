@@ -2,6 +2,7 @@ import * as os from "node:os";
 import { describe, expect, it, vi } from "vitest";
 // Post-consolidation: CREATE_AGENT_TASK is `TASKS { action: "create" }` (default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
+import { codingAgentExamplesProvider } from "../../src/providers/action-examples.js";
 import {
   callback,
   memory,
@@ -11,6 +12,14 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:create", () => {
+  it("keeps the coding TASKS parent out of generic owner task context", () => {
+    expect(createTaskAction.contexts).toContain("code");
+    expect(createTaskAction.contexts).toContain("automation");
+    expect(createTaskAction.contexts).not.toContain("tasks");
+    expect(codingAgentExamplesProvider.contexts).toContain("code");
+    expect(codingAgentExamplesProvider.contexts).not.toContain("tasks");
+  });
+
   it("surfaces TASKS whenever the ACP service is ready", async () => {
     // Validation surfaces TASKS as soon as the ACP service is registered;
     // routing personal-LifeOps phrasings off this action is the Stage-1

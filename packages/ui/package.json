@@ -36,10 +36,11 @@
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
-    "build:dist": "bun run clean && bun run generate:css-strings && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui",
+    "build:dist": "node ../scripts/with-package-build-lock.mjs packages/ui -- bun run build:dist:unlocked",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "stories:dev": "vite --config stories/vite.config.ts",
-    "stories:build": "vite build --config stories/vite.config.ts"
+    "stories:build": "vite build --config stories/vite.config.ts",
+    "build:dist:unlocked": "bun run clean && bun run generate:css-strings && node ../scripts/ensure-tsc-nested-output-dir.mjs packages/ui && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui && node ../scripts/verify-package-runtime-exports.mjs packages/ui"
   },
   "exports": {
     ".": {
@@ -62,6 +63,11 @@
       "types": "./dist/cloud-ui/*.d.ts",
       "import": "./dist/cloud-ui/*.js",
       "default": "./dist/cloud-ui/*.js"
+    },
+    "./app-shell-registry": {
+      "types": "./dist/app-shell-registry.d.ts",
+      "import": "./dist/app-shell-registry.js",
+      "default": "./dist/app-shell-registry.js"
     },
     "./button": {
       "types": "./dist/cloud-ui/components/button.d.ts",

@@ -85,7 +85,7 @@ describe("pill window", () => {
     expect(setAlwaysOnTop).toHaveBeenCalledWith(true);
     expect(getPillWindow()).toBe(windowMock);
 
-    closeHandlers.forEach((handler) => handler());
+    for (const handler of closeHandlers) handler();
     expect(getPillWindow()).toBeNull();
   });
 });

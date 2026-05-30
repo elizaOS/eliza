@@ -276,7 +276,7 @@ function CliLoginContent() {
           <>
             {sessionId ? (
               <a href={signInHref} className="w-full">
-                <Button className="w-full h-11  bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white">
+                <Button className="w-full h-11  bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white">
                   {t("cloud.cliLogin.signInAgain", {
                     defaultValue: "Sign In Again",
                   })}
@@ -310,7 +310,7 @@ function CliLoginContent() {
         actions={
           <a href={signInHref} className="w-full">
             <Button
-              className="w-full h-11  bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white"
+              className="w-full h-11  bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
               disabled={!ready}
             >
               {!ready ? (

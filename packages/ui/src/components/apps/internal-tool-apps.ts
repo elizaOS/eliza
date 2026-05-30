@@ -164,7 +164,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     name: "@elizaos/plugin-task-coordinator",
     displayName: "Automations",
     description: "Create, inspect, and manage scheduled tasks and workflows.",
-    heroImage: "/api/apps/hero/tasks",
+    heroImage: "/api/apps/hero/task-coordinator",
     targetTab: "tasks",
     capabilities: ["tasks", "workflows", "automations"],
     order: 12,

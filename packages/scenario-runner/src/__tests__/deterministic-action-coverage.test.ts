@@ -225,13 +225,103 @@ const COVERED_FLOOR = COVERED_ACTIONS.length;
  * — see COVERED_ACTIONS — so the reason describes only the remainder.
  */
 const LIVE_ONLY_REMAINDER: Record<string, string> = {
-  "@elizaos/plugin-google": "All actions require Google OAuth credentials.",
   "@elizaos/plugin-lifeops":
     "Beyond SCHEDULED_TASKS, actions need live connector creds (Gmail, calendar, messaging, owner data).",
   "@elizaos/plugin-browser":
     "Beyond web/JSDOM mode, actions need a real Chromium session or browser bridge.",
   "@elizaos/plugin-agent-orchestrator":
     "TASKS (+ TASKS_* virtuals) spawns and drives ACP coding sub-agents over PTY; the keyless mock cannot stand in for real sub-agent processes. Unit-covered in plugins/plugin-agent-orchestrator/__tests__.",
+};
+
+/**
+ * Source-derived umbrella-action surface for the three booted plugins that the
+ * gate deliberately does NOT live-import (their full surface is large, platform-
+ * gated, and credential-heavy — see LIVE_ONLY_REMAINDER). Live import is the
+ * wrong tool here: google needs OAuth, lifeops promotes a platform-dependent set
+ * (`OWNER_SCREENTIME` only exists on darwin) and pulls `messagingTriageActions`
+ * in from @elizaos/core, and browser needs a real Chromium/JSDOM stack.
+ *
+ * Without this manifest, adding a NEW action to one of these plugins would slip
+ * through silently — it is neither live-imported (so CORE_ACTION_SURFACE can't
+ * catch it) nor source-enumerated. This closes that gap by pinning the umbrella
+ * action names each plugin declares in its own source. It is a drift-
+ * acknowledgment surface, NOT a keyless-coverage mandate: a new umbrella forces
+ * the author to classify it (cover its keyless slice in COVERED_ACTIONS, or
+ * extend the LIVE_ONLY_REMAINDER justification) — it does not demand a scenario.
+ *
+ * Each umbrella's promoted virtuals (`BROWSER_CLICK`, `BLOCK_LIST_ACTIVE`, ...)
+ * are intentionally out of scope: their names are derived at runtime by
+ * `promoteSubactionsToActions` from a discriminator enum, so enumerating them
+ * from source would mean re-implementing that transform here. The umbrella set
+ * is the right-sized signal — a brand-new action is always a new umbrella
+ * (`const ACTION_NAME = "X"` or a top-level `name: "X"`), which this catches.
+ *
+ * `files` lists exactly the action sources each plugin wires into its `actions`
+ * array (verified against each plugin's entry). `actions` is the umbrella-name
+ * set those files declare. Google wires `actions: []`, so its set is empty and
+ * the empty-array literal is asserted to stay put.
+ */
+const BOOTED_PLUGIN_ACTION_SURFACE: Record<
+  string,
+  { files: readonly string[]; actions: readonly string[] }
+> = {
+  "@elizaos/plugin-google": {
+    files: ["plugins/plugin-google/src/index.ts"],
+    actions: [],
+  },
+  "@elizaos/plugin-browser": {
+    files: [
+      "plugins/plugin-browser/src/actions/browser.ts",
+      "plugins/plugin-browser/src/actions/manage-browser-bridge.ts",
+    ],
+    actions: ["BROWSER", "MANAGE_BROWSER_BRIDGE"],
+  },
+  "@elizaos/plugin-lifeops": {
+    files: [
+      "plugins/plugin-lifeops/src/actions/block.ts",
+      "plugins/plugin-lifeops/src/actions/brief.ts",
+      "plugins/plugin-lifeops/src/actions/calendar.ts",
+      "plugins/plugin-lifeops/src/actions/conflict-detect.ts",
+      "plugins/plugin-lifeops/src/actions/connector.ts",
+      "plugins/plugin-lifeops/src/actions/credentials.ts",
+      "plugins/plugin-lifeops/src/actions/document.ts",
+      "plugins/plugin-lifeops/src/actions/entity.ts",
+      "plugins/plugin-lifeops/src/actions/inbox.ts",
+      "plugins/plugin-lifeops/src/actions/owner-surfaces.ts",
+      "plugins/plugin-lifeops/src/actions/prioritize.ts",
+      "plugins/plugin-lifeops/src/actions/remote-desktop.ts",
+      "plugins/plugin-lifeops/src/actions/resolve-request.ts",
+      "plugins/plugin-lifeops/src/actions/scheduled-task.ts",
+      "plugins/plugin-lifeops/src/actions/voice-call.ts",
+      "plugins/plugin-lifeops/src/actions/work-thread.ts",
+    ],
+    actions: [
+      "BLOCK",
+      "BRIEF",
+      "CALENDAR",
+      "CONFLICT_DETECT",
+      "CONNECTOR",
+      "CREDENTIALS",
+      "ENTITY",
+      "INBOX",
+      "OWNER_ALARMS",
+      "OWNER_DOCUMENTS",
+      "OWNER_FINANCES",
+      "OWNER_GOALS",
+      "OWNER_HEALTH",
+      "OWNER_REMINDERS",
+      "OWNER_ROUTINES",
+      "OWNER_SCREENTIME",
+      "OWNER_TODOS",
+      "PERSONAL_ASSISTANT",
+      "PRIORITIZE",
+      "REMOTE_DESKTOP",
+      "RESOLVE_REQUEST",
+      "SCHEDULED_TASKS",
+      "VOICE_CALL",
+      "WORK_THREAD",
+    ],
+  },
 };
 
 type AppControlActionName = "APP" | "VIEWS";
@@ -600,6 +690,30 @@ function sorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort();
 }
 
+/**
+ * Derives the umbrella action names a plugin declares from source, reading the
+ * exact files it wires into its `actions` array. Matches the two forms these
+ * plugins use to name an action: a `const ACTION_NAME = "X"` constant and a
+ * top-level `name: "X"` literal. Action/umbrella names are UPPER_SNAKE, so the
+ * UPPER-only match skips lowercase parameter names (`name: "action"`) and
+ * `{{templated}}` example names without enumerating the promoted virtuals.
+ */
+function umbrellaActionNamesFromSource(files: readonly string[]): string[] {
+  const names = new Set<string>();
+  for (const relPath of files) {
+    const source = readFileSync(resolve(repoRoot, relPath), "utf8");
+    for (const match of source.matchAll(
+      /const\s+ACTION_NAME\s*=\s*"([A-Z][A-Z0-9_]*)"/g,
+    )) {
+      names.add(match[1]);
+    }
+    for (const match of source.matchAll(/\bname:\s*"([A-Z][A-Z0-9_]*)"/g)) {
+      names.add(match[1]);
+    }
+  }
+  return sorted(names);
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -829,6 +943,36 @@ describe("deterministic action coverage", () => {
       }
     }
     expect(missing, missing.join("\n")).toEqual([]);
+  });
+
+  it("booted-plugin umbrella action surface matches the manifest (new actions caught from source)", () => {
+    const drift: string[] = [];
+    for (const [spec, { files, actions }] of Object.entries(
+      BOOTED_PLUGIN_ACTION_SURFACE,
+    )) {
+      const actual = umbrellaActionNamesFromSource(files);
+      const want = sorted(actions);
+      if (JSON.stringify(actual) !== JSON.stringify(want)) {
+        drift.push(
+          `${spec}: source umbrellas [${actual.join(", ") || "(none)"}] != manifest [${want.join(", ") || "(none)"}]\n` +
+            `    A new/renamed/removed action in ${spec} must be classified: cover its keyless slice in COVERED_ACTIONS, ` +
+            `or extend its LIVE_ONLY_REMAINDER justification — then update BOOTED_PLUGIN_ACTION_SURFACE to match.`,
+        );
+      }
+    }
+    // Google wires `actions: []`; assert the empty-array literal stays so the
+    // empty manifest above can't be silently bypassed by wiring an action.
+    const googleSource = readFileSync(
+      resolve(repoRoot, "plugins/plugin-google/src/index.ts"),
+      "utf8",
+    );
+    if (!/actions:\s*\[\s*\]/.test(googleSource)) {
+      drift.push(
+        "@elizaos/plugin-google: index.ts no longer declares `actions: []` — " +
+          "it now wires an action surface that must be classified and added to BOOTED_PLUGIN_ACTION_SURFACE.",
+      );
+    }
+    expect(drift, drift.join("\n")).toEqual([]);
   });
 
   it("app-control APP/VIEWS mode surface matches the live action schemas", () => {

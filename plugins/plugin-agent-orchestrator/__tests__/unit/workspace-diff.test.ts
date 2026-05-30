@@ -166,6 +166,7 @@ describe("workspace-diff — real git capture", () => {
     expect(cs).toBeDefined();
     expect(cs?.changedFiles).toContain("new.html");
     expect(cs?.changedFiles).not.toContain("index.html"); // pre-existing dirty
+    expect(cs?.diffStat).toBe("1 file(s) changed");
   });
 
   it("keeps a pre-existing-dirty file if the agent DID write it this session", async () => {

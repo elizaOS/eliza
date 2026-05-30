@@ -1,10 +1,22 @@
 # Orchestrator View Research Report
 
-Date: 2026-05-29
+Date: 2026-05-30
 
 ## High-Level Goal
 
-Build an `/orchestrator` experience for ElizaOS that treats work as durable tasks, not disposable chats. The main orchestrator room should remain open indefinitely, create and fork task rooms from natural language or explicit UI controls, provision Claude/Codex/OpenCode/Eliza sub-agents using persistent `/goal`-style prompts, and never present a task as done until acceptance criteria, verification, and final handoff are complete. The UI must expose task status, room messages, sub-agent activity, model/provider/subscription selection, token spend, pause/resume/archive/delete controls, secure and local-insecure secret collection, voice/chat-controllable view actions, searchable paginated history, remote/mobile access, and exhaustive automated plus screenshot/manual verification.
+Build an `/orchestrator` experience for ElizaOS that treats work as durable tasks, not disposable chats. The main orchestrator room should remain open indefinitely, create and fork task rooms from natural language or explicit UI controls, provision Claude/Codex/OpenCode/Eliza sub-agents using persistent `/goal`-style prompts, and never present a task as done until acceptance criteria, verification, and final handoff are complete. The UI must expose task status, room messages, sub-agent activity, model/provider/subscription selection, token spend, pause/resume/archive/delete controls, secure and local-insecure secret collection, voice/chat-controllable view actions, searchable paginated history, remote/mobile access, and route/action-specific automated plus screenshot/manual verification.
+
+## Current Status And TODOs
+
+This report started as a research snapshot. The current branch now has a first durable `/api/orchestrator/*` task surface, `/orchestrator` plugin view registration, task-thread client methods backed by real routes, mandatory goal wrappers for direct coding-agent spawn/send paths, usage aggregation from ACP result usage, and dispatcher-level credential bridge wiring. Treat older "not implemented" statements below as historical context when they conflict with this section.
+
+Remaining TODOs:
+
+- Replace caller-supplied validation with registered verification hooks that collect durable evidence before `done`.
+- Add end-to-end coverage for every declared orchestrator view capability, TUI endpoint, and task lifecycle mutation.
+- Add screenshot/manual review for the orchestrator UI and any shared cloud frontend changes before declaring UI work complete.
+- Finish provider/subscription settings cleanup and internationalize every new orchestrator string.
+- Prove remote/mobile access against a local desktop agent and against cloud-connected agents.
 
 ## Executive Findings
 

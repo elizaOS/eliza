@@ -24,7 +24,12 @@ export interface ShellController {
   open: () => void;
   close: () => void;
   send: (text: string) => void;
+  /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
+  /** Begin capture unconditionally. Used by push-to-talk press. */
+  startRecording: () => void;
+  /** End capture unconditionally. Used by push-to-talk release. */
+  stopRecording: () => void;
 }
 
 /**
@@ -168,5 +173,7 @@ export function useShellController(): ShellController {
     close,
     send,
     toggleRecording,
+    startRecording: startCapture,
+    stopRecording: stopCapture,
   };
 }

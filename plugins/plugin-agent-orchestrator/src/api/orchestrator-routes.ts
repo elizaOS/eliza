@@ -11,6 +11,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { TaskThreadDetailDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type {
   CreateTaskInput,
@@ -69,6 +70,16 @@ function parseLimit(value: string | null): number | undefined {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+async function parseOptionalBody(
+  req: IncomingMessage,
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await parseBody(req);
+  } catch {
+    return null;
+  }
 }
 
 /** Resolve the orchestrator service, loading it if registration is still lazy. */
@@ -152,15 +163,11 @@ export async function handleOrchestratorRoutes(
       return true;
     }
     const title = asString(body.title);
-    const goal = asString(body.goal) ?? title;
     if (!title) {
       sendError(res, "title is required", 400);
       return true;
     }
-    if (!goal) {
-      sendError(res, "goal is required", 400);
-      return true;
-    }
+    const goal = asString(body.goal) ?? title;
     const input: CreateTaskInput = {
       title,
       goal,
@@ -230,7 +237,17 @@ export async function handleOrchestratorRoutes(
 
     // DELETE /tasks/:taskId
     if (method === "DELETE" && segments.length === 1) {
-      const deleted = await service.deleteTask(taskId);
+      let deleted: boolean;
+      try {
+        deleted = await service.deleteTask(taskId);
+      } catch (error) {
+        sendError(
+          res,
+          error instanceof Error ? error.message : "Failed to delete task",
+          500,
+        );
+        return true;
+      }
       if (!deleted) {
         sendError(res, "Task not found", 404);
         return true;
@@ -241,7 +258,17 @@ export async function handleOrchestratorRoutes(
 
     // POST /tasks/:taskId/pause
     if (method === "POST" && sub === "pause" && segments.length === 2) {
-      const task = await service.pauseTask(taskId);
+      let task: TaskThreadDetailDto | null;
+      try {
+        task = await service.pauseTask(taskId);
+      } catch (error) {
+        sendError(
+          res,
+          error instanceof Error ? error.message : "Failed to pause task",
+          500,
+        );
+        return true;
+      }
       if (!task) {
         sendError(res, "Task not found", 404);
         return true;
@@ -263,7 +290,17 @@ export async function handleOrchestratorRoutes(
 
     // POST /tasks/:taskId/archive
     if (method === "POST" && sub === "archive" && segments.length === 2) {
-      const task = await service.archiveTask(taskId);
+      let task: TaskThreadDetailDto | null;
+      try {
+        task = await service.archiveTask(taskId);
+      } catch (error) {
+        sendError(
+          res,
+          error instanceof Error ? error.message : "Failed to archive task",
+          500,
+        );
+        return true;
+      }
       if (!task) {
         sendError(res, "Task not found", 404);
         return true;
@@ -285,9 +322,11 @@ export async function handleOrchestratorRoutes(
 
     // POST /tasks/:taskId/fork
     if (method === "POST" && sub === "fork" && segments.length === 2) {
-      const body = await parseBody(req).catch(
-        (): Record<string, unknown> => ({}),
-      );
+      const body = await parseOptionalBody(req);
+      if (!body) {
+        sendError(res, "Invalid JSON body", 400);
+        return true;
+      }
       const forked = await service.forkTask(taskId, {
         title: asString(body.title),
         goal: asString(body.goal),
@@ -309,10 +348,23 @@ export async function handleOrchestratorRoutes(
         sendError(res, "passed (boolean) is required", 400);
         return true;
       }
-      const task = await service.validateTask(taskId, {
-        passed: body.passed,
-        summary: asString(body.summary),
-      });
+      const task = await service
+        .validateTask(taskId, {
+          passed: body.passed,
+          summary: asString(body.summary),
+          evidence: asString(body.evidence),
+          verifier: asString(body.verifier),
+          humanOverride: body.humanOverride === true,
+        })
+        .catch((error: unknown) => {
+          sendError(
+            res,
+            error instanceof Error ? error.message : "Validation failed",
+            409,
+          );
+          return undefined;
+        });
+      if (task === undefined) return true;
       if (!task) {
         sendError(res, "Task not found", 404);
         return true;
@@ -373,18 +425,30 @@ export async function handleOrchestratorRoutes(
     if (sub === "agents") {
       // POST /tasks/:taskId/agents  — add a sub-agent
       if (method === "POST" && segments.length === 2) {
-        const body = await parseBody(req).catch(
-          (): Record<string, unknown> => ({}),
-        );
-        const task = await service.spawnAgentForTask(taskId, {
-          framework: asString(body.framework),
-          providerSource: asString(body.providerSource),
-          model: asString(body.model),
-          workdir: asString(body.workdir),
-          repo: asString(body.repo),
-          label: asString(body.label),
-          task: asString(body.task),
-        });
+        const body = await parseOptionalBody(req);
+        if (!body) {
+          sendError(res, "Invalid JSON body", 400);
+          return true;
+        }
+        let task: TaskThreadDetailDto | null;
+        try {
+          task = await service.spawnAgentForTask(taskId, {
+            framework: asString(body.framework),
+            providerSource: asString(body.providerSource),
+            model: asString(body.model),
+            workdir: asString(body.workdir),
+            repo: asString(body.repo),
+            label: asString(body.label),
+            task: asString(body.task),
+          });
+        } catch (error) {
+          sendError(
+            res,
+            error instanceof Error ? error.message : "Failed to spawn agent",
+            500,
+          );
+          return true;
+        }
         if (!task) {
           sendError(res, "Task not found", 404);
           return true;
@@ -399,7 +463,17 @@ export async function handleOrchestratorRoutes(
         segments[3] === "stop"
       ) {
         const sessionId = decodeURIComponent(segments[2] ?? "");
-        const stopped = await service.stopTaskAgent(taskId, sessionId);
+        let stopped: boolean;
+        try {
+          stopped = await service.stopTaskAgent(taskId, sessionId);
+        } catch (error) {
+          sendError(
+            res,
+            error instanceof Error ? error.message : "Failed to stop agent",
+            500,
+          );
+          return true;
+        }
         if (!stopped) {
           sendError(res, "Task or session not found", 404);
           return true;

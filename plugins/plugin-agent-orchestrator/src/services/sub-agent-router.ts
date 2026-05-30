@@ -1227,8 +1227,15 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
 // room and agent type stay constant. Keyed on those so the respawn cap
 // actually accumulates instead of resetting every loop.
 function respawnLineageKey(session: SessionInfo, origin: OriginInfo): string {
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const initialTask = pickPlainString(meta?.initialTask);
   return JSON.stringify({
     taskRoomId: origin.taskRoomId,
+    originTaskId:
+      origin.parentConnectorMessageId ??
+      origin.parentMessageId ??
+      initialTask ??
+      origin.label,
     agentType: session.agentType,
   });
 }
@@ -1237,11 +1244,13 @@ function completionLineageKey(
   session: SessionInfo,
   origin: OriginInfo,
 ): string | null {
-  if (!origin.parentMessageId) return null;
   const meta = session.metadata as Record<string, unknown> | undefined;
   const initialTask = pickPlainString(meta?.initialTask) ?? "";
+  const originTaskId =
+    origin.parentConnectorMessageId ?? origin.parentMessageId ?? initialTask;
+  if (!originTaskId) return null;
   return JSON.stringify({
-    originMessageId: origin.parentMessageId,
+    originTaskId,
     agentType: session.agentType,
     initialTask,
   });

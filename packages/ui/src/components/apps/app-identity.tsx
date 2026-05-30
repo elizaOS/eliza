@@ -179,15 +179,24 @@ export function AppIdentityTile({
   className = "",
   size = "md",
   imageOnly = false,
+  glyph = false,
 }: {
   app: AppIdentitySource;
   active?: boolean;
   className?: string;
   size?: "sm" | "md";
   imageOnly?: boolean;
+  /**
+   * Force the gradient + category-icon + monogram presentation and skip the
+   * hero/icon/generated artwork entirely. Used for compact launcher grids where
+   * consistent glyph tiles read better than per-app generated imagery.
+   */
+  glyph?: boolean;
 }) {
   const palette = getAppPalette(app.name);
-  const { imageSrc, handleImageError } = useResolvedAppImageSource(app);
+  const { imageSrc: resolvedImageSrc, handleImageError } =
+    useResolvedAppImageSource(app);
+  const imageSrc = glyph ? null : resolvedImageSrc;
   const Icon = getAppCategoryIcon(app);
   const monogram = getAppMonogram(app);
   const outerSize =

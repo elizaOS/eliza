@@ -90,6 +90,14 @@ export interface SnapshotResult {
 const MAX_BACKUPS = 10;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
+function digestPinnedImageRef(imageRef: string, digest: string): string {
+  if (imageRef.includes("@sha256:")) return imageRef;
+  const lastColon = imageRef.lastIndexOf(":");
+  const lastSlash = imageRef.lastIndexOf("/");
+  const withoutTag = lastColon > lastSlash ? imageRef.slice(0, lastColon) : imageRef;
+  return `${withoutTag}@${digest}`;
+}
+
 function isDockerSandboxMetadata(value: unknown): value is DockerSandboxMetadata {
   return (
     typeof value === "object" &&
@@ -818,6 +826,11 @@ export class ElizaSandboxService {
           if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
           if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
           if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+          // Always overwrite the digest (including null) so a re-provision
+          // onto a different image clears any stale value. The reconciler
+          // treats null as "unknown, wait until probe succeeds before
+          // deciding", which is what we want during registry outages.
+          updateData.image_digest = dockerMeta.imageDigest;
         }
 
         const updated = await agentSandboxesRepository.update(rec.id, updateData);
@@ -2721,7 +2734,11 @@ export class ElizaSandboxService {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec)
-        return { success: false, containerStopped: false, error: "Agent not found" } as const;
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent not found",
+        } as const;
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
@@ -2866,6 +2883,237 @@ export class ElizaSandboxService {
       containerStarted: true,
       bridgeUrl: provisionResult.bridgeUrl,
       healthUrl: provisionResult.healthUrl,
+    };
+  }
+
+  /**
+   * Daemon-side handler for the `agent_upgrade` job: blue/green swap an
+   * agent onto the currently-deployed image.
+   *
+   * Flow:
+   *   1. Snapshot the agent's current node + container info.
+   *   2. Provision a fresh container (blue) on a *different* node — the
+   *      provider's container name is deterministic (`agent-${id}`), so the
+   *      blue must land on a different docker daemon. The provider's
+   *      `excludeNodeId` makes this guarantee.
+   *   3. Health-check blue. If it doesn't come up, tear it down and bail —
+   *      the agent keeps running on the old container with the old image
+   *      (auto-rollback, no operator intervention).
+   *   4. Atomic UPDATE: swap the row's bridge_url / node_id / container_name
+   *      / image_digest. New HTTP requests hit blue from this point on.
+   *   5. Best-effort SIGTERM (30s drain) on the old container, then remove
+   *      it. Already-in-flight HTTP responses on the old finish; websockets
+   *      get a clean drop and reconnect to blue.
+   */
+  async executeUpgrade(
+    agentId: string,
+    orgId: string,
+    toDigest: string,
+    dockerImage: string,
+    fromDigest: string | null,
+  ): Promise<{
+    success: boolean;
+    oldNodeId?: string;
+    oldContainerName?: string;
+    newNodeId?: string;
+    newContainerName?: string;
+    newDigest?: string | null;
+    error?: string;
+  }> {
+    const agent = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!agent) return { success: false, error: "Agent not found" };
+    if (agent.status !== "running") {
+      return {
+        success: false,
+        error: `Agent not running (status: ${agent.status})`,
+      };
+    }
+    if (!agent.node_id || !agent.container_name) {
+      return {
+        success: false,
+        error: "Agent has no node_id or container_name to upgrade from",
+      };
+    }
+    if (agent.docker_image && agent.docker_image !== dockerImage) {
+      return {
+        success: false,
+        error: "Agent uses a custom docker image; refusing fleet upgrade",
+      };
+    }
+
+    const oldNodeId = agent.node_id;
+    const oldContainerName = agent.container_name;
+    const oldSandboxId = agent.sandbox_id;
+    const oldNode = await dockerNodesRepository.findByNodeId(oldNodeId);
+    if (!oldNode) {
+      return {
+        success: false,
+        error: `Old node ${oldNodeId} not registered in docker_nodes`,
+      };
+    }
+
+    const provider = await this.getProvider();
+    const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
+    if (!(provider instanceof DockerSandboxProvider)) {
+      return {
+        success: false,
+        error: "Fleet upgrade only supported on docker provider",
+      };
+    }
+
+    const config = {
+      agentId,
+      agentName: agent.agent_name ?? "",
+      organizationId: orgId,
+      environmentVars: agent.environment_vars ?? {},
+      dockerImage: digestPinnedImageRef(dockerImage, toDigest),
+      excludeNodeId: oldNodeId,
+    };
+
+    let blueHandle: Awaited<ReturnType<typeof provider.create>>;
+    try {
+      blueHandle = await provider.create(config);
+    } catch (err) {
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Blue provision failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+
+    if (!(await provider.checkHealth(blueHandle))) {
+      // Blue never came up. Roll back: tear it down, leave the agent on old.
+      try {
+        await provider.stop(blueHandle.sandboxId);
+      } catch (err) {
+        logger.warn("[agent-sandbox] Failed to tear down unhealthy blue during upgrade rollback", {
+          agentId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: "Blue health check failed; rolled back to old container",
+      };
+    }
+
+    const blueMeta = isDockerSandboxMetadata(blueHandle.metadata) ? blueHandle.metadata : undefined;
+    if (!blueMeta) {
+      try {
+        await provider.stop(blueHandle.sandboxId);
+      } catch (err) {
+        logger.warn(
+          "[agent-sandbox] Failed to tear down blue with non-docker metadata during upgrade rollback",
+          {
+            agentId,
+            err: err instanceof Error ? err.message : String(err),
+          },
+        );
+      }
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: "Blue provisioner returned non-docker metadata",
+      };
+    }
+    if (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest) {
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn("[agent-sandbox] Failed to tear down blue after digest mismatch", {
+          agentId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest}`,
+      };
+    }
+
+    try {
+      const swapped = await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, agentId, orgId);
+        const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+        if (!current) return false;
+        if (
+          current.status !== "running" ||
+          current.node_id !== oldNodeId ||
+          current.container_name !== oldContainerName ||
+          current.sandbox_id !== oldSandboxId ||
+          current.image_digest !== fromDigest ||
+          (current.docker_image && current.docker_image !== dockerImage)
+        ) {
+          return false;
+        }
+        const result = await tx.execute<{ id: string }>(sql`
+          UPDATE ${agentSandboxes}
+          SET
+            sandbox_id = ${blueHandle.sandboxId},
+            bridge_url = ${blueHandle.bridgeUrl},
+            health_url = ${blueHandle.healthUrl},
+            node_id = ${blueMeta.nodeId},
+            container_name = ${blueMeta.containerName},
+            bridge_port = ${blueMeta.bridgePort},
+            web_ui_port = ${blueMeta.webUiPort},
+            headscale_ip = ${blueMeta.headscaleIp ?? null},
+            image_digest = ${toDigest},
+            last_heartbeat_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${agentId}
+            AND organization_id = ${orgId}
+            AND status = 'running'
+          RETURNING id
+        `);
+        return result.rows.length === 1;
+      });
+      if (!swapped) {
+        throw new Error("Agent changed during upgrade; abandoned stale swap");
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error("[agent-sandbox] Atomic swap UPDATE failed; tearing down orphaned blue", {
+        agentId,
+        err: errMsg,
+      });
+      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
+        logger.warn("[agent-sandbox] Failed to tear down blue after atomic swap UPDATE failure", {
+          agentId,
+          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
+        }),
+      );
+      return {
+        success: false,
+        oldNodeId,
+        oldContainerName,
+        error: `Atomic swap UPDATE failed: ${errMsg}`,
+      };
+    }
+
+    // Old container teardown is best-effort: traffic is already on blue.
+    await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+
+    logger.info("[agent-sandbox] Fleet upgrade completed", {
+      agentId,
+      oldNodeId,
+      oldContainerName,
+      newNodeId: blueMeta.nodeId,
+      newContainerName: blueMeta.containerName,
+      newDigest: toDigest,
+      requestedDigest: toDigest,
+    });
+
+    return {
+      success: true,
+      oldNodeId,
+      oldContainerName,
+      newNodeId: blueMeta.nodeId,
+      newContainerName: blueMeta.containerName,
+      newDigest: toDigest,
     };
   }
 

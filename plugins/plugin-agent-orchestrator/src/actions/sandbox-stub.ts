@@ -45,7 +45,7 @@ function buildTasksUnsupportedAction({
   return {
     name: "TASKS",
     description,
-    contexts: ["tasks", "code", "automation", "agent_internal", "connectors"],
+    contexts: ["code", "automation", "agent_internal", "connectors"],
     roleGate: { minRole: "USER" },
     suppressPostActionContinuation: true,
     similes: [...TASKS_STUB_SIMILES],

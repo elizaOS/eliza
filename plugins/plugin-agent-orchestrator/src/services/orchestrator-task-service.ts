@@ -27,6 +27,7 @@ import {
 } from "./goal-prompt.js";
 import {
   summarizeUsage,
+  summarizeUsageRows,
   type TaskThreadDetailDto,
   type TaskThreadDto,
   toTaskThread,
@@ -39,6 +40,7 @@ import {
   type OrchestratorTaskRecord,
   type OrchestratorTaskSession,
   type OrchestratorTaskStatus,
+  type OrchestratorTaskUsage,
   type TaskListFilter,
   type TaskMessageDirection,
   type TaskMessageSenderKind,
@@ -48,6 +50,7 @@ import {
   type UsageState,
 } from "./orchestrator-task-types.js";
 import type { ApprovalPreset } from "./types.js";
+import { resolveAllowedWorkdir } from "./workdir-validation.js";
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -126,6 +129,14 @@ function num(value: unknown): number {
 
 function truncate(text: string, max = 2000): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function omitUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      ([, entry]) => entry !== undefined,
+    ),
+  ) as Partial<T>;
 }
 
 interface ParsedUsage {
@@ -510,7 +521,7 @@ export class OrchestratorTaskService extends Service {
       >
     >,
   ): Promise<TaskThreadDetailDto | null> {
-    const updated = await this.store.updateTask(taskId, patch);
+    const updated = await this.store.updateTask(taskId, omitUndefined(patch));
     if (!updated) return null;
     return this.getTask(taskId);
   }
@@ -548,8 +559,8 @@ export class OrchestratorTaskService extends Service {
     await this.store.updateTask(taskId, {
       archived: false,
       status: doc.sessions.length > 0 ? "active" : "open",
-      archivedAt: undefined,
-      closedAt: undefined,
+      archivedAt: null,
+      closedAt: null,
     });
     return this.getTask(taskId);
   }
@@ -592,10 +603,36 @@ export class OrchestratorTaskService extends Service {
    * (proof failed → retry). The orchestrator never reports `done` without this. */
   async validateTask(
     taskId: string,
-    result: { passed: boolean; summary?: string },
+    result: {
+      passed: boolean;
+      summary?: string;
+      evidence?: string;
+      verifier?: string;
+      humanOverride?: boolean;
+    },
   ): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    if (doc.task.status !== "validating" && !result.humanOverride) {
+      throw new Error("Task must be validating before validation can finish");
+    }
+    const evidence = result.evidence ?? result.summary;
+    if (!evidence) {
+      throw new Error("validation evidence is required");
+    }
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      eventType: result.passed ? "validation_passed" : "validation_failed",
+      summary: result.summary ?? evidence,
+      timestamp: Date.now(),
+      data: {
+        evidence,
+        verifier: result.verifier ?? "orchestrator",
+        humanOverride: result.humanOverride === true,
+      },
+      createdAt: nowIso(),
+    });
     if (result.passed) {
       await this.store.updateTask(taskId, {
         status: "done",
@@ -629,7 +666,11 @@ export class OrchestratorTaskService extends Service {
   async postUserMessage(
     taskId: string,
     content: string,
-  ): Promise<{ recorded: boolean; forwardedTo: string[] } | null> {
+  ): Promise<{
+    recorded: boolean;
+    forwardedTo: string[];
+    failedTo: Array<{ sessionId: string; error: string }>;
+  } | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
     await this.addMessage(taskId, {
@@ -641,6 +682,7 @@ export class OrchestratorTaskService extends Service {
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
     const forwardedTo: string[] = [];
+    const failedTo: Array<{ sessionId: string; error: string }> = [];
     const acp = this.acp();
     if (acp && active.length > 0) {
       const followUp = buildGoalFollowUp({
@@ -654,18 +696,23 @@ export class OrchestratorTaskService extends Service {
         await this.store.updateSession(session.sessionId, {
           lastInputSentAt: Date.now(),
         });
-        void acp
-          .sendToSession(session.sessionId, followUp)
-          .catch((err: unknown) =>
-            this.log("warn", "relay to active session failed", {
-              sessionId: session.sessionId,
-              error: err instanceof Error ? err.message : String(err),
-            }),
-          );
-        forwardedTo.push(session.sessionId);
+        try {
+          await acp.sendToSession(session.sessionId, followUp);
+          forwardedTo.push(session.sessionId);
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          failedTo.push({ sessionId: session.sessionId, error });
+          await this.store.updateSession(session.sessionId, {
+            status: "send_failed",
+          });
+          this.log("warn", "relay to active session failed", {
+            sessionId: session.sessionId,
+            error,
+          });
+        }
       }
     }
-    return { recorded: true, forwardedTo };
+    return { recorded: true, forwardedTo, failedTo };
   }
 
   async listMessages(
@@ -701,6 +748,9 @@ export class OrchestratorTaskService extends Service {
     if (!doc) return null;
     const acp = this.acp();
     if (!acp) throw new Error("ACP service unavailable");
+    const workdir = opts.workdir
+      ? await resolveAllowedWorkdir(opts.workdir)
+      : undefined;
 
     const policy = doc.task.providerPolicy ?? {};
     const goalPrompt = buildGoalPrompt({
@@ -708,13 +758,13 @@ export class OrchestratorTaskService extends Service {
       task: opts.task ?? doc.task.goal,
       acceptanceCriteria: doc.task.acceptanceCriteria,
       taskRoomId: doc.task.taskRoomId ?? doc.task.roomId,
-      workdir: opts.workdir,
+      workdir,
       repo: opts.repo,
     });
 
     const result = await acp.spawnSession({
       agentType: opts.framework ?? policy.preferredFramework,
-      workdir: opts.workdir,
+      workdir,
       initialTask: goalPrompt,
       model: opts.model ?? policy.model,
       approvalPreset: opts.approvalPreset,
@@ -795,12 +845,7 @@ export class OrchestratorTaskService extends Service {
       direction: "stdin",
     });
     await this.store.updateSession(sessionId, { lastInputSentAt: Date.now() });
-    void acp.sendToSession(sessionId, followUp).catch((err: unknown) => {
-      this.log("warn", "follow-up send failed", {
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
+    await acp.sendToSession(sessionId, followUp);
     return true;
   }
 
@@ -810,7 +855,16 @@ export class OrchestratorTaskService extends Service {
     const session = doc.sessions.find((s) => s.sessionId === sessionId);
     if (!session) return false;
     const acp = this.acp();
-    if (acp) await acp.stopSession(sessionId).catch(() => {});
+    if (acp) {
+      try {
+        await acp.stopSession(sessionId);
+      } catch (err) {
+        await this.store.updateSession(sessionId, {
+          status: "stop_failed",
+        });
+        throw err;
+      }
+    }
     await this.store.updateSession(sessionId, {
       status: "stopped",
       stoppedAt: Date.now(),
@@ -840,15 +894,7 @@ export class OrchestratorTaskService extends Service {
 
     let sessionCount = 0;
     let activeSessionCount = 0;
-    const usageDocs: OrchestratorTaskDocument = {
-      task: docs[0]?.task ?? ({} as OrchestratorTaskRecord),
-      sessions: [],
-      events: [],
-      messages: [],
-      usage: [],
-      artifacts: [],
-      decisions: [],
-    };
+    const usageRows: OrchestratorTaskUsage[] = [];
 
     for (const doc of docs) {
       byStatus[doc.task.status] += 1;
@@ -856,7 +902,7 @@ export class OrchestratorTaskService extends Service {
       activeSessionCount += doc.sessions.filter(
         (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
       ).length;
-      usageDocs.usage.push(...doc.usage);
+      usageRows.push(...doc.usage);
     }
 
     return {
@@ -867,7 +913,7 @@ export class OrchestratorTaskService extends Service {
       validatingTaskCount: byStatus.validating,
       sessionCount,
       activeSessionCount,
-      usage: docs.length > 0 ? summarizeUsage(usageDocs) : EMPTY_USAGE,
+      usage: usageRows.length > 0 ? summarizeUsageRows(usageRows) : EMPTY_USAGE,
       byStatus,
     };
   }
@@ -904,15 +950,33 @@ export class OrchestratorTaskService extends Service {
     const active = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
+    const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
       active.map(async (session) => {
-        await acp.stopSession(session.sessionId).catch(() => {});
+        try {
+          await acp.stopSession(session.sessionId);
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          failures.push({ sessionId: session.sessionId, error });
+          await this.store.updateSession(session.sessionId, {
+            status: "stop_failed",
+          });
+          return;
+        }
         await this.store.updateSession(session.sessionId, {
           status: "stopped",
           stoppedAt: Date.now(),
         });
       }),
     );
+    if (failures.length > 0) {
+      await this.store.updateTask(doc.task.id, { status: "interrupted" });
+      throw new Error(
+        `Failed to stop ${failures.length} active session${
+          failures.length === 1 ? "" : "s"
+        }`,
+      );
+    }
   }
 
   private acp(): AcpService | undefined {

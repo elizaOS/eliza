@@ -241,7 +241,7 @@ export function WithdrawDialog({
               <Button
                 onClick={handleWithdraw}
                 disabled={!isValidAmount}
-                className="bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white disabled:opacity-50"
+                className="bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white disabled:opacity-50"
               >
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Withdraw ${parsedAmount.toFixed(2)}
@@ -295,7 +295,7 @@ export function WithdrawDialog({
             <DialogFooter className="mt-6">
               <Button
                 onClick={handleClose}
-                className="w-full bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[#e54f00] text-white"
               >
                 Done
               </Button>

@@ -431,6 +431,32 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls[1]?.[0]).toBe(ModelType.TEXT_SMALL);
 	});
 
+	it("does not keep known-junk Stage 1 fragments when regeneration returns empty", async () => {
+		for (const badReply of ["RPPY", "{}", "aaaaa", "::::"]) {
+			const runtime = makeRuntime([
+				stage1Response({
+					contexts: ["simple"],
+					replyText: badReply,
+				}),
+				"   ",
+			]);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "What is 2+2?" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+
+			expect(result.kind).toBe("direct_reply");
+			if (result.kind === "direct_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"I'm not sure how to answer that.",
+				);
+			}
+		}
+	});
+
 	it("uses a compact response-handler schema for direct channels", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -2146,6 +2172,54 @@ android smoke model works`,
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
+	});
+
+	it("includes CURRENT_TIME in Stage 1 only for direct date/time/year questions", async () => {
+		const makeTimeState = (): State => ({
+			values: { availableContexts: "simple, general" },
+			data: {
+				providerOrder: ["CURRENT_TIME"],
+				providers: {
+					CURRENT_TIME: {
+						text: "# Current Time\n- Date: 2026-05-30\n- Time: 12:34:56 UTC\n- Day: Saturday",
+						providerName: "CURRENT_TIME",
+					},
+				},
+			},
+			text: "",
+		});
+		const response = () =>
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "It is 2026.",
+				extra: { requiresTool: false },
+			});
+
+		const dateRuntime = makeRuntime([response()]);
+		await runV5MessageRuntimeStage1({
+			runtime: dateRuntime,
+			message: makeMessage({ text: "What year is it?" }),
+			state: makeTimeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const dateParams = useModelCalls(dateRuntime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		expect(dateParams.messages?.[1]?.content ?? "").toContain("# Current Time");
+
+		const genericRuntime = makeRuntime([response()]);
+		await runV5MessageRuntimeStage1({
+			runtime: genericRuntime,
+			message: makeMessage({ text: "Tell me a short joke." }),
+			state: makeTimeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+		const genericParams = useModelCalls(genericRuntime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		expect(genericParams.messages?.[1]?.content ?? "").not.toContain(
+			"# Current Time",
+		);
 	});
 
 	it("current_turn_boundary allows recall questions to read from visible prior_message blocks", async () => {

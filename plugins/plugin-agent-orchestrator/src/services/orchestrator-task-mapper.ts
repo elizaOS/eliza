@@ -17,6 +17,7 @@ import type {
   OrchestratorTaskDocument,
   OrchestratorTaskPriority,
   OrchestratorTaskStatus,
+  OrchestratorTaskUsage,
   TaskMessageDirection,
   TaskMessageSenderKind,
   TaskProviderPolicy,
@@ -187,14 +188,14 @@ function rollUpUsageState(states: UsageState[]): UsageState {
 /** Aggregate per-session usage into the by-provider breakdown plus a total. The
  * state is rolled up so the UI can render measured / estimated / unavailable
  * distinctly instead of showing a confident `0`. */
-export function summarizeUsage(
-  doc: OrchestratorTaskDocument,
+export function summarizeUsageRows(
+  usage: readonly OrchestratorTaskUsage[],
 ): TaskUsageSummary {
   const byKey = new Map<
     string,
     TaskUsageSummary["byProvider"][number] & { states: UsageState[] }
   >();
-  for (const entry of doc.usage) {
+  for (const entry of usage) {
     const key = `${entry.provider}::${entry.model ?? ""}`;
     const bucket = byKey.get(key) ?? {
       provider: entry.provider,
@@ -248,6 +249,12 @@ export function summarizeUsage(
     state: rollUpUsageState(byProvider.map((p) => p.state)),
     byProvider,
   };
+}
+
+export function summarizeUsage(
+  doc: OrchestratorTaskDocument,
+): TaskUsageSummary {
+  return summarizeUsageRows(doc.usage);
 }
 
 export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {

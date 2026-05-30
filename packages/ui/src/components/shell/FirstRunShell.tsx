@@ -188,27 +188,30 @@ function LocalInferenceChoice(props: {
       {options.map((option) => {
         const active = props.value === option.value;
         return (
-          <button
+          <label
             key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            data-testid={`first-run-local-${option.value}`}
-            onClick={() => props.onChange(option.value)}
             className={[
-              "flex flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
+              "flex cursor-pointer flex-col gap-0.5 rounded-sm border px-3 py-2 text-left transition",
               active
                 ? "border-accent bg-accent/10"
                 : "border-[var(--first-run-card-border)] hover:bg-[var(--first-run-card-bg-hover)]",
             ].join(" ")}
           >
+            <input
+              type="radio"
+              name="first-run-local-mode"
+              checked={active}
+              data-testid={`first-run-local-${option.value}`}
+              onChange={() => props.onChange(option.value)}
+              className="sr-only"
+            />
             <span className="text-sm font-semibold text-[var(--first-run-text-primary)]">
               {option.label}
             </span>
             <span className="text-xs text-[var(--first-run-text-muted)]">
               {option.detail}
             </span>
-          </button>
+          </label>
         );
       })}
     </div>
@@ -408,12 +411,14 @@ function FirstRunVoiceControl(props: {
       >
         <StatusBadge
           label={label}
-          variant={
+          variant={state === "listening" ? "success" : "muted"}
+          // App surface is orange-accent only (no blue). Render the transient
+          // "speaking" state in the brand accent rather than the shared "info"
+          // (blue) variant so it stays distinct from listening/idle.
+          className={
             state === "speaking"
-              ? "info"
-              : state === "listening"
-                ? "success"
-                : "muted"
+              ? "border-accent/35 bg-accent/12 text-accent"
+              : undefined
           }
           pulse={state === "listening"}
           withDot={state === "listening"}
