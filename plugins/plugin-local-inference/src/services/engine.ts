@@ -171,9 +171,8 @@ export function resolveMaxConcurrentSpeculativeResponses(
 	return Math.max(1, Math.floor(parallelSlots / 2));
 }
 
-// Re-exported from backend.ts so consumers can keep importing GenerateArgs
-// from engine.ts without churn. backend.ts owns the canonical shape,
-// including the optional `cacheKey` for prefix reuse via the session pool.
+// Re-export of backend.ts's canonical GenerateArgs shape, including the
+// optional `cacheKey` for prefix reuse via the session pool.
 export type GenerateArgs = BackendGenerateArgs;
 
 /**

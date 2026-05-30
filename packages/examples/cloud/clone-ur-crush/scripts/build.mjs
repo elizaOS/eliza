@@ -128,7 +128,12 @@ await refreshCompatibilityFiles();
 async function runNextBuild(args) {
   await refreshCompatibilityFiles();
 
-  return await new Promise((resolve) => {
+  const keepCompatibilityFilesPresent = setInterval(() => {
+    void refreshCompatibilityFiles();
+  }, 250);
+  keepCompatibilityFilesPresent.unref?.();
+
+  const exitCode = await new Promise((resolve) => {
     const child = spawn(process.execPath, [nextCliPath, "build", ...args], {
       cwd: packageRoot,
       env: {
@@ -142,6 +147,10 @@ async function runNextBuild(args) {
       resolve(code ?? 1);
     });
   });
+
+  clearInterval(keepCompatibilityFilesPresent);
+  await refreshCompatibilityFiles();
+  return exitCode;
 }
 
 // Next 15 can hang indefinitely in the default monolithic build mode for this

@@ -1494,7 +1494,7 @@ function TaskInspector({
             disabled={busy}
             testId="orchestrator-reopen"
           />
-        ) : detail.paused ? (
+        ) : terminal ? null : detail.paused ? (
           <ControlButton
             icon={<Play className="h-3 w-3" />}
             label={t("orchestrator.action.resume", { defaultValue: "Resume" })}
