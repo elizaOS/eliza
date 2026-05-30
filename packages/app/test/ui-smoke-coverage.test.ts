@@ -58,35 +58,14 @@ const LIVE_ONLY: Readonly<Record<string, string>> = {
  * MAX_KEYLESS_DEBT. Never add a new spec here without also lowering the ceiling
  * back down as you pay debt off elsewhere — the ceiling is the forcing function.
  */
-const KEYLESS_DEBT: Readonly<Record<string, string>> = {
-  "ai-qa-capture.spec.ts": "AI-QA route catalog capture flow",
-  "android-system-apps.spec.ts": "android system apps surface",
-  "apps-session.spec.ts": "apps session window lifecycle",
-  "apps-session-direct-a.spec.ts": "apps session direct-link group A",
-  "apps-session-direct-b.spec.ts": "apps session direct-link group B",
-  "apps-utility-interactions.spec.ts": "utility app interactions",
-  "assistant-home-fake-audio.spec.ts":
-    "assistant home with scripted fake audio",
-  "auth-startup.spec.ts": "auth startup flow",
-  "automations.spec.ts": "automations builder surface",
-  "backgrounds.spec.ts": "background picker (desktop + mobile)",
-  "browser-workspace.spec.ts": "browser workspace surface",
-  "computer-use.spec.ts": "computer-use surface",
-  "connectors.spec.ts": "connectors catalog + detail",
-  "first-run-startup.spec.ts": "first-run startup telemetry",
-  "game-apps.spec.ts": "game apps surface",
-  "plugin-views-visual.spec.ts": "plugin dynamic views visual",
-  "reset-returns-to-onboarding.spec.ts": "reset returns to onboarding",
-  "titlebar-navigation.spec.ts": "titlebar navigation controls",
-  "ui-smoke.spec.ts": "baseline ui smoke",
-};
+const KEYLESS_DEBT: Readonly<Record<string, string>> = {};
 
 /**
  * Hard ceiling on the keyless-debt bucket. Decrement every time a spec is wired
  * into keyless CI. This is the ratchet that prevents new dark specs from being
  * parked in debt indefinitely.
  */
-const MAX_KEYLESS_DEBT = 19;
+const MAX_KEYLESS_DEBT = 0;
 
 function specFileNames(): string[] {
   return readdirSync(UI_SMOKE_DIR)
