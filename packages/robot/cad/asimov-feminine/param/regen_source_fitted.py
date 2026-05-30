@@ -508,10 +508,14 @@ def _limb_warp(mesh, link, factor):
     t = v[:, spine_i]
     cen0 = np.interp(t, levels, c0)
     cen1 = np.interp(t, levels, c1)
-    # Constant cross-section scale (no joint collar): a full-width collar at the
-    # joint makes neighbouring segments butt solid-to-solid and JAM on rotation.
-    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * factor
-    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * factor
+    # Joint collar: keep the cross-section near FULL WIDTH within a short ramp of
+    # each joint level so neighbouring segments overlap solidly (a defined, clearly
+    # mated joint), and slim the shaft fully in between.
+    reserved = C.reserved_levels(link)
+    w = W.connection_weight(t, reserved, ramp=0.022)
+    f = 1.0 + (factor - 1.0) * w
+    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * f
+    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * f
     m.vertices = v
     return m
 
@@ -602,8 +606,10 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
         return _skin_part(_pelvis_warp(m), "z")  # smooth pelvis block
     if link in FEET:
         return _skin_part(_limb_warp(m, link, slim), spine, flat_bottom=True)
-    reserved = C.reserved_levels(link) if link in NECK_SHAFTS else None
-    return _skin_part(_limb_warp(m, link, slim), spine, reserved=reserved)
+    # No joint necking: keep the segment ends FULL WIDTH so neighbouring parts
+    # overlap solidly and read as a real mate (necking made the joints look pinched
+    # / barely connected).
+    return _skin_part(_limb_warp(m, link, slim), spine)
 
 
 def run() -> None:
