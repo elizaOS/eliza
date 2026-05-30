@@ -559,8 +559,8 @@ export class OrchestratorTaskService extends Service {
     await this.store.updateTask(taskId, {
       archived: false,
       status: doc.sessions.length > 0 ? "active" : "open",
-      archivedAt: undefined,
-      closedAt: undefined,
+      archivedAt: null,
+      closedAt: null,
     });
     return this.getTask(taskId);
   }

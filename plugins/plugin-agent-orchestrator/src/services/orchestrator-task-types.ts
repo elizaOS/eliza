@@ -73,8 +73,8 @@ export interface OrchestratorTaskRecord {
   archived: boolean;
   createdAt: string;
   updatedAt: string;
-  closedAt?: string;
-  archivedAt?: string;
+  closedAt?: string | null;
+  archivedAt?: string | null;
   lastUserTurnAt?: string;
   lastCoordinatorTurnAt?: string;
   /** Epoch ms of the most recent activity — the list sort key. */
