@@ -679,7 +679,7 @@ function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
     runtime.unloadPlugin = async (pluginName: string) => {
       const ownership = await baseUnloadPlugin(pluginName);
       unregisterPluginViews(pluginName);
-      return ownership;
+      return ownership as RuntimePluginOwnership | null;
     };
   }
 
