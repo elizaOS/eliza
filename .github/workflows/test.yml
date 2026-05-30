@@ -333,7 +333,7 @@ jobs:
         run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
 
       - name: Build workspace packages for scenario resolution
-        run: bun run build:core && bunx turbo run build --filter=@elizaos/plugin-github
+        run: bunx turbo run build --filter=@elizaos/scenario-runner...
 
       - name: Zero-cost scenario e2e
         run: bun run --cwd packages/scenario-runner test:pr:e2e
