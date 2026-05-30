@@ -613,10 +613,12 @@ def _flat_sole(mesh):
 
 def _close(mesh):
     """Close small boundary loops (holes inherited from imperfect source meshes)."""
-    trimesh.repair.fill_holes(mesh)
-    u, c = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
-    if int((c == 1).sum()) > 0:  # stubborn quantized loops the simple fill misses
-        mesh = W.cap_quantized_boundary_loops(mesh, max_loop_vertices=256)
+    for _ in range(3):
+        trimesh.repair.fill_holes(mesh)
+        u, c = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
+        if int((c == 1).sum()) == 0:
+            return mesh
+        mesh = W.cap_quantized_boundary_loops(mesh, max_loop_vertices=512)
     return mesh
 
 
