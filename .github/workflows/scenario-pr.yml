@@ -39,7 +39,7 @@ jobs:
   deterministic-scenario:
     name: Zero-Key Deterministic E2E
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -90,8 +90,20 @@ jobs:
       - name: Actual app view manager browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
 
+      - name: Actual app plugin view browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts --project=chromium
+
       - name: Actual app all-pages render + click-safety browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts --project=chromium
+
+      - name: Actual app feature interaction browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-lifeops-feed-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts --project=chromium
+
+      - name: Actual app ratcheted keyless browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/assistant-home-fake-audio.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/backgrounds.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/game-apps.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
+
+      - name: Actual app mobile background browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/backgrounds.spec.ts --project=mobile-chromium
 
       - name: Electrobun window and dynamic-view coverage
         run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts
