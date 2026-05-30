@@ -80,16 +80,18 @@ function buildFalImageSnapshotEntries(): PreparedPricingEntry[] {
     "fal-ai/flux/dev": 0.025,
   };
 
-  return SUPPORTED_IMAGE_MODELS.filter((model) => model.billingSource === "fal").flatMap((model) => {
-    const unitPrice = priceByModel[model.modelId];
-    if (unitPrice === undefined) return [];
-    return [
-      buildFalImageEntry(model, unitPrice, {
-        tier: "manual_override_recommended",
-        note: "Manual fal image pricing seed. Refresh with account-specific pricing before production if needed.",
-      }),
-    ];
-  });
+  return SUPPORTED_IMAGE_MODELS.filter((model) => model.billingSource === "fal").flatMap(
+    (model) => {
+      const unitPrice = priceByModel[model.modelId];
+      if (unitPrice === undefined) return [];
+      return [
+        buildFalImageEntry(model, unitPrice, {
+          tier: "manual_override_recommended",
+          note: "Manual fal image pricing seed. Refresh with account-specific pricing before production if needed.",
+        }),
+      ];
+    },
+  );
 }
 
 export function parseFalPricingEntries(

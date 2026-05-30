@@ -6,8 +6,8 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getAiProviderConfigurationError } from "@/lib/providers/language-model";
 import { getImageProvider } from "@/lib/providers/image/registry";
+import { getAiProviderConfigurationError } from "@/lib/providers/language-model";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { calculateImageGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
@@ -127,7 +127,10 @@ async function generateOneImage(request: ImageRequest): Promise<{
     prompt: buildImagePrompt(request),
     sourceImage: request.sourceImage,
     aspectRatio: request.aspectRatio,
-    size: request.width && request.height ? `${request.width}x${request.height}` : undefined,
+    size:
+      request.width && request.height
+        ? `${request.width}x${request.height}`
+        : undefined,
     apiKeys: {
       OPENROUTER_API_KEY: env.OPENROUTER_API_KEY,
       FAL_KEY: env.FAL_KEY,
@@ -168,10 +171,24 @@ app.post("/", async (c) => {
     }
     const env = getCloudAwareEnv();
     if (definition.billingSource === "openrouter" && !env.OPENROUTER_API_KEY) {
-      return jsonError(c, 503, getAiProviderConfigurationError(), "internal_error");
+      return jsonError(
+        c,
+        503,
+        getAiProviderConfigurationError(),
+        "internal_error",
+      );
     }
-    if (definition.billingSource === "fal" && !env.FAL_KEY && !env.FAL_API_KEY) {
-      return jsonError(c, 503, getAiProviderConfigurationError(), "internal_error");
+    if (
+      definition.billingSource === "fal" &&
+      !env.FAL_KEY &&
+      !env.FAL_API_KEY
+    ) {
+      return jsonError(
+        c,
+        503,
+        getAiProviderConfigurationError(),
+        "internal_error",
+      );
     }
 
     await contentSafetyService.assertSafeForPublicUse({
