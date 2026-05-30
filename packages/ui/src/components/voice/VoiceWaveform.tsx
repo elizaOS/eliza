@@ -1,6 +1,5 @@
 import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
 import * as React from "react";
-import type { Node } from "three/tsl";
 
 import { cn } from "../../lib/utils";
 
@@ -203,7 +202,7 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
 }
 
 type WebGPUModule = typeof import("three/webgpu");
-type TSLModule = typeof import("three/tsl");
+type TSLModule = Record<string, any>;
 
 // Camera framing. The orb sits at the origin; these constants let the orb be
 // scaled to a stable on-screen pixel diameter regardless of viewport size.
