@@ -120,7 +120,7 @@ export const PRICING_LEGACY_IDS_BY_TARGET = buildPricingLegacyIdsByTarget(PRICIN
 export interface SupportedImageModelDefinition {
   modelId: string;
   provider: string;
-  billingSource: "openrouter";
+  billingSource: PricingBillingSource;
   label: string;
   sourceUrl: string;
   defaultDimensions?: Record<string, string | number | boolean | null>;
@@ -239,6 +239,22 @@ export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
     label: "GPT-5 Image",
     sourceUrl: "https://openrouter.ai/api/v1/models",
     defaultDimensions: { size: "1024x1024", quality: "high" },
+  },
+  {
+    modelId: "fal-ai/flux/schnell",
+    provider: "fal",
+    billingSource: "fal",
+    label: "FLUX.1 Schnell",
+    sourceUrl: "https://fal.ai/models/fal-ai/flux/schnell",
+    defaultDimensions: { image_size: "square_hd" },
+  },
+  {
+    modelId: "fal-ai/flux/dev",
+    provider: "fal",
+    billingSource: "fal",
+    label: "FLUX.1 Dev",
+    sourceUrl: "https://fal.ai/models/fal-ai/flux/dev",
+    defaultDimensions: { image_size: "square_hd" },
   },
 ] as const;
 
