@@ -131,6 +131,14 @@ function truncate(text: string, max = 2000): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+function omitUndefined<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      ([, entry]) => entry !== undefined,
+    ),
+  ) as Partial<T>;
+}
+
 interface ParsedUsage {
   provider: string;
   model?: string;
@@ -513,7 +521,7 @@ export class OrchestratorTaskService extends Service {
       >
     >,
   ): Promise<TaskThreadDetailDto | null> {
-    const updated = await this.store.updateTask(taskId, patch);
+    const updated = await this.store.updateTask(taskId, omitUndefined(patch));
     if (!updated) return null;
     return this.getTask(taskId);
   }
