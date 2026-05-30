@@ -332,6 +332,9 @@ jobs:
       - name: Scenario catalog coverage gate
         run: node packages/scripts/check-scenario-workflow-coverage.mjs --report-dir reports/scenarios/catalog-inventory
 
+      - name: Build workspace packages for scenario resolution
+        run: bun run build:core
+
       - name: Zero-cost scenario e2e
         run: bun run --cwd packages/scenario-runner test:pr:e2e
 
