@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { appCreditsService } from "@/lib/services/app-credits";
 import { appFactoryService } from "@/lib/services/app-factory";
 import { AppNameConflictError, appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
@@ -23,6 +24,11 @@ const CreateAppSchema = z.object({
   allowed_origins: z.array(z.string()).optional(),
   logo_url: z.string().url().optional(),
   skipGitHubRepo: z.boolean().optional(),
+  // Optional monetization config applied immediately after creation. Lets
+  // service callers (e.g. waifu.fun image-gen apps) register a metered app in
+  // one request instead of a create + separate monetization call.
+  monetization_enabled: z.boolean().optional(),
+  inference_markup_percentage: z.number().min(0).max(1000).optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -82,13 +88,46 @@ app.post("/", async (c) => {
         githubRepoCreated: result.githubRepoCreated,
       });
 
+      const warnings = [...result.errors];
+
+      // Apply monetization settings at creation when requested, so metered apps
+      // are usable immediately (markup is read on every inference/generate call).
+      if (
+        data.monetization_enabled !== undefined ||
+        data.inference_markup_percentage !== undefined
+      ) {
+        try {
+          await appCreditsService.updateMonetizationSettings(result.app.id, {
+            ...(data.monetization_enabled !== undefined && {
+              monetizationEnabled: data.monetization_enabled,
+            }),
+            ...(data.inference_markup_percentage !== undefined && {
+              inferenceMarkupPercentage: data.inference_markup_percentage,
+            }),
+          });
+        } catch (monetizationError) {
+          logger.error("[Apps API] Failed to apply initial monetization", {
+            appId: result.app.id,
+            userId: user.id,
+            error:
+              monetizationError instanceof Error
+                ? monetizationError.message
+                : String(monetizationError),
+          });
+          warnings.push(
+            "App was created, but initial monetization settings could not be applied. Retry via the app monetization endpoint.",
+          );
+        }
+      }
+
+      const freshApp = await appsService.getById(result.app.id);
       const response: Record<string, unknown> = {
         success: true,
-        app: await appsService.withDatabaseState(result.app),
+        app: await appsService.withDatabaseState(freshApp ?? result.app),
         apiKey: result.apiKey,
       };
       if (result.githubRepo) response.githubRepo = result.githubRepo;
-      if (result.errors.length > 0) response.warnings = result.errors;
+      if (warnings.length > 0) response.warnings = warnings;
 
       return c.json(response);
     } catch (err) {

@@ -1,4 +1,10 @@
-import { expect, type Page, type Route, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+  test,
+} from "@playwright/test";
 import { installDefaultAppRoutes, openAppPath } from "./helpers";
 
 type ViewportCase = {
@@ -13,7 +19,34 @@ const VIEWPORTS: ViewportCase[] = [
   { name: "wide-web", width: 1440, height: 900 },
 ];
 
+const CLOUD_AUTH_TOKEN = "ui-smoke-cloud-auth-token";
 const VOICE_PREFIX_DONE_STORAGE_KEY = "eliza:voice:prefix-done";
+
+type DirectCloudSandboxRouteState = {
+  createRequests: number;
+  provisionRequests: number;
+  jobPollRequests: number;
+};
+
+type FirstRunSubmitPayload = {
+  deploymentTarget?: {
+    runtime?: string;
+    provider?: string;
+  };
+};
+
+type FirstRunRouteState = {
+  complete: boolean;
+  submissions: FirstRunSubmitPayload[];
+};
+
+type DeterministicAssistantFixture = {
+  fixture: string;
+  transport: string;
+  input: {
+    text: string;
+  };
+};
 
 function apiBaseFromTest(baseURL: string | undefined): string {
   expect(baseURL, "Playwright baseURL must be configured").toBeTruthy();
@@ -32,37 +65,286 @@ async function fulfillJson(
   });
 }
 
-async function clickIfVisible(locator: ReturnType<Page["getByRole"]>) {
-  const visible = await locator
-    .isVisible({ timeout: 2_000 })
-    .catch(() => false);
+async function clickIfVisible(locator: Locator): Promise<boolean> {
+  const target = locator.first();
+  const visible = await target.isVisible({ timeout: 2_000 }).catch(() => false);
   if (visible) {
-    await locator.click();
+    await target.click();
+    return true;
   }
+  return false;
+}
+
+async function startCloudRuntime(page: Page): Promise<void> {
+  await clickIfVisible(page.getByRole("button", { name: "Get started" }));
+  const startButton = page.getByRole("button", { name: /^Start$/ });
+  if (!(await clickIfVisible(startButton))) {
+    await page.getByRole("button", { name: /^Connect$/ }).click();
+    await expect(startButton).toBeVisible({ timeout: 30_000 });
+  }
+  await startButton.click();
+}
+
+async function installCloudConnectionRoutes(
+  page: Page,
+  userId: string,
+): Promise<void> {
+  await page.unroute("**/api/cloud/status").catch(() => {});
+  await page.route("**/api/cloud/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      connected: true,
+      enabled: true,
+      cloudVoiceProxyAvailable: true,
+      hasApiKey: true,
+      userId,
+    });
+  });
+
+  await page.unroute("**/api/cloud/credits").catch(() => {});
+  await page.route("**/api/cloud/credits", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    });
+  });
+}
+
+async function installDirectCloudSandboxRoutes(
+  page: Page,
+  options: {
+    apiBase: string;
+    agentId: string;
+    jobId: string;
+    state: DirectCloudSandboxRouteState;
+  },
+): Promise<void> {
+  await page.route(
+    "https://api.elizacloud.ai/api/v1/eliza/agents",
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      options.state.createRequests += 1;
+      await fulfillJson(route, 200, {
+        success: true,
+        data: { id: options.agentId },
+      });
+    },
+  );
+
+  await page.route(
+    `https://api.elizacloud.ai/api/v1/eliza/agents/${options.agentId}/provision`,
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      options.state.provisionRequests += 1;
+      await fulfillJson(route, 200, {
+        success: true,
+        data: { jobId: options.jobId },
+      });
+    },
+  );
+
+  await page.route(
+    `https://api.elizacloud.ai/api/v1/jobs/${options.jobId}`,
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      options.state.jobPollRequests += 1;
+      await fulfillJson(route, 200, {
+        success: true,
+        data: {
+          status: "completed",
+          result: { bridgeUrl: options.apiBase },
+        },
+      });
+    },
+  );
+}
+
+async function installDirectCloudLoginRoutes(
+  page: Page,
+  userId: string,
+): Promise<void> {
+  await page.route("**/api/cloud/login", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      ok: true,
+      sessionId: "ui-smoke-cloud-session",
+      browserUrl: "https://www.elizacloud.ai/device/ui-smoke-cloud-session",
+    });
+  });
+
+  await page.route("**/api/cloud/login/status**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      status: "authenticated",
+      token: CLOUD_AUTH_TOKEN,
+      organizationId: "ui-smoke-org",
+      userId,
+    });
+  });
+
+  await page.route(
+    "https://api.elizacloud.ai/api/auth/cli-session",
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      await fulfillJson(route, 200, { ok: true });
+    },
+  );
+
+  await page.route(
+    "https://api.elizacloud.ai/api/auth/cli-session/**",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await fulfillJson(route, 200, {
+        status: "authenticated",
+        apiKey: CLOUD_AUTH_TOKEN,
+        organizationId: "ui-smoke-org",
+        userId,
+      });
+    },
+  );
+}
+
+async function installFirstRunSubmitRoute(
+  page: Page,
+  state: FirstRunRouteState,
+): Promise<void> {
+  await page.route("**/api/first-run", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const payload = route.request().postDataJSON() as FirstRunSubmitPayload;
+    expect(payload).toMatchObject({
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+    });
+    state.submissions.push(payload);
+    state.complete = true;
+    await fulfillJson(route, 200, { ok: true });
+  });
+}
+
+function parseAssistantFixtureText(
+  text: string,
+): DeterministicAssistantFixture {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  expect(start, "Assistant message should contain JSON").toBeGreaterThanOrEqual(
+    0,
+  );
+  expect(end, "Assistant message should contain complete JSON").toBeGreaterThan(
+    start,
+  );
+  return JSON.parse(
+    text.slice(start, end + 1),
+  ) as DeterministicAssistantFixture;
+}
+
+async function expectDeterministicChatTurn(
+  page: Page,
+  prompt: string,
+): Promise<void> {
+  await expect(
+    page
+      .locator('[data-testid="chat-message"][data-role="user"]')
+      .filter({ hasText: prompt })
+      .last(),
+  ).toBeVisible();
+  const assistantMessage = page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .last();
+  await expect(assistantMessage).toBeVisible();
+  const assistantText = (await assistantMessage.textContent())?.trim() ?? "";
+  const parsed = parseAssistantFixtureText(assistantText);
+  expect(parsed).toMatchObject({
+    fixture: "ui-smoke-assistant-v1",
+    transport: "sse",
+    input: {
+      text: prompt,
+    },
+  });
 }
 
 for (const viewport of VIEWPORTS) {
-  test.skip(`cloud provisioning reaches chat from startup on ${viewport.name}`, async ({
+  test(`cloud provisioning reaches chat from startup on ${viewport.name}`, async ({
     page,
     baseURL,
   }) => {
     const apiBase = apiBaseFromTest(baseURL);
-    let provisionRequests = 0;
-    let jobPollRequests = 0;
-    let agentDetailRequests = 0;
-    let launchRequests = 0;
+    const directCloudState: DirectCloudSandboxRouteState = {
+      createRequests: 0,
+      provisionRequests: 0,
+      jobPollRequests: 0,
+    };
+    const firstRunState: FirstRunRouteState = {
+      complete: false,
+      submissions: [],
+    };
+    let _provisionRequests = 0;
+    let _jobPollRequests = 0;
+    let _agentDetailRequests = 0;
+    let _launchRequests = 0;
 
     await page.setViewportSize({
       width: viewport.width,
       height: viewport.height,
     });
-    await page.addInitScript((voicePrefixDoneKey) => {
-      localStorage.clear();
-      sessionStorage.clear();
-      localStorage.setItem(voicePrefixDoneKey, "1");
-    }, VOICE_PREFIX_DONE_STORAGE_KEY);
+    await page.addInitScript(
+      ({ cloudAuthToken, voicePrefixDoneKey }) => {
+        localStorage.clear();
+        sessionStorage.clear();
+        localStorage.setItem(voicePrefixDoneKey, "1");
+        (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+          cloudAuthToken;
+      },
+      {
+        cloudAuthToken: CLOUD_AUTH_TOKEN,
+        voicePrefixDoneKey: VOICE_PREFIX_DONE_STORAGE_KEY,
+      },
+    );
 
     await installDefaultAppRoutes(page);
+    await installCloudConnectionRoutes(page, "cloud-provisioning-smoke-user");
+    await installDirectCloudLoginRoutes(page, "cloud-provisioning-smoke-user");
+    await installDirectCloudSandboxRoutes(page, {
+      apiBase,
+      agentId: "agent-1",
+      jobId: "job-1",
+      state: directCloudState,
+    });
+    await installFirstRunSubmitRoute(page, firstRunState);
 
     await page.route("**/api/auth/status", async (route) => {
       if (route.request().method() !== "GET") {
@@ -86,8 +368,8 @@ for (const viewport of VIEWPORTS) {
         return;
       }
       await fulfillJson(route, 200, {
-        complete: false,
-        cloudProvisioned: false,
+        complete: firstRunState.complete,
+        cloudProvisioned: firstRunState.complete,
       });
     });
 
@@ -153,7 +435,7 @@ for (const viewport of VIEWPORTS) {
           await route.fallback();
           return;
         }
-        provisionRequests += 1;
+        _provisionRequests += 1;
         await fulfillJson(route, 202, {
           success: true,
           data: {
@@ -175,7 +457,7 @@ for (const viewport of VIEWPORTS) {
         await route.fallback();
         return;
       }
-      jobPollRequests += 1;
+      _jobPollRequests += 1;
       await fulfillJson(route, 200, {
         success: true,
         data: {
@@ -207,7 +489,7 @@ for (const viewport of VIEWPORTS) {
         await route.fallback();
         return;
       }
-      agentDetailRequests += 1;
+      _agentDetailRequests += 1;
       await fulfillJson(route, 200, {
         success: true,
         data: {
@@ -233,7 +515,7 @@ for (const viewport of VIEWPORTS) {
         await route.fallback();
         return;
       }
-      launchRequests += 1;
+      _launchRequests += 1;
       await fulfillJson(route, 200, {
         success: true,
         data: {
@@ -282,16 +564,17 @@ for (const viewport of VIEWPORTS) {
     );
 
     await openAppPath(page, "/chat");
-    await page.getByRole("button", { name: "Get started" }).click();
+    await startCloudRuntime(page);
     await clickIfVisible(
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
     );
 
-    await expect.poll(() => provisionRequests).toBe(1);
-    await expect.poll(() => jobPollRequests).toBeGreaterThan(0);
-    await expect.poll(() => agentDetailRequests).toBeGreaterThan(0);
-    await expect.poll(() => launchRequests).toBe(1);
-    await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+    await expect.poll(() => directCloudState.createRequests).toBe(1);
+    await expect.poll(() => directCloudState.provisionRequests).toBe(1);
+    await expect
+      .poll(() => directCloudState.jobPollRequests)
+      .toBeGreaterThan(0);
+    await expect.poll(() => firstRunState.submissions.length).toBe(1);
 
     await expect
       .poll(() =>
@@ -301,10 +584,11 @@ for (const viewport of VIEWPORTS) {
         }),
       )
       .toMatchObject({
-        id: "cloud:agent-1",
+        id: `cloud:${apiBase}`,
         kind: "cloud",
-        label: "My Agent",
+        label: "Eliza Cloud",
         apiBase,
+        accessToken: CLOUD_AUTH_TOKEN,
       });
 
     await expect
@@ -313,34 +597,62 @@ for (const viewport of VIEWPORTS) {
       )
       .toBe("cloud");
 
+    await openAppPath(page, "/chat");
+    await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+
     const cloudChatPrompt = `cloud provisioning smoke ${viewport.name}`;
     await page.getByTestId("chat-composer-textarea").fill(cloudChatPrompt);
     await page.getByTestId("chat-composer-action").click();
 
-    await expect(page.getByText(cloudChatPrompt)).toBeVisible();
-    await expect(page.getByText(/stubbed QA response/i).last()).toBeVisible();
+    await expectDeterministicChatTurn(page, cloudChatPrompt);
   });
 }
 
-test.skip("new cloud agent shows provisioning chat immediately, accepts a setup turn, then hands off seamlessly", async ({
+test("new cloud agent provisions through direct cloud sandbox and reaches chat", async ({
   page,
   baseURL,
 }) => {
   const apiBase = apiBaseFromTest(baseURL);
-  let createRequests = 0;
-  let jobPollRequests = 0;
-  let provisioningChatRequests = 0;
-  let launchRequests = 0;
+  const directCloudState: DirectCloudSandboxRouteState = {
+    createRequests: 0,
+    provisionRequests: 0,
+    jobPollRequests: 0,
+  };
+  const firstRunState: FirstRunRouteState = {
+    complete: false,
+    submissions: [],
+  };
+  let _createRequests = 0;
+  let _jobPollRequests = 0;
+  let _provisioningChatRequests = 0;
+  let _launchRequests = 0;
   let allowHandoff = false;
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.addInitScript((voicePrefixDoneKey) => {
-    localStorage.clear();
-    sessionStorage.clear();
-    localStorage.setItem(voicePrefixDoneKey, "1");
-  }, VOICE_PREFIX_DONE_STORAGE_KEY);
+  await page.addInitScript(
+    ({ cloudAuthToken, voicePrefixDoneKey }) => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem(voicePrefixDoneKey, "1");
+      (globalThis as Record<string, unknown>).__ELIZA_CLOUD_AUTH_TOKEN__ =
+        cloudAuthToken;
+    },
+    {
+      cloudAuthToken: CLOUD_AUTH_TOKEN,
+      voicePrefixDoneKey: VOICE_PREFIX_DONE_STORAGE_KEY,
+    },
+  );
 
   await installDefaultAppRoutes(page);
+  await installCloudConnectionRoutes(page, "cloud-provisioning-chat-user");
+  await installDirectCloudLoginRoutes(page, "cloud-provisioning-chat-user");
+  await installDirectCloudSandboxRoutes(page, {
+    apiBase,
+    agentId: "agent-new",
+    jobId: "job-new",
+    state: directCloudState,
+  });
+  await installFirstRunSubmitRoute(page, firstRunState);
 
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
@@ -364,8 +676,8 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
       return;
     }
     await fulfillJson(route, 200, {
-      complete: false,
-      cloudProvisioned: false,
+      complete: firstRunState.complete,
+      cloudProvisioned: firstRunState.complete,
     });
   });
 
@@ -406,7 +718,7 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
       return;
     }
     if (request.method() === "POST") {
-      createRequests += 1;
+      _createRequests += 1;
       await fulfillJson(route, 200, {
         success: true,
         data: {
@@ -428,7 +740,7 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
       await route.fallback();
       return;
     }
-    jobPollRequests += 1;
+    _jobPollRequests += 1;
     await fulfillJson(route, 200, {
       success: true,
       data: {
@@ -475,7 +787,7 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
       await route.fallback();
       return;
     }
-    provisioningChatRequests += 1;
+    _provisioningChatRequests += 1;
     const body = await route.request().postDataJSON();
     expect(body).toMatchObject({
       message: "my name is Shaw and I want Discord",
@@ -531,7 +843,7 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
       await route.fallback();
       return;
     }
-    launchRequests += 1;
+    _launchRequests += 1;
     await fulfillJson(route, 200, {
       success: true,
       data: {
@@ -559,28 +871,15 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
   );
 
   await openAppPath(page, "/chat");
-  await page.getByRole("button", { name: "Get started" }).click();
+  await startCloudRuntime(page);
   await clickIfVisible(
     page.getByRole("button", { name: /sign in with eliza cloud/i }),
   );
 
-  await expect.poll(() => createRequests).toBeGreaterThanOrEqual(1);
-  await expect(page.getByText(/setting up your agent/i).first()).toBeVisible();
-  await expect(
-    page.getByText(/your personal ai container is warming up/i),
-  ).toBeVisible();
-  await expect(page.getByPlaceholder(/ask me anything/i)).toBeVisible();
-  await expect.poll(() => jobPollRequests).toBeGreaterThan(0);
-
-  await page
-    .getByPlaceholder(/ask me anything/i)
-    .fill("my name is Shaw and I want Discord");
-  await page.getByRole("button", { name: /^send$/i }).click();
-
-  await expect.poll(() => provisioningChatRequests).toBe(1);
-
-  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
-  await expect.poll(() => launchRequests).toBeGreaterThan(0);
+  await expect.poll(() => directCloudState.createRequests).toBe(1);
+  await expect.poll(() => directCloudState.provisionRequests).toBe(1);
+  await expect.poll(() => directCloudState.jobPollRequests).toBeGreaterThan(0);
+  await expect.poll(() => firstRunState.submissions.length).toBe(1);
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -589,9 +888,19 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
       }),
     )
     .toMatchObject({
-      id: "cloud:agent-new",
+      id: `cloud:${apiBase}`,
       kind: "cloud",
-      label: "My Agent",
+      label: "Eliza Cloud",
       apiBase,
+      accessToken: CLOUD_AUTH_TOKEN,
     });
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible();
+  await page
+    .getByTestId("chat-composer-textarea")
+    .fill("my name is Shaw and I want Discord");
+  await page.getByTestId("chat-composer-action").click();
+
+  await expectDeterministicChatTurn(page, "my name is Shaw and I want Discord");
 });

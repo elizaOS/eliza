@@ -155,7 +155,7 @@
   "homepage_eliza.qrcode.title": "QR code da Eliza",
   "homepage_eliza.model.backAria": "Voltar",
   "homepage_eliza.model.videoAria": "Abrir videochamada",
-  "homepage_eliza.phoneInput.placeholder": "(000) 000-0000",
+  "homepage_eliza.phoneInput.placeholder": "(00) 00000-0000",
   "homepage_eliza.phoneInput.chooseCountryAria": "Escolher país",
   "homepage_eliza.phoneInput.phoneAria": "Número de telefone",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",

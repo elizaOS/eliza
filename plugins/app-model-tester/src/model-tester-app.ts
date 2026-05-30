@@ -1,5 +1,11 @@
+import { registerAppShellPage } from "@elizaos/ui/app-shell-registry";
 import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
 import { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
+import { createElement } from "react";
+import {
+  ModelTesterAppView,
+  ModelTesterTuiView,
+} from "./ModelTesterAppView.js";
 
 export const MODEL_TESTER_APP_NAME = "@elizaos/app-model-tester";
 
@@ -17,3 +23,39 @@ export const modelTesterApp: OverlayApp = {
 };
 
 registerOverlayApp(modelTesterApp);
+
+function exitToApps(): void {
+  if (typeof window === "undefined") return;
+  window.history.pushState({}, "", "/apps");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+function translate(key: string, opts?: Record<string, unknown>): string {
+  return typeof opts?.defaultValue === "string" ? opts.defaultValue : key;
+}
+
+function ModelTesterShellPage() {
+  return createElement(ModelTesterAppView, {
+    exitToApps,
+    uiTheme: "dark",
+    t: translate,
+  });
+}
+
+registerAppShellPage({
+  id: "model-tester",
+  pluginId: MODEL_TESTER_APP_NAME,
+  label: "Model Tester",
+  icon: "TestTube2",
+  path: "/model-tester",
+  Component: ModelTesterShellPage,
+});
+
+registerAppShellPage({
+  id: "model-tester.tui",
+  pluginId: MODEL_TESTER_APP_NAME,
+  label: "Model Tester TUI",
+  icon: "Terminal",
+  path: "/model-tester/tui",
+  Component: ModelTesterTuiView,
+});

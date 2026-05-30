@@ -62,6 +62,17 @@ const DIAL_KEYS: readonly string[] = [
 
 type PhoneTab = "dialer" | "recent" | "contacts";
 
+function defaultOverlayContext(): OverlayAppContext {
+  return {
+    exitToApps: () => {
+      if (typeof window !== "undefined") window.history.back();
+    },
+    uiTheme: "light",
+    t: (key: string, opts?: { defaultValue?: string }) =>
+      typeof opts?.defaultValue === "string" ? opts.defaultValue : key,
+  };
+}
+
 function formatTimestamp(epochMs: number): string {
   const date = new Date(epochMs);
   if (Number.isNaN(date.getTime())) return "";
@@ -625,6 +636,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
       </Tabs>
     </div>
   );
+}
+
+export function PhonePluginView() {
+  return <PhoneAppView {...defaultOverlayContext()} />;
 }
 
 export function PhoneTuiView() {

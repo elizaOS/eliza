@@ -12,6 +12,7 @@
  * `request.<method>(params)` plus `onMessage(<message>, listener)`.
  */
 import { Electroview } from "electrobun/view";
+import { httpErrorDiagnosticLevel } from "../diagnostic-format.js";
 import type { RpcMessageListener } from "../types.js";
 import { getBrowserTabsRendererImpl } from "./browser-tabs-renderer-registry.js";
 import {
@@ -314,9 +315,14 @@ function installRendererLogMirror(): void {
 
       try {
         const response = await originalFetch(...args);
-        if (!response.ok) {
+        // Suppress only known optional boot-probe 404s; keep all other
+        // renderer missing-route diagnostics visible.
+        const level = response.ok
+          ? null
+          : httpErrorDiagnosticLevel(response.status, { url, method });
+        if (level) {
           reportDiagnostic(
-            response.status >= 500 ? "error" : "warn",
+            level,
             "fetch",
             `HTTP ${response.status} ${response.statusText}`,
             {
@@ -374,17 +380,19 @@ function installRendererLogMirror(): void {
         if (!diag) {
           return;
         }
-        if (xhr.status >= 400) {
-          reportDiagnostic(
-            xhr.status >= 500 ? "error" : "warn",
-            "xhr",
-            `HTTP ${xhr.status}`,
-            {
-              url: diag.url,
-              method: diag.method,
-              durationMs: Date.now() - diag.startedAt,
-            },
-          );
+        const level =
+          xhr.status >= 400
+            ? httpErrorDiagnosticLevel(xhr.status, {
+                url: diag.url,
+                method: diag.method,
+              })
+            : null;
+        if (level) {
+          reportDiagnostic(level, "xhr", `HTTP ${xhr.status}`, {
+            url: diag.url,
+            method: diag.method,
+            durationMs: Date.now() - diag.startedAt,
+          });
         }
       };
 

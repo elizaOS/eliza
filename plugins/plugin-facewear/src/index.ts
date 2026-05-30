@@ -101,7 +101,7 @@ export const facewearPlugin: Plugin = {
       label: "Hearwear TUI",
       description: "Terminal UI for hearwear device management.",
       bundlePath: "dist/views/bundle.js",
-      componentExport: "FacewearView",
+      componentExport: "FacewearTuiView",
       tags: ["hearwear", "xr", "smartglasses", "tui"],
     },
     {
@@ -167,7 +167,7 @@ export const facewearPlugin: Plugin = {
         "Terminal UI for smartglasses setup, status, and diagnostics.",
       icon: "Glasses",
       bundlePath: "dist/views/bundle.js",
-      componentExport: "SmartglassesView",
+      componentExport: "SmartglassesTuiView",
       tags: [
         "hearwear",
         "smartglasses",

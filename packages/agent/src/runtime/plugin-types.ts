@@ -45,8 +45,8 @@ export interface PluginModuleShape {
 /**
  * Static plugin registry.
  *
- * Populated by eliza.ts at module-load time with all statically-imported
- * plugin modules. Defined here (as a mutable record) so that
+ * Populated by eliza.ts during the blocking/deferred startup phases with
+ * statically-imported plugin modules. Defined here (as a mutable record) so that
  * plugin-resolver.ts can read it without importing eliza.ts, breaking the
  * circular dependency.
  */

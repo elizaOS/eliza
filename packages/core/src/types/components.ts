@@ -573,6 +573,15 @@ export interface Provider {
 	/** Cache partition hint for stable provider content. */
 	cacheScope?: CacheScope;
 
+	/**
+	 * When true, this provider is always composed into the Stage-1 response
+	 * state regardless of the turn's selected contexts (like the built-in
+	 * FACTS / CURRENT_TIME signals). Lets a plugin opt a dynamic provider into
+	 * always-on Stage-1 rendering without core having to name it — keeping the
+	 * core → plugin dependency direction inward-only.
+	 */
+	alwaysInResponseState?: boolean;
+
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
 

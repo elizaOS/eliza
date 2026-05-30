@@ -1,5 +1,36 @@
-// Timing: Track when the script starts
-const SCRIPT_START = Date.now();
+// Static ESM imports evaluate before this module body runs. Prefer a parent
+// spawn timestamp so startup logs include dependency import/evaluation time.
+const MODULE_BODY_START = Date.now();
+const STARTUP_TIMESTAMP_ENV_KEYS = [
+  "ELIZA_API_PROCESS_SPAWNED_AT_MS",
+  "ELIZA_PROCESS_SPAWNED_AT_MS",
+] as const;
+
+function readStartupTimestampFromEnv(): { key: string; value: number } | null {
+  for (const key of STARTUP_TIMESTAMP_ENV_KEYS) {
+    const raw = process.env[key]?.trim();
+    if (!raw) continue;
+    const value = Number(raw);
+    if (Number.isFinite(value) && value > 0) {
+      return { key, value };
+    }
+  }
+  return null;
+}
+
+const STARTUP_TIMESTAMP = readStartupTimestampFromEnv();
+const STARTUP_TIMING_START = STARTUP_TIMESTAMP?.value ?? MODULE_BODY_START;
+const STARTUP_TIMING_SOURCE = STARTUP_TIMESTAMP
+  ? `child-spawn env ${STARTUP_TIMESTAMP.key}`
+  : "module-body timestamp";
+
+function elapsedSinceStartupTimingStart(): number {
+  return Date.now() - STARTUP_TIMING_START;
+}
+
+function elapsedSinceModuleBodyStart(): number {
+  return Date.now() - MODULE_BODY_START;
+}
 
 import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
 import { formatError } from "@elizaos/shared/format-error";
@@ -16,7 +47,13 @@ import {
 } from "./error-handlers.js";
 import { resolveRuntimeBootstrapFailure } from "./runtime-bootstrap-policy.js";
 
-console.log(`${getLogPrefix()} Script starting...`);
+console.log(
+  `${getLogPrefix()} Script starting... (timing: ${STARTUP_TIMING_SOURCE}; pre-body/import delay: ${
+    STARTUP_TIMESTAMP
+      ? `${Math.max(0, MODULE_BODY_START - STARTUP_TIMING_START)}ms`
+      : "unavailable"
+  })`,
+);
 
 /**
  * Combined dev server — starts the elizaOS runtime in headless mode and
@@ -42,7 +79,7 @@ import {
 } from "./eliza";
 
 console.log(
-  `${getLogPrefix()} Imports complete (${Date.now() - SCRIPT_START}ms)`,
+  `${getLogPrefix()} Static imports complete (${elapsedSinceStartupTimingStart()}ms since ${STARTUP_TIMING_SOURCE}; module body ${elapsedSinceModuleBodyStart()}ms)`,
 );
 
 // Load .env files for parity with CLI mode (which loads via run-main.ts).
@@ -53,7 +90,9 @@ try {
   // dotenv not installed or .env not found — non-fatal.
 }
 
-console.log(`${getLogPrefix()} dotenv loaded (${Date.now() - SCRIPT_START}ms)`);
+console.log(
+  `${getLogPrefix()} dotenv loaded (${elapsedSinceStartupTimingStart()}ms since ${STARTUP_TIMING_SOURCE}; module body ${elapsedSinceModuleBodyStart()}ms)`,
+);
 
 const port = resolveDesktopApiPort(process.env);
 const hadUserApiTokenInEnv = !!process.env.ELIZA_API_TOKEN?.trim();

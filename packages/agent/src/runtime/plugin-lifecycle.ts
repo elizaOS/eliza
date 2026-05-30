@@ -3,10 +3,10 @@ import type {
   Action,
   AgentContext,
   AgentRuntime,
-  Evaluator,
   Plugin,
   PluginModelRegistration,
   Provider,
+  RegisteredEvaluator,
   Route,
   Service,
   ServiceClass,
@@ -31,7 +31,7 @@ type ElizaPluginOwnership = {
   registeredPlugin: Plugin | null;
   actions: Action[];
   providers: Provider[];
-  evaluators: Evaluator[];
+  evaluators: RegisteredEvaluator[];
   routes: Route[];
   events: ElizaPluginEventRegistration[];
   models: ElizaPluginModelRegistration[];
@@ -122,6 +122,7 @@ export type RuntimePluginOwnership = ElizaPluginOwnership;
 
 type RuntimeWithPluginLifecycle = AgentRuntime & {
   __elizaPluginLifecycleInstalled?: boolean;
+  __elizaPluginViewSyncInstalled?: boolean;
   __elizaPluginOwnership?: Map<string, RuntimePluginOwnership>;
   unloadPlugin?: (pluginName: string) => Promise<RuntimePluginOwnership | null>;
   reloadPlugin?: (plugin: Plugin) => Promise<void>;
@@ -648,9 +649,58 @@ function getOrBuildToolCallCache(
   return { cache, cfg };
 }
 
+/**
+ * Layer plugin view registration on top of an already-installed base plugin
+ * lifecycle.
+ *
+ * `@elizaos/core` ships its own plugin lifecycle and installs it from the
+ * `AgentRuntime` constructor, wrapping `registerPlugin`/`unloadPlugin`/
+ * `reloadPlugin` for ownership bookkeeping. That base layer knows nothing about
+ * the agent view registry, so on its own no plugin views ever reach the
+ * registry that backs `/api/views`. Wrap those same methods once more so every
+ * registration syncs the plugin's declared views, and every unload/reload
+ * removes or refreshes them. This also covers plugins loaded dynamically after
+ * boot (plugin manager, VFS), which a one-shot boot pass would miss.
+ */
+function installPluginViewSync(runtime: RuntimeWithPluginLifecycle): void {
+  if (runtime.__elizaPluginViewSyncInstalled) {
+    return;
+  }
+  runtime.__elizaPluginViewSyncInstalled = true;
+
+  const baseRegisterPlugin = runtime.registerPlugin.bind(runtime);
+  runtime.registerPlugin = (async (plugin: Plugin) => {
+    await baseRegisterPlugin(plugin);
+    await registerPluginViews(plugin);
+  }) as typeof runtime.registerPlugin;
+
+  const baseUnloadPlugin = runtime.unloadPlugin?.bind(runtime);
+  if (baseUnloadPlugin) {
+    runtime.unloadPlugin = async (pluginName: string) => {
+      const ownership = await baseUnloadPlugin(pluginName);
+      unregisterPluginViews(pluginName);
+      return ownership;
+    };
+  }
+
+  const baseReloadPlugin = runtime.reloadPlugin?.bind(runtime);
+  if (baseReloadPlugin) {
+    runtime.reloadPlugin = async (plugin: Plugin) => {
+      unregisterPluginViews(plugin.name);
+      await baseReloadPlugin(plugin);
+      await registerPluginViews(plugin);
+    };
+  }
+}
+
 export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
   const runtimeWithLifecycle = runtime as RuntimeWithPluginLifecycle;
   if (runtimeWithLifecycle.__elizaPluginLifecycleInstalled) {
+    // The base lifecycle is already installed (by @elizaos/core from the
+    // AgentRuntime constructor). It owns ownership tracking and the
+    // registerPlugin/unload/reload wrappers but has no view-registry support,
+    // so only the agent's view-sync layer needs to go on top.
+    installPluginViewSync(runtimeWithLifecycle);
     return;
   }
 

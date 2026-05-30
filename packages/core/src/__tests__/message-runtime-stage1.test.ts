@@ -402,6 +402,35 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps the original numeric Stage 1 reply when regeneration returns empty", async () => {
+		// Regeneration is an enhancement (terse fragment -> fuller reply), not a
+		// gate. A correct-but-terse numeric answer ("4") trips the regenerate
+		// heuristic, but if the second pass yields nothing usable we must keep the
+		// original reply rather than drop the user to a blank message.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "4",
+			}),
+			"   ",
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "What is 2+2?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("4");
+		}
+		// Regeneration was actually attempted (this is the fallback path, not a skip).
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.TEXT_SMALL);
+	});
+
 	it("uses a compact response-handler schema for direct channels", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -751,6 +780,66 @@ android smoke model works`,
 			message: makeMessage({
 				channelType: ChannelType.DM,
 				text: "search the web for current GPU prices",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+	});
+
+	it("keeps edit-style direct messages on the structured routing path", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "Looking into it.",
+			}),
+			JSON.stringify({
+				thought: "No tool is registered in this fixture.",
+				toolCalls: [],
+				messageToUser: "I would need a view tool to edit that.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "edit view feed-board plugin",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+	});
+
+	it.each([
+		"Draw scenario sunset",
+		"Say scenario audio",
+	])("keeps media generation request %s on the structured routing path", async (text) => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["media"],
+				replyText: "Looking into it.",
+				candidateActionNames: ["GENERATE_MEDIA"],
+			}),
+			JSON.stringify({
+				thought: "No media tool is registered in this fixture.",
+				toolCalls: [],
+				messageToUser: "I would need the media action to do that.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text,
 			}),
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,

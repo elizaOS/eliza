@@ -1076,6 +1076,7 @@ export interface CodingAgentTaskSessionRecord {
   inputTokens: number;
   outputTokens: number;
   reasoningTokens: number;
+  totalTokens: number;
   cacheTokens: number;
   costUsd: number;
   usageState: "measured" | "estimated" | "unavailable";

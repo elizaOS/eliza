@@ -11,7 +11,7 @@ import type { StoryDefinition } from "../Story.tsx";
  * pulses in the catalog without a live audio graph. Matches the read-only
  * surface the component consumes (`frequencyBinCount` + `getByteFrequencyData`).
  */
-function makeOscillatingAnalyser(): FrequencyAnalyser {
+export function makeOscillatingAnalyser(): FrequencyAnalyser {
   const bins = 128;
   return {
     frequencyBinCount: bins,

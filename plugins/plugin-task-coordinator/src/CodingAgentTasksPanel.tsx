@@ -981,6 +981,36 @@ export function TaskCoordinatorTuiView() {
   );
 }
 
+export function OrchestratorTuiView() {
+  return (
+    <TerminalPluginView
+      id="orchestrator"
+      label="Orchestrator TUI"
+      description="Terminal multi-agent task orchestration workbench"
+      commands={[
+        "orchestrator-status",
+        "orchestrator-list-tasks",
+        "orchestrator-open-task",
+        "orchestrator-create-task",
+        "orchestrator-pause-task",
+        "orchestrator-resume-task",
+        "orchestrator-pause-all",
+        "orchestrator-resume-all",
+        "orchestrator-delete-task",
+        "orchestrator-fork-task",
+        "orchestrator-add-agent",
+        "orchestrator-stop-agent",
+        "orchestrator-send-message",
+      ]}
+      endpoints={[
+        "/api/coding-agents/orchestrator/status",
+        "/api/coding-agents/coordinator/threads",
+        "/api/coding-agents/orchestrator/tasks",
+      ]}
+    />
+  );
+}
+
 export async function interact(
   capability: string,
   params?: Record<string, unknown>,

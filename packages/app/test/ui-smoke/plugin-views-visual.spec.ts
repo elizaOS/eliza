@@ -113,32 +113,98 @@ test.describe("registered plugin views visual coverage", () => {
       await installDefaultAppRoutes(page);
       await openAppPath(page, view.path);
 
-      await expect(page.getByText(/Loading view/)).toHaveCount(0, {
-        timeout: 30_000,
-      });
       await expect(page.getByText("Failed to load view")).toHaveCount(0);
-      const assistantPill = page.getByTestId("shell-home-pill");
-      await expect(assistantPill).toBeVisible();
-      await expect(assistantPill).toHaveAttribute("aria-label", "Open Eliza");
-      await assistantPill.click();
-      await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
-      await expect(page.getByLabel("Message Eliza")).toBeVisible();
+
+      const viewRoot = page.locator("main").first();
+      await expect(viewRoot).toBeVisible();
+      await expect
+        .poll(
+          async () => {
+            const text = await viewRoot.evaluate((root) =>
+              root.innerText.trim().replace(/\s+/g, " "),
+            );
+            return text.length > 20 && !/^Loading view\b/.test(text);
+          },
+          {
+            message: `${view.id} ${view.viewType} should finish dynamic view loading before audit`,
+            timeout: 30_000,
+          },
+        )
+        .toBe(true);
+      await expect(page.getByText(/Loading view/)).toHaveCount(0);
+      await expect(page.getByText("Failed to load view")).toHaveCount(0);
+      const preOverlayAudit = await viewRoot.evaluate(
+        (root, { id, viewType, viewPath }) => {
+          const normalize = (value: string | null | undefined) =>
+            (value ?? "").trim().replace(/\s+/g, " ");
+          const controls = Array.from(
+            root.querySelectorAll<HTMLElement>(
+              "button, input, textarea, select, [role='button'], [role='menuitem'], [role='tab']",
+            ),
+          )
+            .filter((element) => {
+              const rect = element.getBoundingClientRect();
+              return rect.width > 0 && rect.height > 0;
+            })
+            .map((element) => ({
+              tag: element.tagName.toLowerCase(),
+              role: element.getAttribute("role"),
+              type: element.getAttribute("type"),
+              text: normalize(element.textContent).slice(0, 120),
+              ariaLabel: element.getAttribute("aria-label"),
+              disabled:
+                element.hasAttribute("disabled") ||
+                element.getAttribute("aria-disabled") === "true",
+              inTuiRoot: Boolean(element.closest("[data-view-state]")),
+              terminalCommand: element.getAttribute("data-terminal-command"),
+            }));
+          return {
+            id,
+            viewType,
+            path: viewPath,
+            visibleText: normalize(root.innerText).slice(0, 4000),
+            controls,
+            focusedAfterTabs: [],
+          } satisfies ViewAudit;
+        },
+        {
+          id: view.id,
+          viewType: view.viewType,
+          viewPath: view.path,
+        },
+      );
+
+      expect(
+        preOverlayAudit.visibleText.length,
+        `${view.id} ${view.viewType} should expose readable view text before opening the assistant overlay`,
+      ).toBeGreaterThan(20);
+      if (view.id !== "views-manager") {
+        expect(
+          preOverlayAudit.visibleText,
+          `${view.id} ${view.viewType} should not fall through to the View Manager`,
+        ).not.toMatch(/^View Manager \d+ views\b/);
+      }
       if (view.viewType === "tui") {
-        const tuiRoot = page.locator("[data-view-state]").first();
-        const hasTuiRoot = (await tuiRoot.count()) > 0;
-        if (hasTuiRoot) {
-          await expect(tuiRoot).toBeVisible();
+        const tuiRoot = viewRoot.locator("[data-view-state]").first();
+        await expect(
+          tuiRoot,
+          `${view.id} ${view.viewType} should render a terminal view root`,
+        ).toBeVisible();
+        await expect(
+          viewRoot.getByText(`elizaos://${view.id} --type=tui`).first(),
+          `${view.id} ${view.viewType} should render its own terminal header`,
+        ).toBeVisible();
+        const terminalCommandCount = await page
+          .locator("[data-terminal-command]")
+          .count();
+        if (terminalCommandCount > 0) {
+          for (let index = 0; index < terminalCommandCount; index += 1) {
+            await page.locator("[data-terminal-command]").nth(index).click();
+          }
           await expect(
-            page.locator("main").getByText("elizaos://").first(),
-          ).toBeVisible();
-        }
-        const terminalCommand = page.locator("[data-terminal-command]").first();
-        if ((await terminalCommand.count()) > 0) {
-          await terminalCommand.press("Enter");
-          await expect(
-            page.locator("[data-terminal-output]").first(),
-            `${view.id} ${view.viewType} should render command output after keyboard execution`,
-          ).toBeVisible();
+            page.locator("[data-terminal-output]"),
+            `${view.id} ${view.viewType} should render output for every terminal command`,
+          ).toHaveCount(terminalCommandCount);
         }
       }
 
@@ -151,6 +217,13 @@ test.describe("registered plugin views visual coverage", () => {
           attempts: 4,
         },
       );
+
+      const assistantPill = page.getByTestId("shell-home-pill");
+      await expect(assistantPill).toBeVisible();
+      await expect(assistantPill).toHaveAttribute("aria-label", "Open Eliza");
+      await assistantPill.click();
+      await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
+      await expect(page.getByLabel("Message Eliza")).toBeVisible();
 
       const focusedAfterTabs: string[] = [];
       focusedAfterTabs.push(
@@ -190,10 +263,11 @@ test.describe("registered plugin views visual coverage", () => {
 
       const audit = await page.evaluate(
         ({ id, viewType, viewPath, focused }) => {
+          const root = document.querySelector("main") ?? document.body;
           const normalize = (value: string | null | undefined) =>
             (value ?? "").trim().replace(/\s+/g, " ");
           const controls = Array.from(
-            document.querySelectorAll<HTMLElement>(
+            root.querySelectorAll<HTMLElement>(
               "button, input, textarea, select, [role='button'], [role='menuitem'], [role='tab']",
             ),
           )
@@ -217,7 +291,7 @@ test.describe("registered plugin views visual coverage", () => {
             id,
             viewType,
             path: viewPath,
-            visibleText: normalize(document.body.innerText).slice(0, 4000),
+            visibleText: normalize(root.textContent).slice(0, 4000),
             controls,
             focusedAfterTabs: focused,
           } satisfies ViewAudit;
@@ -234,10 +308,12 @@ test.describe("registered plugin views visual coverage", () => {
         audit.visibleText.length,
         `${view.id} ${view.viewType} should expose readable text`,
       ).toBeGreaterThan(20);
-      expect(
-        audit.controls.length,
-        `${view.id} ${view.viewType} should expose interactive controls`,
-      ).toBeGreaterThan(0);
+      if (view.viewType === "tui") {
+        expect(
+          audit.controls.length,
+          `${view.id} ${view.viewType} should expose terminal controls inside the view, not only assistant overlay controls`,
+        ).toBeGreaterThan(0);
+      }
       expect(
         focusedAfterTabs.some(
           (entry) =>

@@ -47,6 +47,45 @@ export function redactDetailsSecrets(details: unknown): unknown {
   return details;
 }
 
+/**
+ * Map an HTTP response status the renderer fetch/XHR mirror has already
+ * classified as a failure to its diagnostic level, or `null` to skip logging.
+ *
+ * Known optional boot probes may return 404 while plugins register. Those
+ * specific misses are suppressed; all other 404s still warn so broken renderer
+ * routes/assets remain visible in desktop diagnostics.
+ *
+ * Callers keep their own "is this a failure at all" guard (the fetch wrapper
+ * uses `!response.ok`, the XHR wrapper uses `status >= 400`) and ask this only
+ * for the level, so the suppression policy lives in one tested place.
+ */
+export function httpErrorDiagnosticLevel(
+  status: number,
+  context?: { url?: string; method?: string },
+): "warn" | "error" | null {
+  if (status === 404 && isOptionalBootProbe404(context)) {
+    return null;
+  }
+  return status >= 500 ? "error" : "warn";
+}
+
+function isOptionalBootProbe404(context?: {
+  url?: string;
+  method?: string;
+}): boolean {
+  const method = context?.method?.toUpperCase() ?? "GET";
+  if (method !== "GET" && method !== "HEAD") return false;
+  const rawUrl = context?.url;
+  if (!rawUrl) return false;
+  let pathname = rawUrl;
+  try {
+    pathname = new URL(rawUrl, "http://localhost").pathname;
+  } catch {
+    pathname = rawUrl.split("?")[0] ?? rawUrl;
+  }
+  return pathname === "/api/vincent/status";
+}
+
 export function formatRendererDiagnosticLine(
   params?: {
     source?: string;

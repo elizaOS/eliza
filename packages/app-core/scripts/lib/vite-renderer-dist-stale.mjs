@@ -100,6 +100,11 @@ export function viteRendererBuildNeeded(appDir, repoRoot) {
     return true;
   }
 
+  const viteDir = path.join(appDir, "vite");
+  if (fs.existsSync(viteDir) && maxMtimeUnder(viteDir) > distMtime) {
+    return true;
+  }
+
   const uiSrcCandidates = [
     path.join(repoRoot, "packages", "ui", "src"),
     path.join(repoRoot, "eliza", "packages", "ui", "src"),

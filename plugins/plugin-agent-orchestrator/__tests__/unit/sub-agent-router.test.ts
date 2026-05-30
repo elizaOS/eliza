@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -56,6 +57,8 @@ function makeAcpService(session: SessionInfo): {
     onSessionEvent: ReturnType<typeof vi.fn>;
     getSession: ReturnType<typeof vi.fn>;
     listSessions: ReturnType<typeof vi.fn>;
+    updateSessionMetadata: ReturnType<typeof vi.fn>;
+    getChangedPaths: ReturnType<typeof vi.fn>;
   };
   emit: (sessionId: string, event: string, data: unknown) => void;
 } {
@@ -71,6 +74,12 @@ function makeAcpService(session: SessionInfo): {
       id === session.id ? session : null,
     ),
     listSessions: vi.fn(async () => [session]),
+    updateSessionMetadata: vi.fn(
+      async (_id: string, patch: Record<string, unknown>) => {
+        session.metadata = { ...(session.metadata ?? {}), ...patch };
+      },
+    ),
+    getChangedPaths: vi.fn((_id: string) => [] as string[]),
   };
   return {
     service,
@@ -459,6 +468,40 @@ describe("SubAgentRouter", () => {
     expect(posted?.content?.text).toContain("Which branch should I target?");
     expect(posted?.content?.text).not.toContain("QUESTION_FOR_TASK_CREATOR");
     expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
+  });
+
+  it("does not leak a verify-retry attempt's raw reasoning into the completion", async () => {
+    // A verification-retry re-dispatch on a weak model often returns tool-loop
+    // reasoning as its "final" text. That must never reach the user as the
+    // completion narration — surface a clean header (verified URLs fill in
+    // downstream), not the scratchpad.
+    session = makeSession({
+      metadata: {
+        label: "Build a dice roller app",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        buildVerifyRetryCount: 1,
+        initialTask: "Build a dice roller app",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response:
+        "I need to call read properly. Seems stuck. Let's retry. Let's glob for public/apps/*. Probably glitch.",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const text = handleMessage.mock.calls[0]?.[1]?.content?.text as string;
+    expect(text).not.toContain("Seems stuck");
+    expect(text).not.toContain("call read properly");
+    expect(text).not.toContain("glob for public");
   });
 
   it("routes AGENT_COORDINATION to the worktree room with actionable metadata", async () => {
@@ -1863,5 +1906,191 @@ describe("redactLoopbackUrls", () => {
     expect(redactLoopbackUrls("dev at http://[::1]:3000/health is up")).toBe(
       "dev at  is up",
     );
+  });
+});
+
+describe("SubAgentRouter state_lost respawn cap", () => {
+  afterEach(() => {
+    restoreStubbedGlobals();
+  });
+
+  it("bounds the cross-session state_lost respawn cascade per origin lineage", async () => {
+    // Live regression (milady dog-site, 2026-05-28): a dying sub-agent emitted
+    // an "error"/session_state_lost event every ~60s; each respawn was a NEW
+    // sessionId so the per-session roundTripCap never fired -> unbounded loop.
+    // The per-origin cap (taskRoomId+agentType, default 3) must stop
+    // re-injecting after the cap so the parent is no longer prompted to spawn.
+    stubFetch(vi.fn(async () => new Response("", { status: 200 })) as never);
+    const captured: { fn?: (s: string, e: string, d: unknown) => void } = {};
+    const stopSession = vi.fn(async () => undefined);
+    const sharedMeta = {
+      label: "Update the dog site",
+      roomId: ROOM,
+      worldId: WORLD,
+      userId: USER,
+      // messageId rotates per respawn (the synthetic-inbound id) — exactly the
+      // dimension that broke the old lineage key; the new key ignores it.
+      messageId: PARENT_MSG,
+      source: "discord",
+    };
+    const acpService = {
+      onSessionEvent: vi.fn((h: (s: string, e: string, d: unknown) => void) => {
+        captured.fn = h;
+        return () => {
+          captured.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => ({
+        id,
+        name: id,
+        agentType: "opencode",
+        workdir: "/tmp/wf",
+        status: "running",
+        approvalPreset: "standard",
+        createdAt: new Date("2026-05-28T23:40:00.000Z"),
+        lastActivityAt: new Date("2026-05-28T23:40:00.000Z"),
+        metadata: { ...sharedMeta, messageId: `msg-${id}` },
+      })),
+      listSessions: vi.fn(async () => []),
+      stopSession,
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: acpService });
+    const router = await SubAgentRouter.start(runtime);
+
+    // 5 respawns: distinct sessionIds, same origin room (taskRoomId fallback)
+    // + agentType. Cap=3 -> events 1..3 post, 4..5 suppressed.
+    for (let i = 1; i <= 5; i++) {
+      captured.fn?.(`sess-${i}-0000-0000-0000-00000000000${i}`, "error", {
+        message:
+          "Sub-agent state was lost (process exited without persisting). No automatic action taken.",
+        failureKind: "session_state_lost",
+      });
+      await new Promise((r) => setImmediate(r));
+    }
+
+    expect(handleMessage).toHaveBeenCalledTimes(3);
+    // The over-cap respawns are force-stopped instead of re-injected.
+    expect(stopSession).toHaveBeenCalled();
+    await router.stop();
+  });
+});
+
+describe("SubAgentRouter — change-set narration (GAP C)", () => {
+  afterEach(() => {
+    restoreStubbedGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("builds the completion narration from the real git diff, not the raw transcript", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "gapc-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: repo });
+      fs.writeFileSync(path.join(repo, "index.html"), "<h1>placeholder</h1>\n");
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: repo });
+      const baseline = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo })
+        .toString()
+        .trim();
+      // The sub-agent's actual edit (an image/content swap), uncommitted.
+      fs.writeFileSync(
+        path.join(repo, "index.html"),
+        "<h1>a real dog photo</h1>\n",
+      );
+
+      const session = makeSession({
+        workdir: repo,
+        metadata: {
+          label: "dogsite-update",
+          roomId: ROOM,
+          worldId: WORLD,
+          userId: USER,
+          messageId: PARENT_MSG,
+          source: "telegram",
+          initialTask: "update the dog site",
+          codingBaselineSha: baseline,
+        },
+      });
+      const acp = makeAcpService(session);
+      const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      // The raw model transcript that previously leaked verbatim to Discord.
+      acp.emit(SESSION_ID, "task_complete", {
+        response:
+          "[tool output: Read index.html]\n<h1>placeholder</h1>\n[/tool output]\nSearch for the image element.",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const posted = handleMessage.mock.calls[0]?.[1];
+      const text = String(posted?.content?.text ?? "");
+      // Grounded in the real change set...
+      expect(text).toContain("index.html");
+      // ...with neither the raw tool-output blocks nor the plan-narration.
+      expect(text).not.toContain("[tool output:");
+      expect(text).not.toContain("Search for the image element");
+
+      // And the change set is persisted for the "show me the diff" provider.
+      expect(acp.service.updateSessionMetadata).toHaveBeenCalled();
+      const patch = acp.service.updateSessionMetadata.mock.calls[0]?.[1] as
+        | Record<string, unknown>
+        | undefined;
+      const changeSet = patch?.lastChangeSet as
+        | { changedFiles?: string[]; diff?: string }
+        | undefined;
+      expect(changeSet?.changedFiles).toContain("index.html");
+      expect(changeSet?.diff).toContain("a real dog photo");
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("persists NO change set on a no-op completion (recency is modeled on the session, not a sentinel)", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "gapc-noop-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "t"], { cwd: repo });
+      fs.writeFileSync(path.join(repo, "index.html"), "<h1>unchanged</h1>\n");
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: repo });
+      const baseline = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo })
+        .toString()
+        .trim();
+      // No file edits this session.
+      const session = makeSession({
+        workdir: repo,
+        metadata: {
+          label: "noop-task",
+          roomId: ROOM,
+          worldId: WORLD,
+          userId: USER,
+          messageId: PARENT_MSG,
+          source: "telegram",
+          initialTask: "have a look around",
+          codingBaselineSha: baseline,
+        },
+      });
+      const acp = makeAcpService(session);
+      const { runtime } = makeRuntime({ acp: acp.service });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", { response: "Nothing to change." });
+      await new Promise((r) => setTimeout(r, 200));
+
+      // No change => no lastChangeSet persisted. The provider selects the
+      // most-recently-active session and finds no change set, so an older
+      // task's diff can't bleed in — without inventing a sentinel.
+      const persistedChangeSet =
+        acp.service.updateSessionMetadata.mock.calls.some(
+          (call) =>
+            (call?.[1] as Record<string, unknown> | undefined)
+              ?.lastChangeSet !== undefined,
+        );
+      expect(persistedChangeSet).toBe(false);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 });

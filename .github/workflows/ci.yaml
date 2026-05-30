@@ -169,6 +169,9 @@ jobs:
       - name: Cloud screenshot quality diagnostics coverage
         run: bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts
 
+      - name: Build workspace packages for scenario resolution
+        run: bunx turbo run build --filter=@elizaos/scenario-runner...
+
       - name: Zero-cost scenario e2e
         run: bun run --cwd packages/scenario-runner test:pr:e2e
 

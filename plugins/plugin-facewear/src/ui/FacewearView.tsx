@@ -1,3 +1,4 @@
+import { TerminalPluginView } from "@elizaos/ui";
 import { Bluetooth, Glasses, Wifi, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { FacewearDeviceType } from "../devices/registry.ts";
@@ -297,6 +298,44 @@ export function FacewearView() {
         )}
       </div>
     </div>
+  );
+}
+
+export function FacewearTuiView() {
+  return (
+    <TerminalPluginView
+      id="facewear"
+      label="Hearwear TUI"
+      description="Terminal UI for hearwear device management"
+      commands={[
+        "connect-device",
+        "manage-views",
+        "device-diagnostics",
+        "emulator",
+      ]}
+      endpoints={[
+        "/api/facewear/status",
+        "/api/facewear/devices",
+        "/api/facewear/views",
+      ]}
+    />
+  );
+}
+
+export function SmartglassesTuiView() {
+  return (
+    <TerminalPluginView
+      id="smartglasses"
+      label="Smartglasses TUI"
+      description="Terminal UI for smartglasses setup, status, and diagnostics"
+      commands={[
+        "connect-headset",
+        "run-hardware-check",
+        "guided-side-tap-audio-validation",
+        "configure-wifi",
+      ]}
+      endpoints={["/api/facewear/status", "/api/facewear/devices"]}
+    />
   );
 }
 

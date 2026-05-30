@@ -1035,7 +1035,7 @@ function PluginListView({
     });
   }, [desktopConnectorLayout, isSidebarEditorShellMode, visiblePlugins]);
 
-  const handleConnectorSelect = useCallback(
+  const _handleConnectorSelect = useCallback(
     (pluginId: string) => {
       setConnectorSelectedId(pluginId);
       if (desktopConnectorLayout) {

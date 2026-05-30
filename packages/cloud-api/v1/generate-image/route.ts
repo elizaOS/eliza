@@ -59,6 +59,25 @@ interface GeneratedImage {
   sizeBytes: number;
 }
 
+async function deleteStoredImages(
+  env: AppEnv["Bindings"],
+  images: Pick<GeneratedImage, "key">[],
+): Promise<void> {
+  await Promise.all(
+    images.map((image) =>
+      env.BLOB.delete(image.key).catch((deleteError) => {
+        logger.error("[GenerateImage] Failed to delete generated image", {
+          key: image.key,
+          error:
+            deleteError instanceof Error
+              ? deleteError.message
+              : String(deleteError),
+        });
+      }),
+    ),
+  );
+}
+
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STRICT));
@@ -156,6 +175,8 @@ async function generateOneImage(request: ImageRequest): Promise<{
 app.post("/", async (c) => {
   let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
     null;
+  let chargeSettled = false;
+  const images: GeneratedImage[] = [];
 
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -232,7 +253,6 @@ app.post("/", async (c) => {
       throw error;
     }
 
-    const images: GeneratedImage[] = [];
     for (let index = 0; index < request.numImages; index += 1) {
       const generated = await generateOneImage(request);
       const ext = extensionForMimeType(generated.mimeType);
@@ -284,42 +304,52 @@ app.post("/", async (c) => {
     }
 
     await reservation.reconcile(cost.totalCost);
+    chargeSettled = true;
 
     await Promise.all(
       images.map((image) =>
-        generationsService.create({
-          organization_id: user.organization_id,
-          user_id: user.id,
-          type: "image",
-          model: request.model,
-          provider: definition.provider,
-          prompt: request.prompt,
-          result: {
-            text: image.text,
-            r2Key: image.key,
-            billingSource: definition.billingSource,
-          },
-          status: "completed",
-          storage_url: image.url,
-          thumbnail_url: image.url,
-          file_size: BigInt(image.sizeBytes),
-          mime_type: image.mimeType,
-          parameters: {
-            numImages: request.numImages,
-            aspectRatio: request.aspectRatio,
-            stylePreset: request.stylePreset,
-            width: request.width,
-            height: request.height,
-            hasSourceImage: Boolean(request.sourceImage),
-          },
-          dimensions: {
-            width: request.width,
-            height: request.height,
-          },
-          cost: String(cost.totalCost),
-          credits: String(cost.totalCost),
-          completed_at: new Date(),
-        }),
+        generationsService
+          .create({
+            organization_id: user.organization_id,
+            user_id: user.id,
+            type: "image",
+            model: request.model,
+            provider: definition.provider,
+            prompt: request.prompt,
+            result: {
+              text: image.text,
+              r2Key: image.key,
+              billingSource: definition.billingSource,
+            },
+            status: "completed",
+            storage_url: image.url,
+            thumbnail_url: image.url,
+            file_size: BigInt(image.sizeBytes),
+            mime_type: image.mimeType,
+            parameters: {
+              numImages: request.numImages,
+              aspectRatio: request.aspectRatio,
+              stylePreset: request.stylePreset,
+              width: request.width,
+              height: request.height,
+              hasSourceImage: Boolean(request.sourceImage),
+            },
+            dimensions: {
+              width: request.width,
+              height: request.height,
+            },
+            cost: String(cost.totalCost),
+            credits: String(cost.totalCost),
+            completed_at: new Date(),
+          })
+          .catch((recordError) => {
+            logger.warn("[GenerateImage] Failed to record generation", {
+              error:
+                recordError instanceof Error
+                  ? recordError.message
+                  : String(recordError),
+            });
+          }),
       ),
     );
 
@@ -330,7 +360,10 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
-    if (reservation) {
+    if (!chargeSettled && images.length > 0) {
+      await deleteStoredImages(c.env, images);
+    }
+    if (reservation && !chargeSettled) {
       await reservation.reconcile(0).catch((reconcileError) => {
         logger.error("[GenerateImage] Failed to refund reservation", {
           error:

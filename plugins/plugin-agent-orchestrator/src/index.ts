@@ -43,6 +43,7 @@ import { codingAgentExamplesProvider } from "./providers/action-examples.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
 import { availableAgentsProvider } from "./providers/available-agents.js";
+import { codingSessionChangesProvider } from "./providers/coding-session-changes.js";
 import { AcpService } from "./services/acp-service.js";
 import {
   appendAuditLine,
@@ -153,6 +154,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
         activeSubAgentsProvider, // Cache-stable view of routed sub-agent sessions
         activeWorkspaceContextProvider, // Live workspace/session state
         codingAgentExamplesProvider, // Structured action call examples
+        codingSessionChangesProvider, // Real git change set for "show me the diff"
       ]
     : [];
 

@@ -24,8 +24,8 @@
  *      reference clip + transcript, write the new bytes back to disk,
  *      then load.
  *   4. If it IS a placeholder AND OmniVoice reference-encode is unavailable
- *      → log a loud warning and fall through to `af_bella` (the bundled
- *      cold-start fallback voice) by re-pointing the discovery layer.
+ *      → log a loud warning and fall through to the bundled Kokoro default
+ *      voice (`kokoro.defaultVoiceId`) by re-pointing the discovery layer.
  */
 
 import { readFileSync, statSync } from "node:fs";

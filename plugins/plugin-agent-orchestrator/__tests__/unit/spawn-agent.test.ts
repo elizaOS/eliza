@@ -156,21 +156,21 @@ describe("TASKS:spawn_agent", () => {
       initialTask?: string;
     };
     const initialTask = call.initialTask ?? "";
-    // After the goal-wrapper unification the planner action emits the shared
-    // buildGoalPrompt envelope: --- Goal ---, --- Rooms --- (with the
-    // known-swarm-rooms list), --- Capabilities ---, --- Working Agreement ---.
-    expect(initialTask).toContain("--- Rooms ---");
-    expect(initialTask).toContain("Known swarm rooms:");
-    expect(initialTask).toContain("Keep working until the goal is met");
+    expect(initialTask).toContain("--- Swarm Coordination ---");
+    expect(initialTask).toContain("Keep working until the task is finished");
     expect(initialTask).toContain("read/search files, edit/apply patches");
+    expect(initialTask).toContain("QUESTION_FOR_TASK_CREATOR");
+    expect(initialTask).toContain("AGENT_COORDINATION");
     expect(initialTask).toContain(TASK_ROOM);
     expect(initialTask).toContain(WORKTREE_ROOM);
     // Regression for elizaOS/eliza#7935: sub-agents must not write
     // routing-kind constants as markdown banners in user-visible prose.
     // The router classifies routing from the session event; prose should
-    // stay as the actual question or coordination note. After unification this
-    // rule lives in the shared completion contract.
-    expect(initialTask).toContain("no routing-kind labels or banners");
+    // stay as the actual question or coordination note.
+    expect(initialTask).toContain(
+      "Do not prefix the reply with routing-kind labels",
+    );
+    expect(initialTask).toContain("no markdown banners");
     expect(initialTask).toContain(
       "the orchestrator classifies routing from the session event, not your prose",
     );
@@ -289,7 +289,7 @@ describe("TASKS:spawn_agent", () => {
       );
       expect(initialTask).toContain('do not leave inert href="#" controls');
       expect(initialTask.indexOf("--- Resolved Workspace ---")).toBeLessThan(
-        initialTask.indexOf("--- Task ---"),
+        initialTask.indexOf("--- User Task ---"),
       );
     } finally {
       if (oldRoutes === undefined) delete process.env.TASK_AGENT_WORKDIR_ROUTES;

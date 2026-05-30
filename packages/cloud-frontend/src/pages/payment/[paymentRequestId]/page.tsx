@@ -264,7 +264,7 @@ export default function PaymentRequestPage() {
                 type="button"
                 disabled={!canPay || isPaying}
                 onClick={beginCheckout}
-                className="flex w-full items-center justify-center gap-3 bg-orange-400/10 px-4 py-4 text-orange-100 transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                className="flex w-full items-center justify-center gap-3 bg-orange-400/10 px-4 py-4 text-white transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
               >
                 {isPaying ? (
                   <Loader2 className="h-5 w-5 animate-spin" />

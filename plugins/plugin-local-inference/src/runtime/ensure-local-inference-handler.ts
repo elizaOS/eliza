@@ -22,6 +22,7 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
+import path from "node:path";
 import {
 	type AgentRuntime,
 	type GenerateTextParams,
@@ -36,6 +37,7 @@ import {
 	type TranscriptionParams,
 	type UUID,
 } from "@elizaos/core";
+import type { CapacitorLlamaContext } from "../adapters/capacitor-llama/types";
 import {
 	type LocalInferenceLoader,
 	resolveLocalInferenceLoadArgs,
@@ -67,6 +69,11 @@ import {
 	AsrUnavailableError,
 	createStreamingTranscriber,
 } from "../services/voice/transcriber";
+import {
+	DEFAULT_MODELS_DIR,
+	embeddingGgufFilePresent,
+} from "./embedding-manager-support";
+import { EMBEDDING_PRESETS } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 
 type GenerateTextHandler = (
@@ -549,29 +556,98 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 }
 
 /**
- * TEXT_EMBEDDING handler for the desktop/server `LocalInferenceEngine`
- * path: the engine has no `embed()` on the `LocalInferenceLoader` service
- * surface (that's only the AOSP / device-bridge loaders), but when an
- * Eliza-1 bundle is active it serves embeddings through the bundle's
- * local embedding model — pooled text on `0_8b` / `2b`, the dedicated
- * `embedding/` GGUF on larger tiers — via a lazily-started embedding
- * `llama-server` sidecar. Throws (→ runtime falls through to the
- * operator-configured provider) when no Eliza-1 bundle is loaded; no
- * zero-vector (Commandment 8).
+ * Lazily-created desktop embedding context. The canonical capacitor approach
+ * (`initCapacitorLlama` → desktop bun:ffi → libllama) loads the compact,
+ * SQL-safe gte-small GGUF in embeddings mode (non-causal single-ubatch, MEAN
+ * pooling) and serves `ctx.embedding()`. One process-wide context —
+ * embeddings aren't slot-aware. Cleared on failure so a later call retries
+ * (e.g. after the boot warmup finishes downloading the GGUF).
  */
-function makeEngineEmbeddingHandler(): EmbeddingHandler {
-	return async (_runtime, params) => {
-		if (!localInferenceEngine.canEmbed()) {
+let desktopEmbeddingCtxPromise: Promise<CapacitorLlamaContext> | null = null;
+
+interface DesktopEmbeddingConfig {
+	modelsDir: string;
+	model: string;
+	contextSize: number;
+	gpuLayers: number;
+}
+
+/**
+ * Resolve the desktop embedding model + load params from the same
+ * `LOCAL_EMBEDDING_*` env that `configureLocalEmbeddingPlugin` and the boot
+ * warmup set, falling back to the compact gte-small preset.
+ */
+function resolveDesktopEmbeddingConfig(): DesktopEmbeddingConfig {
+	const preset = EMBEDDING_PRESETS.performance;
+	const modelsDir = process.env.MODELS_DIR?.trim() || DEFAULT_MODELS_DIR;
+	const model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
+	const ctxEnv = Number(process.env.LOCAL_EMBEDDING_CONTEXT_SIZE);
+	const contextSize =
+		Number.isFinite(ctxEnv) && ctxEnv > 0 ? ctxEnv : preset.contextSize;
+	const gpuLayersEnv = process.env.LOCAL_EMBEDDING_GPU_LAYERS?.trim();
+	const gpuLayersNum = Number(gpuLayersEnv);
+	// "999 = all layers on GPU" per llama.cpp; the desktop adapter clamps to
+	// the model's metadata layer count, so "auto"/"max" map to 999.
+	const gpuLayers =
+		gpuLayersEnv === "auto" || gpuLayersEnv === "max"
+			? 999
+			: Number.isFinite(gpuLayersNum)
+				? gpuLayersNum
+				: 0;
+	return { modelsDir, model, contextSize, gpuLayers };
+}
+
+async function getDesktopEmbeddingContext(): Promise<CapacitorLlamaContext> {
+	if (desktopEmbeddingCtxPromise) return desktopEmbeddingCtxPromise;
+	const promise = (async () => {
+		const cfg = resolveDesktopEmbeddingConfig();
+		if (!embeddingGgufFilePresent(cfg.modelsDir, cfg.model)) {
 			throw new Error(
-				"[local-inference] No Eliza-1 bundle active; the local embedding model is part of an Eliza-1 bundle — falling through to next provider",
+				`[local-inference] Embedding model "${cfg.model}" not present in ${cfg.modelsDir} (boot warmup may still be downloading) — falling through to next provider`,
 			);
 		}
-		const text = extractEmbeddingText(params);
-		const [vec] = await localInferenceEngine.embed(text);
-		if (!vec) {
-			throw new Error("[local-inference] embed() returned no vector");
+		const { initCapacitorLlama } = await import(
+			"../adapters/capacitor-llama/loader"
+		);
+		const ctx = await initCapacitorLlama({
+			model: path.resolve(cfg.modelsDir, cfg.model),
+			n_ctx: cfg.contextSize,
+			n_gpu_layers: cfg.gpuLayers,
+			embedding: true,
+			pooling_type: "mean",
+		});
+		logger.info(
+			`[local-inference] Desktop embedding context ready via capacitor FFI: ${cfg.model} (${ctx.model.nEmbd} dims)`,
+		);
+		return ctx;
+	})();
+	desktopEmbeddingCtxPromise = promise;
+	// On failure, drop the cached promise so the next call retries (the GGUF
+	// may still be downloading during boot warmup).
+	promise.catch(() => {
+		if (desktopEmbeddingCtxPromise === promise) {
+			desktopEmbeddingCtxPromise = null;
 		}
-		return vec;
+	});
+	return promise;
+}
+
+/**
+ * Desktop TEXT_EMBEDDING handler. Routes through the canonical capacitor
+ * contract — `initCapacitorLlama(...).embedding()` over the bun:ffi →
+ * libllama backend — using the compact gte-small GGUF (384-dim, an exact
+ * match for plugin-sql's dim384 column). This is the same
+ * `CapacitorLlamaContext.embedding()` path the mobile loader serves, so
+ * desktop and mobile share one embedding implementation. Throws when the
+ * GGUF can't be loaded so the runtime falls through to the
+ * operator-configured provider — no silent zero-vector (Commandment 8).
+ */
+function makeCapacitorEmbeddingHandler(): EmbeddingHandler {
+	return async (_runtime, params) => {
+		const ctx = await getDesktopEmbeddingContext();
+		const text = extractEmbeddingText(params);
+		const result = await ctx.embedding(text, { embd_normalize: 2 });
+		return result.embedding;
 	};
 }
 
@@ -1162,16 +1238,13 @@ export async function ensureLocalInferenceHandler(
 	// `number[]` instead of `string`, so it can't share `makeHandler`.
 	//   - AOSP / device-bridge loaders expose `embed()` on the
 	//     `localInferenceLoader` service → route through that.
-	//   - The desktop/server `LocalInferenceEngine` path has no loader
-	//     `embed()`, but when an Eliza-1 bundle is loaded it serves
-	//     embeddings through the bundle's local embedding model (pooled text
-	//     on `0_8b` / `2b`, the dedicated `embedding/` GGUF on larger tiers) via a
-	//     lazily-started embedding `llama-server` sidecar.
-	// In neither case do we register a handler that would serve a silent
-	// zero-vector — both throw when there's nothing real to call, so the
-	// runtime falls through to the operator-configured provider
-	// (Commandment 8 / Commandment 10: the bundle's embedding model now has
-	// a real runtime caller).
+	//   - Desktop has no `localInferenceLoader`; it serves embeddings through
+	//     the canonical capacitor contract (`initCapacitorLlama(...).embedding()`
+	//     over bun:ffi → libllama) using the compact gte-small GGUF — the same
+	//     `CapacitorLlamaContext.embedding()` path the mobile loader uses.
+	// Neither path registers a handler that would serve a silent zero-vector:
+	// both throw when there's nothing real to call, so the runtime falls
+	// through to the operator-configured provider (Commandment 8).
 	const loaderForEmbed = (
 		runtime as { getService?: (name: string) => unknown }
 	).getService?.("localInferenceLoader") as
@@ -1183,7 +1256,7 @@ export async function ensureLocalInferenceHandler(
 		: loaderForEmbed && typeof loaderForEmbed.embed === "function"
 			? makeEmbeddingHandler()
 			: provider === LOCAL_INFERENCE_PROVIDER
-				? makeEngineEmbeddingHandler()
+				? makeCapacitorEmbeddingHandler()
 				: null;
 	if (embeddingHandler) {
 		try {

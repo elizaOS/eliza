@@ -841,6 +841,13 @@ function sanitizeForRecord(
 		const entries = Object.entries(value as Record<string, unknown>);
 		if (entries.length === 0) {
 			seen.delete(value);
+			const prototype = Object.getPrototypeOf(value);
+			if (prototype === Object.prototype || prototype === null) {
+				// Plain empty objects must round-trip as {}, not "[object Object]".
+				// Keep URL-like/custom empty-entry objects on the string fallback
+				// path so useful toString() values are not erased.
+				return {};
+			}
 			return String(value);
 		}
 		const output: Record<string, unknown> = {};

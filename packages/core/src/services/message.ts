@@ -856,6 +856,25 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 ];
 
 /**
+ * Names of registered providers that opted into always-on Stage-1 response
+ * state via `alwaysInResponseState`. Composed regardless of selected contexts,
+ * so a plugin's dynamic provider reaches Stage 1 without core naming it.
+ */
+function alwaysOnResponseStateProviderNames(runtime: IAgentRuntime): string[] {
+	const providers = Array.isArray(runtime.providers)
+		? (runtime.providers as Provider[])
+		: [];
+	const names: string[] = [];
+	for (const provider of providers) {
+		const name = provider.name?.trim();
+		if (provider.alwaysInResponseState && name && !provider.private) {
+			names.push(name);
+		}
+	}
+	return names;
+}
+
+/**
  * Provider names that must NEVER be rendered as text blocks in the v5
  * ContextObject because they're already conveyed through another channel:
  *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
@@ -1049,9 +1068,11 @@ async function composeResponseState(
 	message: Memory,
 	skipCache = false,
 ): Promise<State> {
-	const providers = hasInboundBenchmarkContext(message)
-		? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
-		: CORE_RESPONSE_STATE_PROVIDERS;
+	const providers = [
+		...CORE_RESPONSE_STATE_PROVIDERS,
+		...alwaysOnResponseStateProviderNames(runtime),
+		...(hasInboundBenchmarkContext(message) ? ["CONTEXT_BENCH"] : []),
+	];
 	if (hasPageScopedRoutingMetadata(message)) {
 		const state = await runtime.composeState(
 			message,
@@ -1096,7 +1117,11 @@ async function composeProviderGroundedResponseState(
 ): Promise<State> {
 	const state = await runtime.composeState(
 		message,
-		[...CORE_RESPONSE_STATE_PROVIDERS, ...providers],
+		[
+			...CORE_RESPONSE_STATE_PROVIDERS,
+			...alwaysOnResponseStateProviderNames(runtime),
+			...providers,
+		],
 		false,
 		skipCache,
 	);
@@ -1122,6 +1147,13 @@ function selectV5PlannerStateProviderNames(args: {
 	const providers = Array.isArray(args.runtime.providers)
 		? (args.runtime.providers as Provider[])
 		: [];
+	// Always-on response-state providers opt in via `alwaysInResponseState` and
+	// are composed regardless of the turn's selected contexts (like the core
+	// FACTS / CURRENT_TIME signals) — so a plugin's dynamic provider can reach
+	// Stage 1 without core naming it.
+	for (const name of alwaysOnResponseStateProviderNames(args.runtime)) {
+		providerNames.add(name);
+	}
 	for (const provider of filterByContextGate(
 		providers,
 		args.selectedContexts,
@@ -3202,11 +3234,36 @@ function normalizeRawParsedForFieldRegistry(
 	return normalized;
 }
 
+/**
+ * A model-named candidate action is "valid" if it matches an exposed action's
+ * name OR one of its similes. Matching similes is essential: the planner often
+ * names a sub-action alias (e.g. SPAWN_AGENT) of an exposed action (TASKS), and
+ * a name-only check rejects it — dropping the action and shipping a bare "On
+ * it." ack with no work done (live regression: "now add a footer to the tea
+ * site" -> candidateActionNames:["SPAWN_AGENT"], contexts:[], reply:"On it.",
+ * no spawn).
+ */
+function exposedActionMatches(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	normalizedCandidate: string,
+): boolean {
+	return actions.some((action) => {
+		if (normalizeActionIdentifier(action.name) === normalizedCandidate) {
+			return true;
+		}
+		const similes = Array.isArray(action.similes) ? action.similes : [];
+		return similes.some(
+			(simile) =>
+				normalizeActionIdentifier(String(simile)) === normalizedCandidate,
+		);
+	});
+}
+
 export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
 	runtimeContext?: {
-		actions: ReadonlyArray<Pick<Action, "name">>;
+		actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
 		messageText?: string;
 	},
 ): MessageHandlerResult {
@@ -3241,9 +3298,7 @@ export function messageHandlerFromFieldResult(
 					if (canonicalPlannerControlActionName(normalized) !== null) {
 						return true;
 					}
-					return runtimeContext.actions.some(
-						(action) => normalizeActionIdentifier(action.name) === normalized,
-					);
+					return exposedActionMatches(runtimeContext.actions, normalized);
 				})
 			: candidateActions.length > 0;
 	const directCurrentCandidateActions =
@@ -3283,9 +3338,7 @@ export function messageHandlerFromFieldResult(
 		? effectiveCandidateActions.filter((name) => {
 				const normalized = normalizeActionIdentifier(name);
 				if (canonicalPlannerControlActionName(normalized) !== null) return true;
-				return runtimeContext.actions.some(
-					(action) => normalizeActionIdentifier(action.name) === normalized,
-				);
+				return exposedActionMatches(runtimeContext.actions, normalized);
 			}).length
 		: effectiveCandidateActions.length;
 	const facts = Array.isArray(result.facts)
@@ -3409,7 +3462,7 @@ function candidateActionsContainRunnableAction(
 	candidateActions: readonly string[],
 	runtimeContext:
 		| {
-				actions: ReadonlyArray<Pick<Action, "name">>;
+				actions: ReadonlyArray<Pick<Action, "name" | "similes">>;
 		  }
 		| undefined,
 ): boolean {
@@ -3418,9 +3471,7 @@ function candidateActionsContainRunnableAction(
 	return candidateActions.some((name) => {
 		const normalized = normalizeActionIdentifier(name);
 		if (canonicalPlannerControlActionName(normalized) !== null) return true;
-		return runtimeContext.actions.some(
-			(action) => normalizeActionIdentifier(action.name) === normalized,
-		);
+		return exposedActionMatches(runtimeContext.actions, normalized);
 	});
 }
 
@@ -3693,7 +3744,7 @@ function shouldUseDirectReplyFastPath(args: {
 	}
 	if (/https?:\/\//iu.test(text)) return false;
 	if (
-		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|update|delete|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|window|device|workflow|automation)\b/iu.test(
+		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|edit|modify|fix|improve|rewrite|update|delete|remove|uninstall|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|view|plugin|window|device|workflow|automation|draw|sketch|paint|illustrate|render|picture|photo|photograph|image|speak|read\s+aloud|read\s+out|narrate|text\s*to\s*speech|tts|voice\s+this|voice\s+over|audio|video|animate|animation)\b/iu.test(
 			text,
 		)
 	) {
@@ -5229,14 +5280,22 @@ export async function runV5MessageRuntimeStage1(args: {
 			// emits it inline with no extra model call. `generateDirectReplyOnce`
 			// runs when Stage-1 produced no usable reply text or a known
 			// low-quality scaffold/fragment pattern from strict JSON generation.
-			const reply = shouldRegenerateStage1ReplyText(route.reply)
-				? await generateDirectReplyOnce({
-						runtime: args.runtime,
-						message: args.message,
-						state: args.state,
-						messageHandler,
-					})
-				: route.reply;
+			let reply = route.reply;
+			if (shouldRegenerateStage1ReplyText(route.reply)) {
+				const regenerated = await generateDirectReplyOnce({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					messageHandler,
+				});
+				// Regeneration is an enhancement (terse fragment -> fuller reply).
+				// If it yields nothing usable, keep the original Stage-1 reply so a
+				// valid-but-terse answer (e.g. "144" to a math question) is never
+				// dropped to an empty message.
+				if (typeof regenerated === "string" && regenerated.trim().length > 0) {
+					reply = regenerated;
+				}
+			}
 			return {
 				kind: "direct_reply",
 				messageHandler,
@@ -6738,7 +6797,6 @@ function looksLikeWebSearchRequest(text: string): boolean {
 		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
 			normalized,
 		);
-
 	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
 }
 

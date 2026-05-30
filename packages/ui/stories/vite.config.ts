@@ -14,7 +14,25 @@ export default defineConfig({
   define: {
     "process.env": "({})",
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      // Temporary: the catalog index (`/`) is broken (fs-extra/process), so
+      // send the preview to the isolated voice comparison. Remove with the
+      // voice.html / voice-main.tsx scaffolding once a variant is chosen.
+      name: "voice-compare-root-redirect",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url === "/" || req.url === "/index.html") {
+            res.writeHead(302, { Location: "/voice.html" });
+            res.end();
+            return;
+          }
+          next();
+        });
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@ui-src": uiSrc,

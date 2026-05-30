@@ -1,6 +1,6 @@
 {
   "homepage_os.common.skipToContent": "Lumaktaw sa nilalaman",
-  "homepage_os.common.brandHomeAria": "elizaOS home",
+  "homepage_os.common.brandHomeAria": "Home ng elizaOS",
   "homepage_os.common.brandAlt": "elizaOS",
   "homepage_os.common.productSwitcherAria": "Tagapili ng produkto",
   "homepage_os.common.communityNavAria": "Komunidad",
@@ -24,7 +24,7 @@
   "homepage_os.routeFallback.loading": "Nilo-load",
   "homepage_os.downloads.title": "Mga Download.",
   "homepage_os.downloads.lede": "Mga Linux PC, Android, at virtual machine. Piliin ang iyong target.",
-  "homepage_os.downloads.categoryLinuxLabel": "Linux Desktop",
+  "homepage_os.downloads.categoryLinuxLabel": "Desktop ng Linux",
   "homepage_os.downloads.categoryLinuxDescription": "Mga bootable image, pag-install ng package manager, at mga VM bundle.",
   "homepage_os.downloads.categoryAndroidLabel": "Android",
   "homepage_os.downloads.categoryAndroidDescription": "Buong kapalit ng OS o sideloadable na APK.",
@@ -66,7 +66,7 @@
   "homepage_os.checkoutResult.returnToHardware": "Bumalik sa hardware",
   "homepage_os.checkoutResult.backToElizaOs": "Bumalik sa elizaOS",
   "homepage_os.productDetail.hardwareLink": "Hardware",
-  "homepage_os.productDetail.preOrderCheckout": "Pre-order checkout",
+  "homepage_os.productDetail.preOrderCheckout": "Checkout ng pre-order",
   "homepage_os.productDetail.downloadBeta": "I-download ang beta",
   "homepage_os.productDetail.checkoutNote": "Ang checkout ay nananatili sa elizaOS."
 }

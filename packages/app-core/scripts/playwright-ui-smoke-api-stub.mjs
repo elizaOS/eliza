@@ -110,7 +110,13 @@ const smokeViewDeclarations = [
     "LifeOpsTuiView",
     "tui",
   ],
-  ["messages", "Messages", "plugin-messages", "/messages", "MessagesAppView"],
+  [
+    "messages",
+    "Messages",
+    "plugin-messages",
+    "/messages",
+    "MessagesPluginView",
+  ],
   [
     "messages",
     "Messages TUI",
@@ -134,7 +140,7 @@ const smokeViewDeclarations = [
     "ModelTesterTuiView",
     "tui",
   ],
-  ["phone", "Phone", "plugin-phone", "/phone", "PhoneAppView"],
+  ["phone", "Phone", "plugin-phone", "/phone", "PhonePluginView"],
   ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneTuiView", "tui"],
   [
     "polymarket",
@@ -202,21 +208,8 @@ const smokeViewDeclarations = [
     "TwoThousandFourScapeTuiView",
     "tui",
   ],
-  [
-    "feed",
-    "Feed",
-    "plugin-feed",
-    "/feed",
-    "FeedOperatorSurface",
-  ],
-  [
-    "feed",
-    "Feed TUI",
-    "plugin-feed",
-    "/feed/tui",
-    "FeedTuiView",
-    "tui",
-  ],
+  ["feed", "Feed", "plugin-feed", "/feed", "FeedOperatorSurface"],
+  ["feed", "Feed TUI", "plugin-feed", "/feed/tui", "FeedTuiView", "tui"],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
   [
     "views-manager",
@@ -1696,6 +1689,101 @@ function streamSettings(payload = {}) {
   };
 }
 
+const databaseRowsByTable = {
+  messages: [
+    {
+      id: "msg-smoke-1",
+      content:
+        "UI smoke database row with https://example.com/smoke-image.png media",
+      roomId: "room-smoke",
+      entityId: "entity-smoke",
+      createdAt: SMOKE_GENERATED_AT,
+    },
+    {
+      id: "msg-smoke-2",
+      content: "UI smoke vector sample row",
+      roomId: "room-smoke",
+      entityId: "entity-smoke",
+      createdAt: SMOKE_GENERATED_AT,
+    },
+  ],
+  memories: [
+    {
+      id: "memory-smoke-1",
+      text: "Deterministic memory fixture for UI smoke.",
+      roomId: "room-smoke",
+      entityId: "entity-smoke",
+      createdAt: SMOKE_GENERATED_AT,
+      dim_0: 0.12,
+      dim_1: 0.34,
+      dim_2: 0.56,
+    },
+  ],
+  media: [
+    {
+      id: "media-smoke-1",
+      url: "https://example.com/smoke-image.png",
+      type: "image",
+      filename: "smoke-image.png",
+      createdAt: SMOKE_GENERATED_AT,
+    },
+  ],
+};
+
+const databaseTables = Object.entries(databaseRowsByTable).map(
+  ([name, rows]) => ({
+    name,
+    schema: "public",
+    rowCount: rows.length,
+    columns: Object.keys(rows[0] ?? {}).map((columnName) => ({
+      name: columnName,
+      type: columnName.startsWith("dim_") ? "double precision" : "text",
+      nullable: false,
+      defaultValue: null,
+      isPrimaryKey: columnName === "id",
+    })),
+  }),
+);
+
+function databaseRowsResponse(tableName, url) {
+  const rows = databaseRowsByTable[tableName] ?? [];
+  const offset = Number(url.searchParams.get("offset") ?? "0");
+  const limit = Number(url.searchParams.get("limit") ?? "50");
+  const sort = url.searchParams.get("sort");
+  const order = url.searchParams.get("order") === "desc" ? "desc" : "asc";
+  const sortedRows = sort
+    ? [...rows].sort((left, right) => {
+        const leftValue = String(left[sort] ?? "");
+        const rightValue = String(right[sort] ?? "");
+        return order === "desc"
+          ? rightValue.localeCompare(leftValue)
+          : leftValue.localeCompare(rightValue);
+      })
+    : rows;
+  const pageRows = sortedRows.slice(offset, offset + limit);
+  return {
+    table: tableName,
+    rows: pageRows,
+    columns: Object.keys(rows[0] ?? {}),
+    total: rows.length,
+    offset,
+    limit,
+  };
+}
+
+function executeDatabaseQueryResult(sql) {
+  const match = /from\s+"?([a-z0-9_-]+)"?/iu.exec(sql ?? "");
+  const tableName =
+    match?.[1] && databaseRowsByTable[match[1]] ? match[1] : "messages";
+  const rows = databaseRowsByTable[tableName] ?? [];
+  return {
+    columns: Object.keys(rows[0] ?? {}),
+    rows,
+    rowCount: rows.length,
+    durationMs: 1,
+  };
+}
+
 const sockets = new Set();
 const server = http.createServer(async (req, res) => {
   const url = new URL(
@@ -1872,13 +1960,124 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/config") {
-    sendJson(req, res, 200, {
+  if (url.pathname === "/api/config") {
+    const config = {
       cloud: { enabled: false },
       media: {},
       plugins: { entries: {} },
       ui: {},
       wallet: {},
+    };
+    if (req.method === "GET") {
+      sendJson(req, res, 200, config);
+      return;
+    }
+    if (req.method === "PUT" || req.method === "PATCH") {
+      const body = (await readJsonBody(req)) || {};
+      sendJson(req, res, 200, {
+        ...config,
+        ...(body && typeof body === "object" && !Array.isArray(body)
+          ? body
+          : {}),
+      });
+      return;
+    }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/database/status") {
+    sendJson(req, res, 200, {
+      provider: "pglite",
+      connected: true,
+      serverVersion: "16.0-ui-smoke",
+      tableCount: databaseTables.length,
+      pgliteDataDir: null,
+      postgresHost: null,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/database/config") {
+    sendJson(req, res, 200, {
+      config: {},
+      activeProvider: "pglite",
+      needsRestart: false,
+    });
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/database/config") {
+    sendJson(req, res, 200, {
+      config: (await readJsonBody(req)) || {},
+      activeProvider: "pglite",
+      needsRestart: false,
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/database/test") {
+    sendJson(req, res, 200, {
+      success: true,
+      serverVersion: "16.0-ui-smoke",
+      error: null,
+      durationMs: 1,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/database/tables") {
+    sendJson(req, res, 200, { tables: databaseTables });
+    return;
+  }
+
+  const databaseRowsMatch = /^\/api\/database\/tables\/([^/]+)\/rows$/.exec(
+    url.pathname,
+  );
+  if (databaseRowsMatch) {
+    const tableName = decodeURIComponent(databaseRowsMatch[1]);
+    if (req.method === "GET") {
+      sendJson(req, res, 200, databaseRowsResponse(tableName, url));
+      return;
+    }
+    if (["POST", "PUT", "DELETE"].includes(req.method ?? "GET")) {
+      sendJson(req, res, 200, {
+        ok: true,
+        table: tableName,
+        row: databaseRowsByTable[tableName]?.[0] ?? null,
+      });
+      return;
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/database/query") {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, executeDatabaseQueryResult(String(body.sql ?? "")));
+    return;
+  }
+
+  if (
+    (req.method === "GET" || req.method === "POST") &&
+    url.pathname === "/api/database/vectors/search"
+  ) {
+    const query =
+      req.method === "POST"
+        ? (await readJsonBody(req))?.query
+        : url.searchParams.get("query");
+    sendJson(req, res, 200, {
+      query: typeof query === "string" ? query : "",
+      table: "memories",
+      limit: 10,
+      count: 1,
+      results: [
+        {
+          id: "memory-smoke-1",
+          text: "Deterministic memory fixture for UI smoke.",
+          similarity: 0.98,
+          roomId: "room-smoke",
+          entityId: "entity-smoke",
+          createdAt: SMOKE_GENERATED_AT,
+          tableName: "memories",
+        },
+      ],
     });
     return;
   }
@@ -2370,6 +2569,163 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/voice/profiles") {
+    sendJson(req, res, 200, { profiles: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/subscription/status") {
+    sendJson(req, res, 200, { providers: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/update/status") {
+    sendJson(req, res, 200, {
+      currentVersion: "0.0.0-ui-smoke",
+      channel: "stable",
+      installMethod: "source",
+      updateAuthority: "manual",
+      nextAction: "manual",
+      canAutoUpdate: false,
+      canExecuteUpdate: false,
+      remoteDisplay: false,
+      updateCommand: null,
+      updateInstructions: null,
+      updateAvailable: false,
+      latestVersion: "0.0.0-ui-smoke",
+      channels: {
+        stable: "0.0.0-ui-smoke",
+        beta: "0.0.0-ui-smoke",
+        nightly: "0.0.0-ui-smoke",
+      },
+      distTags: {},
+      lastCheckAt: null,
+      error: null,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/permissions") {
+    const permission = {
+      id: "shell",
+      status: "granted",
+      lastChecked: Date.now(),
+      canRequest: false,
+      platform: process.platform,
+    };
+    sendJson(req, res, 200, {
+      shell: permission,
+      notifications: { ...permission, id: "notifications" },
+      microphone: { ...permission, id: "microphone" },
+      camera: { ...permission, id: "camera" },
+      "screen-capture": { ...permission, id: "screen-capture" },
+      accessibility: { ...permission, id: "accessibility" },
+      "website-blocking": {
+        ...permission,
+        id: "website-blocking",
+        status: "not-applicable",
+      },
+      _platform: process.platform,
+      _shellEnabled: true,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/permissions/shell") {
+    sendJson(req, res, 200, {
+      id: "shell",
+      status: "granted",
+      lastChecked: Date.now(),
+      canRequest: false,
+      platform: process.platform,
+    });
+    return;
+  }
+
+  if (
+    (req.method === "GET" || req.method === "PUT") &&
+    url.pathname === "/api/secrets/manager/preferences"
+  ) {
+    if (req.method === "PUT") {
+      await readJsonBody(req);
+    }
+    sendJson(req, res, 200, {
+      preferences: { enabled: ["in-house"], routing: {} },
+    });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/secrets/manager/backends"
+  ) {
+    sendJson(req, res, 200, {
+      backends: [
+        {
+          id: "in-house",
+          label: "Local (encrypted)",
+          available: true,
+          signedIn: true,
+          detail: "UI smoke local vault",
+          authMode: null,
+        },
+      ],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/secrets/inventory") {
+    const category = url.searchParams.get("category");
+    sendJson(req, res, 200, {
+      entries:
+        category === "wallet"
+          ? [
+              {
+                key: "EVM_PRIVATE_KEY",
+                label: "EVM private key",
+                category: "wallet",
+                backend: "in-house",
+                isSet: true,
+                updatedAt: SMOKE_GENERATED_AT,
+              },
+              {
+                key: "SOLANA_PRIVATE_KEY",
+                label: "Solana private key",
+                category: "wallet",
+                backend: "in-house",
+                isSet: true,
+                updatedAt: SMOKE_GENERATED_AT,
+              },
+            ]
+          : [],
+    });
+    return;
+  }
+
+  const secretInventoryMatch = /^\/api\/secrets\/inventory\/([^/]+)$/.exec(
+    url.pathname,
+  );
+  if (secretInventoryMatch) {
+    const key = decodeURIComponent(secretInventoryMatch[1]);
+    if (req.method === "GET") {
+      sendJson(req, res, 200, {
+        ok: true,
+        value: key.includes("SOLANA")
+          ? "5HueCGU8rMjxEXxiPuD5BDuRa"
+          : "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        source: "bare",
+      });
+      return;
+    }
+    if (req.method === "PUT" || req.method === "DELETE") {
+      if (req.method === "PUT") {
+        await readJsonBody(req);
+      }
+      sendJson(req, res, 200, { ok: true, key });
+      return;
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/api/wallet/addresses") {
     sendJson(req, res, 200, { evmAddress: null, solanaAddress: null });
     return;
@@ -2377,6 +2733,97 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/wallet/config") {
     sendJson(req, res, 200, emptyWalletConfig);
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/wallet/config") {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, {
+      ...emptyWalletConfig,
+      selectedRpcProviders:
+        body && typeof body === "object" && "selections" in body
+          ? body.selections
+          : emptyWalletConfig.selectedRpcProviders,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/keys") {
+    sendJson(req, res, 200, {
+      evmPrivateKeySet: true,
+      solanaPrivateKeySet: true,
+      evmAddress: "0x1234567890abcdef1234567890abcdef12345678",
+      solanaAddress: "So11111111111111111111111111111111111111112",
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/os-store") {
+    sendJson(req, res, 200, {
+      available: true,
+      backend: "in-house",
+      evmKeyInOsStore: true,
+      solanaKeyInOsStore: true,
+      envKeysPresent: false,
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/wallet/os-store") {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, { ok: true, action: body.action ?? null });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/wallet/refresh-cloud") {
+    sendJson(req, res, 200, {
+      ok: true,
+      imported: [],
+      warnings: [],
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/wallet/primary") {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, { ok: true, ...body });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/wallet/generate") {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, {
+      ok: true,
+      chain: body.chain ?? "evm",
+      source: body.source ?? "local",
+      address:
+        body.chain === "solana"
+          ? "So11111111111111111111111111111111111111112"
+          : "0x1234567890abcdef1234567890abcdef12345678",
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/wallet/export") {
+    await readJsonBody(req);
+    sendJson(req, res, 200, {
+      evmPrivateKey:
+        "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      solanaPrivateKey: "5HueCGU8rMjxEXxiPuD5BDuRa",
+    });
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/wallet/production-defaults"
+  ) {
+    await readJsonBody(req);
+    sendJson(req, res, 200, {
+      ok: true,
+      updated: true,
+      warnings: [],
+    });
     return;
   }
 
@@ -2780,6 +3227,39 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/apps/permissions") {
+    sendJson(req, res, 200, []);
+    return;
+  }
+
+  const appPermissionsMatch = /^\/api\/apps\/permissions\/([^/]+)$/.exec(
+    url.pathname,
+  );
+  if (appPermissionsMatch) {
+    const slug = decodeURIComponent(appPermissionsMatch[1]);
+    if (req.method === "GET") {
+      sendJson(req, res, 200, {
+        slug,
+        displayName: slug,
+        requestedNamespaces: [],
+        grantedNamespaces: [],
+      });
+      return;
+    }
+    if (req.method === "PUT") {
+      const body = (await readJsonBody(req)) || {};
+      sendJson(req, res, 200, {
+        slug,
+        displayName: slug,
+        requestedNamespaces: [],
+        grantedNamespaces: Array.isArray(body.namespaces)
+          ? body.namespaces
+          : [],
+      });
+      return;
+    }
+  }
+
   if (url.pathname === "/api/apps/favorites") {
     if (req.method === "GET") {
       sendJson(req, res, 200, { favoriteApps: smokeFavoriteApps });
@@ -2804,10 +3284,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (
-    req.method === "POST" &&
-    url.pathname === "/api/apps/favorites/replace"
-  ) {
+  if (req.method === "POST" && url.pathname === "/api/apps/favorites/replace") {
     const body = (await readJsonBody(req)) || {};
     smokeFavoriteApps = Array.isArray(body.favoriteAppNames)
       ? body.favoriteAppNames.filter((name) => typeof name === "string")
@@ -2816,10 +3293,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "POST" &&
-    url.pathname === "/api/apps/overlay-presence"
-  ) {
+  if (req.method === "POST" && url.pathname === "/api/apps/overlay-presence") {
     const body = (await readJsonBody(req)) || {};
     sendJson(req, res, 200, {
       ok: true,

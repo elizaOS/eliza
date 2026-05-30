@@ -11,9 +11,10 @@
  *
  *  - **Desktop / riscv64 / fallback:** wraps `DesktopLlamaAdapter`
  *    (bun:ffi → libllama.so) in a thin façade that emulates the Capacitor
- *    surface. Streaming completion goes through the existing `LlmStreamingBinding`;
- *    embeddings & bench currently throw `CapacitorLlamaUnsupportedError`
- *    (gap documented in the adapter README).
+ *    surface. Streaming completion goes through the existing
+ *    `LlmStreamingBinding`; embeddings go through the adapter's native
+ *    `embed()` (llama_get_embeddings_seq). `bench()` and `detokenize()`
+ *    still throw `CapacitorLlamaUnsupportedError`.
  *
  * No `node-llama-cpp` import — anywhere. This is the whole point of the
  * migration.
@@ -122,6 +123,30 @@ function synthesizeDesktopModelDescriptor(
 	};
 }
 
+/**
+ * Map the Capacitor `pooling_type` string to `enum llama_pooling_type`
+ * (0=none, 1=mean, 2=cls, 3=last, 4=rank). Returns undefined when unset so
+ * the adapter applies its embedding-mode default (MEAN).
+ */
+function mapPoolingType(
+	pooling?: CapacitorLlamaContextParams["pooling_type"],
+): number | undefined {
+	switch (pooling) {
+		case "none":
+			return 0;
+		case "mean":
+			return 1;
+		case "cls":
+			return 2;
+		case "last":
+			return 3;
+		case "rank":
+			return 4;
+		default:
+			return undefined;
+	}
+}
+
 class DesktopCapacitorLlamaContext implements CapacitorLlamaContext {
 	readonly id: number;
 	readonly gpu: boolean;
@@ -138,7 +163,9 @@ class DesktopCapacitorLlamaContext implements CapacitorLlamaContext {
 		this.id = Math.floor(Math.random() * 0x7fffffff);
 		this.gpu = (params.n_gpu_layers ?? 0) > 0 && !params.no_gpu_devices;
 		this.reasonNoGPU = this.gpu ? "" : "GPU offload disabled (n_gpu_layers=0)";
-		this.model = synthesizeDesktopModelDescriptor(params.model);
+		const model = synthesizeDesktopModelDescriptor(params.model);
+		model.nEmbd = adapter.embedDim();
+		this.model = model;
 	}
 
 	async completion(
@@ -276,14 +303,11 @@ class DesktopCapacitorLlamaContext implements CapacitorLlamaContext {
 	}
 
 	async embedding(
-		_text: string,
-		_params?: { embd_normalize?: number },
+		text: string,
+		params?: { embd_normalize?: number },
 	): Promise<CapacitorLlamaEmbeddingResult> {
-		throw new CapacitorLlamaUnsupportedError(
-			"embedding",
-			"desktop-ffi",
-			"[capacitor-llama] embedding extraction is not implemented on the desktop FFI path; route TEXT_EMBEDDING through the mtp subprocess backend until the shim adds llama_embeddings + per-context embedding mode toggle.",
-		);
+		const embedding = this.adapter.embed(text, params?.embd_normalize ?? 2);
+		return { embedding };
 	}
 
 	async bench(
@@ -357,6 +381,8 @@ export async function initCapacitorLlama(
 		threads: params.n_threads,
 		useMmap: params.use_mmap,
 		useMlock: params.use_mlock,
+		embedding: params.embedding,
+		poolingType: mapPoolingType(params.pooling_type),
 	};
 	const loaded = await loadDesktopLlama(loadOptions);
 	if (!loaded) {

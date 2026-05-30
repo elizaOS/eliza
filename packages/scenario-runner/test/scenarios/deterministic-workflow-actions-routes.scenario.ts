@@ -12,28 +12,46 @@ import {
   WORKFLOW_SERVICE_TYPE,
   type WorkflowService,
 } from "../../../../plugins/plugin-workflow/src/services/index.ts";
-import type {
-  WorkflowDefinition,
-  WorkflowExecution,
-} from "../../../../plugins/plugin-workflow/src/types/index.ts";
+import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
 
+const workflowExecutionParameters = {
+  action: "executions",
+  workflowId: WORKFLOW_ID,
+  limit: 1,
+};
+
+const strictWorkflowRoutes = [
+  {
+    actionName: "WORKFLOW",
+    args: workflowExecutionParameters,
+    contextIds: ["automation"],
+    input: "Run the workflow action to show executions",
+    messageToUser: `Fetched 1 executions for workflow ${WORKFLOW_ID}.`,
+  },
+];
+
 type JsonRecord = Record<string, unknown>;
 
-type RuntimeWithWorkflowScenario = IAgentRuntime & {
-  db?: unknown;
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-  plugins?: Plugin[];
-  registerPlugin?: (plugin: Plugin) => Promise<void>;
-  routes?: Array<{
-    type?: string;
-    path: string;
-    handler?: unknown;
-    __scenarioWorkflowRoute?: boolean;
-  }>;
-};
+type RuntimeWithWorkflowScenario = IAgentRuntime &
+  RuntimeWithScenarioLlmFixtures & {
+    db?: unknown;
+    getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+    plugins?: Plugin[];
+    registerPlugin?: (plugin: Plugin) => Promise<void>;
+    routes?: Array<{
+      type?: string;
+      path: string;
+      handler?: unknown;
+      __scenarioWorkflowRoute?: boolean;
+    }>;
+  };
 
 let seededExecutionId: string | null = null;
 let scenarioRuntime: RuntimeWithWorkflowScenario | null = null;
@@ -58,9 +76,7 @@ const workflowDefinition: WorkflowDefinition = {
       position: [200, 0],
       parameters: {
         assignments: {
-          assignments: [
-            { name: "scenario", value: "workflow-keyless" },
-          ],
+          assignments: [{ name: "scenario", value: "workflow-keyless" }],
         },
       },
     },
@@ -126,6 +142,37 @@ function firstAction(
   );
 }
 
+function actionParameters(action: CapturedAction): JsonRecord {
+  return isRecord(action.parameters) ? action.parameters : {};
+}
+
+function expectWorkflowActionOptions(
+  action: CapturedAction,
+): string | undefined {
+  const actual = actionParameters(action);
+  if (
+    !expectEqual(
+      actual,
+      workflowExecutionParameters,
+      "WORKFLOW handler options",
+    )
+  ) {
+    return undefined;
+  }
+  const nested = isRecord(actual.parameters) ? actual.parameters : null;
+  if (
+    nested &&
+    !expectEqual(
+      nested,
+      workflowExecutionParameters,
+      "WORKFLOW nested handler parameters",
+    )
+  ) {
+    return undefined;
+  }
+  return `expected WORKFLOW handler parameters to include ${stableStringify(workflowExecutionParameters)}, saw ${stableStringify(actual)}`;
+}
+
 function seededItem(execution: unknown): JsonRecord | null {
   const item = readPath(
     execution,
@@ -180,30 +227,26 @@ async function ensureWorkflowPlugin(
   }
 }
 
-async function workflowServices(
-  runtime: RuntimeWithWorkflowScenario,
-): Promise<{
+async function workflowServices(runtime: RuntimeWithWorkflowScenario): Promise<{
   embedded: EmbeddedWorkflowService;
   service: WorkflowService;
 }> {
   const embedded =
-    ((await runtime.getServiceLoadPromise?.(
-      EMBEDDED_WORKFLOW_SERVICE_TYPE,
-    )) as EmbeddedWorkflowService | undefined) ??
+    ((await runtime.getServiceLoadPromise?.(EMBEDDED_WORKFLOW_SERVICE_TYPE)) as
+      | EmbeddedWorkflowService
+      | undefined) ??
     runtime.getService<EmbeddedWorkflowService>(EMBEDDED_WORKFLOW_SERVICE_TYPE);
   const service =
-    ((await runtime.getServiceLoadPromise?.(
-      WORKFLOW_SERVICE_TYPE,
-    )) as WorkflowService | undefined) ??
+    ((await runtime.getServiceLoadPromise?.(WORKFLOW_SERVICE_TYPE)) as
+      | WorkflowService
+      | undefined) ??
     runtime.getService<WorkflowService>(WORKFLOW_SERVICE_TYPE);
   if (!embedded) throw new Error("EmbeddedWorkflowService was not registered");
   if (!service) throw new Error("WorkflowService was not registered");
   return { embedded, service };
 }
 
-async function seedWorkflow(
-  ctx: ScenarioContext,
-): Promise<string | undefined> {
+async function seedWorkflow(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithWorkflowScenario | undefined;
   if (!runtime) return "scenario runtime was not available";
   scenarioRuntime = runtime;
@@ -224,7 +267,9 @@ async function seedWorkflow(
       limit: 1,
     });
     const failure = expectSeededExecution(actionVisible.data[0]);
-    if (failure) return `seeded execution was not visible through WorkflowService: ${failure}`;
+    if (failure)
+      return `seeded execution was not visible through WorkflowService: ${failure}`;
+    registerStrictActionRouteFixtures(runtime, strictWorkflowRoutes);
     return undefined;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
@@ -236,10 +281,14 @@ function expectWorkflowAction(
 ): string | undefined {
   const action = firstAction(execution, "WORKFLOW");
   if (typeof action === "string") return action;
+  const parametersFailure = expectWorkflowActionOptions(action);
+  if (parametersFailure) return parametersFailure;
   if (action.result?.success !== true) {
     return `expected WORKFLOW result.success=true, saw ${stableStringify(action.result)}`;
   }
-  if (action.result.text !== `Fetched 1 executions for workflow ${WORKFLOW_ID}.`) {
+  if (
+    action.result.text !== `Fetched 1 executions for workflow ${WORKFLOW_ID}.`
+  ) {
     return `expected WORKFLOW success text, saw ${JSON.stringify(action.result.text)}`;
   }
   const executions = readPath(action.result, "data.executions");
@@ -289,7 +338,8 @@ async function finalWorkflowCheck(
 ): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithWorkflowScenario | undefined;
   const activeRuntime = runtime ?? scenarioRuntime;
-  if (!activeRuntime) return "scenario runtime was not available in final check";
+  if (!activeRuntime)
+    return "scenario runtime was not available in final check";
   const { embedded, service } = await workflowServices(activeRuntime);
   const workflow = await service.getWorkflow(WORKFLOW_ID);
   if (workflow.id !== WORKFLOW_ID || workflow.name !== WORKFLOW_NAME) {
@@ -330,17 +380,9 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "WORKFLOW lists the seeded embedded execution",
-      text: "show workflow executions",
-      actionName: "WORKFLOW",
-      options: {
-        parameters: {
-          action: "executions",
-          workflowId: WORKFLOW_ID,
-          limit: 1,
-        },
-      },
+      text: "Run the workflow action to show executions",
       assertTurn: expectWorkflowAction,
     },
     {
@@ -361,6 +403,12 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "actionCalled",
+      actionName: "WORKFLOW",
+      status: "success",
+      minCount: 1,
+    },
     {
       type: "custom",
       name: "real embedded workflow services retain exact workflow and runData",

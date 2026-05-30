@@ -207,7 +207,7 @@ test.describe("macOS desktop titlebar", () => {
     page,
   }, testInfo) => {
     await prepareApp(page);
-    await openAppPath(page, "/chat");
+    await openAppPath(page, "/apps/lifeops");
 
     await expectMacTitlebarClasses(page);
 
@@ -215,21 +215,16 @@ test.describe("macOS desktop titlebar", () => {
     await expect(titlebar).toBeVisible();
     await expect.poll(() => getAppRegion(titlebar)).toBe("drag");
 
-    const appsButton = page.getByRole("button", { name: "Views" });
+    const appsButton = page.getByTestId("header-breadcrumb-home");
     await expect(appsButton).toBeVisible();
+    await expect(page.getByTestId("header-breadcrumb-current")).toContainText(
+      "LifeOps",
+    );
     const titlebarBox = await titlebar.boundingBox();
-    const chatBox = await page
-      .getByTestId("header-nav-button-chat")
-      .boundingBox();
     const appsBox = await appsButton.boundingBox();
     expect(titlebarBox, "Expected titlebar bounds").not.toBeNull();
-    expect(chatBox, "Expected chat nav button bounds").not.toBeNull();
     expect(appsBox, "Expected app nav button bounds").not.toBeNull();
-    if (!titlebarBox || !chatBox || !appsBox) return;
-    expect(
-      chatBox.x - titlebarBox.x,
-      "Desktop nav should reserve left space for macOS traffic lights",
-    ).toBeGreaterThanOrEqual(78);
+    if (!titlebarBox || !appsBox) return;
     await expect
       .poll(() =>
         getPaddingInlineStart(
@@ -238,13 +233,17 @@ test.describe("macOS desktop titlebar", () => {
       )
       .toBeGreaterThanOrEqual(78);
     expect(
-      appsBox.y - titlebarBox.y,
-      "Desktop nav should share the traffic-light titlebar row",
-    ).toBeLessThanOrEqual(4);
+      appsBox.y,
+      "Desktop titlebar navigation should stay inside the titlebar row",
+    ).toBeGreaterThanOrEqual(titlebarBox.y);
+    expect(
+      appsBox.y + appsBox.height,
+      "Desktop titlebar navigation should stay inside the titlebar row",
+    ).toBeLessThanOrEqual(titlebarBox.y + titlebarBox.height);
     await attachVisibleScreenshot(page, testInfo, "mac-titlebar-no-banner");
     await expect.poll(() => getAppRegion(appsButton)).toBe("no-drag");
-    await clickLocatorAtVerticalFraction(page, appsButton, 0.18);
-    await expect(page).toHaveURL(/\/views$/);
+    await clickLocatorAtVerticalFraction(page, appsButton, 0.5);
+    await expect(page).toHaveURL(/\/apps$/);
 
     await openAppPath(page, "/chat");
 
@@ -298,16 +297,16 @@ test.describe("macOS desktop titlebar", () => {
       )
       .toBeGreaterThanOrEqual(78);
 
-    const chatButton = page.getByTestId("header-nav-button-chat");
+    const bannerPadding = await getPaddingInlineStart(banner);
+    const titlebarPadding = await getPaddingInlineStart(
+      titlebar.locator("[data-window-titlebar-padding]"),
+    );
     const bannerBox = await banner.boundingBox();
-    const chatBox = await chatButton.boundingBox();
     expect(bannerBox, "Expected reconnecting banner bounds").not.toBeNull();
-    expect(chatBox, "Expected chat nav button bounds").not.toBeNull();
-    if (!bannerBox || !chatBox) return;
     expect(
-      chatBox.x - bannerBox.x,
-      "Header nav should remain aligned with the macOS titlebar inset below a banner",
-    ).toBeGreaterThanOrEqual(78);
+      Math.abs(titlebarPadding - bannerPadding),
+      "Reconnect banner and titlebar should reserve the same macOS traffic-light inset",
+    ).toBeLessThanOrEqual(1);
 
     await attachVisibleScreenshot(page, testInfo, "mac-titlebar-with-banner");
   });

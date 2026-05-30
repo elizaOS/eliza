@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 describe("FirstRunShell", () => {
-  it("uses a text listening toggle instead of a mic button", async () => {
+  it("shows an idle voice status badge with a muted-mic icon", async () => {
     vi.useFakeTimers();
     const toggleVoice = vi.fn(async () => {});
     render(<FirstRunShell {...props({ toggleVoice })} />);
@@ -72,9 +72,9 @@ describe("FirstRunShell", () => {
       name: "Start voice input",
     });
     expect(voiceToggle.textContent).toBe("Not listening");
-    expect(voiceToggle.querySelector("svg")).toBeNull();
+    // Idle state renders a muted-mic glyph, not bare text.
+    expect(voiceToggle.querySelector("svg")).not.toBeNull();
     expect(voiceToggle.className).toContain("bg-transparent");
-    expect(voiceToggle.className).toContain("hover:text-accent");
 
     fireEvent.click(voiceToggle);
 
@@ -206,7 +206,7 @@ describe("FirstRunShell", () => {
     expect(calls).toBe(baseline);
   });
 
-  it("changes the text toggle to listening when voice capture is active", async () => {
+  it("changes the voice status badge to listening when capture is active", async () => {
     vi.useFakeTimers();
     render(
       <FirstRunShell

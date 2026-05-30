@@ -142,13 +142,6 @@ export function hasExplicitPayload(message: Memory, fields: string[]): boolean {
   return fields.some((field) => typeof content[field] === "string");
 }
 
-export function looksLikeTaskAgentRequest(text: string): boolean {
-  if (!text.trim()) return true;
-  return /\b(code|debug|fix|implement|investigate|research|summari[sz]e|write|plan|delegate|subagent|agent|repo|test|build|refactor|analy[sz]e|document|automate|script|issue|pr|pull request)\b/i.test(
-    text,
-  );
-}
-
 export function shortId(id: string): string {
   return id.slice(0, 8).toLowerCase();
 }

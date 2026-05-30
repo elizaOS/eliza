@@ -167,34 +167,36 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
     timeoutMs: 60_000,
   },
+  // Phone / Messages / Contacts are `androidOnly: true` overlay apps. Their
+  // side-effect registrations only fire when `isElizaOS()` is true (an AOSP
+  // Eliza/ElizaOS Android build) — see
+  // plugins/plugin-{phone,messages,contacts}/src/register.ts and
+  // overlay-app-registry.getAvailableOverlayApps, which deliberately filters
+  // androidOnly apps out on desktop/iOS/web so users never see OS-control tiles
+  // that launch into permanent error states. In THIS desktop / mobile-web sweep
+  // they intentionally do NOT register, so deep-linking their tab paths must
+  // render the app shell *gracefully* — #root + main present, no crash, no
+  // console/page errors, no raw "not found" (all enforced by expectMainShell +
+  // expectNoPageIssues around this probe) — rather than the Android dialer / SMS
+  // / contacts UI. The full dialer / SMS / contacts interaction coverage lives
+  // in apps-comms-device-interactions.spec.ts, which forces an Android/ElizaOS
+  // platform (Capacitor + UA marker) and drives /apps/{phone,messages,contacts}.
   {
     name: "phone deep link",
     path: "/phone",
-    readyChecks: [
-      { selector: 'main h1:has-text("Phone")' },
-      { selector: '[role="tab"]:has-text("Dialer")' },
-    ],
-    mode: "all",
+    readyChecks: [{ selector: "#root" }],
     timeoutMs: 60_000,
   },
   {
     name: "messages deep link",
     path: "/messages",
-    readyChecks: [
-      { selector: 'main h1:has-text("Messages")' },
-      { text: "Android SMS bridge" },
-    ],
-    mode: "all",
+    readyChecks: [{ selector: "#root" }],
     timeoutMs: 60_000,
   },
   {
     name: "contacts deep link",
     path: "/contacts",
-    readyChecks: [
-      { selector: 'main h1:has-text("Contacts")' },
-      { selector: '[aria-label="Search contacts"]' },
-    ],
-    mode: "all",
+    readyChecks: [{ selector: "#root" }],
     timeoutMs: 60_000,
   },
   {

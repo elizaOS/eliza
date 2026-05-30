@@ -34,6 +34,17 @@ type ThreadSummary = {
 const INBOUND_SMS_TYPE = 1;
 const SENT_SMS_TYPE = 2;
 
+function defaultOverlayContext(): OverlayAppContext {
+  return {
+    exitToApps: () => {
+      if (typeof window !== "undefined") window.history.back();
+    },
+    uiTheme: "light",
+    t: (key: string, opts?: { defaultValue?: string }) =>
+      typeof opts?.defaultValue === "string" ? opts.defaultValue : key,
+  };
+}
+
 function formatTime(epochMs: number): string {
   const date = new Date(epochMs);
   if (Number.isNaN(date.getTime())) return "";
@@ -515,6 +526,10 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
       </main>
     </div>
   );
+}
+
+export function MessagesPluginView() {
+  return <MessagesAppView {...defaultOverlayContext()} />;
 }
 
 export function MessagesTuiView() {

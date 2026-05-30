@@ -1,3 +1,5 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { ModelType } from "@elizaos/core";
 import type {
   CapturedAction,
@@ -12,6 +14,16 @@ import {
 } from "./_helpers/app-control-http-stub";
 
 type RuntimeWithScenarioLlmFixtures = {
+  actions?: Array<{
+    name: string;
+    validate?: (...args: unknown[]) => Promise<boolean> | boolean;
+    handler?: (...args: unknown[]) => Promise<unknown> | unknown;
+  }>;
+  agentId?: string;
+  createTask?: (task: Record<string, unknown>) => Promise<string>;
+  deleteTask?: (taskId: string) => Promise<void>;
+  getService?: (serviceType: string) => unknown;
+  getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
   scenarioLlmFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -161,7 +173,23 @@ const views = [
     available: true,
     tags: ["settings"],
   },
+  {
+    id: "feed-board",
+    label: "Feed Board",
+    viewType: "gui",
+    description: "Review feed posts and editorial queues.",
+    path: "/feed-board",
+    pluginName: "@elizaos/plugin-feed",
+    available: true,
+    tags: ["feed", "editorial"],
+  },
 ];
+
+const appLoadDirectory = "/tmp/eliza-app-control-nl-routing/apps";
+const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
+const loadAppsInput = `Load apps from ${appLoadDirectory} directory`;
+const editFeedBoardInput = "Edit view feed-board plugin";
 
 const installedApps = [
   {
@@ -207,6 +235,32 @@ function launchResponse(runId: string) {
   };
 }
 
+function stopResponse(runId: string) {
+  return {
+    success: true,
+    appName: "feed",
+    runId,
+    stoppedAt: "2026-05-29T12:01:00.000Z",
+    pluginUninstalled: false,
+    needsRestart: false,
+    stopScope: "viewer-session",
+    message: `Stopped run ${runId}`,
+  };
+}
+
+function unloadPluginResponse(pluginName: string) {
+  return {
+    success: true,
+    appName: "feed",
+    runId: null,
+    stoppedAt: "2026-05-29T12:02:00.000Z",
+    pluginUninstalled: true,
+    needsRestart: true,
+    stopScope: "plugin-uninstalled",
+    message: `Plugin ${pluginName} unloaded.`,
+  };
+}
+
 function normalizedRequests() {
   return readAppControlHttpRequests().map((request) => ({
     body: request.body ?? null,
@@ -235,9 +289,148 @@ export default scenario({
     {
       type: "custom",
       name: "register strict LLM fixtures and app-control loopback APIs",
-      apply: (ctx) => {
+      apply: async (ctx) => {
+        process.env.ELIZA_REPO_ROOT = repoRoot;
+        process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         resetAppControlHttpStub();
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+
+        await fs.rm(path.dirname(appLoadDirectory), {
+          force: true,
+          recursive: true,
+        });
+        const loadedAppDir = path.join(appLoadDirectory, "app-loaded-console");
+        await fs.mkdir(loadedAppDir, { recursive: true });
+        await fs.writeFile(
+          path.join(loadedAppDir, "package.json"),
+          `${JSON.stringify(
+            {
+              name: "@scenario/app-loaded-console",
+              version: "1.0.0",
+              elizaos: {
+                app: {
+                  slug: "loaded-console",
+                  displayName: "Loaded Console",
+                  aliases: ["loaded"],
+                  permissions: {},
+                  isolation: "worker",
+                },
+              },
+            },
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
+
+        let nextTaskId = 1;
+        const scenarioTasks: Array<Record<string, unknown> & { id: string }> =
+          [];
+        runtime.createTask = async (task: Record<string, unknown>) => {
+          const id = `00000000-0000-4000-8000-${String(nextTaskId).padStart(12, "0")}`;
+          nextTaskId += 1;
+          scenarioTasks.push({
+            ...task,
+            agentId:
+              typeof task.agentId === "string" ? task.agentId : runtime.agentId,
+            id,
+          });
+          return id;
+        };
+        runtime.getTasks = async (query: Record<string, unknown> = {}) => {
+          const wantedTags = Array.isArray(query.tags)
+            ? query.tags.filter((tag): tag is string => typeof tag === "string")
+            : [];
+          const wantedAgentIds = Array.isArray(query.agentIds)
+            ? query.agentIds.filter(
+                (id): id is string => typeof id === "string",
+              )
+            : [];
+          return scenarioTasks.filter((task) => {
+            const tags = Array.isArray(task.tags)
+              ? task.tags.filter(
+                  (tag): tag is string => typeof tag === "string",
+                )
+              : [];
+            const agentId =
+              typeof task.agentId === "string" ? task.agentId : "";
+            return (
+              wantedTags.every((tag) => tags.includes(tag)) &&
+              (wantedAgentIds.length === 0 ||
+                agentId.length === 0 ||
+                wantedAgentIds.includes(agentId))
+            );
+          });
+        };
+        runtime.deleteTask = async (taskId: string) => {
+          const index = scenarioTasks.findIndex((task) => task.id === taskId);
+          if (index >= 0) scenarioTasks.splice(index, 1);
+        };
+
+        if (
+          !runtime.actions?.some(
+            (action) => action.name === "START_CODING_TASK",
+          )
+        ) {
+          runtime.actions?.push({
+            name: "START_CODING_TASK",
+            validate: async () => true,
+            handler: async (_runtime, _message, _state, options) => {
+              const parameters =
+                options &&
+                typeof options === "object" &&
+                !Array.isArray(options) &&
+                "parameters" in options &&
+                typeof (options as { parameters?: unknown }).parameters ===
+                  "object" &&
+                (options as { parameters?: unknown }).parameters !== null
+                  ? (options as { parameters: Record<string, unknown> })
+                      .parameters
+                  : {};
+              const label =
+                typeof parameters.label === "string"
+                  ? parameters.label
+                  : "coding-task";
+              const workdir =
+                typeof parameters.workdir === "string"
+                  ? parameters.workdir
+                  : feedPluginDir;
+              const sessionId = `scenario-${label.replace(/[^a-z0-9-]/gi, "-")}`;
+              return {
+                success: true,
+                data: {
+                  agents: [
+                    {
+                      sessionId,
+                      agentType: "codex",
+                      workdir,
+                      label,
+                      status: "running",
+                      workspaceId: "scenario-workspace",
+                      branch: "shaw/scenario-app-control",
+                    },
+                  ],
+                },
+              };
+            },
+          });
+        }
+
+        const registeredApps: unknown[] = [];
+        const fakeRegistryService = {
+          register: async (entry: unknown) => {
+            registeredApps.push(entry);
+          },
+          recordManifestRejection: async () => undefined,
+          readRegisteredForTest: () => [...registeredApps],
+        };
+        const previousGetService = runtime.getService?.bind(runtime);
+        runtime.getService = (serviceType: string) => {
+          if (serviceType === "app-registry") return fakeRegistryService;
+          return previousGetService?.(serviceType) ?? null;
+        };
+
+        let launchCount = 0;
         runtime.scenarioLlmFixtures?.register(
           handleResponseFixture("Open the settings view", "VIEWS"),
           plannerFixture(
@@ -271,6 +464,26 @@ export default scenario({
             },
             "Launched Feed. Run ID: run-feed-nl-1.",
           ),
+          handleResponseFixture("Relaunch the feed app", "APP"),
+          plannerFixture(
+            "Relaunch the feed app",
+            "APP",
+            {
+              action: "relaunch",
+              app: "feed",
+            },
+            "Relaunched Feed. New run ID: run-feed-nl-2.",
+          ),
+          handleResponseFixture(loadAppsInput, "APP"),
+          plannerFixture(
+            loadAppsInput,
+            "APP",
+            {
+              action: "load_from_directory",
+              directory: appLoadDirectory,
+            },
+            `Registered 1 app from ${appLoadDirectory}:\n  - Loaded Console (@scenario/app-loaded-console)\n\nApps are registered only — none were launched.`,
+          ),
           handleResponseFixture("Create a feed dashboard app", "APP"),
           plannerFixture(
             "Create a feed dashboard app",
@@ -290,6 +503,28 @@ export default scenario({
               choice: "cancel",
             },
             "Canceled. No app changes made.",
+          ),
+          handleResponseFixture(editFeedBoardInput, "VIEWS"),
+          plannerFixture(
+            editFeedBoardInput,
+            "VIEWS",
+            {
+              action: "edit",
+              view: "feed-board",
+              intent: "Make feed board show denser queue rows",
+            },
+            `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
+          ),
+          handleResponseFixture("Edit the feed app", "APP"),
+          plannerFixture(
+            "Edit the feed app",
+            "APP",
+            {
+              action: "create",
+              editTarget: "feed",
+              intent: "Tighten the feed app table density",
+            },
+            `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification will run when it emits APP_CREATE_DONE.`,
           ),
           handleResponseFixture("Delete the remote ledger view", "VIEWS"),
           plannerFixture(
@@ -340,16 +575,36 @@ export default scenario({
             request.method === "POST" &&
             request.pathname === "/api/apps/launch"
           ) {
-            return jsonResponse(launchResponse("run-feed-nl-1"));
+            launchCount += 1;
+            return jsonResponse(
+              launchResponse(
+                launchCount === 1 ? "run-feed-nl-1" : "run-feed-nl-2",
+              ),
+            );
+          }
+
+          if (
+            request.method === "GET" &&
+            request.pathname === "/api/apps/runs"
+          ) {
+            return jsonResponse([appRun("run-feed-old")]);
+          }
+
+          if (
+            request.method === "POST" &&
+            request.pathname === "/api/apps/runs/run-feed-old/stop"
+          ) {
+            return jsonResponse(stopResponse("run-feed-old"));
           }
 
           if (
             request.method === "POST" &&
             request.pathname === "/api/apps/stop"
           ) {
-            return jsonResponse({
-              message: "Plugin @elizaos/plugin-remote-ledger unloaded.",
-            });
+            const pluginName = String(
+              toRecord(request.body).name ?? "@elizaos/plugin-remote-ledger",
+            );
+            return jsonResponse(unloadPluginResponse(pluginName));
           }
 
           return undefined;
@@ -416,6 +671,44 @@ export default scenario({
     },
     {
       kind: "message",
+      name: "natural language relaunches an app",
+      text: "Relaunch the feed app",
+      responseIncludesAny: ["Relaunched Feed", "run-feed-nl-2"],
+      assertTurn: (execution) =>
+        expectRoutedAction(execution, {
+          actionName: "APP",
+          parameters: { action: "relaunch", app: "feed" },
+          resultFields: {
+            "values.mode": "relaunch",
+            "values.appName": "feed",
+            "values.runId": "run-feed-nl-2",
+          },
+        }),
+    },
+    {
+      kind: "message",
+      name: "natural language loads apps from directory",
+      text: loadAppsInput,
+      responseIncludesAny: [
+        "Registered 1 app",
+        "Loaded Console (@scenario/app-loaded-console)",
+      ],
+      assertTurn: (execution) =>
+        expectRoutedAction(execution, {
+          actionName: "APP",
+          parameters: {
+            action: "load_from_directory",
+            directory: appLoadDirectory,
+          },
+          resultFields: {
+            "values.mode": "load_from_directory",
+            "values.directory": appLoadDirectory,
+            "values.registeredCount": 1,
+          },
+        }),
+    },
+    {
+      kind: "message",
       name: "natural language enters app create choice flow",
       text: "Create a feed dashboard app",
       responseIncludesAny: ["Picking next step..."],
@@ -450,6 +743,47 @@ export default scenario({
     },
     {
       kind: "message",
+      name: "natural language edits a view",
+      text: editFeedBoardInput,
+      responseIncludesAny: ["Started view edit task for Feed Board"],
+      assertTurn: (execution) =>
+        expectRoutedAction(execution, {
+          actionName: "VIEWS",
+          parameters: {
+            action: "edit",
+            view: "feed-board",
+            intent: "Make feed board show denser queue rows",
+          },
+          resultFields: {
+            "values.mode": "edit",
+            "values.viewId": "feed-board",
+            "values.taskSessionId": "scenario-edit-view-feed-board",
+          },
+        }),
+    },
+    {
+      kind: "message",
+      name: "natural language edits an app",
+      text: "Edit the feed app",
+      responseIncludesAny: ["Started app edit task for Feed"],
+      assertTurn: (execution) =>
+        expectRoutedAction(execution, {
+          actionName: "APP",
+          parameters: {
+            action: "create",
+            editTarget: "feed",
+            intent: "Tighten the feed app table density",
+          },
+          resultFields: {
+            "values.mode": "create",
+            "values.subMode": "edit",
+            "values.name": "feed",
+            "values.taskSessionId": "scenario-edit-app-feed",
+          },
+        }),
+    },
+    {
+      kind: "message",
       name: "natural language deletes a view with explicit confirmation",
       text: "Delete the remote ledger view",
       responseIncludesAny: ["Deleted Remote Ledger"],
@@ -474,13 +808,13 @@ export default scenario({
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 3,
+      minCount: 4,
     },
     {
       type: "actionCalled",
       actionName: "APP",
       status: "success",
-      minCount: 3,
+      minCount: 6,
     },
     {
       type: "custom",
@@ -538,6 +872,48 @@ export default scenario({
           {
             body: null,
             method: "GET",
+            pathname: "/api/apps/runs",
+            response: { body: [appRun("run-feed-old")], status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "POST",
+            pathname: "/api/apps/runs/run-feed-old/stop",
+            response: { body: stopResponse("run-feed-old"), status: 200 },
+            search: "",
+          },
+          {
+            body: { name: "feed" },
+            method: "POST",
+            pathname: "/api/apps/launch",
+            response: { body: launchResponse("run-feed-nl-2"), status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/apps/installed",
+            response: { body: installedApps, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/views",
+            response: { body: { views }, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/apps/installed",
+            response: { body: installedApps, status: 200 },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
             pathname: "/api/views",
             response: { body: { views }, status: 200 },
             search: "",
@@ -547,9 +923,7 @@ export default scenario({
             method: "POST",
             pathname: "/api/apps/stop",
             response: {
-              body: {
-                message: "Plugin @elizaos/plugin-remote-ledger unloaded.",
-              },
+              body: unloadPluginResponse("@elizaos/plugin-remote-ledger"),
               status: 200,
             },
             search: "",

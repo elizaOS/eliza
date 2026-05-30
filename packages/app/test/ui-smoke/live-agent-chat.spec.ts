@@ -7,7 +7,11 @@
 
 import { expect, type Page, test } from "@playwright/test";
 import { selectLiveProvider } from "../../../app-core/test/helpers/live-provider";
-import { openAppPath, seedAppStorage } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 const LIVE_AGENT_CHAT_ENABLED = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 const LIVE_PROVIDER = selectLiveProvider();
@@ -19,8 +23,38 @@ const OPTIONAL_LIVE_ENDPOINTS = [
   /\/api\/vincent\/status(?:\?|$)/,
 ];
 
+type DeterministicAssistantFixture = {
+  fixture: string;
+  transport: string;
+  input: {
+    text: string;
+  };
+  action: {
+    type: string;
+    target: string | null;
+  };
+};
+
 function isOptionalLiveEndpoint(url: string): boolean {
   return OPTIONAL_LIVE_ENDPOINTS.some((pattern) => pattern.test(url));
+}
+
+function parseAssistantFixtureText(
+  text: string,
+): DeterministicAssistantFixture {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  expect(
+    start,
+    "Assistant message should contain a JSON object",
+  ).toBeGreaterThanOrEqual(0);
+  expect(
+    end,
+    "Assistant message should contain a complete JSON object",
+  ).toBeGreaterThan(start);
+  return JSON.parse(
+    text.slice(start, end + 1),
+  ) as DeterministicAssistantFixture;
 }
 
 function installFailureCollectors(page: Page): string[] {
@@ -51,6 +85,48 @@ function installFailureCollectors(page: Page): string[] {
   });
   return failures;
 }
+
+test("app chat sends a message to the deterministic keyless agent and renders parseable JSON", async ({
+  page,
+}) => {
+  await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
+
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 60_000,
+  });
+
+  const prompt = "Open the wallet inventory view from this keyless smoke test.";
+  await page.getByTestId("chat-composer-textarea").fill(prompt);
+  await expect(page.getByTestId("chat-composer-action")).toBeEnabled();
+  await page.getByTestId("chat-composer-action").click();
+
+  await expect(
+    page
+      .locator('[data-testid="chat-message"][data-role="user"]')
+      .filter({ hasText: prompt })
+      .last(),
+  ).toBeVisible({ timeout: 30_000 });
+
+  const assistantMessage = page
+    .locator('[data-testid="chat-message"][data-role="assistant"]')
+    .last();
+  await expect(assistantMessage).toBeVisible({ timeout: 60_000 });
+  const assistantText = (await assistantMessage.textContent())?.trim() ?? "";
+  const parsed = parseAssistantFixtureText(assistantText);
+  expect(parsed).toMatchObject({
+    fixture: "ui-smoke-assistant-v1",
+    transport: "sse",
+    input: {
+      text: prompt,
+    },
+    action: {
+      type: "navigate",
+      target: "/wallet",
+    },
+  });
+});
 
 test.describe("live agent chat", () => {
   test.skip(

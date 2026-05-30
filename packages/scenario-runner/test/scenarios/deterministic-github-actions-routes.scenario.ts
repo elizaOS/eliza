@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -11,6 +11,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -20,20 +24,23 @@ const COMMENT_BODY = "Deterministic comment";
 const COMMENT_URL = "https://github.test/octo/repo/issues/17#issuecomment-99";
 const PR_URL = "https://github.test/octo/repo/pull/17";
 const REVIEW_BODY = "Looks good";
+const ISSUE_CREATE_PREVIEW =
+  'About to create octo/repo issue: "Deterministic issue" [labels: scenario] [assignees: hubot] as agent. Re-invoke with confirmed: true to proceed.';
 
 type JsonRecord = Record<string, unknown>;
 
-type RuntimeWithGithubScenario = IAgentRuntime & {
-  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-  plugins?: Plugin[];
-  registerPlugin?: (plugin: Plugin) => Promise<void>;
-  routes?: Array<{
-    type?: string;
-    path: string;
-    handler?: unknown;
-    __scenarioGithubRoute?: boolean;
-  }>;
-};
+type RuntimeWithGithubScenario = IAgentRuntime &
+  RuntimeWithScenarioLlmFixtures & {
+    getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+    plugins?: Plugin[];
+    registerPlugin?: (plugin: Plugin) => Promise<void>;
+    routes?: Array<{
+      type?: string;
+      path: string;
+      handler?: unknown;
+      __scenarioGithubRoute?: boolean;
+    }>;
+  };
 
 type GithubLedgerEntry = {
   method: string;
@@ -228,9 +235,9 @@ async function ensureGithubPlugin(
     runtime.routes.push({ ...route, __scenarioGithubRoute: true });
   }
   const service =
-    ((await runtime.getServiceLoadPromise?.(
-      GitHubService.serviceType,
-    )) as GitHubService | undefined) ??
+    ((await runtime.getServiceLoadPromise?.(GitHubService.serviceType)) as
+      | GitHubService
+      | undefined) ??
     runtime.getService<GitHubService>(GitHubService.serviceType);
   if (!service) {
     throw new Error("GitHubService was not registered");
@@ -245,47 +252,174 @@ async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
     scenarioRuntime = runtime;
     githubLedger = [];
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
-    scenarioStateDir = mkdtempSync(
-      join(tmpdir(), "eliza-scenario-github-"),
-    );
+    scenarioStateDir = mkdtempSync(join(tmpdir(), "eliza-scenario-github-"));
     process.env.ELIZA_STATE_DIR = scenarioStateDir;
     const service = await ensureGithubPlugin(runtime);
     service.setClientForTesting("agent", fakeOctokit() as never);
     service.setClientForTesting("user", fakeOctokit() as never);
+    registerGithubStrictFixtures(runtime);
     return undefined;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
   }
 }
 
-function githubIssueOptions(confirmed: boolean): Record<string, unknown> {
+function githubIssueParameters(confirmed: boolean): Record<string, unknown> {
   return {
-    parameters: {
-      action: "issue_create",
-      repo: REPO,
-      title: ISSUE_TITLE,
-      body: ISSUE_BODY,
-      labels: ["scenario"],
-      assignees: ["hubot"],
-      as: "agent",
-      confirmed,
-    },
+    action: "issue_create",
+    repo: REPO,
+    title: ISSUE_TITLE,
+    body: ISSUE_BODY,
+    labels: ["scenario"],
+    assignees: ["hubot"],
+    as: "agent",
+    confirmed,
   };
 }
 
-function githubActionOptions(
+function githubActionParameters(
   action: string,
   parameters: Record<string, unknown> = {},
 ): Record<string, unknown> {
   return {
-    parameters: {
-      action,
-      repo: REPO,
-      as: "agent",
-      confirmed: true,
-      ...parameters,
-    },
+    action,
+    repo: REPO,
+    as: "agent",
+    confirmed: true,
+    ...parameters,
   };
+}
+
+const strictGithubRoutes = [
+  {
+    actionName: "GITHUB_ISSUE_CREATE",
+    args: githubIssueParameters(false),
+    contextIds: ["code"],
+    input: "create deterministic GitHub issue preview",
+    messageToUser: "Preparing issue preview.",
+  },
+  {
+    actionName: "GITHUB_ISSUE_CREATE",
+    args: githubIssueParameters(true),
+    contextIds: ["code"],
+    input: "create deterministic GitHub issue after confirmation",
+    messageToUser: `Created issue ${REPO}#17: ${ISSUE_URL}`,
+  },
+  {
+    actionName: "GITHUB_ISSUE_ASSIGN",
+    args: githubActionParameters("issue_assign", {
+      number: 17,
+      assignees: ["hubot", "octocat"],
+    }),
+    contextIds: ["code"],
+    input: "assign deterministic GitHub issue",
+    messageToUser: `Assigned [hubot, octocat] to ${REPO}#17`,
+  },
+  {
+    actionName: "GITHUB_ISSUE_CLOSE",
+    args: githubActionParameters("issue_close", { number: 17 }),
+    contextIds: ["code"],
+    input: "close deterministic GitHub issue",
+    messageToUser: `Closed ${REPO}#17: ${ISSUE_TITLE}`,
+  },
+  {
+    actionName: "GITHUB_ISSUE_REOPEN",
+    args: githubActionParameters("issue_reopen", { number: 17 }),
+    contextIds: ["code"],
+    input: "reopen deterministic GitHub issue",
+    messageToUser: `Reopened ${REPO}#17: ${ISSUE_TITLE}`,
+  },
+  {
+    actionName: "GITHUB_ISSUE_COMMENT",
+    args: githubActionParameters("issue_comment", {
+      number: 17,
+      body: COMMENT_BODY,
+    }),
+    contextIds: ["code"],
+    input: "comment on deterministic GitHub issue",
+    messageToUser: `Commented on ${REPO}#17: ${COMMENT_URL}`,
+  },
+  {
+    actionName: "GITHUB_ISSUE_LABEL",
+    args: githubActionParameters("issue_label", {
+      number: 17,
+      labels: ["scenario", "reviewed"],
+    }),
+    contextIds: ["code"],
+    input: "label deterministic GitHub issue",
+    messageToUser: `Applied labels [scenario, reviewed] to ${REPO}#17`,
+  },
+  {
+    actionName: "GITHUB_PR_LIST",
+    args: githubActionParameters("pr_list", {
+      state: "open",
+    }),
+    contextIds: ["code"],
+    input: "list deterministic GitHub pull requests",
+    messageToUser: "Found 1 pull request(s)",
+  },
+  {
+    actionName: "GITHUB",
+    args: githubActionParameters("pr_list", {
+      state: "open",
+    }),
+    contextIds: ["code"],
+    input: "route deterministic GitHub parent action to pull request list",
+    messageToUser: "Found 1 pull request(s)",
+  },
+  {
+    actionName: "GITHUB_PR_REVIEW",
+    args: githubActionParameters("pr_review", {
+      as: "user",
+      number: 17,
+      review_action: "approve",
+      body: REVIEW_BODY,
+    }),
+    contextIds: ["code"],
+    input: "approve deterministic GitHub pull request",
+    messageToUser: `Submitted approve review on ${REPO}#17`,
+  },
+  {
+    actionName: "GITHUB_NOTIFICATION_TRIAGE",
+    args: githubActionParameters("notification_triage", {
+      as: "user",
+    }),
+    contextIds: ["code"],
+    input: "triage deterministic GitHub notifications",
+    messageToUser: "Triaged 2 unread notification(s)",
+  },
+];
+
+function matchesGithubIssueCreatePreviewEvaluation(value: string): boolean {
+  return (
+    value.includes(
+      "message:user:\ncreate deterministic GitHub issue preview",
+    ) &&
+    value.includes("event:message_handler:") &&
+    value.includes(
+      "Stage 1 router marked this current turn as requiring a tool",
+    )
+  );
+}
+
+function registerGithubStrictFixtures(
+  runtime: RuntimeWithGithubScenario,
+): void {
+  registerStrictActionRouteFixtures(runtime, strictGithubRoutes);
+  runtime.scenarioLlmFixtures?.register({
+    name: "route-github-issue-create-preview-evaluator",
+    match: {
+      modelType: ModelType.RESPONSE_HANDLER,
+      input: matchesGithubIssueCreatePreviewEvaluation,
+    },
+    response: {
+      success: false,
+      decision: "FINISH",
+      thought: "The issue-create action produced a confirmation preview.",
+      messageToUser: ISSUE_CREATE_PREVIEW,
+    },
+    times: 1,
+  });
 }
 
 function expectGithubPreview(
@@ -299,12 +433,10 @@ function expectGithubPreview(
   if (readPath(action.result, "raw.requiresConfirmation") !== true) {
     return `expected requiresConfirmation=true, saw ${stableStringify(action.result)}`;
   }
-  const expectedPreview =
-    'About to create octo/repo issue: "Deterministic issue" [labels: scenario] [assignees: hubot] as agent. Re-invoke with confirmed: true to proceed.';
-  if (readPath(action.result, "raw.preview") !== expectedPreview) {
-    return `expected preview text ${JSON.stringify(expectedPreview)}, saw ${JSON.stringify(readPath(action.result, "raw.preview"))}`;
+  if (readPath(action.result, "raw.preview") !== ISSUE_CREATE_PREVIEW) {
+    return `expected preview text ${JSON.stringify(ISSUE_CREATE_PREVIEW)}, saw ${JSON.stringify(readPath(action.result, "raw.preview"))}`;
   }
-  if (execution.responseText !== expectedPreview) {
+  if (execution.responseText !== ISSUE_CREATE_PREVIEW) {
     return `expected responseText preview, saw ${JSON.stringify(execution.responseText)}`;
   }
   if (githubLedger.length !== 0) {
@@ -388,7 +520,11 @@ function expectGithubIssueState(
       "data.number": 17,
       "data.title": ISSUE_TITLE,
     })) {
-      const failure = expectEqual(readPath(action.result, path), expected, path);
+      const failure = expectEqual(
+        readPath(action.result, path),
+        expected,
+        path,
+      );
       if (failure) return failure;
     }
     return execution.responseText === responseText
@@ -684,38 +820,27 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub issue create requires explicit confirmation",
       text: "create deterministic GitHub issue preview",
-      actionName: "GITHUB_ISSUE_CREATE",
-      options: githubIssueOptions(false),
       assertTurn: expectGithubPreview,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub issue create calls fake Octokit after confirmation",
       text: "create deterministic GitHub issue after confirmation",
-      actionName: "GITHUB_ISSUE_CREATE",
-      options: githubIssueOptions(true),
       assertTurn: expectGithubCreate,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub issue assign calls fake Octokit",
       text: "assign deterministic GitHub issue",
-      actionName: "GITHUB_ISSUE_ASSIGN",
-      options: githubActionOptions("issue_assign", {
-        number: 17,
-        assignees: ["hubot", "octocat"],
-      }),
       assertTurn: expectGithubIssueAssign,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub issue close calls fake Octokit",
       text: "close deterministic GitHub issue",
-      actionName: "GITHUB_ISSUE_CLOSE",
-      options: githubActionOptions("issue_close", { number: 17 }),
       assertTurn: expectGithubIssueState(
         "GITHUB_ISSUE_CLOSE",
         "close",
@@ -723,11 +848,9 @@ export default scenario({
       ),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub issue reopen calls fake Octokit",
       text: "reopen deterministic GitHub issue",
-      actionName: "GITHUB_ISSUE_REOPEN",
-      options: githubActionOptions("issue_reopen", { number: 17 }),
       assertTurn: expectGithubIssueState(
         "GITHUB_ISSUE_REOPEN",
         "reopen",
@@ -735,68 +858,39 @@ export default scenario({
       ),
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub issue comment calls fake Octokit",
       text: "comment on deterministic GitHub issue",
-      actionName: "GITHUB_ISSUE_COMMENT",
-      options: githubActionOptions("issue_comment", {
-        number: 17,
-        body: COMMENT_BODY,
-      }),
       assertTurn: expectGithubIssueComment,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub issue label calls fake Octokit",
       text: "label deterministic GitHub issue",
-      actionName: "GITHUB_ISSUE_LABEL",
-      options: githubActionOptions("issue_label", {
-        number: 17,
-        labels: ["scenario", "reviewed"],
-      }),
       assertTurn: expectGithubIssueLabel,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub pull request list calls fake Octokit",
       text: "list deterministic GitHub pull requests",
-      actionName: "GITHUB_PR_LIST",
-      options: githubActionOptions("pr_list", {
-        state: "open",
-      }),
       assertTurn: expectGithubPrList,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub parent action routes to PR list",
       text: "route deterministic GitHub parent action to pull request list",
-      actionName: "GITHUB",
-      options: githubActionOptions("pr_list", {
-        state: "open",
-      }),
       assertTurn: expectGithubParentPrList,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub pull request review calls fake Octokit",
       text: "approve deterministic GitHub pull request",
-      actionName: "GITHUB_PR_REVIEW",
-      options: githubActionOptions("pr_review", {
-        as: "user",
-        number: 17,
-        review_action: "approve",
-        body: REVIEW_BODY,
-      }),
       assertTurn: expectGithubPrReview,
     },
     {
-      kind: "action",
+      kind: "message",
       name: "GitHub notification triage calls fake Octokit",
       text: "triage deterministic GitHub notifications",
-      actionName: "GITHUB_NOTIFICATION_TRIAGE",
-      options: githubActionOptions("notification_triage", {
-        as: "user",
-      }),
       assertTurn: expectGithubNotificationTriage,
     },
     {
@@ -809,6 +903,65 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_ISSUE_CREATE",
+      minCount: 2,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_ISSUE_ASSIGN",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_ISSUE_CLOSE",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_ISSUE_REOPEN",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_ISSUE_COMMENT",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_ISSUE_LABEL",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_PR_LIST",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_PR_REVIEW",
+      status: "success",
+      minCount: 1,
+    },
+    {
+      type: "actionCalled",
+      actionName: "GITHUB_NOTIFICATION_TRIAGE",
+      status: "success",
+      minCount: 1,
+    },
     {
       type: "custom",
       name: "GitHub fake Octokit ledger is exact and isolated state is restored",

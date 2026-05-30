@@ -44,10 +44,20 @@ test("first-run starts with setup choices before capability settings", async ({
 
   await expect(page.getByTestId("first-run-shell")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "What should Milady call you?" }),
+    page.getByRole("heading", { name: /Where should .* run\?/ }),
   ).toBeVisible();
-  await expect(page.getByPlaceholder("Your name")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+  await expect(page.getByTestId("first-run-runtime-cloud")).toBeVisible();
+  const localRuntime = page.getByTestId("first-run-runtime-local");
+  if (await localRuntime.count()) {
+    await expect(localRuntime).toBeVisible();
+  }
+  const remoteRuntime = page.getByTestId("first-run-runtime-remote");
+  if (await remoteRuntime.count()) {
+    await expect(remoteRuntime).toBeVisible();
+  }
+  await expect(
+    page.getByRole("button", { name: /^(Connect|Start)$/ }),
+  ).toBeVisible();
   await expect(
     page.getByRole("switch", { name: "Enable Computer Use" }),
   ).toHaveCount(0);

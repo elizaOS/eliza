@@ -1,4 +1,7 @@
-export { MessagesAppView } from "./components/MessagesAppView.tsx";
+export {
+  MessagesAppView,
+  MessagesPluginView,
+} from "./components/MessagesAppView.tsx";
 export {
   MESSAGES_APP_NAME,
   messagesApp,

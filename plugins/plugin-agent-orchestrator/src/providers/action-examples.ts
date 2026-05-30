@@ -14,7 +14,6 @@ import { getAcpService, logger } from "../actions/common.js";
 import {
   formatTaskAgentFrameworkLine,
   getTaskAgentFrameworkState,
-  looksLikeTaskAgentRequest,
   TASK_AGENT_FRAMEWORK_LABELS,
 } from "../services/task-agent-frameworks.js";
 
@@ -33,12 +32,8 @@ export const codingAgentExamplesProvider: Provider = {
   cacheStable: true,
   cacheScope: "agent",
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
-      const userText =
-        (typeof message.content === "string"
-          ? message.content
-          : message.content.text) ?? "";
       const acpService = getAcpService(runtime);
       const frameworkState = await getTaskAgentFrameworkState(
         runtime,
@@ -75,17 +70,9 @@ export const codingAgentExamplesProvider: Provider = {
         "  workspace: PROVISION_WORKSPACE or FINALIZE_WORKSPACE",
       ].join("\n");
 
-      if (!looksLikeTaskAgentRequest(userText)) {
-        return {
-          data: {
-            preferredTaskAgent: frameworkState.preferred.id,
-            frameworks,
-          },
-          values: { taskAgentExamples: compactText },
-          text: compactText,
-        };
-      }
-
+      // The provider's contextGate already scopes this to the code/tasks/
+      // agent_internal routing contexts, so when it runs at all the detailed
+      // task-agent examples are the right payload — no extra keyword gate.
       const detailedText = [
         compactText,
         "",

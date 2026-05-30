@@ -309,21 +309,20 @@ export async function regenerateSamanthaPresetFromBundle(
 
 /**
  * Pre-flight: detect a placeholder preset at the bundle's canonical path
- * and regenerate it via OmniVoice when possible. Called by
- * `EngineVoiceBridge.start()` (via `ensureActiveBundleVoiceReady`) before
- * the synchronous preset load.
+ * and regenerate it via OmniVoice when possible. Called by the engine's
+ * `ensureActiveBundleVoiceReady()` before the synchronous preset load.
  *
  * Outcomes:
  *
  *   - `real-preset`            — nothing to do; the file is a real preset.
- *   - `missing-bundle-preset`  — file does not exist; the bridge's existing
+ *   - `missing-bundle-preset`  — file does not exist; the engine's existing
  *                                error path runs (loud failure).
  *   - `regenerated`            — preset bytes were generated and written.
  *   - `placeholder-no-regen`   — placeholder detected but regen could not
  *                                run (FFI missing, reference clip missing,
  *                                etc.). Returned for the caller to log; the
- *                                bridge then falls through to af_bella via
- *                                discovery's fallback chain.
+ *                                engine then falls through to the bundled
+ *                                Kokoro default voice.
  */
 export async function ensureSamanthaPresetReady(
 	bundleRoot: string,

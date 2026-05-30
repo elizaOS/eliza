@@ -5,5 +5,5 @@ export default createViewBundleConfig({
   viewId: "messages",
   entry: "./src/components/MessagesAppView.tsx",
   outDir: "dist/views",
-  componentExport: "MessagesAppView",
+  componentExport: "MessagesPluginView",
 });

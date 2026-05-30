@@ -181,7 +181,7 @@ export function ElizaTransactionsSection({
             onClick={() => setStatusFilter(f.value)}
             className={`shrink-0 px-3 py-1.5 font-mono text-[10px] tracking-wide border transition-colors ${
               statusFilter === f.value
-                ? "text-[var(--brand-orange)] border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/5"
+                ? "text-white border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/5"
                 : "text-white/40 border-white/10 hover:text-white/70 hover:border-white/20"
             }`}
           >

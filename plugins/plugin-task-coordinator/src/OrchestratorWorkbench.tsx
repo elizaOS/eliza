@@ -18,9 +18,12 @@ import {
   Activity,
   Archive,
   ArrowDownToLine,
+  ArrowLeft,
   Bot,
   CircleStop,
   Copy,
+  Eye,
+  EyeOff,
   GitFork,
   Layers,
   Pause,
@@ -33,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useDeferredValue,
@@ -132,6 +136,7 @@ const FILTER_OPTIONS: StatusFilter[] = [
   "blocked",
   "validating",
   "waiting_on_user",
+  "interrupted",
   "open",
   "done",
   "failed",
@@ -384,21 +389,35 @@ export async function runOrchestratorCapability(
 // Token/cost figures are computed server-side. The client only formats them and
 // honors `state` so "unavailable" never renders as a misleading confident zero.
 
-function renderTokens(
-  usage: CodingAgentTaskUsageSummary,
+type UsageState = "measured" | "estimated" | "unavailable";
+
+// Shared token formatter so every surface (header, inspector total, per-provider
+// breakdown, sub-agent cards) renders the same `~` estimated prefix and `—`
+// unavailable marker instead of a misleading confident number.
+function formatTokenCount(
+  state: UsageState,
+  totalTokens: number,
   t: Translate,
   locale?: string,
 ): string {
-  if (usage.state === "unavailable") {
+  if (state === "unavailable") {
     return t("orchestrator.usage.unavailable", { defaultValue: "—" });
   }
-  const value = formatCompactNumber(usage.totalTokens, locale);
-  return usage.state === "estimated"
+  const value = formatCompactNumber(totalTokens, locale);
+  return state === "estimated"
     ? t("orchestrator.usage.estimatedTokens", {
         defaultValue: "~{{value}}",
         value,
       })
     : value;
+}
+
+function renderTokens(
+  usage: CodingAgentTaskUsageSummary,
+  t: Translate,
+  locale?: string,
+): string {
+  return formatTokenCount(usage.state, usage.totalTokens, t, locale);
 }
 
 function renderCost(
@@ -440,7 +459,7 @@ function StatChip({
             ? "text-accent"
             : "text-txt";
   return (
-    <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-border/50 bg-bg-accent/30 px-2 py-1">
+    <div className="flex shrink-0 items-center gap-1.5 rounded-md border border-border/50 bg-bg-accent/30 px-2 py-1">
       {icon ? <span className="shrink-0 text-muted">{icon}</span> : null}
       <span className="text-2xs uppercase tracking-[0.08em] text-muted">
         {label}
@@ -477,6 +496,7 @@ function InspectorSection({
 function WorkbenchHeader({
   status,
   busy,
+  isMobile,
   onNewTask,
   onPauseAll,
   onResumeAll,
@@ -485,99 +505,133 @@ function WorkbenchHeader({
 }: {
   status: CodingAgentOrchestratorStatus | null;
   busy: boolean;
+  isMobile: boolean;
   onNewTask: () => void;
   onPauseAll: () => void;
   onResumeAll: () => void;
   t: Translate;
   locale?: string;
 }) {
+  const title = (
+    <div className="flex shrink-0 items-center gap-2">
+      <Layers className="h-4 w-4 text-accent" />
+      <span className="text-sm font-semibold text-txt">
+        {t("orchestrator.title", { defaultValue: "Orchestrator" })}
+      </span>
+    </div>
+  );
+  const chips = (
+    <div
+      className="flex items-center gap-1.5"
+      style={
+        isMobile
+          ? { overflowX: "auto" }
+          : { flex: "1 1 0%", flexWrap: "wrap" }
+      }
+    >
+      <StatChip
+        label={t("orchestrator.stat.tasks", { defaultValue: "Tasks" })}
+        value={String(status?.taskCount ?? 0)}
+      />
+      <StatChip
+        label={t("orchestrator.stat.active", { defaultValue: "Active" })}
+        value={String(status?.activeTaskCount ?? 0)}
+        tone="ok"
+      />
+      <StatChip
+        label={t("orchestrator.stat.blocked", { defaultValue: "Blocked" })}
+        value={String(status?.blockedTaskCount ?? 0)}
+        tone="warn"
+      />
+      <StatChip
+        label={t("orchestrator.stat.validating", {
+          defaultValue: "Validating",
+        })}
+        value={String(status?.validatingTaskCount ?? 0)}
+        tone="accent"
+      />
+      <StatChip
+        label={t("orchestrator.stat.agents", { defaultValue: "Agents" })}
+        value={`${status?.activeSessionCount ?? 0}/${status?.sessionCount ?? 0}`}
+        icon={<Bot className="h-3 w-3" />}
+      />
+      {status ? (
+        <StatChip
+          label={t("orchestrator.stat.usage", { defaultValue: "Usage" })}
+          value={`${renderTokens(status.usage, t, locale)} · ${renderCost(status.usage, t, locale)}`}
+        />
+      ) : null}
+    </div>
+  );
+  const pauseAllLabel = t("orchestrator.action.pauseAll", {
+    defaultValue: "Pause all",
+  });
+  const resumeAllLabel = t("orchestrator.action.resumeAll", {
+    defaultValue: "Resume all",
+  });
+  const actions = (
+    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={busy || !status?.activeTaskCount}
+        onClick={onPauseAll}
+        className="h-7 gap-1 px-2 text-xs-tight"
+        aria-label={pauseAllLabel}
+        title={isMobile ? pauseAllLabel : undefined}
+        data-testid="orchestrator-pause-all"
+      >
+        <Pause className="h-3.5 w-3.5" />
+        {isMobile ? null : pauseAllLabel}
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        disabled={busy || !status?.pausedTaskCount}
+        onClick={onResumeAll}
+        className="h-7 gap-1 px-2 text-xs-tight"
+        aria-label={resumeAllLabel}
+        title={isMobile ? resumeAllLabel : undefined}
+        data-testid="orchestrator-resume-all"
+      >
+        <Play className="h-3.5 w-3.5" />
+        {isMobile ? null : resumeAllLabel}
+      </Button>
+      <Button
+        size="sm"
+        disabled={busy}
+        onClick={onNewTask}
+        className="h-7 gap-1 px-2.5 text-xs-tight"
+        data-testid="orchestrator-new-task"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {t("orchestrator.action.newTask", { defaultValue: "New task" })}
+      </Button>
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <header className="flex flex-col gap-2 border-b border-border/60 bg-bg px-3 py-2">
+        <div className="flex items-center gap-2">
+          {title}
+          {actions}
+        </div>
+        {chips}
+      </header>
+    );
+  }
+
   return (
     <header className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-bg px-3 py-2">
-      <div className="mr-1 flex items-center gap-2">
-        <Layers className="h-4 w-4 text-accent" />
-        <span className="text-sm font-semibold text-txt">
-          {t("orchestrator.title", { defaultValue: "Orchestrator" })}
-        </span>
-      </div>
-      <div className="flex flex-1 flex-wrap items-center gap-1.5">
-        <StatChip
-          label={t("orchestrator.stat.tasks", { defaultValue: "Tasks" })}
-          value={String(status?.taskCount ?? 0)}
-        />
-        <StatChip
-          label={t("orchestrator.stat.active", { defaultValue: "Active" })}
-          value={String(status?.activeTaskCount ?? 0)}
-          tone="ok"
-        />
-        <StatChip
-          label={t("orchestrator.stat.blocked", { defaultValue: "Blocked" })}
-          value={String(status?.blockedTaskCount ?? 0)}
-          tone="warn"
-        />
-        <StatChip
-          label={t("orchestrator.stat.validating", {
-            defaultValue: "Validating",
-          })}
-          value={String(status?.validatingTaskCount ?? 0)}
-          tone="accent"
-        />
-        <StatChip
-          label={t("orchestrator.stat.agents", { defaultValue: "Agents" })}
-          value={`${status?.activeSessionCount ?? 0}/${status?.sessionCount ?? 0}`}
-          icon={<Bot className="h-3 w-3" />}
-        />
-        {status ? (
-          <>
-            <StatChip
-              label={t("orchestrator.stat.tokens", { defaultValue: "Tokens" })}
-              value={renderTokens(status.usage, t, locale)}
-            />
-            <StatChip
-              label={t("orchestrator.stat.cost", { defaultValue: "Cost" })}
-              value={renderCost(status.usage, t, locale)}
-            />
-          </>
-        ) : null}
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy || !status?.activeTaskCount}
-          onClick={onPauseAll}
-          className="h-7 gap-1 px-2 text-xs-tight"
-          data-testid="orchestrator-pause-all"
-        >
-          <Pause className="h-3.5 w-3.5" />
-          {t("orchestrator.action.pauseAll", { defaultValue: "Pause all" })}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy || !status?.pausedTaskCount}
-          onClick={onResumeAll}
-          className="h-7 gap-1 px-2 text-xs-tight"
-          data-testid="orchestrator-resume-all"
-        >
-          <Play className="h-3.5 w-3.5" />
-          {t("orchestrator.action.resumeAll", { defaultValue: "Resume all" })}
-        </Button>
-        <Button
-          size="sm"
-          disabled={busy}
-          onClick={onNewTask}
-          className="h-7 gap-1 px-2.5 text-xs-tight"
-          data-testid="orchestrator-new-task"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t("orchestrator.action.newTask", { defaultValue: "New task" })}
-        </Button>
-      </div>
+      {title}
+      {chips}
+      {actions}
     </header>
   );
 }
 
-function FilterChips({
+function FilterSelect({
   status,
   active,
   onSelect,
@@ -594,54 +648,40 @@ function FilterChips({
     return status.byStatus[filter] ?? 0;
   };
   return (
-    <div className="flex flex-wrap gap-1">
+    <select
+      value={active}
+      onChange={(event) => onSelect(event.target.value as StatusFilter)}
+      className={FIELD_CLASS}
+      aria-label={t("orchestrator.filter.label", {
+        defaultValue: "Filter by status",
+      })}
+      data-testid="orchestrator-filter"
+    >
       {FILTER_OPTIONS.map((filter) => {
-        const selected = filter === active;
         const label =
           filter === "all"
             ? t("orchestrator.filter.all", { defaultValue: "All" })
             : labelStatus(filter, t);
         return (
-          <button
-            key={filter}
-            type="button"
-            onClick={() => onSelect(filter)}
-            className={`rounded-full border px-2 py-0.5 text-2xs transition-colors ${
-              selected
-                ? "border-accent/50 bg-accent/15 text-accent"
-                : "border-border/50 bg-bg-accent/20 text-muted hover:bg-bg-hover/50"
-            }`}
-            data-testid={`orchestrator-filter-${filter}`}
-          >
-            {label}
-            <span className="ml-1 tabular-nums opacity-70">
-              {countFor(filter)}
-            </span>
-          </button>
+          <option key={filter} value={filter}>
+            {label} ({countFor(filter)})
+          </option>
         );
       })}
-    </div>
+    </select>
   );
 }
 
 function TaskRailItem({
   thread,
   selected,
-  busy,
   onSelect,
-  onPause,
-  onResume,
-  onArchive,
   t,
   locale,
 }: {
   thread: CodingAgentTaskThread;
   selected: boolean;
-  busy: boolean;
   onSelect: (id: string) => void;
-  onPause: (id: string) => void;
-  onResume: (id: string) => void;
-  onArchive: (id: string) => void;
   t: Translate;
   locale?: string;
 }) {
@@ -670,7 +710,7 @@ function TaskRailItem({
         <div className="flex items-center gap-1.5">
           <span
             className={`inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[thread.status]}${
-              STATUS_PULSE.has(thread.status) ? " animate-pulse" : ""
+              STATUS_PULSE.has(thread.status) && !thread.paused ? " animate-pulse" : ""
             }`}
           />
           <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
@@ -687,9 +727,6 @@ function TaskRailItem({
               {labelPriority(thread.priority, t)}
             </Badge>
           ) : null}
-        </div>
-        <div className="truncate text-xs-tight text-muted">
-          {thread.originalRequest}
         </div>
         <div className="flex items-center gap-2.5 text-2xs text-muted">
           <Badge
@@ -708,45 +745,6 @@ function TaskRailItem({
           <span className="ml-auto truncate">{lastActivity}</span>
         </div>
       </button>
-      {selected ? (
-        <div className="flex gap-1 border-t border-border/40 px-2.5 py-1.5">
-          {thread.status === "archived" ? null : thread.paused ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onResume(thread.id)}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/60 disabled:opacity-50"
-              data-testid="orchestrator-task-resume"
-            >
-              <Play className="h-3 w-3" />
-              {t("orchestrator.action.resume", { defaultValue: "Resume" })}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onPause(thread.id)}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/60 disabled:opacity-50"
-              data-testid="orchestrator-task-pause"
-            >
-              <Pause className="h-3 w-3" />
-              {t("orchestrator.action.pause", { defaultValue: "Pause" })}
-            </button>
-          )}
-          {thread.status === "archived" ? null : (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onArchive(thread.id)}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/60 disabled:opacity-50"
-              data-testid="orchestrator-task-archive"
-            >
-              <Archive className="h-3 w-3" />
-              {t("orchestrator.action.archive", { defaultValue: "Archive" })}
-            </button>
-          )}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -774,7 +772,10 @@ function MessageEntry({
       className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}
       data-testid="orchestrator-message"
     >
-      <div className={`max-w-[88%] rounded-lg border px-2.5 py-1.5 ${tone}`}>
+      <div
+        className={`rounded-lg border px-2.5 py-1.5 ${tone}`}
+        style={{ maxWidth: "88%" }}
+      >
         <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
           <span className="font-semibold uppercase tracking-[0.06em]">
             {labelSender(message.senderKind, t)}
@@ -808,7 +809,9 @@ function EventEntry({
         {event.eventType.replace(/_/g, " ")}
       </span>
       {event.summary ? (
-        <span className="max-w-[50%] truncate">{event.summary}</span>
+        <span className="truncate" style={{ maxWidth: "50%" }}>
+          {event.summary}
+        </span>
       ) : null}
       <span className="shrink-0 tabular-nums">
         {formatClockTime(event.timestamp, locale)}
@@ -832,7 +835,7 @@ function SubAgentCard({
   locale?: string;
 }) {
   const stoppable = session.stoppedAt == null && session.status !== "completed";
-  const provider = [session.framework, session.providerSource, session.model]
+  const provider = [session.framework, session.model]
     .filter((part): part is string => Boolean(part))
     .join(" · ");
   const workspace =
@@ -869,13 +872,15 @@ function SubAgentCard({
         <div className="mt-0.5 truncate text-2xs text-muted">{provider}</div>
       ) : null}
       <div className="mt-0.5 flex items-center gap-2 text-2xs text-muted">
-        <span>{labelStatus2(session.status, t)}</span>
+        <span>{labelSessionStatus(session.status, t)}</span>
         {session.activeTool ? (
           <span className="truncate text-warn">{session.activeTool}</span>
         ) : null}
         <span className="ml-auto tabular-nums">
-          {formatCompactNumber(
-            session.inputTokens + session.outputTokens,
+          {formatTokenCount(
+            session.usageState,
+            session.totalTokens,
+            t,
             locale,
           )}
         </span>
@@ -887,7 +892,7 @@ function SubAgentCard({
 
 /** Sub-agent status labels reuse task-status keys where they overlap and fall
  * back to the raw token otherwise (sessions carry framework-specific states). */
-function labelStatus2(status: string, t: Translate): string {
+function labelSessionStatus(status: string, t: Translate): string {
   return t(`orchestrator.sessionStatus.${status}`, {
     defaultValue: status.replace(/_/g, " "),
   });
@@ -1017,7 +1022,7 @@ function UsageSection({
           </span>
         </span>
       </div>
-      {usage.byProvider.length > 0 ? (
+      {usage.byProvider.length > 1 ? (
         <div className="space-y-1">
           {usage.byProvider.map((entry) => (
             <div
@@ -1029,7 +1034,7 @@ function UsageSection({
                 {entry.model ? ` · ${entry.model}` : ""}
               </span>
               <span className="shrink-0 tabular-nums">
-                {formatCompactNumber(entry.totalTokens, locale)}
+                {formatTokenCount(entry.state, entry.totalTokens, t, locale)}
               </span>
               <span className="shrink-0 tabular-nums">
                 {entry.state === "unavailable"
@@ -1216,15 +1221,30 @@ function AddAgentForm({
   const [repo, setRepo] = useState("");
   const [task, setTask] = useState("");
 
+  const fieldLabels = {
+    label: t("orchestrator.addAgent.label", {
+      defaultValue: "Label (optional)",
+    }),
+    framework: t("orchestrator.addAgent.framework", {
+      defaultValue: "Framework",
+    }),
+    model: t("orchestrator.addAgent.model", { defaultValue: "Model" }),
+    repo: t("orchestrator.addAgent.repo", {
+      defaultValue: "Repo or workdir (optional)",
+    }),
+    task: t("orchestrator.addAgent.task", {
+      defaultValue: "Sub-task for this agent (optional)",
+    }),
+  };
+
   return (
     <div className="mt-1.5 space-y-1.5 rounded-md border border-border/50 bg-bg/40 p-2">
       <input
         value={label}
         onChange={(event) => setLabel(event.target.value)}
         className={FIELD_CLASS}
-        placeholder={t("orchestrator.addAgent.label", {
-          defaultValue: "Label (optional)",
-        })}
+        placeholder={fieldLabels.label}
+        aria-label={fieldLabels.label}
         data-testid="orchestrator-add-agent-label"
       />
       <div className="flex gap-1.5">
@@ -1232,35 +1252,31 @@ function AddAgentForm({
           value={framework}
           onChange={(event) => setFramework(event.target.value)}
           className={FIELD_CLASS}
-          placeholder={t("orchestrator.addAgent.framework", {
-            defaultValue: "Framework",
-          })}
+          placeholder={fieldLabels.framework}
+          aria-label={fieldLabels.framework}
         />
         <input
           value={model}
           onChange={(event) => setModel(event.target.value)}
           className={FIELD_CLASS}
-          placeholder={t("orchestrator.addAgent.model", {
-            defaultValue: "Model",
-          })}
+          placeholder={fieldLabels.model}
+          aria-label={fieldLabels.model}
         />
       </div>
       <input
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
         className={FIELD_CLASS}
-        placeholder={t("orchestrator.addAgent.repo", {
-          defaultValue: "Repo or workdir (optional)",
-        })}
+        placeholder={fieldLabels.repo}
+        aria-label={fieldLabels.repo}
       />
       <textarea
         value={task}
         onChange={(event) => setTask(event.target.value)}
         rows={2}
         className={`${FIELD_CLASS} resize-none`}
-        placeholder={t("orchestrator.addAgent.task", {
-          defaultValue: "Sub-task for this agent (optional)",
-        })}
+        placeholder={fieldLabels.task}
+        aria-label={fieldLabels.task}
       />
       <div className="flex justify-end gap-2">
         <Button
@@ -1328,6 +1344,9 @@ function ControlButton({
 
 function TaskInspector({
   detail,
+  className,
+  style,
+  onClose,
   busy,
   addAgentOpen,
   onPause,
@@ -1344,6 +1363,9 @@ function TaskInspector({
   locale,
 }: {
   detail: CodingAgentTaskThreadDetail;
+  className?: string;
+  style?: CSSProperties;
+  onClose?: () => void;
   busy: boolean;
   addAgentOpen: boolean;
   onPause: () => void;
@@ -1365,12 +1387,40 @@ function TaskInspector({
   );
   const artifacts = [...detail.artifacts].reverse().slice(0, 12);
   const archived = detail.status === "archived";
+  const providerPolicyLine = detail.providerPolicy
+    ? [
+        detail.providerPolicy.preferredFramework,
+        detail.providerPolicy.providerSource,
+        detail.providerPolicy.model,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(" · ")
+    : "";
 
   return (
     <div
-      className="flex w-80 shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 bg-bg p-2.5"
+      className={`shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-border/60 bg-bg p-2.5 ${className ?? "flex w-80"}`}
+      style={style}
       data-testid="orchestrator-inspector"
     >
+      {onClose ? (
+        <div className="flex items-center justify-between">
+          <h3 className="text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
+            {t("orchestrator.inspector.title", { defaultValue: "Details" })}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="-mr-1 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+            aria-label={t("orchestrator.action.closeDetails", {
+              defaultValue: "Close details",
+            })}
+            data-testid="orchestrator-close-inspector"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-1">
         {archived ? (
           <ControlButton
@@ -1504,28 +1554,13 @@ function TaskInspector({
       ) : null}
       <UsageSection usage={detail.usage} t={t} locale={locale} />
 
-      {detail.providerPolicy &&
-      (detail.providerPolicy.preferredFramework ||
-        detail.providerPolicy.providerSource ||
-        detail.providerPolicy.model) ? (
+      {providerPolicyLine ? (
         <InspectorSection
           title={t("orchestrator.providerPolicy", {
             defaultValue: "Provider policy",
           })}
         >
-          <div className="space-y-0.5 text-xs-tight text-txt">
-            {detail.providerPolicy.preferredFramework ? (
-              <div>{detail.providerPolicy.preferredFramework}</div>
-            ) : null}
-            {detail.providerPolicy.providerSource ? (
-              <div className="text-muted">
-                {detail.providerPolicy.providerSource}
-              </div>
-            ) : null}
-            {detail.providerPolicy.model ? (
-              <div className="text-muted">{detail.providerPolicy.model}</div>
-            ) : null}
-          </div>
+          <p className="text-xs-tight text-txt">{providerPolicyLine}</p>
         </InspectorSection>
       ) : null}
     </div>
@@ -1535,6 +1570,163 @@ function TaskInspector({
 function readInitialTaskId(): string | null {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get("task");
+}
+
+const MOBILE_QUERY = "(max-width: 767px)";
+
+// The view bundle ships no CSS — it borrows the host stylesheet, which never
+// generates the plugin's responsive (`md:`) variants. So responsiveness is
+// driven in JS via matchMedia and applied with always-present classes + inline
+// styles instead of breakpoint utilities.
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia(MOBILE_QUERY).matches;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(MOBILE_QUERY);
+    const onChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+    setIsMobile(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return isMobile;
+}
+
+// Mobile inspector slide-over geometry. Inline styles (not `md:` utilities)
+// because the bundle has no CSS of its own — see useIsMobile.
+const INSPECTOR_DRAWER_STYLE: CSSProperties = {
+  position: "absolute",
+  insetBlock: 0,
+  right: 0,
+  zIndex: 30,
+  width: "86%",
+  maxWidth: "22rem",
+  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.45)",
+};
+
+const HIDDEN_STYLE: CSSProperties = { display: "none" };
+
+// Timeline header above the message stream. Desktop packs it into one row;
+// mobile splits into a title row (back · status · title · details) and a
+// secondary controls row (status badge · system-events toggle) so the task
+// title is never crushed by the trailing controls.
+function TimelineHeader({
+  detail,
+  isMobile,
+  showSystem,
+  onBack,
+  onToggleSystem,
+  onOpenInspector,
+  t,
+}: {
+  detail: CodingAgentTaskThreadDetail;
+  isMobile: boolean;
+  showSystem: boolean;
+  onBack: () => void;
+  onToggleSystem: () => void;
+  onOpenInspector: () => void;
+  t: Translate;
+}) {
+  const statusDot = (
+    <span
+      className={`inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[detail.status]}${
+        STATUS_PULSE.has(detail.status) && !detail.paused ? " animate-pulse" : ""
+      }`}
+    />
+  );
+  const title = (
+    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
+      {detail.title}
+    </span>
+  );
+  const badge = (
+    <Badge
+      variant="secondary"
+      className={`shrink-0 text-3xs ${STATUS_BADGE[detail.status]}`}
+    >
+      {labelStatus(detail.status, t)}
+    </Badge>
+  );
+  const pausedBadge = detail.paused ? (
+    <Badge
+      variant="secondary"
+      className="shrink-0 gap-0.5 bg-warn/20 text-3xs text-warn"
+    >
+      <Pause className="h-3 w-3" />
+      {t("orchestrator.status.paused", { defaultValue: "Paused" })}
+    </Badge>
+  ) : null;
+  const systemEventsLabel = t("orchestrator.systemEvents", {
+    defaultValue: "System events",
+  });
+  const systemToggle = (
+    <button
+      type="button"
+      onClick={onToggleSystem}
+      className={`shrink-0 rounded border p-1 transition-colors ${
+        showSystem
+          ? "border-accent/40 bg-accent/10 text-accent"
+          : "border-border/50 text-muted hover:bg-bg-hover/50"
+      }`}
+      aria-label={systemEventsLabel}
+      aria-pressed={showSystem}
+      title={systemEventsLabel}
+      data-testid="orchestrator-toggle-system"
+    >
+      {showSystem ? (
+        <Eye className="h-3.5 w-3.5" />
+      ) : (
+        <EyeOff className="h-3.5 w-3.5" />
+      )}
+    </button>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="border-b border-border/50 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="-ml-1 shrink-0 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+            aria-label={t("orchestrator.action.backToList", {
+              defaultValue: "Back to tasks",
+            })}
+            data-testid="orchestrator-back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          {statusDot}
+          {title}
+          <button
+            type="button"
+            onClick={onOpenInspector}
+            className="shrink-0 rounded border border-border/50 px-1.5 py-0.5 text-2xs text-muted transition-colors hover:bg-bg-hover/50"
+            data-testid="orchestrator-open-inspector"
+          >
+            {t("orchestrator.action.details", { defaultValue: "Details" })}
+          </button>
+        </div>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          {badge}
+          {pausedBadge}
+          {systemToggle}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
+      {statusDot}
+      {title}
+      {badge}
+      {pausedBadge}
+      {systemToggle}
+    </div>
+  );
 }
 
 export function OrchestratorWorkbench() {
@@ -1564,11 +1756,13 @@ export function OrchestratorWorkbench() {
   const [composer, setComposer] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [addAgentOpen, setAddAgentOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const isMobile = useIsMobile();
   const deferredSearch = useDeferredValue(search.trim());
   const detailReqRef = useRef(0);
   const selectedIdRef = useRef<string | null>(selectedId);
@@ -1637,6 +1831,10 @@ export function OrchestratorWorkbench() {
   }, [fetchTasksAndStatus]);
 
   useEffect(() => {
+    // Reset transient per-task UI (mobile inspector drawer, add-agent form)
+    // whenever the selection changes so a freshly opened task starts clean.
+    setInspectorOpen(false);
+    setAddAgentOpen(false);
     if (!selectedId) {
       setDetail(null);
       setMessages([]);
@@ -1753,6 +1951,7 @@ export function OrchestratorWorkbench() {
       <WorkbenchHeader
         status={status}
         busy={mutating}
+        isMobile={isMobile}
         onNewTask={() => setCreateOpen(true)}
         onPauseAll={() => runMutation(() => client.pauseAllOrchestratorTasks())}
         onResumeAll={() =>
@@ -1773,10 +1972,13 @@ export function OrchestratorWorkbench() {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1">
-        {/* Left rail */}
+      <div className="relative flex min-h-0 flex-1">
+        {/* Left rail — full-width list on mobile, fixed rail on desktop.
+            Hidden on mobile once a task is open (master-detail navigation). */}
         <aside
-          className="flex w-72 shrink-0 flex-col border-r border-border/60 bg-bg"
+          className={`shrink-0 flex-col border-r border-border/60 bg-bg ${
+            isMobile ? (selectedId ? "hidden" : "flex w-full") : "flex w-72"
+          }`}
           data-testid="orchestrator-rail"
         >
           <div className="space-y-2 border-b border-border/50 p-2.5">
@@ -1789,7 +1991,7 @@ export function OrchestratorWorkbench() {
               className={FIELD_CLASS}
               data-testid="orchestrator-search"
             />
-            <FilterChips
+            <FilterSelect
               status={status}
               active={statusFilter}
               onSelect={setStatusFilter}
@@ -1800,7 +2002,8 @@ export function OrchestratorWorkbench() {
                 type="checkbox"
                 checked={showArchived}
                 onChange={(event) => setShowArchived(event.target.checked)}
-                className="h-3 w-3 accent-[var(--accent)]"
+                className="h-3 w-3"
+                style={{ accentColor: "var(--accent)" }}
                 data-testid="orchestrator-show-archived"
               />
               {t("orchestrator.showArchived", {
@@ -1830,23 +2033,8 @@ export function OrchestratorWorkbench() {
                   key={thread.id}
                   thread={thread}
                   selected={thread.id === selectedId}
-                  busy={mutating}
                   onSelect={(id) =>
                     setSelectedId((prev) => (prev === id ? null : id))
-                  }
-                  onPause={(id) =>
-                    runMutation(() => client.pauseOrchestratorTask(id))
-                  }
-                  onResume={(id) =>
-                    runMutation(() => client.resumeOrchestratorTask(id))
-                  }
-                  onArchive={(id) =>
-                    runMutation(async () => {
-                      await client.archiveCodingAgentTaskThread(id);
-                      if (!showArchived && selectedIdRef.current === id) {
-                        setSelectedId(null);
-                      }
-                    })
                   }
                   t={t}
                   locale={locale}
@@ -1856,43 +2044,24 @@ export function OrchestratorWorkbench() {
           </div>
         </aside>
 
-        {/* Center timeline */}
+        {/* Center timeline — hidden on mobile until a task is selected. */}
         <main
-          className="flex min-w-0 flex-1 flex-col bg-bg-accent/10"
+          className={`min-w-0 flex-1 flex-col bg-bg-accent/10 ${
+            isMobile ? (selectedId ? "flex" : "hidden") : "flex"
+          }`}
           data-testid="orchestrator-timeline"
         >
           {detail ? (
             <>
-              <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
-                <span
-                  className={`inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[detail.status]}${
-                    STATUS_PULSE.has(detail.status) ? " animate-pulse" : ""
-                  }`}
-                />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
-                  {detail.title}
-                </span>
-                <Badge
-                  variant="secondary"
-                  className={`shrink-0 text-3xs ${STATUS_BADGE[detail.status]}`}
-                >
-                  {labelStatus(detail.status, t)}
-                </Badge>
-                <button
-                  type="button"
-                  onClick={() => setShowSystem((prev) => !prev)}
-                  className={`shrink-0 rounded border px-1.5 py-0.5 text-2xs transition-colors ${
-                    showSystem
-                      ? "border-accent/40 bg-accent/10 text-accent"
-                      : "border-border/50 text-muted hover:bg-bg-hover/50"
-                  }`}
-                  data-testid="orchestrator-toggle-system"
-                >
-                  {t("orchestrator.systemEvents", {
-                    defaultValue: "System events",
-                  })}
-                </button>
-              </div>
+              <TimelineHeader
+                detail={detail}
+                isMobile={isMobile}
+                showSystem={showSystem}
+                onBack={() => setSelectedId(null)}
+                onToggleSystem={() => setShowSystem((prev) => !prev)}
+                onOpenInspector={() => setInspectorOpen(true)}
+                t={t}
+              />
               <div
                 className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3"
                 data-testid="orchestrator-message-list"
@@ -1968,6 +2137,36 @@ export function OrchestratorWorkbench() {
                 </div>
               </div>
             </>
+          ) : selectedId ? (
+            <>
+              {isMobile ? (
+                <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(null)}
+                    className="-ml-1 shrink-0 rounded p-1 text-muted transition-colors hover:bg-bg-hover/60 hover:text-txt"
+                    aria-label={t("orchestrator.action.backToList", {
+                      defaultValue: "Back to tasks",
+                    })}
+                    data-testid="orchestrator-back-loading"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <span className="text-sm font-medium text-muted">
+                    {t("orchestrator.loadingTask", {
+                      defaultValue: "Loading task…",
+                    })}
+                  </span>
+                </div>
+              ) : null}
+              <div className="flex flex-1 items-center justify-center p-6">
+                <p className="text-xs text-muted">
+                  {t("orchestrator.loadingTask", {
+                    defaultValue: "Loading task…",
+                  })}
+                </p>
+              </div>
+            </>
           ) : (
             <div className="flex flex-1 items-center justify-center p-6">
               <EmptyWidgetState
@@ -1980,10 +2179,31 @@ export function OrchestratorWorkbench() {
           )}
         </main>
 
-        {/* Right inspector */}
+        {/* Right inspector — inline pane on desktop, slide-over drawer on
+            mobile (toggled by the Details button in the timeline header). */}
+        {detail && isMobile && inspectorOpen ? (
+          <button
+            type="button"
+            aria-label={t("orchestrator.action.closeDetails", {
+              defaultValue: "Close details",
+            })}
+            onClick={() => setInspectorOpen(false)}
+            className="absolute inset-0 z-20 bg-black/40"
+            data-testid="orchestrator-inspector-backdrop"
+          />
+        ) : null}
         {detail ? (
           <TaskInspector
             detail={detail}
+            className={isMobile ? "flex" : "flex w-80"}
+            style={
+              isMobile
+                ? inspectorOpen
+                  ? INSPECTOR_DRAWER_STYLE
+                  : HIDDEN_STYLE
+                : undefined
+            }
+            onClose={isMobile ? () => setInspectorOpen(false) : undefined}
             busy={mutating}
             addAgentOpen={addAgentOpen}
             onPause={() =>

@@ -9,6 +9,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import gitPathologyPlugin, {
   GIT_PATHOLOGY_SERVICE_NAME,
 } from "../../../../plugins/plugin-gitpathologist/src/index.ts";
+import {
+  type RuntimeWithScenarioLlmFixtures,
+  registerStrictActionRouteFixtures,
+} from "./_helpers/strict-llm-action-fixtures";
 
 /**
  * Keyless GIT_PATHOLOGY coverage.
@@ -34,6 +38,16 @@ const tmpRoot = path.join(
 const cacheDir = path.join(tmpRoot, "cache");
 
 const listParameters = { action: "list" };
+
+const strictGitPathologyRoutes = [
+  {
+    actionName: "GIT_PATHOLOGY",
+    args: listParameters,
+    contextIds: ["code"],
+    input: "Run the git pathology list action for cached reports",
+    messageToUser: "No cached pathology reports",
+  },
+];
 
 type JsonRecord = Record<string, unknown>;
 
@@ -93,16 +107,31 @@ function expectActionOptions(
   action: CapturedAction,
   expectedParameters: JsonRecord,
 ): string | undefined {
-  return expectEqual(
-    actionParameters(action),
-    { parameters: expectedParameters },
-    `${action.actionName} handler options`,
-  );
+  const actual = actionParameters(action);
+  if (
+    !expectEqual(
+      actual,
+      expectedParameters,
+      `${action.actionName} handler options`,
+    )
+  ) {
+    return undefined;
+  }
+  const nested = isRecord(actual.parameters) ? actual.parameters : null;
+  if (
+    nested &&
+    !expectEqual(
+      nested,
+      expectedParameters,
+      `${action.actionName} nested handler parameters`,
+    )
+  ) {
+    return undefined;
+  }
+  return `expected ${action.actionName} handler parameters to include ${stableStringify(expectedParameters)}, saw ${stableStringify(actual)}`;
 }
 
-function expectListTurn(
-  execution: ScenarioTurnExecution,
-): string | undefined {
+function expectListTurn(execution: ScenarioTurnExecution): string | undefined {
   const action = firstAction(execution, "GIT_PATHOLOGY");
   if (typeof action === "string") return action;
   return (
@@ -116,9 +145,13 @@ function expectListTurn(
       if (!Array.isArray(data.reports)) {
         return `expected data.reports array, saw ${stableStringify(data.reports)}`;
       }
-      return data.reports.length === 0
+      if (data.reports.length !== 0) {
+        return `expected empty reports for fresh cache, saw ${data.reports.length}`;
+      }
+      return action.result?.text ===
+        "No cached pathology reports for this repo yet."
         ? undefined
-        : `expected empty reports for fresh cache, saw ${data.reports.length}`;
+        : `expected GIT_PATHOLOGY result.text to report empty cache, saw ${stableStringify(action.result?.text)}`;
     })()
   );
 }
@@ -144,14 +177,14 @@ export default scenario({
         process.env.GITPATHOLOGIST_CACHE_DIR = cacheDir;
 
         const runtime = ctx.runtime as
-          | {
+          | (RuntimeWithScenarioLlmFixtures & {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (
                 plugin: typeof gitPathologyPlugin,
               ) => Promise<void>;
               getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
               getService?: (serviceType: string) => unknown;
-            }
+            })
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
@@ -167,6 +200,7 @@ export default scenario({
         if (!runtime.getService?.(GIT_PATHOLOGY_SERVICE_NAME)) {
           return "GitPathologyService unavailable after registerPlugin";
         }
+        registerStrictActionRouteFixtures(runtime, strictGitPathologyRoutes);
         return undefined;
       },
     },
@@ -180,11 +214,9 @@ export default scenario({
   ],
   turns: [
     {
-      kind: "action",
+      kind: "message",
       name: "list cached pathology reports",
-      text: "List the cached git pathology reports",
-      actionName: "GIT_PATHOLOGY",
-      options: { parameters: listParameters },
+      text: "Run the git pathology list action for cached reports",
       responseIncludesAny: [
         "No cached pathology reports",
         "Cached pathology reports",

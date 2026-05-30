@@ -390,7 +390,7 @@ export function AppMonetizationSettings({
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.purchaseSharePercentage === preset
-                        ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
+                        ? "bg-orange-500/20 text-white border border-orange-500/30"
                         : "bg-white/5 text-neutral-400 hover:bg-white/10 border border-transparent",
                     )}
                     onClick={() =>

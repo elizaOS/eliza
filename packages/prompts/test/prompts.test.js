@@ -154,6 +154,50 @@ describe("prompt templates (src/index.ts)", () => {
     );
   });
 
+  it("messageHandlerTemplate answers date/time/year from CURRENT_TIME without stale-knowledge refusal", () => {
+    const src = readSrc();
+    const body = src.match(
+      /export const messageHandlerTemplate = `([^`]+)`/,
+    )[1];
+    assert.match(
+      body,
+      /EXCEPTION — the current date, time, and year: your runtime context always carries a CURRENT_TIME signal/,
+      "current date/time/year should be explicitly answerable from runtime context",
+    );
+    assert.match(
+      body,
+      /Answer those directly from that context; never tell the user you "don't have live access" to the date, time, or year/,
+      "date/time/year asks should not get the generic live-access refusal",
+    );
+    assert.match(
+      body,
+      /When the user asks for current\/live\/latest information and no tool is available to fetch it this turn, decline plainly/,
+      "unrelated current/live/latest asks should still use tools or decline",
+    );
+  });
+
+  it("messageHandlerTemplate routes site/app build requests to coding, not scheduled tasks", () => {
+    const src = readSrc();
+    const body = src.match(
+      /export const messageHandlerTemplate = `([^`]+)`/,
+    )[1];
+    assert.match(
+      body,
+      /build\/create\/make\/update\/edit\/fix\/redeploy a website\/web page\/app\/site\/landing page\/feature/,
+      "build/update website language should be an explicit coding route",
+    );
+    assert.match(
+      body,
+      /code \(SPAWN_AGENT \/ TASKS spawn_agent\); NOT tasks\/automation\/settings\/scheduled/,
+      "coding route should name TASKS/SPAWN_AGENT and exclude scheduled tasks",
+    );
+    assert.match(
+      body,
+      /screen-time FOCUS BLOCK only/,
+      "focus-block routing should be narrowed to blocking/limiting apps, not app/site building",
+    );
+  });
+
   it("messageHandlerTemplate forbids phantom action claims in replyText across every verb form", () => {
     // Regression coverage for the structural rule that prevents Stage 1 from
     // writing prose that claims/implies an investigative action when no tool

@@ -52,7 +52,7 @@
  *   `ELIZA_DESKTOP_SCREENSHOT_SERVER=0`.
  */
 
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
   appendFileSync,
@@ -148,6 +148,8 @@ const appDir = resolveRendererAppDir();
 const electrobunDir = resolveElectrobunDir();
 const appIdentity = appIdentityEnv(appDir);
 const defaultElizaNamespace = appIdentity.ELIZA_NAMESPACE || "eliza";
+const API_PROCESS_SPAWNED_AT_ENV = "ELIZA_API_PROCESS_SPAWNED_AT_MS";
+const PROCESS_SPAWNED_AT_ENV = "ELIZA_PROCESS_SPAWNED_AT_MS";
 
 if (
   isElizaMonorepo &&
@@ -844,16 +846,24 @@ async function launch() {
   }
 
   const apiSupervisor = createApiSupervisor({
-    spawnChild: () =>
-      spawn(BUN_EXECUTABLE, apiArgs, {
+    spawnChild: () => {
+      const apiProcessSpawnedAtMs = String(Date.now());
+      return spawn(BUN_EXECUTABLE, apiArgs, {
         cwd: bundleRoot,
         env: extendNodePathEnv(
-          { ...process.env, ...apiEnv, FORCE_COLOR: "1" },
+          {
+            ...process.env,
+            ...apiEnv,
+            [API_PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+            [PROCESS_SPAWNED_AT_ENV]: apiProcessSpawnedAtMs,
+            FORCE_COLOR: "1",
+          },
           bundleRoot,
         ),
         stdio: ["ignore", "pipe", "pipe"],
         ...(process.platform !== "win32" ? { detached: true } : {}),
-      }),
+      });
+    },
     onSpawn: (child) => {
       if (child.stdout) prefixStream("api", child.stdout);
       if (child.stderr) prefixStream("api", child.stderr);

@@ -29,7 +29,11 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
-const ALL_PAGES_SPEC = path.join(HERE, "ui-smoke", "all-pages-clicksafe.spec.ts");
+const ALL_PAGES_SPEC = path.join(
+  HERE,
+  "ui-smoke",
+  "all-pages-clicksafe.spec.ts",
+);
 const PLUGIN_VIEWS_SPEC = path.join(
   HERE,
   "ui-smoke",
@@ -39,11 +43,16 @@ const INTERNAL_TOOL_APPS_SOURCE = path.resolve(
   HERE,
   "../../ui/src/components/apps/internal-tool-apps.ts",
 );
+const APP_MAIN_SOURCE = path.resolve(HERE, "../src/main.tsx");
+const SIDE_EFFECT_PLUGIN_SOURCE = path.resolve(
+  HERE,
+  "../src/plugin-registrations.ts",
+);
 
 type PluginViewCase = {
   manifestPath: string;
   id: string;
-  viewType: "gui" | "tui";
+  viewType: "gui" | "tui" | "xr";
   path: string;
 };
 
@@ -74,6 +83,207 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-facewear/src/index.ts",
 ] as const;
 
+const APP_SHELL_REGISTRATION_SOURCES = [
+  "plugins/plugin-facewear/src/register.ts",
+  "plugins/plugin-phone/src/register-companion-page.ts",
+  "plugins/plugin-wallet-ui/src/register-routes.ts",
+] as const;
+
+const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
+  "@elizaos/app-core": null,
+  "@elizaos/plugin-2004scape": "plugins/plugin-2004scape/src/index.ts",
+  "@elizaos/plugin-clawville": "plugins/plugin-clawville/src/index.ts",
+  "@elizaos/plugin-companion": "plugins/plugin-companion/src/plugin.ts",
+  "@elizaos/plugin-contacts/register": "plugins/plugin-contacts/src/plugin.ts",
+  "@elizaos/plugin-defense-of-the-agents":
+    "plugins/plugin-defense-of-the-agents/src/index.ts",
+  "@elizaos/plugin-device-settings/register": null,
+  "@elizaos/plugin-facewear/register": "plugins/plugin-facewear/src/index.ts",
+  "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
+  "@elizaos/plugin-hyperliquid-app":
+    "plugins/plugin-hyperliquid-app/src/plugin.ts",
+  "@elizaos/plugin-hyperscape": "plugins/plugin-hyperscape/src/index.ts",
+  "@elizaos/plugin-lifeops": "plugins/plugin-lifeops/src/plugin.ts",
+  "@elizaos/plugin-messages/register": "plugins/plugin-messages/src/plugin.ts",
+  "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
+  "@elizaos/plugin-phone/register": "plugins/plugin-phone/src/plugin.ts",
+  "@elizaos/plugin-polymarket-app":
+    "plugins/plugin-polymarket-app/src/plugin.ts",
+  "@elizaos/plugin-scape": "plugins/plugin-scape/src/index.ts",
+  "@elizaos/plugin-shopify-ui": "plugins/plugin-shopify-ui/src/plugin.ts",
+  "@elizaos/plugin-steward-app": "plugins/plugin-steward-app/src/plugin.ts",
+  "@elizaos/plugin-task-coordinator":
+    "plugins/plugin-task-coordinator/src/index.ts",
+  "@elizaos/plugin-task-coordinator/register":
+    "plugins/plugin-task-coordinator/src/index.ts",
+  "@elizaos/plugin-training": "plugins/plugin-training/src/setup-routes.ts",
+  "@elizaos/plugin-trajectory-logger":
+    "plugins/plugin-trajectory-logger/src/index.ts",
+  "@elizaos/plugin-vincent": "plugins/plugin-vincent/src/plugin.ts",
+  "@elizaos/plugin-wallet-ui": "plugins/plugin-wallet-ui/src/plugin.ts",
+  "@elizaos/plugin-wifi/register": null,
+  "@elizaos/app-model-tester": "plugins/app-model-tester/src/plugin.ts",
+};
+
+const KNOWN_XR_VIEW_CASES: readonly PluginViewCase[] = [
+  {
+    manifestPath: "plugins/plugin-companion/src/plugin.ts",
+    id: "companion",
+    viewType: "xr",
+    path: "/companion",
+  },
+  {
+    manifestPath: "plugins/plugin-contacts/src/plugin.ts",
+    id: "contacts",
+    viewType: "xr",
+    path: "/contacts",
+  },
+  {
+    manifestPath: "plugins/plugin-hyperliquid-app/src/plugin.ts",
+    id: "hyperliquid",
+    viewType: "xr",
+    path: "/hyperliquid",
+  },
+  {
+    manifestPath: "plugins/plugin-lifeops/src/plugin.ts",
+    id: "lifeops",
+    viewType: "xr",
+    path: "/lifeops",
+  },
+  {
+    manifestPath: "plugins/plugin-messages/src/plugin.ts",
+    id: "messages",
+    viewType: "xr",
+    path: "/messages",
+  },
+  {
+    manifestPath: "plugins/app-model-tester/src/plugin.ts",
+    id: "model-tester",
+    viewType: "xr",
+    path: "/model-tester",
+  },
+  {
+    manifestPath: "plugins/plugin-phone/src/plugin.ts",
+    id: "phone",
+    viewType: "xr",
+    path: "/phone",
+  },
+  {
+    manifestPath: "plugins/plugin-polymarket-app/src/plugin.ts",
+    id: "polymarket",
+    viewType: "xr",
+    path: "/polymarket",
+  },
+  {
+    manifestPath: "plugins/plugin-shopify-ui/src/plugin.ts",
+    id: "shopify",
+    viewType: "xr",
+    path: "/shopify",
+  },
+  {
+    manifestPath: "plugins/plugin-steward-app/src/plugin.ts",
+    id: "steward",
+    viewType: "xr",
+    path: "/steward",
+  },
+  {
+    manifestPath: "plugins/plugin-vincent/src/plugin.ts",
+    id: "vincent",
+    viewType: "xr",
+    path: "/vincent",
+  },
+  {
+    manifestPath: "plugins/plugin-wallet-ui/src/plugin.ts",
+    id: "wallet",
+    viewType: "xr",
+    path: "/wallet",
+  },
+  {
+    manifestPath: "plugins/plugin-2004scape/src/index.ts",
+    id: "2004scape",
+    viewType: "xr",
+    path: "/2004scape",
+  },
+  {
+    manifestPath: "plugins/plugin-feed/src/index.ts",
+    id: "feed",
+    viewType: "xr",
+    path: "/feed",
+  },
+  {
+    manifestPath: "plugins/plugin-app-control/src/index.ts",
+    id: "views-manager",
+    viewType: "xr",
+    path: "/views",
+  },
+  {
+    manifestPath: "plugins/plugin-clawville/src/index.ts",
+    id: "clawville",
+    viewType: "xr",
+    path: "/clawville",
+  },
+  {
+    manifestPath: "plugins/plugin-defense-of-the-agents/src/index.ts",
+    id: "defense-of-the-agents",
+    viewType: "xr",
+    path: "/defense-of-the-agents",
+  },
+  {
+    manifestPath: "plugins/plugin-hyperscape/src/index.ts",
+    id: "hyperscape",
+    viewType: "xr",
+    path: "/hyperscape",
+  },
+  {
+    manifestPath: "plugins/plugin-scape/src/index.ts",
+    id: "scape",
+    viewType: "xr",
+    path: "/scape",
+  },
+  {
+    manifestPath: "plugins/plugin-screenshare/src/index.ts",
+    id: "screenshare",
+    viewType: "xr",
+    path: "/screenshare",
+  },
+  {
+    manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+    id: "task-coordinator",
+    viewType: "xr",
+    path: "/task-coordinator",
+  },
+  {
+    manifestPath: "plugins/plugin-task-coordinator/src/index.ts",
+    id: "orchestrator",
+    viewType: "xr",
+    path: "/orchestrator",
+  },
+  {
+    manifestPath: "plugins/plugin-trajectory-logger/src/index.ts",
+    id: "trajectory-logger",
+    viewType: "xr",
+    path: "/trajectory-logger",
+  },
+  {
+    manifestPath: "plugins/plugin-training/src/setup-routes.ts",
+    id: "training",
+    viewType: "xr",
+    path: "/training",
+  },
+  {
+    manifestPath: "plugins/plugin-facewear/src/index.ts",
+    id: "facewear",
+    viewType: "xr",
+    path: "/apps/hearwear/xr",
+  },
+  {
+    manifestPath: "plugins/plugin-facewear/src/index.ts",
+    id: "smartglasses",
+    viewType: "xr",
+    path: "/apps/smartglasses/xr",
+  },
+];
+
 function pathsFromSource(filePath: string): Set<string> {
   const source = readFileSync(filePath, "utf8");
   return new Set(
@@ -82,9 +292,17 @@ function pathsFromSource(filePath: string): Set<string> {
 }
 
 function viewObjects(source: string): string[] {
-  const viewsStart = source.indexOf("views:");
-  if (viewsStart === -1) return [];
-  const arrayStart = source.indexOf("[", viewsStart);
+  return arrayObjectChunks(source, "views").filter(
+    (chunk) => chunk.includes("id:") && chunk.includes("componentExport:"),
+  );
+}
+
+function arrayObjectChunks(source: string, arrayField: string): string[] {
+  const arrayFieldPattern = new RegExp(`${arrayField}:`);
+  const fieldMatch = arrayFieldPattern.exec(source);
+  const arrayFieldStart = fieldMatch?.index ?? -1;
+  if (arrayFieldStart === -1) return [];
+  const arrayStart = source.indexOf("[", arrayFieldStart);
   if (arrayStart === -1) return [];
 
   let depth = 0;
@@ -100,12 +318,12 @@ function viewObjects(source: string): string[] {
   }
   if (arrayEnd === -1) return [];
 
-  const viewsSource = source.slice(arrayStart + 1, arrayEnd);
+  const arraySource = source.slice(arrayStart + 1, arrayEnd);
   const objects: string[] = [];
   let objectStart = -1;
   depth = 0;
-  for (let index = 0; index < viewsSource.length; index += 1) {
-    const char = viewsSource[index];
+  for (let index = 0; index < arraySource.length; index += 1) {
+    const char = arraySource[index];
     if (char === "{") {
       if (depth === 0) objectStart = index;
       depth += 1;
@@ -113,15 +331,13 @@ function viewObjects(source: string): string[] {
     if (char === "}") {
       depth -= 1;
       if (depth === 0 && objectStart !== -1) {
-        objects.push(viewsSource.slice(objectStart, index + 1));
+        objects.push(arraySource.slice(objectStart, index + 1));
         objectStart = -1;
       }
     }
   }
 
-  return objects.filter(
-    (chunk) => chunk.includes("id:") && chunk.includes("componentExport:"),
-  );
+  return objects;
 }
 
 function stringField(source: string, field: string): string | null {
@@ -136,9 +352,25 @@ function pluginViewCasesFromManifest(manifestPath: string): PluginViewCase[] {
     const pathValue = stringField(object, "path");
     const viewType = stringField(object, "viewType") ?? "gui";
     if (!id || !pathValue) return [];
-    if (viewType !== "gui" && viewType !== "tui") return [];
+    if (viewType !== "gui" && viewType !== "tui" && viewType !== "xr") {
+      return [];
+    }
     return [{ manifestPath, id, viewType, path: pathValue }];
   });
+}
+
+function appNavTabPathsFromManifest(manifestPath: string): string[] {
+  const source = readFileSync(path.resolve(REPO_ROOT, manifestPath), "utf8");
+  return arrayObjectChunks(source, "navTabs").flatMap((object) => {
+    const pathValue = stringField(object, "path");
+    return pathValue ? [pathValue] : [];
+  });
+}
+
+function registeredAppShellPagePaths(): string[] {
+  return APP_SHELL_REGISTRATION_SOURCES.flatMap((sourcePath) => [
+    ...pathsFromSource(path.resolve(REPO_ROOT, sourcePath)),
+  ]);
 }
 
 function pluginViewCasesFromVisualSpec(): PluginViewCase[] {
@@ -147,7 +379,7 @@ function pluginViewCasesFromVisualSpec(): PluginViewCase[] {
     (match) => ({
       manifestPath: PLUGIN_VIEWS_SPEC,
       id: match[1] ?? "",
-      viewType: (match[2] ?? "gui") as "gui" | "tui",
+      viewType: (match[2] ?? "gui") as "gui" | "tui" | "xr",
       path: match[3] ?? "",
     }),
   );
@@ -155,6 +387,36 @@ function pluginViewCasesFromVisualSpec(): PluginViewCase[] {
 
 function pluginViewCaseKey(viewCase: Pick<PluginViewCase, "id" | "viewType">) {
   return `${viewCase.id}:${viewCase.viewType}`;
+}
+
+function pluginViewCaseFullKey(viewCase: PluginViewCase) {
+  return `${viewCase.manifestPath}:${viewCase.id}:${viewCase.viewType}:${viewCase.path}`;
+}
+
+function appMainPluginIds(): string[] {
+  const source = readFileSync(APP_MAIN_SOURCE, "utf8");
+  return sorted(
+    [
+      ...source.matchAll(/cachedDynamicImport\(\s*"([^"]+)"/g),
+      ...source.matchAll(/importSideEffectAppModule\(\s*"([^"]+)"/g),
+    ].map((match) => match[1] ?? ""),
+  );
+}
+
+function appWindowRoutePaths(): string[] {
+  const source = readFileSync(APP_MAIN_SOURCE, "utf8");
+  return sorted(
+    [...source.matchAll(/appWindowSlug === "([^"]+)"/g)].map(
+      (match) => `/apps/${match[1] ?? ""}`,
+    ),
+  );
+}
+
+function sideEffectPluginIds(): string[] {
+  const source = readFileSync(SIDE_EFFECT_PLUGIN_SOURCE, "utf8");
+  return sorted(
+    [...source.matchAll(/key:\s*"([^"]+)"/g)].map((match) => match[1] ?? ""),
+  );
 }
 
 function internalToolWindowPaths(): string[] {
@@ -166,6 +428,10 @@ function internalToolWindowPaths(): string[] {
 
 function unique<T>(values: readonly T[]): T[] {
   return values.filter((value, index) => values.indexOf(value) === index);
+}
+
+function sorted(values: Iterable<string>): string[] {
+  return [...new Set(values)].sort();
 }
 
 function defaultVisibleInternalToolAppNames(): string[] {
@@ -197,6 +463,11 @@ describe("app route coverage gate", () => {
     const appWindowPaths = unique([
       ...DIRECT_ROUTE_CASES.map((routeCase) => routeCase.path),
       ...internalToolWindowPaths(),
+      ...registeredAppShellPagePaths(),
+      ...appWindowRoutePaths(),
+      ...PLUGIN_VIEW_MANIFESTS.flatMap((manifestPath) =>
+        appNavTabPathsFromManifest(manifestPath),
+      ),
     ]);
     const expectedPaths = unique([...catalogPaths, ...appWindowPaths]);
 
@@ -215,7 +486,9 @@ describe("app route coverage gate", () => {
       ...defaultVisibleInternalToolAppNames(),
       "@elizaos/plugin-companion",
     ]);
-    const tileAppNames = SAFE_APP_TILE_CASES.map((tileCase) => tileCase.appName);
+    const tileAppNames = SAFE_APP_TILE_CASES.map(
+      (tileCase) => tileCase.appName,
+    );
     const directRouteTileAppNames = DIRECT_ROUTE_CASES.flatMap((routeCase) =>
       routeCase.catalogAppName ? [routeCase.catalogAppName] : [],
     );
@@ -248,7 +521,7 @@ describe("app route coverage gate", () => {
   it("plugin views visual matrix covers every bundled gui/tui view", () => {
     const expectedCases = PLUGIN_VIEW_MANIFESTS.flatMap((manifestPath) =>
       pluginViewCasesFromManifest(manifestPath),
-    );
+    ).filter((viewCase) => viewCase.viewType !== "xr");
     const visualCases = pluginViewCasesFromVisualSpec();
     const expectedByKey = new Map(
       expectedCases.map((viewCase) => [pluginViewCaseKey(viewCase), viewCase]),
@@ -265,7 +538,9 @@ describe("app route coverage gate", () => {
       );
     const stale = visualCases
       .filter((viewCase) => !expectedByKey.has(pluginViewCaseKey(viewCase)))
-      .map((viewCase) => `${viewCase.id}:${viewCase.viewType}:${viewCase.path}`);
+      .map(
+        (viewCase) => `${viewCase.id}:${viewCase.viewType}:${viewCase.path}`,
+      );
     const pathMismatches = expectedCases
       .filter((viewCase) => {
         const visualCase = visualByKey.get(pluginViewCaseKey(viewCase));
@@ -287,6 +562,71 @@ describe("app route coverage gate", () => {
     expect(
       pathMismatches,
       `Plugin-views visual paths drifted from manifests: ${pathMismatches.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("plugin view manifest ratchet tracks bundled xr view declarations", () => {
+    const actualCases = PLUGIN_VIEW_MANIFESTS.flatMap((manifestPath) =>
+      pluginViewCasesFromManifest(manifestPath),
+    ).filter((viewCase) => viewCase.viewType === "xr");
+    const expectedByKey = new Map(
+      KNOWN_XR_VIEW_CASES.map((viewCase) => [
+        pluginViewCaseFullKey(viewCase),
+        viewCase,
+      ]),
+    );
+    const actualByKey = new Map(
+      actualCases.map((viewCase) => [
+        pluginViewCaseFullKey(viewCase),
+        viewCase,
+      ]),
+    );
+
+    const missing = KNOWN_XR_VIEW_CASES.filter(
+      (viewCase) => !actualByKey.has(pluginViewCaseFullKey(viewCase)),
+    ).map(pluginViewCaseFullKey);
+    const stale = actualCases
+      .filter((viewCase) => !expectedByKey.has(pluginViewCaseFullKey(viewCase)))
+      .map(pluginViewCaseFullKey);
+
+    expect(
+      missing,
+      `Bundled XR view declarations changed or disappeared: ${missing.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      stale,
+      `New bundled XR views need explicit runtime coverage classification: ${stale.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("plugin view manifest ratchet tracks compiled app plugin loaders", () => {
+    const bootPluginIds = unique([
+      ...appMainPluginIds(),
+      ...sideEffectPluginIds(),
+    ]);
+    const mappedIds = Object.keys(BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE);
+    const missingMappings = bootPluginIds.filter(
+      (id) => !(id in BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE),
+    );
+    const staleMappings = mappedIds.filter((id) => !bootPluginIds.includes(id));
+    const manifests = new Set(PLUGIN_VIEW_MANIFESTS);
+    const missingManifestCoverage = bootPluginIds.flatMap((id) => {
+      const manifest = BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE[id];
+      if (!manifest || manifests.has(manifest)) return [];
+      return [`${id} -> ${manifest}`];
+    });
+
+    expect(
+      missingMappings,
+      `New compiled app plugin loaders need a view manifest classification: ${missingMappings.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      staleMappings,
+      `Stale compiled app plugin loader mappings: ${staleMappings.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      missingManifestCoverage,
+      `Boot plugin view manifests missing from PLUGIN_VIEW_MANIFESTS: ${missingManifestCoverage.join(", ")}`,
     ).toEqual([]);
   });
 });

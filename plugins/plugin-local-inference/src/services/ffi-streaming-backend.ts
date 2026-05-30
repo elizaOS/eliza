@@ -8,13 +8,9 @@
  *   - Own the FFI context. The `ElizaInferenceFfi` handle is created by the
  *     voice lifecycle service today; the runtime provider passed to this
  *     class is the seam where ownership gets resolved.
- *   - Implement `embed`. Vision describe, embedding, slot save/restore, and
- *     parallel-slot resize all live on `mtpLlamaServer` today and are
- *     called from `engine.ts` directly (bypassing the dispatcher). Until
- *     those are routed through the dispatcher AND the FFI runner gains
- *     parity for each, the dispatcher's existing
- *     `"Active backend does not implement embed"` throw is the right
- *     behavior — it surfaces the gap loudly rather than silently degrading.
+ *   - Route vision describe, slot save/restore, and parallel-slot resize
+ *     through the dispatcher. These still live on `mtpLlamaServer` and are
+ *     called from `engine.ts` directly until the FFI runner gains parity.
  */
 
 import type {
@@ -340,9 +336,6 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	currentMmprojPath(): string | null {
 		return this.session?.mmprojPath ?? null;
 	}
-
-	// `embed` still not implemented — text-generation embeddings are a
-	// separate kernel surface that hasn't been wired through this backend.
 }
 
 /**

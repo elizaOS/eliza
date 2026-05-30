@@ -19,12 +19,6 @@
  *     A future boot can retry.
  *   - hub fetch fails → silent no-op, no marker. Same retry semantics.
  *   - download POST fails → silent no-op, no marker.
- *
- * The user request was specifically: "we want to start downloading the
- * recommended models immediately when they start a local agent, but we
- * dont want to keep them in loading screen". This file is the kickoff;
- * the loading screen is bypassed by the first-run controller completing
- * setup before this helper is invoked.
  */
 
 import { client } from "../api";

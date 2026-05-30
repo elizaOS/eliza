@@ -5577,7 +5577,6 @@
   "firstrunshell.localLabel": "Local",
   "firstrunshell.advanced": "Advanced",
   "firstrunshell.localDetail": "Runs on your machine. Use local inference or connect Eliza Cloud.",
-  "firstrunshell.keepEmbeddingsLocal": "Keep embeddings local",
   "firstrunshell.useAsRemote": "Use as remote",
   "firstrunshell.useAsRemoteDetail": "Connect to your local machine from another device.",
   "firstrunshell.back": "Back",

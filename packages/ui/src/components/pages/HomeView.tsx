@@ -1,6 +1,7 @@
 import {
   Gamepad2,
   MessageSquare,
+  Mic,
   Send,
   Settings,
   UserRound,
@@ -222,7 +223,7 @@ function DefaultApps({
 
   return (
     <div
-      className="flex w-full max-w-md flex-wrap items-center justify-center gap-2.5"
+      className="mx-auto grid w-full max-w-xs grid-cols-4 place-items-center gap-3"
       data-testid="home-default-apps"
     >
       {apps.map((app) => {
@@ -242,7 +243,7 @@ function DefaultApps({
             }}
             className="rounded-sm transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
           >
-            <AppIdentityTile app={app} size="sm" imageOnly />
+            <AppIdentityTile app={app} size="md" imageOnly />
           </button>
         );
       })}
@@ -462,9 +463,11 @@ function HomeComposer(): React.JSX.Element {
         </ol>
       ) : null}
 
-      <div className="mb-2 flex justify-center">
-        <button
+      <div className="flex items-center gap-1.5 rounded-full border border-white/30 bg-white/12 p-2 text-txt shadow-[0_6px_28px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-colors focus-within:border-white/50 focus-within:bg-white/20">
+        <Button
           type="button"
+          size="icon"
+          variant="ghost"
           aria-label={
             controller?.recording
               ? t("homeview.composer.stopVoice", {
@@ -477,19 +480,13 @@ function HomeComposer(): React.JSX.Element {
           aria-pressed={controller?.recording ?? false}
           onClick={() => controller?.toggleRecording()}
           className={cn(
-            "min-h-8 bg-transparent px-2 text-xs font-semibold text-white transition-colors [text-shadow:0_2px_10px_rgba(0,0,0,0.75),0_1px_4px_rgba(0,0,0,0.65)] hover:text-white focus-visible:underline focus-visible:outline-none",
-            controller?.recording && "animate-pulse",
+            "shrink-0 rounded-full text-txt/70 hover:bg-white/20 hover:text-txt",
+            controller?.recording &&
+              "animate-pulse bg-accent/20 text-accent hover:bg-accent/25 hover:text-accent",
           )}
         >
-          {controller?.recording
-            ? t("homeview.composer.listening", { defaultValue: "Listening" })
-            : t("homeview.composer.notListening", {
-                defaultValue: "Not listening",
-              })}
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2 rounded-full border border-border bg-card/80 p-2 text-txt backdrop-blur-md transition-colors focus-within:border-muted">
+          <Mic className="h-4 w-4" aria-hidden />
+        </Button>
         <Input
           type="text"
           value={draft}

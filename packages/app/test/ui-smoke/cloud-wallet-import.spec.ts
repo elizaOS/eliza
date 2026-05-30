@@ -6,6 +6,9 @@ import {
   seedAppStorage,
 } from "./helpers";
 
+const LIVE_WALLET_IMPORT_ENABLED =
+  process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
+
 async function openWalletRpcSettings(page: Page) {
   await openAppPath(page, "/settings#wallet-rpc");
   await expect(page.getByTestId("wallet-rpc-mode-cloud")).toBeVisible({
@@ -20,121 +23,128 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("inventory cloud import uses the live wallet API", async ({ page }) => {
-  let walletConfigGetCount = 0;
-  let refreshCloudCount = 0;
-
-  page.on("request", (request) => {
-    const url = request.url();
-    if (request.method() === "GET" && url.endsWith("/api/wallet/config")) {
-      walletConfigGetCount += 1;
-    }
-    if (
-      request.method() === "POST" &&
-      url.endsWith("/api/wallet/refresh-cloud")
-    ) {
-      refreshCloudCount += 1;
-    }
-  });
-
-  const cloudStatusResponse = await page.request.get("/api/cloud/status");
-  expect(cloudStatusResponse.ok()).toBe(true);
-  const cloudStatus = (await cloudStatusResponse.json()) as {
-    connected?: boolean;
-    hasApiKey?: boolean;
-  };
+test.describe("live wallet API", () => {
   test.skip(
-    !(cloudStatus.connected === true || cloudStatus.hasApiKey === true),
-    "Eliza Cloud is not linked in this live stack.",
+    !LIVE_WALLET_IMPORT_ENABLED,
+    "set ELIZA_UI_SMOKE_LIVE_STACK=1 to run against the real wallet API",
   );
 
-  await expect
-    .poll(() => walletConfigGetCount, { timeout: 15_000 })
-    .toBeGreaterThanOrEqual(1);
+  test("inventory cloud import uses the live wallet API", async ({ page }) => {
+    let walletConfigGetCount = 0;
+    let refreshCloudCount = 0;
 
-  const walletConfigResponse = await page.request.get("/api/wallet/config");
-  expect(walletConfigResponse.ok()).toBe(true);
-  const walletConfigBeforeImport = (await walletConfigResponse.json()) as {
-    evmAddress?: string | null;
-    solanaAddress?: string | null;
-    wallets?: Array<{ address?: string | null }>;
-  };
-  const hasConnectedWallet =
-    Boolean(walletConfigBeforeImport.evmAddress) ||
-    Boolean(walletConfigBeforeImport.solanaAddress) ||
-    Boolean(
-      walletConfigBeforeImport.wallets?.some(
-        (wallet) =>
-          typeof wallet.address === "string" &&
-          wallet.address.trim().length > 0,
-      ),
+    page.on("request", (request) => {
+      const url = request.url();
+      if (request.method() === "GET" && url.endsWith("/api/wallet/config")) {
+        walletConfigGetCount += 1;
+      }
+      if (
+        request.method() === "POST" &&
+        url.endsWith("/api/wallet/refresh-cloud")
+      ) {
+        refreshCloudCount += 1;
+      }
+    });
+
+    const cloudStatusResponse = await page.request.get("/api/cloud/status");
+    expect(cloudStatusResponse.ok()).toBe(true);
+    const cloudStatus = (await cloudStatusResponse.json()) as {
+      connected?: boolean;
+      hasApiKey?: boolean;
+    };
+    test.skip(
+      !(cloudStatus.connected === true || cloudStatus.hasApiKey === true),
+      "Eliza Cloud is not linked in this live stack.",
     );
-  test.skip(
-    hasConnectedWallet,
-    "Wallet import CTA is hidden once the live stack already has a wallet connected.",
-  );
 
-  await openWalletRpcSettings(page);
+    await expect
+      .poll(() => walletConfigGetCount, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(1);
 
-  const saveBtn = page.getByTestId("wallet-rpc-save");
-  await expect(saveBtn).toBeVisible({ timeout: 15_000 });
+    const walletConfigResponse = await page.request.get("/api/wallet/config");
+    expect(walletConfigResponse.ok()).toBe(true);
+    const walletConfigBeforeImport = (await walletConfigResponse.json()) as {
+      evmAddress?: string | null;
+      solanaAddress?: string | null;
+      wallets?: Array<{ address?: string | null }>;
+    };
+    const hasConnectedWallet =
+      Boolean(walletConfigBeforeImport.evmAddress) ||
+      Boolean(walletConfigBeforeImport.solanaAddress) ||
+      Boolean(
+        walletConfigBeforeImport.wallets?.some(
+          (wallet) =>
+            typeof wallet.address === "string" &&
+            wallet.address.trim().length > 0,
+        ),
+      );
+    test.skip(
+      hasConnectedWallet,
+      "Wallet import CTA is hidden once the live stack already has a wallet connected.",
+    );
 
-  const walletConfigPutRequestPromise = page.waitForRequest(
-    (request) =>
-      request.method() === "PUT" &&
-      request.url().endsWith("/api/wallet/config"),
-    { timeout: 15_000 },
-  );
-  const walletConfigPutResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "PUT" &&
-      response.url().endsWith("/api/wallet/config"),
-    { timeout: 15_000 },
-  );
-  const refreshCloudResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      response.url().endsWith("/api/wallet/refresh-cloud"),
-    { timeout: 15_000 },
-  );
+    await openWalletRpcSettings(page);
 
-  await saveBtn.click();
+    const saveBtn = page.getByTestId("wallet-rpc-save");
+    await expect(saveBtn).toBeVisible({ timeout: 15_000 });
 
-  const walletConfigPutRequest = await walletConfigPutRequestPromise;
-  const walletConfigPutResponse = await walletConfigPutResponsePromise;
-  const refreshCloudResponse = await refreshCloudResponsePromise;
+    const walletConfigPutRequestPromise = page.waitForRequest(
+      (request) =>
+        request.method() === "PUT" &&
+        request.url().endsWith("/api/wallet/config"),
+      { timeout: 15_000 },
+    );
+    const walletConfigPutResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        response.url().endsWith("/api/wallet/config"),
+      { timeout: 15_000 },
+    );
+    const refreshCloudResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().endsWith("/api/wallet/refresh-cloud"),
+      { timeout: 15_000 },
+    );
 
-  expect(walletConfigPutResponse.status()).toBe(200);
-  expect(refreshCloudResponse.status()).toBe(200);
+    await saveBtn.click();
 
-  const putPayload = walletConfigPutRequest.postDataJSON() as {
-    selections?: Record<string, string>;
-    walletNetwork?: string;
-  };
-  expect(putPayload.selections).toEqual({
-    evm: "eliza-cloud",
-    bsc: "eliza-cloud",
-    solana: "eliza-cloud",
-  });
-  expect(putPayload.walletNetwork).toBe("mainnet");
+    const walletConfigPutRequest = await walletConfigPutRequestPromise;
+    const walletConfigPutResponse = await walletConfigPutResponsePromise;
+    const refreshCloudResponse = await refreshCloudResponsePromise;
 
-  await expect
-    .poll(() => refreshCloudCount, { timeout: 15_000 })
-    .toBeGreaterThanOrEqual(1);
-  await expect
-    .poll(() => walletConfigGetCount, { timeout: 15_000 })
-    .toBeGreaterThanOrEqual(2);
+    expect(walletConfigPutResponse.status()).toBe(200);
+    expect(refreshCloudResponse.status()).toBe(200);
 
-  const walletConfigAfterImportResponse =
-    await page.request.get("/api/wallet/config");
-  expect(walletConfigAfterImportResponse.ok()).toBe(true);
-  const walletConfig = (await walletConfigAfterImportResponse.json()) as {
-    selectedRpcProviders?: Record<string, string>;
-  };
-  expect(walletConfig.selectedRpcProviders).toEqual({
-    evm: "eliza-cloud",
-    bsc: "eliza-cloud",
-    solana: "eliza-cloud",
+    const putPayload = walletConfigPutRequest.postDataJSON() as {
+      selections?: Record<string, string>;
+      walletNetwork?: string;
+    };
+    expect(putPayload.selections).toEqual({
+      evm: "eliza-cloud",
+      bsc: "eliza-cloud",
+      solana: "eliza-cloud",
+    });
+    expect(putPayload.walletNetwork).toBe("mainnet");
+
+    await expect
+      .poll(() => refreshCloudCount, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(1);
+    await expect
+      .poll(() => walletConfigGetCount, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(2);
+
+    const walletConfigAfterImportResponse =
+      await page.request.get("/api/wallet/config");
+    expect(walletConfigAfterImportResponse.ok()).toBe(true);
+    const walletConfig = (await walletConfigAfterImportResponse.json()) as {
+      selectedRpcProviders?: Record<string, string>;
+    };
+    expect(walletConfig.selectedRpcProviders).toEqual({
+      evm: "eliza-cloud",
+      bsc: "eliza-cloud",
+      solana: "eliza-cloud",
+    });
   });
 });
 
