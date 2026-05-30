@@ -10,7 +10,6 @@ import {
 import type * as React from "react";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 
-import { CloudVideoBackground } from "../../backgrounds/CloudVideoBackground";
 import { cn } from "../../lib/utils";
 import type { Tab } from "../../navigation";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
@@ -25,18 +24,27 @@ import { formatEta } from "../local-inference/hub-utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { VoiceWaveform } from "../voice/VoiceWaveform";
+import {
+  type FrequencyAnalyser,
+  VoiceWaveform,
+  type VoiceWaveformMode,
+} from "../voice/VoiceWaveform";
 
-// Mounted once and never re-rendered. The background takes no volatile props
-// and no children, so React.memo keeps it stable across every home-view state
-// change (typing, focus, new messages). Load-bearing for perf: the cloud video
-// must never re-render on state changes.
-const HomeBackground = memo(function HomeBackground(): React.JSX.Element {
+// The home hero background: a full-bleed WebGPU cloudscape with the voice orb
+// refracting it. Memoized on its mode + analyser so the heavy WebGPU layer never
+// re-renders on the composer's keystroke/focus state churn — only when the voice
+// phase or audio source actually changes.
+const HomeVoiceBackground = memo(function HomeVoiceBackground({
+  mode,
+  analyser,
+}: {
+  mode: VoiceWaveformMode;
+  analyser: FrequencyAnalyser | null;
+}): React.JSX.Element {
   return (
-    <CloudVideoBackground
-      scrim={0.08}
-      style={{ position: "absolute", inset: 0, height: "100%", width: "100%" }}
-    />
+    <div className="absolute inset-0">
+      <VoiceWaveform mode={mode} analyser={analyser} />
+    </div>
   );
 });
 
@@ -130,7 +138,10 @@ export function HomeView(): React.JSX.Element {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <HomeBackground />
+      <HomeVoiceBackground
+        mode={mode}
+        analyser={controller?.analyser ?? null}
+      />
       <div
         data-testid="home-view"
         className="relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 pb-8 text-txt"
@@ -139,14 +150,6 @@ export function HomeView(): React.JSX.Element {
 
         <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
           <DefaultApps onLaunch={setTab} />
-
-          <div className="relative grid h-[min(38vh,260px)] min-h-44 w-full place-items-center">
-            <VoiceWaveform
-              mode={mode}
-              analyser={controller?.analyser ?? null}
-              size={240}
-            />
-          </div>
 
           {showModelStatus && modelStatus ? (
             <ModelStatusPanel
@@ -157,7 +160,7 @@ export function HomeView(): React.JSX.Element {
             <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
           ) : (
             <p
-              className="min-h-6 max-w-xl text-center text-sm text-muted"
+              className="min-h-6 max-w-xl text-center text-sm font-medium text-white/90 [text-shadow:0_2px_10px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.6)]"
               aria-live="polite"
               data-testid="home-assistant-transcript"
             >
@@ -243,7 +246,7 @@ function DefaultApps({
             }}
             className="rounded-sm transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
           >
-            <AppIdentityTile app={app} size="md" imageOnly />
+            <AppIdentityTile app={app} size="md" glyph />
           </button>
         );
       })}

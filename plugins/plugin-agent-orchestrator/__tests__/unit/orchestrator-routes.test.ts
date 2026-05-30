@@ -196,7 +196,8 @@ describe("orchestrator routes — task CRUD", () => {
     const service = makeService();
     const open = await seedTask(service, "open one");
     const done = await seedTask(service, "done one");
-    await service.validateTask(done, { passed: true });
+    await service.updateTask(done, { status: "validating" });
+    await service.validateTask(done, { passed: true, summary: "verified" });
 
     const onlyDone = await call(
       service,
@@ -300,6 +301,16 @@ describe("orchestrator routes — lifecycle", () => {
       (await call(service, "POST", "/api/orchestrator/tasks/missing/fork", {}))
         .status,
     ).toBe(404);
+    expect(
+      (
+        await call(
+          service,
+          "POST",
+          `/api/orchestrator/tasks/${id}/fork`,
+          "{not json",
+        )
+      ).status,
+    ).toBe(400);
   });
 
   it("requires a boolean `passed` to validate", async () => {
@@ -315,6 +326,7 @@ describe("orchestrator routes — lifecycle", () => {
         )
       ).status,
     ).toBe(400);
+    await service.updateTask(id, { status: "validating" });
     const validated = await call(
       service,
       "POST",
@@ -377,6 +389,16 @@ describe("orchestrator routes — room, telemetry, agents", () => {
   it("adds a sub-agent and stops it by session id", async () => {
     const service = makeService();
     const id = await seedTask(service);
+    expect(
+      (
+        await call(
+          service,
+          "POST",
+          `/api/orchestrator/tasks/${id}/agents`,
+          "{not json",
+        )
+      ).status,
+    ).toBe(400);
     const added = await call(
       service,
       "POST",

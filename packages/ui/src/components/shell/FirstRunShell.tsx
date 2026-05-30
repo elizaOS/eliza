@@ -408,12 +408,14 @@ function FirstRunVoiceControl(props: {
       >
         <StatusBadge
           label={label}
-          variant={
+          variant={state === "listening" ? "success" : "muted"}
+          // App surface is orange-accent only (no blue). Render the transient
+          // "speaking" state in the brand accent rather than the shared "info"
+          // (blue) variant so it stays distinct from listening/idle.
+          className={
             state === "speaking"
-              ? "info"
-              : state === "listening"
-                ? "success"
-                : "muted"
+              ? "border-accent/35 bg-accent/12 text-accent"
+              : undefined
           }
           pulse={state === "listening"}
           withDot={state === "listening"}

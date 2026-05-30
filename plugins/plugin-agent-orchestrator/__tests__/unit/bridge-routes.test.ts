@@ -5,6 +5,7 @@ import {
   type BridgeCredentialAdapter,
   handleBridgeRoutes,
 } from "../../src/api/bridge-routes.ts";
+import { handleCodingAgentRoutes } from "../../src/api/routes.ts";
 import type { RouteContext } from "../../src/api/route-utils.ts";
 
 function fakeRequest(opts: {
@@ -250,5 +251,32 @@ describe("bridge-routes — credential bridge", () => {
     );
     expect(status()).toBe(503);
     expect((body() as { code: string }).code).toBe("no_adapter");
+  });
+});
+
+describe("coding-agent dispatcher — credential bridge", () => {
+  it("reaches credential requests through the top-level route dispatcher", async () => {
+    const adapter = makeAdapter();
+    const req = fakeRequest({
+      method: "POST",
+      url: "/api/coding-agents/session-1/credentials/request",
+      body: { credentialKeys: ["OPENAI_API_KEY"] },
+    });
+    const { res, status, body } = fakeResponse();
+
+    const handled = await handleCodingAgentRoutes(
+      req,
+      res,
+      "/api/coding-agents/session-1/credentials/request",
+      makeCtx(adapter),
+    );
+
+    expect(handled).toBe(true);
+    expect(status()).toBe(200);
+    expect(body()).toMatchObject({ credentialScopeId: "cred_scope_a" });
+    expect(adapter.requestCredentials).toHaveBeenCalledWith({
+      childSessionId: "session-1",
+      credentialKeys: ["OPENAI_API_KEY"],
+    });
   });
 });

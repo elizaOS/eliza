@@ -1218,6 +1218,7 @@ function AddAgentForm({
   const [label, setLabel] = useState("");
   const [framework, setFramework] = useState("");
   const [model, setModel] = useState("");
+  const [workdir, setWorkdir] = useState("");
   const [repo, setRepo] = useState("");
   const [task, setTask] = useState("");
 
@@ -1229,8 +1230,11 @@ function AddAgentForm({
       defaultValue: "Framework",
     }),
     model: t("orchestrator.addAgent.model", { defaultValue: "Model" }),
+    workdir: t("orchestrator.addAgent.workdir", {
+      defaultValue: "Workdir (optional)",
+    }),
     repo: t("orchestrator.addAgent.repo", {
-      defaultValue: "Repo or workdir (optional)",
+      defaultValue: "Repo URL (optional)",
     }),
     task: t("orchestrator.addAgent.task", {
       defaultValue: "Sub-task for this agent (optional)",
@@ -1264,6 +1268,13 @@ function AddAgentForm({
         />
       </div>
       <input
+        value={workdir}
+        onChange={(event) => setWorkdir(event.target.value)}
+        className={FIELD_CLASS}
+        placeholder={fieldLabels.workdir}
+        aria-label={fieldLabels.workdir}
+      />
+      <input
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
         className={FIELD_CLASS}
@@ -1295,6 +1306,7 @@ function AddAgentForm({
               label: label.trim() || undefined,
               framework: framework.trim() || undefined,
               model: model.trim() || undefined,
+              workdir: workdir.trim() || undefined,
               repo: repo.trim() || undefined,
               task: task.trim() || undefined,
             })
@@ -1889,10 +1901,20 @@ export function OrchestratorWorkbench() {
     const content = composer.trim();
     if (!current || !content) return;
     void runMutation(async () => {
-      await client.postOrchestratorTaskMessage(current, content);
+      const delivered = await client.postOrchestratorTaskMessage(
+        current,
+        content,
+      );
+      if (!delivered) {
+        throw new Error(
+          t("orchestrator.messageDeliveryFailed", {
+            defaultValue: "Message was recorded, but no active agent accepted it.",
+          }),
+        );
+      }
       setComposer("");
     });
-  }, [composer, runMutation]);
+  }, [composer, runMutation, t]);
 
   const handleCreate = useCallback(
     (input: {

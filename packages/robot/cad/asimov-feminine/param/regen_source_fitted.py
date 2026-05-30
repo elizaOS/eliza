@@ -568,9 +568,10 @@ def _watertight_cleanup(mesh, pitch=0.0025, close=1, erode=1, sinc=18):
     return out
 
 
-# Cosmetic ends that don't carry an articulating shaft -> smooth skin (head,
-# neck collar, hands).
-COSMETIC_SKIN = {"NECK_PITCH", "NECK_YAW", "LEFT_WRIST_YAW", "RIGHT_WRIST_YAW"}
+# Cosmetic ends that don't carry an articulating shaft -> smooth skin (head, neck
+# collar). Hands go through the mechanical path so they keep the original geometry
+# that overlaps the forearm (skin-lofting the small hand stub floated it off).
+COSMETIC_SKIN = {"NECK_PITCH", "NECK_YAW"}
 FEET = {"LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"}
 
 

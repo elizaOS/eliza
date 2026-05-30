@@ -99,6 +99,18 @@
   --first-run-field-focus-shadow: none;
 }
 
+/* Short landscape viewports (phones held sideways) trip the width-based `sm:`
+ * breakpoint, so they get the full-size hero heading + min-height and the
+ * primary action scrolls below the fold. Compress the heading on short
+ * viewports so Cloud/Local + Connect stay visible without scrolling. */
+@media (max-height: 540px) and (orientation: landscape) {
+  .first-run-screen h1 {
+    min-height: 0;
+    font-size: 1.75rem;
+    line-height: 1.15;
+  }
+}
+
 /* ── First-run theme variables ────────────────────────────────────────
  * Used across all first-run screens (hosting, providers, identity, etc.).
  * Dark variant by default; light-mode overrides below.

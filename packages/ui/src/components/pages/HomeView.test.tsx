@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HomeView } from "./HomeView";
 
@@ -59,17 +58,11 @@ const controllerMock = vi.hoisted(() => ({
 
 const backgroundRenders = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock("../../backgrounds/CloudVideoBackground", () => ({
-  CloudVideoBackground: ({ children }: { children?: React.ReactNode }) => {
-    backgroundRenders.count += 1;
-    return <div data-testid="cloud-background">{children}</div>;
-  },
-}));
-
 vi.mock("../voice/VoiceWaveform", () => ({
-  VoiceWaveform: ({ mode }: { mode: string }) => (
-    <div data-testid="voice-waveform" data-mode={mode} />
-  ),
+  VoiceWaveform: ({ mode }: { mode: string }) => {
+    backgroundRenders.count += 1;
+    return <div data-testid="voice-waveform" data-mode={mode} />;
+  },
 }));
 
 vi.mock("../shell/ShellControllerContext", () => ({
@@ -89,10 +82,9 @@ afterEach(() => {
 });
 
 describe("HomeView", () => {
-  it("renders clouds, waveform, concise assistant transcript, and the home composer", () => {
+  it("renders the cloud orb, concise assistant transcript, and the home composer", () => {
     render(<HomeView />);
 
-    expect(screen.getByTestId("cloud-background")).toBeTruthy();
     expect(screen.getByTestId("voice-waveform")).toBeTruthy();
     expect(screen.getByTestId("home-assistant-transcript").textContent).toBe(
       "I can open any view and keep the conversation moving.",
@@ -117,7 +109,7 @@ describe("HomeView", () => {
     expect(input.value).toBe("");
   });
 
-  it("never re-renders the cloud background while typing into the composer", () => {
+  it("never re-renders the voice cloud background while typing into the composer", () => {
     render(<HomeView />);
 
     expect(backgroundRenders.count).toBe(1);
@@ -130,8 +122,9 @@ describe("HomeView", () => {
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.blur(input);
 
-    // The memoized, child-free background layer must stay mounted without a
-    // single extra render across all of the composer's state churn.
+    // The memoized WebGPU cloudscape must stay mounted without a single extra
+    // render across all of the composer's state churn — remounting it would tear
+    // down and rebuild the renderer on every keystroke.
     expect(backgroundRenders.count).toBe(1);
   });
 

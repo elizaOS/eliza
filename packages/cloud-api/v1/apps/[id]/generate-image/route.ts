@@ -437,22 +437,24 @@ app.post("/", async (c) => {
       monetizationEnabled: appRecord.monetization_enabled,
     });
 
-    return c.json({
-      success: true,
-      appId,
-      model: request.model,
-      images: images.map(({ image, url, text }) => ({ image, url, text })),
-      cost,
-      charge: {
-        status: "charged",
-        currency: "USD",
-        baseCost: deduction.baseCost,
-        creatorMarkup: deduction.creatorMarkup,
-        totalCost: deduction.totalCost,
-        creatorEarnings: deduction.creatorEarnings,
-        balance: deduction.newBalance,
-      },
-    });
+    return withCors(
+      c.json({
+        success: true,
+        appId,
+        model: request.model,
+        images: images.map(({ image, url, text }) => ({ image, url, text })),
+        cost,
+        charge: {
+          status: "charged",
+          currency: "USD",
+          baseCost: deduction.baseCost,
+          creatorMarkup: deduction.creatorMarkup,
+          totalCost: deduction.totalCost,
+          creatorEarnings: deduction.creatorEarnings,
+          balance: deduction.newBalance,
+        },
+      }),
+    );
   } catch (error) {
     return withCors(failureResponse(c, error));
   }

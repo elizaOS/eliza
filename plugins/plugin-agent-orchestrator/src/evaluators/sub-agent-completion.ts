@@ -10,9 +10,9 @@ const SUB_AGENT_SOURCE = "sub_agent";
 const EMPTY_COMPLETION_PLACEHOLDER =
   "sub-agent reports task complete (no captured output).";
 // When the evaluator routes back to TASKS_SEND_TO_AGENT or TASKS_SPAWN_AGENT,
-// the active context must satisfy their contextGate. TASKS declares
-// `contexts: ["tasks","code","automation","agent_internal","connectors"]`,
-// so we set `automation` — picking a context outside that set causes
+// the active context must satisfy their contextGate. TASKS declares coding /
+// automation / agent-internal contexts, so we set `automation` — picking a
+// context outside that set causes
 // `executePlannedToolCall` to reject with "Action TASKS_* is not allowed
 // in the current context".
 const ORCHESTRATOR_CONTEXT_ID = "automation" as AgentContext;
