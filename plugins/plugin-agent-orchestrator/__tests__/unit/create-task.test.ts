@@ -31,6 +31,27 @@ describe("TASKS:create", () => {
       ),
     ).toBe(false);
   });
+
+  it("keeps website update requests eligible for the coding TASKS parent", async () => {
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ text: "update the website, add some fixes" }),
+        state,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps personal reminder wording off TASKS so LifeOps can own it", async () => {
+    expect(
+      await createTaskAction.validate(
+        runtimeWith(serviceMock()),
+        memory({ text: "remind me to call mom tomorrow" }),
+        state,
+      ),
+    ).toBe(false);
+  });
+
   it("supports nyx options.parameters and returns data.agents[].sessionId plus id", async () => {
     const svc = serviceMock();
     // Must be a real directory: resolveSpawnWorkdir drops an explicit workdir
