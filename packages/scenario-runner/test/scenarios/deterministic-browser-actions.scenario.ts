@@ -3,11 +3,11 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { browserPlugin } from "../../../../plugins/plugin-browser/src/plugin.ts";
 import {
   __resetBrowserWorkspaceStateForTests,
-  browserPlugin,
   executeBrowserWorkspaceCommand,
-} from "../../../../plugins/plugin-browser/src/index.ts";
+} from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
