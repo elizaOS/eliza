@@ -988,7 +988,9 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
     : null;
   return (
     <div key={`tab-shell-${props.tab}`} className={APP_SHELL_CLASS}>
-      <Header pageRightExtras={headerActions} />
+      {props.tab !== "orchestrator" ? (
+        <Header pageRightExtras={headerActions} />
+      ) : null}
       {props.desktopTabBar}
       <main className={routedShellMainClass(props.tab)}>
         <ViewRouter
@@ -1106,7 +1108,7 @@ function ShellFoundationMount() {
 }
 
 function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "home" || tab === "chat";
+  return tab === "home" || tab === "chat" || tab === "orchestrator";
 }
 
 export function App() {
@@ -1698,7 +1700,9 @@ export function App() {
           tab !== "views" && <GameViewOverlay />}
         <ShellOverlays actionNotice={actionNotice} />
         {isCoordinatorReady && !shouldSuppressShellPill(tab) ? (
-          <ShellFoundationMount />
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 flex justify-center">
+            <ShellFoundationMount />
+          </div>
         ) : null}
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}

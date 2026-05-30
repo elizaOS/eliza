@@ -370,6 +370,30 @@ function labelSender(
   return t(meta.key, { defaultValue: meta.fallback });
 }
 
+/**
+ * Resolve the display name for a timeline message's sender. Sub-agents render
+ * their per-session label (the name they were spun up with); the orchestrator
+ * renders the running agent's name (usually "Eliza"). Falls back to the generic
+ * role label when no specific name is available.
+ */
+function resolveSenderName(
+  message: CodingAgentTaskMessageRecord,
+  sessionLabelById: Map<string, string>,
+  mainAgentName: string | undefined,
+  t: Translate,
+): string {
+  if (message.senderKind === "sub_agent") {
+    const label = message.sessionId
+      ? sessionLabelById.get(message.sessionId)?.trim()
+      : undefined;
+    return label || labelSender("sub_agent", t);
+  }
+  if (message.senderKind === "orchestrator") {
+    return mainAgentName?.trim() || labelSender("orchestrator", t);
+  }
+  return labelSender(message.senderKind, t);
+}
+
 function getClientErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -953,11 +977,11 @@ function TaskRailItem({
 
 function MessageEntry({
   message,
-  t,
+  senderName,
   locale,
 }: {
   message: CodingAgentTaskMessageRecord;
-  t: Translate;
+  senderName: string;
   locale?: string;
 }) {
   const text = stripAnsi(message.content);
@@ -979,8 +1003,8 @@ function MessageEntry({
         style={{ maxWidth: "88%" }}
       >
         <div className="mb-0.5 flex items-center gap-2 text-2xs text-muted">
-          <span className="font-semibold uppercase tracking-[0.06em]">
-            {labelSender(message.senderKind, t)}
+          <span className="font-semibold tracking-tight text-txt/90">
+            {senderName}
           </span>
           <span className="tabular-nums">
             {formatClockTime(message.timestamp, locale)}
@@ -1001,18 +1025,23 @@ function EventEntry({
   event: CodingAgentTaskEventRecord;
   locale?: string;
 }) {
+  const typeLabel = event.eventType.replace(/_/g, " ");
+  const normalize = (value: string) =>
+    value.toLowerCase().replace(/[\s_]+/g, " ").trim();
+  const summary = event.summary?.trim();
+  // Drop the summary when it merely echoes the humanized event type
+  // (e.g. type "task_created" + summary "Task created").
+  const showSummary = summary && normalize(summary) !== normalize(typeLabel);
   return (
     <div
       className="flex items-center gap-2 px-1 text-2xs text-muted"
       data-testid="orchestrator-event"
     >
       <span className="h-px flex-1 bg-border/40" />
-      <span className="shrink-0 font-medium">
-        {event.eventType.replace(/_/g, " ")}
-      </span>
-      {event.summary ? (
+      <span className="shrink-0 font-medium">{typeLabel}</span>
+      {showSummary ? (
         <span className="truncate" style={{ maxWidth: "50%" }}>
-          {event.summary}
+          {summary}
         </span>
       ) : null}
       <span className="shrink-0 tabular-nums">
@@ -1958,6 +1987,10 @@ export function OrchestratorWorkbench() {
   const locale =
     typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
   const copyToClipboard = app?.copyToClipboard;
+  const mainAgentName =
+    typeof app?.agentStatus?.agentName === "string"
+      ? app.agentStatus.agentName
+      : undefined;
 
   const [status, setStatus] = useState<CodingAgentOrchestratorStatus | null>(
     null,
@@ -2163,6 +2196,15 @@ export function OrchestratorWorkbench() {
     return items.sort((a, b) => a.at - b.at);
   }, [messages, events]);
 
+  const sessionLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const session of detail?.sessions ?? []) {
+      const label = session.label?.trim();
+      if (session.sessionId && label) map.set(session.sessionId, label);
+    }
+    return map;
+  }, [detail?.sessions]);
+
   const viewState = JSON.stringify({
     selectedId,
     taskCount: status?.taskCount ?? tasks.length,
@@ -2320,7 +2362,12 @@ export function OrchestratorWorkbench() {
                       <MessageEntry
                         key={item.message.id}
                         message={item.message}
-                        t={t}
+                        senderName={resolveSenderName(
+                          item.message,
+                          sessionLabelById,
+                          mainAgentName,
+                          t,
+                        )}
                         locale={locale}
                       />
                     ) : (
