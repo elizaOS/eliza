@@ -1695,7 +1695,7 @@ android smoke model works`,
 		}
 	});
 
-	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+	it("declines current-info acknowledgements when only a shell is registered (no web-lookup action)", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",

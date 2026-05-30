@@ -4658,7 +4658,7 @@
   "homeview.nav.character": "Character",
   "homeview.nav.inventory": "Wallet",
   "homeview.nav.settings": "Settings",
-  "homeview.assistant.prompt": "How can I help?",
+  "homeview.assistant.prompt": "hey, what's up?",
   "homeview.apps.openApp": "Open {{name}}",
   "homeview.noLlm.title": "No LLM connection",
   "homeview.noLlm.connect": "Connect to Eliza Cloud",

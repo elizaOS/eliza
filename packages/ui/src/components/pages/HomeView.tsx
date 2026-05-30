@@ -1,12 +1,4 @@
-import {
-  Gamepad2,
-  MessageSquare,
-  Mic,
-  Send,
-  Settings,
-  UserRound,
-  Wallet,
-} from "lucide-react";
+import { Mic, Send } from "lucide-react";
 import type * as React from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Homescreen } from "../../homescreen/Homescreen";
@@ -77,44 +69,6 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
     />
   );
 });
-
-const HEADER_NAV: ReadonlyArray<{
-  tab: Tab;
-  labelKey: string;
-  defaultLabel: string;
-  icon: typeof MessageSquare;
-}> = [
-  {
-    tab: "chat",
-    labelKey: "homeview.nav.chat",
-    defaultLabel: "Chat",
-    icon: MessageSquare,
-  },
-  {
-    tab: "apps",
-    labelKey: "homeview.nav.apps",
-    defaultLabel: "Apps",
-    icon: Gamepad2,
-  },
-  {
-    tab: "character",
-    labelKey: "homeview.nav.character",
-    defaultLabel: "Character",
-    icon: UserRound,
-  },
-  {
-    tab: "inventory",
-    labelKey: "homeview.nav.inventory",
-    defaultLabel: "Wallet",
-    icon: Wallet,
-  },
-  {
-    tab: "settings",
-    labelKey: "homeview.nav.settings",
-    defaultLabel: "Settings",
-    icon: Settings,
-  },
-];
 
 // The eight default apps surfaced above the avatar. All are internal-tool apps,
 // so a tap navigates straight to the owning tab — no catalog fetch required.
@@ -208,15 +162,11 @@ export function HomeView(): React.JSX.Element {
           editingHome && "pointer-events-none opacity-0",
         )}
       >
-        <HomeHeader onNavigate={setTab} />
-
-        {/* Apps sit above the crystal ball; the flex spacer leaves the centre
-            of the screen open for the sphere; the status/help text and
-            notifications sit below it. */}
-        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-5">
+        {/* Apps sit at the top; the greeting/transcript sits just beneath them
+            in the upper third, leaving the centre-lower open for the glass orb
+            and its water. Notifications and the composer anchor the bottom. */}
+        <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-5 pt-[calc(var(--safe-area-top,0px)+1rem)]">
           <DefaultApps onLaunch={setTab} />
-
-          <div className="flex-1" aria-hidden />
 
           {showModelStatus && modelStatus ? (
             <ModelStatusPanel
@@ -227,16 +177,18 @@ export function HomeView(): React.JSX.Element {
             <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
           ) : (
             <p
-              className="min-h-6 max-w-xl text-center text-sm font-medium text-white/90 [text-shadow:0_2px_10px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.6)]"
+              className="min-h-6 max-w-xl text-center text-lg font-medium text-white/95 [text-shadow:0_2px_10px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.6)]"
               aria-live="polite"
               data-testid="home-assistant-transcript"
             >
               {latestAssistantWords ??
                 t("homeview.assistant.prompt", {
-                  defaultValue: "How can I help?",
+                  defaultValue: "hey, what's up?",
                 })}
             </p>
           )}
+
+          <div className="flex-1" aria-hidden />
 
           <HomeNotifications />
         </div>
@@ -244,37 +196,6 @@ export function HomeView(): React.JSX.Element {
         <HomeComposer onRequestEdit={requestEdit} />
       </div>
     </div>
-  );
-}
-
-function HomeHeader({
-  onNavigate,
-}: {
-  onNavigate: (tab: Tab) => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <header
-      data-testid="home-header"
-      className="flex w-full max-w-3xl shrink-0 items-center justify-center gap-1 pt-[calc(var(--safe-area-top,0px)+0.5rem)] pb-2"
-    >
-      {HEADER_NAV.map(({ tab, labelKey, defaultLabel, icon: Icon }) => {
-        const label = t(labelKey, { defaultValue: defaultLabel });
-        return (
-          <button
-            key={tab}
-            type="button"
-            aria-label={label}
-            title={label}
-            onClick={() => onNavigate(tab)}
-            className="flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-white/90 transition-colors [text-shadow:0_2px_10px_rgba(0,0,0,0.75),0_1px_4px_rgba(0,0,0,0.65)] hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:outline-none"
-          >
-            <Icon className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        );
-      })}
-    </header>
   );
 }
 
@@ -315,7 +236,7 @@ function DefaultApps({
             }}
             className="rounded-sm transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
           >
-            <AppIdentityTile app={app} size="md" glyph />
+            <AppIdentityTile app={app} size="md" imageOnly />
           </button>
         );
       })}

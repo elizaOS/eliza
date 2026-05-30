@@ -1000,12 +1000,15 @@ export class DockerSandboxProvider implements SandboxProvider {
       node.host_key_fingerprint ?? undefined,
       node.ssh_user ?? DEFAULT_SSH_USERNAME,
     );
+    let stopErr: unknown;
+    let rmErr: unknown;
     try {
       await ssh.exec(
         `docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`,
         DOCKER_CMD_TIMEOUT_MS,
       );
     } catch (err) {
+      stopErr = err;
       const msg = err instanceof Error ? err.message : String(err);
       if (!isAlreadyGoneMessage(msg)) {
         logger.warn(
@@ -1016,6 +1019,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     try {
       await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
     } catch (err) {
+      rmErr = err;
       const msg = err instanceof Error ? err.message : String(err);
       if (!isAlreadyGoneMessage(msg)) {
         logger.warn(
@@ -1023,6 +1027,25 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     }
+
+    // Only decrement allocated_count when we have evidence the container is
+    // actually gone: at least one call landed, or one reported "already gone".
+    // If BOTH calls failed for a non-already-gone reason (SSH down, daemon
+    // hung), the container may still be running on the node — decrementing
+    // would under-count and let the scheduler over-place onto this node.
+    // Mirrors the escalation guard in stop(), but stays best-effort (no throw)
+    // because traffic has already been redirected to the new container.
+    if (stopErr && rmErr) {
+      const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
+      const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
+      if (!isAlreadyGoneMessage(stopMsg) && !isAlreadyGoneMessage(rmMsg)) {
+        logger.warn(
+          `[docker-sandbox] stopOnSpecificNode: both stop and rm failed for ${containerName} on ${node.node_id}; leaving allocated_count intact (possible zombie) — stop -> ${stopMsg}; rm -> ${rmMsg}`,
+        );
+        return;
+      }
+    }
+
     await dockerNodesRepository.decrementAllocated(node.node_id).catch((err) => {
       logger.warn(
         `[docker-sandbox] stopOnSpecificNode: decrement allocated_count failed for ${node.node_id}: ${err instanceof Error ? err.message : String(err)}`,

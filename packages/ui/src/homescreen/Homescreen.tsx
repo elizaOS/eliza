@@ -1,6 +1,6 @@
 import { Copy, Redo2, RotateCcw, Trash2, Undo2, X } from "lucide-react";
 import type * as React from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "../components/ui/button";
 import type { FrequencyAnalyser } from "../components/voice/VoiceWaveform";
 import { cn } from "../lib/utils";
@@ -44,7 +44,6 @@ export function Homescreen({
   className,
 }: HomescreenProps): React.JSX.Element {
   const hs = useHomescreen();
-  const [perfLabel, setPerfLabel] = useState<string>("");
 
   const setEditMode = (on: boolean) => {
     hs.setEditMode(on);
@@ -71,18 +70,7 @@ export function Homescreen({
         phase={phase}
         userText={userText}
         assistantText={assistantText}
-        onPerfLabel={(label) => setPerfLabel(label)}
       />
-
-      {/* Perf badge — always visible, low-key unless degraded. */}
-      {perfLabel ? (
-        <div
-          data-testid="homescreen-perf"
-          className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-sm bg-card/70 px-2 py-1 text-xs text-muted-strong backdrop-blur"
-        >
-          {perfLabel}
-        </div>
-      ) : null}
 
       {/* No on-screen edit button: edit mode is entered via the "/edit" chat
           command, a voiced request, or an agent scene edit. The toolbar only
