@@ -28,7 +28,7 @@
     "height": 0.3500002,
     "width": 1.0000002
   },
-  "local_discrete_step_bytes": 15573,
+  "local_discrete_step_bytes": 15598,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 0.5,
     "height": 0.35,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/RN_LPDDR_CA.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "6bde00c4dbf8e1c51d5c4dcb026e8620efc047981779a0e2c46d3c07d411aa8f",
+  "local_discrete_step_sha256": "5f4dafac054a0a1df8ecd10dbd1437f9b64b67ad9fea864b4df0b48930285433",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

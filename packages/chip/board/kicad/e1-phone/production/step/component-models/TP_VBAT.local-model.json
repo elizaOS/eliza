@@ -28,7 +28,7 @@
     "height": 0.0500002,
     "width": 1.4000001999999998
   },
-  "local_discrete_step_bytes": 15611,
+  "local_discrete_step_bytes": 15636,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.4,
     "height": 0.05,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/TP_VBAT.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "c231f78b5d0f02ecd085b84202a24cab85c99a741e6c35b08a2a4ce6886c3b21",
+  "local_discrete_step_sha256": "0fdc183ecb7612e3573068ee6ef0231b73f6e2f717e7d3f6e9ae80eb81ba43d8",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -93,7 +93,7 @@
   "supplier_step_intake_bytes": 15694,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/pmic/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "232821ceaca70722ebc1c556b5e056445bdcab153bf83bda060a248113f2bd83",
+  "supplier_step_intake_sha256": "3a3cc7cf2f3dc965da7de2721bbcbeecfb9e4b01d7b1e66129d9abbb87af3ddb",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": true,
   "terminal_contract_count": 1,

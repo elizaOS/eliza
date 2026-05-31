@@ -28,7 +28,7 @@
     "height": 1.0000002,
     "width": 18.5000002
   },
-  "local_discrete_step_bytes": 15521,
+  "local_discrete_step_bytes": 15546,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 4.2,
     "height": 1.0,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/J_TOP_BOTTOM_FLEX_TOP.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "f70e81debf492f69725381d9b69ab9c5bb5968910ead203490b4121b27e0dcd6",
+  "local_discrete_step_sha256": "fce1a1326892a1f0208d8b8001a1110efe4e1cd96253b2349623d5d92c87804d",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -725,7 +725,7 @@
   "supplier_step_intake_bytes": 15546,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "6b708d3878caba5f0d07e721c0cbaaf6ba0be41b5503f95e453e3df08bb9e19f",
+  "supplier_step_intake_sha256": "5e2fd9de333a627c317581ace13c16a6dc3e667f033e5d380fe6cc8f1a49fc82",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 80,

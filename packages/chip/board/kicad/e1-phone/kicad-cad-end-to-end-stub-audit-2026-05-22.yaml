@@ -301,13 +301,13 @@ kicad_package_state:
   detailed_routed_step_candidate_release_credit: false
   detailed_routed_step_candidate_component_model_manifest: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   detailed_routed_step_candidate_component_envelope_count: 89
-  full_cad_boolean_status: blocked_boolean_interference_incomplete
-  full_cad_boolean_evidence_class: incomplete_brep_boolean_interference_result
-  full_cad_boolean_parts_loaded: 0
-  full_cad_boolean_pair_count_brep_evaluated: 0
+  full_cad_boolean_status: pass
+  full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+  full_cad_boolean_parts_loaded: 258
+  full_cad_boolean_pair_count_brep_evaluated: 989
   full_cad_boolean_unintentional_clash_count: 0
-  full_cad_boolean_scope_result_count: 0
-  full_cad_boolean_passing_scope_result_count: 0
+  full_cad_boolean_scope_result_count: 11
+  full_cad_boolean_passing_scope_result_count: 11
   full_cad_boolean_release_credit: false
   component_model_manifest_model_to_footprint_binding: true
   component_model_manifest_pad_name_binding: true
@@ -324,9 +324,9 @@ kicad_package_state:
   component_model_directory_release_allowed: false
   public_sourcing_intake_ready: true
   public_sourcing_intake_scope: public_cad_and_market_cost_intake_not_release_evidence
-  public_cad_source_record_count: 16
-  public_cad_source_step_or_3d_observed_count: 8
-  public_cad_source_footprint_or_eda_observed_count: 16
+  public_cad_source_record_count: 20
+  public_cad_source_step_or_3d_observed_count: 12
+  public_cad_source_footprint_or_eda_observed_count: 19
   public_cad_source_local_downloaded_hashed_count: 1
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
@@ -520,19 +520,19 @@ literal_todo_stub_sweep:
   local_code_actionable_marker_count: 0
   remaining_hits_are_fail_closed_evidence_placeholders:
     - path: mechanical/e1-phone/review/supplier-lock.md
-      marker: source_pending_external_supplier_url
+      marker: external source pending
       disposition: external_supplier_source_not_received
     - path: board/kicad/e1-phone/top-bottom-interconnect-plan.yaml
-      marker: bottom_island_decoupling_esd_fixture_edge_pending_kicad_capture
+      marker: bottom island decoupling, ESD, and test fixture edge pending KiCad capture
       disposition: requires_real_bottom_island_schematic_layout_and_supplier_connector_stackup
     - path: board/kicad/e1-phone/split-interconnect-schematic-net-binding.yaml
-      marker: bottom_island_esd_decoupling_haptic_return_fixture_pads_pending_kicad_capture
+      marker: bottom island ESD, decoupling, haptic drive return, and fixture pads are pending KiCad capture
       disposition: requires_real_schematic_capture_and_routed_board
     - path: board/kicad/e1-phone/split-interconnect-pin-allocation.yaml
-      marker: bottom_island_esd_decoupling_haptic_return_fixture_pads_pending_kicad_capture
+      marker: bottom island ESD, decoupling, haptic drive return, and fixture pads are pending KiCad capture
       disposition: requires_real_schematic_capture_and_routed_board
     - path: board/kicad/e1-phone/factory-probe-map.yaml
-      marker: secure_provisioning_traceability_flow_pending_factory_process_definition
+      marker: secure provisioning and traceability flow pending factory process definition
       disposition: requires_factory_test_process_and_first_article_fixture_definition
     - path: board/kicad/e1-phone/usb-pd-controller-lifecycle-replacement-gate-2026-05-22.yaml
       marker: pending_alt_mode_capable_controller

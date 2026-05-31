@@ -61,7 +61,7 @@ requirements:
     title: DFT/scan evidence must exist before testability promotion
     owner: pd
     source_doc: docs/evidence/pd/dft-evidence.yaml
-    source_doc_sha: aecc6b64527d1a00
+    source_doc_sha: 1f494b2491cecb20
     status: pd_evidence_template
     claim_boundary: dft_template_no_atpg_coverage_signoff_claim
     links:

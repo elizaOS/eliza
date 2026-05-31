@@ -122,6 +122,9 @@ def train(env_name: str, *, num_timesteps: int, num_envs: int, num_evals: int, s
 
     def policy_params_fn(num_steps, make_policy, params):
         saved["params"] = params
+        # Persist progressively so downstream work can use the latest policy and
+        # an early stop never loses progress.
+        brax_model.save_params(str(out_dir / "final_params"), params)
 
     train_fn = functools.partial(
         ppo_train_module.train,
@@ -227,10 +230,13 @@ def evaluate_commands(env_name: str, params_path: Path, *, eval_steps: int, seed
             state.info["command"] = cmd_arr
             states.append(state)
             q = np.asarray(state.data.qpos)
-            xs.append(float(q[0])); ys.append(float(q[1])); zs.append(float(q[2]))
+            xs.append(float(q[0]))
+            ys.append(float(q[1]))
+            zs.append(float(q[2]))
             yaws.append(_quat_yaw(q[3:7]))
             qv = np.asarray(state.data.qvel)
-            vxs.append(float(qv[0])); vys.append(float(qv[1]))
+            vxs.append(float(qv[0]))
+            vys.append(float(qv[1]))
             if bool(np.asarray(state.done)):
                 break
         n = len(xs) - 1

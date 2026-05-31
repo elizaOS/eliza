@@ -28,7 +28,7 @@
     "height": 1.1500001999999998,
     "width": 13.0000002
   },
-  "local_discrete_step_bytes": 15551,
+  "local_discrete_step_bytes": 15576,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 2.4,
     "height": 1.15,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/J_DISPLAY_TOUCH.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "31dea19eea97ad5ff7996ff9d70ca0d2959dfcaaad16a929507172f312a084bd",
+  "local_discrete_step_sha256": "f1f7d0f45f8fdb4b3656d6ad12c115f08641ae974042f9b0fd16d3b249992c4f",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -405,7 +405,7 @@
   "supplier_step_intake_bytes": 15660,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "8c052a4f968b0c5a207473a641cd1b877299be91a4a4a829d4023eac6baa8ad0",
+  "supplier_step_intake_sha256": "66d1e8d9f3f0c748486483960bb8c9bb86e767ba21a36fd70a3d9465bb415b83",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 40,

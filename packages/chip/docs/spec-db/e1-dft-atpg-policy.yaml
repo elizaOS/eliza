@@ -1,6 +1,14 @@
 schema: eliza.dft_atpg_policy.v1
 status: DRAFT_CAPTURE_ONLY
 claim_boundary: dft_atpg_policy_only_no_scan_atpg_mbist_or_fault_coverage_claim
+claim_allowed: false
+release_claim_allowed: false
+tapeout_claim_allowed: false
+scan_insertion_claim_allowed: false
+atpg_coverage_claim_allowed: false
+mbist_claim_allowed: false
+manufacturing_test_readiness_claim_allowed: false
+netlist_mutation_claim_allowed: false
 description: |
   Governing policy for AI/EDA-assisted design-for-test (DFT) work on the
   Eliza E1 SoC: scan insertion, automatic test pattern generation (ATPG),

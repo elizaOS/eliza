@@ -112,6 +112,8 @@ class RegistryBuildTests(unittest.TestCase):
         self.assertEqual(code, 0, msg=f"unexpected errors: {errors}")
         self.assertEqual(errors, [])
         self.assertEqual(coverage["schema"], chk.COVERAGE_SCHEMA)
+        for key, expected in chk.FALSE_CLAIM_FLAGS.items():
+            self.assertIs(coverage.get(key), expected, key)
         self.assertGreater(coverage["summary"]["requirements"], 0)
 
 

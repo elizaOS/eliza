@@ -18,6 +18,7 @@ Reproducible: re-running with the same out/*.step files yields the same numbers.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import sys
 import time
@@ -356,6 +357,68 @@ def load_part(name: str) -> Part | None:
         return None
     xmn, ymn, zmn, xmx, ymx, zmx = b.Get()
     return Part(name=name, shape=shape, bbox=(xmn, ymn, zmn, xmx, ymx, zmx))
+
+
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def source_geometry_summary(manifest_entries: list[dict[str, Any]], parts: dict[str, Part]) -> dict:
+    """Record the exact geometry inputs used by this local B-rep run."""
+    critical_names = sorted(
+        {
+            "screen_cover_glass",
+            "display_lcm",
+            "screen_adhesive_top",
+            "orange_side_frame",
+            "orange_back_shell",
+            "front_camera_module",
+            "front_camera_under_glass",
+            "front_camera_black_mask_window",
+            "earpiece_receiver",
+            "handset_acoustic_slot",
+            "handset_acoustic_mesh",
+            "rear_camera_shell_aperture",
+            "rear_camera_cover_glass",
+            "rear_camera_lens_window",
+            "rear_camera_module",
+            "rear_camera_optical_sight_tunnel",
+            "rear_flash_shell_aperture",
+            "rear_flash_led_window",
+            "rear_flash_led",
+        }
+    )
+    critical_steps: list[dict[str, Any]] = []
+    for name in critical_names:
+        step_path = OUT_DIR / f"{name}.step"
+        critical_steps.append(
+            {
+                "part": name,
+                "path": step_path.relative_to(ROOT).as_posix(),
+                "present": step_path.is_file(),
+                "loaded": name in parts,
+                "size_bytes": step_path.stat().st_size if step_path.is_file() else 0,
+                "sha256": file_sha256(step_path) if step_path.is_file() else "",
+                "bbox_mm": [round(v, 6) for v in parts[name].bbox] if name in parts else [],
+            }
+        )
+    return {
+        "manifest_path": MANIFEST.relative_to(ROOT).as_posix(),
+        "manifest_sha256": file_sha256(MANIFEST),
+        "manifest_entry_count": len(manifest_entries),
+        "step_directory": OUT_DIR.relative_to(ROOT).as_posix(),
+        "loaded_part_count": len(parts),
+        "critical_step_hashes": critical_steps,
+        "derivation": (
+            "Each pass/fail check in this report is computed from the loaded STEP "
+            "B-rep shapes above using OpenCascade intersections, minimum-distance "
+            "queries, or bbox containment derived from those loaded shapes."
+        ),
+    }
 
 
 def aabb_gap_or_overlap(a: Part, b: Part) -> tuple[float, bool]:
@@ -1150,6 +1213,7 @@ def main() -> int:
         "min_target_gap_mm": MIN_TARGET_GAP_MM,
         "parts_loaded": len(parts),
         "parts_missing": failed_load,
+        "source_geometry": source_geometry_summary(manifest, parts),
         "pair_count_total": pair_count_full,
         "pair_count_brep_evaluated": pair_count_brep,
         "unintentional_clashes": [

@@ -135,9 +135,9 @@ summary:
     wifi_bluetooth: 5
   local_component_model_directory_release_allowed: false
   public_sourcing_intake_ready: true
-  public_cad_source_record_count: 16
-  public_cad_source_step_or_3d_observed_count: 8
-  public_cad_source_footprint_or_eda_observed_count: 16
+  public_cad_source_record_count: 20
+  public_cad_source_step_or_3d_observed_count: 12
+  public_cad_source_footprint_or_eda_observed_count: 19
   public_cad_source_local_downloaded_hashed_count: 1
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11
@@ -151,9 +151,9 @@ public_sourcing_intake_context:
   source_artifacts:
   - board/kicad/e1-phone/public-cad-source-intake-2026-05-28.yaml
   - mechanical/e1-phone/review/bom-public-market-cost-bands-2026-05-28.yaml
-  public_cad_source_record_count: 16
-  public_cad_source_step_or_3d_observed_count: 8
-  public_cad_source_footprint_or_eda_observed_count: 16
+  public_cad_source_record_count: 20
+  public_cad_source_step_or_3d_observed_count: 12
+  public_cad_source_footprint_or_eda_observed_count: 19
   public_cad_source_local_downloaded_hashed_count: 1
   public_cad_source_release_credit_record_count: 0
   public_market_bom_cost_category_count: 11

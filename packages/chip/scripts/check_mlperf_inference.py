@@ -47,6 +47,15 @@ ENERGY_REQUIRED_KEYS = {
     "sample_count",
     "calibration",
 }
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "official_mlcommons_submission_claim_allowed",
+    "measured_power_claim_allowed",
+    "silicon_performance_claim_allowed",
+    "phone_class_throughput_claim_allowed",
+    "production_readiness_claim_allowed",
+}
 
 
 def _check_energy_block(prefix: str, block: object, errors: list[str]) -> None:
@@ -97,6 +106,9 @@ def main() -> int:
         errors.append("claim_boundary must record modeled/pre-silicon/not-official/not-measured")
     if data.get("provenance") != "simulator":
         errors.append("report provenance must be simulator")
+    for flag in sorted(FALSE_CLAIM_FLAGS):
+        if data.get(flag) is not False:
+            errors.append(f"{flag} must be false")
     if data.get("claim_level") not in {"L0_RTL_UNIT", "L1_RTL_FULL_SOC", "L2_ARCH_SIM"}:
         errors.append("claim_level must be a simulator-compatible level (L0-L2)")
 

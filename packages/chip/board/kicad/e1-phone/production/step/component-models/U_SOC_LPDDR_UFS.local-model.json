@@ -28,7 +28,7 @@
     "height": 4.0000002,
     "width": 69.6000002
   },
-  "local_discrete_step_bytes": 15491,
+  "local_discrete_step_bytes": 15516,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 5.0,
     "height": 4.0,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_SOC_LPDDR_UFS.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "f827e385709e60132a16abcfa4597647efcbdde997127501f5cd19a7ab51d316",
+  "local_discrete_step_sha256": "9451d50b3a4115ede0a767c72f0359d354db4df7e04c7839fe1653d1654c9811",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

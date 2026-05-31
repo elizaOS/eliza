@@ -28,7 +28,7 @@
     "height": 0.5500002,
     "width": 2.0000002
   },
-  "local_discrete_step_bytes": 15521,
+  "local_discrete_step_bytes": 15546,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.6,
     "height": 0.55,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_FG.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "deb36bd13621b7463aa8ab5086b5a99c5788ca57dc3ed603d1b81a4eb2628f40",
+  "local_discrete_step_sha256": "f29aa49da91fd7ad9e1450ac5a1f60c0e0eb49c8f89afbdfde01064ecae1bcfb",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -181,7 +181,7 @@
   "supplier_step_intake_bytes": 15574,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "432460e6b1cb489a64c54fcfd53334f43c12c699de7958b00633922b7a2a86e6",
+  "supplier_step_intake_sha256": "268467d2d09cb93a5397cd4b26965ee3c08d446f168444fdc446accd788c08b6",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 12,

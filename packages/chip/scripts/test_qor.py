@@ -24,7 +24,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_external_model_corpus_intake_policy as external_policy  # noqa: E402
 import qor_regression as qr  # noqa: E402
+from chip_utils import load_yaml_object  # noqa: E402
 
 PY = sys.executable
 
@@ -352,6 +354,9 @@ def test_external_model_corpus_intake_policy_gate() -> None:
     )
     assert proc.returncode == 0, proc.stderr
     assert "PASS" in proc.stdout
+    policy = load_yaml_object(external_policy.POLICY)
+    for key in external_policy.REQUIRED_FALSE_CLAIM_FLAGS:
+        assert policy.get(key) is False, key
 
 
 if __name__ == "__main__":

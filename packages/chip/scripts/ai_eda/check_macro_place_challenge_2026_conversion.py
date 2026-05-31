@@ -15,6 +15,14 @@ CLAIM_BOUNDARY = (
 )
 LABEL_STATUS = "public_macro_place_challenge_2026_proxy_and_baseline_training_only_not_e1_signoff"
 REQUIRED_SCHEMAS = {"eda.design_bundle.v1", "eda.graph_sample.v1", "eda.flow_run.v1"}
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "training_claim_allowed",
+    "inference_claim_allowed",
+    "e1_signoff_claim_allowed",
+    "ppa_signoff_claim_allowed",
+)
 
 
 def rel(path: Path) -> str:
@@ -38,6 +46,14 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def positive_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
+def validate_false_claim_flags(record: dict[str, Any], label: str) -> list[str]:
+    return [
+        f"{label}: {field} must be false"
+        for field in REQUIRED_FALSE_CLAIM_FLAGS
+        if record.get(field) is not False
+    ]
 
 
 def validate_file_record(record: Any, label: str, *, require_present: bool = True) -> list[str]:
@@ -65,6 +81,7 @@ def validate_design_record(record: dict[str, Any], path: Path) -> list[str]:
     errors: list[str] = []
     if record.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{record_id}: invalid claim_boundary")
+    errors.extend(validate_false_claim_flags(record, record_id))
     sources = record.get("sources")
     if not isinstance(sources, dict):
         return errors + [f"{record_id}: sources must be a mapping"]
@@ -93,6 +110,7 @@ def validate_graph_record(record: dict[str, Any], path: Path) -> list[str]:
     errors: list[str] = []
     if record.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{record_id}: invalid claim_boundary")
+    errors.extend(validate_false_claim_flags(record, record_id))
     graph = record.get("graph")
     labels = record.get("labels")
     if not isinstance(graph, dict):
@@ -128,6 +146,7 @@ def validate_flow_record(record: dict[str, Any], path: Path) -> list[str]:
     errors: list[str] = []
     if record.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append(f"{record_id}: invalid claim_boundary")
+    errors.extend(validate_false_claim_flags(record, record_id))
     metrics = record.get("metrics")
     if not isinstance(metrics, dict):
         return errors + [f"{record_id}: metrics must be a mapping"]
@@ -167,6 +186,7 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("report schema mismatch")
     if report.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("report claim_boundary mismatch")
+    errors.extend(validate_false_claim_flags(report, "report"))
     policy = report.get("policy")
     if not isinstance(policy, dict):
         errors.append("policy must be a mapping")
@@ -176,6 +196,7 @@ def validate_report(report: dict[str, Any], report_path: Path) -> list[str]:
             "contains_hidden_benchmarks",
             "release_use_allowed",
             "e1_signoff_evidence",
+            *REQUIRED_FALSE_CLAIM_FLAGS,
         ):
             if policy.get(field) is not False:
                 errors.append(f"policy.{field} must be false")

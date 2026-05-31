@@ -8,6 +8,11 @@ claim_boundary: >
   and the IBIS / ESD signoff corners a foundry IO library must satisfy. Makes no
   drive-strength, slew, or ESD-immunity claim: those stay blocked on the foundry
   IO cell models and IBIS extraction.
+claim_allowed: false
+release_claim_allowed: false
+electrical_signoff_claim_allowed: false
+vendor_ip_claim_allowed: false
+silicon_claim_allowed: false
 
 supply_rails:
   - rail: +3V3

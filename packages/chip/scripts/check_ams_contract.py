@@ -33,6 +33,13 @@ REQUIRED_TOP_KEYS = {
     "procurement",
     "forbidden_claims",
 }
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "electrical_signoff_claim_allowed",
+    "vendor_ip_claim_allowed",
+    "silicon_claim_allowed",
+}
 NODE_IDS = {
     "sky130",
     "gf180",
@@ -110,6 +117,9 @@ def check_contract(path: Path, group_ids: set[str], errors: list[str]) -> str | 
     status = str(contract.get("status", ""))
     if not status.startswith("BLOCKED"):
         fail(errors, f"{rel}: status must stay BLOCKED (procurement/interface only)")
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        if contract.get(key) is not False:
+            fail(errors, f"{rel}: {key} must be false")
 
     block_class = contract.get("block_class")
     nodes = require_list(

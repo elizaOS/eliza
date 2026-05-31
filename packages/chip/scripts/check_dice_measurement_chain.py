@@ -47,6 +47,15 @@ EVIDENCE_PATHS = [
 
 PASS_LINE = "DICE CDI chain test PASS"
 
+FALSE_CLAIM_FLAGS = {
+    "release_claim_allowed": False,
+    "hardware_uds_claim_allowed": False,
+    "silicon_entropy_claim_allowed": False,
+    "provisioned_identity_claim_allowed": False,
+    "secure_boot_release_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def _toolchain_env() -> dict[str, str]:
     """Prepend the native cross-toolchain bins so riscv64-unknown-elf-gcc and
@@ -123,6 +132,7 @@ def main() -> int:
             "evidence_paths": [],
             "as_of": now,
             "subsystem": "security",
+            **FALSE_CLAIM_FLAGS,
         }
         REPORT_PATH.write_text(json.dumps(report, indent=2) + "\n")
         print(f"BLOCKED: missing {missing}", file=sys.stderr)
@@ -159,6 +169,7 @@ def main() -> int:
         "evidence_paths": EVIDENCE_PATHS,
         "as_of": now,
         "subsystem": "security",
+        **FALSE_CLAIM_FLAGS,
         "claim_boundary": (
             "DICE CDI ladder software is real and KAT-validated (HKDF-SHA256 vs "
             "RFC 5869, HMAC-SHA256 vs RFC 4231, Ed25519 deterministic sign vs "

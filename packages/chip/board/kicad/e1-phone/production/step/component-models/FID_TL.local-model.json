@@ -28,7 +28,7 @@
     "height": 0.0500002,
     "width": 3.0000002
   },
-  "local_discrete_step_bytes": 15603,
+  "local_discrete_step_bytes": 15628,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 3.0,
     "height": 0.05,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/FID_TL.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "e9232513f611a77570b14507c1a9371651c47aedf32d3725c5ceead1a597e97c",
+  "local_discrete_step_sha256": "a52c00ba3cdac82d316c25db3d25016627d2b8781b1d6e6d75ed54031e8d239f",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",

@@ -22,6 +22,14 @@ ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = ROOT.parent.parent
 DEFAULT_OUT = ROOT / "build/ai_eda/cuda_training_payloads"
 CLAIM_BOUNDARY = "cuda_training_payload_metadata_only_no_dataset_weights_or_training_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 BASE_INCLUDE = (
     "README.md",
@@ -296,6 +304,7 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "git": {
             "commit": git_output(["rev-parse", "HEAD"]),
             "branch": git_output(["branch", "--show-current"]),
@@ -307,6 +316,7 @@ def write_run_plan(out_dir: Path, selected: list[dict[str, Any]], args: argparse
             "contains_model_weights": False,
             "contains_foundry_confidential_files": False,
             "release_use_allowed": False,
+            **FALSE_CLAIM_FLAGS,
         },
         "selected_assets": [
             {
@@ -877,6 +887,7 @@ def main() -> int:
         "run_plan": str(plan_path.relative_to(ROOT)),
         "runbook": str(runbook_path.relative_to(ROOT)),
         "release_use_allowed": False,
+        **FALSE_CLAIM_FLAGS,
     }
     report_path = out_dir / "cuda_training_payload_report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")

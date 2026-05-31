@@ -27,9 +27,13 @@ def _fuse_map() -> dict:
 
 
 def test_default_fuse_map_valid() -> None:
-    errors = check_otp.validate(_fuse_map())
+    fuse_map = _fuse_map()
+    errors = check_otp.validate(fuse_map)
     if errors:
         raise AssertionError(errors)
+    for key in check_otp.REQUIRED_FALSE_CLAIM_FLAGS:
+        if fuse_map.get(key) is not False:
+            raise AssertionError(f"{key} must be false")
     print("PASS default OTP fuse map valid")
 
 

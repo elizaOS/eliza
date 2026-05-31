@@ -183,6 +183,9 @@ records:
           - product_status
           - order_number
           - documents_section
+          - module_footprint_dxf
+          - antenna_dxf
+          - hardware_application_note
           - software_section
           - purchase_section
       - type: manufacturer_datasheet
@@ -194,9 +197,9 @@ records:
         url: https://www.mouser.com/new/murata/murata-lbee5xv2ea-802-module/
         observed_evidence:
           - distributor_product_overview
-    public_step_or_3d_status: no_public_step_confirmed_in_local_intake
-    public_footprint_status: datasheet_land_pattern_candidate_requires_download_review
-    drawing_status: datasheet_observed
+    public_step_or_3d_status: no_public_step_confirmed_public_2d_dxf_and_mechanical_data_observed
+    public_footprint_status: manufacturer_module_footprint_dxf_observed_not_downloaded_or_verified
+    drawing_status: datasheet_and_public_dxf_observed
     local_download_status: not_downloaded_or_hashed
     login_or_rfq_required: unknown_for_full_hardware_design_pack
     release_credit: false
@@ -204,6 +207,7 @@ records:
       - download current Murata hardware design pack if available under accepted terms
       - bind LGA pad map to KiCad footprint and RF keepouts
       - request supplier approval for antenna/coexistence layout review
+      - keep local U_WIFI_BT envelope as non-release until Murata STEP or reviewed DXF-derived body is accepted
   - id: panasonic_evq_p7a01p
     category: side_push_tactile_switch
     exact_mpn: EVQ-P7A01P
@@ -368,8 +372,15 @@ records:
         url: https://www.quectel.com/blog/document/5g-redcap-rg255c-series/
         observed_evidence:
           - rg255c_series_document_page
-    public_step_or_3d_status: no_public_step_confirmed_in_public_search
-    public_footprint_status: datasheet_land_pattern_candidate_requires_supplier_document_review
+      - type: authorized_eda_library_link
+        url: https://www.snapeda.com/parts/RG255C/Quectel/view-part/
+        observed_evidence:
+          - symbol
+          - footprint
+          - 3d_model
+          - third_party_model_not_official_supplier_step
+    public_step_or_3d_status: third_party_3d_model_observed_official_step_not_confirmed
+    public_footprint_status: third_party_eda_model_observed_official_land_pattern_requires_supplier_document_review
     drawing_status: public_product_page_observed_full_package_requires_quectel_document_access
     local_download_status: not_downloaded_or_hashed
     login_or_rfq_required: likely_required_for_full_hardware_design_package_step_and_carrier_sku_docs
@@ -378,6 +389,7 @@ records:
       - select exact regional RG255C SKU and obtain Quectel hardware design package under accepted terms
       - reconcile LGA pad map, keepouts, RF launch, GNSS, antenna matching, and thermal pads to KiCad
       - require Quectel or module-channel RF/layout review before fabrication release
+      - do not replace local U_CELL envelope with third-party geometry until official Quectel package files are obtained or independently checked against supplier drawings
   - id: displaymodule_dm_tft55_370
     category: display_touch_alternate
     exact_mpn: DM-TFT55-370
@@ -513,11 +525,133 @@ records:
       - select exact spring-contact MPNs only after antenna/chassis compression heights are known
       - download exact STEP/drawing files and hash them into supplier intake
       - validate compressed/free-height states in the enclosure clearance model
+  - id: harwin_s1951_46r
+    category: antenna_or_ground_spring_contact_candidate
+    exact_mpn: S1951-46R
+    manufacturer: Harwin
+    board_footprints:
+      - HARWIN_SPRING_CONTACT_DEV
+    local_candidate_refs:
+      - RFTP_CELL_MAIN
+      - RFTP_CELL_DIV
+      - RFTP_WIFI0
+      - RFTP_WIFI1
+      - RFTP_GNSS
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.harwin.com/products/S1951-46R/
+        observed_evidence:
+          - exact_mpn_product_page
+          - distributor_availability_links
+          - traceparts_cad_link
+          - ecad_download_link
+    public_step_or_3d_status: exact_mpn_public_cad_link_observed_not_downloaded
+    public_footprint_status: exact_mpn_ecad_link_observed_not_verified
+    drawing_status: exact_mpn_product_page_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: unknown_for_traceparts_or_ecad_download_terms
+    release_credit: false
+    required_next_actions:
+      - verify free-height, working-height, compression force, and pad geometry against antenna/chassis stackup before selection
+      - download and hash TraceParts or Harwin CAD under accepted terms before replacing RFTP local envelopes
+      - rerun RF feed clearance and compressed/contact tolerance stack
+  - id: pui_as01808mr_r
+    category: speaker_candidate
+    exact_mpn: AS01808MR-R
+    manufacturer: PUI Audio
+    board_footprints:
+      - SPEAKER_SMD_OR_FLEX_DEV
+    local_candidate_refs:
+      - D_SPK
+      - U_AUDIO_SPK_MIC
+    official_or_authorized_sources:
+      - type: authorized_distributor_product_page
+        url: https://www.digikey.com/en/products/detail/pui-audio-inc/AS01808MR-R/1745511
+        observed_evidence:
+          - stocked_catalog_speaker
+          - datasheet
+          - cad_models_link
+      - type: manufacturer_product_page
+        url: https://www.puiaudio.com/products/as01808mr-r
+        observed_evidence:
+          - product_page
+          - mechanical_dimensions
+    public_step_or_3d_status: distributor_cad_link_observed_not_downloaded
+    public_footprint_status: catalog_speaker_geometry_observed_not_phone_acoustic_module
+    drawing_status: public_product_page_and_datasheet_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: unknown_for_cad_download_terms
+    release_credit: false
+    required_next_actions:
+      - treat as EVT/mechanical stand-in only unless acoustic performance is accepted
+      - request final phone speaker-box drawing, gasket datum, port/chamber dimensions, and STEP from acoustic supplier
+      - keep local D_SPK and U_AUDIO_SPK_MIC envelopes non-release until acoustic module geometry is selected
+  - id: ti_drv2625
+    category: haptic_driver_candidate
+    exact_mpn: DRV2625
+    manufacturer: Texas Instruments
+    board_footprints:
+      - HAPTIC_DRIVER_WLCSP_DEV
+    local_candidate_refs:
+      - U_HAPTIC
+    official_or_authorized_sources:
+      - type: manufacturer_product_page
+        url: https://www.ti.com/product/DRV2625
+        observed_evidence:
+          - datasheet
+          - package_information
+          - cad_symbols_footprints_3d_model_links_expected_by_ti_portal
+      - type: manufacturer_datasheet
+        url: https://www.ti.com/lit/ds/symlink/drv2625.pdf
+        observed_evidence:
+          - package_drawing
+          - land_pattern_example
+          - pinout
+    public_step_or_3d_status: manufacturer_cad_3d_link_expected_not_downloaded
+    public_footprint_status: datasheet_land_pattern_observed_cad_package_not_verified
+    drawing_status: manufacturer_datasheet_package_drawing_observed
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: unknown_for_cad_package_download
+    release_credit: false
+    required_next_actions:
+      - select exact DRV2625 orderable suffix and download TI/Ultra Librarian CAD under accepted terms
+      - bind WLCSP ball map to HAPTIC_DRIVER_WLCSP_DEV before replacing local U_HAPTIC envelope
+      - separately source the physical haptic actuator motor or LRA STEP/drawing
+  - id: custom_display_cover_glass
+    category: display_cover_glass_candidate
+    exact_mpn: supplier_defined_custom_cover_lens
+    manufacturer: cover_glass_or_ctp_supplier_required
+    board_footprints:
+      - supplier_defined_non_pcb_mechanical_part
+    local_candidate_refs:
+      - display_cover_glass
+      - front_screen_cover
+    official_or_authorized_sources:
+      - type: manufacturer_capability_page
+        url: https://www.newvisiondisplay.com/products/cover-lenses/
+        observed_evidence:
+          - custom_cover_lens_capability
+          - material_and_printing_options
+      - type: supplier_product_page
+        url: https://www.china-lcd-touchscreen.com/capacitive-touch-screen/5-5inch-capacitive-touch-screen/5-5inch-capacitive-touch-screen-panel.html
+        observed_evidence:
+          - five_point_five_inch_ctp_class_geometry
+          - custom_touch_cover_stack_signal
+    public_step_or_3d_status: no_public_step_confirmed_custom_2d_drawing_required
+    public_footprint_status: not_a_pcb_footprint
+    drawing_status: public_capability_pages_only_not_signed_drawing
+    local_download_status: not_downloaded_or_hashed
+    login_or_rfq_required: required_for_signed_outline_cover_lens_step_and_tolerance_stack
+    release_credit: false
+    required_next_actions:
+      - request signed cover-glass DXF/STEP with ink, chamfer, hole, adhesive, and datum definitions
+      - bind the signed cover stack to display active area and front-camera aperture before release CAD
+      - do not treat local front cover geometry as supplier-approved until hashed drawings are accepted
 summary:
-  record_count: 16
-  public_step_or_3d_observed_count: 8
-  public_footprint_or_eda_observed_count: 16
+  record_count: 20
+  public_step_or_3d_observed_count: 12
+  public_footprint_or_eda_observed_count: 19
   manufacturer_step_link_observed_count: 3
   local_downloaded_hashed_count: 1
   release_credit_record_count: 0
-  externally_blocked_record_count: 16
+  externally_blocked_record_count: 20

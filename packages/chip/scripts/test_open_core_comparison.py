@@ -19,6 +19,18 @@ def test_checker_passes_on_real_dataset() -> None:
     assert check(COMPARISON_PATH) == []
 
 
+def test_false_claim_flags_are_declared() -> None:
+    data = _data()
+    for key in (
+        "claim_allowed",
+        "release_claim_allowed",
+        "silicon_performance_claim_allowed",
+        "tapeout_claim_allowed",
+        "phone_performance_claim_allowed",
+    ):
+        assert data.get(key) is False, key
+
+
 def test_little_core_is_cva6() -> None:
     cores = _data()["cores"]
     assert cores["e1_pro"]["identical_to"] == "cva6"

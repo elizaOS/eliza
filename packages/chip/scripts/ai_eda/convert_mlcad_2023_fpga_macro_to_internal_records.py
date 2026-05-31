@@ -17,6 +17,14 @@ PAYLOAD = ROOT / "external/datasets/mlcad-2023-fpga-macro/payload"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/mlcad_2023_fpga_macro"
 CLAIM_BOUNDARY = "mlcad_2023_fpga_macro_conversion_training_only_no_e1_signoff_or_release_claim"
 LABEL_STATUS = "public_mlcad_2023_fpga_macro_metadata_training_only_not_e1_signoff"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -225,6 +233,7 @@ def convert_bucket(
         "schema": "eda.design_bundle.v1",
         "id": f"{case_id}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design": {
             "name": f"MLCAD 2023 FPGA macro placement {clock_count}-clock public bucket",
             "revision": "mlcad_2023_public_spec_metadata",
@@ -248,6 +257,7 @@ def convert_bucket(
         "id": f"{case_id}-spec-graph",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "graph": {
             "coordinate_system": "fpga_site_grid_metadata_only_no_macro_solution",
             "node_features": [
@@ -312,6 +322,7 @@ def convert_bucket(
         "id": f"{case_id}-metadata-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "toolchain": {
             "tools": [
                 "MLCAD 2023 FPGA Macro Placement Contest public specs",
@@ -399,6 +410,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "payload": rel(args.payload),
         "converted_clock_bucket_count": len(buckets),
         "converted_design_id_count": sum(len(bucket["design_ids"]) for bucket in buckets),
@@ -420,6 +432,7 @@ def main() -> int:
             "contains_macro_solution_labels": False,
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "deterministic_replay_required_for_ppa_claims": True,
         },
     }

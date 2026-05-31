@@ -1209,7 +1209,7 @@ ALLOWED_RELEASE_GATES = {"pd_release", "tapeout_release", "board_fabrication_rel
 ALLOWED_FAIL_CLOSED_PHONE_RELEASE_GATE_STATUSES = {
     "missing",
     "blocked_local_routed_candidate_not_release",
-    "blocked_local_cad_passes_but_release_requires_supplier_models_routed_clearance_and_first_article",
+    "blocked_local_cad_incomplete_and_release_requires_supplier_models_routed_clearance_and_first_article",
 }
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CHECKSUM_METADATA_RE = re.compile(r"(^|_)checksum$")
