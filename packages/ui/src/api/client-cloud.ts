@@ -2403,57 +2403,30 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
 };
 
 /**
- * Derive the per-agent base domain from the cloud control-plane API base.
- * Drops a leading subdomain label (`www.`/`api.`/`dev.` → bare registrable
- * domain) so agents resolve under the same apex the gateway serves. Returns
- * null for loopback / non-URL bases (a local-dev cloud has no public gateway).
- */
-function cloudAgentBaseDomain(cloudApiBase: string): string | null {
-  let host: string;
-  try {
-    host = new URL(cloudApiBase).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-  if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1") {
-    return null;
-  }
-  const labels = host.split(".");
-  return labels.length >= 3 ? labels.slice(1).join(".") : host;
-}
-
-/**
  * Resolve the reachable API base for a freshly provisioned cloud agent.
  *
- * The provision endpoint returns `bridgeUrl` as a raw container address
- * (`http://<ip>:<port>`) that a browser can neither reach (the bridge port is
- * firewalled to the cloud's internal network) nor connect to under the
- * dashboard CSP (which permits only `https://*` for remote hosts). The
- * reachable endpoint is the per-agent HTTPS gateway
- * `https://<agentId>.<agent-base-domain>` — the same URL the server computes in
- * getElizaAgentPublicWebUiUrl() and that the live `*.elizacloud.ai` gateway
- * routes to the container.
+ * Prefer a reachable URL the server explicitly provides (`webUiUrl`); otherwise
+ * fall back to the raw container `bridgeUrl`.
  *
- * Prefer a server-provided web UI URL when the provision response carries one
- * (future-proof single source of truth). Otherwise derive the agent base
- * domain from the cloud control-plane host the client provisioned against.
- * Fall back to the raw bridgeUrl only for non-public clouds (local dev), where
- * no gateway exists and the bridge is the reachable address.
+ * We deliberately do NOT derive `https://<agentId>.<domain>` ourselves.
+ * Verified against live Eliza Cloud (2026-05-31): a running agent is exposed
+ * ONLY as `bridgeUrl: http://<ip>:<port>` (no `web_ui_url` field), and the
+ * per-agent subdomain the cloud code *intends* — `<agentId>.elizacloud.ai`,
+ * built by getElizaAgentPublicWebUiUrl() — is not actually deployed: it returns
+ * a Vercel `DEPLOYMENT_NOT_FOUND` 404. Pinning that 404 URL would wedge
+ * first-run on BACKEND_NOT_FOUND (a 404 is an HTTP response, so the startup
+ * connection-error fallback in startup-phase-poll deliberately does NOT catch
+ * it) — strictly worse than the raw bridgeUrl, whose connection error the
+ * fallback recovers from. If/when the cloud deploys that gateway and returns a
+ * real `webUiUrl`, this picks it up automatically with no further change.
  */
 export function resolveCloudAgentApiBase(args: {
-  agentId: string;
-  cloudApiBase: string;
   bridgeUrl: string | null;
   webUiUrl?: string | null;
 }): string {
   const stripTrailingSlash = (u: string): string => u.replace(/\/+$/, "");
   const serverProvided = args.webUiUrl?.trim();
   if (serverProvided) return stripTrailingSlash(serverProvided);
-
-  const domain = cloudAgentBaseDomain(args.cloudApiBase);
-  if (args.agentId && domain) {
-    return `https://${args.agentId}.${domain}`;
-  }
   return stripTrailingSlash(args.bridgeUrl ?? "");
 }
 
@@ -2522,7 +2495,11 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
     provisionData.data?.webUiUrl ?? provisionData.webUiUrl ?? null;
   if (immediateBridgeUrl) {
     onProgress?.("ready", "Sandbox ready!");
-    return { bridgeUrl: immediateBridgeUrl, agentId, webUiUrl: immediateWebUiUrl };
+    return {
+      bridgeUrl: immediateBridgeUrl,
+      agentId,
+      webUiUrl: immediateWebUiUrl,
+    };
   }
   const jobId = provisionData.data?.jobId ?? provisionData.jobId;
   if (!jobId) {

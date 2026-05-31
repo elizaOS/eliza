@@ -638,15 +638,15 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
             onProgress: () => {},
           });
 
-          // The provision endpoint hands back `bridgeUrl` as a raw container
-          // address (http://<ip>:<port>) that the browser can't reach (bridge
-          // port firewalled to the cloud's internal network) and that the CSP
-          // blocks (only https:// is allowed for remote hosts). Resolve the
-          // reachable per-agent HTTPS gateway URL instead, so onboarding can
-          // actually talk to the provisioned agent.
+          // Use a server-provided reachable web UI URL when present, else the
+          // raw bridgeUrl. NOTE: a cloud-provisioned agent currently has no
+          // browser-reachable URL — the cloud returns only an internal
+          // `bridgeUrl` (firewalled + CSP-blocked) and the per-agent gateway
+          // isn't deployed — so this typically resolves to bridgeUrl, the
+          // connect fails, and the startup fallback recovers to localhost on
+          // reload. Reaching cloud agents from a browser is blocked on cloud
+          // infra (the per-agent HTTPS gateway); see resolveCloudAgentApiBase.
           const cloudAgentApiBase = resolveCloudAgentApiBase({
-            agentId: provisionedAgent.agentId,
-            cloudApiBase,
             bridgeUrl: provisionedAgent.bridgeUrl,
             webUiUrl: provisionedAgent.webUiUrl,
           });

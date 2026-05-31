@@ -8,72 +8,50 @@ vi.mock("@capacitor/core", () => ({
 import { resolveCloudAgentApiBase } from "./client-cloud";
 
 /**
- * Regression: the cloud provision endpoint returns `bridgeUrl` as a raw
- * container address (http://<ip>:<port>) that is firewalled from the browser
- * and blocked by the dashboard CSP. Onboarding used to pin that and wedge.
- * resolveCloudAgentApiBase must instead yield the reachable per-agent HTTPS
- * gateway URL (https://<agentId>.<apex>), matching the live `*.elizacloud.ai`
- * gateway and the server's getElizaAgentPublicWebUiUrl().
+ * After cloud provisioning, the client must pick the agent's API base.
+ *
+ * Verified against live Eliza Cloud (2026-05-31): a running agent is exposed
+ * only as a raw `bridgeUrl` (http://<ip>:<port>); the per-agent subdomain
+ * `<agentId>.elizacloud.ai` that the cloud code intends is NOT deployed (Vercel
+ * 404). So the resolver must NEVER fabricate that subdomain — pinning a 404
+ * wedges first-run on BACKEND_NOT_FOUND (worse than the recoverable
+ * connection-error path). It prefers a server-provided `webUiUrl` if/when the
+ * cloud ever returns one, and otherwise uses the raw bridgeUrl.
  */
 describe("resolveCloudAgentApiBase", () => {
-  it("derives the per-agent https gateway URL from a www. cloud base", () => {
+  it("uses a server-provided webUiUrl when present (trailing slash trimmed)", () => {
     expect(
       resolveCloudAgentApiBase({
-        agentId: "agent-abc",
-        cloudApiBase: "https://www.elizacloud.ai",
-        bridgeUrl: "http://195.201.57.227:19575",
+        bridgeUrl: "http://195.201.57.227:19411",
+        webUiUrl: "https://agent.example.test/",
       }),
-    ).toBe("https://agent-abc.elizacloud.ai");
+    ).toBe("https://agent.example.test");
   });
 
-  it("derives from an api. cloud base too", () => {
+  it("prefers webUiUrl over bridgeUrl", () => {
     expect(
       resolveCloudAgentApiBase({
-        agentId: "agent-abc",
-        cloudApiBase: "https://api.elizacloud.ai",
         bridgeUrl: "http://10.0.0.1:3000",
+        webUiUrl: "https://reachable.example.test",
       }),
-    ).toBe("https://agent-abc.elizacloud.ai");
+    ).toBe("https://reachable.example.test");
   });
 
-  it("handles an apex cloud base (no subdomain to strip)", () => {
+  it("falls back to bridgeUrl when no webUiUrl is provided", () => {
     expect(
-      resolveCloudAgentApiBase({
-        agentId: "x",
-        cloudApiBase: "https://elizacloud.ai",
-        bridgeUrl: null,
-      }),
-    ).toBe("https://x.elizacloud.ai");
+      resolveCloudAgentApiBase({ bridgeUrl: "http://195.201.57.227:19411" }),
+    ).toBe("http://195.201.57.227:19411");
   });
 
-  it("prefers a server-provided web UI URL over derivation (trailing slash trimmed)", () => {
-    expect(
-      resolveCloudAgentApiBase({
-        agentId: "agent-abc",
-        cloudApiBase: "https://www.elizacloud.ai",
-        bridgeUrl: "http://10.0.0.1:3000",
-        webUiUrl: "https://agent-abc.elizacloud.ai/",
-      }),
-    ).toBe("https://agent-abc.elizacloud.ai");
-  });
-
-  it("never pins the unreachable raw http bridgeUrl for a public cloud", () => {
+  it("does NOT fabricate a per-agent subdomain (the gateway isn't deployed)", () => {
     const out = resolveCloudAgentApiBase({
-      agentId: "agent-abc",
-      cloudApiBase: "https://www.elizacloud.ai",
-      bridgeUrl: "http://195.201.57.227:19575",
+      bridgeUrl: "http://195.201.57.227:19411",
     });
-    expect(out.startsWith("https://")).toBe(true);
-    expect(out).not.toContain("195.201.57.227");
+    expect(out).not.toContain("elizacloud.ai");
+    expect(out).toBe("http://195.201.57.227:19411");
   });
 
-  it("falls back to bridgeUrl for a local-dev cloud (no public gateway)", () => {
-    expect(
-      resolveCloudAgentApiBase({
-        agentId: "agent-abc",
-        cloudApiBase: "http://localhost:3000",
-        bridgeUrl: "http://127.0.0.1:31337",
-      }),
-    ).toBe("http://127.0.0.1:31337");
+  it("returns empty when neither is available", () => {
+    expect(resolveCloudAgentApiBase({ bridgeUrl: null })).toBe("");
   });
 });
