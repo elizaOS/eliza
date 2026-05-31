@@ -25,6 +25,36 @@ line numbers.
    voice/NL routing can pass `taskId`/`title`/`goal`/etc. **Mounted the sensitive-request
    REST routes** (`packages/app-core/src/api/server.ts`) — the secret create/submit/fulfill
    path that orchestrator provider setup will use.
+5. **Locked capability manifest↔dispatch parity** with a regression test
+   (`plugin-task-coordinator/__tests__/unit/orchestrator-capability-parity.test.ts`) + a
+   `test` script so CI runs it. The declared capabilities (`ORCHESTRATOR_CAPABILITIES` in
+   `index.ts`) must exactly match the ids `runOrchestratorCapability` dispatches; this drift
+   previously reopened (`orchestrator-update-task`/`-validate-task`).
+
+## App-shell hardening (this branch)
+
+**Stale/unreachable saved server can no longer wedge first-run.** A persisted
+`elizaos:active-server` pointing at a now-dead / CSP-blocked remote backend pinned the
+client to that address; the startup poll (`packages/ui/src/state/startup-phase-poll.ts`)
+retried it until `BACKEND_TIMEOUT` and onboarding hung forever (clearing cookies didn't
+help — the pointer lives in localStorage). Fix: on a *connection-level* failure (the request
+never received an HTTP response) against a non-loopback, non-same-origin base on an http(s)
+page — never on native mobile, where the remote IS the agent — clear the saved server,
+re-point the client at the local origin, and reach the backend (one-shot). The decision is a
+pure exported `shouldFallBackToLocalOrigin` covered by a unit matrix, plus an end-to-end
+recovery test.
+
+**Onboarding boot issues we hit that are environmental, not code bugs (no regression test
+applies):**
+- *"No provider registered for TEXT_EMBEDDING" → agent won't boot* — caused by a local
+  `ELIZA_DISABLE_LOCAL_EMBEDDINGS=1` in `.env.worktree` with no cloud route, i.e. *zero*
+  embedding providers. With local embeddings enabled the agent boots degraded-but-non-fatal
+  (the intended behavior). A graceful-degradation guard for the "no embedding provider at
+  all" edge would live in agent/runtime bootstrap, not here; flagged for the runtime owner.
+- *Dev service-worker / HTTPS-upgrade theories* — investigated and **disproven** by
+  reproduction; the actual cause was the stale active-server above. The dev SW renders fine
+  with caching active. An optional dev-only self-unregistering SW remains available as a
+  hygiene improvement but guards no confirmed bug.
 
 ## Remaining work (specced, not yet built)
 
