@@ -33,35 +33,48 @@ source.ts extern-libs + riscv64 cmake cross flags; flags.ts `-march=rv64gc
 CPU profiler, inspector agents, DOMJIT, NodeVM cached-data) + the
 `0021` open-flags / `0022` zlib-generic-kernel / big-endian fixes.
 
+`0002-second-wave-riscv64-source-gaps.patch` — fixes the compile-stop Rust
+*source* gaps that the build-system patch (0001) didn't cover. 4 files:
+- `src/bun_core/env.rs` — `Architecture::Riscv64` (+ `npm_name` "riscv64", `NAMES`
+  entry, `IS_RISCV64`, `ARCH` arm). Without this the `ARCH` const `panic!`s at
+  compile time and `process.arch` is wrong.
+- `src/bun_core/Global.rs` — `arch_name` → "riscv64" (was falling to "unknown").
+- `src/crash_handler/CPUFeatures.rs` — riscv64 `Flags { NONE }` + empty
+  `NAMED_FLAGS` (matches `CPUFeatures.cpp` `CPU(RISCV64) → return 0`), clears the
+  `compile_error!("unsupported target architecture")`.
+- `src/perf/hw_timer.rs` — riscv64 `read_counter()` via the `rdtime` CSR (the
+  userspace fixed-frequency counter, analog of aarch64 `CNTVCT_EL0`), clears the
+  `compile_error!`.
+
 ## Status — VALIDATED
 
-- ✅ Patch **applies cleanly** to fresh `main` (verified on host + in the builder
-  container).
-- ✅ `scripts/build/config.ts` is **tsc-clean** (`bunx tsc -p scripts/build/tsconfig.json` → 0 errors).
-- ✅ `scripts/build/rust.ts` and the other edited `scripts/build/*.ts` parse.
+- ✅ 0001 **applies cleanly** to fresh `main` (host + builder container); build-system `tsc`-clean.
+- ✅ 0002 **applies cleanly** on top of 0001; the four files are untouched by 0001.
+- ✅ The riscv64 `rdtime` inline asm **assembles** (`rustc --target riscv64gc-unknown-linux-musl`).
+- ✅ riscv64 rust target installed (Tier-2, prebuilt std).
 
-## Status — NOT YET VALIDATED (remaining work)
+## Status — NOT YET VALIDATED (the multi-hour build)
 
-- ⬜ **Full riscv64 cross-build** (`build.sh`: WebKit C_LOOP + `cargo build
-  --target riscv64gc-unknown-linux-musl` + link). This is the multi-hour
-  "ensure it builds" step and is expected to surface a second wave of
-  Rust-*source* riscv64 portability gaps (the crate has ~34 files with
-  `target_arch="x86_64"|"aarch64"` cfg and ~6 inline-asm sites; `src/sys/
-  linux_syscall.rs` is only partially riscv64-aware — sendfile/syscall numbers
-  need a riscv64 arm). Run it with the builder image + a riscv64 musl sysroot;
-  triage cfg gaps into follow-up hunks.
-- ⬜ Some C++ companion files the old patches' siblings touched (BakeGlobalObject,
-  ZigGlobalObject, JSWasmStreamingCompiler, BunDebugger) may need the same
-  C_LOOP guards once the compile reaches them.
+- ⬜ **Full riscv64 cross-build** — run **`../run-build.sh --rust-core`** (sets
+  `BUN_RISCV64_RUST_CORE=1` → build.sh uses `rust_core_port.{target_commit,
+  rust_channel,webkit_commit}` and mounts `rust-core/` as the patch series).
+  Expected next blockers, in order: (a) **WebKit patches** (`../webkit-patches/`)
+  are pinned to the Zig-era WebKit `5488984d`; against `963f8758` they likely
+  need refreshing. (b) A further wave of Rust-source cfg gaps beyond 0002 —
+  notably `src/runtime/ffi/ffi_body.rs` (FFI-callback trampolines need a riscv64
+  asm arm) and `src/crash_handler/lib.rs` (register-dump needs a riscv64
+  `ucontext` arm). (c) The ICU `icudt74l.dat` packaging fix (NFKC/NFKD segfault).
+  Triage compile errors into a `0003-*.patch`.
 
 ## How to drive it
 
 ```sh
-# pin bun to Rust-core main + nightly-2026-05-06 (see ../bun-version.json rust_core_port),
-# point build.sh at this patch series, then:
-make -C ../../.. ...    # or run build.sh with BUN_TAG=<main sha> and this patch dir
+cd packages/app-core/scripts/bun-riscv64
+docker run --rm --privileged tonistiigi/binfmt --install riscv64   # for the QEMU smoke test
+./run-build.sh --rust-core            # image build + Rust-core cross-build (multi-hour)
+# artifact: dist/bun-linux-riscv64-musl.zip
 ```
 
-The Zig v1.3.14 build (`../bun-patches/` + `../bun-version.json` `bun.tag`) remains
-the **last-validated** riscv64 Bun and the safe fallback until the full Rust-core
-cross-build is green.
+The Zig v1.3.14 build (`./run-build.sh`, no flag → `../bun-patches/` + `bun.tag`)
+remains the **last-validated** riscv64 Bun and the safe fallback until the
+Rust-core cross-build is green.

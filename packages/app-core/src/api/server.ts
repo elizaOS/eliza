@@ -145,6 +145,7 @@ import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
+import { handleSensitiveRequestRoutes } from "./sensitive-request-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
 
 // Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
@@ -715,6 +716,7 @@ async function handleCompatRoute(
 
   // Auth / pairing / first-run status — extracted to auth-pairing-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+  if (await handleSensitiveRequestRoutes(req, res, state)) return true;
   if (await handleBackgroundTasksRoute(req, res, state)) return true;
   // Internal wake route called by Capacitor BackgroundRunner JSContexts on
   // iOS/Android. Bearer-authed via the device secret; not part of the

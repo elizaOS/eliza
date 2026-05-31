@@ -619,7 +619,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
 	});
 
-	it("adds a real lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
+	it("does not add shell as a lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
 		const handler = messageHandlerFromFieldResult(
 			{
 				shouldRespond: "RESPOND",
@@ -637,13 +637,10 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			},
 		);
 
-		expect(handler.plan.simple).toBe(false);
-		expect(handler.plan.requiresTool).toBe(true);
-		expect(handler.plan.contexts).toEqual(["general"]);
-		expect(handler.plan.candidateActions).toEqual([
-			"GET_CRYPTO_PRICE",
-			"SHELL",
-		]);
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual([]);
+		expect(handler.plan.candidateActions).toEqual(["GET_CRYPTO_PRICE"]);
 		expect(handler.plan.reply).toBe("On it.");
 	});
 

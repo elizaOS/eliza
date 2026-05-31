@@ -1475,7 +1475,7 @@ android smoke model works`,
 		}
 	});
 
-	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+	it("declines live lookups when no web search action is registered instead of falling back to shell", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -1492,22 +1492,6 @@ android smoke model works`,
 					relationships: [],
 					addressedTo: ["e2e"],
 				},
-			}),
-			{
-				thought: "Shell can fetch a current market quote.",
-				toolCalls: [
-					{
-						id: "shell-current-price",
-						name: "SHELL",
-						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Shell returned current market data.",
-				messageToUser: "BTC current price fetched from shell.",
 			}),
 		]);
 		const shellHandler = vi.fn(async () => ({
@@ -1547,45 +1531,23 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["SHELL"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		if (result.kind === "planned_reply") {
+		expect(calls).toHaveLength(1);
+		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
+				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
 		}
 	});
 
-	it("routes synthetic current-price Stage 1 candidates to a real shell lookup action", async () => {
+	it("does not resolve synthetic current-price Stage 1 candidates to shell", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: [],
 				candidateActionNames: ["GET_CRYPTO_PRICE"],
 				replyText: "On it.",
-			}),
-			{
-				thought: "Shell can fetch the current market quote.",
-				toolCalls: [
-					{
-						id: "shell-current-price",
-						name: "SHELL",
-						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Shell returned current market data.",
-				messageToUser: "BTC current price fetched from shell.",
 			}),
 		]);
 		const shellHandler = vi.fn(async () => ({
@@ -1638,22 +1600,14 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		expect(browserHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain(
-			'"candidateActions":["GET_CRYPTO_PRICE","SHELL"]',
-		);
-		expect(plannerUserContent).toContain('"tierAParents":["SHELL"]');
-		if (result.kind === "planned_reply") {
+		expect(calls).toHaveLength(1);
+		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
+				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
 		}
 	});
@@ -1759,22 +1713,6 @@ android smoke model works`,
 					addressedTo: ["e2e"],
 				},
 			}),
-			{
-				thought: "Shell can fetch a current market quote.",
-				toolCalls: [
-					{
-						id: "shell-current-price",
-						name: "SHELL",
-						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Shell returned current market data.",
-				messageToUser: "BTC current price fetched from shell.",
-			}),
 		]);
 		const shellHandler = vi.fn(async () => ({
 			success: true,
@@ -1813,19 +1751,13 @@ android smoke model works`,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("direct_reply");
+		expect(shellHandler).not.toHaveBeenCalled();
 		const calls = useModelCalls(runtime);
-		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["SHELL"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		if (result.kind === "planned_reply") {
+		expect(calls).toHaveLength(1);
+		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"BTC current price fetched from shell.",
+				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
 		}
 	});
