@@ -1,8 +1,9 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runParentAgentBroker } from "../services/parent-agent-broker.js";
 
 function createRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+  const cache = new Map<string, unknown>();
   return {
     logger: {
       debug: () => undefined,
@@ -10,8 +11,24 @@ function createRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
       warn: () => undefined,
       error: () => undefined,
     },
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+    },
+    deleteCache: async (key: string) => {
+      cache.delete(key);
+    },
     ...overrides,
   } as IAgentRuntime;
+}
+
+function brokerMessage(text = ""): Memory {
+  return {
+    entityId: "user-1",
+    roomId: "room-1",
+    content: { text, source: "test" },
+    createdAt: Date.now(),
+  } as Memory;
 }
 
 describe("runParentAgentBroker", () => {
@@ -196,6 +213,7 @@ describe("runParentAgentBroker", () => {
     const result = await runParentAgentBroker({
       runtime: createRuntime(),
       sessionId: "session-1",
+      message: brokerMessage(),
       args: {
         mode: "cloud-command",
         command: "apps.charges.create",
@@ -203,12 +221,12 @@ describe("runParentAgentBroker", () => {
       },
     });
 
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("confirmation_required");
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("Reply yes");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("runs confirmed mutating Cloud commands", async () => {
+  it("runs mutating Cloud commands after user yes", async () => {
     vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
     vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
     const fetchMock = vi.fn(async () => {
@@ -219,15 +237,27 @@ describe("runParentAgentBroker", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await runParentAgentBroker({
-      runtime: createRuntime(),
+    const runtime = createRuntime();
+    const cloudArgs = {
+      mode: "cloud-command" as const,
+      command: "apps.create",
+      params: { body: { name: "Test App", description: "integration test" } },
+    };
+
+    const pending = await runParentAgentBroker({
+      runtime,
       sessionId: "session-1",
-      args: {
-        mode: "cloud-command",
-        command: "apps.create",
-        confirmed: true,
-        params: { body: { name: "Test App", description: "integration test" } },
-      },
+      message: brokerMessage(),
+      args: cloudArgs,
+    });
+    expect(pending.text).toContain("Reply yes");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const result = await runParentAgentBroker({
+      runtime,
+      sessionId: "session-1",
+      message: brokerMessage("yes"),
+      args: cloudArgs,
     });
 
     expect(result.success).toBe(true);

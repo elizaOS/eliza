@@ -5,7 +5,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+	ModelType,
+	requireConfirmation,
+	runWithTrajectoryContext,
+} from "@elizaos/core";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { messageText } from "../lifeops/google/format-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
@@ -34,7 +38,6 @@ type SubscriptionActionPlan = {
   serviceSlug?: string;
   executor?: LifeOpsSubscriptionExecutor;
   queryWindowDays?: number;
-  confirmed?: boolean | null;
   shouldAct?: boolean | null;
   response?: string;
 };
@@ -145,7 +148,6 @@ async function resolveSubscriptionsPlanWithLlm(args: {
     "  serviceSlug: normalized service slug or null",
     "  executor: one of user_browser, agent_browser, desktop_native, or null",
     "  queryWindowDays: integer number of days for audits, or null",
-    "  confirmed: boolean or null",
     "  shouldAct: boolean",
     "  response: short natural-language reply when shouldAct is false or clarification is needed",
     "",
@@ -153,11 +155,11 @@ async function resolveSubscriptionsPlanWithLlm(args: {
     "- Use cancel for subscription cancellation requests, including requests that mention login, MFA, or sign-in walls.",
     "- Use status for follow-ups asking what happened with a cancellation or whether it completed.",
     "- Use audit for subscription reviews, audits, and lists of recurring services.",
-    "- When the user is confirming an already discussed cancellation, set confirmed=true and carry forward the same service from context.",
+    "- User authorization for cancel is collected on a follow-up message, not in planner JSON.",
     "- Use user_browser when the request explicitly says to use the user's browser. Otherwise prefer agent_browser.",
     "- Return only JSON.",
     "",
-    'Example: {"subaction":"cancel","serviceName":"Netflix","serviceSlug":"netflix","executor":"agent_browser","queryWindowDays":null,"confirmed":true,"shouldAct":true,"response":null}',
+    'Example: {"subaction":"cancel","serviceName":"Netflix","serviceSlug":"netflix","executor":"agent_browser","queryWindowDays":null,"shouldAct":true,"response":null}',
     "",
     formatPromptSection("Current request", currentMessage),
     formatPromptSection("Existing parameters", args.params),
@@ -183,7 +185,6 @@ async function resolveSubscriptionsPlanWithLlm(args: {
       serviceSlug: normalizePlannerResponse(parsed.serviceSlug),
       executor: normalizeExecutor(parsed.executor),
       queryWindowDays: normalizePlannerNumber(parsed.queryWindowDays),
-      confirmed: normalizePlannerBoolean(parsed.confirmed),
       shouldAct: normalizePlannerBoolean(parsed.shouldAct),
       response: normalizePlannerResponse(parsed.response),
     };
@@ -243,7 +244,6 @@ async function runSubscriptionsActionInner(
         serviceName: null,
         serviceSlug: null,
         executor: null,
-        confirmed: null,
         queryWindowDays: undefined as number | undefined,
       }
     : await resolveSubscriptionsPlanWithLlm({
@@ -283,10 +283,6 @@ async function runSubscriptionsActionInner(
   const serviceName = params.serviceName ?? planner.serviceName ?? null;
   const serviceSlug = params.serviceSlug ?? planner.serviceSlug ?? null;
   const executor = params.executor ?? planner.executor ?? null;
-  const confirmed =
-    typeof params.confirmed === "boolean"
-      ? params.confirmed
-      : planner.confirmed === true;
 
   switch (subaction) {
     case "audit": {
@@ -310,12 +306,36 @@ async function runSubscriptionsActionInner(
       };
     }
     case "cancel": {
+      const cancelTarget =
+        serviceName ?? serviceSlug ?? params.candidateId ?? "subscription";
+      const cancelPrompt = `Cancel subscription ${cancelTarget}?`;
+      const decision = await requireConfirmation({
+        runtime,
+        message,
+        actionName: "SUBSCRIPTIONS_CANCEL",
+        pendingKey: `cancel:${String(cancelTarget)}`,
+        prompt: cancelPrompt,
+      });
+      if (decision.status !== "confirmed") {
+        return {
+          success: decision.status === "pending",
+          text:
+            decision.status === "pending"
+              ? `${cancelPrompt} Reply yes to confirm or no to cancel.`
+              : "Subscription cancellation cancelled.",
+          data: {
+            requiresConfirmation: decision.status === "pending",
+            awaitingUserInput: decision.status === "pending",
+            cancelled: decision.status === "cancelled",
+          },
+        };
+      }
       const summary = await service.cancelSubscription({
         candidateId: params.candidateId ?? null,
         serviceName,
         serviceSlug,
         executor,
-        confirmed,
+        confirmed: true,
       });
       const playbookNotImplemented =
         summary.cancellation.status === "unsupported_surface" &&

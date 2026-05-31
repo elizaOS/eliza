@@ -15,7 +15,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { getActiveRoutingContextsForTurn, logger } from "@elizaos/core";
+import {
+  getActiveRoutingContextsForTurn,
+  logger,
+  requireConfirmation,
+} from "@elizaos/core";
 import {
   calendlyAccountIdParameter,
   resolveCalendlyAccountId,
@@ -188,9 +192,9 @@ function mergedOptions(options?: HandlerOptions): Record<string, unknown> {
   return { ...direct, ...parameters };
 }
 
-function isConfirmed(params: Record<string, unknown>): boolean {
-  const raw = params.confirmed;
-  return raw === true || raw === "true";
+/** @deprecated LLM `confirmed` is never authoritative. */
+function isConfirmed(_params: Record<string, unknown>): boolean {
+  return false;
 }
 
 function readOp(params: Record<string, unknown>): CalendlyOp | null {
@@ -257,6 +261,7 @@ async function handleBook(
 
 async function handleCancel(
   runtime: IAgentRuntime,
+  message: Memory,
   text: string,
   params: Record<string, unknown>,
   callback?: HandlerCallback,
@@ -278,15 +283,27 @@ async function handleCancel(
   }
   const reason = extractReason(params, text);
   const preview = `Confirmation required before canceling Calendly event ${uuid}${reason ? ` (${reason})` : ""}.`;
-  if (!isConfirmed(params)) {
-    await callback?.({ text: preview });
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: "CALENDLY_OP_CANCEL",
+    pendingKey: `cancel:${uuid}`,
+    prompt: `${preview} Reply yes to confirm or no to cancel.`,
+    callback,
+  });
+  if (decision.status === "pending") {
     return {
-      success: false,
+      success: true,
       requiresConfirmation: true,
       preview,
-      text: preview,
-      data: { requiresConfirmation: true, preview, uuid, reason },
+      text: `${preview} Reply yes to confirm or no to cancel.`,
+      data: { requiresConfirmation: true, preview, uuid, reason, awaitingUserInput: true },
     };
+  }
+  if (decision.status === "cancelled") {
+    const cancelMessage = "Calendly cancellation cancelled.";
+    await callback?.({ text: cancelMessage });
+    return { success: true, text: cancelMessage, data: { cancelled: true } };
   }
   try {
     await service.cancelBooking(uuid, reason, accountId);
@@ -392,7 +409,7 @@ export const calendlyOpAction: Action = {
     if (op === "book") {
       return handleBook(runtime, text, params, callback);
     }
-    return handleCancel(runtime, text, { ...params, accountId }, callback);
+    return handleCancel(runtime, message, text, { ...params, accountId }, callback);
   },
 
   examples: [

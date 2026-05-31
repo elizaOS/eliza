@@ -17,9 +17,8 @@ import {
   type MusicFetchProgress,
 } from "../utils/smartFetchService";
 import {
-  confirmationRequired,
-  isConfirmed,
   mergedOptions,
+  requireMusicConfirmation,
 } from "./confirmation";
 
 type PlaylistOp = "save" | "load" | "delete" | "add";
@@ -172,15 +171,15 @@ async function handleSave(
   }
 
   const preview = `Confirmation required before saving playlist "${playlistName}" with ${tracks.length} track${tracks.length !== 1 ? "s" : ""}.`;
-  if (!isConfirmed(options)) {
-    await callback({ text: preview, source: message.content.source });
-    return confirmationRequired(preview, {
-      op: "playlist",
-      subaction: "save",
-      playlistName,
-      trackCount: tracks.length,
-    });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAYLIST_OP_SAVE",
+    pendingKey: `save:${playlistName}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   const playlist: Omit<Playlist, "id" | "createdAt" | "updatedAt"> = {
     name: playlistName,
@@ -264,16 +263,15 @@ async function handleLoad(
   }
 
   const preview = `Confirmation required before loading playlist "${selected.name}" and adding ${selected.tracks.length} track${selected.tracks.length !== 1 ? "s" : ""} to the queue.`;
-  if (!isConfirmed(options)) {
-    await callback({ text: preview, source: message.content.source });
-    return confirmationRequired(preview, {
-      op: "playlist",
-      subaction: "load",
-      playlistId: selected.id,
-      playlistName: selected.name,
-      trackCount: selected.tracks.length,
-    });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAYLIST_OP_LOAD",
+    pendingKey: `load:${selected.id}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   for (const track of selected.tracks) {
     await musicService.addTrack(currentServerId, {
@@ -346,16 +344,15 @@ async function handleDelete(
   }
 
   const preview = `Confirmation required before deleting playlist "${selected.name}" (${selected.tracks.length} track${selected.tracks.length !== 1 ? "s" : ""}).`;
-  if (!isConfirmed(options)) {
-    await callback({ text: preview, source: message.content.source });
-    return confirmationRequired(preview, {
-      op: "playlist",
-      subaction: "delete",
-      playlistId: selected.id,
-      playlistName: selected.name,
-      trackCount: selected.tracks.length,
-    });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAYLIST_OP_DELETE",
+    pendingKey: `delete:${selected.id}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   const deleted = await musicLibrary.deletePlaylist(userId, selected.id);
   if (!deleted) {
@@ -417,15 +414,15 @@ async function handleAdd(
   }
 
   const preview = `Confirmation required before adding "${songQuery}" to playlist "${playlistName}".`;
-  if (!isConfirmed(options)) {
-    await callback({ text: preview, source: message.content.source });
-    return confirmationRequired(preview, {
-      op: "playlist",
-      subaction: "add",
-      songQuery,
-      playlistName,
-    });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAYLIST_OP_ADD",
+    pendingKey: `add:${playlistName}:${songQuery.slice(0, 80)}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   const smartFetch = getSmartMusicFetchService(runtime);
   const preferredQuality =

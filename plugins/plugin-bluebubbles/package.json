@@ -80,6 +80,12 @@
         "required": false,
         "sensitive": false
       },
+      "BLUEBUBBLES_WEBHOOK_SECRET": {
+        "type": "string",
+        "description": "Shared secret sent as X-BlueBubbles-Webhook-Secret on inbound webhook POSTs (required when the webhook is exposed)",
+        "required": false,
+        "sensitive": true
+      },
       "BLUEBUBBLES_AUTOSTART_COMMAND": {
         "type": "string",
         "description": "Optional command to launch the BlueBubbles server app/process",

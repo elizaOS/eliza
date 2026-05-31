@@ -1,7 +1,9 @@
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
+  assertBrowserWorkspaceUserScriptAllowed,
   createBrowserWorkspaceCommandTargetError,
   DEFAULT_TIMEOUT_MS,
+  isBrowserWorkspaceUserScriptAllowed,
   normalizeEnvValue,
   resolveBrowserWorkspaceCommandElementRefs,
 } from "./browser-workspace-helpers.js";
@@ -145,9 +147,31 @@ export async function snapshotBrowserWorkspaceTab(
   );
 }
 
+function desktopBrowserWorkspaceWaitScriptBranch(
+  env: NodeJS.ProcessEnv,
+): string {
+  if (isBrowserWorkspaceUserScriptAllowed(env)) {
+    return `
+          if (command.script) {
+            const fn = new Function("document", "window", "location", "return (" + command.script + ");");
+            if (fn(document, window, location)) {
+              resolve({ ok: true, script: true });
+              return;
+            }
+          }`;
+  }
+  return `
+          if (command.script) {
+            reject(new Error("Browser workspace wait script is disabled (GHSA-mhhr-9ph9-64j7)."));
+            return;
+          }`;
+}
+
 export function createDesktopBrowserWorkspaceCommandScript(
   command: BrowserWorkspaceCommand,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  const waitScriptBranch = desktopBrowserWorkspaceWaitScriptBranch(env);
   return `
 (() => {
   const command = ${JSON.stringify(command)};
@@ -804,13 +828,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
             resolve({ ok: true, url: location.href });
             return;
           }
-          if (command.script) {
-            const fn = new Function("document", "window", "location", "return (" + command.script + ");");
-            if (fn(document, window, location)) {
-              resolve({ ok: true, script: true });
-              return;
-            }
-          }
+          ${waitScriptBranch}
           if (Date.now() >= deadline) {
             reject(new Error("Timed out waiting for browser workspace condition."));
             return;
@@ -1547,16 +1565,20 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
   command: BrowserWorkspaceCommand,
   env: NodeJS.ProcessEnv,
 ): Promise<BrowserWorkspaceCommandResult> {
+  assertBrowserWorkspaceUserScriptAllowed(command.script, "wait", "desktop", env);
   const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
   const startedAt = Date.now();
   command = resolveBrowserWorkspaceCommandElementRefs(command, "desktop", id);
   const result = await evaluateBrowserWorkspaceTab(
     {
       id,
-      script: createDesktopBrowserWorkspaceCommandScript({
-        ...command,
-        id,
-      }),
+      script: createDesktopBrowserWorkspaceCommandScript(
+        {
+          ...command,
+          id,
+        },
+        env,
+      ),
     },
     env,
   );

@@ -51,6 +51,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.7.0",
     "ajv": "^8.17.1",

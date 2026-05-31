@@ -117,6 +117,12 @@
         "required": false,
         "sensitive": true
       },
+      "WHATSAPP_APP_SECRET": {
+        "type": "string",
+        "description": "WhatsApp App Secret used to verify X-Hub-Signature-256 on webhook POSTs (required for Cloud API webhooks)",
+        "required": false,
+        "sensitive": true
+      },
       "WHATSAPP_BUSINESS_ACCOUNT_ID": {
         "type": "string",
         "description": "Business account ID",

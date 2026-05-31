@@ -24,6 +24,7 @@ import {
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
 } from "../workspace/index.js";
+import { assertBrowserWorkspaceUserScriptAllowed } from "../workspace/browser-workspace-helpers.js";
 import {
   assertBrowserWorkspaceCommandConnectorAccountGate,
   assertBrowserWorkspaceConnectorAccountGate,
@@ -294,6 +295,7 @@ export async function handleBrowserWorkspaceRoutes(
         json(res, { error: "script is required" }, 400);
         return true;
       }
+      assertBrowserWorkspaceUserScriptAllowed(body.script, "eval", "desktop");
       await assertBrowserWorkspaceTabConnectorAccountGate(
         ctx,
         tabId,

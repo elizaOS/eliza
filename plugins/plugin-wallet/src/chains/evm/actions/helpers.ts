@@ -29,8 +29,12 @@ export function hasEvmPrivateKey(runtime: IAgentRuntime): boolean {
   return typeof privateKey === "string" && privateKey.startsWith("0x");
 }
 
-export function isConfirmed(options?: Record<string, unknown>): boolean {
-  return options?.confirmed === true;
+/**
+ * LLM-supplied `confirmed` / TOON flags are never trusted (GHSA-rqm7-f4jc-84x3).
+ * Use {@link gateWalletFinancialExecution} from `security/wallet-financial-confirmation.ts`.
+ */
+export function isConfirmed(_options?: Record<string, unknown>): boolean {
+  return false;
 }
 
 function toConfirmationValue(value: unknown): ConfirmationValue {
@@ -71,11 +75,9 @@ export async function confirmationRequired(params: {
 }): Promise<ActionResult> {
   const confirmation = {
     actionName: params.actionName,
-    confirmed: false,
-    parameters: {
-      ...toConfirmationRecord(params.parameters),
-      confirmed: true,
-    },
+    parameters: toConfirmationRecord(params.parameters),
+    instructions:
+      "Reply yes to confirm or no to cancel. Do not set confirmed:true in action parameters.",
   };
 
   const content = {
