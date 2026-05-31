@@ -146,7 +146,7 @@ function buildLucideUsedBarrelSource(): string {
       ([name, file]) =>
         `export { default as ${name} } from "lucide-react/dist/esm/icons/${file}.mjs";`,
     );
-  lucideUsedBarrelSource = lines.join("\n") + "\n";
+  lucideUsedBarrelSource = `${lines.join("\n")}\n`;
   return lucideUsedBarrelSource;
 }
 
@@ -1321,7 +1321,8 @@ export default defineConfig({
       name: "lucide-per-icon-imports",
       enforce: "pre" as const,
       resolveId(source: string) {
-        if (source === LUCIDE_USED_BARREL_ID) return LUCIDE_USED_BARREL_RESOLVED;
+        if (source === LUCIDE_USED_BARREL_ID)
+          return LUCIDE_USED_BARREL_RESOLVED;
         return null;
       },
       load(id: string) {
@@ -1379,13 +1380,10 @@ export default defineConfig({
         // package because they are erased before bundling and never contribute
         // runtime code. Deep `lucide-react/…` specifiers keep a `/` after the
         // package name, so the exact-match below skips them.
-        out = out.replace(
-          /\bimport\s*\(\s*(['"])lucide-react\1\s*\)/g,
-          () => {
-            changed = true;
-            return `import("${LUCIDE_USED_BARREL_ID}")`;
-          },
-        );
+        out = out.replace(/\bimport\s*\(\s*(['"])lucide-react\1\s*\)/g, () => {
+          changed = true;
+          return `import("${LUCIDE_USED_BARREL_ID}")`;
+        });
         return changed ? { code: out, map: null } : null;
       },
     },

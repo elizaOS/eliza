@@ -27,9 +27,9 @@ describe("copyDir", () => {
 
     copyDir(src, dest);
 
-    expect(fs.readFileSync(path.join(dest, "nested", "hello.txt"), "utf8")).toBe(
-      "hello",
-    );
+    expect(
+      fs.readFileSync(path.join(dest, "nested", "hello.txt"), "utf8"),
+    ).toBe("hello");
   });
 
   it("refuses symbolic links to files (GHSA-jjf4-pjvf-h5jr)", () => {
