@@ -275,6 +275,60 @@ def joint_sweep_proof(spec: RobotSpec | None = None, *, samples: int = 9) -> dic
 
 
 # ---------------------------------------------------------------------------
+# 2b. Per-joint range of motion (collision-free fraction)
+# ---------------------------------------------------------------------------
+
+
+def range_of_motion_proof(spec: RobotSpec | None = None, *, samples: int = 13) -> dict:
+    """Sweep each joint across its full commanded range (others at home) and
+    report the fraction reachable without a non-adjacent part collision."""
+    import mujoco
+
+    spec = spec or build_spec()
+    tree = build_mjcf(spec, all_collision=True)
+    with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as fh:
+        tree.write(fh.name, encoding="utf-8")
+        model = mujoco.MjModel.from_xml_path(fh.name)
+    data = mujoco.MjData(model)
+    dist = _body_tree_distance(spec)
+    geom_body = {gid: model.body(int(model.geom_bodyid[gid])).name for gid in range(model.ngeom)}
+    mujoco.mj_resetDataKeyframe(model, data, 0)
+    home = data.qpos.copy()
+
+    joints = []
+    worst_frac = 1.0
+    for j in sorted(spec.joints, key=lambda j: j.index):
+        qadr = model.joint(j.name).qposadr[0]
+        free = 0
+        lo_free = hi_free = j.home_rad
+        for frac in np.linspace(0.0, 1.0, samples):
+            q = j.lower_rad + frac * (j.upper_rad - j.lower_rad)
+            data.qpos[:] = home
+            data.qpos[qadr] = q
+            _, _, pens = _min_clearance(model, data, geom_body, dist)
+            if not pens:
+                free += 1
+                lo_free = min(lo_free, q)
+                hi_free = max(hi_free, q)
+        frac_free = free / samples
+        worst_frac = min(worst_frac, frac_free)
+        joints.append({
+            "joint": j.name, "group": j.group,
+            "commanded_deg": [round(math.degrees(j.lower_rad), 1), round(math.degrees(j.upper_rad), 1)],
+            "collision_free_deg": [round(math.degrees(lo_free), 1), round(math.degrees(hi_free), 1)],
+            "collision_free_fraction": round(frac_free, 3),
+            "tendon_driven": j.tendon_driven,
+        })
+    return {
+        "schema": "erobot-range-of-motion-v1",
+        "ok": worst_frac >= 0.5,
+        "samples_per_joint": samples,
+        "min_collision_free_fraction": round(worst_frac, 3),
+        "joints": joints,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 3. Mass reconciliation
 # ---------------------------------------------------------------------------
 
@@ -406,6 +460,7 @@ def run_all(spec: RobotSpec | None = None) -> dict:
         "mujoco-load": mujoco_load_proof(spec),
         "tendon-actuation": tendon_actuation_proof(spec),
         "joint-sweep": joint_sweep_proof(spec),
+        "range-of-motion": range_of_motion_proof(spec),
         "mass-reconciliation": mass_reconciliation_proof(spec),
         "structural-sanity": structural_sanity_proof(spec),
     }

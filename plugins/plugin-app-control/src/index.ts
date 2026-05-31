@@ -14,10 +14,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
-import {
-	createHomescreenAction,
-	homescreenAction,
-} from "./actions/homescreen.js";
+import { homescreenAction } from "./actions/homescreen.js";
 import { viewsAction } from "./actions/views.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
