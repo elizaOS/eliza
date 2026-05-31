@@ -450,10 +450,20 @@ fi
 
 # Generate raster branding from SVG sources into config/includes.chroot.
 # Skipped when ImageMagick is unavailable (branding then falls back to
-# whatever PNGs are already staged in the tree).
-if command -v convert >/dev/null 2>&1; then
-    echo "    generating brand assets..."
-    "${HERE}/scripts/generate-elizaos-brand-assets.sh"
+# whatever PNGs are already staged in the tree). The generator lives in the
+# shared linux scripts dir (../scripts), with the legacy per-distro path
+# (./scripts) as a fallback — resolve whichever exists rather than hard-coding,
+# and never let a missing branding generator fail the whole image build.
+BRAND_ASSET_SCRIPT=""
+for _cand in "${HERE}/scripts/generate-elizaos-brand-assets.sh" \
+             "${HERE}/../scripts/generate-elizaos-brand-assets.sh"; do
+    if [ -f "$_cand" ]; then BRAND_ASSET_SCRIPT="$_cand"; break; fi
+done
+if command -v convert >/dev/null 2>&1 && [ -n "$BRAND_ASSET_SCRIPT" ]; then
+    echo "    generating brand assets... ($BRAND_ASSET_SCRIPT)"
+    "$BRAND_ASSET_SCRIPT" || echo "    brand-asset generation failed — falling back to staged PNGs." >&2
+elif [ -z "$BRAND_ASSET_SCRIPT" ]; then
+    echo "    brand-asset generator not found — using staged PNGs." >&2
 else
     echo "    convert (ImageMagick) not found — skipping brand-asset generation." >&2
 fi
