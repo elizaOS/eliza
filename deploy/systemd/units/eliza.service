@@ -1,0 +1,25 @@
+[Unit]
+Description=Eliza bot (bare-metal systemd deployment)
+Documentation=https://github.com/elizaOS/eliza
+After=network-online.target
+Wants=network-online.target
+# Cap the restart burst so a hard-failing bot can't hot-loop forever.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=__WORKDIR__
+EnvironmentFile=-%h/.config/eliza/env
+# Roll the Claude OAuth token before launch so a freshly (re)started bot always
+# has a valid access token. Leading '-' => a refresh hiccup never blocks start.
+ExecStartPre=-%h/bin/eliza-refresh-oauth.sh
+ExecStart=__BUN__ run start
+Restart=always
+RestartSec=5
+StandardOutput=append:__LOG__
+StandardError=append:__LOG__
+SyslogIdentifier=eliza
+
+[Install]
+WantedBy=default.target
