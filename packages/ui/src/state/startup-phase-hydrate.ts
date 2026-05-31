@@ -265,7 +265,17 @@ export async function runHydrating(
     if (urlTab === "inventory") void deps.loadInventory();
   }
 
-  if (!cancelled.current) dispatch({ type: "HYDRATION_COMPLETE" });
+  // HYDRATION_COMPLETE is the only signal that advances the coordinator out of
+  // the "hydrating" phase. It must fire even if this run was cancelled: the
+  // `cancelled` flag only guards against re-running side effects, but the
+  // reducer treats HYDRATION_COMPLETE as a no-op in every phase other than
+  // "hydrating" (RESET/SWITCH_AGENT have already moved on), so dispatching it
+  // unconditionally can never cause a wrong transition. Suppressing it when the
+  // hydrating effect re-runs (cleanup sets cancelled=true between the awaited
+  // fetches) would strand the coordinator in "hydrating" forever, which keeps
+  // the pre-agent home shell mounted and prevents /chat and /settings content
+  // from ever rendering.
+  dispatch({ type: "HYDRATION_COMPLETE" });
 }
 
 /**
