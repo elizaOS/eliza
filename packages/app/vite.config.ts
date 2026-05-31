@@ -73,6 +73,83 @@ function getLucideIconFileMap(): Map<string, string> {
   lucideIconFileMap = map;
   return map;
 }
+
+// Virtual module id served in place of the bare `lucide-react` barrel for the
+// one remaining barrel consumer: the runtime module registry in
+// `packages/ui/src/components/views/DynamicViewLoader.tsx`, which does
+// `() => import("lucide-react")`. That dynamic import is invisible to the
+// static per-icon rewrite, so without this it pulls lucide's full
+// `icons/index.mjs` (~1500 icons → ~600KB). The virtual barrel re-exports only
+// the icons the app statically imports, so the dynamic chunk shares the same
+// curated icon set instead of the whole library.
+const LUCIDE_USED_BARREL_ID = "virtual:lucide-react-used";
+const LUCIDE_USED_BARREL_RESOLVED = `\0${LUCIDE_USED_BARREL_ID}`;
+
+let lucideUsedBarrelSource: string | null = null;
+function buildLucideUsedBarrelSource(): string {
+  if (lucideUsedBarrelSource !== null) return lucideUsedBarrelSource;
+  const map = getLucideIconFileMap();
+  // name → file for every icon statically imported anywhere in app source.
+  const used = new Map<string, string>();
+  const importRe = /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/g;
+  const exts = new Set([".ts", ".tsx", ".js", ".jsx"]);
+  const roots = ["packages", "plugins", "apps"].map((d) =>
+    path.join(elizaRoot, d),
+  );
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (
+        entry.name === "node_modules" ||
+        entry.name === "dist" ||
+        entry.name === ".git" ||
+        entry.name === "benchmarks"
+      ) {
+        continue;
+      }
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!exts.has(path.extname(entry.name))) continue;
+      let code: string;
+      try {
+        code = fs.readFileSync(full, "utf8");
+      } catch {
+        continue;
+      }
+      if (!code.includes("lucide-react")) continue;
+      let m: RegExpExecArray | null = importRe.exec(code);
+      while (m !== null) {
+        for (const rawSpec of m[1].split(",")) {
+          const spec = rawSpec.trim();
+          if (!spec || spec.startsWith("type ")) continue;
+          const asMatch = spec.match(/^(\w+)\s+as\s+\w+$/);
+          const name = asMatch ? asMatch[1] : spec;
+          const file = map.get(name);
+          if (file) used.set(name, file);
+        }
+        m = importRe.exec(code);
+      }
+    }
+  };
+  for (const root of roots) walk(root);
+  const lines = [...used.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([name, file]) =>
+        `export { default as ${name} } from "lucide-react/dist/esm/icons/${file}.mjs";`,
+    );
+  lucideUsedBarrelSource = lines.join("\n") + "\n";
+  return lucideUsedBarrelSource;
+}
+
 const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
 const pluginBrowserBridgeSrcRoot = path.join(
@@ -144,6 +221,27 @@ function isExpectedWsProxySocketError(
   );
 }
 
+/**
+ * The /api proxy fires ECONNREFUSED on every request until the API server
+ * finishes booting (~30s in dev). Those errors are transient startup noise —
+ * when the API is genuinely down the UI surfaces its own connection errors —
+ * so drop them rather than spamming the dev log.
+ */
+function isExpectedApiProxyConnectError(
+  message: unknown,
+  error: unknown,
+): boolean {
+  const text = typeof message === "string" ? message : String(message ?? "");
+  if (!text.includes("http proxy error")) {
+    return false;
+  }
+  const code =
+    error && typeof error === "object"
+      ? (error as { code?: unknown }).code
+      : undefined;
+  return code === "ECONNREFUSED" || text.includes("ECONNREFUSED");
+}
+
 function stringifyBuildLogMessage(message: unknown): string {
   if (!message || typeof message !== "object") {
     return typeof message === "string" ? message : String(message ?? "");
@@ -208,7 +306,10 @@ const viteLoggerError = viteLogger.error;
 const viteLoggerWarn = viteLogger.warn;
 const viteLoggerWarnOnce = viteLogger.warnOnce;
 viteLogger.error = (message, options) => {
-  if (isExpectedWsProxySocketError(message, options?.error)) {
+  if (
+    isExpectedWsProxySocketError(message, options?.error) ||
+    isExpectedApiProxyConnectError(message, options?.error)
+  ) {
     return;
   }
   viteLoggerError(message, options);
@@ -805,6 +906,22 @@ function pathIncludesAny(id: string, markers: string[]): boolean {
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
 
+  // The lucide-per-icon-imports plugin rewrites every `import { X } from
+  // "lucide-react"` to a deep `lucide-react/dist/esm/icons/<file>.mjs` import,
+  // and redirects the runtime registry's dynamic `import("lucide-react")` to a
+  // virtual barrel that re-exports only the used icons. Each icon module is its
+  // own ES module, so without a grouping rule Rolldown emits one tiny chunk per
+  // icon. Collapse the used icons + their shared `createLucideIcon` helper + the
+  // virtual barrel's re-export entry into a single chunk; the full barrel is
+  // never imported, so the unused icons never enter the graph.
+  if (
+    normalizedId.includes("/lucide-react/dist/esm/icons/") ||
+    normalizedId.includes("/lucide-react/dist/esm/createLucideIcon.mjs") ||
+    normalizedId.includes(LUCIDE_USED_BARREL_ID)
+  ) {
+    return "vendor-lucide";
+  }
+
   if (normalizedId.includes("/node_modules/")) {
     if (
       pathIncludesAny(normalizedId, [
@@ -1193,15 +1310,33 @@ export default defineConfig({
       // import so only the used icons survive. The name→file map is parsed from
       // lucide's own barrel, so resolution is authoritative; any name not in the
       // map (e.g. a type-only import) leaves that statement untouched.
+      //
+      // The one consumer the static rewrite cannot reach is the runtime module
+      // registry's dynamic `() => import("lucide-react")`
+      // (packages/ui/.../DynamicViewLoader.tsx). A dynamic import pulls the full
+      // barrel → icons/index.mjs → all ~1500 icons. Redirect that (and any
+      // surviving static bare-barrel import) to a virtual module that re-exports
+      // only the statically-used icons, so the dynamic chunk shares the same
+      // curated set instead of the whole library.
       name: "lucide-per-icon-imports",
       enforce: "pre" as const,
+      resolveId(source: string) {
+        if (source === LUCIDE_USED_BARREL_ID) return LUCIDE_USED_BARREL_RESOLVED;
+        return null;
+      },
+      load(id: string) {
+        if (id === LUCIDE_USED_BARREL_RESOLVED) {
+          return buildLucideUsedBarrelSource();
+        }
+        return null;
+      },
       transform(code: string, id: string) {
         if (id.includes("/node_modules/")) return null;
         if (!code.includes("lucide-react")) return null;
         const map = getLucideIconFileMap();
         if (map.size === 0) return null;
         let changed = false;
-        const out = code.replace(
+        let out = code.replace(
           /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"];?/g,
           (full: string, inner: string) => {
             const specs = inner
@@ -1235,6 +1370,20 @@ export default defineConfig({
               );
             }
             return valueLines.join("\n");
+          },
+        );
+        // Redirect dynamic `import("lucide-react")` to the curated virtual
+        // barrel — that dynamic import is the registry fallback the static
+        // rewrite can't see, and it otherwise pulls the full icon set. Type-only
+        // imports (`import type { … } from "lucide-react"`) are left on the real
+        // package because they are erased before bundling and never contribute
+        // runtime code. Deep `lucide-react/…` specifiers keep a `/` after the
+        // package name, so the exact-match below skips them.
+        out = out.replace(
+          /\bimport\s*\(\s*(['"])lucide-react\1\s*\)/g,
+          () => {
+            changed = true;
+            return `import("${LUCIDE_USED_BARREL_ID}")`;
           },
         );
         return changed ? { code: out, map: null } : null;
