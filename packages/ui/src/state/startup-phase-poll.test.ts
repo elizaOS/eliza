@@ -587,3 +587,57 @@ describe("isRecoverableRemoteBase — allowLoopback", () => {
     ).toBe(false);
   });
 });
+
+describe("runPollingBackend cancellation during options fetch", () => {
+  it("bails without mutating state when cancelled mid-fetch", async () => {
+    // Regression: the post-Promise.all path (first-run options + config) had
+    // no `cancelled.current` guard, so an effect torn down while the fetch was
+    // in flight still called setFirstRunOptions and dispatched BACKEND_REACHED
+    // on a dead effect. Flip `cancelled` the instant options are fetched and
+    // assert nothing downstream fires.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    const cancelled = { current: false };
+    clientMock.getFirstRunOptions.mockImplementation(async () => {
+      cancelled.current = true; // effect cleanup raced the in-flight fetch
+      return firstRunOptions();
+    });
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: null,
+      restoredActiveServer: {
+        id: "local:desktop",
+        kind: "local",
+        label: "Local agent",
+        apiBase: "http://127.0.0.1:34137",
+      },
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      cancelled,
+      { current: null },
+    );
+
+    expect(deps.setFirstRunOptions).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+});
