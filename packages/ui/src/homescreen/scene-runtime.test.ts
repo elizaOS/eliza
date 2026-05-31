@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   compileSceneScript,
   createSceneInputs,
+  createSceneOutputs,
   getPreset,
   presetKeys,
   registerPreset,
@@ -20,6 +21,7 @@ function fakeCtx(): SceneRenderContext {
     size: { width: 800, height: 600, dpr: 1 },
     theme: { accent: [1, 0.345, 0], background: 0xff5800 },
     inputs: createSceneInputs(),
+    outputs: createSceneOutputs(),
   };
 }
 

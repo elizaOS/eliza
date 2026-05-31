@@ -1,7 +1,8 @@
-import { Mic, MicOff, Send, X } from "lucide-react";
+import { X } from "lucide-react";
 import type * as React from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Homescreen } from "../../homescreen/Homescreen";
+import type { OrbAnchor } from "../../homescreen/HomescreenCanvas";
 import type { HomescreenPhase } from "../../homescreen/scene-types";
 import { cn } from "../../lib/utils";
 import type { Tab } from "../../navigation";
@@ -11,10 +12,7 @@ import { useTranslation } from "../../state/TranslationContext";
 import { AppIdentityTile } from "../apps/app-identity";
 import { getHomeGridApps } from "../apps/home-grid-apps";
 import { formatEta } from "../local-inference/hub-utils";
-import {
-  GLASS_COMPOSER_CLASS,
-  GlassIconButton,
-} from "../shell/glass-composer";
+import { GLASS_COMPOSER_CLASS, GlassIconButton } from "../shell/glass-composer";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { usePullGesture } from "../shell/use-pull-gesture";
 import { Button } from "../ui/button";
@@ -42,6 +40,7 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
   analyser,
   userText,
   assistantText,
+  onOrbAnchor,
   onEditModeChange,
   editRequestNonce,
 }: {
@@ -49,6 +48,7 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
   analyser: FrequencyAnalyser | null;
   userText: string;
   assistantText: string;
+  onOrbAnchor: (anchor: OrbAnchor | null) => void;
   onEditModeChange: (editing: boolean) => void;
   editRequestNonce: number;
 }): React.JSX.Element {
@@ -58,167 +58,12 @@ const HomeVoiceBackground = memo(function HomeVoiceBackground({
       phase={phaseForMode(mode)}
       userText={userText}
       assistantText={assistantText}
+      onOrbAnchor={onOrbAnchor}
       onEditModeChange={onEditModeChange}
       editRequestNonce={editRequestNonce}
     />
   );
 });
-
-// ─── Expanded orb voice mode overlay ────────────────────────────────────────
-
-/**
- * Animates the orb from its resting position (top ~6%, small) to center-screen
- * (large). Controls appear ABOVE the orb. Apps and chat are faded/pushed out
- * by the caller. Flick/swipe in any direction to dismiss.
- *
- * The orb itself stays as the WebGL canvas element (the caller hides that via
- * the foreground fade). This component renders a matching glass circle that
- * grows from the orb's anchor point to center.
- */
-function ExpandedOrbOverlay({
-  onClose,
-  onMuteToggle,
-  muted,
-  transcription,
-  assistantText,
-}: {
-  onClose: () => void;
-  onMuteToggle: () => void;
-  muted: boolean;
-  transcription: string;
-  assistantText: string;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-  // isOpen drives the CSS transition: starts false, flips to true on first frame.
-  const [isOpen, setIsOpen] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setIsOpen(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
-  const greeting =
-    assistantText ||
-    t("homeview.orb.greeting", { defaultValue: "hey, what's up?" });
-
-  // Flick up or down to dismiss
-  const dragStart = useRef<{ y: number } | null>(null);
-
-  function onOverlayPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    // Don't start drag on buttons
-    if ((e.target as Element).closest("button")) return;
-    dragStart.current = { y: e.clientY };
-  }
-
-  function onOverlayPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    if (!dragStart.current) return;
-    const dy = Math.abs(e.clientY - dragStart.current.y);
-    dragStart.current = null;
-    if (dy > 60) onClose();
-  }
-
-  return (
-    <div
-      className={cn(
-        "absolute inset-0 z-30 transition-[background-color] duration-500",
-        isOpen ? "bg-black/35 backdrop-blur-sm" : "bg-transparent",
-      )}
-      data-testid="home-orb-expanded"
-      onPointerDown={onOverlayPointerDown}
-      onPointerUp={onOverlayPointerUp}
-      onPointerCancel={() => { dragStart.current = null; }}
-    >
-      {/* Controls — above the orb, fade in after orb starts expanding */}
-      <div
-        className={cn(
-          "absolute left-1/2 -translate-x-1/2 flex items-center gap-5 transition-all duration-300",
-          // Sits above the orb center
-          isOpen
-            ? "top-[calc(50%-min(30vw,200px)-80px)] opacity-100"
-            : "top-[15%] opacity-0",
-        )}
-      >
-        <button
-          type="button"
-          aria-label={muted ? "Unmute" : "Mute"}
-          onClick={onMuteToggle}
-          className={cn(
-            "flex h-12 w-12 items-center justify-center rounded-full border backdrop-blur-md transition-all",
-            muted
-              ? "border-warn/50 bg-warn/20 text-warn"
-              : "border-white/25 bg-white/10 text-white/80 hover:bg-white/20",
-          )}
-        >
-          {muted ? (
-            <MicOff className="h-5 w-5" aria-hidden />
-          ) : (
-            <Mic className="h-5 w-5" aria-hidden />
-          )}
-        </button>
-
-        <button
-          type="button"
-          aria-label="Cancel voice mode"
-          onClick={onClose}
-          className="flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white/80 backdrop-blur-md transition-all hover:bg-white/20"
-        >
-          <X className="h-5 w-5" aria-hidden />
-        </button>
-      </div>
-
-      {/* Orb — transitions from the hit-target anchor (top ~6%, 12vh) to center */}
-      <div
-        aria-hidden
-        className="absolute rounded-full bg-white/10 backdrop-blur-xl border border-white/25 transition-all duration-500 ease-[cubic-bezier(0.34,1.2,0.64,1)]"
-        style={
-          isOpen
-            ? {
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: "min(60vw, 400px)",
-                height: "min(60vw, 400px)",
-                boxShadow:
-                  "0 0 80px rgba(255,255,255,0.18), inset 0 0 60px rgba(255,255,255,0.06)",
-              }
-            : {
-                top: "6%",
-                left: "50%",
-                transform: "translate(-50%, 0)",
-                width: "12vh",
-                height: "12vh",
-                maxWidth: "128px",
-                maxHeight: "128px",
-                boxShadow: "0 0 32px rgba(255,255,255,0.1)",
-              }
-        }
-      >
-        {/* Inner ring pulses while voice is active */}
-        <div className="absolute inset-0 animate-pulse rounded-full border border-white/10" />
-        <div
-          className="absolute inset-[12%] rounded-full border border-white/10"
-          style={{ animation: "pulse 2.4s ease-in-out 0.6s infinite" }}
-        />
-      </div>
-
-      {/* Greeting + transcription — fade in below orb */}
-      <div
-        className={cn(
-          "absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 px-8 text-center transition-all duration-400",
-          isOpen
-            ? "top-[calc(50%+min(30vw,200px)+24px)] opacity-100"
-            : "top-[55%] opacity-0",
-        )}
-      >
-        <p className="text-lg font-medium text-white/95 [text-shadow:0_2px_10px_rgba(0,0,0,0.6)]">
-          {greeting}
-        </p>
-        {transcription ? (
-          <p className="text-sm text-white/60">{transcription}</p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 // ─── HomeView ────────────────────────────────────────────────────────────────
 
@@ -237,11 +82,68 @@ export function HomeView(): React.JSX.Element {
   const [editRequestNonce, setEditRequestNonce] = useState(0);
   const requestEdit = useCallback(() => setEditRequestNonce((n) => n + 1), []);
 
-  const [orbExpanded, setOrbExpanded] = useState(false);
-  const [orbMuted, setOrbMuted] = useState(false);
+  // Continuous voice mode: the WebGL orb is revealed at the top, the chat is
+  // pushed down beneath it, and the mic records continuously until stopped.
+  const [voiceMode, setVoiceMode] = useState(false);
 
-  // Lifted chat expanded state — starts open; controls the apps fly-away animation.
-  const [chatOpen, setChatOpen] = useState(true);
+  // The orb's projected screen position, reported by the WebGL scene, plus the
+  // measured size of this view — together they reserve the orb's band at the top
+  // of the chat so messages start beneath the *actual* rendered orb.
+  const [orbAnchor, setOrbAnchor] = useState<OrbAnchor | null>(null);
+  const handleOrbAnchor = useCallback(
+    (anchor: OrbAnchor | null) => setOrbAnchor(anchor),
+    [],
+  );
+  const viewRef = useRef<HTMLDivElement>(null);
+  const [viewSize, setViewSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = viewRef.current;
+    if (!el) return;
+    const measure = () =>
+      setViewSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Pixel rect of the orb (anchor x/r are width/height fractions). A comfortable
+  // size floor keeps it readable on tiny viewports.
+  const orbRect = useMemo(() => {
+    if (!orbAnchor || viewSize.h === 0) return null;
+    const size = Math.max(72, orbAnchor.r * 2 * viewSize.h);
+    return {
+      left: orbAnchor.x * viewSize.w,
+      top: orbAnchor.y * viewSize.h,
+      size,
+    };
+  }, [orbAnchor, viewSize.w, viewSize.h]);
+
+  // Height to reserve at the top of the chat in voice mode so messages clear the
+  // orb (its center + radius + a gap). Falls back before the first anchor frame.
+  const orbBandPx = useMemo(() => {
+    if (!voiceMode) return 0;
+    if (orbRect) return orbRect.top + orbRect.size / 2 + 16;
+    return viewSize.h > 0 ? viewSize.h * 0.28 : 180;
+  }, [voiceMode, orbRect, viewSize.h]);
+
+  // The single global chat: open-state lives in the shell controller, shared by
+  // every view. The apps fly-away, the curtain, and the chat pill all read this
+  // ONE flag so the homescreen and the global chat never drift out of sync.
+  const chatOpen = controller?.isOpen ?? false;
+  const openChat = useCallback(() => controller?.open(), [controller]);
+  const closeChat = useCallback(() => controller?.close(), [controller]);
+  const setChatOpen = useCallback(
+    (next: boolean) => {
+      if (next) controller?.open();
+      else controller?.close();
+    },
+    [controller],
+  );
 
   // Transcript fade state
   const [transcriptFaded, setTranscriptFaded] = useState(false);
@@ -272,7 +174,6 @@ export function HomeView(): React.JSX.Element {
     }
     return /something went wrong on my end/i.test(latestAssistant.content);
   }, [latestAssistant]);
-
 
   // Transcript line: chunk long assistant text into ~14-word groups and cycle
   // through them, so we never render a long paragraph on the homescreen.
@@ -320,30 +221,26 @@ export function HomeView(): React.JSX.Element {
     }
   }, [latestUserText, requestEdit]);
 
-  function openOrbVoice() {
-    setOrbExpanded(true);
-    setOrbMuted(false);
+  const enterVoice = useCallback(() => {
+    setVoiceMode(true);
+    controller?.open();
     controller?.startRecording();
-  }
+  }, [controller]);
 
-  function closeOrbVoice() {
-    setOrbExpanded(false);
+  const exitVoice = useCallback(() => {
+    setVoiceMode(false);
     controller?.stopRecording();
-  }
+  }, [controller]);
 
-  function toggleOrbMute() {
-    setOrbMuted((m) => !m);
-    if (!orbMuted) {
-      controller?.stopRecording();
-    } else {
-      controller?.startRecording();
-    }
-  }
+  const toggleVoice = useCallback(() => {
+    if (voiceMode) exitVoice();
+    else enterVoice();
+  }, [voiceMode, enterVoice, exitVoice]);
 
   // Pull up on the homescreen to open the chat, pull down to close it.
   const pullBindings = usePullGesture({
-    onPullUp: () => setChatOpen(true),
-    onPullDown: () => setChatOpen(false),
+    onPullUp: openChat,
+    onPullDown: closeChat,
   });
 
   return (
@@ -353,95 +250,96 @@ export function HomeView(): React.JSX.Element {
         analyser={controller?.analyser ?? null}
         userText={latestUserText}
         assistantText={latestAssistant?.content ?? ""}
+        onOrbAnchor={handleOrbAnchor}
         onEditModeChange={setEditingHome}
         editRequestNonce={editRequestNonce}
       />
 
-      {orbExpanded ? (
-        <ExpandedOrbOverlay
-          onClose={closeOrbVoice}
-          onMuteToggle={toggleOrbMute}
-          muted={orbMuted}
-          transcription={latestUserText}
-          assistantText={
-            (latestAssistant?.content.trim().length ?? 0) <= 60
-              ? (latestAssistant?.content.trim() ?? "")
-              : ""
-          }
-        />
-      ) : null}
+      {/* System-color base. Opaque at rest — the home is chat-first on a plain
+          surface and the WebGL orb stays hidden; fades out in voice mode to
+          reveal the live orb behind. */}
+      <div
+        aria-hidden
+        className={cn(
+          "absolute inset-0 z-[5] bg-bg transition-opacity duration-500",
+          voiceMode ? "pointer-events-none opacity-0" : "opacity-100",
+        )}
+      />
 
       <div
+        ref={viewRef}
         data-testid="home-view"
         className={cn(
           "relative z-10 flex h-full w-full flex-col items-center overflow-hidden px-4 text-txt",
-          "transition-[opacity,transform] duration-400 ease-out",
+          "transition-[opacity,transform] duration-500 ease-out",
           editingHome && "pointer-events-none opacity-0",
-          orbExpanded && "pointer-events-none translate-y-12 opacity-0",
         )}
         {...pullBindings}
       >
-        {/* Transparent hit target over the WebGL orb — the canvas renders the
-            actual glass orb visual; this sits invisibly on top for click/tap.
-            Slightly smaller than the original (12vh vs 16vh). */}
-        <button
-          type="button"
-          aria-label={t("homeview.orb.activate", {
-            defaultValue: "Talk to Eliza",
-          })}
-          data-testid="home-orb-hit"
-          onClick={openOrbVoice}
-          className="absolute left-1/2 top-[6%] z-20 h-[12vh] w-[12vh] max-h-32 max-w-32 -translate-x-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-        />
-
-        {/* Apps + status sit below the orb — top padding clears the orb area.
-            Pull up here to open the chat, pull down to close it. */}
-        <div
-          className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-6 pt-[calc(var(--safe-area-top,0px)+22vh)]"
-        >
-          {showModelStatus && modelStatus ? (
-            <ModelStatusPanel
-              status={modelStatus}
-              onOpenSettings={() => setTab("settings")}
+        {/* Voice mode: reserve the orb's band at the top so the chat sits below
+            the live orb, plus a stop control to leave continuous voice. */}
+        {voiceMode ? (
+          <>
+            <div
+              aria-hidden
+              className="w-full shrink-0 transition-[height] duration-500"
+              style={{ height: orbBandPx }}
             />
-          ) : noLlmConnection ? (
-            <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
-          ) : (
-            <p
-              className={cn(
-                "min-h-5 max-w-xl text-center text-sm font-medium text-white/90 [text-shadow:0_2px_10px_rgba(0,0,0,0.7)] transition-opacity duration-1000 mb-2",
-                transcriptFaded && "opacity-0",
-              )}
-              aria-live="polite"
-              data-testid="home-assistant-transcript"
+            <button
+              type="button"
+              aria-label={t("homeview.orb.stop", {
+                defaultValue: "Stop voice mode",
+              })}
+              data-testid="home-voice-stop"
+              onClick={exitVoice}
+              className="absolute right-3 top-[calc(var(--safe-area-top,0px)+0.75rem)] z-30 flex h-10 w-10 items-center justify-center rounded-full border border-txt/15 bg-txt/5 text-txt/80 backdrop-blur-md transition-colors hover:bg-txt/10"
             >
-              {transcriptChunk ??
-                t("homeview.assistant.prompt", {
-                  defaultValue: "hey, what's up?",
-                })}
-            </p>
-          )}
+              <X className="h-5 w-5" aria-hidden />
+            </button>
+          </>
+        ) : null}
 
-          {/* Apps fly away when chat is expanded */}
-          <div
-            className={cn(
-              "w-full transition-all duration-500",
-              chatOpen &&
-                "pointer-events-none h-0 -translate-y-4 overflow-hidden opacity-0",
+        {/* Rest home: apps + status. Hidden while the chat is open so the chat
+            takes the full height. */}
+        {!chatOpen ? (
+          <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center gap-6 pt-[calc(var(--safe-area-top,0px)+15vh)]">
+            {showModelStatus && modelStatus ? (
+              <ModelStatusPanel
+                status={modelStatus}
+                onOpenSettings={() => setTab("settings")}
+              />
+            ) : noLlmConnection ? (
+              <NoLlmConnectionPanel onOpenSettings={() => setTab("settings")} />
+            ) : (
+              <p
+                className={cn(
+                  "min-h-5 max-w-xl text-center text-sm font-medium text-txt/85 transition-opacity duration-1000 mb-2",
+                  transcriptFaded && "opacity-0",
+                )}
+                aria-live="polite"
+                data-testid="home-assistant-transcript"
+              >
+                {transcriptChunk ??
+                  t("homeview.assistant.prompt", {
+                    defaultValue: "hey, what's up?",
+                  })}
+              </p>
             )}
-          >
+
             <HomeAppGrid onLaunch={setTab} />
+
+            <div className="flex-1" aria-hidden />
+
+            <HomeNotifications />
           </div>
-
-          <div className="flex-1" aria-hidden />
-
-          {!chatOpen && <HomeNotifications />}
-        </div>
+        ) : null}
 
         <HomeChatPill
           open={chatOpen}
           onOpenChange={setChatOpen}
           onRequestEdit={requestEdit}
+          voiceMode={voiceMode}
+          onToggleVoice={toggleVoice}
         />
       </div>
     </div>
@@ -451,9 +349,9 @@ export function HomeView(): React.JSX.Element {
 // ─── Apps ────────────────────────────────────────────────────────────────────
 
 /**
- * The homescreen launcher grid: the curated 24 apps from {@link getHomeGridApps}
+ * The homescreen launcher grid: the default-pinned tiles from {@link getHomeGridApps}
  * laid out 4-up, each tile an image-only {@link AppIdentityTile} with a small
- * label below. Scrolls when it overflows. Tapping navigates to the app's tab.
+ * label below. Tapping navigates to the app's tab.
  */
 function HomeAppGrid({
   onLaunch,
@@ -467,7 +365,7 @@ function HomeAppGrid({
 
   return (
     <div
-      className="mx-auto grid w-full max-w-sm grid-cols-4 place-items-start gap-x-3 gap-y-4 overflow-y-auto"
+      className="mx-auto grid w-full max-w-sm grid-cols-4 place-items-start gap-x-3 gap-y-4 overflow-visible"
       data-testid="home-app-grid"
     >
       {apps.map((app) => {
@@ -482,9 +380,14 @@ function HomeAppGrid({
               defaultValue: "Open {{name}}",
             })}
             onClick={() => onLaunch(app.targetTab)}
-            className="flex w-full flex-col items-center gap-1 rounded-xs transition-transform hover:scale-105 focus-visible:scale-105 focus-visible:outline-none"
+            className="group flex w-full flex-col items-center gap-1 rounded-xs p-1 focus-visible:outline-none"
           >
-            <AppIdentityTile app={app} size="md" imageOnly />
+            <AppIdentityTile
+              app={app}
+              size="md"
+              imageOnly
+              className="transition-transform duration-200 group-hover:scale-105 group-focus-visible:scale-105"
+            />
             <span className="line-clamp-1 w-full text-center text-[0.62rem] font-medium text-white/90 [text-shadow:0_1px_4px_rgba(0,0,0,0.7)]">
               {displayName}
             </span>
@@ -743,115 +646,26 @@ function ModelRecoveryPanel({
 
 // ─── Bottom chat pill ────────────────────────────────────────────────────────
 
-const PUSH_TO_TALK_HOLD_MS = 200;
-
-function MicButton({
-  recording,
-  disabled,
-  onTap,
-  onHoldStart,
-  onHoldEnd,
-  startLabel,
-  stopLabel,
-}: {
-  recording: boolean;
-  disabled?: boolean;
-  onTap: () => void;
-  onHoldStart: () => void;
-  onHoldEnd: () => void;
-  startLabel: string;
-  stopLabel: string;
-}): React.JSX.Element {
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const holdActive = useRef(false);
-
-  const clearHoldTimer = useCallback(() => {
-    if (holdTimer.current) {
-      clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-  }, []);
-
-  const beginPress = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
-      if (disabled) return;
-      if (event.button > 0) return;
-      holdActive.current = false;
-      try {
-        event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
-        // Detached node mid-gesture — best-effort.
-      }
-      clearHoldTimer();
-      holdTimer.current = setTimeout(() => {
-        holdActive.current = true;
-        onHoldStart();
-      }, PUSH_TO_TALK_HOLD_MS);
-    },
-    [clearHoldTimer, disabled, onHoldStart],
-  );
-
-  const endPress = useCallback(() => {
-    if (disabled) return;
-    clearHoldTimer();
-    if (holdActive.current) {
-      holdActive.current = false;
-      onHoldEnd();
-    } else {
-      onTap();
-    }
-  }, [clearHoldTimer, disabled, onHoldEnd, onTap]);
-
-  const cancelPress = useCallback(() => {
-    clearHoldTimer();
-    if (holdActive.current) {
-      holdActive.current = false;
-      onHoldEnd();
-    }
-  }, [clearHoldTimer, onHoldEnd]);
-
-  return (
-    <Button
-      type="button"
-      size="icon"
-      variant="ghost"
-      data-testid="home-mic"
-      aria-label={recording ? stopLabel : startLabel}
-      aria-pressed={recording}
-      disabled={disabled}
-      onPointerDown={beginPress}
-      onPointerUp={endPress}
-      onPointerCancel={cancelPress}
-      onClick={(event) => {
-        if (disabled) return;
-        if (event.detail === 0) onTap();
-      }}
-      className={cn(
-        "shrink-0 rounded-full text-txt/70 hover:bg-white/20 hover:text-txt disabled:opacity-45",
-        recording &&
-          "animate-pulse bg-accent/20 text-accent hover:bg-accent/25 hover:text-accent",
-      )}
-    >
-      <Mic className="h-4 w-4" aria-hidden />
-    </Button>
-  );
-}
-
 /**
- * The chat composer at the bottom of the home screen, controlled by the parent.
+ * The chat composer + message list, controlled by the parent.
  *
- * Open (default on home): recent messages push up, chat input appears with
- * drag-down to close. Chat icon navigates to the full /chat view. X closes it.
- * Collapsed: a thin, theme-adaptive bar (no icons) — swipe up or tap to open.
+ * Open: full-height chat — messages fill from the top, the refractive-glass
+ * composer pins to the bottom. The composer's right control is the voice button
+ * (taps into continuous voice mode) until text is typed, then a send arrow.
+ * Collapsed: a compact glass opener pill — tap or swipe up to open.
  */
 function HomeChatPill({
   open,
   onOpenChange,
   onRequestEdit,
+  voiceMode,
+  onToggleVoice,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRequestEdit: () => void;
+  voiceMode: boolean;
+  onToggleVoice: () => void;
 }): React.JSX.Element {
   const controller = useShellControllerContext();
   const { t } = useTranslation();
@@ -864,13 +678,16 @@ function HomeChatPill({
   // Collapse on outside click when expanded.
   useEffect(() => {
     if (!expanded) return;
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+    const handler = (e: PointerEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setExpanded(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, [expanded, setExpanded]);
 
   const trimmed = draft.trim();
@@ -881,7 +698,7 @@ function HomeChatPill({
   const canUseComposer = Boolean(controller?.canSend);
 
   const recentMessages = useMemo(
-    () => controller?.messages.slice(-6) ?? [],
+    () => controller?.messages.slice(-50) ?? [],
     [controller?.messages],
   );
 
@@ -922,36 +739,38 @@ function HomeChatPill({
 
   // Swipe-up on the collapsed pill
   const pillDrag = useRef<{ y: number } | null>(null);
+  const suppressPillClick = useRef(false);
 
   function onPillPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     pillDrag.current = { y: e.clientY };
   }
 
-  function onPillPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+  function onPillPointerUp() {
     if (!pillDrag.current) return;
-    const dy = pillDrag.current.y - e.clientY; // positive = swipe up
     pillDrag.current = null;
-    if (dy > 20 || Math.abs(dy) < 10) {
-      // swipe up OR tap
-      setExpanded(true);
-    }
+    suppressPillClick.current = true;
+    setExpanded(true);
   }
 
   return (
     <div
       ref={containerRef}
-      className="w-full shrink-0 pb-[calc(var(--safe-area-bottom,0px)+0.5rem)]"
+      className={cn(
+        "w-full px-3 pb-[calc(var(--safe-area-bottom,0px)+0.5rem)]",
+        // Full-height chat surface when open; compact opener when collapsed.
+        expanded ? "flex min-h-0 flex-1 flex-col" : "shrink-0",
+      )}
       data-testid="home-chat-pill-container"
     >
       {expanded ? (
         <div
-          className="mb-2 flex flex-col overflow-hidden"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           data-testid="home-chat-panel"
         >
-          {/* Recent messages */}
+          {/* Messages fill from the top; the composer pins to the bottom. */}
           {recentMessages.length > 0 ? (
             <ol
-              className="flex flex-col gap-1 px-3 pb-2 overflow-y-auto max-h-[35vh]"
+              className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2"
               data-testid="home-recent-chats"
               aria-label={t("homeview.composer.recentChat", {
                 defaultValue: "Recent chat",
@@ -965,18 +784,20 @@ function HomeChatPill({
                   className={cn(
                     "max-w-[84%] rounded px-3 py-1.5 text-xs leading-relaxed",
                     message.role === "user"
-                      ? "ml-auto bg-white/20 text-white/95"
-                      : "mr-auto bg-white/10 text-white/75",
+                      ? "ml-auto bg-txt/15 text-txt/90"
+                      : "mr-auto bg-txt/8 text-txt/65",
                   )}
                 >
                   {message.content}
                 </li>
               ))}
             </ol>
-          ) : null}
+          ) : (
+            <div className="flex-1" aria-hidden />
+          )}
 
           {/* Composer — refractive glass bar; draft text stays in input until sent, no bubble preview */}
-          <div className="mx-2">
+          <div className="mx-2 mt-2">
             <div className={cn("px-2 py-1.5", GLASS_COMPOSER_CLASS)}>
               <Input
                 ref={inputRef}
@@ -1017,18 +838,18 @@ function HomeChatPill({
               ) : (
                 <GlassIconButton
                   icon="mic"
-                  active={controller?.recording ?? false}
+                  active={voiceMode}
                   disabled={!canUseComposer}
                   label={
-                    controller?.recording
+                    voiceMode
                       ? t("homeview.composer.stopVoice", {
-                          defaultValue: "Stop voice input",
+                          defaultValue: "Stop voice mode",
                         })
                       : t("homeview.composer.startVoice", {
-                          defaultValue: "Start voice input",
+                          defaultValue: "Start voice mode",
                         })
                   }
-                  onClick={() => controller?.toggleRecording()}
+                  onClick={onToggleVoice}
                 />
               )}
             </div>
@@ -1036,7 +857,7 @@ function HomeChatPill({
         </div>
       ) : null}
 
-      {/* Collapsed pill — thin bar, no icons, theme-adaptive */}
+      {/* Collapsed pill — compact centered opener, not a fake composer. */}
       {!expanded ? (
         <button
           type="button"
@@ -1045,9 +866,23 @@ function HomeChatPill({
           })}
           aria-expanded={false}
           data-testid="home-chat-pill"
-          className="mx-auto flex cursor-pointer items-center justify-center py-3"
+          className={cn(
+            "group mx-auto flex min-h-12 w-40 cursor-pointer items-center justify-center rounded-[6px] border border-white/20 px-4 py-3",
+            "bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.045))] backdrop-blur-2xl",
+            "shadow-[inset_0_1px_0_rgba(255,255,255,0.38),inset_0_-1px_0_rgba(255,255,255,0.08),0_14px_36px_rgba(0,0,0,0.24),0_0_28px_rgba(255,255,255,0.08)]",
+            "transition-[transform,background-color,box-shadow] duration-200 ease-out",
+            "hover:scale-[1.04] hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.23),rgba(255,255,255,0.07))] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.45),inset_0_-1px_0_rgba(255,255,255,0.1),0_18px_44px_rgba(0,0,0,0.28),0_0_36px_rgba(255,255,255,0.12)]",
+            "active:scale-[1.04] focus:outline-none focus-visible:outline-none",
+          )}
           onPointerDown={onPillPointerDown}
           onPointerUp={onPillPointerUp}
+          onClick={() => {
+            if (suppressPillClick.current) {
+              suppressPillClick.current = false;
+              return;
+            }
+            setExpanded(true);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -1055,8 +890,10 @@ function HomeChatPill({
             }
           }}
         >
-          {/* Theme-adaptive thin bar: white/30 on dark backgrounds, fg/25 on light */}
-          <div className="h-1.5 w-24 rounded-full bg-foreground/25 transition-all duration-200 hover:w-28 hover:bg-foreground/35" />
+          <span
+            aria-hidden
+            className="h-1.5 w-24 rounded-full bg-white/55 shadow-[0_0_18px_rgba(255,255,255,0.28)] transition-all duration-200 group-hover:w-28"
+          />
         </button>
       ) : null}
     </div>

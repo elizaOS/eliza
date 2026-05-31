@@ -10,6 +10,7 @@ import { createPerfState, type PerfState, perfTick } from "./scene-perf";
 import { registerBuiltinPresets } from "./scene-presets";
 import {
   createSceneInputs,
+  createSceneOutputs,
   resolveSceneFactoryOrDefault,
 } from "./scene-runtime";
 import type {
@@ -17,12 +18,19 @@ import type {
   HomescreenScene,
   SceneInputs,
   SceneInstance,
+  SceneOutputs,
   SceneRenderContext,
 } from "./scene-types";
 
 registerBuiltinPresets();
 
 const BANDS = 32;
+
+/** Projected on-screen position of the orb, forwarded to the React layer. */
+export type OrbAnchor = NonNullable<SceneOutputs["orbAnchor"]>;
+
+/** Emit a new anchor only when it shifts more than this (canvas fractions). */
+const ANCHOR_EPSILON = 0.002;
 
 export interface HomescreenCanvasProps {
   /** The scene document to render. Swapping it remounts the background. */
@@ -32,7 +40,31 @@ export interface HomescreenCanvasProps {
   phase?: HomescreenPhase;
   userText?: string;
   assistantText?: string;
+  /**
+   * Notified when the orb's projected screen position changes (or becomes null
+   * for scenes without an orb), so the host can anchor its hit target to the
+   * real rendered orb instead of a hardcoded guess.
+   */
+  onOrbAnchor?: (anchor: OrbAnchor | null) => void;
   className?: string;
+}
+
+/** Whether two orb anchors differ enough to be worth re-emitting to React. */
+function anchorChanged(
+  a: SceneOutputs["orbAnchor"],
+  b: SceneOutputs["orbAnchor"],
+): boolean {
+  if (a === null || b === null) return a !== b;
+  return (
+    Math.abs(a.x - b.x) > ANCHOR_EPSILON ||
+    Math.abs(a.y - b.y) > ANCHOR_EPSILON ||
+    Math.abs(a.r - b.r) > ANCHOR_EPSILON
+  );
+}
+
+/** Read through a function boundary so scene-side mutation is not narrowed away. */
+function readOrbAnchor(outputs: SceneOutputs): SceneOutputs["orbAnchor"] {
+  return outputs.orbAnchor;
 }
 
 /** True when a WebGL2 context is obtainable (false in jsdom / SSR). */
@@ -58,6 +90,7 @@ export function HomescreenCanvas({
   phase = "idle",
   userText = "",
   assistantText = "",
+  onOrbAnchor,
   className,
 }: HomescreenCanvasProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -68,8 +101,9 @@ export function HomescreenCanvas({
     phase,
     userText,
     assistantText,
+    onOrbAnchor,
   });
-  liveRef.current = { analyser, phase, userText, assistantText };
+  liveRef.current = { analyser, phase, userText, assistantText, onOrbAnchor };
 
   // Pointer position in normalized device coords (-1..1).
   const pointerRef = useRef({ x: 0, y: 0, down: false });
@@ -135,6 +169,9 @@ export function HomescreenCanvas({
       camera.position.z = 3.2;
 
       const inputs = createSceneInputs();
+      const outputs = createSceneOutputs();
+      // Last anchor emitted to the host, for change detection.
+      let lastAnchor: SceneOutputs["orbAnchor"] = null;
 
       const mountScene = (doc: HomescreenScene): SceneInstance => {
         const renderScene = new T.Scene();
@@ -146,6 +183,7 @@ export function HomescreenCanvas({
           size: { width: 0, height: 0, dpr: renderer.getPixelRatio() },
           theme: doc.theme,
           inputs: inputs as Readonly<SceneInputs>,
+          outputs,
         };
         const { factory } = resolveSceneFactoryOrDefault(doc.background);
         const instance = factory ? factory(ctx) : { update() {}, dispose() {} };
@@ -211,7 +249,20 @@ export function HomescreenCanvas({
         inputs.assistantText = live.assistantText;
         inputs.time += dt;
 
+        // Cleared each frame so a scene that doesn't write an anchor (no orb)
+        // leaves it null rather than stale.
+        outputs.orbAnchor = null;
         current.update(dt, inputs.time);
+
+        // Forward the orb anchor to the host when it meaningfully changed.
+        const next = readOrbAnchor(outputs);
+        const emit = liveRef.current.onOrbAnchor;
+        if (emit && anchorChanged(lastAnchor, next)) {
+          const copy =
+            next === null ? null : { x: next.x, y: next.y, r: next.r };
+          lastAnchor = copy;
+          emit(copy);
+        }
 
         if (advance) {
           const tick = perfTick(perf, dt);

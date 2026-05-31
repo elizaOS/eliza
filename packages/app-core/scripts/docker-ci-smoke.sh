@@ -11,8 +11,8 @@ set -Eeuo pipefail
 #      /api/health or /api/status, failing if the agent crashes on startup
 #
 # The boot probe runs the image's default command (APP_CMD_START =
-# `node --import tsx packages/agent/dist/bin.js start`), i.e. the actual
-# production entrypoint. It does NOT substitute a stub health server, so a
+# the absolute tsx loader plus `packages/agent/dist/bin.js start`), i.e. the
+# actual production entrypoint. It does NOT substitute a stub health server, so a
 # broken runtime dependency closure (missing zod / @elizaos/core / chalk /
 # etc.) surfaces as a RED build instead of shipping a container that crashes
 # the moment it boots in production.
@@ -178,7 +178,7 @@ load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
 APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js}"
-APP_CMD_START="${APP_CMD_START:-node --import tsx ${APP_ENTRYPOINT} start}"
+APP_CMD_START="${APP_CMD_START:-node --import /opt/tsx/node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
 APP_API_BIND="${APP_API_BIND:-127.0.0.1}"
 OCI_SOURCE="${OCI_SOURCE:-}"
@@ -265,8 +265,8 @@ boot_verify() {
 
   "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   # NOTE: no command override here. The container runs its default CMD
-  # (APP_CMD_START = the real `node --import tsx packages/agent/dist/bin.js
-  # start`). Substituting a stub health server is exactly what let broken
+  # (APP_CMD_START = the real absolute tsx loader plus agent dist start).
+  # Substituting a stub health server is exactly what let broken
   # images ship green before; do not reintroduce it.
   "$DOCKER_BIN" run -d \
     --name "$CONTAINER_NAME" \

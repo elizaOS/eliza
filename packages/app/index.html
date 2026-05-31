@@ -236,21 +236,44 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/brand/favicons/favicon-16x16.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/brand/favicons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
+  <script>
+    // Synchronously apply the correct dark/light class to <html> before the
+    // first paint so CSS custom properties (--bg, etc.) resolve immediately.
+    // Mirrors the priority logic in packages/ui/src/state/persistence.ts:
+    //   1. eliza:ui-theme-mode  ("dark" | "light" | "system")
+    //   2. legacy eliza:ui-theme / elizaos:ui-theme
+    //   3. system prefers-color-scheme
+    (function () {
+      try {
+        var mode = localStorage.getItem('eliza:ui-theme-mode');
+        if (!mode) {
+          var legacy = localStorage.getItem('eliza:ui-theme') || localStorage.getItem('elizaos:ui-theme');
+          mode = (legacy === 'light' || legacy === 'dark') ? legacy : 'system';
+        }
+        var dark = mode === 'dark' || (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var root = document.documentElement;
+        root.classList.toggle('dark', dark);
+        root.style.colorScheme = dark ? 'dark' : 'light';
+        root.setAttribute('data-theme', dark ? 'dark' : 'light');
+      } catch (e) {}
+    })();
+  </script>
   <style>
-    /* Prevent flash of unstyled content */
-    html,
-    body {
+    /* FOUC guard — runs before external CSS so we use concrete values.
+       The script above already applied .dark / data-theme to <html>, so
+       these selectors resolve synchronously on first paint. */
+    html, body {
       margin: 0;
       padding: 0;
-      /* FOUC fallback. Paint the dark chat shell before React mounts so
-         desktop (Electrobun) and web hand off into the same dark surface
-         instead of a foreign-color flash. --bg is set by the active theme as
-         soon as styles load, so the chat shell still takes over cleanly. */
-      background-color: var(--bg, #000000);
-      color: var(--text, #e8e8ec);
-      font-family: var(--font-sans, "Poppins", "Poppins", Arial, system-ui, sans-serif);
+      background-color: #ffffff;
+      color: #09090b;
+      font-family: var(--font-sans, "Poppins", Arial, system-ui, sans-serif);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+    }
+    html.dark, html[data-theme="dark"] {
+      background-color: #000000;
+      color: #e8e8ec;
     }
 
     /* Safe area insets for notched devices */

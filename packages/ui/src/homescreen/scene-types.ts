@@ -46,6 +46,21 @@ export interface SceneInputs {
   time: number;
 }
 
+/**
+ * Where the scene's primary focal object (the orb) is on screen, so the React
+ * layer can anchor its hit target / expand animation to the actual rendered
+ * position instead of guessing. The runtime owns this object and a scene writes
+ * to it each frame; scenes with no focal object leave {@link orbAnchor} null.
+ */
+export interface SceneOutputs {
+  /**
+   * Projected screen position of the orb. `x`/`y` are fractions of the canvas
+   * in [0,1] with the origin at the top-left (y down); `r` is the orb's radius
+   * as a fraction of canvas height. Null when the scene has no orb.
+   */
+  orbAnchor: { x: number; y: number; r: number } | null;
+}
+
 /** Brand/theme values handed to a scene so it can match the active surface. */
 export interface SceneTheme {
   /** Accent as linear [r,g,b] in 0..1 (resolved from --accent-rgb). */
@@ -73,6 +88,8 @@ export interface SceneRenderContext {
   theme: SceneTheme;
   /** Live, runtime-owned input signals (read-only for scenes). */
   inputs: Readonly<SceneInputs>;
+  /** Runtime-owned output channel a scene writes to each frame. */
+  outputs: SceneOutputs;
 }
 
 /**

@@ -1178,7 +1178,7 @@ function ShellFoundationMount() {
 }
 
 function shouldSuppressShellPill(tab: string): boolean {
-  return tab === "chat" || tab === "orchestrator";
+  return tab === "home" || tab === "chat" || tab === "orchestrator";
 }
 
 export function App() {

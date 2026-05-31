@@ -23,6 +23,9 @@ export interface ShellController {
   analyser: AnalyserNode | null;
   open: () => void;
   close: () => void;
+  /** True while the one global chat/voice session is open. The hook other views
+   *  (e.g. the homescreen apps + buttons) read to react to it. */
+  isOpen: boolean;
   send: (text: string) => void;
   /** Toggle continuous ("open voice") capture. Used by a quick tap on the mic. */
   toggleRecording: () => void;
@@ -156,8 +159,8 @@ export function useShellController(): ShellController {
   React.useEffect(() => stopCapture, [stopCapture]);
 
   const open = React.useCallback(() => {
-    if (ready) setIsOpen(true);
-  }, [ready]);
+    setIsOpen(true);
+  }, []);
   const close = React.useCallback(() => {
     setIsOpen(false);
     setMuted(false);
@@ -200,6 +203,7 @@ export function useShellController(): ShellController {
     analyser,
     open,
     close,
+    isOpen,
     send,
     toggleRecording,
     startRecording: startCapture,

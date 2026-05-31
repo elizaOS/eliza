@@ -10,9 +10,11 @@ export interface HomeGridApp extends AppIdentitySource {
   targetTab: Tab;
 }
 
-// The internal-tool apps we feature on the homescreen, in display order. These
-// ship real hero artwork, resolved by AppIdentityTile.
-const FEATURED_INTERNAL_APPS: readonly string[] = [
+/**
+ * Internal-tool apps that can be pinned to the homescreen.
+ * None are pinned by default — this is the full catalog available for pinning.
+ */
+export const PINNABLE_INTERNAL_APPS: readonly string[] = [
   "@elizaos/plugin-lifeops",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-steward-app",
@@ -28,44 +30,13 @@ const FEATURED_INTERNAL_APPS: readonly string[] = [
   "@elizaos/app-log-viewer",
 ];
 
-// Core product surfaces shown as launcher tiles. They have no bundled hero art,
-// so AppIdentityTile renders its generated gradient tile (distinct per name).
-const CORE_APPS: readonly HomeGridApp[] = [
-  {
-    name: "core/chat",
-    displayName: "Chat",
-    category: "utility",
-    targetTab: "chat",
-  },
-  {
-    name: "core/voice",
-    displayName: "Voice",
-    category: "utility",
-    targetTab: "voice",
-  },
-  {
-    name: "core/character",
-    displayName: "Character",
-    category: "utility",
-    targetTab: "character",
-  },
-  {
-    name: "core/browser",
-    displayName: "Browser",
-    category: "utility",
-    targetTab: "browser",
-  },
+/** The 4 tiles pinned to the homescreen by default. */
+const DEFAULT_PINNED_APPS: readonly HomeGridApp[] = [
   {
     name: "core/messages",
     displayName: "Messages",
     category: "utility",
     targetTab: "messages",
-  },
-  {
-    name: "core/contacts",
-    displayName: "Contacts",
-    category: "utility",
-    targetTab: "contacts",
   },
   {
     name: "core/documents",
@@ -74,22 +45,10 @@ const CORE_APPS: readonly HomeGridApp[] = [
     targetTab: "documents",
   },
   {
-    name: "core/stream",
-    displayName: "Stream",
+    name: "core/views",
+    displayName: "Views",
     category: "utility",
-    targetTab: "stream",
-  },
-  {
-    name: "core/triggers",
-    displayName: "Triggers",
-    category: "utility",
-    targetTab: "triggers",
-  },
-  {
-    name: "core/apps",
-    displayName: "Apps",
-    category: "utility",
-    targetTab: "apps",
+    targetTab: "views",
   },
   {
     name: "core/settings",
@@ -100,17 +59,21 @@ const CORE_APPS: readonly HomeGridApp[] = [
 ];
 
 /**
- * The curated 4×6 (24-tile) homescreen launcher grid: the featured internal-tool
- * apps (with hero art) followed by the core product surfaces.
+ * Returns the homescreen launcher grid: the 4 default-pinned tiles, followed
+ * by any user-pinned internal-tool apps (supplied via `pinnedNames`).
+ *
+ * When `pinnedNames` is empty (default), only the 4 defaults are shown.
  */
-export function getHomeGridApps(): HomeGridApp[] {
+export function getHomeGridApps(pinnedNames: readonly string[] = []): HomeGridApp[] {
+  if (pinnedNames.length === 0) return [...DEFAULT_PINNED_APPS];
+
   const byName = new Map(getInternalToolApps().map((app) => [app.name, app]));
-  const featured: HomeGridApp[] = [];
-  for (const name of FEATURED_INTERNAL_APPS) {
+  const pinned: HomeGridApp[] = [];
+  for (const name of pinnedNames) {
     const app = byName.get(name);
     const targetTab = getInternalToolAppTargetTab(name);
     if (!app || !targetTab) continue;
-    featured.push({
+    pinned.push({
       name: app.name,
       displayName: app.displayName,
       category: app.category,
@@ -120,5 +83,5 @@ export function getHomeGridApps(): HomeGridApp[] {
       targetTab,
     });
   }
-  return [...featured, ...CORE_APPS];
+  return [...DEFAULT_PINNED_APPS, ...pinned];
 }

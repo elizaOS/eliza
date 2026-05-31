@@ -388,7 +388,7 @@ export const issueOpAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: Record<string, unknown>,
     callback?: HandlerCallback,
@@ -431,15 +431,15 @@ export const issueOpAction: Action = {
     });
     if (decision.status === "pending") {
       return {
-        success: true,
-        text: preview,
-        data: { requiresConfirmation: true, preview, awaitingUserInput: true },
+        success: false,
+        requiresConfirmation: true,
+        preview,
       };
     }
     if (decision.status === "cancelled") {
       const cancelMessage = "GitHub issue operation cancelled.";
       await callback?.({ text: cancelMessage });
-      return { success: true, text: cancelMessage, data: { cancelled: true } };
+      return { success: false, error: cancelMessage };
     }
 
     const resolved = buildResolvedClient(runtime, selection);

@@ -1,3 +1,4 @@
+import { AlertCircle } from "lucide-react";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import { startFreshFirstRunReload } from "../../platform";
@@ -5,7 +6,6 @@ import type { StartupErrorState } from "../../state";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader } from "../ui/card";
-import { StatusBadge } from "../ui/status-badge";
 
 function startupReasonLabel(
   t: ReturnType<typeof useApp>["t"],
@@ -40,9 +40,9 @@ function startupReasonLabel(
 }
 
 const SCREEN_SHELL_CLASS =
-  "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[#F7F9FF] px-4 py-6 font-body text-[#0B35F1] sm:px-6";
+  "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
 const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[720px] overflow-hidden border border-[#0B35F1]/20 bg-white/95 text-[#0B35F1] shadow-[0_30px_120px_rgba(11,53,241,0.16)]";
+  "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95 shadow-lg";
 
 interface StartupFailureViewProps {
   error: StartupErrorState;
@@ -85,20 +85,18 @@ export function StartupFailureView({
 
   return (
     <div className={SCREEN_SHELL_CLASS}>
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,#FFFFFF_0%,#F7F9FF_56%,#E9EEFF_100%)]"
-      />
       <Card className={SCREEN_CARD_CLASS}>
-        <CardHeader className="border-b border-[#0B35F1]/10 bg-[#0B35F1]/[0.04] pb-6 pt-6">
+        <CardHeader className="border-b border-border/10 bg-danger/5 pb-6 pt-6">
           <div className="flex flex-col gap-4">
-            <StatusBadge
-              label={reasonLabel}
-              variant="info"
-              withDot
-              className="self-start border-[#0B35F1]/25 bg-[#0B35F1]/10 text-[#0B35F1] [&_[class*='bg-status-info']]:bg-[#0B35F1]"
-            />
-            <h1 className="text-xl font-semibold leading-tight text-[#0B35F1]">
+            <span
+              aria-label={reasonLabel}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-destructive/35 bg-destructive/12 text-destructive"
+              role="img"
+              title={reasonLabel}
+            >
+              <AlertCircle className="h-5 w-5" aria-hidden />
+            </span>
+            <h1 className="text-xl font-semibold leading-tight text-danger">
               {t("startupfailureview.StartupFailed")} {reasonLabel}
             </h1>
           </div>
@@ -106,11 +104,11 @@ export function StartupFailureView({
 
         <CardContent className="flex flex-col gap-5 pt-6">
           {error.detail ? (
-            <section className="space-y-2 rounded-sm border border-[#0B35F1]/16 bg-[#F7F9FF] p-4">
-              <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-[#0B35F1]/75">
+            <section className="space-y-2 rounded-sm border border-border/50 bg-bg/35 p-4">
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
                 {t("common.details", { defaultValue: "Details" })}
               </div>
-              <pre className="max-h-60 overflow-auto rounded-sm border border-[#0B35F1]/16 bg-white p-3 text-xs leading-relaxed text-[#0B35F1]/70 whitespace-pre-wrap break-words">
+              <pre className="max-h-60 overflow-auto rounded-sm border border-border/40 bg-card p-3 text-xs leading-relaxed text-muted whitespace-pre-wrap break-words">
                 {error.detail}
               </pre>
             </section>
@@ -121,7 +119,7 @@ export function StartupFailureView({
               variant="default"
               size="lg"
               onClick={onRetry}
-              className="w-full border-[#0B35F1] bg-[#0B35F1] text-white hover:border-[#0B35F1] hover:bg-[#082ed6] sm:w-auto sm:min-w-[11rem]"
+              className="w-full sm:w-auto sm:min-w-[11rem]"
             >
               {t("startupfailureview.RetryStartup")}
             </Button>
@@ -130,7 +128,7 @@ export function StartupFailureView({
                 variant="outline"
                 size="lg"
                 onClick={() => bugReport.open(startupDraft)}
-                className="w-full border-[#0B35F1]/25 bg-white text-[#0B35F1] hover:border-[#0B35F1]/45 hover:bg-[#F7F9FF] sm:w-auto sm:min-w-[10rem]"
+                className="w-full sm:w-auto sm:min-w-[10rem]"
               >
                 {t("bugreportmodal.ReportABug")}
               </Button>
@@ -143,7 +141,7 @@ export function StartupFailureView({
                   variant="outline"
                   size="lg"
                   onClick={() => startFreshFirstRunReload()}
-                  className="w-full border-[#0B35F1]/25 bg-white text-[#0B35F1] hover:border-[#0B35F1]/45 hover:bg-[#F7F9FF] sm:w-auto sm:min-w-[10rem]"
+                  className="w-full sm:w-auto sm:min-w-[10rem]"
                 >
                   {t("startupfailureview.StartOver", {
                     defaultValue: "Start over",
@@ -153,7 +151,7 @@ export function StartupFailureView({
                   variant="outline"
                   size="lg"
                   asChild
-                  className="w-full border-[#0B35F1]/25 bg-white text-[#0B35F1] hover:border-[#0B35F1]/45 hover:bg-[#F7F9FF] sm:w-auto sm:min-w-[10rem]"
+                  className="w-full sm:w-auto sm:min-w-[10rem]"
                 >
                   <a href={branding.appUrl} target="_blank" rel="noreferrer">
                     {t("startupfailureview.OpenApp")}
