@@ -1,19 +1,19 @@
 """
-Parametric CAD (B-rep) fembot parts -- NO mesh warping/smoothing.
+Parametric CAD (B-rep) fembot parts from the constraint-driven source-fitted
+control rings -- NO mesh warping/smoothing.
 
-Each part is a clean solid built with the OpenCascade kernel (cadquery): a B-spline
-surface lofted through CLEAN elliptical cross-sections along the part's spine. Clean
-ellipses + a strongly-smoothed axial taper give straight lines and smooth curves by
-construction (no organic waviness, no pitting, round stays round). Feet get a flat
-sole via a planar boolean cut.
-
-Exports a STEP solid (the real CAD source) and a tessellated STL (for MuJoCo +
-rendering) per link.
+Each link's `source_fitted_parts/<link>.source-fitted-loft.json` holds the
+constraint-driven control rings (cross-section profiles with the reserved joint
+interfaces preserved). This lofts those real profiles into a clean OpenCascade
+B-rep SOLID (cadquery): angle-align the rings so they don't twist, apply the
+feminine slim (radial scale, held full at the joint levels so neighbours mate),
+loft a B-spline surface, export STEP (CAD source) + tessellated STL.
 
 Run:  .venv/bin/python cad/asimov-feminine/param/cad_parts.py
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -27,12 +27,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 import connections as C  # noqa: E402
 
 ROBOT = "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot"
-SRC = os.path.join(ROBOT, "assets/profiles/asimov-1/meshes")
+RINGS = os.path.join(ROBOT, "cad/asimov-feminine/param/source_fitted_parts")
 OUT = os.path.join(ROBOT, "cad/asimov-feminine/output/stl")
 STEP = os.path.join(ROBOT, "cad/asimov-feminine/output/step")
 AXIS_IDX = {"x": 0, "y": 1, "z": 2}
 
-# per-part slim (cross-section scale); 1.0 = original width
 SLIM = {
     "NECK_YAW": 0.86, "NECK_PITCH": 0.95,
     "LEFT_SHOULDER_PITCH": 0.92, "LEFT_SHOULDER_ROLL": 0.82, "LEFT_SHOULDER_YAW": 0.82,
@@ -46,64 +45,67 @@ for _k in list(SLIM):
         SLIM[_k.replace("LEFT_", "RIGHT_")] = SLIM[_k]
 
 
-def _ellipse_sections(mesh, ai, dz=0.006, axial_smooth=6):
-    """Smoothed elliptical cross-sections (centre + semi-axes) along spine axis ai."""
+def _aligned_profiles(link, n=48, axial_smooth=3):
+    """Angle-aligned per-section radius profiles from the control rings."""
+    path = os.path.join(RINGS, f"{link.lower()}.source-fitted-loft.json")
+    d = json.load(open(path))
+    rings = np.asarray(d["control_rings"], float)
+    ai = AXIS_IDX[d["control_axis"]]
     pd = [i for i in range(3) if i != ai]
-    lo, hi = mesh.bounds[0][ai], mesh.bounds[1][ai]
-    levels = np.arange(lo + dz, hi - dz, dz)
-    normal = np.zeros(3); normal[ai] = 1.0
-    A, B, C0, C1, L = [], [], [], [], []
-    for t in levels:
-        o = np.zeros(3); o[ai] = t
-        s = mesh.section(plane_origin=o, plane_normal=normal)
-        if s is None:
-            continue
-        pts = np.vstack([np.asarray(e)[:, pd] for e in s.discrete])
-        c = (pts.max(0) + pts.min(0)) / 2
-        ext = (pts.max(0) - pts.min(0)) / 2
-        A.append(ext[0]); B.append(ext[1]); C0.append(c[0]); C1.append(c[1]); L.append(t)
-    if len(L) < 3:
-        return None
-    A = np.array(A); B = np.array(B); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
-    A = gaussian_filter1d(A, axial_smooth, mode="nearest")
-    B = gaussian_filter1d(B, axial_smooth, mode="nearest")
+    bins = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    R, C0, C1, L = [], [], [], []
+    for r in rings:
+        c = r[:, pd].mean(0)
+        dd = r[:, pd] - c
+        ang = (np.arctan2(dd[:, 1], dd[:, 0]) + 2 * np.pi) % (2 * np.pi)
+        rad = np.hypot(dd[:, 0], dd[:, 1])
+        o = np.argsort(ang)
+        a = np.concatenate([ang[o] - 2 * np.pi, ang[o], ang[o] + 2 * np.pi])
+        rr = np.concatenate([rad[o]] * 3)
+        R.append(np.interp(bins, a, rr)); C0.append(c[0]); C1.append(c[1]); L.append(r[:, ai].mean())
+    R = np.array(R); C0 = np.array(C0); C1 = np.array(C1); L = np.array(L)
+    order = np.argsort(L)
+    R, C0, C1, L = R[order], C0[order], C1[order], L[order]
+    R = gaussian_filter1d(R, axial_smooth, axis=0, mode="nearest")
     C0 = gaussian_filter1d(C0, axial_smooth, mode="nearest")
     C1 = gaussian_filter1d(C1, axial_smooth, mode="nearest")
-    return L, C0, C1, A, B
+    return ai, pd, bins, L, C0, C1, R
 
 
-def _loft(L, C0, C1, A, B, ai, slim, n=44):
-    pd = [i for i in range(3) if i != ai]
-    th = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    ct, st = np.cos(th), np.sin(th)
-    wires = []
-    for i in range(len(L)):
-        P = np.zeros((n, 3))
-        P[:, pd[0]] = C0[i] + A[i] * slim * ct
-        P[:, pd[1]] = C1[i] + B[i] * slim * st
-        P[:, ai] = L[i]
-        edge = cq.Edge.makeSpline([cq.Vector(*p) for p in P], periodic=True)
-        wires.append(cq.Wire.assembleEdges([edge]))
-    return cq.Solid.makeLoft(wires, ruled=False)
+def _collar(L, reserved, ramp=0.022):
+    if not reserved:
+        return np.ones_like(L)
+    d = np.min(np.abs(L[:, None] - np.array(reserved)[None, :]), axis=1)
+    w = np.clip(d / ramp, 0, 1)
+    return w * w * (3 - 2 * w)
 
 
 def build_cad_part(link):
-    mesh = trimesh.load(os.path.join(SRC, f"{link}.STL"), force="mesh")
-    ai = AXIS_IDX[C.LINKS[link]["spine"]]
-    sec = _ellipse_sections(mesh, ai)
-    if sec is None:
+    ai, pd, bins, L, C0, C1, R = _aligned_profiles(link)
+    if len(L) < 3:
         return None
-    solid = _loft(*sec, ai, SLIM.get(link, 1.0))
+    slim = SLIM.get(link, 1.0)
+    reserved = [0.0] + [pos[ai] for pos in C.LINKS[link]["children"].values()]
+    f = 1.0 + (slim - 1.0) * _collar(L, reserved)   # full at joints, slim mid-shaft
+    ct, st = np.cos(bins), np.sin(bins)
+    wires = []
+    for i in range(len(L)):
+        P = np.zeros((len(bins), 3))
+        P[:, pd[0]] = C0[i] + R[i] * f[i] * ct
+        P[:, pd[1]] = C1[i] + R[i] * f[i] * st
+        P[:, ai] = L[i]
+        edge = cq.Edge.makeSpline([cq.Vector(*p) for p in P], periodic=True)
+        wires.append(cq.Wire.assembleEdges([edge]))
+    solid = cq.Solid.makeLoft(wires, ruled=False)
     if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
-        z0 = mesh.bounds[0][2]
-        box = cq.Solid.makeBox(1.0, 1.0, 1.0, cq.Vector(-0.5, -0.5, z0 + 0.006 - 1.0))
-        solid = solid.cut(box)  # flat sole
+        zmin = solid.BoundingBox().zmin
+        solid = solid.cut(cq.Solid.makeBox(1.0, 1.0, 1.0, cq.Vector(-0.5, -0.5, zmin + 0.006 - 1.0)))
     return solid
 
 
-def _to_trimesh(solid, tol=0.0004):
-    verts, faces = solid.tessellate(tol)
-    return trimesh.Trimesh(np.array([[v.x, v.y, v.z] for v in verts]), np.array(faces), process=True)
+def _to_trimesh(solid, tol=0.0005):
+    v, fc = solid.tessellate(tol)
+    return trimesh.Trimesh(np.array([[p.x, p.y, p.z] for p in v]), np.array(fc), process=True)
 
 
 def run():
@@ -112,14 +114,17 @@ def run():
     parts = sorted(set(SLIM) | {"WAIST_YAW", "IMU_ORIGIN"})
     print(f"{'PART':<22}{'vol_cm3':>9}{'faces':>8}{'wt':>6}")
     for link in parts:
-        solid = build_cad_part(link)
+        try:
+            solid = build_cad_part(link)
+        except Exception as exc:
+            print(f"{link:<22} FAIL {type(exc).__name__}: {str(exc)[:50]}"); continue
         if solid is None:
-            print(f"{link:<22} SKIP (too short)"); continue
+            print(f"{link:<22} SKIP"); continue
         cq.exporters.export(cq.Workplane(obj=solid), os.path.join(STEP, f"{link}.step"))
         tm = _to_trimesh(solid)
         tm.export(os.path.join(OUT, f"{link}.STL"))
         print(f"{link:<22}{solid.Volume()*1e6:>9.0f}{len(tm.faces):>8}{str(tm.is_watertight):>6}")
-    print(f"DONE in {time.time()-t0:.0f}s -> {OUT} (+ STEP in {STEP})")
+    print(f"DONE in {time.time()-t0:.0f}s")
 
 
 if __name__ == "__main__":
