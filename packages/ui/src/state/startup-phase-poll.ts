@@ -298,19 +298,25 @@ export async function runPollingBackend(
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
           return;
         }
-        // A fresh first-run pinned to a stale remote that requires auth but has
-        // pairing DISABLED is a dead end: the user can neither pair nor sign in
-        // here (this is the "Pairing is not enabled on this server" screen).
-        // Recover to the local origin instead of stranding them. Returning users
-        // (hadPriorFirstRun) and pairing-enabled remotes still get the gate.
+        // A stale remote that requires auth but has pairing DISABLED is a hard
+        // dead end: this is the "Pairing is not enabled on this server" screen,
+        // which offers no token field and no in-app way forward — the user can
+        // neither pair nor sign in here. We only reach this branch with no token
+        // (see the !hasToken guard above), so there is genuinely nothing the
+        // user can do on this server. Recover to the local origin instead of
+        // stranding them, whether or not they completed a prior first-run — a
+        // returning user who lost their token re-connects through onboarding,
+        // which is strictly better than a wall. `isRecoverableRemoteBase` still
+        // guards against same-origin/loopback bases (no pointless self-recovery
+        // loop), and pairing-ENABLED remotes keep the pairing gate so users can
+        // actually pair.
         if (
           !fellBackToLocal &&
           !auth.pairingEnabled &&
-          !ctx?.hadPriorFirstRun &&
           isRecoverableRemoteBase(recoveryEnv())
         ) {
           recoverToLocalOrigin(
-            "auth required but pairing disabled on a fresh first-run",
+            "saved remote requires auth but pairing is disabled (dead end)",
           );
           continue;
         }

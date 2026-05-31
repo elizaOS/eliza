@@ -293,9 +293,78 @@ describe("runPollingBackend", () => {
     });
   });
 
-  it("does NOT auto-recover a returning user's remote (still shows the pairing gate)", async () => {
-    // Guard: the recovery must not hijack a returning user's intentional remote
-    // setup (hadPriorFirstRun) — that user gets the auth/pairing gate as before.
+  it("recovers to local even for a returning user when the saved remote dead-ends on pairing-disabled", async () => {
+    // Regression: a returning user (hadPriorFirstRun=true, e.g. they completed
+    // onboarding against the cloud in a past session) whose saved remote now
+    // returns required:true + pairingEnabled:false is on the SAME dead-end —
+    // no token, no pairing, no token field on the screen. Prior-onboarding must
+    // NOT keep them stranded; recovery still falls back to the local origin.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://api.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockResolvedValueOnce({
+        required: true,
+        authenticated: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      })
+      .mockResolvedValue({
+        required: false,
+        authenticated: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+    const staleCloud = {
+      id: "cloud:api.elizacloud.ai",
+      kind: "cloud" as const,
+      label: "Eliza Cloud",
+      apiBase: "https://api.elizacloud.ai",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: staleCloud,
+      restoredActiveServer: staleCloud,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+
+  it("does NOT auto-recover when pairing is ENABLED (the user can actually pair)", async () => {
+    // Guard: recovery is only for the pairing-DISABLED dead end. When pairing is
+    // enabled there is a real way forward (pair this device), so keep the gate
+    // and do not hijack the user's remote — regardless of prior first-run.
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
@@ -307,7 +376,7 @@ describe("runPollingBackend", () => {
     clientMock.getAuthStatus.mockResolvedValue({
       required: true,
       authenticated: false,
-      pairingEnabled: false,
+      pairingEnabled: true,
       expiresAt: null,
     });
     const remote = {
