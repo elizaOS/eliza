@@ -48,24 +48,47 @@ function Escape-InnoValue {
   return $Value.Replace('"', '""')
 }
 
+# App identity is env-driven (ELIZA_APP_NAME / ELIZA_APP_ID) and defaults to the
+# existing elizaOS values when unset, so the produced installer stays
+# byte-identical unless the brand env is provided.
+function Get-AppLabelRoot {
+  $name = $env:ELIZA_APP_NAME
+  if ($name -and $name.Trim()) {
+    return $name.Trim()
+  }
+  return "elizaOS App"
+}
+
+function Get-AppFileRoot {
+  # File/install root has no whitespace; derive it from the env only when set,
+  # otherwise keep the existing literal (note: not derivable from the label).
+  $name = $env:ELIZA_APP_NAME
+  if ($name -and $name.Trim()) {
+    return ($name.Trim() -replace '\s+', '')
+  }
+  return "ElizaOSApp"
+}
+
 function Get-ChannelLabel {
   param([string]$NormalizedChannel)
 
+  $root = Get-AppLabelRoot
   switch ($NormalizedChannel) {
-    "stable" { return "elizaOS App" }
-    "canary" { return "elizaOS App Canary" }
-    default { return "elizaOS App $([char]::ToUpper($NormalizedChannel[0]))$($NormalizedChannel.Substring(1))" }
+    "stable" { return $root }
+    "canary" { return "$root Canary" }
+    default { return "$root $([char]::ToUpper($NormalizedChannel[0]))$($NormalizedChannel.Substring(1))" }
   }
 }
 
 function Get-ChannelInstallName {
   param([string]$NormalizedChannel)
 
+  $root = Get-AppFileRoot
   if ($NormalizedChannel -eq "stable") {
-    return "ElizaOSApp"
+    return $root
   }
 
-  return "ElizaOSApp-$NormalizedChannel"
+  return "$root-$NormalizedChannel"
 }
 
 function Get-InstallerSignSection {
@@ -149,15 +172,17 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $channelInstallName = Get-ChannelInstallName -NormalizedChannel $normalizedChannel
 $appName = Get-ChannelLabel -NormalizedChannel $normalizedChannel
+$appFileRoot = Get-AppFileRoot
+$appIdBase = if ($env:ELIZA_APP_ID -and $env:ELIZA_APP_ID.Trim()) { $env:ELIZA_APP_ID.Trim() } else { "ai.elizaos.app" }
 $appId = if ($normalizedChannel -eq "stable") {
-  "ai.elizaos.app"
+  $appIdBase
 } else {
-  "ai.elizaos.app.$normalizedChannel"
+  "$appIdBase.$normalizedChannel"
 }
 # Keep install root short to avoid MAX_PATH (Error 206) when extracting deep
 # runtime dependency trees on systems where long paths are not fully enabled.
-$defaultDirName = "{localappdata}\ElizaOSApp\$normalizedChannel"
-$outputBaseFilename = "ElizaOSApp-Setup-$normalizedChannel"
+$defaultDirName = "{localappdata}\$appFileRoot\$normalizedChannel"
+$outputBaseFilename = "$appFileRoot-Setup-$normalizedChannel"
 
 $signSection = Get-InstallerSignSection
 $template = Get-Content $templatePath -Raw

@@ -301,6 +301,21 @@ Docs: docs/apps/desktop-local-development.md
   process.exit(0);
 }
 
+// The Electrobun platform package is compiled from the workspace checkout. Its
+// directory can exist (e.g. an empty placeholder) without a package.json when
+// the @elizaos/* workspace packages aren't linked, in which case `bun run dev`
+// there would fail opaquely. Fail fast with an actionable message instead, and
+// before the expensive renderer build below.
+if (!existsSync(path.join(electrobunDir, "package.json"))) {
+  console.error(
+    `[eliza] Desktop dev requires the Electrobun platform package on disk, but ` +
+      `none was found at ${path.join(electrobunDir, "package.json")}.\n` +
+      `  Run dev:desktop from a workspace checkout where the @elizaos/* packages ` +
+      `are present and linked.`,
+  );
+  process.exit(1);
+}
+
 const skipApi = process.argv.includes("--no-api");
 const forceRendererCli = process.argv.includes("--force-renderer");
 const forceRenderer =

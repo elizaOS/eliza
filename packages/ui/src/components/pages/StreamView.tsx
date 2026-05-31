@@ -3,6 +3,7 @@ import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state/useApp";
 import { formatUptime } from "../../utils/format";
@@ -10,20 +11,33 @@ import { IS_POPOUT } from "../stream/helpers";
 import { openStreamPopout } from "../stream/popout-url";
 import { StatusBar } from "../stream/StatusBar";
 
+type StreamStatus = Awaited<ReturnType<typeof client.streamStatus>>;
+
+const STREAM_STATUS_CACHE_KEY = "stream:status";
+
 export function StreamView({ inModal }: { inModal?: boolean } = {}) {
   const { agentStatus, t } = useApp();
   const { branding } = getBootConfig();
   const agentName = agentStatus?.agentName ?? branding.appName ?? "Eliza";
   const isElectrobun = isElectrobunRuntime();
 
-  const [streamLive, setStreamLive] = useState(false);
+  // Seed from the shared cache so a revisit paints the last-known status
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const cachedStatus = getCached<StreamStatus>(STREAM_STATUS_CACHE_KEY);
+  const [streamLive, setStreamLive] = useState(
+    cachedStatus
+      ? cachedStatus.data.running && cachedStatus.data.ffmpegAlive
+      : false,
+  );
   const [streamLoading, setStreamLoading] = useState(false);
   const loadingRef = useRef(false);
   const [streamAvailable, setStreamAvailable] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(!cachedStatus);
   const [statusError, setStatusError] = useState<string | null>(null);
-  const [uptime, setUptime] = useState(0);
-  const [frameCount, setFrameCount] = useState(0);
+  const [uptime, setUptime] = useState(cachedStatus?.data.uptime ?? 0);
+  const [frameCount, setFrameCount] = useState(
+    cachedStatus?.data.frameCount ?? 0,
+  );
 
   const pollStatus = useCallback(async () => {
     if (loadingRef.current || !streamAvailable) return;
@@ -34,6 +48,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
       setUptime(status.uptime);
       setFrameCount(status.frameCount);
       setStatusError(null);
+      setCached(STREAM_STATUS_CACHE_KEY, status);
     } catch (err: unknown) {
       // A 404 means the streaming plugin isn't installed — switch to the
       // "unavailable" panel. Any other error is surfaced so a broken status

@@ -25,6 +25,7 @@ import type {
   DocumentScope,
   DocumentSearchResult,
 } from "../../api/client-types-chat";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useApp } from "../../state/useApp";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
@@ -279,11 +280,17 @@ export function DocumentsView({
   setActionNoticeRef.current = setActionNotice;
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<DocumentScopeFilter>("all");
-  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  // Seed from the shared cache so a revisit paints the last-known documents
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const documentsCacheKey = `documents:list:${scopeFilter}`;
+  const cachedDocuments = getCached<DocumentRecord[]>(documentsCacheKey);
+  const [documents, setDocuments] = useState<DocumentRecord[]>(
+    cachedDocuments?.data ?? [],
+  );
   const [searchResults, setSearchResults] = useState<
     DocumentSearchResult[] | null
   >(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedDocuments);
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{
     current: number;
@@ -311,43 +318,50 @@ export function DocumentsView({
   const shouldRenderSelectorRail = showSelectorRail !== false;
   const useCompactSelectorRail = embedded;
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const docsRes = await client.listDocuments({
-        limit: 100,
-        ...(scopeFilter !== "all" ? { scope: scopeFilter } : {}),
-      });
-      setDocuments(docsRes.documents);
-      onDocumentsChange?.(docsRes.documents);
-      setIsServiceLoading(false);
-      serviceRetryRef.current = 0;
-    } catch (err) {
-      const status = (err as { status?: number }).status;
-      if (status === 503) {
-        setIsServiceLoading(true);
-      } else {
+  const loadData = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
+      setLoadError(null);
+      try {
+        const docsRes = await client.listDocuments({
+          limit: 100,
+          ...(scopeFilter !== "all" ? { scope: scopeFilter } : {}),
+        });
+        setDocuments(docsRes.documents);
+        setCached(`documents:list:${scopeFilter}`, docsRes.documents);
+        onDocumentsChange?.(docsRes.documents);
         setIsServiceLoading(false);
-        const msg =
-          err instanceof Error
-            ? err.message
-            : t("documentsview.FailedToLoadDocumentsData", {
-                defaultValue: "Failed to load Knowledge data",
-              });
-        setLoadError(msg);
-        setActionNoticeRef.current(msg, "error");
+        serviceRetryRef.current = 0;
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        if (status === 503) {
+          setIsServiceLoading(true);
+        } else {
+          setIsServiceLoading(false);
+          const msg =
+            err instanceof Error
+              ? err.message
+              : t("documentsview.FailedToLoadDocumentsData", {
+                  defaultValue: "Failed to load Knowledge data",
+                });
+          setLoadError(msg);
+          setActionNoticeRef.current(msg, "error");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [onDocumentsChange, scopeFilter, t]);
+    },
+    [onDocumentsChange, scopeFilter, t],
+  );
 
   useEffect(() => {
-    loadData().catch(() => {
+    // Revalidate silently when cached documents are already on screen.
+    loadData({
+      silent: getCached<DocumentRecord[]>(`documents:list:${scopeFilter}`) != null,
+    }).catch(() => {
       setLoading(false);
     });
-  }, [loadData]);
+  }, [loadData, scopeFilter]);
   useEffect(() => {
     if (!isServiceLoading) {
       serviceRetryRef.current = 0;

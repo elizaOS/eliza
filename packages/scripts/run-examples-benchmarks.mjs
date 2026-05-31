@@ -24,6 +24,56 @@ const ignoredDirs = new Set([
   "node_modules",
 ]);
 
+// Only build packages that the root `bun install` provisions, i.e. packages
+// matched by the root `workspaces` globs. Self-contained sub-projects under
+// these roots (own lockfile + toolchain, e.g. the standalone
+// `@solana-gauntlet/sdk` with its external `@solana/web3.js` dep) are not
+// workspace members, so their dependencies are never installed by the
+// monorepo and `tsc` fails with TS2307 in CI. They are meant to be built
+// standalone, not swept here. turbo already builds every real member.
+const workspaceGlobs = JSON.parse(
+  readFileSync(path.join(root, "package.json"), "utf8"),
+).workspaces;
+
+function workspaceGlobToRegExp(glob) {
+  let pattern = "";
+  for (let i = 0; i < glob.length; i += 1) {
+    const char = glob[i];
+    if (char === "*") {
+      if (glob[i + 1] === "*") {
+        pattern += ".*";
+        i += 1;
+      } else {
+        pattern += "[^/]*";
+      }
+    } else if (/[.+^${}()|[\]\\]/.test(char)) {
+      pattern += `\\${char}`;
+    } else {
+      pattern += char;
+    }
+  }
+  return new RegExp(`^${pattern}$`);
+}
+
+const workspaceMatchers = workspaceGlobs.map((glob) => {
+  const negated = glob.startsWith("!");
+  return {
+    negated,
+    regExp: workspaceGlobToRegExp(negated ? glob.slice(1) : glob),
+  };
+});
+
+function isWorkspaceMember(packageDir) {
+  const relative = path.relative(root, packageDir);
+  let member = false;
+  for (const { negated, regExp } of workspaceMatchers) {
+    if (regExp.test(relative)) {
+      member = !negated;
+    }
+  }
+  return member;
+}
+
 function collectPackageJsons(dir, out = []) {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
@@ -59,7 +109,8 @@ const packages = roots
       scripts: manifest.scripts ?? {},
     };
   })
-  .filter((pkg) => Object.hasOwn(pkg.scripts, scriptName));
+  .filter((pkg) => Object.hasOwn(pkg.scripts, scriptName))
+  .filter((pkg) => isWorkspaceMember(pkg.dir));
 
 let failed = false;
 for (const pkg of packages) {

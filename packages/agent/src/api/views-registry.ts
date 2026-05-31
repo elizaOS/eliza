@@ -400,6 +400,8 @@ async function buildEntry(
   pluginDir: string | undefined,
 ): Promise<ViewRegistryEntry> {
   const loadedAt = Date.now();
+  const normalizedViewType = normalizeViewType(view.viewType);
+  const registryKey = viewRegistryKey(view.id, normalizedViewType);
 
   // Check bundle availability and collect hash + size when resolvable.
   let available = Boolean(view.bundleUrl);
@@ -420,18 +422,19 @@ async function buildEntry(
 
         // buildEntry runs on every (re-)registration, so a plugin loaded into
         // multiple runtimes logs this repeatedly. Keep the per-view size at
-        // debug and warn at most once per view id about oversized bundles.
+        // debug and warn at most once per registry key about oversized bundles.
         const sizeKb = stat ? stat.size / 1024 : 0;
         if (stat && stat.size > 512 * 1024) {
-          if (!warnedLargeBundles.has(view.id)) {
-            warnedLargeBundles.add(view.id);
+          if (!warnedLargeBundles.has(registryKey)) {
+            warnedLargeBundles.add(registryKey);
             logger.warn(
               {
                 src: "ViewRegistry",
                 viewId: view.id,
+                viewType: normalizedViewType,
                 sizeKb: sizeKb.toFixed(0),
               },
-              `[ViewRegistry] View ${view.id} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
+              `[ViewRegistry] View ${registryKey} bundle is large (${sizeKb.toFixed(0)}KB) — consider code splitting`,
             );
           }
         } else if (stat) {
@@ -447,7 +450,6 @@ async function buildEntry(
   const encodedId = encodeURIComponent(view.id);
   // bundleUrl uses a timestamp ?v= param for backwards-compat; bundleUrlVersioned
   // uses the content hash when available (allows immutable long-lived caching).
-  const normalizedViewType = normalizeViewType(view.viewType);
   const buildAssetUrl = (
     asset: "bundle.js" | "hero",
     version?: number | string,

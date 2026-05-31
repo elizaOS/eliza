@@ -36,16 +36,16 @@ const BRAND_ORANGE = 0xff5800;
 
 // A small glass marble set into the water. Half-submerged at the origin, small
 // enough that the water reads as a full, open sheet around it.
-const ORB_RADIUS = 0.13;
+const ORB_RADIUS = 0.11;
 
 // Height of the straight-down camera above the water. Lower = the orb (and the
 // face inside it) reads larger; higher = more open water around it.
 const CAM_HEIGHT = 2.5;
 
-// How far the orb sits below screen-centre, in world units. The camera looks
-// straight down at a point this far in front of the orb, so the orb (at the
-// origin) drops toward the lower third of the screen.
-const ORB_DROP = 0.42;
+// World-Z the camera looks straight down at. The orb sits at the origin, so a
+// POSITIVE view-z pushes the orb toward the TOP of the screen (above the apps);
+// larger = higher.
+const ORB_VIEW_Z = 0.72;
 
 const WATER_VERT = /* glsl */ `
   varying vec3 vWorld;
@@ -162,8 +162,8 @@ function fresnelCrystalBall(ctx: SceneRenderContext): SceneInstance {
   // ripples read as clean concentric rings. `up` must be re-aimed first — it
   // can't stay +Y, which is now the view axis.
   camera.up.set(0, 0, -1);
-  camera.position.set(0, CAM_HEIGHT, -ORB_DROP);
-  camera.lookAt(0, 0, -ORB_DROP);
+  camera.position.set(0, CAM_HEIGHT, ORB_VIEW_Z);
+  camera.lookAt(0, 0, ORB_VIEW_Z);
 
   // Generative environment: an orange sky gradient with a white sun, baked into
   // a prefiltered env map so the glass orb reflects something with structure.
