@@ -210,6 +210,30 @@ const TrajectoriesView = lazyNamedView(
   "TrajectoriesView",
 );
 
+// Once the shell is interactive, warm the lazy route chunks during idle time so
+// the first navigation to each view is instant instead of waiting on a chunk
+// fetch. Paths must match the lazy() loaders above exactly so the bundler
+// reuses the same chunks. Failures are ignored — this is best-effort warming.
+function prefetchRouteViewChunks(): void {
+  const loaders: Array<() => Promise<unknown>> = [
+    () => import("./components/pages/DatabasePageView"),
+    () => import("./components/pages/LogsView"),
+    () => import("./components/pages/MemoryViewerView"),
+    () => import("./components/pages/PluginsPageView"),
+    () => import("./components/pages/RelationshipsView"),
+    () => import("./components/pages/RuntimeView"),
+    () => import("./components/pages/SkillsView"),
+    () => import("./components/pages/TasksPageView"),
+    () => import("./components/pages/TrajectoriesView"),
+    () => import("./components/pages/SettingsView"),
+    () => import("./components/pages/StreamView"),
+    () => import("./components/pages/AutomationsFeed"),
+    () => import("./components/pages/ViewManagerPage"),
+    () => import("./components/pages/BrowserWorkspaceView"),
+  ];
+  for (const load of loaders) void load().catch(() => {});
+}
+
 function LazyViewBoundary({ children }: { children: ReactNode }) {
   return (
     <Suspense
@@ -1201,6 +1225,24 @@ export function App() {
   const contextMenu = useContextMenu();
 
   useSecretsManagerShortcut();
+
+  // Warm lazy route chunks during idle once the shell is ready, so the first
+  // navigation to a code-split view is instant rather than waiting on a fetch.
+  useEffect(() => {
+    if (startupCoordinator.phase !== "ready" || typeof window === "undefined") {
+      return;
+    }
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    const schedule =
+      w.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 200));
+    const cancel =
+      w.cancelIdleCallback ?? ((id: number) => window.clearTimeout(id));
+    const id = schedule(() => prefetchRouteViewChunks());
+    return () => cancel(id);
+  }, [startupCoordinator.phase]);
 
   useEffect(() => {
     if (!renderStartupHome || tab === "home") return;
