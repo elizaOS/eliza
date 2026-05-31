@@ -131,6 +131,18 @@ describe("orchestrator routes — dispatch", () => {
     expect(result.json.error).toBe("Orchestrator route not found");
   });
 
+  it("returns 500 instead of hanging when a service call rejects", async () => {
+    // Regression: a matched endpoint whose service call throws/rejects must
+    // answer 500 — never an unhandled rejection that leaves the client spinning.
+    const throwing = {
+      getStatus: () => Promise.reject(new Error("db exploded")),
+    } as unknown as OrchestratorTaskService;
+    const result = await call(throwing, "GET", "/api/orchestrator/status");
+    expect(result.matched).toBe(true);
+    expect(result.status).toBe(500);
+    expect(result.json.error).toBe("db exploded");
+  });
+
   it("serves aggregate status", async () => {
     const result = await call(makeService(), "GET", "/api/orchestrator/status");
     expect(result.status).toBe(200);

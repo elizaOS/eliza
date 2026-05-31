@@ -17,11 +17,7 @@ import {
 import { MusicService } from "../service";
 import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { ProgressiveMessage } from "../utils/progressiveMessage";
-import {
-  confirmationRequired,
-  isConfirmed,
-  mergedOptions,
-} from "./confirmation";
+import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 import { MUSIC_PLAYER_ACTION_DOCS } from "./music-player-action-docs";
 
 // Local stubs for cross-plugin / native deps that ship without d.ts files.
@@ -655,13 +651,15 @@ export const playAudio: Action = {
     }
 
     const preview = `Confirmation required before playing or queueing audio for: "${messageText}".`;
-    if (!isConfirmed(options)) {
-      await callback({
-        text: preview,
-        source: message.content.source || "discord",
-      });
-      return confirmationRequired(preview, { query: messageText });
-    }
+    const confirmBlock = await requireMusicConfirmation({
+      runtime,
+      message,
+      actionName: "PLAY_AUDIO",
+      pendingKey: `play:${messageText.slice(0, 160)}`,
+      preview,
+      callback,
+    });
+    if (confirmBlock) return confirmBlock;
 
     // Extract audio URL from message text using regex (YouTube, SoundCloud, Spotify, etc.)
     const urlResult = extractAudioUrl(messageText);

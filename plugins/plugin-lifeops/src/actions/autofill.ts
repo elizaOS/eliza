@@ -5,6 +5,7 @@ import {
   logger,
   type Memory,
   type State,
+  requireConfirmation,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -321,6 +322,7 @@ async function handleFill(
 
 async function handleWhitelistAdd(
   runtime: IAgentRuntime,
+  message: Memory,
   params: AutofillParams,
 ): Promise<ActionResult> {
   const rawDomain = (params.domain ?? "").toString().trim();
@@ -331,8 +333,19 @@ async function handleWhitelistAdd(
   if (!normalized) {
     return failure("INVALID_DOMAIN", { input: rawDomain });
   }
-  if (params.confirmed !== true) {
-    return failure("CONFIRMATION_REQUIRED", { domain: normalized });
+  const prompt = `Add ${normalized} to the autofill whitelist?`;
+  const decision = await requireConfirmation({
+    runtime,
+    message,
+    actionName: "AUTOFILL_WHITELIST_ADD",
+    pendingKey: `whitelist:${normalized}`,
+    prompt,
+  });
+  if (decision.status !== "confirmed") {
+    return failure(
+      decision.status === "pending" ? "CONFIRMATION_REQUIRED" : "CANCELLED",
+      { domain: normalized, awaitingUserInput: decision.status === "pending" },
+    );
   }
   const existing = await loadUserDomains(runtime);
   const existingNormalized = existing
@@ -435,7 +448,7 @@ export async function runAutofillHandler(
     case "fill":
       return handleFill(runtime, params);
     case "whitelist_add":
-      return handleWhitelistAdd(runtime, params);
+      return handleWhitelistAdd(runtime, message, params);
     case "whitelist_list":
       return handleWhitelistList(runtime);
   }

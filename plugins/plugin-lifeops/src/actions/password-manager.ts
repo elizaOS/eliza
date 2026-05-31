@@ -6,6 +6,7 @@ import {
   logger,
   type Memory,
   type State,
+  requireConfirmation,
 } from "@elizaos/core";
 import {
   injectCredentialToClipboard,
@@ -209,8 +210,23 @@ export async function runPasswordManagerHandler(
         subaction === "inject_username" ? "username" : "password";
       const itemId = (params.itemId ?? "").toString().trim();
       if (!itemId) return failure("MISSING_ITEM_ID");
-      if (params.confirmed !== true) {
-        return failure("CONFIRMATION_REQUIRED", { itemId, field });
+      const prompt = `Copy ${field} for item '${itemId}' to the clipboard?`;
+      const decision = await requireConfirmation({
+        runtime,
+        message,
+        actionName: ACTION_NAME,
+        pendingKey: `inject:${itemId}:${field}`,
+        prompt,
+      });
+      if (decision.status !== "confirmed") {
+        return failure(
+          decision.status === "pending" ? "CONFIRMATION_REQUIRED" : "CANCELLED",
+          {
+            itemId,
+            field,
+            awaitingUserInput: decision.status === "pending",
+          },
+        );
       }
       const result = await injectCredentialToClipboard(itemId, field, config);
       logger.info(

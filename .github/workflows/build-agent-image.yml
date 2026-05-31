@@ -248,6 +248,45 @@ jobs:
             type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
+      # Build the image into the local Docker daemon first (load, do NOT push).
+      # The boot-verification step below runs the REAL agent entrypoint against
+      # this image; only if it boots cleanly does the push step ship it. This
+      # is the gate that stops a container which crashes on startup (missing
+      # runtime deps, broken entrypoint) from reaching ghcr. cache-to here
+      # populates the gha cache so the later push step is a near-instant
+      # re-export of identical layers rather than a second full build.
+      - id: build-local
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: .
+          file: packages/app-core/deploy/Dockerfile.ci
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-boot-verify
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify image boots (real agent entrypoint)
+        # Runs the production entrypoint (node --import tsx
+        # packages/agent/dist/bin.js start) inside the just-built image and
+        # fails RED if the agent crashes on startup, exits non-zero, logs a
+        # known crash signature (Cannot find package/module, Failed to start,
+        # crashed during init, ...), or never serves /api/health within the
+        # timeout. A failure here blocks the push below, so a non-bootable
+        # image is never published.
+        env:
+          DOCKER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:ci-boot-verify
+          BOOT_VERIFY_ONLY: "true"
+          SMOKE_TIMEOUT_SEC: "180"
+          SMOKE_PORT: "32138"
+          CONTAINER_PORT: "42138"
+        run: bash packages/app-core/scripts/docker-ci-smoke.sh --boot-verify-only
+
+      # Push only runs if the boot verification above succeeded (steps run in
+      # order and a failed step fails the job). Re-exports the identical layers
+      # from the gha cache populated by build-local, so this is fast.
       - id: push
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
@@ -257,8 +296,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
+          # cache-from only: build-local already wrote the gha cache, so this
+          # step is a cache-hit re-export rather than a second full build.
           cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32

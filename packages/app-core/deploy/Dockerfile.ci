@@ -30,38 +30,47 @@ ARG APP_DIR
 RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
   @elizaos/agent
 
-# Some relinked local packages expect selected runtime dependencies to be
-# resolvable from root node_modules. Host node_modules is excluded from the
-# Docker context, so install only this small runtime set in-image.
+# Some relinked local packages expect their third-party (non-@elizaos) runtime
+# dependencies to be resolvable from /app/node_modules. Host node_modules is
+# excluded from the Docker context (see .dockerignore: **/node_modules), so
+# install that runtime set in-image.
+#
+# The set is DERIVED, not hand-maintained: collect-docker-runtime-deps.mjs
+# reads the declared `dependencies` of every workspace package that gets
+# linked into the image (see link-docker-local-app-packages.mjs +
+# relink-workspace-packages-to-dist.mjs), drops the @elizaos/* workspace
+# entries (those are linked, not installed), and emits the union pinned to
+# the versions the workspace lockfile resolves. `npm install` then pulls the
+# full transitive closure automatically.
+#
+# This replaces the previous hand-maintained allowlist, which had to be
+# extended by hand every time a newly-linked package introduced a new
+# third-party dependency. Each omission was a hard boot crash of the form
+# "Cannot find package '<dep>' imported from /app/packages/<pkg>/dist/..."
+# (zod, then @elizaos/core, then chalk, ...). Deriving the closure removes
+# that whole class of build/test loops: every dependency a linked package
+# declares is present, so the image boots and any character config can load
+# any bundled plugin without a missing-module crash.
+#
+# Pure browser/UI packages (notably @elizaos/ui and its radix/three/recharts
+# tree) are excluded inside the script: they are linked for resolution
+# integrity but never imported by the headless server runtime, so installing
+# their frontend deps would only bloat the image.
 RUN mkdir -p /tmp/docker-runtime-deps \
   && cd /tmp/docker-runtime-deps \
   && npm init -y >/dev/null \
+  && node "/app/${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs" \
+       > /tmp/docker-runtime-deps/deps.txt \
+  && echo "Installing $(wc -l < /tmp/docker-runtime-deps/deps.txt) derived runtime deps" \
   && npm install --omit=dev --ignore-scripts --no-package-lock \
+    --legacy-peer-deps \
     --fetch-retries=5 \
     --fetch-retry-mintimeout=20000 \
     --fetch-retry-maxtimeout=120000 \
-    @electric-sql/pglite@0.4.5 \
-    @neondatabase/serverless@1.1.0 \
-    @node-rs/argon2@2.0.2 \
-    dotenv@17.2.3 \
-    drizzle-orm@0.45.2 \
-    jose@6.2.2 \
-    pg@8.20.0 \
-    uuid@14.0.0 \
-    ws@8.20.0 \
-    yaml@2.8.2 \
+    $(cat /tmp/docker-runtime-deps/deps.txt) \
   && mkdir -p /app/node_modules \
-  && rm -rf \
-    /app/node_modules/@electric-sql/pglite \
-    /app/node_modules/@neondatabase/serverless \
-    /app/node_modules/@node-rs/argon2 \
-    /app/node_modules/dotenv \
-    /app/node_modules/drizzle-orm \
-    /app/node_modules/jose \
-    /app/node_modules/pg \
-    /app/node_modules/uuid \
-    /app/node_modules/ws \
-    /app/node_modules/yaml \
+  && node "/app/${APP_CORE_DIR}/scripts/collect-docker-runtime-deps.mjs" --names \
+     | while IFS= read -r dep; do [ -n "$dep" ] && rm -rf "/app/node_modules/$dep"; done \
   && cp -a /tmp/docker-runtime-deps/node_modules/. /app/node_modules/ \
   && rm -rf /tmp/docker-runtime-deps
 

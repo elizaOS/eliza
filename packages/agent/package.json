@@ -102,6 +102,7 @@
     },
     "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
+    "./security/mcp-server-config": "./src/security/mcp-server-config.ts",
     "./runtime": {
       "types": "./src/runtime/index.ts",
       "eliza-source": {

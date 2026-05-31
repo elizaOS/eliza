@@ -13,9 +13,8 @@ import {
 } from "../services/ShopifyService.js";
 import type { Order } from "../types.js";
 import {
-  confirmationRequired,
   getActionOptions,
-  isConfirmed,
+  requireShopifyConfirmation,
 } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
 
@@ -176,10 +175,15 @@ export async function manageOrdersHandler(
         `Status: ${order.displayFulfillmentStatus}`,
         `Customer: ${order.customer?.displayName ?? "Guest"}`,
       ].join("\n");
-      if (!isConfirmed(options)) {
-        await callback?.({ text: preview });
-        return confirmationRequired(preview, { intent, orderId: order.id });
-      }
+      const confirmBlock = await requireShopifyConfirmation({
+        runtime,
+        message,
+        actionName: "SHOPIFY_FULFILL_ORDER",
+        pendingKey: `fulfill:${order.id}`,
+        preview,
+        callback,
+      });
+      if (confirmBlock) return confirmBlock;
       const fulfillment = await svc.fulfillOrder(order.id);
       await callback?.({
         text: `Order ${order.name} fulfilled (status: ${fulfillment.status}).`,

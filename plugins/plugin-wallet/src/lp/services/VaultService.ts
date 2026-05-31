@@ -135,8 +135,15 @@ export class VaultService extends Service implements IVaultService {
   ): Promise<string> {
     // In a real implementation, you would verify the confirmationToken
     // For now, we'll do a simple check
-    if (!confirmationToken || confirmationToken.length < 6) {
-      throw new Error("Invalid confirmation token");
+    if (
+      !confirmationToken ||
+      confirmationToken.length < 32 ||
+      confirmationToken.length > 256 ||
+      !/^[A-Za-z0-9_-]+$/.test(confirmationToken)
+    ) {
+      throw new Error(
+        "Invalid confirmation token — use a cryptographically random token (32+ chars)",
+      );
     }
 
     try {

@@ -1,12 +1,12 @@
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { WalletBackendService } from "../services/wallet-backend-service";
+import { WalletBackendService } from "../../services/wallet-backend-service";
 import type {
   WalletChainHandler,
   WalletRouterExecution,
   WalletRouterParams,
-} from "../types/wallet-router";
-import { walletRouterAction } from "./wallet-action";
+} from "../../types/wallet-router";
+import { walletRouterAction } from "../wallet-action";
 
 function createRuntime(): IAgentRuntime {
   const logger = {
@@ -16,12 +16,22 @@ function createRuntime(): IAgentRuntime {
     log: vi.fn(),
     warn: vi.fn(),
   };
+  const cache = new Map<string, unknown>();
   const runtime = {
     agentId: "test-agent",
     character: { name: "Test Agent", settings: {} },
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     getSetting: vi.fn(() => null),
+    getCache: vi.fn(async <T>(key: string) => cache.get(key) as T | undefined),
+    setCache: vi.fn(async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    }),
+    deleteCache: vi.fn(async (key: string) => {
+      cache.delete(key);
+      return true;
+    }),
     logger,
   };
 
@@ -99,15 +109,34 @@ function handler(
   };
 }
 
-function message(): Memory {
+function message(text = "wallet action"): Memory {
   return {
     id: "00000000-0000-0000-0000-000000000001",
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",
-    content: { text: "wallet action" },
+    content: { text },
     createdAt: Date.now(),
   } as Memory;
+}
+
+async function runConfirmed(
+  runtime: IAgentRuntime,
+  parameters: Record<string, unknown>,
+) {
+  const first = await walletRouterAction.handler(
+    runtime,
+    message("please transfer"),
+    undefined,
+    { parameters } as HandlerOptions,
+  );
+  expect(first?.data?.requiresConfirmation).toBe(true);
+  return walletRouterAction.handler(
+    runtime,
+    message("yes, confirm"),
+    undefined,
+    { parameters } as HandlerOptions,
+  );
 }
 
 async function run(
@@ -125,7 +154,7 @@ describe("wallet router action", () => {
     const base = handler("base", "Base", "8453", "evm");
     service.registerChainHandler(base);
 
-    const result = await run(runtime, {
+    const result = await runConfirmed(runtime, {
       subaction: "transfer",
       chain: "base",
       fromToken: "ETH",
@@ -152,7 +181,7 @@ describe("wallet router action", () => {
     const base = handler("base", "Base", "8453", "evm");
     service.registerChainHandler(base);
 
-    const result = await run(runtime, {
+    const result = await runConfirmed(runtime, {
       subaction: "swap",
       chain: "8453",
       fromToken: "0x0000000000000000000000000000000000000000",
@@ -179,7 +208,7 @@ describe("wallet router action", () => {
     const solana = handler("solana", "Solana", "solana-mainnet", "solana");
     service.registerChainHandler(solana);
 
-    const transfer = await run(runtime, {
+    const transfer = await runConfirmed(runtime, {
       subaction: "transfer",
       chain: "sol",
       fromToken: "SOL",
@@ -187,7 +216,7 @@ describe("wallet router action", () => {
       recipient: "9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW",
       mode: "execute",
     });
-    const swap = await run(runtime, {
+    const swap = await runConfirmed(runtime, {
       subaction: "swap",
       chain: "solana",
       fromToken: "SOL",
@@ -255,7 +284,7 @@ describe("wallet router action", () => {
     const base = handler("base", "Base", "8453", "evm");
     service.registerChainHandler(base);
 
-    const result = await run(runtime, {
+    const result = await runConfirmed(runtime, {
       subaction: "swap",
       fromToken: "ETH",
       toToken: "USDC",
@@ -269,6 +298,24 @@ describe("wallet router action", () => {
       expect.any(Object),
     );
     expect(result?.data?.chain).toBe("base");
+  });
+
+  it("does not execute when LLM sets confirmed:true without a user yes reply", async () => {
+    const { runtime, service } = createService();
+    const base = handler("base", "Base", "8453", "evm");
+    service.registerChainHandler(base);
+
+    const result = await run(runtime, {
+      subaction: "transfer",
+      chain: "base",
+      amount: "0.5",
+      recipient: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+      mode: "execute",
+      confirmed: true,
+    });
+
+    expect(result?.data?.requiresConfirmation).toBe(true);
+    expect(base.execute).not.toHaveBeenCalled();
   });
 
   it("prepares dry-run metadata without executing", async () => {

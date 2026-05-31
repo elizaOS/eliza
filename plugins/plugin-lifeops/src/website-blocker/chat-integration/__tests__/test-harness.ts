@@ -113,10 +113,18 @@ export async function createBlockRuleHarness(
     }
   >();
   const tasks = new Map<UUID, Task>();
+  const confirmationCache = new Map<string, unknown>();
 
   const runtime = {
     agentId,
     adapter: { db },
+    getCache: async (key: string) => confirmationCache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      confirmationCache.set(key, value);
+    },
+    deleteCache: async (key: string) => {
+      confirmationCache.delete(key);
+    },
     logger: {
       info: () => {},
       warn: () => {},

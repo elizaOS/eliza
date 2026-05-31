@@ -270,7 +270,7 @@ export class LifeOpsGmailAdapter extends BaseMessageAdapter {
       }
       await service.unsubscribeEmailSender(INTERNAL_URL, {
         senderEmail,
-        confirmed: true,
+        userAuthorization: true,
         blockAfter: true,
         trashExisting: true,
       });

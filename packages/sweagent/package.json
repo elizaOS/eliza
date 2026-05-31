@@ -1,0 +1,14 @@
+{
+  "name": "@elizaos/sweagent-root",
+  "version": "2.0.0-alpha.28-security",
+  "description": "Security-patched SWE-agent sources (GHSA-jvqc-qp6c-g58f, GHSA-w846-hghr-xmrc). Full build graph not vendored on develop.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "vitest": "4.1.7"
+  }
+}

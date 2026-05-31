@@ -17,9 +17,8 @@ import { classifyPlaybackTransportIntent } from "../utils/playbackTransportInten
 import { ProgressiveMessage } from "../utils/progressiveMessage";
 import { resolveMusicGuildIdForPlayback } from "../utils/resolveMusicGuildId";
 import {
-  confirmationRequired,
-  isConfirmed,
   mergedOptions,
+  requireMusicConfirmation,
 } from "./confirmation";
 
 function formatFetchProgressDetails(details: unknown): string | undefined {
@@ -304,14 +303,15 @@ async function handleSkip(
   }
 
   const preview = `Confirmation required before skipping **${currentTrack.title}**.`;
-  if (!isConfirmed(options)) {
-    await callback({ text: preview, source: message.content.source });
-    return confirmationRequired(preview, {
-      op: "skip",
-      guildId,
-      currentTrack: currentTrack.title,
-    });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAYBACK_OP_SKIP",
+    pendingKey: `skip:${guildId}:${currentTrack.title}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   const skipped = await musicService.skip(guildId, message.entityId);
   if (!skipped) {
@@ -360,15 +360,15 @@ async function handleStop(
   const preview = track
     ? `Confirmation required before stopping **${track.title}** and clearing ${queueLength} queued track${queueLength !== 1 ? "s" : ""}.`
     : "Confirmation required before stopping playback and clearing the queue.";
-  if (!isConfirmed(options)) {
-    await callback({ text: preview, source: message.content.source });
-    return confirmationRequired(preview, {
-      op: "stop",
-      guildId,
-      currentTrack: track?.title ?? null,
-      queueLength,
-    });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAYBACK_OP_STOP",
+    pendingKey: `stop:${guildId}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   await musicService.stopPlayback(guildId);
   musicService.clear(guildId);
@@ -401,13 +401,15 @@ async function handleQueue(
   }
 
   const preview = `Confirmation required before adding "${query}" to the music queue.`;
-  if (!isConfirmed(options)) {
-    await callback({
-      text: preview,
-      source: message.content.source || "discord",
-    });
-    return confirmationRequired(preview, { op: "queue", query });
-  }
+  const confirmBlock = await requireMusicConfirmation({
+    runtime,
+    message,
+    actionName: "PLAYBACK_OP_QUEUE",
+    pendingKey: `queue:${query.slice(0, 160)}`,
+    preview,
+    callback,
+  });
+  if (confirmBlock) return confirmBlock;
 
   const progress = new ProgressiveMessage(
     callback,

@@ -5,7 +5,13 @@ import {
   type RateLimitConfig,
 } from "@elizaos/agent";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
-import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  type Memory,
+  requireConfirmation,
+  type UUID,
+} from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -3033,16 +3039,61 @@ export async function handleLifeOpsRoutes(
       senderEmail: string;
       blockAfter?: boolean;
       trashExisting?: boolean;
-      confirmed?: boolean;
+      /** User reply for two-phase confirmation (e.g. "yes"). */
+      userConfirmationText?: string;
     }>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
+      const runtime = ctx.state.runtime;
+      if (!runtime) {
+        error(res, "Agent runtime is not available", 503);
+        return;
+      }
+      const senderEmail = body.senderEmail?.trim();
+      if (!senderEmail) {
+        error(res, "senderEmail is required", 400);
+        return;
+      }
+      const entityId = String(ctx.state.adminEntityId ?? "lifeops-owner");
+      const confirmMessage = {
+        entityId,
+        roomId: entityId,
+        content: {
+          text:
+            typeof body.userConfirmationText === "string"
+              ? body.userConfirmationText
+              : "",
+          source: "lifeops-api",
+        },
+        createdAt: Date.now(),
+      } as Memory;
+      const preview = `Unsubscribe from ${senderEmail}?`;
+      const decision = await requireConfirmation({
+        runtime,
+        message: confirmMessage,
+        actionName: "EMAIL_UNSUBSCRIBE",
+        pendingKey: senderEmail.toLowerCase(),
+        prompt: preview,
+      });
+      if (decision.status !== "confirmed") {
+        json(
+          res,
+          {
+            requiresConfirmation: decision.status === "pending",
+            awaitingUserInput: decision.status === "pending",
+            cancelled: decision.status === "cancelled",
+            preview: `${preview} Reply yes to confirm or no to cancel.`,
+          },
+          decision.status === "pending" ? 409 : 200,
+        );
+        return;
+      }
       const requestUrl = ctx.url;
       const result = await service.unsubscribeEmailSender(requestUrl, {
-        senderEmail: body.senderEmail,
+        senderEmail,
         blockAfter: body.blockAfter ?? false,
         trashExisting: body.trashExisting ?? false,
-        confirmed: body.confirmed ?? false,
+        userAuthorization: true,
       });
       json(res, result);
     });

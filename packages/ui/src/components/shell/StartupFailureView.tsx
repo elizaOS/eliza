@@ -1,5 +1,6 @@
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
+import { startFreshFirstRunReload } from "../../platform";
 import type { StartupErrorState } from "../../state";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
@@ -135,16 +136,30 @@ export function StartupFailureView({
               </Button>
             ) : null}
             {error.reason === "backend-unreachable" ? (
-              <Button
-                variant="outline"
-                size="lg"
-                asChild
-                className="w-full border-[#0B35F1]/25 bg-white text-[#0B35F1] hover:border-[#0B35F1]/45 hover:bg-[#F7F9FF] sm:w-auto sm:min-w-[10rem]"
-              >
-                <a href={branding.appUrl} target="_blank" rel="noreferrer">
-                  {t("startupfailureview.OpenApp")}
-                </a>
-              </Button>
+              <>
+                {/* Escape the unreachable saved backend: abandon it and start
+                    over on a local agent (the "or reset" the message promises). */}
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => startFreshFirstRunReload()}
+                  className="w-full border-[#0B35F1]/25 bg-white text-[#0B35F1] hover:border-[#0B35F1]/45 hover:bg-[#F7F9FF] sm:w-auto sm:min-w-[10rem]"
+                >
+                  {t("startupfailureview.StartOver", {
+                    defaultValue: "Start over",
+                  })}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  asChild
+                  className="w-full border-[#0B35F1]/25 bg-white text-[#0B35F1] hover:border-[#0B35F1]/45 hover:bg-[#F7F9FF] sm:w-auto sm:min-w-[10rem]"
+                >
+                  <a href={branding.appUrl} target="_blank" rel="noreferrer">
+                    {t("startupfailureview.OpenApp")}
+                  </a>
+                </Button>
+              </>
             ) : null}
           </div>
         </CardContent>

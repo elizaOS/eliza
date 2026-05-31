@@ -7,13 +7,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,
   resolveBrowserWorkspaceConnectorPartition,
-} from "../workspace/browser-workspace.js";
-import { handleBrowserWorkspaceRoutes } from "./workspace.js";
+} from "../../workspace/browser-workspace.js";
+import { handleBrowserWorkspaceRoutes } from "../workspace.js";
 import {
   assertBrowserWorkspaceCommandConnectorAccountGate,
   assertBrowserWorkspaceConnectorAccountGate,
   BrowserWorkspaceConnectorAccountGateError,
-} from "./workspace-account-gate.js";
+} from "../workspace-account-gate.js";
 
 function createRuntimeHarness() {
   const storage = new InMemoryConnectorAccountStorage();
