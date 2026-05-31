@@ -716,6 +716,11 @@ async function handleCompatRoute(
 
   // Auth / pairing / first-run status — extracted to auth-pairing-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+  // Sensitive-request REST surface (create/get/submit/cancel) for owner secret
+  // collection — e.g. orchestrator provider keys land in the shared vault
+  // instead of plain config. Each branch self-authorizes via
+  // ensureCallerAuthorized (trusted-local, API token, or session), matching the
+  // sibling compat handlers, so mounting it does not widen the unauth surface.
   if (await handleSensitiveRequestRoutes(req, res, state)) return true;
   if (await handleBackgroundTasksRoute(req, res, state)) return true;
   // Internal wake route called by Capacitor BackgroundRunner JSContexts on

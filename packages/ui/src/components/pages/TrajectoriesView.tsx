@@ -21,6 +21,7 @@ import type {
   TrajectoryListResult,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state/useApp";
 import {
@@ -99,8 +100,6 @@ export function TrajectoriesView({
   onSelectTrajectory: controlledOnSelect,
 }: TrajectoriesViewProps) {
   const { t, setActionNotice } = useApp();
-  const [loading, setLoading] = useState(true);
-  const [result, setResult] = useState<TrajectoryListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Self-manage selection when no external callback is provided (standalone mode).
@@ -115,48 +114,65 @@ export function TrajectoriesView({
   const pageSize = 50;
   const previousSearchQueryRef = useRef(searchQuery);
 
+  // Seed from the shared cache so a revisit paints the last-known page
+  // instantly and revalidates silently, instead of flashing a spinner. The
+  // key carries every fetch parameter so distinct pages/queries don't collide.
+  const cacheKey = `trajectories:${page}:${searchQuery}`;
+  const cachedResult = getCached<TrajectoryListResult>(cacheKey);
+  const [result, setResult] = useState<TrajectoryListResult | null>(
+    cachedResult?.data ?? null,
+  );
+  const [loading, setLoading] = useState(!cachedResult);
+
   const [exporting, setExporting] = useState(false);
   const [deletingTrajectoryId, setDeletingTrajectoryId] = useState<
     string | null
   >(null);
   const [clearingAll, setClearingAll] = useState(false);
 
-  const loadTrajectories = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadTrajectories = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
+      setError(null);
 
-    for (let attempt = 0; attempt <= 3; attempt++) {
-      try {
-        const trajResult = await client.getTrajectories({
-          limit: pageSize,
-          offset: page * pageSize,
-          search: searchQuery || undefined,
-        });
-        setResult(trajResult);
-        setLoading(false);
-        return;
-      } catch (err) {
-        const status = (err as { status?: number }).status;
-        if (status === 503 && attempt < 3) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * (attempt + 1)),
+      for (let attempt = 0; attempt <= 3; attempt++) {
+        try {
+          const trajResult = await client.getTrajectories({
+            limit: pageSize,
+            offset: page * pageSize,
+            search: searchQuery || undefined,
+          });
+          setResult(trajResult);
+          setCached(cacheKey, trajResult);
+          setLoading(false);
+          return;
+        } catch (err) {
+          const status = (err as { status?: number }).status;
+          if (status === 503 && attempt < 3) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, 1000 * (attempt + 1)),
+            );
+            continue;
+          }
+          setError(
+            err instanceof Error
+              ? err.message
+              : t("trajectoriesview.FailedToLoad"),
           );
-          continue;
+          setLoading(false);
+          return;
         }
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("trajectoriesview.FailedToLoad"),
-        );
-        setLoading(false);
-        return;
       }
-    }
-  }, [page, searchQuery, t]);
+    },
+    [cacheKey, page, searchQuery, t],
+  );
 
   useEffect(() => {
-    void loadTrajectories();
-  }, [loadTrajectories]);
+    // Revalidate silently when this page/query is already cached on screen.
+    void loadTrajectories({
+      silent: getCached<TrajectoryListResult>(cacheKey) != null,
+    });
+  }, [loadTrajectories, cacheKey]);
 
   useEffect(() => {
     const previousSearchQuery = previousSearchQueryRef.current;

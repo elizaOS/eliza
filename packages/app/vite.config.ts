@@ -39,6 +39,40 @@ const _require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
+
+// Authoritative PascalCase-icon-name → kebab-file map, parsed from lucide's own
+// ESM barrel so there is zero name-guessing. Used to rewrite the app's
+// `import { X } from "lucide-react"` into per-icon deep imports so only the
+// ~130 icons actually used ship instead of the full ~1500-icon set (the barrel
+// is not tree-shaken under the directory alias).
+let lucideIconFileMap: Map<string, string> | null = null;
+function getLucideIconFileMap(): Map<string, string> {
+  if (lucideIconFileMap) return lucideIconFileMap;
+  const map = new Map<string, string>();
+  try {
+    const barrelPath = path.resolve(
+      elizaRoot,
+      "packages/ui/node_modules/lucide-react/dist/esm/lucide-react.mjs",
+    );
+    const src = fs.readFileSync(barrelPath, "utf8");
+    const lineRe =
+      /export\s*\{([^}]*)\}\s*from\s*['"]\.\/icons\/([\w-]+)\.mjs['"]/g;
+    let m: RegExpExecArray | null = lineRe.exec(src);
+    while (m !== null) {
+      const file = m[2];
+      for (const part of m[1].split(",")) {
+        const named = part.trim().match(/default as (\w+)/);
+        if (named) map.set(named[1], file);
+      }
+      m = lineRe.exec(src);
+    }
+  } catch {
+    // Barrel not found / unreadable — leave the map empty so the transform
+    // no-ops and imports fall back to the (untransformed) barrel.
+  }
+  lucideIconFileMap = map;
+  return map;
+}
 const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
 const pluginBrowserBridgeSrcRoot = path.join(
@@ -1151,6 +1185,61 @@ export default defineConfig({
     ),
   },
   plugins: [
+    {
+      // lucide-react ships ~1500 icons but the app uses ~130. The barrel is not
+      // tree-shaken (the directory alias hides the package's sideEffects:false,
+      // so Rolldown keeps every ./icons/*.mjs), shipping a ~600KB chunk. Rewrite
+      // each `import { X } from "lucide-react"` in source to a per-icon deep
+      // import so only the used icons survive. The name→file map is parsed from
+      // lucide's own barrel, so resolution is authoritative; any name not in the
+      // map (e.g. a type-only import) leaves that statement untouched.
+      name: "lucide-per-icon-imports",
+      enforce: "pre" as const,
+      transform(code: string, id: string) {
+        if (id.includes("/node_modules/")) return null;
+        if (!code.includes("lucide-react")) return null;
+        const map = getLucideIconFileMap();
+        if (map.size === 0) return null;
+        let changed = false;
+        const out = code.replace(
+          /import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"];?/g,
+          (full: string, inner: string) => {
+            const specs = inner
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const valueLines: string[] = [];
+            const typeSpecs: string[] = [];
+            for (const spec of specs) {
+              // `type X` specs are erased at build — keep them as a type-only
+              // import so they never pull the runtime barrel.
+              if (spec.startsWith("type ")) {
+                typeSpecs.push(spec.slice(5).trim());
+                continue;
+              }
+              const asMatch = spec.match(/^(\w+)\s+as\s+(\w+)$/);
+              const name = asMatch ? asMatch[1] : spec;
+              const local = asMatch ? asMatch[2] : spec;
+              const file = map.get(name);
+              // A non-type value that isn't an icon (e.g. createLucideIcon) →
+              // leave the whole statement untouched so nothing breaks.
+              if (!file) return full;
+              valueLines.push(
+                `import ${local} from "lucide-react/dist/esm/icons/${file}.mjs";`,
+              );
+            }
+            changed = true;
+            if (typeSpecs.length > 0) {
+              valueLines.push(
+                `import type { ${typeSpecs.join(", ")} } from "lucide-react";`,
+              );
+            }
+            return valueLines.join("\n");
+          },
+        );
+        return changed ? { code: out, map: null } : null;
+      },
+    },
     appShellMetadataPlugin(),
     appDevWsBasePlugin(),
     companionAssetsPlugin(),
@@ -1230,6 +1319,12 @@ export default defineConfig({
         replacement: path.resolve(here, "src/shims/use-sync-external-store.ts"),
       },
       { find: /^json5$/, replacement: json5EsmEntry },
+      {
+        // Per-icon deep imports (emitted by the lucide-per-icon-imports plugin)
+        // resolve here — the exact alias below only matches the bare specifier.
+        find: /^lucide-react\/(.*)$/,
+        replacement: `${path.resolve(elizaRoot, "packages/ui/node_modules/lucide-react")}/$1`,
+      },
       {
         find: /^lucide-react$/,
         replacement: path.resolve(

@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the Eliza Claude OAuth token every 6h
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+# Catch up a missed run (e.g. host asleep) on next wake.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

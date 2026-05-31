@@ -38,6 +38,7 @@ import type {
 } from "../../api/client-types-config";
 import { useAutomationDeepLink } from "../../hooks/useAutomationDeepLink";
 import { useFetchData } from "../../hooks/useFetchData";
+import { getCached, setCached } from "../../hooks/resource-cache";
 import { useTranslation } from "../../state/TranslationContext";
 import {
   type FeedFilter,
@@ -149,8 +150,13 @@ export function AutomationsFeed({
   connectedCredTypes,
 }: AutomationsFeedProps = {}) {
   const { t } = useTranslation();
-  const [data, setData] = useState<AutomationListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Seed from the shared cache so a revisit paints the last-known automations
+  // instantly and revalidates silently, instead of flashing a spinner.
+  const cachedAutomations = getCached<AutomationListResponse>("automations:list");
+  const [data, setData] = useState<AutomationListResponse | null>(
+    cachedAutomations?.data ?? null,
+  );
+  const [loading, setLoading] = useState(!cachedAutomations);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [chooser, setChooser] = useState<ChooserState>("closed");
@@ -187,27 +193,32 @@ export function AutomationsFeed({
     [setLink],
   );
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await client.listAutomations();
-      setData(res);
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : t("automationsfeed.loadError", {
-              defaultValue: "Failed to load automations.",
-            }),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+  const refresh = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
+      setError(null);
+      try {
+        const res = await client.listAutomations();
+        setData(res);
+        setCached("automations:list", res);
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : t("automationsfeed.loadError", {
+                defaultValue: "Failed to load automations.",
+              }),
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
-    void refresh();
+    // Revalidate silently when cached automations are already on screen.
+    void refresh({ silent: getCached("automations:list") != null });
   }, [refresh]);
 
   const automations = useMemo(

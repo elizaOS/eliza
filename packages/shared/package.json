@@ -3,6 +3,7 @@
   "version": "2.0.3-beta.0",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "license": "MIT",
   "homepage": "https://github.com/elizaOS/eliza",

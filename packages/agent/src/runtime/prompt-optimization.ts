@@ -43,7 +43,6 @@ import {
   compactCodingExamplesForIntent,
   compactConversationHistory,
   compactModelPrompt,
-  validateIntentActionMap,
 } from "./prompt-compaction.ts";
 import {
   enrichTrajectoryLlmCall,
@@ -1323,12 +1322,6 @@ export function installPromptOptimizations(
   ensureModelUsageEventCapture(runtime);
   if (installedRuntimes.has(runtime)) return;
   installedRuntimes.add(runtime);
-
-  // Validate intent-action map against registered actions
-  const actionNames = runtime.actions.map((a) => a.name);
-  if (actionNames.length > 0) {
-    validateIntentActionMap(actionNames, runtime.logger);
-  }
 
   const originalUseModel = runtime.useModel.bind(runtime);
   installMessageHistoryCompactionHook(runtime, { originalUseModel });

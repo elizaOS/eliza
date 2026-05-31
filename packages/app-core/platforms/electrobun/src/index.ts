@@ -607,6 +607,17 @@ function requestAppQuit(): void {
   Utils.quit();
 }
 
+/**
+ * True for packaged desktop builds, false for the in-repo dev runtime.
+ * The compiled bundle no longer runs out of a `/src/` directory, so its
+ * absence is the dev/prod signal already used by loadTheAppEnvFilesForMain.
+ * Normalize Windows separators first so dev paths containing `\src\` are not
+ * misclassified as packaged (which would make dev builds fatal on Windows).
+ */
+function isPackagedDesktopBuild(): boolean {
+  return !import.meta.dir.replaceAll("\\", "/").includes("/src/");
+}
+
 const cleanupFns: Array<() => void | Promise<void>> = [];
 let lastFocusedWindow: ManagedWindowLike | null = null;
 const macOpenedDevtoolsWindowIds = new Set<number>();
@@ -898,8 +909,16 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   try {
     preload = readResolvedPreloadScript(import.meta.dir);
   } catch (err) {
+    // A missing/stale/empty preload means the main window has no API bridge —
+    // the renderer boots into a white screen. In packaged builds that is a
+    // fatal misbuild, so surface it (the error already names `build:preload`)
+    // instead of silently shipping a broken window. Keep the soft fallback in
+    // the dev runtime so an unbuilt preload doesn't block iterating on the UI.
+    if (isPackagedDesktopBuild()) {
+      throw err;
+    }
     logger.error(
-      `[Main] Failed to read preload script: ${err instanceof Error ? err.message : String(err)}`,
+      `[Main] Failed to read preload script (dev fallback): ${err instanceof Error ? err.message : String(err)}`,
     );
     preload = "// preload unavailable";
   }
@@ -1085,6 +1104,26 @@ function attachMainWindow(
       const closeEvent = event as { preventDefault?: () => void } | undefined;
       closeEvent?.preventDefault?.();
       logger.info("[Main] Kiosk window close blocked — staying fullscreen");
+      return;
+    }
+
+    // On Linux with no tray configured, minimizing-to-tray (or running in the
+    // background) strands an invisible process: there is no dock reopen like
+    // macOS and no StatusNotifier item to restore from. Quit cleanly in that
+    // case so closing the last window can't leave the agent unreachable. The
+    // tray decision is read from the environment up front — not from a flag set
+    // after createTray() resolves — so closing during startup, before the tray
+    // icon appears, doesn't spuriously quit. macOS/Windows and the
+    // Linux-with-tray path keep their existing behavior.
+    if (
+      !isQuitting &&
+      process.platform === "linux" &&
+      !shouldCreateDesktopTray(process.env)
+    ) {
+      logger.info(
+        "[Main] Window close on Linux with no tray — quitting (no surface to restore from)",
+      );
+      requestAppQuit();
       return;
     }
 

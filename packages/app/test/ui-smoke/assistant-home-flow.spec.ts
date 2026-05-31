@@ -305,19 +305,38 @@ test.describe("assistant home app flow", () => {
     await installAssistantFlowRoutes(page);
 
     await page.addInitScript(() => {
-      localStorage.clear();
-      sessionStorage.clear();
+      const clearKey = "eliza:ui-smoke:first-run-clear-done";
+      if (sessionStorage.getItem(clearKey) !== "1") {
+        localStorage.clear();
+        sessionStorage.clear();
+        sessionStorage.setItem(clearKey, "1");
+      }
       localStorage.setItem("eliza:voice:prefix-done", "1");
     });
     await page.route("**/api/first-run/status", async (route) => {
       await fulfillJson(route, { complete: false, cloudProvisioned: false });
     });
     await openAppPath(page, "/");
-    await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Where (should|is)\b/ }),
+    ).toBeVisible();
     await screenshot(page, "01-first-run-clouds");
 
     await page.unroute("**/api/first-run/status");
     await seedAppStorage(page);
+    await page.evaluate(() => {
+      localStorage.setItem("eliza:first-run-complete", "1");
+      localStorage.setItem("eliza:setup:step", "activate");
+      localStorage.setItem("eliza:ui-shell-mode", "native");
+      localStorage.setItem(
+        "elizaos:active-server",
+        JSON.stringify({
+          id: "local:embedded",
+          kind: "local",
+          label: "This device",
+        }),
+      );
+    });
     const assistantApi = await installAssistantFlowRoutes(page);
 
     await openAppPath(page, "/");

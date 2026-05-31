@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
+import { clearPersistedActiveServer } from "./persistence";
 import {
   type PollingBackendDeps,
   runPollingBackend,
+  shouldFallBackToLocalOrigin,
 } from "./startup-phase-poll";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
 
@@ -12,10 +14,24 @@ const clientMock = vi.hoisted(() => ({
   getFirstRunOptions: vi.fn(),
   getConfig: vi.fn(),
   hasToken: vi.fn(),
+  getBaseUrl: vi.fn(() => ""),
+  setBaseUrl: vi.fn(),
+  setToken: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
   client: clientMock,
+}));
+
+vi.mock("../platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../platform")>()),
+  isAndroid: false,
+  isIOS: false,
+}));
+
+vi.mock("./persistence", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./persistence")>()),
+  clearPersistedActiveServer: vi.fn(),
 }));
 
 vi.mock("../bridge", async (importOriginal) => {
@@ -82,6 +98,8 @@ function createDeps(): PollingBackendDeps {
   };
 }
 
+const originalWindow = (globalThis as { window?: unknown }).window;
+
 beforeEach(() => {
   vi.clearAllMocks();
   clientMock.getAuthStatus.mockResolvedValue({
@@ -96,6 +114,11 @@ beforeEach(() => {
   clientMock.getFirstRunOptions.mockResolvedValue(firstRunOptions());
   clientMock.getConfig.mockResolvedValue({});
   clientMock.hasToken.mockReturnValue(false);
+  clientMock.getBaseUrl.mockReturnValue("");
+});
+
+afterEach(() => {
+  (globalThis as { window?: unknown }).window = originalWindow;
 });
 
 describe("runPollingBackend", () => {
@@ -136,5 +159,135 @@ describe("runPollingBackend", () => {
       type: "BACKEND_REACHED",
       firstRunComplete: false,
     });
+  });
+
+  it("recovers by falling back to the local origin when the saved remote server is unreachable", async () => {
+    // Regression: a stale `elizaos:active-server` pinned the client to a dead
+    // remote (here 195.201.57.227:19736) whose requests are CSP-blocked. The
+    // poll loop used to retry the dead address until BACKEND_TIMEOUT and wedge
+    // first-run forever. It must instead clear the saved server, re-point to
+    // the local origin, and reach the backend.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("http://195.201.57.227:19736");
+    const networkError = Object.assign(
+      new Error("Refused to connect — violates Content Security Policy"),
+      { kind: "network", path: "/api/auth/status" },
+    );
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockRejectedValueOnce(networkError)
+      .mockResolvedValue({
+        required: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+
+    const staleRemote = {
+      id: "remote:http://195.201.57.227:19736",
+      kind: "remote" as const,
+      label: "195.201.57.227:19736",
+      apiBase: "http://195.201.57.227:19736",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: staleRemote,
+      restoredActiveServer: staleRemote,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+});
+
+describe("shouldFallBackToLocalOrigin", () => {
+  const eligible = {
+    error: Object.assign(new Error("Failed to fetch"), {
+      kind: "network",
+      path: "/api/auth/status",
+    }),
+    clientBaseUrl: "http://195.201.57.227:19736",
+    pageOrigin: "http://localhost:2138",
+    pageProtocol: "http:",
+    isNativeMobile: false,
+  };
+
+  it("falls back for an unreachable non-local server on a web origin", () => {
+    expect(shouldFallBackToLocalOrigin(eligible)).toBe(true);
+  });
+
+  it("does not fall back on native mobile (the remote IS the agent)", () => {
+    expect(
+      shouldFallBackToLocalOrigin({ ...eligible, isNativeMobile: true }),
+    ).toBe(false);
+  });
+
+  it("does not fall back when the server answered with an HTTP status", () => {
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        error: Object.assign(new Error("Internal error"), {
+          kind: "http",
+          status: 500,
+          path: "/api/auth/status",
+        }),
+      }),
+    ).toBe(false);
+  });
+
+  it("does not fall back for a loopback base (that is the local agent)", () => {
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        clientBaseUrl: "http://127.0.0.1:31337",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not fall back when already pinned to the page's own origin", () => {
+    expect(
+      shouldFallBackToLocalOrigin({
+        ...eligible,
+        clientBaseUrl: "http://localhost:2138",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not fall back when there is no client base (already same-origin)", () => {
+    expect(
+      shouldFallBackToLocalOrigin({ ...eligible, clientBaseUrl: "" }),
+    ).toBe(false);
+  });
+
+  it("does not fall back off a web origin (e.g. a desktop custom scheme)", () => {
+    expect(
+      shouldFallBackToLocalOrigin({ ...eligible, pageProtocol: "views:" }),
+    ).toBe(false);
   });
 });

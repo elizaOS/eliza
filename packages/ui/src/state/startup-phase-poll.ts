@@ -13,6 +13,7 @@ import { client } from "../api";
 import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
+import { isAndroid, isIOS } from "../platform";
 import {
   asApiLikeError,
   clearPersistedSetupStep,
@@ -22,6 +23,7 @@ import {
   type StartupErrorState,
 } from "./internal";
 import {
+  clearPersistedActiveServer,
   loadPersistedSetupStep,
   savePersistedActiveServer,
 } from "./persistence";
@@ -38,6 +40,56 @@ function isCapacitorNative(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Decide whether a connection-level startup failure against the persisted
+ * active server should be abandoned in favour of the local same-origin backend
+ * that is actually serving this page.
+ *
+ * This rescues first-run from a stale `elizaos:active-server` pointing at a
+ * remote/cloud backend that is now unreachable or CSP-blocked: without it the
+ * poll loop retries the dead address until BACKEND_TIMEOUT and the app wedges
+ * forever, with no way to reach onboarding and pick a working server.
+ *
+ * It fires ONLY when every one of these holds, so it can't hijack a legitimate
+ * remote/mobile session:
+ *  - the failure is connection-level — the request never received an HTTP
+ *    response (a 401/404/5xx means the server answered, so it isn't a
+ *    connectivity wedge and has its own handling);
+ *  - the client is currently pinned to a non-loopback base that isn't this
+ *    page's own origin (so there is a remote to fall back *from* — loopback
+ *    bases are the local agent, reconciled elsewhere);
+ *  - the page is served over http(s) (a real local backend exists to fall back
+ *    *to*, same-origin). Native mobile, where the remote IS the agent, is
+ *    excluded via `isNativeMobile`.
+ */
+export function shouldFallBackToLocalOrigin(args: {
+  error: unknown;
+  clientBaseUrl: string;
+  pageOrigin: string | null;
+  pageProtocol: string | null;
+  isNativeMobile: boolean;
+}): boolean {
+  if (args.isNativeMobile) return false;
+  if (args.pageProtocol !== "http:" && args.pageProtocol !== "https:") {
+    return false;
+  }
+  // A structured HTTP status means the server responded — not a wedge.
+  if (typeof asApiLikeError(args.error)?.status === "number") return false;
+  const base = args.clientBaseUrl.trim();
+  if (!base) return false; // already same-origin / local
+  try {
+    const url = new URL(base);
+    if (args.pageOrigin && url.origin === args.pageOrigin) return false;
+    const host = url.hostname.toLowerCase();
+    if (host === "127.0.0.1" || host === "localhost" || host === "::1") {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 export interface PollingBackendDeps {
@@ -172,9 +224,12 @@ export async function runPollingBackend(
     };
   };
 
-  const deadline = Date.now() + policy.backendTimeoutMs;
+  let deadline = Date.now() + policy.backendTimeoutMs;
   let attempts = 0;
   let lastErr: unknown = null;
+  // Guards a one-shot recovery: if the saved server is unreachable we clear it
+  // and re-point the client at the local origin exactly once, never in a loop.
+  let fellBackToLocal = false;
   let latestAuth: Awaited<ReturnType<typeof client.getAuthStatus>> = {
     required: false,
     pairingEnabled: false,
@@ -401,6 +456,33 @@ export async function runPollingBackend(
         deps.setFirstRunLoading(false);
         dispatch({ type: "BACKEND_NOT_FOUND" });
         return;
+      }
+      if (
+        !fellBackToLocal &&
+        shouldFallBackToLocalOrigin({
+          error: err,
+          clientBaseUrl: client.getBaseUrl(),
+          pageOrigin:
+            typeof window !== "undefined" ? window.location.origin : null,
+          pageProtocol:
+            typeof window !== "undefined" ? window.location.protocol : null,
+          isNativeMobile: isCapacitorNative() || isAndroid || isIOS,
+        })
+      ) {
+        fellBackToLocal = true;
+        logger.warn(
+          { staleBase: client.getBaseUrl() },
+          "[startup-phase-poll] persisted active server is unreachable; clearing it and falling back to the local origin",
+        );
+        clearPersistedActiveServer();
+        client.setBaseUrl(null);
+        client.setToken(null);
+        // Reset the budget — time burned on the dead remote must not count
+        // against reaching the local backend.
+        deadline = Date.now() + policy.backendTimeoutMs;
+        attempts = 0;
+        lastErr = null;
+        continue;
       }
       lastErr = err;
       attempts++;
