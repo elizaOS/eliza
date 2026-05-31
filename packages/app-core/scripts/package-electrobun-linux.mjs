@@ -42,6 +42,31 @@ const arch = args.get("arch") ?? "x64";
 const debArch = arch === "arm64" ? "arm64" : "amd64";
 const rpmArch = arch === "arm64" ? "aarch64" : "x86_64";
 
+// App identity is env-driven (mirroring the Electrobun shell's brand-config
+// resolution) and defaults to the existing elizaOS values when unset, so the
+// produced packages stay byte-identical unless the brand env is provided.
+const displayName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
+// Lowercase slug used for install paths, the launcher wrapper, the .desktop
+// file, the icon, and (suffixed with `-app`) the deb/rpm package name.
+// Defaults to "eliza". It must satisfy Debian package-name policy — start with
+// an alphanumeric, then only [a-z0-9.+-] — or dpkg-deb/rpmbuild reject the
+// control metadata with an opaque error, so validate the env value up front.
+const namespace = (process.env.ELIZA_NAMESPACE ?? "").trim() || "eliza";
+if (!/^[a-z0-9][a-z0-9.+-]+$/.test(namespace)) {
+  throw new Error(
+    `ELIZA_NAMESPACE "${namespace}" is not a valid Debian/RPM package name. ` +
+      "Use lowercase letters, digits, '.', '+', or '-', at least two characters, " +
+      'starting with a letter or digit (e.g. "acme" or "acme-desktop").',
+  );
+}
+// System package name. Not derivable from the existing literal, so keep the
+// literal fallback and derive from the namespace only when the env is set.
+const packageName = (process.env.ELIZA_NAMESPACE ?? "").trim()
+  ? `${namespace}-app`
+  : "elizaos-app";
+const optDir = `opt/${namespace}`;
+const optPath = `/opt/${namespace}`;
+
 function sh(command, commandArgs, options = {}) {
   execFileSync(command, commandArgs, {
     stdio: "inherit",
@@ -99,16 +124,16 @@ function findExecutable(root) {
   throw new Error(`Could not find executable under ${root}`);
 }
 
-function writeDesktopFile(dest, execName = "eliza") {
+function writeDesktopFile(dest, execName = namespace) {
   writeFileSync(
     dest,
     [
       "[Desktop Entry]",
       "Type=Application",
-      "Name=Eliza",
-      "Comment=Your Eliza, everywhere.",
+      `Name=${displayName}`,
+      `Comment=Your ${displayName}, everywhere.`,
       `Exec=${execName}`,
-      "Icon=eliza",
+      `Icon=${namespace}`,
       "Terminal=false",
       "Categories=Utility;Network;",
       "",
@@ -118,66 +143,71 @@ function writeDesktopFile(dest, execName = "eliza") {
 
 async function stagePackageRoot(buildDir, destRoot) {
   rmSync(destRoot, { recursive: true, force: true });
-  mkdirSync(path.join(destRoot, "opt/eliza"), { recursive: true });
+  mkdirSync(path.join(destRoot, optDir), { recursive: true });
   mkdirSync(path.join(destRoot, "usr/bin"), { recursive: true });
   mkdirSync(path.join(destRoot, "usr/share/applications"), { recursive: true });
   mkdirSync(path.join(destRoot, "usr/share/icons/hicolor/512x512/apps"), {
     recursive: true,
   });
 
-  await cp(buildDir, path.join(destRoot, "opt/eliza"), {
+  await cp(buildDir, path.join(destRoot, optDir), {
     recursive: true,
     force: true,
     dereference: true,
   });
 
-  const executable = findExecutable(path.join(destRoot, "opt/eliza"));
+  const executable = findExecutable(path.join(destRoot, optDir));
   const relativeExecutable = path.relative(
-    path.join(destRoot, "opt/eliza"),
+    path.join(destRoot, optDir),
     executable,
   );
   writeFileSync(
-    path.join(destRoot, "usr/bin/eliza"),
-    `#!/usr/bin/env sh\nexec /opt/eliza/${relativeExecutable} "$@"\n`,
+    path.join(destRoot, `usr/bin/${namespace}`),
+    `#!/usr/bin/env sh\nexec ${optPath}/${relativeExecutable} "$@"\n`,
     { mode: 0o755 },
   );
-  writeDesktopFile(path.join(destRoot, "usr/share/applications/eliza.desktop"));
+  writeDesktopFile(
+    path.join(destRoot, `usr/share/applications/${namespace}.desktop`),
+  );
   if (existsSync(iconPath)) {
     copyFileSync(
       iconPath,
-      path.join(destRoot, "usr/share/icons/hicolor/512x512/apps/eliza.png"),
+      path.join(
+        destRoot,
+        `usr/share/icons/hicolor/512x512/apps/${namespace}.png`,
+      ),
     );
   }
 }
 
 async function buildDeb(buildDir) {
-  const root = path.join(os.tmpdir(), `eliza-deb-${process.pid}`);
+  const root = path.join(os.tmpdir(), `${namespace}-deb-${process.pid}`);
   await stagePackageRoot(buildDir, root);
   const controlDir = path.join(root, "DEBIAN");
   mkdirSync(controlDir, { recursive: true });
   writeFileSync(
     path.join(controlDir, "control"),
     [
-      "Package: elizaos-app",
+      `Package: ${packageName}`,
       `Version: ${version.replace(/-/g, "~")}`,
       "Section: utils",
       "Priority: optional",
       `Architecture: ${debArch}`,
       "Maintainer: elizaOS <hello@elizaos.ai>",
-      "Description: Eliza desktop app",
-      " The consumer Eliza app for desktop chat, account setup, and connected devices.",
+      `Description: ${displayName} desktop app`,
+      ` The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
       "",
     ].join("\n"),
   );
-  const out = path.join(artifactRoot, `elizaos-app_${version}_${debArch}.deb`);
+  const out = path.join(artifactRoot, `${packageName}_${version}_${debArch}.deb`);
   sh("dpkg-deb", ["--build", root, out]);
   rmSync(root, { recursive: true, force: true });
   return out;
 }
 
 async function buildRpm(buildDir) {
-  const top = path.join(os.tmpdir(), `eliza-rpm-${process.pid}`);
-  const buildroot = path.join(top, "BUILDROOT/elizaos-app");
+  const top = path.join(os.tmpdir(), `${namespace}-rpm-${process.pid}`);
+  const buildroot = path.join(top, `BUILDROOT/${packageName}`);
   await stagePackageRoot(buildDir, buildroot);
   for (const dir of ["BUILD", "RPMS", "SOURCES", "SPECS", "SRPMS"]) {
     mkdirSync(path.join(top, dir), { recursive: true });
@@ -186,29 +216,29 @@ async function buildRpm(buildDir) {
   const rpmRelease = version.includes("-")
     ? version.replace(/^[^-]+-/, "").replace(/[^A-Za-z0-9.]/g, ".")
     : "1";
-  const spec = path.join(top, "SPECS/elizaos-app.spec");
+  const spec = path.join(top, `SPECS/${packageName}.spec`);
   writeFileSync(
     spec,
     [
-      "Name: elizaos-app",
+      `Name: ${packageName}`,
       `Version: ${rpmVersion}`,
       `Release: ${rpmRelease}%{?dist}`,
-      "Summary: Eliza desktop app",
+      `Summary: ${displayName} desktop app`,
       "License: MIT",
       `BuildArch: ${rpmArch}`,
       "",
       "%description",
-      "The consumer Eliza app for desktop chat, account setup, and connected devices.",
+      `The consumer ${displayName} app for desktop chat, account setup, and connected devices.`,
       "",
       "%install",
       "mkdir -p %{buildroot}",
       `cp -a ${buildroot}/* %{buildroot}/`,
       "",
       "%files",
-      "/opt/eliza",
-      "/usr/bin/eliza",
-      "/usr/share/applications/eliza.desktop",
-      "/usr/share/icons/hicolor/512x512/apps/eliza.png",
+      optPath,
+      `/usr/bin/${namespace}`,
+      `/usr/share/applications/${namespace}.desktop`,
+      `/usr/share/icons/hicolor/512x512/apps/${namespace}.png`,
       "",
     ].join("\n"),
   );
@@ -216,24 +246,24 @@ async function buildRpm(buildDir) {
   const rpmDir = path.join(top, "RPMS", rpmArch);
   const rpm = readdirSync(rpmDir).find((name) => name.endsWith(".rpm"));
   if (!rpm) throw new Error("rpmbuild did not produce an rpm");
-  const out = path.join(artifactRoot, `elizaos-app-${version}.${rpmArch}.rpm`);
+  const out = path.join(artifactRoot, `${packageName}-${version}.${rpmArch}.rpm`);
   copyFileSync(path.join(rpmDir, rpm), out);
   rmSync(top, { recursive: true, force: true });
   return out;
 }
 
 async function buildAppImage(buildDir) {
-  const appDir = path.join(os.tmpdir(), `Eliza.AppDir-${process.pid}`);
+  const appDir = path.join(os.tmpdir(), `${displayName}.AppDir-${process.pid}`);
   await stagePackageRoot(buildDir, appDir);
   copyFileSync(
-    path.join(appDir, "usr/share/applications/eliza.desktop"),
-    path.join(appDir, "eliza.desktop"),
+    path.join(appDir, `usr/share/applications/${namespace}.desktop`),
+    path.join(appDir, `${namespace}.desktop`),
   );
   if (existsSync(iconPath))
-    copyFileSync(iconPath, path.join(appDir, "eliza.png"));
+    copyFileSync(iconPath, path.join(appDir, `${namespace}.png`));
   writeFileSync(
     path.join(appDir, "AppRun"),
-    '#!/usr/bin/env sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/eliza" "$@"\n',
+    `#!/usr/bin/env sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/${namespace}" "$@"\n`,
     { mode: 0o755 },
   );
 
@@ -249,7 +279,7 @@ async function buildAppImage(buildDir) {
   }
   const out = path.join(
     artifactRoot,
-    `Eliza-${version}-linux-${arch}.AppImage`,
+    `${displayName}-${version}-linux-${arch}.AppImage`,
   );
   sh(tool, [appDir, out], {
     env: { ...process.env, ARCH: rpmArch, APPIMAGE_EXTRACT_AND_RUN: "1" },
