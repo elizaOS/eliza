@@ -633,10 +633,7 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			undefined,
 			{
 				actions: [
-					makeAction("SCHEDULED_TASKS", [
-						"SCHEDULED_TASK",
-						"REMINDER_TASK",
-					]),
+					makeAction("SCHEDULED_TASKS", ["SCHEDULED_TASK", "REMINDER_TASK"]),
 				],
 				messageText: "spawn a task agent to fix the bug in this repo",
 			},
