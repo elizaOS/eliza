@@ -16,11 +16,11 @@
 export type HomescreenEditMode = "edit" | "create";
 
 export interface HomescreenPromptParams {
-  mode: HomescreenEditMode;
-  /** Natural-language change the user asked for. */
-  request: string;
-  /** The current scene document as JSON, so edits are incremental. */
-  currentSceneJson: string;
+	mode: HomescreenEditMode;
+	/** Natural-language change the user asked for. */
+	request: string;
+	/** The current scene document as JSON, so edits are incremental. */
+	currentSceneJson: string;
 }
 
 /** The input-contract block — what a `background.script` may read each frame. */
@@ -98,33 +98,33 @@ Rules:
  * scene as the base; `create` starts fresh from the request.
  */
 export function buildHomescreenPrompt(params: HomescreenPromptParams): string {
-  const intent =
-    params.mode === "create"
-      ? "Create a brand-new homescreen scene from this description."
-      : "Apply this change to the current homescreen scene, keeping everything the user did not ask to change.";
+	const intent =
+		params.mode === "create"
+			? "Create a brand-new homescreen scene from this description."
+			: "Apply this change to the current homescreen scene, keeping everything the user did not ask to change.";
 
-  return [
-    "You are the homescreen canvas designer for an AI assistant. You output a",
-    "scene document that a WebGPU/three.js runtime renders behind the chat UI.",
-    "",
-    "INPUT CONTRACT",
-    INPUT_CONTRACT.trim(),
-    "",
-    "OUTPUT SCHEMA",
-    SCENE_SCHEMA.trim(),
-    "",
-    "DESIGN RULES",
-    BEST_PRACTICES.trim(),
-    "",
-    "CURRENT SCENE (JSON):",
-    params.currentSceneJson.trim(),
-    "",
-    "TASK",
-    intent,
-    `User request: ${params.request.replace(/\s+/g, " ").trim()}`,
-    "",
-    "Respond with ONLY the JSON scene document.",
-  ].join("\n");
+	return [
+		"You are the homescreen canvas designer for an AI assistant. You output a",
+		"scene document that a WebGPU/three.js runtime renders behind the chat UI.",
+		"",
+		"INPUT CONTRACT",
+		INPUT_CONTRACT.trim(),
+		"",
+		"OUTPUT SCHEMA",
+		SCENE_SCHEMA.trim(),
+		"",
+		"DESIGN RULES",
+		BEST_PRACTICES.trim(),
+		"",
+		"CURRENT SCENE (JSON):",
+		params.currentSceneJson.trim(),
+		"",
+		"TASK",
+		intent,
+		`User request: ${params.request.replace(/\s+/g, " ").trim()}`,
+		"",
+		"Respond with ONLY the JSON scene document.",
+	].join("\n");
 }
 
 /**
@@ -133,26 +133,26 @@ export function buildHomescreenPrompt(params: HomescreenPromptParams): string {
  * Returns null when no balanced object is found.
  */
 export function extractSceneJson(raw: string): string | null {
-  const text = raw.trim();
-  const start = text.indexOf("{");
-  if (start < 0) return null;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
-      continue;
-    }
-    if (ch === '"') inString = true;
-    else if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
-  }
-  return null;
+	const text = raw.trim();
+	const start = text.indexOf("{");
+	if (start < 0) return null;
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let i = start; i < text.length; i++) {
+		const ch = text[i];
+		if (inString) {
+			if (escaped) escaped = false;
+			else if (ch === "\\") escaped = true;
+			else if (ch === '"') inString = false;
+			continue;
+		}
+		if (ch === '"') inString = true;
+		else if (ch === "{") depth++;
+		else if (ch === "}") {
+			depth--;
+			if (depth === 0) return text.slice(start, i + 1);
+		}
+	}
+	return null;
 }

@@ -14,6 +14,10 @@
 
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
+import {
+	createHomescreenAction,
+	homescreenAction,
+} from "./actions/homescreen.js";
 import { viewsAction } from "./actions/views.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
@@ -22,6 +26,14 @@ import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
 
 export type { AppMode } from "./actions/app.js";
+export type {
+	HomescreenEventPayload,
+	HomescreenMode,
+} from "./actions/homescreen.js";
+export {
+	createHomescreenAction,
+	homescreenAction,
+} from "./actions/homescreen.js";
 export type { ViewsMode } from "./actions/views.js";
 export { createViewsAction, viewsAction } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
@@ -62,7 +74,7 @@ export const appControlPlugin: Plugin = {
 	name: "app-control",
 	description:
 		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Also manages UI views via the VIEWS action.",
-	actions: [appAction, viewsAction],
+	actions: [appAction, viewsAction, homescreenAction],
 	providers: [availableAppsProvider],
 	services: [
 		AppRegistryService,
