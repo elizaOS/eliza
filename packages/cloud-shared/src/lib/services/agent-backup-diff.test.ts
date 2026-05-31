@@ -110,7 +110,7 @@ describe("diff structure", () => {
   });
 
   test("identity diff is empty", () => {
-    const s = state({ config: { a: 1 }, workspaceFiles: { "f": "x" }, memories: [mem("a", 1)] });
+    const s = state({ config: { a: 1 }, workspaceFiles: { f: "x" }, memories: [mem("a", 1)] });
     expect(isEmptyDelta(diffBackupState(s, s))).toBe(true);
   });
 
@@ -161,8 +161,8 @@ describe("computeStateHash", () => {
   });
 
   test("changes when content changes", () => {
-    const a = state({ workspaceFiles: { "f": "1" } });
-    const b = state({ workspaceFiles: { "f": "2" } });
+    const a = state({ workspaceFiles: { f: "1" } });
+    const b = state({ workspaceFiles: { f: "2" } });
     expect(computeStateHash(a)).not.toBe(computeStateHash(b));
   });
 });
@@ -180,14 +180,14 @@ describe("planIncrementalBackup", () => {
   });
 
   test("chooses full when the change rewrites most of the state", () => {
-    const base = state({ workspaceFiles: { "a": "x".repeat(1000) } });
-    const next = state({ workspaceFiles: { "a": "y".repeat(1000), "b": "z".repeat(1000) } });
+    const base = state({ workspaceFiles: { a: "x".repeat(1000) } });
+    const next = state({ workspaceFiles: { a: "y".repeat(1000), b: "z".repeat(1000) } });
     expect(planIncrementalBackup({ base, next, chainDepth: 1 }).kind).toBe("full");
   });
 
   test("forces full once the chain is too deep", () => {
-    const base = state({ workspaceFiles: { "a": "1" } });
-    const next = state({ workspaceFiles: { "a": "1", "b": "2" } });
+    const base = state({ workspaceFiles: { a: "1" } });
+    const next = state({ workspaceFiles: { a: "1", b: "2" } });
     expect(planIncrementalBackup({ base, next, chainDepth: 20, maxChainDepth: 20 }).kind).toBe(
       "full",
     );

@@ -138,7 +138,10 @@ export function diffBackupState(
 }
 
 /** Apply a delta to a base state, producing the child state. Pure. */
-export function applyBackupDelta(base: AgentBackupStateData, delta: BackupDelta): AgentBackupStateData {
+export function applyBackupDelta(
+  base: AgentBackupStateData,
+  delta: BackupDelta,
+): AgentBackupStateData {
   const workspaceFiles: Record<string, string> = { ...base.workspaceFiles };
   for (const path of delta.filesRemoved) delete workspaceFiles[path];
   for (const [path, content] of Object.entries(delta.filesChanged)) workspaceFiles[path] = content;

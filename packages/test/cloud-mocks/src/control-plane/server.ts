@@ -285,14 +285,19 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
               );
               const stateData = {
                 memories: [],
-                config: (existing?.agent_config as Record<string, unknown> | null) ?? {},
+                config:
+                  (existing?.agent_config as Record<string, unknown> | null) ??
+                  {},
                 workspaceFiles: {},
               };
               const backup = await agentSandboxesRepository.createBackup({
                 sandbox_record_id: agentId,
                 snapshot_type: "pre-shutdown",
                 state_data: stateData,
-                size_bytes: Buffer.byteLength(JSON.stringify(stateData), "utf-8"),
+                size_bytes: Buffer.byteLength(
+                  JSON.stringify(stateData),
+                  "utf-8",
+                ),
               });
               await agentSandboxesRepository.update(agentId, {
                 status: "sleeping",
@@ -322,7 +327,11 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
               const organizationId = readJobString(job, "organizationId");
               const userId = readJobString(job, "userId");
               // Mirror provision: stand up a fresh mock sandbox, mark running.
-              const sandbox = store.createSandbox({ organizationId, userId, agentId });
+              const sandbox = store.createSandbox({
+                organizationId,
+                userId,
+                agentId,
+              });
               store.updateSandbox(sandbox.id, { status: "running" });
               const bridgeUrl = `${origin}/api/compat/agents/${encodeURIComponent(sandbox.id)}`;
               await agentSandboxesRepository.update(agentId, {
@@ -348,23 +357,31 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
                 job.data && typeof job.data === "object"
                   ? (job.data as Record<string, unknown>)
                   : {};
-              const snapshotType = data.snapshotType === "manual" ? "manual" : "auto";
+              const snapshotType =
+                data.snapshotType === "manual" ? "manual" : "auto";
               const existing = await agentSandboxesRepository.findByIdAndOrg(
                 agentId,
                 organizationId,
               );
               const stateData = {
                 memories: [],
-                config: (existing?.agent_config as Record<string, unknown> | null) ?? {},
+                config:
+                  (existing?.agent_config as Record<string, unknown> | null) ??
+                  {},
                 workspaceFiles: {},
               };
               const backup = await agentSandboxesRepository.createBackup({
                 sandbox_record_id: agentId,
                 snapshot_type: snapshotType,
                 state_data: stateData,
-                size_bytes: Buffer.byteLength(JSON.stringify(stateData), "utf-8"),
+                size_bytes: Buffer.byteLength(
+                  JSON.stringify(stateData),
+                  "utf-8",
+                ),
               });
-              await agentSandboxesRepository.update(agentId, { last_backup_at: now() });
+              await agentSandboxesRepository.update(agentId, {
+                last_backup_at: now(),
+              });
               await jobsRepository.updateStatus(job.id, "completed", {
                 result: {
                   cloudAgentId: agentId,

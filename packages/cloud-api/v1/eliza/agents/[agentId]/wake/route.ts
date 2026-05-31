@@ -39,10 +39,16 @@ async function __hono_POST(
       orgId: user.organization_id,
     });
 
-    const agent = await elizaSandboxService.getAgentForWrite(agentId, user.organization_id);
+    const agent = await elizaSandboxService.getAgentForWrite(
+      agentId,
+      user.organization_id,
+    );
     if (!agent) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }

@@ -713,9 +713,7 @@ export class AgentSandboxesRepository {
    * need state to restore (provision auto-restore, `restore()`) MUST go through
    * here so incrementals are transparently materialized.
    */
-  async getReconstructedBackupState(
-    backupId: string,
-  ): Promise<AgentBackupStateData | undefined> {
+  async getReconstructedBackupState(backupId: string): Promise<AgentBackupStateData | undefined> {
     const target = await this.getBackupById(backupId);
     if (!target) return undefined;
     if (target.backup_kind !== "incremental") {

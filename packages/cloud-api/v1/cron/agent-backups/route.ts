@@ -24,7 +24,8 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   const max = Number(url.searchParams.get("max"));
 
   const result = await provisioningJobService.enqueueScheduledBackups({
-    minIntervalMs: Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : undefined,
+    minIntervalMs:
+      Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : undefined,
     maxAgents: Number.isFinite(max) && max > 0 ? max : undefined,
   });
 

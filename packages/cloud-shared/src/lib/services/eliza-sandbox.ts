@@ -27,6 +27,12 @@ import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { logger } from "../utils/logger";
+import {
+  computeStateHash,
+  estimateDeltaBytes,
+  incrementalChainDepth,
+  planIncrementalBackup,
+} from "./agent-backup-diff";
 import { apiKeysService } from "./api-keys";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import {
@@ -34,12 +40,6 @@ import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "./eliza-agent-config";
-import {
-  computeStateHash,
-  estimateDeltaBytes,
-  incrementalChainDepth,
-  planIncrementalBackup,
-} from "./agent-backup-diff";
 import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { getNeonClient, NeonClientError } from "./neon-client";
@@ -815,8 +815,7 @@ export class ElizaSandboxService {
           const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
             backup.id,
           );
-          if (restoreState)
-            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+          if (restoreState) await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
         }
 
         // 5. Mark running + persist provider-specific metadata
@@ -2581,8 +2580,7 @@ export class ElizaSandboxService {
     const latest = await agentSandboxesRepository.getLatestBackup(sandboxRecordId);
     if (latest) {
       try {
-        const baseState =
-          await agentSandboxesRepository.getReconstructedBackupState(latest.id);
+        const baseState = await agentSandboxesRepository.getReconstructedBackupState(latest.id);
         if (baseState) {
           const all = await agentSandboxesRepository.listBackups(sandboxRecordId, 1000);
           const nodes = all.map((b) => ({
