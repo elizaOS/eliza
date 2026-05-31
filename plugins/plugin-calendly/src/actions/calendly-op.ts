@@ -292,18 +292,35 @@ async function handleCancel(
     callback,
   });
   if (decision.status === "pending") {
+    const data: CancelData & {
+      requiresConfirmation: true;
+      preview: string;
+      awaitingUserInput: true;
+    } = {
+      requiresConfirmation: true,
+      preview,
+      uuid,
+      awaitingUserInput: true,
+    };
+    if (reason) {
+      data.reason = reason;
+    }
     return {
-      success: true,
+      success: false,
       requiresConfirmation: true,
       preview,
       text: `${preview} Reply yes to confirm or no to cancel.`,
-      data: { requiresConfirmation: true, preview, uuid, reason, awaitingUserInput: true },
+      data,
     };
   }
   if (decision.status === "cancelled") {
     const cancelMessage = "Calendly cancellation cancelled.";
     await callback?.({ text: cancelMessage });
-    return { success: true, text: cancelMessage, data: { cancelled: true } };
+    const data: CancelData = { cancelled: true, uuid };
+    if (reason) {
+      data.reason = reason;
+    }
+    return { success: true, data };
   }
   try {
     await service.cancelBooking(uuid, reason, accountId);
