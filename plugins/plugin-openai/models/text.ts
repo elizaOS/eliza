@@ -45,6 +45,8 @@ import {
   getResponseHandlerModel,
   getSmallModel,
   isCerebrasMode,
+  isWebSearchEnabled,
+  supportsResponsesApi,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
@@ -244,8 +246,13 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
  * left unset.
  *
- * Returns `undefined` when the setting is unset or invalid, so non-
- * reasoning models pay no overhead and the wire stays clean.
+ * In Cerebras mode the field defaults to `"low"` when unset: gpt-oss-120b
+ * emits a separate reasoning channel and, left unbounded, spends the whole
+ * token budget reasoning — returning empty visible content, which makes the
+ * agent fall back to "I don't have a reply for that". `"low"` keeps reasoning
+ * short so a reply always materializes. For non-Cerebras models an unset/
+ * invalid value yields `undefined`, so they pay no overhead and the wire
+ * stays clean. An explicit valid `OPENAI_REASONING_EFFORT` always wins.
  *
  * Valid values follow the OpenAI spec exactly: `minimal`, `low`,
  * `medium`, `high`. Anything else is logged and ignored.
@@ -256,15 +263,21 @@ const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ["minimal", "low", "
 
 function resolveReasoningEffort(runtime: IAgentRuntime): ReasoningEffort | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
-  if (typeof raw !== "string") return undefined;
-  const normalized = raw.trim().toLowerCase();
-  if (!normalized) return undefined;
-  if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
-    return normalized as ReasoningEffort;
+  const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (normalized) {
+    if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
+      return normalized as ReasoningEffort;
+    }
+    logger.warn(
+      `[OpenAI] OPENAI_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${VALID_REASONING_EFFORTS.join(", ")}.`
+    );
   }
-  logger.warn(
-    `[OpenAI] OPENAI_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${VALID_REASONING_EFFORTS.join(", ")}.`
-  );
+  // gpt-oss-120b on Cerebras returns empty content when reasoning runs
+  // unbounded; default to "low" so a visible reply always fits. An explicit
+  // valid value above wins over this default.
+  if (isCerebrasMode(runtime)) {
+    return "low";
+  }
   return undefined;
 }
 
@@ -275,13 +288,13 @@ function resolveProviderOptions(
   const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
-  const reasoningEffortFromEnv = resolveReasoningEffort(runtime);
+  const reasoningEffort = resolveReasoningEffort(runtime);
 
   if (
     !rawProviderOptions &&
     !promptCacheOptions.promptCacheKey &&
     !promptCacheOptions.promptCacheRetention &&
-    !reasoningEffortFromEnv
+    !reasoningEffort
   ) {
     return undefined;
   }
@@ -313,11 +326,11 @@ function resolveProviderOptions(
     ...(!skipCacheRetention && promptCacheOptions.promptCacheRetention
       ? { promptCacheRetention: promptCacheOptions.promptCacheRetention }
       : {}),
-    // The caller's explicit `reasoningEffort` wins over the env-var default
-    // — this matches the precedence pattern used for promptCacheKey above.
+    // The caller's explicit `reasoningEffort` wins over the resolved default
+    // (env var, or Cerebras "low") — same precedence pattern as promptCacheKey.
     ...((sanitizedRawOpenAIOptions as { reasoningEffort?: unknown } | undefined)
-      ?.reasoningEffort === undefined && reasoningEffortFromEnv
-      ? { reasoningEffort: reasoningEffortFromEnv }
+      ?.reasoningEffort === undefined && reasoningEffort
+      ? { reasoningEffort }
       : {}),
   };
 
@@ -934,11 +947,18 @@ async function generateTextByModelType(
     metadata: agentName ? { agentName } : undefined,
   };
 
-  // Use chat() instead of languageModel() to use the Chat Completions API
-  // which has better compatibility than the Responses API
-  // gpt-5 and gpt-5-mini (reasoning models) don't support temperature,
-  // frequencyPenalty, presencePenalty, or stop parameters - use defaults only
-  const model = openai.chat(modelName);
+  // Chat Completions is the default: broadest compatibility, and it works
+  // against every OpenAI-compatible endpoint (Cerebras, local servers, proxies).
+  // gpt-5 / gpt-5-mini reasoning models ignore temperature/penalty/stop params.
+  //
+  // The Responses API is OpenAI-only but is the *only* surface that runs
+  // server-side tools like web search. When the endpoint is genuine OpenAI and
+  // web search is enabled, route text through Responses so the agent-level
+  // injector (see @elizaos/agent web-search-tools) can attach `web_search`.
+  const useResponses = isWebSearchEnabled() && supportsResponsesApi(runtime);
+  const model = useResponses
+    ? openai.responses(modelName)
+    : openai.chat(modelName);
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedTools = normalizeNativeTools(paramsWithAttachments.tools, {
     cerebrasMode,

@@ -135,10 +135,17 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
       return { kind: "rejected-busy", activeOperationId: active.id };
     }
 
+    // Snapshot the classify context BEFORE prepare() runs: prepare() mutates
+    // the live config to the target provider, so reading currentProvider after
+    // it would always equal the target → every provider-switch would classify
+    // as "hot" and a not-yet-loaded provider plugin (e.g. switching elizacloud
+    // → cerebras, or onboarding a first provider) would never get the cold
+    // restart that actually loads it, leaving the runtime with no provider.
+    const ctxBeforePrepare = this.classifyContext();
     const prepareResult = req.prepare ? await req.prepare() : undefined;
     const preparedIntent =
       prepareResult === undefined ? req.intent : prepareResult;
-    const tier = this.classifier(preparedIntent, this.classifyContext());
+    const tier = this.classifier(preparedIntent, ctxBeforePrepare);
     const now = Date.now();
     const op: RuntimeOperation = {
       id: crypto.randomUUID(),
