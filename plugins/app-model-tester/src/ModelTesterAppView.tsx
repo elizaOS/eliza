@@ -1,5 +1,5 @@
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
-import { TerminalPluginView } from "@elizaos/ui";
+import { TerminalPluginView, useAgentElement } from "@elizaos/ui";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {
@@ -171,6 +171,51 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
     [statuses],
   );
 
+  const backControl = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: "Back to apps",
+    group: "header",
+    description: "Close the model tester and return to the apps grid",
+  });
+  const refreshControl = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh-status",
+    role: "button",
+    label: "Refresh model status",
+    group: "header",
+    description: "Reload the availability status of each model probe",
+  });
+  const runAllControl = useAgentElement<HTMLButtonElement>({
+    id: "action-run-all",
+    role: "button",
+    label: "Run all",
+    group: "header",
+    description: "Run every model probe in sequence",
+  });
+  const promptControl = useAgentElement<HTMLTextAreaElement>({
+    id: "input-prompt",
+    role: "textarea",
+    label: "Prompt",
+    group: "inputs",
+    description: "Prompt text sent to text, voice, and image generation probes",
+    value: prompt,
+    onFill: setPrompt,
+  });
+  const imageInputControl = useAgentElement<HTMLInputElement>({
+    id: "input-image-asset",
+    role: "custom",
+    label: "Choose image",
+    group: "assets",
+    description: "Select an image file for image-description probes",
+  });
+  const audioInputControl = useAgentElement<HTMLInputElement>({
+    id: "input-audio-asset",
+    role: "custom",
+    label: "Choose audio",
+    group: "assets",
+    description: "Select an audio file for transcription and voice-activity probes",
+  });
+
   const refreshStatus = useCallback(async () => {
     const res = await fetch("/api/model-tester/status");
     const json = (await res.json()) as { tests?: TestStatus[] };
@@ -246,6 +291,8 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
       <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
         <div className="flex min-w-0 items-center gap-3">
           <Button
+            ref={backControl.ref}
+            {...backControl.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0 rounded-lg text-muted hover:text-txt"
@@ -265,6 +312,8 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            ref={refreshControl.ref}
+            {...refreshControl.agentProps}
             variant="ghost"
             size="icon"
             className="h-9 w-9 rounded-lg text-muted hover:text-txt"
@@ -273,7 +322,12 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button size="sm" onClick={runAll}>
+          <Button
+            ref={runAllControl.ref}
+            {...runAllControl.agentProps}
+            size="sm"
+            onClick={runAll}
+          >
             <Play className="mr-2 h-4 w-4" />
             Run all
           </Button>
@@ -291,6 +345,8 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                 Prompt
               </label>
               <textarea
+                ref={promptControl.ref}
+                {...promptControl.agentProps}
                 id="model-tester-prompt"
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
@@ -309,6 +365,8 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   {imageDataUrl ? "Image loaded" : "Choose image"}
                 </span>
                 <input
+                  ref={imageInputControl.ref}
+                  {...imageInputControl.agentProps}
                   type="file"
                   accept="image/*"
                   className="hidden"
@@ -323,6 +381,8 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                   {audioPayload ? "Audio loaded" : "Choose audio"}
                 </span>
                 <input
+                  ref={audioInputControl.ref}
+                  {...audioInputControl.agentProps}
                   type="file"
                   accept="audio/*"
                   className="hidden"
@@ -372,24 +432,12 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
                     <StatusPill ready={status?.available ?? id === "vad"} />
                   </div>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    disabled={isRunning}
-                    onClick={() => void runTest(id)}
-                  >
-                    {isRunning ? (
-                      <Spinner className="mr-2 h-4 w-4" />
-                    ) : id === "text-to-speech" ? (
-                      <Volume2 className="mr-2 h-4 w-4" />
-                    ) : id === "transcription" || id === "vad" ? (
-                      <Mic className="mr-2 h-4 w-4" />
-                    ) : (
-                      <Sparkles className="mr-2 h-4 w-4" />
-                    )}
-                    Run
-                  </Button>
+                  <TestRunButton
+                    id={id}
+                    title={copy.title}
+                    isRunning={isRunning}
+                    onRun={() => void runTest(id)}
+                  />
 
                   {result ? (
                     <div className="mt-4">
@@ -510,6 +558,49 @@ export async function interact(
   }
 
   throw new Error(`Model Tester TUI does not support "${capability}".`);
+}
+
+function TestRunButton({
+  id,
+  title,
+  isRunning,
+  onRun,
+}: {
+  id: TestId;
+  title: string;
+  isRunning: boolean;
+  onRun: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `action-run-${id}`,
+    role: "button",
+    label: `Run ${title}`,
+    group: "probes",
+    description: `Run the ${title} model probe`,
+    status: isRunning ? "running" : undefined,
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="outline"
+      size="sm"
+      className="mt-4"
+      disabled={isRunning}
+      onClick={onRun}
+    >
+      {isRunning ? (
+        <Spinner className="mr-2 h-4 w-4" />
+      ) : id === "text-to-speech" ? (
+        <Volume2 className="mr-2 h-4 w-4" />
+      ) : id === "transcription" || id === "vad" ? (
+        <Mic className="mr-2 h-4 w-4" />
+      ) : (
+        <Sparkles className="mr-2 h-4 w-4" />
+      )}
+      Run
+    </Button>
+  );
 }
 
 function StatusPill({ ready }: { ready: boolean }) {

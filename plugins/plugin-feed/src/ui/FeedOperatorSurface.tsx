@@ -19,7 +19,12 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core/ui-compat";
-import { Button, Input, TerminalPluginView } from "@elizaos/ui";
+import {
+  Button,
+  Input,
+  TerminalPluginView,
+  useAgentElement,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   extractAgentSummary,
@@ -88,6 +93,40 @@ function listPreview(items: FeedPredictionMarket[]): string {
     .join(" · ");
 }
 
+function FeedSuggestedPromptButton({
+  prompt,
+  index,
+  onSelect,
+  disabled,
+}: {
+  prompt: string;
+  index: number;
+  onSelect: (prompt: string) => void;
+  disabled: boolean;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `suggested-prompt-${index}`,
+    role: "button",
+    label: prompt,
+    group: "feed-steering",
+    description: `Send the suggested prompt "${prompt}" to Feed`,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      variant="outline"
+      size="sm"
+      className="min-h-10 rounded-xl px-3 shadow-sm"
+      onClick={() => onSelect(prompt)}
+      disabled={disabled}
+      {...agentProps}
+    >
+      {prompt}
+    </Button>
+  );
+}
+
 export function FeedOperatorSurface({
   appName,
   variant = "detail",
@@ -145,6 +184,29 @@ export function FeedOperatorSurface({
       : agentStatus?.autonomous
         ? "pause"
         : "resume";
+
+  const toggleAgentButton = useAgentElement<HTMLButtonElement>({
+    id: "action-toggle-autonomy",
+    role: "button",
+    label: controlAction === "pause" ? "Pause agent" : "Resume agent",
+    group: "feed-steering",
+    status: controlAction === "pause" ? "active" : "inactive",
+    description: "Pause or resume Feed autonomous play",
+  });
+  const chatInputElement = useAgentElement<HTMLInputElement>({
+    id: "input-operator-message",
+    role: "text-input",
+    label: "Operator message",
+    group: "feed-steering",
+    description: "Tell Feed what to prioritize, avoid, or explain",
+  });
+  const sendChatButton = useAgentElement<HTMLButtonElement>({
+    id: "action-send-message",
+    role: "button",
+    label: "Send",
+    group: "feed-steering",
+    description: "Send the operator message to Feed",
+  });
 
   const loadDashboard = useCallback(async () => {
     if (!run) return;
@@ -474,17 +536,14 @@ export function FeedOperatorSurface({
         <SurfaceSection title="Steering">
           {run.session?.suggestedPrompts?.length ? (
             <div className="flex flex-wrap gap-2">
-              {run.session.suggestedPrompts.slice(0, 4).map((prompt) => (
-                <Button
+              {run.session.suggestedPrompts.slice(0, 4).map((prompt, index) => (
+                <FeedSuggestedPromptButton
                   key={prompt}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="min-h-10 rounded-xl px-3 shadow-sm"
-                  onClick={() => void handleSuggestedPrompt(prompt)}
-                >
-                  {prompt}
-                </Button>
+                  prompt={prompt}
+                  index={index}
+                  onSelect={(value) => void handleSuggestedPrompt(value)}
+                  disabled={sending}
+                />
               ))}
             </div>
           ) : null}
@@ -516,17 +575,20 @@ export function FeedOperatorSurface({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
+              ref={toggleAgentButton.ref}
               type="button"
               variant="outline"
               size="sm"
               className="min-h-10 rounded-xl px-3 shadow-sm"
               onClick={() => void handleToggleAgent()}
+              {...toggleAgentButton.agentProps}
             >
               {controlAction === "pause" ? "Pause agent" : "Resume agent"}
             </Button>
           </div>
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
             <Input
+              ref={chatInputElement.ref}
               value={chatInput}
               onChange={(event) => setChatInput(event.target.value)}
               placeholder="Tell Feed what to prioritize, avoid, or explain."
@@ -537,12 +599,15 @@ export function FeedOperatorSurface({
                   void handleSendChat();
                 }
               }}
+              {...chatInputElement.agentProps}
             />
             <Button
+              ref={sendChatButton.ref}
               type="button"
               className="min-h-11 rounded-xl px-4 shadow-sm"
               onClick={() => void handleSendChat()}
               disabled={sending || chatInput.trim().length === 0}
+              {...sendChatButton.agentProps}
             >
               {sending ? "Sending" : "Send"}
             </Button>

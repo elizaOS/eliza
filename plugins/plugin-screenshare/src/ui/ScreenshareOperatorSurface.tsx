@@ -1,12 +1,16 @@
 import {
   type AppOperatorSurfaceProps,
+  type AgentElementRole,
   Button,
+  type ButtonProps,
   client,
   Input,
+  type InputProps,
   SurfaceBadge,
   SurfaceEmptyState,
   SurfaceSection,
   selectLatestRunForApp,
+  useAgentElement,
   useApp,
 } from "@elizaos/ui";
 import {
@@ -123,6 +127,60 @@ function formatTime(value: string | null): string {
   }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Not yet" : date.toLocaleTimeString();
+}
+
+function ScreenshareActionButton({
+  agentId,
+  label,
+  group,
+  description,
+  status,
+  ...buttonProps
+}: ButtonProps & {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  status?: "active" | "inactive";
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "button",
+    label,
+    group,
+    description,
+    ...(status ? { status } : {}),
+  });
+  return (
+    <Button ref={ref} aria-label={label} {...agentProps} {...buttonProps} />
+  );
+}
+
+function ScreenshareField({
+  agentId,
+  label,
+  group,
+  description,
+  role = "text-input",
+  ...inputProps
+}: InputProps & {
+  agentId: string;
+  label: string;
+  group: string;
+  description: string;
+  role?: AgentElementRole;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLInputElement>({
+    id: agentId,
+    role,
+    label,
+    group,
+    description,
+    fillable: !inputProps.readOnly,
+  });
+  return (
+    <Input ref={ref} aria-label={label} {...agentProps} {...inputProps} />
+  );
 }
 
 export function ScreenshareOperatorSurface({
@@ -327,13 +385,21 @@ export function ScreenshareOperatorSurface({
         </div>
 
         <div className="mt-3 grid gap-2">
-          <Input
+          <ScreenshareField
+            agentId="host-session-id"
+            label="Host session id"
+            group="host"
+            description="Active host screen share session id"
             value={hostSession?.id ?? ""}
             readOnly
             placeholder="Session"
             className="h-9 bg-bg text-xs"
           />
-          <Input
+          <ScreenshareField
+            agentId="host-token"
+            label="Host session token"
+            group="host"
+            description="Token for the active host screen share session"
             value={hostToken}
             readOnly
             placeholder="Token"
@@ -342,7 +408,15 @@ export function ScreenshareOperatorSurface({
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <Button
+          <ScreenshareActionButton
+            agentId="action-start-host"
+            label={
+              hostSession?.status === "active"
+                ? "Rotate host session"
+                : "Start host session"
+            }
+            group="host"
+            description="Start or rotate the screen share session for this machine"
             type="button"
             size="sm"
             variant="default"
@@ -352,8 +426,12 @@ export function ScreenshareOperatorSurface({
           >
             <MonitorUp className="h-4 w-4" />
             {hostSession?.status === "active" ? "Rotate" : "Start"}
-          </Button>
-          <Button
+          </ScreenshareActionButton>
+          <ScreenshareActionButton
+            agentId="action-open-host-viewer"
+            label="Open host viewer"
+            group="host"
+            description="Open the viewer for the host screen share session"
             type="button"
             size="sm"
             variant="outline"
@@ -363,8 +441,12 @@ export function ScreenshareOperatorSurface({
           >
             <ExternalLink className="h-4 w-4" />
             Open
-          </Button>
-          <Button
+          </ScreenshareActionButton>
+          <ScreenshareActionButton
+            agentId="action-copy-host-details"
+            label="Copy host details"
+            group="host"
+            description="Copy the host session connection details to the clipboard"
             type="button"
             size="sm"
             variant="outline"
@@ -374,8 +456,12 @@ export function ScreenshareOperatorSurface({
           >
             <Copy className="h-4 w-4" />
             Copy
-          </Button>
-          <Button
+          </ScreenshareActionButton>
+          <ScreenshareActionButton
+            agentId="action-stop-host"
+            label="Stop host session"
+            group="host"
+            description="Stop the active host screen share session"
             type="button"
             size="sm"
             variant="outline"
@@ -385,7 +471,7 @@ export function ScreenshareOperatorSurface({
           >
             <Power className="h-4 w-4" />
             Stop
-          </Button>
+          </ScreenshareActionButton>
         </div>
 
         {hostSession ? (
@@ -400,19 +486,31 @@ export function ScreenshareOperatorSurface({
 
       <SurfaceSection title="Connect">
         <div className="grid gap-2">
-          <Input
+          <ScreenshareField
+            agentId="input-remote-base"
+            label="Remote server URL"
+            group="connect"
+            description="Server URL of the remote machine to connect to"
             value={remoteBase}
             onChange={(event) => setRemoteBase(event.target.value)}
             placeholder="Server URL"
             className="h-9 bg-bg text-xs"
           />
-          <Input
+          <ScreenshareField
+            agentId="input-remote-session"
+            label="Remote session id"
+            group="connect"
+            description="Session id of the remote screen share to connect to"
             value={remoteSessionId}
             onChange={(event) => setRemoteSessionId(event.target.value)}
             placeholder="Session"
             className="h-9 bg-bg text-xs"
           />
-          <Input
+          <ScreenshareField
+            agentId="input-remote-token"
+            label="Remote session token"
+            group="connect"
+            description="Token of the remote screen share to connect to"
             value={remoteToken}
             onChange={(event) => setRemoteToken(event.target.value)}
             placeholder="Token"
@@ -420,7 +518,11 @@ export function ScreenshareOperatorSurface({
           />
         </div>
         <div className="mt-3 flex gap-2">
-          <Button
+          <ScreenshareActionButton
+            agentId="action-connect-remote"
+            label="Connect to remote"
+            group="connect"
+            description="Open the viewer for the entered remote screen share"
             type="button"
             size="sm"
             variant="default"
@@ -430,18 +532,21 @@ export function ScreenshareOperatorSurface({
           >
             <PlugZap className="h-4 w-4" />
             Connect
-          </Button>
-          <Button
+          </ScreenshareActionButton>
+          <ScreenshareActionButton
+            agentId="action-refresh-capabilities"
+            label="Refresh capabilities"
+            group="connect"
+            description="Reload the host screen share capabilities"
             type="button"
             size="sm"
             variant="outline"
             className="h-9 gap-2"
             onClick={() => void loadCapabilities()}
-            aria-label="Refresh capabilities"
             title="Refresh capabilities"
           >
             <RefreshCw className="h-4 w-4" />
-          </Button>
+          </ScreenshareActionButton>
         </div>
       </SurfaceSection>
 
@@ -539,7 +644,10 @@ export function ScreenshareTuiView() {
       <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
         elizaos://screenshare --type=tui
       </div>
-      <div style={{ color: "#475569", marginBottom: 16 }}>
+      <div
+        data-status={loading ? "loading" : "ready"}
+        style={{ color: "#475569", marginBottom: 16 }}
+      >
         {loading ? "loading" : (state?.capabilities.platform ?? "unknown")} |{" "}
         {activeSessions.length} active sessions | {lastAction}
       </div>

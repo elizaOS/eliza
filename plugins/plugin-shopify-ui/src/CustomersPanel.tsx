@@ -1,4 +1,9 @@
-import { formatShortDate, Input, Skeleton } from "@elizaos/ui";
+import {
+  formatShortDate,
+  Input,
+  Skeleton,
+  useAgentElement,
+} from "@elizaos/ui";
 import {
   CalendarDays,
   CircleDollarSign,
@@ -71,16 +76,26 @@ export function CustomersPanel({
   search,
   onSearchChange,
 }: CustomersPanelProps) {
+  const searchInput = useAgentElement<HTMLInputElement>({
+    id: "input-customer-search",
+    role: "text-input",
+    label: "Search customers",
+    group: "customers",
+    description: "Filter customers by name or email",
+  });
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60" />
           <Input
+            ref={searchInput.ref}
             placeholder="Search customers by name or email…"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-8"
+            {...searchInput.agentProps}
           />
         </div>
         {!loading ? (

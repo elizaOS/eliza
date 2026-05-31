@@ -7,12 +7,14 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  useAgentElement,
 } from "@elizaos/ui";
 import {
   BarChart3,
   ChevronLeft,
   Globe2,
   KeyRound,
+  type LucideIcon,
   Package,
   RefreshCw,
   ShieldCheck,
@@ -138,6 +140,48 @@ type DashboardTab =
   | "inventory"
   | "customers";
 
+const DASHBOARD_TABS: { value: DashboardTab; label: string; icon: LucideIcon }[] =
+  [
+    { value: "overview", label: "Overview", icon: BarChart3 },
+    { value: "products", label: "Products", icon: Package },
+    { value: "orders", label: "Orders", icon: ShoppingCart },
+    { value: "inventory", label: "Inventory", icon: BarChart3 },
+    { value: "customers", label: "Customers", icon: Users },
+  ];
+
+function ShopifyDashboardTabTrigger({
+  value,
+  label,
+  icon: Icon,
+  active,
+}: {
+  value: DashboardTab;
+  label: string;
+  icon: LucideIcon;
+  active: boolean;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `tab-${value}`,
+    role: "tab",
+    label,
+    group: "dashboard-tabs",
+    status: active ? "active" : "inactive",
+    description: `Show the ${label} tab`,
+  });
+  return (
+    <TabsTrigger
+      ref={ref}
+      value={value}
+      className="gap-1.5"
+      aria-current={active ? "true" : undefined}
+      {...agentProps}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </TabsTrigger>
+  );
+}
+
 export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
 
@@ -181,6 +225,21 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
   const connected = status?.connected ?? false;
   const shop = status?.shop ?? null;
 
+  const backButton = useAgentElement<HTMLButtonElement>({
+    id: "action-back",
+    role: "button",
+    label: "Back to apps",
+    group: "header",
+    description: "Exit the Shopify dashboard and return to the apps grid",
+  });
+  const refreshButton = useAgentElement<HTMLButtonElement>({
+    id: "action-refresh",
+    role: "button",
+    label: "Refresh",
+    group: "header",
+    description: "Reload Shopify status and dashboard data",
+  });
+
   return (
     <div
       data-testid="shopify-shell"
@@ -188,12 +247,14 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
     >
       <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-md">
         <Button
+          ref={backButton.ref}
           type="button"
           variant="ghost"
           size="icon"
           onClick={exitToApps}
           className="h-8 w-8 shrink-0"
           aria-label="Back to apps"
+          {...backButton.agentProps}
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -212,6 +273,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
         />
 
         <Button
+          ref={refreshButton.ref}
           type="button"
           variant="ghost"
           size="icon"
@@ -219,6 +281,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
           onClick={refresh}
           aria-label="Refresh"
           disabled={statusLoading}
+          {...refreshButton.agentProps}
         >
           <RefreshCw
             className={`h-4 w-4 ${statusLoading ? "animate-spin" : ""}`}
@@ -248,26 +311,15 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
               onValueChange={(v) => setActiveTab(v as DashboardTab)}
             >
               <TabsList className="mb-4 h-auto flex-wrap gap-1 p-1">
-                <TabsTrigger value="overview" className="gap-1.5">
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  Overview
-                </TabsTrigger>
-                <TabsTrigger value="products" className="gap-1.5">
-                  <Package className="h-3.5 w-3.5" />
-                  Products
-                </TabsTrigger>
-                <TabsTrigger value="orders" className="gap-1.5">
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                  Orders
-                </TabsTrigger>
-                <TabsTrigger value="inventory" className="gap-1.5">
-                  <BarChart3 className="h-3.5 w-3.5" />
-                  Inventory
-                </TabsTrigger>
-                <TabsTrigger value="customers" className="gap-1.5">
-                  <Users className="h-3.5 w-3.5" />
-                  Customers
-                </TabsTrigger>
+                {DASHBOARD_TABS.map((tab) => (
+                  <ShopifyDashboardTabTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    label={tab.label}
+                    icon={tab.icon}
+                    active={activeTab === tab.value}
+                  />
+                ))}
               </TabsList>
 
               <TabsContent value="overview">
