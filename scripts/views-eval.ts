@@ -183,8 +183,14 @@ const VIEW_CATALOG: ViewCatalogEntry[] = [
   },
 ];
 
+// Expose each view's aliases (keywords) too — the grader resolves targets via
+// these (e.g. "home" → chat), so the model must see the same signal it is
+// judged on, otherwise alias-only utterances are unwinnable.
 const CATALOG_TEXT = VIEW_CATALOG.map(
-  (v) => `  - id="${v.id}" label="${v.label}" path="${v.path}"`,
+  (v) =>
+    `  - id="${v.id}" label="${v.label}" path="${v.path}" aliases=[${v.keywords
+      .map((k) => `"${k}"`)
+      .join(", ")}]`,
 ).join("\n");
 
 /**

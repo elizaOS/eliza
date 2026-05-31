@@ -27,6 +27,7 @@ FORCE_CLOOP="1"
 JOBS=""
 IMAGE_ONLY=0
 SHELL_MODE=0
+RUST_CORE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -36,6 +37,10 @@ while [ $# -gt 0 ]; do
         --jobs) JOBS="$2"; shift 2 ;;
         --image-only) IMAGE_ONLY=1; shift ;;
         --shell) SHELL_MODE=1; shift ;;
+        # Build the post-rewrite Rust-core bun (rust_core_port.target_commit +
+        # rust-core/ patch series) instead of the last-Zig tag. Default stays
+        # the validated Zig fallback.
+        --rust-core) RUST_CORE=1; shift ;;
         -h|--help)
             # Usage block lives in the file header (lines 3-17 of the
             # leading comment, just below the shebang).
@@ -95,11 +100,19 @@ fi
 mkdir -p "$HERE/dist"
 mkdir -p "$HERE/dist/src-cache"
 
+# Patch series: Zig fallback uses bun-patches/; --rust-core uses rust-core/
+# (0001 build-system + C_LOOP port, 0002 second-wave source gaps).
+PATCH_MOUNT="$HERE/bun-patches"
+if [ "$RUST_CORE" = "1" ]; then
+    PATCH_MOUNT="$HERE/rust-core"
+    echo "[run-build] --rust-core: building Rust-core bun (rust_core_port) from rust-core/ patches"
+fi
+
 DOCKER_RUN_ARGS=(
     --rm
     -v "$HERE/build.sh:/opt/build.sh:ro"
     -v "$HERE/bun-version.json:/opt/bun-version.json:ro"
-    -v "$HERE/bun-patches:/opt/bun-patches:ro"
+    -v "$PATCH_MOUNT:/opt/bun-patches:ro"
     -v "$HERE/webkit-patches:/opt/webkit-patches:ro"
     -v "$HERE/dist:/artifact"
     -v "$HERE/dist/src-cache:/work/src"
@@ -110,6 +123,9 @@ if [ -n "$JOBS" ]; then
 fi
 if [ "$FORCE_CLOOP" = "1" ]; then
     DOCKER_RUN_ARGS+=(-e "BUN_RISCV64_FORCE_CLOOP=1")
+fi
+if [ "$RUST_CORE" = "1" ]; then
+    DOCKER_RUN_ARGS+=(-e "BUN_RISCV64_RUST_CORE=1")
 fi
 
 echo "[run-build] starting cross-compile (this typically takes 30-90 minutes)"

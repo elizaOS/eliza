@@ -21,7 +21,7 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from eliza_robot.erobot.spec import ACTUATORS, RobotSpec, build_spec
+from eliza_robot.erobot.spec import RobotSpec, build_spec
 
 # Motor envelope diameter (largest cross-section that must clear the housing bore)
 # and output-bearing dims, per tier. Matches components.py.

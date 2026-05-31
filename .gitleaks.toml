@@ -148,7 +148,17 @@ paths = [
 # to the robot material files and exact extracted token values that gitleaks'
 # generic-api-key rule misclassifies.
 [[allowlists]]
-description = "Robot material identifiers (not credentials)"
+description = "Robot material identifiers (not credentials; gitleaks 8.21 match target)"
+paths = [
+  '''(^|/)packages/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
+]
+regexTarget = "match"
+regexes = [
+  '''material_key="(PA6_GF30|PC_ABS|TPU_SHORE_A95)"''',
+]
+
+[[allowlists]]
+description = "Robot material identifiers (not credentials; newer gitleaks secret target)"
 paths = [
   '''(^|/)packages/robot/eliza_robot/erobot/(mjcf|spec)\.py$''',
 ]

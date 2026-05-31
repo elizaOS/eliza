@@ -17,14 +17,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
 
-from eliza_robot.erobot.components import build_components  # noqa: E402
-from eliza_robot.erobot.meshlib import component_mesh, primitive_mesh  # noqa: E402
-from eliza_robot.erobot.mjcf import _MATERIAL_RGBA, write_models  # noqa: E402
-from eliza_robot.erobot.spec import RobotSpec, build_spec  # noqa: E402
+from eliza_robot.erobot.components import build_components
+from eliza_robot.erobot.meshlib import component_mesh, primitive_mesh
+from eliza_robot.erobot.mjcf import _MATERIAL_RGBA, write_models
+from eliza_robot.erobot.spec import RobotSpec, build_spec
 
 VISUAL_ROOT = Path(__file__).resolve().parents[2] / "cad" / "erobot" / "visual"
 _KIND_COLOR = {"motor": "#2a6fb0", "bearing": "#b0902a", "battery": "#2ab06f",
@@ -56,12 +55,12 @@ def _rgba(material_key: str) -> str:
 
 
 def render_parts_grid(spec: RobotSpec, out: Path) -> Path:
-    shells = [(b, g) for b in spec.bodies for g in b.geoms]
+    shells = [g for b in spec.bodies for g in b.geoms]
     n = len(shells)
     cols = 7
     rows = (n + cols - 1) // cols
     fig = plt.figure(figsize=(cols * 2.0, rows * 2.0))
-    for i, (body, g) in enumerate(shells):
+    for i, g in enumerate(shells):
         ax = fig.add_subplot(rows, cols, i + 1, projection="3d")
         mesh = primitive_mesh(g)
         _mesh_polys(ax, mesh, _rgba(g.material_key), alpha=1.0, edge="#222222")
@@ -197,6 +196,7 @@ def render_rom_filmstrip(spec: RobotSpec, out: Path) -> Path:
 
 
 def render_all(spec: RobotSpec | None = None) -> dict[str, Path]:
+    matplotlib.use("Agg")  # headless mesh rendering
     spec = spec or build_spec()
     VISUAL_ROOT.mkdir(parents=True, exist_ok=True)
     out = {

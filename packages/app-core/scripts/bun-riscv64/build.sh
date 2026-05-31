@@ -67,10 +67,22 @@ bun_jq() {
     bun -e "const v = JSON.parse(require('fs').readFileSync('${VERSION_FILE}','utf8')); console.log($1);"
 }
 
-BUN_TAG="${BUN_TAG:-$(bun_jq 'v.bun.tag')}"
-WEBKIT_COMMIT="${WEBKIT_COMMIT:-$(bun_jq 'v.webkit.fork_commit')}"
+# Rust-core port (BUN_RISCV64_RUST_CORE=1, set by run-build.sh --rust-core):
+# build the post-Zig→Rust-rewrite bun from rust_core_port.target_commit + the
+# nightly it pins, instead of the last-Zig tag (bun.tag). The rust-core/ patch
+# series is mounted at /opt/bun-patches by run-build.sh in this mode.
+if [ "${BUN_RISCV64_RUST_CORE:-0}" = "1" ]; then
+    BUN_TAG="${BUN_TAG:-$(bun_jq 'v.rust_core_port.target_commit')}"
+    RUST_NIGHTLY="${RUST_NIGHTLY:-$(bun_jq 'v.rust_core_port.rust_channel')}"
+    # bun@target_commit's deps/webkit.ts pins WEBKIT_VERSION=963f8758…, distinct
+    # from the Zig-era 1.3.14 WebKit — use the version this bun expects.
+    WEBKIT_COMMIT="${WEBKIT_COMMIT:-$(bun_jq 'v.rust_core_port.webkit_commit')}"
+else
+    BUN_TAG="${BUN_TAG:-$(bun_jq 'v.bun.tag')}"
+    RUST_NIGHTLY="${RUST_NIGHTLY:-$(bun_jq 'v.toolchain.rust.channel')}"
+    WEBKIT_COMMIT="${WEBKIT_COMMIT:-$(bun_jq 'v.webkit.fork_commit')}"
+fi
 WEBKIT_FORK="$(bun_jq 'v.webkit.fork')"
-RUST_NIGHTLY="$(bun_jq 'v.toolchain.rust.channel')"
 LLVM_VERSION="$(bun_jq 'v.toolchain.llvm.version')"
 ZIG_VERSION="$(bun_jq 'v.toolchain.zig.version')"
 ALPINE_BRANCH="$(bun_jq 'v.toolchain.musl.alpine_branch')"
