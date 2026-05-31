@@ -47,16 +47,20 @@ VERSION=""
 # full timeout. These are the exact failure modes (missing runtime deps,
 # entrypoint blowups) that previously shipped green because the smoke step
 # booted a stub health server instead of the real entrypoint.
+#
+# Kept deliberately specific to module-resolution failures and explicit
+# fatal-startup markers so a benign warning that merely contains a generic word
+# (FATAL, Cannot read properties of undefined, ...) does not flap the gate. The
+# container-exit and health-timeout checks below are the backstops for any crash
+# that does not print one of these.
 BOOT_CRASH_PATTERNS=(
   'Cannot find package'
   'Cannot find module'
   'ERR_MODULE_NOT_FOUND'
   'ERR_REQUIRE_ESM'
+  'MODULE_NOT_FOUND'
   'Failed to start'
   'crashed during init'
-  'FATAL'
-  'UnhandledPromiseRejection'
-  'Cannot read properties of undefined'
 )
 
 log() {
@@ -337,6 +341,38 @@ boot_verify() {
     return 0
   }
 
+  # Post-health observation window: after health first comes up, keep watching
+  # the container for a short window so a crash that happens just AFTER the
+  # server binds (async plugin/runtime init blowing up post-listen) still turns
+  # the gate RED instead of slipping through. Only scans logs emitted AFTER the
+  # passed-in checkpoint ("$1", an RFC3339 UTC timestamp captured when health
+  # first succeeded) so a benign pre-health crash signature can't false-positive.
+  # Returns non-zero if the container dies or logs a crash signature in-window.
+  confirm_stable() {
+    local since="$1"
+    local window="${BOOT_STABLE_WINDOW_SEC:-15}"
+    local stable_logs="$SMOKE_ARTIFACT_DIR/post-health.log"
+    local stable_deadline=$((SECONDS + window))
+    while (( SECONDS < stable_deadline )); do
+      timeout 30 "$DOCKER_BIN" logs --since "$since" "$CONTAINER_NAME" >"$stable_logs" 2>&1 || true
+      local m
+      if m="$(scan_crash "$stable_logs")"; then
+        log "Crash signature appeared after health came up: '${m}'"
+        timeout 30 "$DOCKER_BIN" logs --tail 120 "$CONTAINER_NAME" || true
+        return 1
+      fi
+      if ! timeout 10 "$DOCKER_BIN" ps --format '{{.Names}}' 2>/dev/null | grep -Fxq "$CONTAINER_NAME"; then
+        local code
+        code="$(timeout 10 "$DOCKER_BIN" inspect -f '{{.State.ExitCode}}' "$CONTAINER_NAME" 2>/dev/null || echo '?')"
+        log "Container exited (exit code ${code}) during the post-health window"
+        timeout 30 "$DOCKER_BIN" logs --tail 120 "$CONTAINER_NAME" || true
+        return 1
+      fi
+      sleep 3
+    done
+    return 0
+  }
+
   local logs_file="$SMOKE_ARTIFACT_DIR/boot.log"
   local deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
   local last_log_dump=0
@@ -372,15 +408,21 @@ boot_verify() {
     fi
 
     if confirm_ok "$health_url" /tmp/eliza-docker-health.txt; then
-      log "Boot verified: health probe succeeded against the real entrypoint: $health_url"
+      log "Health probe succeeded against the real entrypoint: $health_url"
       cat /tmp/eliza-docker-health.txt
-      return 0
+      local health_ts
+      health_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
+      confirm_stable "$health_ts" && { log "Boot verified: agent stayed up after health came up"; return 0; }
+      fail "Agent served health then crashed during the post-health window; image is NOT bootable"
     fi
 
     if confirm_ok "$status_url" /tmp/eliza-docker-status.txt; then
-      log "Boot verified: status probe succeeded against the real entrypoint: $status_url"
+      log "Status probe succeeded against the real entrypoint: $status_url"
       cat /tmp/eliza-docker-status.txt
-      return 0
+      local status_ts
+      status_ts="$(date -u +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo '')"
+      confirm_stable "$status_ts" && { log "Boot verified: agent stayed up after status came up"; return 0; }
+      fail "Agent served status then crashed during the post-health window; image is NOT bootable"
     fi
 
     sleep 5
