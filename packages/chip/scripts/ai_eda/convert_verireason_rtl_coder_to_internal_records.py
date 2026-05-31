@@ -15,6 +15,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/verireason_rtl_coder"
 CLAIM_BOUNDARY = "verireason_rtl_coder_text_sample_only_no_training_inference_e1_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "rtl_generation_claim_allowed": False,
+}
 
 ASSETS = (
     {
@@ -164,6 +172,7 @@ def make_record(
             "expected_report": "build/ai_eda/verireason_rtl_coder/<run-id>/conversion_report.json",
         },
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
     }
 
 
@@ -258,6 +267,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "converted_asset_count": len([item for item in asset_reports if item["record_count"] > 0]),
         "converted_record_count": len(converted),
         "blocked_assets": blocked_assets,
@@ -273,6 +283,7 @@ def main() -> int:
             "runs_inference": False,
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "generated_rtl_quarantined_until_review": True,
             "deterministic_replay_required_for_optimization_claims": True,
         },

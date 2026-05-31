@@ -28,7 +28,7 @@
     "height": 0.5500002,
     "width": 2.4000002
   },
-  "local_discrete_step_bytes": 15547,
+  "local_discrete_step_bytes": 15572,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.0,
     "height": 0.55,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/D_KEYS_ESD.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "06be94f33963bb86c92e23400314059ef92ff58e403a9dcfff74fa72268ef080",
+  "local_discrete_step_sha256": "748f08ea44f1efa19af7398482cde04e09d1d379c50a1a6cd004de916acf5939",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -133,7 +133,7 @@
   "supplier_step_intake_bytes": 15716,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "aa7610603349c62dc4d3469a50a8660a695acf9442b74cc44d29cd16d19e7cf0",
+  "supplier_step_intake_sha256": "bdb10c447b3dbca1059480ba97171fff50a7e07e76c3c79db1f1741cad76e01a",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": true,
   "terminal_contract_count": 6,

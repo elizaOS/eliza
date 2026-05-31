@@ -50,6 +50,28 @@ live_pcb_validation_state:
   has_production_outputs: false
   validation_allowed: false
 
+local_routed_candidate_validation_state:
+  board_file: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  real_footprint_board_file: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+  real_footprint_binding: board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
+  source_binding: board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+  board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  real_footprint_board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  matches_real_footprint_board: true
+  footprint_count: 89
+  legacy_e1phone_footprint_ref_count: 0
+  placeholder_marker_count: 0
+  segment_count: 306
+  via_count: 24
+  zone_count: 13
+  filled_zone_count: 6
+  has_tracks: true
+  has_filled_zones: true
+  has_production_outputs: false
+  validation_allowed: false
+  release_credit: false
+  release_state: blocked_local_routed_real_footprint_candidate_not_release
+
 required_validation_outputs:
   schematic_erc_report: board/kicad/e1-phone/production/reports/erc.json
   pcb_drc_report: board/kicad/e1-phone/production/reports/drc.json

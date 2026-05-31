@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import uuid
 from collections import Counter
@@ -1328,7 +1329,9 @@ def main() -> int:
             "supplier drawing/DFM signoff before pin order can be frozen."
         ),
         "source_board": str(SRC.relative_to(ROOT)),
+        "source_board_sha256": hashlib.sha256(SRC.read_bytes()).hexdigest(),
         "output_board": str(OUT.relative_to(ROOT)),
+        "output_board_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
         "fp_lib_table": "board/kicad/e1-phone/fp-lib-table",
         "bound_footprint_count": sum(1 for item in records if item["bound"]),
         "unbound_footprint_count": sum(1 for item in records if not item["bound"]),

@@ -15,6 +15,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/eda_tool_agent_interop_targets"
 CLAIM_BOUNDARY = "eda_tool_agent_interop_capture_only_no_tool_invocation_or_source_change"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 INPUT_ARTIFACTS = (
     "research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml",
@@ -123,6 +132,7 @@ def main() -> int:
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_NO_EDA_TOOL_AGENT_EXECUTION",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "source_ids": [
             "agentic-eda-survey-2512-23189v2",
             "autoeda-mcp",

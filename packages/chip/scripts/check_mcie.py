@@ -74,6 +74,16 @@ EXPECTED_TESTS = (
     "shared_plaintext_passthrough",
 )
 
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "lpddr_phy_claim_allowed": False,
+    "silicon_claim_allowed": False,
+    "side_channel_lab_claim_allowed": False,
+    "axi4_integration_claim_allowed": False,
+    "production_readiness_claim_allowed": False,
+}
+
 
 def _verilator() -> str | None:
     found = shutil.which("verilator")
@@ -229,6 +239,7 @@ def main() -> int:
         "status": status,
         "blocker_id": blocker_id,
         "blocker_reason": blocker_reason,
+        **FALSE_CLAIM_FLAGS,
         "evidence_paths": [
             MCIE_RTL,
             MCIE_AES,

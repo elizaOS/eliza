@@ -29,6 +29,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 DVFS_DIR = ROOT / "docs" / "pd" / "dvfs-tables"
 RAIL_PLAN = ROOT / "docs" / "pd" / "rail-plan-2028.yaml"
+EVIDENCE = ROOT / "docs" / "evidence" / "power" / "dvfs-table-evidence.yaml"
 
 CORNERS = ("ss", "tt", "ff")
 TEMPS = (0, 25, 85, 105)
@@ -42,6 +43,14 @@ DVFS_RAILS = (
 )
 DVFS_STEP_V = 6.25e-3
 SENTINEL = "pending_silicon_corner_sta"
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "silicon_sta_claim_allowed",
+    "dvfs_signoff_claim_allowed",
+    "production_voltage_claim_allowed",
+    "pmic_programming_claim_allowed",
+}
 
 
 def code_to_v(code: int) -> float:
@@ -111,8 +120,25 @@ def main() -> int:
     if not RAIL_PLAN.is_file():
         print(f"FAIL rail plan missing: {RAIL_PLAN.relative_to(ROOT)}")
         return 1
+    if not EVIDENCE.is_file():
+        print(f"FAIL DVFS evidence missing: {EVIDENCE.relative_to(ROOT)}")
+        return 1
 
     plan = yaml.safe_load(RAIL_PLAN.read_text())
+    evidence = yaml.safe_load(EVIDENCE.read_text())
+    if not isinstance(evidence, dict):
+        print(f"FAIL {EVIDENCE.relative_to(ROOT)} must be a YAML mapping")
+        return 1
+    false_flag_errors = [
+        f"{key} must be false"
+        for key in sorted(REQUIRED_FALSE_CLAIM_FLAGS)
+        if evidence.get(key) is not False
+    ]
+    if false_flag_errors:
+        print("DVFS table check FAILED:")
+        for failure in false_flag_errors:
+            print(f"  - {failure}")
+        return 1
     rail_window = {
         rail["id"]: (float(rail["dvfs_min_v"]), float(rail["dvfs_max_v"])) for rail in plan["rails"]
     }

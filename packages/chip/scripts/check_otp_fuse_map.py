@@ -26,6 +26,13 @@ from chip_utils import load_json_object, require  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_FUSE_MAP = REPO_ROOT / "packages/chip/docs/spec-db/tee-otp-fuse-map.json"
+REQUIRED_FALSE_CLAIM_FLAGS = {
+    "claim_allowed",
+    "release_claim_allowed",
+    "silicon_otp_claim_allowed",
+    "provisioning_claim_allowed",
+    "secure_boot_claim_allowed",
+}
 
 
 def validate(fuse_map: dict[str, Any]) -> list[str]:
@@ -36,6 +43,8 @@ def validate(fuse_map: dict[str, Any]) -> list[str]:
         "policy must be eliza-tee-otp-fuse-map-v0",
         errors,
     )
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        require(fuse_map.get(key) is False, f"{key} must be false", errors)
     require(fuse_map.get("readMajority") == "2-of-3", "readMajority must be 2-of-3", errors)
     word_bits = fuse_map.get("wordBits")
     require(word_bits == 32, "wordBits must be 32", errors)

@@ -52,6 +52,12 @@ FALSE_CLAIM_FLAGS = {
     "production_readiness_claim_allowed": False,
 }
 CAPTURE_SCRIPT = "packages/os/linux/elizaos/scripts/capture-chip-boot-evidence.py"
+GENERATED_AP_CAPTURE_WRAPPER = (
+    "packages/os/linux/elizaos/scripts/capture-generated-ap-chip-evidence.sh"
+)
+CPU_AP_CAPTURE_COMMAND_DERIVER = (
+    "python3 packages/chip/scripts/wire_cpu_ap_capture_commands.py --format json"
+)
 CAPTURE_TRANSCRIPT_PLACEHOLDER = "/path/to/generated-ap-serial.log"
 AGENT_TRANSCRIPT_PLACEHOLDER = "/path/to/agent-health.log"
 RECHECK_COMMAND = (
@@ -177,6 +183,36 @@ def next_command_plan(findings: list[Finding]) -> list[dict[str, object]]:
         }
         for code in codes
     ):
+        plan.append(
+            {
+                "id": "derive_generated_ap_boot_command",
+                "scope": "host",
+                "claim_boundary": "operator_command_derivation_only_not_runtime_evidence",
+                "command": CPU_AP_CAPTURE_COMMAND_DERIVER,
+                "requires": [
+                    "current generated Chipyard AP manifest",
+                    "selected Linux payload locator output",
+                    "current Verilator smoke runner wiring",
+                ],
+            }
+        )
+        plan.append(
+            {
+                "id": "capture_generated_ap_boot_and_agent",
+                "scope": "host",
+                "claim_boundary": "generated_eliza_ap_chip_emulator_required_no_qemu_virt_substitution",
+                "command": (
+                    "ELIZA_GENERATED_AP_CHIP_BOOT_CMD='<command from derive_generated_ap_boot_command>' "
+                    "ELIZA_GENERATED_AP_CHIP_AGENT_CMD='<target agent/TUI probe command if not in boot transcript>' "
+                    f"{GENERATED_AP_CAPTURE_WRAPPER} run"
+                ),
+                "requires": [
+                    "real generated Eliza AP/chip-emulator boot command",
+                    "serial transcript containing OpenSBI, Linux, and elizaos-firstboot-ready",
+                    "agent/TUI transcript containing service, process, /api/health, and elizaos-tui-ready",
+                ],
+            }
+        )
         plan.append(
             {
                 "id": "write_blocked_boot_evidence_from_real_transcript",

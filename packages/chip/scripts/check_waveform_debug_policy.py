@@ -33,6 +33,15 @@ REQUIRED_FALSE_TOOL_FLAGS = (
     "automatic_signal_force_allowed",
     "export_waveform_to_hosted_model_allowed",
 )
+REQUIRED_FALSE_CLAIM_FLAGS = (
+    "claim_allowed",
+    "release_claim_allowed",
+    "tapeout_claim_allowed",
+    "ai_root_cause_claim_allowed",
+    "ai_fix_claim_allowed",
+    "coverage_closure_claim_allowed",
+    "production_readiness_claim_allowed",
+)
 REQUIRED_WAVEFORM_ROOTS = (
     "build/reports/waveforms/",
     "build/ai_eda/waveform_debug/",
@@ -218,6 +227,9 @@ def main(argv: list[str] | None = None) -> int:
         fail(errors, "unsafe claim boundary")
     if policy.get("status") != "DRAFT_CAPTURE_ONLY":
         fail(errors, "status must be DRAFT_CAPTURE_ONLY")
+    for key in REQUIRED_FALSE_CLAIM_FLAGS:
+        if policy.get(key) is not False:
+            fail(errors, f"{key} must be false")
 
     check_tool_policy(policy, errors)
     check_allowlists(policy, errors)

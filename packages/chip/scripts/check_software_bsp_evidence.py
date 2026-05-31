@@ -9,6 +9,17 @@ from typing import Any
 import check_software_bsp
 
 
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "phone_claim_allowed": False,
+    "release_claim_allowed": False,
+    "linux_boot_claim_allowed": False,
+    "aosp_boot_claim_allowed": False,
+    "android_runtime_claim_allowed": False,
+    "production_bsp_claim_allowed": False,
+}
+
+
 def build_report(target: str) -> dict[str, Any]:
     names = check_software_bsp.TARGETS.keys() if target == "all" else [target]
     reports = [check_software_bsp.target_report(name) for name in names]
@@ -21,6 +32,7 @@ def build_report(target: str) -> dict[str, Any]:
         "schema": "eliza.software_bsp_evidence_release_gate.v1",
         "status": status,
         "claim_boundary": "external_logs_required_no_placeholder_or_failed_transcripts",
+        **FALSE_CLAIM_FLAGS,
         "checker": "scripts/check_software_bsp.py --require-evidence",
         "targets": reports,
     }

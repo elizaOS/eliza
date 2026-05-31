@@ -15,6 +15,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/low_power_intent_targets"
 CLAIM_BOUNDARY = "low_power_intent_target_capture_only_no_power_intent_or_rtl_change"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 INPUT_ARTIFACTS = (
     "rtl/top/e1_chip_top.sv",
@@ -116,6 +125,7 @@ def main() -> int:
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_NO_LOW_POWER_INTENT_CLAIM",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "source_ids": [
             "ieee-1801-upf",
             "ieee-upf-open-source",

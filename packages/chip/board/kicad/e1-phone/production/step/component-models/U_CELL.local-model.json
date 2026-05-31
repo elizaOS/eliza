@@ -28,7 +28,7 @@
     "height": 2.4000002,
     "width": 29.0000002
   },
-  "local_discrete_step_bytes": 15521,
+  "local_discrete_step_bytes": 15546,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 32.0,
     "height": 2.4,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_CELL.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "a00d78e60aae8303982461c9d69d2357d5a90169336ae5ae9b878012534918f3",
+  "local_discrete_step_sha256": "831a2e54c564e9dfbfcb2ede43ea66071a9dcd3d557232b42ce9807a9e298502",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -1717,7 +1717,7 @@
   "supplier_step_intake_bytes": 15608,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "e61d1d8b156b682a45454d825c6c6b75e93b4cc9d7d8fcca214a1902e6b409b3",
+  "supplier_step_intake_sha256": "10266418be016438ef9d2bafb3e6aedd97ba51d37861f752e7234f1773e65615",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 204,

@@ -19,6 +19,13 @@ DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/research_code_assets"
 CLAIM_BOUNDARY = (
     "ai_eda_research_code_asset_text_sample_only_no_training_inference_or_release_claim"
 )
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+}
 
 ASSET_IDS = (
     "chipdiffusion",
@@ -159,6 +166,7 @@ def asset_record(
                 "expected_report": "build/ai_eda/research_code_assets/<run-id>/conversion_report.json",
             },
             "claim_boundary": CLAIM_BOUNDARY,
+            **FALSE_CLAIM_FLAGS,
         },
         {
             "schema": "eda.text_instruction_sample.v1",
@@ -193,6 +201,7 @@ def asset_record(
                 "expected_report": "build/ai_eda/research_code_assets/<run-id>/conversion_report.json",
             },
             "claim_boundary": CLAIM_BOUNDARY,
+            **FALSE_CLAIM_FLAGS,
         },
     ]
     converted = []
@@ -246,6 +255,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "asset_ids": list(ASSET_IDS),
         "converted_asset_count": len({item["asset_id"] for item in converted}),
         "converted_record_count": len(converted),
@@ -258,6 +268,7 @@ def main() -> int:
             "runs_inference": False,
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "deterministic_replay_required_for_optimization_claims": True,
         },
     }

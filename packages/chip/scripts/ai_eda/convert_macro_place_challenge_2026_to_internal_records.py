@@ -19,6 +19,14 @@ CLAIM_BOUNDARY = (
     "macro_place_challenge_2026_conversion_training_only_no_e1_signoff_or_release_claim"
 )
 LABEL_STATUS = "public_macro_place_challenge_2026_proxy_and_baseline_training_only_not_e1_signoff"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 
 def rel(path: Path) -> str:
@@ -122,6 +130,7 @@ def convert_design(
         "schema": "eda.design_bundle.v1",
         "id": f"{design_id}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design": {
             "name": design,
             "revision": "macro_place_challenge_2026_public_payload",
@@ -149,6 +158,7 @@ def convert_design(
         "id": f"{design_id}-benchmark-summary-graph",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "graph": {
             "coordinate_system": "challenge_canvas_um_metadata_only_no_tensor_payload_export",
             "node_features": [
@@ -195,6 +205,7 @@ def convert_design(
         "id": f"{design_id}-baseline-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "toolchain": {
             "tools": [
                 "Partcl/HRT Macro Placement Challenge 2026 metadata",
@@ -286,6 +297,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "payload": rel(args.payload),
         "available_benchmark_count": len(baselines),
         "converted_benchmark_count": len(selected),
@@ -298,6 +310,7 @@ def main() -> int:
             "contains_hidden_benchmarks": False,
             "release_use_allowed": False,
             "e1_signoff_evidence": False,
+            **FALSE_CLAIM_FLAGS,
             "deterministic_replay_required_for_ppa_claims": True,
         },
     }

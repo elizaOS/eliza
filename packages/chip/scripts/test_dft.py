@@ -37,6 +37,8 @@ class PolicyGateTests(unittest.TestCase):
         self.assertEqual(data["schema"], dft_policy.EXPECTED_SCHEMA)
         self.assertEqual(data["status"], "DRAFT_CAPTURE_ONLY")
         self.assertEqual(data["claim_boundary"], dft_policy.EXPECTED_CLAIM_BOUNDARY)
+        for key in dft_policy.REQUIRED_FALSE_CLAIM_FLAGS:
+            self.assertIs(data.get(key), False, key)
 
     def test_dft_policy_requires_quarantine_root(self) -> None:
         data = load_yaml_object(dft_policy.POLICY)

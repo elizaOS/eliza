@@ -195,6 +195,80 @@ full-output real-weight checksum blocker, with:
 python3 scripts/check_e1x_full_output_checksum_manifest.py
 ```
 
+Run the expanded real-weight row gate, which executes first/mid/last output rows
+for every placed real-graph layer across the full K dimension, increasing real
+W4A8 MAC coverage while still preserving the missing full-output checksum
+blocker, with:
+
+```sh
+python3 scripts/check_e1x_expanded_real_weight_rows.py
+```
+
+Run the full norm real-weight row gate, which executes every output row for the
+complete `norm` layer class across its full K dimension and records the
+remaining matmul-heavy full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_full_norm_real_weight_rows.py
+```
+
+Run the vocab sampled-K real-weight row gate, which executes every output row of
+the singleton `embedding` and `lm_head` layers over a wider sampled-K window and
+records the remaining full-K/full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_vocab_sampled_k_real_weight_rows.py
+```
+
+Run the repaired real-weight execution gate, which maps the currently executed
+real-weight rows through both normal and high-failure repair manifests and
+checks that logical output checksums remain invariant while physical route
+checksums differ, with:
+
+```sh
+python3 scripts/check_e1x_repaired_real_weight_execution.py
+```
+
+Run the attention-output sampled-K real-weight row gate, which executes every
+`attn_out_proj` output row over a bounded sampled-K window and records the
+remaining full-K/full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_attn_out_sampled_k_real_weight_rows.py
+```
+
+Run the attention-QKV sampled-K real-weight row gate, which executes every
+`attn_qkv_proj` output row over a bounded sampled-K window and records the
+remaining full-K/full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_attn_qkv_sampled_k_real_weight_rows.py
+```
+
+Run the MLP-gate sampled-K real-weight row gate, which executes every
+`mlp_gate_proj` output row over a bounded sampled-K window and records the
+remaining full-K/full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_mlp_gate_sampled_k_real_weight_rows.py
+```
+
+Run the MLP-up sampled-K real-weight row gate, which executes every
+`mlp_up_proj` output row over a bounded sampled-K window and records the
+remaining full-K/full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_mlp_up_sampled_k_real_weight_rows.py
+```
+
+Run the MLP-down sampled-K real-weight row gate, which executes every
+`mlp_down_proj` output row over a bounded sampled-K window and records the
+remaining full-K/full-output checksum blocker, with:
+
+```sh
+python3 scripts/check_e1x_mlp_down_sampled_k_real_weight_rows.py
+```
+
 Run the vector-kernel template gate, which emits a concrete RV64IM unrolled W4A8
 program template for one packed int4 vector word and scales it against the
 full-output workplan without claiming looped per-layer execution, with:

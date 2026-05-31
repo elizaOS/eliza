@@ -16,6 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DESIGN_ROOT = ROOT / "external/repos/edalearn/payload/designs"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/edalearn"
 CLAIM_BOUNDARY = "edalearn_conversion_training_only_no_e1_signoff_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 PINNED_REVISION = "fc34c2e89fd1e49b5cb97e04441b100014435384"
 
 CONFIG_RE = re.compile(r'^\s*set\s+([A-Za-z0-9_]+)\s+"?([^"\n]+?)"?\s*$')
@@ -157,6 +165,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
         "schema": "eda.design_bundle.v1",
         "id": f"{record_prefix}-design-bundle",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design": {"name": design_name, "revision": PINNED_REVISION, "top_module": top},
         "sources": {
             "rtl": rtl_sources,
@@ -180,6 +189,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-rtl-graph",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "graph": {
             "node_features": nodes,
             "edge_features": edges,
@@ -200,6 +210,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
         "id": f"{record_prefix}-flow-run",
         "design_bundle_id": design_bundle["id"],
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "toolchain": {
             "tools": ["EDALearn public RTL/config export"],
             "version_capture": "external/repos/edalearn/manifest.yaml",
@@ -274,6 +285,7 @@ def main() -> int:
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "design_root": rel(args.design_root),
         "available_design_count": len(designs),
         "converted_design_count": len(selected),

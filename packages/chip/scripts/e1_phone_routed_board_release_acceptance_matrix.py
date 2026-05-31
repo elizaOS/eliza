@@ -193,6 +193,8 @@ def candidate_end_to_end_context(
         "routed_candidate_source_binding": {
             "source_board": source_binding.get("source_board", ""),
             "candidate_board": source_binding.get("candidate_board", ""),
+            "source_board_sha256": source_binding.get("source_board_sha256", ""),
+            "candidate_board_sha256": source_binding.get("candidate_board_sha256", ""),
             "candidate_matches_source_board": bool(
                 source_binding.get("candidate_matches_source_board") is True
             ),
@@ -881,17 +883,119 @@ def collect_validation_evidence(burndown: dict[str, Any]) -> list[dict[str, Any]
         for artifact in evidence.get("required_artifacts", []):
             artifacts.append(path_presence(str(artifact)))
         missing = [item["path"] for item in artifacts if not item["present"]]
+        file_presence_complete = not missing and bool(artifacts)
+        source_declared_present = bool(evidence.get("present") is True)
         rows.append(
             {
                 "id": evidence_id,
                 "acceptance_rule": evidence.get("acceptance_rule"),
                 "source_declared_present": evidence.get("present"),
-                "present": not missing and bool(artifacts),
+                "present": file_presence_complete,
+                "file_presence_complete": file_presence_complete,
+                "release_evidence_declared_present": source_declared_present,
+                "release_validation_state": (
+                    "file_present_but_source_declares_release_evidence_absent"
+                    if file_presence_complete and not source_declared_present
+                    else "blocked_missing_required_artifacts"
+                    if not file_presence_complete
+                    else "source_declared_present_not_release_approved"
+                ),
+                "release_credit": False,
+                "release_blocker": (
+                    "source_inventory_declares_validation_evidence_absent"
+                    if not source_declared_present
+                    else "release_approval_not_granted"
+                ),
                 "required_artifacts": artifacts,
                 "missing_artifacts": missing,
             }
         )
     return rows
+
+
+def next_global_unblock_actions(
+    release_plan: dict[str, Any],
+    *,
+    domains_with_missing_nets: list[dict[str, Any]],
+    domains_with_missing_outputs: list[dict[str, Any]],
+    missing_outputs: list[dict[str, Any]],
+    candidate_present_blocked_outputs: list[dict[str, Any]],
+    missing_evidence: list[dict[str, Any]],
+    validation_evidence: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    actions = [
+        step
+        for step in release_plan.get("order_of_operations", [])
+        if str(step.get("current_status", "")).startswith("blocked")
+    ]
+    if actions:
+        return actions
+
+    derived: list[dict[str, Any]] = []
+    if domains_with_missing_nets:
+        derived.append(
+            {
+                "id": "complete_exact_route_nets",
+                "current_status": "blocked_route_domains_missing_exact_nets",
+                "blocked_count": len(domains_with_missing_nets),
+                "actions": [
+                    "complete every exact net in the routed-board domain inventory",
+                    "rerun route readiness and routed-board acceptance matrix generation",
+                ],
+            }
+        )
+    if domains_with_missing_outputs or missing_outputs:
+        derived.append(
+            {
+                "id": "produce_required_routed_outputs",
+                "current_status": "blocked_required_routed_outputs_missing",
+                "blocked_count": max(len(domains_with_missing_outputs), len(missing_outputs)),
+                "actions": [
+                    "generate all required production routed-board outputs",
+                    "bind each output to the release intake manifest with hashes and owner metadata",
+                ],
+            }
+        )
+    if candidate_present_blocked_outputs:
+        derived.append(
+            {
+                "id": "replace_local_candidates_with_release_evidence",
+                "current_status": "blocked_local_candidate_outputs_present_not_release",
+                "blocked_count": len(candidate_present_blocked_outputs),
+                "actions": [
+                    "replace local candidate outputs with supplier, fabricator, assembler, or lab accepted release artifacts",
+                    "preserve candidate files only as non-release traceability inputs",
+                ],
+            }
+        )
+    source_absent = [
+        row for row in validation_evidence if row.get("release_evidence_declared_present") is False
+    ]
+    if missing_evidence or source_absent:
+        derived.append(
+            {
+                "id": "close_validation_evidence",
+                "current_status": "blocked_validation_evidence_not_release_declared",
+                "blocked_count": len(missing_evidence) + len(source_absent),
+                "actions": [
+                    "provide clean DRC/ERC or signed waivers",
+                    "provide SI/PI/RF validation with measured or tool-qualified results",
+                    "provide routed-board STEP clearance and enclosure evidence from approved models",
+                ],
+            }
+        )
+    if not derived:
+        derived.append(
+            {
+                "id": "release_approval_required",
+                "current_status": "blocked_release_approval_not_granted",
+                "blocked_count": 1,
+                "actions": [
+                    "obtain release-owner approval after all fail-closed source inventories report release evidence present",
+                ],
+            }
+        )
+    return derived
 
 
 def first_matching_unblock_action(
@@ -1010,6 +1114,11 @@ def build_report(
         row for row in missing_outputs if row.get("candidate_present_blocked") is not True
     ]
     missing_evidence = [row for row in validation_evidence if not row["present"]]
+    validation_source_absent = [
+        row
+        for row in validation_evidence
+        if row.get("release_evidence_declared_present") is False
+    ]
     domains_with_missing_nets = [row for row in domains if row["missing_exact_net_count"]]
     domains_with_missing_outputs = [row for row in domains if row["missing_production_outputs"]]
 
@@ -1100,6 +1209,20 @@ def build_report(
             ]["passing_connection_terminal_pair_count"],
             "validation_evidence_category_count": len(validation_evidence),
             "missing_validation_evidence_category_count": len(missing_evidence),
+            "validation_evidence_file_presence_complete_count": len(
+                [row for row in validation_evidence if row.get("file_presence_complete") is True]
+            ),
+            "validation_evidence_source_declared_present_count": len(
+                [
+                    row
+                    for row in validation_evidence
+                    if row.get("release_evidence_declared_present") is True
+                ]
+            ),
+            "validation_evidence_source_declared_absent_count": len(validation_source_absent),
+            "validation_evidence_release_credit_count": len(
+                [row for row in validation_evidence if row.get("release_credit") is True]
+            ),
             "development_route_count": development_route_context["route_count"],
             "development_segment_count": development_route_context["segment_count"],
             "development_via_count": development_route_context["via_count"],
@@ -1127,11 +1250,15 @@ def build_report(
         "candidate_present_blocked_required_outputs": candidate_present_blocked_outputs,
         "truly_missing_required_outputs": truly_missing_outputs,
         "required_acceptance_evidence": validation_evidence,
-        "next_global_unblock_actions": [
-            step
-            for step in release_plan.get("order_of_operations", [])
-            if str(step.get("current_status", "")).startswith("blocked")
-        ],
+        "next_global_unblock_actions": next_global_unblock_actions(
+            release_plan,
+            domains_with_missing_nets=domains_with_missing_nets,
+            domains_with_missing_outputs=domains_with_missing_outputs,
+            missing_outputs=missing_outputs,
+            candidate_present_blocked_outputs=candidate_present_blocked_outputs,
+            missing_evidence=missing_evidence,
+            validation_evidence=validation_evidence,
+        ),
         "forbidden_claims": forbidden_claims,
     }
 
@@ -1273,17 +1400,34 @@ def render_markdown(report: dict[str, Any]) -> str:
             "",
             "## Required Acceptance Evidence",
             "",
-            "| Evidence | Present | Missing artifacts | Acceptance rule |",
-            "| --- | --- | ---: | --- |",
+            "| Evidence | Files present | Source declares release evidence | Release state | Missing artifacts | Acceptance rule |",
+            "| --- | --- | --- | --- | ---: | --- |",
         ]
     )
     for evidence in report["required_acceptance_evidence"]:
         lines.append(
-            "| `{id}` | `{present}` | {missing} | {rule} |".format(
+            "| `{id}` | `{present}` | `{declared}` | `{state}` | {missing} | {rule} |".format(
                 id=evidence["id"],
-                present=evidence["present"],
+                present=evidence["file_presence_complete"],
+                declared=evidence["release_evidence_declared_present"],
+                state=evidence["release_validation_state"],
                 missing=len(evidence["missing_artifacts"]),
                 rule=str(evidence["acceptance_rule"]).replace("|", "\\|"),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "## Next Unblock Actions",
+            "",
+        ]
+    )
+    for action in report["next_global_unblock_actions"]:
+        lines.append(
+            "- `{id}`: `{status}` ({count} blocked rows)".format(
+                id=action.get("id", "unblock_action"),
+                status=action.get("current_status", "blocked"),
+                count=action.get("blocked_count", len(action.get("actions", []))),
             )
         )
     lines.extend(

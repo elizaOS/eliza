@@ -85,6 +85,7 @@ write_smoke_manifest() {
         printf 'check=qemu.run\n'
         printf 'evidence_kind=qemu-executable-transcript\n'
         printf 'claim_boundary=qemu-virt software reference only; not e1-chip hardware ABI boot evidence\n'
+        printf 'claim_allowed=false\n'
         printf 'phone_claim_allowed=false\n'
         printf 'release_claim_allowed=false\n'
         printf 'hardware_boot_claim_allowed=false\n'
@@ -352,6 +353,7 @@ from pathlib import Path
 payload = {
     "schema": "eliza.qemu_virt_os_boot_attempt.v1",
     "claim_boundary": "qemu_virt_reference_only_not_e1_chip_rtl",
+    "claim_allowed": False,
     "phone_claim_allowed": False,
     "release_claim_allowed": False,
     "hardware_boot_claim_allowed": False,

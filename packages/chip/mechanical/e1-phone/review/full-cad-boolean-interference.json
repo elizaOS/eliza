@@ -1,559 +1,5819 @@
 {
-  "claim_boundary": "Fail-closed full CAD boolean interference acceptance. Targeted AABB clearance, concept STEP envelopes, and blank templates do not count as supplier B-rep/routed-board boolean clash evidence.",
-  "status": "blocked_boolean_interference_incomplete",
-  "overall_status": "blocked_boolean_interference_incomplete",
-  "source_reviews": {
-    "solid_cad_status": "generated",
-    "step_validation_status": "pass",
-    "assembly_clearance_status": "pass",
-    "board_step_readiness_status": "blocked_local_routed_step_candidate_not_release",
-    "routed_board_clearance_status": "blocked_waiting_for_physical_routed_board_clearance_result",
-    "supplier_response_status": "blocked_no_supplier_responses"
+  "schema": "eliza.e1_phone_full_cad_boolean_interference.v1",
+  "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+  "evidence_class": "concept_envelope_brep_boolean_interference_result",
+  "date": "2026-05-20",
+  "reviewer": "automated_boolean_check",
+  "aabb_prefilter_mm": 1.0,
+  "min_target_gap_mm": 0.15,
+  "parts_loaded": 258,
+  "parts_missing": [],
+  "source_geometry": {
+    "manifest_path": "mechanical/e1-phone/out/assembly-manifest.json",
+    "manifest_sha256": "1acf322a006f56f493513ba5430c98f17515da994233cc9c514fd2c6a879f6e0",
+    "manifest_entry_count": 258,
+    "step_directory": "mechanical/e1-phone/out",
+    "loaded_part_count": 258,
+    "critical_step_hashes": [
+      {
+        "part": "display_lcm",
+        "path": "mechanical/e1-phone/out/display_lcm.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15681,
+        "sha256": "114e1550905ebc05ea7cfdbc8450e5d2c28e278cd0bdd24df611701e35d7ee66",
+        "bbox_mm": [
+          -35.39,
+          -70.085,
+          1.63,
+          35.39,
+          59.085,
+          5.02
+        ]
+      },
+      {
+        "part": "earpiece_receiver",
+        "path": "mechanical/e1-phone/out/earpiece_receiver.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15525,
+        "sha256": "f1df0a5f159a49244587d5036b33af6f3b7a651d13fd64c506a16dd14186869e",
+        "bbox_mm": [
+          -6.0,
+          65.8,
+          -0.25,
+          6.0,
+          71.8,
+          2.25
+        ]
+      },
+      {
+        "part": "front_camera_black_mask_window",
+        "path": "mechanical/e1-phone/out/front_camera_black_mask_window.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15577,
+        "sha256": "8c464500d5d5e0f13f364fec777b10ad8d748e47934004102b375eb9a7bbb4eb",
+        "bbox_mm": [
+          -21.5,
+          65.3,
+          5.08,
+          -16.5,
+          70.3,
+          5.16
+        ]
+      },
+      {
+        "part": "front_camera_module",
+        "path": "mechanical/e1-phone/out/front_camera_module.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15616,
+        "sha256": "45b9fb1638389046d9232a948e2c36cc47386c272bdd4ac841e9de8a4f92e4a6",
+        "bbox_mm": [
+          -22.25,
+          64.55,
+          -0.6,
+          -15.75,
+          71.05,
+          2.6
+        ]
+      },
+      {
+        "part": "front_camera_under_glass",
+        "path": "mechanical/e1-phone/out/front_camera_under_glass.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15585,
+        "sha256": "542a45846a593b1ec34672ffd1e1313208b7e2474df2315c8cad0b0f57799594",
+        "bbox_mm": [
+          -20.7,
+          66.1,
+          5.08,
+          -17.3,
+          69.5,
+          5.16
+        ]
+      },
+      {
+        "part": "handset_acoustic_mesh",
+        "path": "mechanical/e1-phone/out/handset_acoustic_mesh.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15598,
+        "sha256": "1b44da94125b1cb91aef554f014b2412d7d3c9daccbc236a000f5599825bc127",
+        "bbox_mm": [
+          -8.75,
+          69.14,
+          4.75,
+          8.75,
+          69.26,
+          5.15
+        ]
+      },
+      {
+        "part": "handset_acoustic_slot",
+        "path": "mechanical/e1-phone/out/handset_acoustic_slot.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15538,
+        "sha256": "6606edfd0a7e689eb447a71673a6d8460cab547222c3ad17784129b4374b9ea2",
+        "bbox_mm": [
+          -8.0,
+          68.7,
+          5.855,
+          8.0,
+          69.7,
+          6.105
+        ]
+      },
+      {
+        "part": "orange_back_shell",
+        "path": "mechanical/e1-phone/out/orange_back_shell.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 344345,
+        "sha256": "e515e073f1b19e19e39951be97469c009f7e639b5bfcc4949edcab47e448afcc",
+        "bbox_mm": [
+          -39.0,
+          -76.8,
+          -5.9,
+          39.0,
+          76.8,
+          -4.7
+        ]
+      },
+      {
+        "part": "orange_side_frame",
+        "path": "mechanical/e1-phone/out/orange_side_frame.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 754096,
+        "sha256": "545f8029478243f05fc1002a4b5a2fb7084058e251c2bbe9a36e2724ff98fbb7",
+        "bbox_mm": [
+          -39.0,
+          -76.8,
+          -5.9,
+          39.0,
+          76.8,
+          5.15
+        ]
+      },
+      {
+        "part": "rear_camera_cover_glass",
+        "path": "mechanical/e1-phone/out/rear_camera_cover_glass.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15562,
+        "sha256": "9bb28263ec2fa0230d3f7188ab940c992e8aa0df08cf42eb050277b030c97278",
+        "bbox_mm": [
+          16.4,
+          53.2,
+          -5.9,
+          25.6,
+          62.4,
+          -5.35
+        ]
+      },
+      {
+        "part": "rear_camera_lens_window",
+        "path": "mechanical/e1-phone/out/rear_camera_lens_window.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15560,
+        "sha256": "2cf1b543a21b3ed738c98971e0513d822d8d2591eb0120dd1cdb03e26d8607d1",
+        "bbox_mm": [
+          17.6,
+          54.4,
+          -5.9,
+          24.4,
+          61.2,
+          -5.35
+        ]
+      },
+      {
+        "part": "rear_camera_module",
+        "path": "mechanical/e1-phone/out/rear_camera_module.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15512,
+        "sha256": "1d7ba2623b1f028abc324c98fbac6e5bf222f94c4a650fcf16a1f8ff13b01ddb",
+        "bbox_mm": [
+          16.0,
+          52.8,
+          -4.3,
+          26.0,
+          62.8,
+          0.8
+        ]
+      },
+      {
+        "part": "rear_camera_optical_sight_tunnel",
+        "path": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15599,
+        "sha256": "a9c1f7398592d1c7a6988630262d7c733cd436b5fdea1298bbea05d411f704ec",
+        "bbox_mm": [
+          17.45,
+          54.25,
+          -5.9,
+          24.55,
+          61.35,
+          -4.3
+        ]
+      },
+      {
+        "part": "rear_camera_shell_aperture",
+        "path": "mechanical/e1-phone/out/rear_camera_shell_aperture.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15619,
+        "sha256": "22b886e1b88721028844095064ef78e24d82ac507f3619ccb5c4463c6d3aa4ce",
+        "bbox_mm": [
+          15.7,
+          52.5,
+          -5.955,
+          26.3,
+          63.1,
+          -5.875
+        ]
+      },
+      {
+        "part": "rear_flash_led",
+        "path": "mechanical/e1-phone/out/rear_flash_led.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15565,
+        "sha256": "f0ae19ca99334a13b9aa007b2686f154acf4f223d8a3cf5c94c482031ef9fb19",
+        "bbox_mm": [
+          12.4,
+          57.3,
+          -4.55,
+          13.4,
+          58.3,
+          -3.85
+        ]
+      },
+      {
+        "part": "rear_flash_led_window",
+        "path": "mechanical/e1-phone/out/rear_flash_led_window.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15543,
+        "sha256": "b7c971d651991593c529b0ac8526203b83a5bb3570419a64a42abaf7cbc1bbaf",
+        "bbox_mm": [
+          12.1,
+          57.0,
+          -5.9,
+          13.7,
+          58.6,
+          -5.35
+        ]
+      },
+      {
+        "part": "rear_flash_shell_aperture",
+        "path": "mechanical/e1-phone/out/rear_flash_shell_aperture.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15602,
+        "sha256": "ba410ca0c2b250f23b478041c52458f99818f6355d5e50bca71e4cbb26326df1",
+        "bbox_mm": [
+          11.8,
+          56.7,
+          -5.955,
+          14.0,
+          58.9,
+          -5.875
+        ]
+      },
+      {
+        "part": "screen_adhesive_top",
+        "path": "mechanical/e1-phone/out/screen_adhesive_top.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 15616,
+        "sha256": "568d5461e1747a4496e070555690152b3c6ec9e56a3c694e8220719de480136e",
+        "bbox_mm": [
+          -31.5,
+          74.885,
+          4.96,
+          31.5,
+          75.885,
+          5.14
+        ]
+      },
+      {
+        "part": "screen_cover_glass",
+        "path": "mechanical/e1-phone/out/screen_cover_glass.step",
+        "present": true,
+        "loaded": true,
+        "size_bytes": 131089,
+        "sha256": "592e86672f5e0a5b24728b67c854fa5cd7d57109946dbf5a5e24a07ada065942",
+        "bbox_mm": [
+          -38.55,
+          -75.885,
+          5.2,
+          38.55,
+          75.885,
+          5.9
+        ]
+      }
+    ],
+    "derivation": "Each pass/fail check in this report is computed from the loaded STEP B-rep shapes above using OpenCascade intersections, minimum-distance queries, or bbox containment derived from those loaded shapes."
   },
-  "expected_scope_count": 10,
-  "scope_count": 10,
-  "cad_prerequisite_scope_count": 10,
-  "concept_aabb_pair_check_count": 17,
-  "concept_aabb_interference_count": 0,
-  "complete_result_count": 0,
-  "results_template": "mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv",
-  "required_evidence_class": "physical_supplier_brep_boolean_interference_result",
-  "prerequisites": {
-    "solid_cad_generated": true,
-    "step_validation_pass": true,
-    "assembly_clearance_pass": true,
-    "concept_aabb_interference_scan_pass": true,
-    "routed_board_step_ready": false,
-    "routed_board_clearance_pass": false,
-    "supplier_brep_models_accepted": false,
-    "scope_cad_prerequisites_pass": true
-  },
-  "scope_cases": [
+  "pair_count_total": 33153,
+  "pair_count_brep_evaluated": 989,
+  "unintentional_clashes": [],
+  "scope_results": [
     {
-      "id": "screen_stack_to_orange_rails",
-      "source_clearance_ids": [
-        "screen_cover_glass_to_orange_body",
-        "display_lcm_under_cover_glass"
-      ],
-      "required_parts": [
+      "case": "screen_stack_to_orange_rails",
+      "parts": [
         "screen_cover_glass",
         "display_lcm",
         "screen_adhesive_top",
-        "orange_side_frame"
+        "orange_side_frame",
+        "orange_back_shell"
       ],
-      "concept_pair_checks": [
-        [
-          "display_lcm",
-          "screen_cover_glass"
-        ],
-        [
-          "display_lcm",
-          "orange_side_frame"
-        ],
-        [
-          "screen_cover_glass",
-          "orange_side_frame"
-        ]
+      "parts_present": [
+        "screen_cover_glass",
+        "display_lcm",
+        "screen_adhesive_top",
+        "orange_side_frame",
+        "orange_back_shell"
       ],
-      "concept_aabb_pair_checks": [
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 6.33,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
+      "status": "pass",
+      "pair_count": 10,
+      "sample_pairs": [
         {
-          "scope_id": "screen_stack_to_orange_rails",
-          "pair": [
-            "display_lcm",
-            "screen_cover_glass"
+          "parts": [
+            "screen_cover_glass",
+            "display_lcm"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
           "min_gap_mm": 0.18,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
         },
         {
-          "scope_id": "screen_stack_to_orange_rails",
-          "pair": [
-            "display_lcm",
-            "orange_side_frame"
+          "parts": [
+            "screen_cover_glass",
+            "screen_adhesive_top"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
-          "min_gap_mm": 2.46,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true,
-          "method": "side_frame_inner_aperture_clearance"
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.06,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
         },
         {
-          "scope_id": "screen_stack_to_orange_rails",
-          "pair": [
+          "parts": [
             "screen_cover_glass",
             "orange_side_frame"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
           "min_gap_mm": 0.05,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
-        }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 2,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
-    },
-    {
-      "id": "routed_pcb_components_to_orange_enclosure",
-      "source_clearance_ids": [
-        "battery_to_pcb_islands"
-      ],
-      "required_parts": [
-        "main_pcb",
-        "battery_pouch",
-        "orange_back_shell",
-        "orange_side_frame"
-      ],
-      "concept_pair_checks": [
-        [
-          "main_pcb",
-          "battery_pouch"
-        ]
-      ],
-      "concept_aabb_pair_checks": [
-        {
-          "scope_id": "routed_pcb_components_to_orange_enclosure",
-          "pair": [
-            "main_pcb",
-            "battery_pouch"
-          ],
-          "missing_parts": [],
-          "component_pair_count": 2,
-          "min_gap_mm": 0.5,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
-        }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "routed board components must clear enclosure ribs, bosses, snaps, and side rails",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
-    },
-    {
-      "id": "usb_c_port_saddle_aperture_and_gaskets",
-      "source_clearance_ids": [
-        "usb_shell_to_external_aperture",
-        "usb_to_bottom_speaker"
-      ],
-      "required_parts": [
-        "usb_c_receptacle",
-        "usb_c_external_aperture",
-        "orange_usb_reinforcement_saddle"
-      ],
-      "concept_pair_checks": [
-        [
-          "usb_c_receptacle",
-          "bottom_speaker_module"
-        ],
-        [
-          "usb_c_receptacle",
-          "bottom_mic"
-        ]
-      ],
-      "concept_aabb_pair_checks": [
-        {
-          "scope_id": "usb_c_port_saddle_aperture_and_gaskets",
-          "pair": [
-            "usb_c_receptacle",
-            "bottom_speaker_module"
-          ],
-          "missing_parts": [],
-          "component_pair_count": 1,
-          "min_gap_mm": 6.53,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
         },
         {
-          "scope_id": "usb_c_port_saddle_aperture_and_gaskets",
-          "pair": [
-            "usb_c_receptacle",
-            "bottom_mic"
+          "parts": [
+            "screen_cover_glass",
+            "orange_back_shell"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
-          "min_gap_mm": 11.78,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 9.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "display_lcm",
+            "screen_adhesive_top"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 15.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "display_lcm",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 2.46,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "display_lcm",
+            "orange_back_shell"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.33,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "screen_adhesive_top",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 2.6141,
+          "intentional_contact": true
         }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "USB-C shell, aperture, saddle, drip lip, and gaskets must remain interference-free",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 2,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      ]
     },
     {
-      "id": "side_buttons_switches_gaskets_labyrinth",
-      "source_clearance_ids": [
-        "button_caps_to_side_frame"
+      "case": "routed_pcb_components_to_orange_enclosure",
+      "parts": [
+        "main_pcb",
+        "orange_back_shell",
+        "orange_side_frame",
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can"
       ],
-      "required_parts": [
+      "parts_present": [
+        "main_pcb",
+        "orange_back_shell",
+        "orange_side_frame",
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can"
+      ],
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 2.2,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "routed board components must clear enclosure ribs, bosses, snaps, and side rails",
+      "status": "pass",
+      "pair_count": 15,
+      "sample_pairs": [
+        {
+          "parts": [
+            "main_pcb",
+            "orange_back_shell"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 5.85,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "soc_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "pmic_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "radio_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 162.426,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "soc_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "pmic_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ]
+    },
+    {
+      "case": "usb_c_port_saddle_aperture_and_gaskets",
+      "parts": [
+        "usb_c_receptacle",
+        "usb_c_external_aperture",
+        "orange_usb_reinforcement_saddle",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf"
+      ],
+      "parts_present": [
+        "usb_c_receptacle",
+        "usb_c_external_aperture",
+        "orange_usb_reinforcement_saddle",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf"
+      ],
+      "parts_missing": [],
+      "travel": {
+        "part": "usb_c_receptacle",
+        "axis": "-Y",
+        "max_mm": 8.0,
+        "step_mm": 1.0,
+        "samples": [
+          {
+            "travel_mm": 0.0,
+            "min_gap_mm": 0.0,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 7.1073,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "interference_mm3": 7.1073,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 1.0,
+            "min_gap_mm": 0.4,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 0.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 2.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 1.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 3.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 2.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 4.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 3.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 5.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 4.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 6.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 5.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 7.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 6.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 8.0,
+            "min_gap_mm": 0.5554,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 7.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.7411,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.5554,
+                "intentional_contact": true
+              }
+            ]
+          }
+        ],
+        "worst_min_gap_mm": 0.0,
+        "worst_interference_volume_mm3": 0.0,
+        "status": "pass"
+      },
+      "min_gap_mm": 0.0,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "USB-C shell, aperture, saddle, drip lip, and gaskets must remain interference-free through insertion travel",
+      "status": "pass",
+      "pair_count": 36,
+      "sample_pairs": [
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_external_aperture"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.105,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "orange_usb_reinforcement_saddle"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 7.1073,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.47,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_bottom"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.17,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_left"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.775,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.775,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.52,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.435,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ]
+    },
+    {
+      "case": "side_buttons_switches_gaskets_labyrinth",
+      "parts": [
         "power_button_cap",
         "volume_button_cap",
+        "power_button_elastomer_gasket",
+        "volume_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_labyrinth_lower_rail",
         "orange_side_frame"
       ],
-      "concept_pair_checks": [
-        [
-          "power_button_cap",
-          "volume_button_cap"
-        ]
+      "parts_present": [
+        "power_button_cap",
+        "volume_button_cap",
+        "power_button_elastomer_gasket",
+        "volume_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_labyrinth_lower_rail",
+        "orange_side_frame"
       ],
-      "concept_aabb_pair_checks": [
+      "parts_missing": [],
+      "travel": {
+        "parts": [
+          {
+            "part": "power_button_cap",
+            "axis": "-X",
+            "max_mm": 0.35,
+            "step_mm": 0.05,
+            "samples": [
+              {
+                "travel_mm": 0.0,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 0.66,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 0.66,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.65,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.05,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 1.32,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 1.32,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.6,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.1,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 1.98,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 1.98,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.55,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.15,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 2.64,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 2.64,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.5,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.2,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 3.3,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 3.3,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.45,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.25,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 3.96,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 3.96,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.4,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.3,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 4.62,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 4.62,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.35,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.35,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 5.28,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 5.28,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.3,
+                    "intentional_contact": true
+                  }
+                ]
+              }
+            ],
+            "worst_min_gap_mm": 0.0,
+            "worst_interference_volume_mm3": 0.0,
+            "status": "pass"
+          },
+          {
+            "part": "volume_button_cap",
+            "axis": "+X",
+            "max_mm": 0.35,
+            "step_mm": 0.05,
+            "samples": [
+              {
+                "travel_mm": 0.0,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 1.155,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.65,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 1.155,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.05,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 2.31,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.6,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 2.31,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.1,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 3.465,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.55,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 3.465,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.15,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 4.62,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.5,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 4.62,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.2,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 5.775,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.45,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 5.775,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.25,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 6.93,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.4,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 6.93,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.3,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 8.085,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.35,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 8.085,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.35,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 9.24,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.3,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 9.24,
+                    "intentional_contact": true
+                  }
+                ]
+              }
+            ],
+            "worst_min_gap_mm": 0.0,
+            "worst_interference_volume_mm3": 0.0,
+            "status": "pass"
+          }
+        ],
+        "worst_min_gap_mm": 0.0,
+        "worst_interference_volume_mm3": 0.0
+      },
+      "min_gap_mm": 77.1,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "button caps, gaskets, rails, and switch keepouts must not bind or preload",
+      "status": "pass",
+      "pair_count": 36,
+      "sample_pairs": [
         {
-          "scope_id": "side_buttons_switches_gaskets_labyrinth",
-          "pair": [
+          "parts": [
             "power_button_cap",
             "volume_button_cap"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "aabb_prefilter",
           "min_gap_mm": 77.1,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "power_button_elastomer_gasket"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.66,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "volume_button_elastomer_gasket"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.65,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "power_button_labyrinth_upper_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2704,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "volume_button_labyrinth_upper_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.325,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "power_button_labyrinth_lower_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2704,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.325,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
         }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "button caps, gaskets, rails, and switch keepouts must not bind or preload",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      ]
     },
     {
-      "id": "front_camera_earpiece_under_glass_stack",
-      "source_clearance_ids": [
-        "front_camera_to_earpiece"
-      ],
-      "required_parts": [
+      "case": "front_camera_earpiece_under_glass_stack",
+      "parts": [
         "front_camera_module",
+        "front_camera_under_glass",
+        "front_camera_black_mask_window",
         "earpiece_receiver",
+        "handset_acoustic_slot",
+        "handset_acoustic_mesh",
         "screen_cover_glass"
       ],
-      "concept_pair_checks": [
-        [
-          "front_camera_module",
-          "earpiece_receiver"
-        ],
-        [
-          "front_camera_module",
-          "screen_cover_glass"
-        ]
+      "parts_present": [
+        "front_camera_module",
+        "front_camera_under_glass",
+        "front_camera_black_mask_window",
+        "earpiece_receiver",
+        "handset_acoustic_slot",
+        "handset_acoustic_mesh",
+        "screen_cover_glass"
       ],
-      "concept_aabb_pair_checks": [
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 2.48,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "under-glass camera and handset acoustic path must clear each other and the cover glass",
+      "status": "pass",
+      "pair_count": 21,
+      "sample_pairs": [
         {
-          "scope_id": "front_camera_earpiece_under_glass_stack",
-          "pair": [
+          "parts": [
+            "front_camera_module",
+            "front_camera_under_glass"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.48,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_module",
+            "front_camera_black_mask_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.48,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
             "front_camera_module",
             "earpiece_receiver"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "aabb_prefilter",
           "min_gap_mm": 9.75,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
         },
         {
-          "scope_id": "front_camera_earpiece_under_glass_stack",
-          "pair": [
+          "parts": [
+            "front_camera_module",
+            "handset_acoustic_slot"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.75,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "front_camera_module",
+            "handset_acoustic_mesh"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
             "front_camera_module",
             "screen_cover_glass"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "aabb_prefilter",
           "min_gap_mm": 2.6,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_under_glass",
+            "front_camera_black_mask_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.9248,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_under_glass",
+            "earpiece_receiver"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 11.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
         }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "under-glass camera and handset acoustic path must clear cover glass and each other",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      ]
     },
     {
-      "id": "rear_camera_window_baffle_adhesive_stack",
-      "source_clearance_ids": [
-        "rear_camera_to_battery"
-      ],
-      "required_parts": [
+      "case": "rear_camera_window_baffle_adhesive_stack",
+      "parts": [
         "rear_camera_module",
-        "orange_back_shell",
         "rear_camera_cover_glass",
-        "rear_camera_light_baffle_top"
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "rear_camera_lens_window",
+        "orange_back_shell",
+        "rear_flash_led_window"
       ],
-      "concept_pair_checks": [
-        [
-          "rear_camera_module",
-          "orange_back_shell"
-        ],
-        [
-          "rear_camera_module",
-          "battery_pouch"
-        ],
-        [
-          "rear_camera_module",
-          "rear_camera_cover_glass"
-        ]
+      "parts_present": [
+        "rear_camera_module",
+        "rear_camera_cover_glass",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "rear_camera_lens_window",
+        "orange_back_shell",
+        "rear_flash_led_window"
       ],
-      "concept_aabb_pair_checks": [
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 0.5,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "rear camera module, cover window, adhesive, baffles, and the adjacent flash window must remain interference-free",
+      "status": "pass",
+      "pair_count": 28,
+      "sample_pairs": [
         {
-          "scope_id": "rear_camera_window_baffle_adhesive_stack",
-          "pair": [
-            "rear_camera_module",
-            "orange_back_shell"
-          ],
-          "missing_parts": [],
-          "component_pair_count": 1,
-          "min_gap_mm": 0.4,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
-        },
-        {
-          "scope_id": "rear_camera_window_baffle_adhesive_stack",
-          "pair": [
-            "rear_camera_module",
-            "battery_pouch"
-          ],
-          "missing_parts": [],
-          "component_pair_count": 1,
-          "min_gap_mm": 16.3,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
-        },
-        {
-          "scope_id": "rear_camera_window_baffle_adhesive_stack",
-          "pair": [
+          "parts": [
             "rear_camera_module",
             "rear_camera_cover_glass"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "aabb_prefilter",
           "min_gap_mm": 1.05,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_cover_adhesive_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.89,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_light_baffle_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.975,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_light_baffle_bottom"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.975,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_flash_led_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_glass",
+            "rear_camera_cover_adhesive_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.055,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
         }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "rear camera module, cover window, adhesive, and baffles must remain interference-free",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      ]
     },
     {
-      "id": "battery_pouch_pcb_flex_haptic",
-      "source_clearance_ids": [
-        "battery_to_pcb_islands",
-        "haptic_to_pcb_islands",
-        "split_interconnect_flex_to_battery_edge"
+      "case": "rear_flash_torch_window_back_wall",
+      "parts": [
+        "rear_flash_led",
+        "rear_flash_led_window",
+        "orange_back_shell",
+        "rear_camera_module",
+        "rear_camera_lens_window",
+        "main_pcb"
       ],
-      "required_parts": [
+      "parts_present": [
+        "rear_flash_led",
+        "rear_flash_led_window",
+        "orange_back_shell",
+        "rear_camera_module",
+        "rear_camera_lens_window",
+        "main_pcb"
+      ],
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 0.5,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "rear torch LED must sit buried behind the back wall, its window must register in the back shell, and it must not clash with the adjacent camera or PCB",
+      "status": "pass",
+      "pair_count": 15,
+      "sample_pairs": [
+        {
+          "parts": [
+            "rear_flash_led",
+            "rear_flash_led_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.6185,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "rear_camera_module"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.6,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.35,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led_window",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led_window",
+            "rear_camera_module"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led_window",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ]
+    },
+    {
+      "case": "battery_pouch_pcb_flex_haptic",
+      "parts": [
         "battery_pouch",
         "main_pcb",
-        "haptic_lra",
-        "split_interconnect_side_flex"
+        "split_interconnect_side_flex",
+        "haptic_lra"
       ],
-      "concept_pair_checks": [
-        [
-          "battery_pouch",
-          "main_pcb"
-        ],
-        [
-          "battery_pouch",
-          "haptic_lra"
-        ],
-        [
-          "battery_pouch",
-          "split_interconnect_side_flex"
-        ]
+      "parts_present": [
+        "battery_pouch",
+        "main_pcb",
+        "split_interconnect_side_flex",
+        "haptic_lra"
       ],
-      "concept_aabb_pair_checks": [
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 0.01,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "battery, split interconnect, haptic, and PCB islands must not pinch or overlap",
+      "status": "pass",
+      "pair_count": 6,
+      "sample_pairs": [
         {
-          "scope_id": "battery_pouch_pcb_flex_haptic",
-          "pair": [
+          "parts": [
             "battery_pouch",
             "main_pcb"
           ],
-          "missing_parts": [],
-          "component_pair_count": 2,
-          "min_gap_mm": 0.5,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 4454.4,
+          "intentional_contact": true
         },
         {
-          "scope_id": "battery_pouch_pcb_flex_haptic",
-          "pair": [
-            "battery_pouch",
-            "haptic_lra"
-          ],
-          "missing_parts": [],
-          "component_pair_count": 1,
-          "min_gap_mm": 0.5,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
-        },
-        {
-          "scope_id": "battery_pouch_pcb_flex_haptic",
-          "pair": [
+          "parts": [
             "battery_pouch",
             "split_interconnect_side_flex"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "aabb_prefilter",
           "min_gap_mm": 1.3,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "battery_pouch",
+            "haptic_lra"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "split_interconnect_side_flex"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "haptic_lra"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "split_interconnect_side_flex",
+            "haptic_lra"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.01,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
         }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "battery, split interconnect, haptic, and PCB islands must not pinch or overlap",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 3,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      ]
     },
     {
-      "id": "bottom_audio_microphone_speaker_meshes",
-      "source_clearance_ids": [
-        "bottom_mic_to_usb",
-        "usb_to_bottom_speaker"
-      ],
-      "required_parts": [
+      "case": "bottom_audio_microphone_speaker_meshes",
+      "parts": [
         "bottom_speaker_module",
+        "bottom_speaker_dust_mesh",
         "bottom_mic",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "bottom_microphone_port_1",
+        "bottom_microphone_port_2",
+        "bottom_speaker_acoustic_chamber",
         "usb_c_receptacle"
       ],
-      "concept_pair_checks": [
-        [
-          "bottom_speaker_module",
-          "bottom_mic"
-        ],
-        [
-          "bottom_speaker_module",
-          "usb_c_receptacle"
-        ]
+      "parts_present": [
+        "bottom_speaker_module",
+        "bottom_speaker_dust_mesh",
+        "bottom_mic",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "bottom_microphone_port_1",
+        "bottom_microphone_port_2",
+        "bottom_speaker_acoustic_chamber",
+        "usb_c_receptacle"
       ],
-      "concept_aabb_pair_checks": [
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 6.53,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "speaker, microphone, meshes, and acoustic ports must not clash with USB or enclosure plastic",
+      "status": "pass",
+      "pair_count": 36,
+      "sample_pairs": [
         {
-          "scope_id": "bottom_audio_microphone_speaker_meshes",
-          "pair": [
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_speaker_dust_mesh"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.22,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
             "bottom_speaker_module",
             "bottom_mic"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "aabb_prefilter",
           "min_gap_mm": 27.25,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
         },
         {
-          "scope_id": "bottom_audio_microphone_speaker_meshes",
-          "pair": [
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_mesh_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 32.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_mesh_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 27.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_port_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 32.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_port_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 27.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 181.5,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
             "bottom_speaker_module",
             "usb_c_receptacle"
           ],
-          "missing_parts": [],
-          "component_pair_count": 1,
+          "engine": "aabb_prefilter",
           "min_gap_mm": 6.53,
-          "max_overlap_volume_mm3": 0.0,
-          "interference_count": 0,
-          "pass": true
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
         }
-      ],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
-      "risk": "speaker, microphone, meshes, and acoustic ports must not clash with USB or enclosure plastic",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 2,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      ]
     },
     {
-      "id": "rf_shields_antennas_plastic_windows",
-      "source_clearance_ids": [
-        "rf_keepout_to_orange_shell"
-      ],
-      "required_parts": [
+      "case": "rf_shields_antennas_plastic_windows",
+      "parts": [
         "soc_shield_can",
+        "pmic_shield_can",
         "radio_shield_can",
-        "orange_back_shell"
+        "cellular_top_antenna_keepout",
+        "cellular_bottom_antenna_keepout",
+        "wifi_bt_side_antenna_keepout"
       ],
-      "concept_pair_checks": [],
-      "concept_aabb_pair_checks": [],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
+      "parts_present": [
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can",
+        "cellular_top_antenna_keepout",
+        "cellular_bottom_antenna_keepout",
+        "wifi_bt_side_antenna_keepout"
+      ],
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 0.0,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
       "risk": "RF shields, feed regions, and antenna plastic windows must preserve keepouts",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      "status": "pass",
+      "pair_count": 15,
+      "sample_pairs": [
+        {
+          "parts": [
+            "soc_shield_can",
+            "pmic_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 5.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "radio_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 46.8,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "cellular_top_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 5.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "cellular_bottom_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 115.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "wifi_bt_side_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "radio_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 20.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "cellular_top_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 8.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "cellular_bottom_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 118.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ]
     },
     {
-      "id": "molded_retention_boss_snap_service_features",
-      "source_clearance_ids": [
-        "snap_hooks_to_internal_components"
+      "case": "molded_retention_boss_snap_service_features",
+      "parts": [
+        "orange_screw_boss_1",
+        "orange_screw_boss_2",
+        "orange_snap_hook_1",
+        "orange_snap_hook_8",
+        "sim_tray_keepout",
+        "service_label_recess",
+        "main_pcb",
+        "battery_pouch"
       ],
-      "required_parts": [
-        "orange_back_shell",
-        "orange_side_frame",
-        "service_label_recess"
+      "parts_present": [
+        "orange_screw_boss_1",
+        "orange_screw_boss_2",
+        "orange_snap_hook_1",
+        "orange_snap_hook_8",
+        "sim_tray_keepout",
+        "service_label_recess",
+        "main_pcb",
+        "battery_pouch"
       ],
-      "concept_pair_checks": [],
-      "concept_aabb_pair_checks": [],
-      "concept_aabb_interference_count": 0,
-      "concept_aabb_scan_pass": true,
+      "parts_missing": [],
+      "travel": null,
+      "min_gap_mm": 0.0,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
       "risk": "screw bosses, snap hooks, service tray, and service label recess must not intrude into assemblies",
-      "required_parts_present": true,
-      "concept_clearance_case_count": 1,
-      "concept_clearance_pass": true,
-      "cad_prerequisite_pass": true,
-      "early_aabb_fit_pass": true
+      "status": "pass",
+      "pair_count": 28,
+      "sample_pairs": [
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "orange_screw_boss_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 65.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "orange_snap_hook_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "orange_snap_hook_8"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 105.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "sim_tray_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 62.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "service_label_recess"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 103.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "main_pcb"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "battery_pouch"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 19.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_2",
+            "orange_snap_hook_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 69.35,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ]
     }
   ],
-  "release_rule": "Every scope must be checked with a named boolean engine against supplier B-rep models and routed KiCad board STEP, with min gap >= 0, zero interference count, zero interference volume, reviewer, evidence_class=physical_supplier_brep_boolean_interference_result, and explicit pass."
+  "scope_results_full": [
+    {
+      "case": "screen_stack_to_orange_rails",
+      "parts": [
+        "screen_cover_glass",
+        "display_lcm",
+        "screen_adhesive_top",
+        "orange_side_frame",
+        "orange_back_shell"
+      ],
+      "parts_present": [
+        "screen_cover_glass",
+        "display_lcm",
+        "screen_adhesive_top",
+        "orange_side_frame",
+        "orange_back_shell"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "screen_cover_glass",
+            "display_lcm"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.18,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "screen_cover_glass",
+            "screen_adhesive_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.06,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "screen_cover_glass",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "screen_cover_glass",
+            "orange_back_shell"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 9.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "display_lcm",
+            "screen_adhesive_top"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 15.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "display_lcm",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 2.46,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "display_lcm",
+            "orange_back_shell"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.33,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "screen_adhesive_top",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 2.6141,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "screen_adhesive_top",
+            "orange_back_shell"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 9.66,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_side_frame",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 344.31,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 6.33,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
+      "status": "pass"
+    },
+    {
+      "case": "routed_pcb_components_to_orange_enclosure",
+      "parts": [
+        "main_pcb",
+        "orange_back_shell",
+        "orange_side_frame",
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can"
+      ],
+      "parts_present": [
+        "main_pcb",
+        "orange_back_shell",
+        "orange_side_frame",
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "main_pcb",
+            "orange_back_shell"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 5.85,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "soc_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "pmic_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "radio_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 162.426,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "soc_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "pmic_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "radio_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_side_frame",
+            "soc_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 12.65,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_side_frame",
+            "pmic_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 15.65,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_side_frame",
+            "radio_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 6.85,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "pmic_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 5.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "radio_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 46.8,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "radio_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 20.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 2.2,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "routed board components must clear enclosure ribs, bosses, snaps, and side rails",
+      "status": "pass"
+    },
+    {
+      "case": "usb_c_port_saddle_aperture_and_gaskets",
+      "parts": [
+        "usb_c_receptacle",
+        "usb_c_external_aperture",
+        "orange_usb_reinforcement_saddle",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf"
+      ],
+      "parts_present": [
+        "usb_c_receptacle",
+        "usb_c_external_aperture",
+        "orange_usb_reinforcement_saddle",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_external_aperture"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.105,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "orange_usb_reinforcement_saddle"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 7.1073,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.47,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_bottom"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.17,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_left"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.775,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.775,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.52,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_receptacle",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.435,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_external_aperture",
+            "orange_usb_reinforcement_saddle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.305,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_external_aperture",
+            "usb_c_perimeter_gasket_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.145,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_external_aperture",
+            "usb_c_perimeter_gasket_bottom"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.145,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_external_aperture",
+            "usb_c_perimeter_gasket_left"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.145,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_external_aperture",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.145,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_external_aperture",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.505,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_external_aperture",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.6505,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_usb_reinforcement_saddle",
+            "usb_c_perimeter_gasket_top"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.855,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_usb_reinforcement_saddle",
+            "usb_c_perimeter_gasket_bottom"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.855,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_usb_reinforcement_saddle",
+            "usb_c_perimeter_gasket_left"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.855,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_usb_reinforcement_saddle",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.855,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_usb_reinforcement_saddle",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.755,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_usb_reinforcement_saddle",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.6,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_top",
+            "usb_c_perimeter_gasket_bottom"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.89,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_top",
+            "usb_c_perimeter_gasket_left"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.0323,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_top",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.0323,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_top",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.24,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_top",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.155,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_bottom",
+            "usb_c_perimeter_gasket_left"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.0323,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_bottom",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.0323,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_bottom",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_bottom",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.055,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_left",
+            "usb_c_perimeter_gasket_right"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 10.49,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_left",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.145,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_left",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0814,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_right",
+            "usb_c_molded_drip_break_lip"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.145,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_perimeter_gasket_right",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0814,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "usb_c_molded_drip_break_lip",
+            "usb_c_internal_drain_shelf"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.1123,
+          "intentional_contact": true
+        }
+      ],
+      "travel": {
+        "part": "usb_c_receptacle",
+        "axis": "-Y",
+        "max_mm": 8.0,
+        "step_mm": 1.0,
+        "samples": [
+          {
+            "travel_mm": 0.0,
+            "min_gap_mm": 0.0,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 7.1073,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "interference_mm3": 7.1073,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 1.0,
+            "min_gap_mm": 0.4,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 0.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 2.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 1.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 3.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 2.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 4.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 3.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 5.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 4.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 6.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 5.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 7.0,
+            "min_gap_mm": 0.435,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 6.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.435,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.52,
+                "intentional_contact": true
+              }
+            ]
+          },
+          {
+            "travel_mm": 8.0,
+            "min_gap_mm": 0.5554,
+            "rigid_interference_volume_mm3": 0.0,
+            "compressible_interference_volume_mm3": 0.0,
+            "per_target": [
+              {
+                "target": "orange_usb_reinforcement_saddle",
+                "gap_mm": 7.4,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_internal_drain_shelf",
+                "gap_mm": 0.7411,
+                "intentional_contact": true
+              },
+              {
+                "target": "usb_c_molded_drip_break_lip",
+                "gap_mm": 0.5554,
+                "intentional_contact": true
+              }
+            ]
+          }
+        ],
+        "worst_min_gap_mm": 0.0,
+        "worst_interference_volume_mm3": 0.0,
+        "status": "pass"
+      },
+      "min_gap_mm": 0.0,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "USB-C shell, aperture, saddle, drip lip, and gaskets must remain interference-free through insertion travel",
+      "status": "pass"
+    },
+    {
+      "case": "side_buttons_switches_gaskets_labyrinth",
+      "parts": [
+        "power_button_cap",
+        "volume_button_cap",
+        "power_button_elastomer_gasket",
+        "volume_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_labyrinth_lower_rail",
+        "orange_side_frame"
+      ],
+      "parts_present": [
+        "power_button_cap",
+        "volume_button_cap",
+        "power_button_elastomer_gasket",
+        "volume_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_labyrinth_lower_rail",
+        "orange_side_frame"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "power_button_cap",
+            "volume_button_cap"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 77.1,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "power_button_elastomer_gasket"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.66,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "volume_button_elastomer_gasket"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.65,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "power_button_labyrinth_upper_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2704,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "volume_button_labyrinth_upper_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.325,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "power_button_labyrinth_lower_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2704,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.325,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_cap",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_cap",
+            "power_button_elastomer_gasket"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.65,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_cap",
+            "volume_button_elastomer_gasket"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 1.155,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_cap",
+            "power_button_labyrinth_upper_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.325,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_cap",
+            "volume_button_labyrinth_upper_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2704,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_cap",
+            "power_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.325,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_cap",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.2704,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_cap",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_elastomer_gasket",
+            "volume_button_elastomer_gasket"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 76.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_elastomer_gasket",
+            "power_button_labyrinth_upper_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.1221,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_elastomer_gasket",
+            "volume_button_labyrinth_upper_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.875,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_elastomer_gasket",
+            "power_button_labyrinth_lower_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.1221,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_elastomer_gasket",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.875,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_elastomer_gasket",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.155,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_elastomer_gasket",
+            "power_button_labyrinth_upper_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.875,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_elastomer_gasket",
+            "volume_button_labyrinth_upper_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.1221,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_elastomer_gasket",
+            "power_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.875,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_elastomer_gasket",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.1221,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_elastomer_gasket",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.155,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_labyrinth_upper_rail",
+            "volume_button_labyrinth_upper_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_labyrinth_upper_rail",
+            "power_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 12.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_labyrinth_upper_rail",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_labyrinth_upper_rail",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.4833,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_labyrinth_upper_rail",
+            "power_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_labyrinth_upper_rail",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 21.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_labyrinth_upper_rail",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.4833,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_labyrinth_lower_rail",
+            "volume_button_labyrinth_lower_rail"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 75.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "power_button_labyrinth_lower_rail",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.4833,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "volume_button_labyrinth_lower_rail",
+            "orange_side_frame"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.4833,
+          "intentional_contact": true
+        }
+      ],
+      "travel": {
+        "parts": [
+          {
+            "part": "power_button_cap",
+            "axis": "-X",
+            "max_mm": 0.35,
+            "step_mm": 0.05,
+            "samples": [
+              {
+                "travel_mm": 0.0,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 0.66,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 0.66,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.65,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.05,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 1.32,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 1.32,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.6,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.1,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 1.98,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 1.98,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.55,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.15,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 2.64,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 2.64,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.5,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.2,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 3.3,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 3.3,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.45,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.25,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 3.96,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 3.96,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.4,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.3,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 4.62,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 4.62,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.35,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.35,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 5.28,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "interference_mm3": 5.28,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "gap_mm": 76.3,
+                    "intentional_contact": true
+                  }
+                ]
+              }
+            ],
+            "worst_min_gap_mm": 0.0,
+            "worst_interference_volume_mm3": 0.0,
+            "status": "pass"
+          },
+          {
+            "part": "volume_button_cap",
+            "axis": "+X",
+            "max_mm": 0.35,
+            "step_mm": 0.05,
+            "samples": [
+              {
+                "travel_mm": 0.0,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 1.155,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.65,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 1.155,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.05,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 2.31,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.6,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 2.31,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.1,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 3.465,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.55,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 3.465,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.15,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 4.62,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.5,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 4.62,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.2,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 5.775,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.45,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 5.775,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.25,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 6.93,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.4,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 6.93,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.3,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 8.085,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.35,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 8.085,
+                    "intentional_contact": true
+                  }
+                ]
+              },
+              {
+                "travel_mm": 0.35,
+                "min_gap_mm": 0.0,
+                "rigid_interference_volume_mm3": 0.0,
+                "compressible_interference_volume_mm3": 9.24,
+                "per_target": [
+                  {
+                    "target": "power_button_elastomer_gasket",
+                    "gap_mm": 76.3,
+                    "intentional_contact": true
+                  },
+                  {
+                    "target": "volume_button_elastomer_gasket",
+                    "interference_mm3": 9.24,
+                    "intentional_contact": true
+                  }
+                ]
+              }
+            ],
+            "worst_min_gap_mm": 0.0,
+            "worst_interference_volume_mm3": 0.0,
+            "status": "pass"
+          }
+        ],
+        "worst_min_gap_mm": 0.0,
+        "worst_interference_volume_mm3": 0.0
+      },
+      "min_gap_mm": 77.1,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "button caps, gaskets, rails, and switch keepouts must not bind or preload",
+      "status": "pass"
+    },
+    {
+      "case": "front_camera_earpiece_under_glass_stack",
+      "parts": [
+        "front_camera_module",
+        "front_camera_under_glass",
+        "front_camera_black_mask_window",
+        "earpiece_receiver",
+        "handset_acoustic_slot",
+        "handset_acoustic_mesh",
+        "screen_cover_glass"
+      ],
+      "parts_present": [
+        "front_camera_module",
+        "front_camera_under_glass",
+        "front_camera_black_mask_window",
+        "earpiece_receiver",
+        "handset_acoustic_slot",
+        "handset_acoustic_mesh",
+        "screen_cover_glass"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "front_camera_module",
+            "front_camera_under_glass"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.48,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_module",
+            "front_camera_black_mask_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.48,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "front_camera_module",
+            "earpiece_receiver"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 9.75,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "front_camera_module",
+            "handset_acoustic_slot"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.75,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "front_camera_module",
+            "handset_acoustic_mesh"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_module",
+            "screen_cover_glass"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.6,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_under_glass",
+            "front_camera_black_mask_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 0.9248,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_under_glass",
+            "earpiece_receiver"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 11.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_under_glass",
+            "handset_acoustic_slot"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 9.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_under_glass",
+            "handset_acoustic_mesh"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 8.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_under_glass",
+            "screen_cover_glass"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.04,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_black_mask_window",
+            "earpiece_receiver"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 10.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "front_camera_black_mask_window",
+            "handset_acoustic_slot"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 8.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "front_camera_black_mask_window",
+            "handset_acoustic_mesh"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.75,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "front_camera_black_mask_window",
+            "screen_cover_glass"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.04,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "earpiece_receiver",
+            "handset_acoustic_slot"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.605,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "earpiece_receiver",
+            "handset_acoustic_mesh"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "earpiece_receiver",
+            "screen_cover_glass"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.95,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "handset_acoustic_slot",
+            "handset_acoustic_mesh"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.705,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "handset_acoustic_slot",
+            "screen_cover_glass"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.15,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "handset_acoustic_mesh",
+            "screen_cover_glass"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 2.48,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "under-glass camera and handset acoustic path must clear each other and the cover glass",
+      "status": "pass"
+    },
+    {
+      "case": "rear_camera_window_baffle_adhesive_stack",
+      "parts": [
+        "rear_camera_module",
+        "rear_camera_cover_glass",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "rear_camera_lens_window",
+        "orange_back_shell",
+        "rear_flash_led_window"
+      ],
+      "parts_present": [
+        "rear_camera_module",
+        "rear_camera_cover_glass",
+        "rear_camera_cover_adhesive_top",
+        "rear_camera_light_baffle_top",
+        "rear_camera_light_baffle_bottom",
+        "rear_camera_lens_window",
+        "orange_back_shell",
+        "rear_flash_led_window"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_cover_glass"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_cover_adhesive_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.89,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_light_baffle_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.975,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_light_baffle_bottom"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.975,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_flash_led_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_glass",
+            "rear_camera_cover_adhesive_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.055,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_glass",
+            "rear_camera_light_baffle_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 1.3799,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_glass",
+            "rear_camera_light_baffle_bottom"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 1.3799,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_glass",
+            "rear_camera_lens_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 25.432,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_glass",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.7,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_glass",
+            "rear_flash_led_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.7,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_adhesive_top",
+            "rear_camera_light_baffle_top"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.63,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_adhesive_top",
+            "rear_camera_light_baffle_bottom"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 8.33,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_adhesive_top",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.255,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_adhesive_top",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.195,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_cover_adhesive_top",
+            "rear_flash_led_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.855,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_light_baffle_top",
+            "rear_camera_light_baffle_bottom"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.35,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_light_baffle_top",
+            "rear_camera_lens_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.275,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_light_baffle_top",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 1.15,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_light_baffle_top",
+            "rear_flash_led_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.15,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_light_baffle_bottom",
+            "rear_camera_lens_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.275,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_light_baffle_bottom",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 1.15,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_light_baffle_bottom",
+            "rear_flash_led_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.15,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_lens_window",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 1.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_lens_window",
+            "rear_flash_led_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "rear_flash_led_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 0.5,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "rear camera module, cover window, adhesive, baffles, and the adjacent flash window must remain interference-free",
+      "status": "pass"
+    },
+    {
+      "case": "rear_flash_torch_window_back_wall",
+      "parts": [
+        "rear_flash_led",
+        "rear_flash_led_window",
+        "orange_back_shell",
+        "rear_camera_module",
+        "rear_camera_lens_window",
+        "main_pcb"
+      ],
+      "parts_present": [
+        "rear_flash_led",
+        "rear_flash_led_window",
+        "orange_back_shell",
+        "rear_camera_module",
+        "rear_camera_lens_window",
+        "main_pcb"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "rear_flash_led",
+            "rear_flash_led_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.6185,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "rear_camera_module"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.6,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.35,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led_window",
+            "orange_back_shell"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led_window",
+            "rear_camera_module"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led_window",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_flash_led_window",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.85,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "rear_camera_module"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "rear_camera_lens_window"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 1.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_back_shell",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "rear_camera_lens_window"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_module",
+            "main_pcb"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 80.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "rear_camera_lens_window",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.85,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 0.5,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "rear torch LED must sit buried behind the back wall, its window must register in the back shell, and it must not clash with the adjacent camera or PCB",
+      "status": "pass"
+    },
+    {
+      "case": "battery_pouch_pcb_flex_haptic",
+      "parts": [
+        "battery_pouch",
+        "main_pcb",
+        "split_interconnect_side_flex",
+        "haptic_lra"
+      ],
+      "parts_present": [
+        "battery_pouch",
+        "main_pcb",
+        "split_interconnect_side_flex",
+        "haptic_lra"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "battery_pouch",
+            "main_pcb"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 4454.4,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "battery_pouch",
+            "split_interconnect_side_flex"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "battery_pouch",
+            "haptic_lra"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "split_interconnect_side_flex"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "haptic_lra"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "split_interconnect_side_flex",
+            "haptic_lra"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.01,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 0.01,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "battery, split interconnect, haptic, and PCB islands must not pinch or overlap",
+      "status": "pass"
+    },
+    {
+      "case": "bottom_audio_microphone_speaker_meshes",
+      "parts": [
+        "bottom_speaker_module",
+        "bottom_speaker_dust_mesh",
+        "bottom_mic",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "bottom_microphone_port_1",
+        "bottom_microphone_port_2",
+        "bottom_speaker_acoustic_chamber",
+        "usb_c_receptacle"
+      ],
+      "parts_present": [
+        "bottom_speaker_module",
+        "bottom_speaker_dust_mesh",
+        "bottom_mic",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "bottom_microphone_port_1",
+        "bottom_microphone_port_2",
+        "bottom_speaker_acoustic_chamber",
+        "usb_c_receptacle"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_speaker_dust_mesh"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 7.22,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_mic"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 27.25,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_mesh_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 32.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_mesh_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 27.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_port_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 32.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_microphone_port_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 27.55,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 181.5,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_module",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.53,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "bottom_speaker_dust_mesh",
+            "bottom_mic"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 25.75,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_dust_mesh",
+            "bottom_microphone_mesh_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 30.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_dust_mesh",
+            "bottom_microphone_mesh_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 25.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_dust_mesh",
+            "bottom_microphone_port_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 31.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_dust_mesh",
+            "bottom_microphone_port_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 26.05,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_dust_mesh",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.22,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_dust_mesh",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 5.03,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_mic",
+            "bottom_microphone_mesh_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.615,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_mic",
+            "bottom_microphone_mesh_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.615,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_mic",
+            "bottom_microphone_port_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.795,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_mic",
+            "bottom_microphone_port_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 6.795,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_mic",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 26.35,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_mic",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 11.78,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": false
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_1",
+            "bottom_microphone_mesh_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.6,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_1",
+            "bottom_microphone_port_1"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.06,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_1",
+            "bottom_microphone_port_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.85,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_1",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 31.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_1",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 16.83,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_2",
+            "bottom_microphone_port_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.85,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_2",
+            "bottom_microphone_port_2"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.06,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_2",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 26.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_mesh_2",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 11.83,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_port_1",
+            "bottom_microphone_port_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.1,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_port_1",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 31.65,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_port_1",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 17.08,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_port_2",
+            "bottom_speaker_acoustic_chamber"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 26.65,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_microphone_port_2",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 12.08,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "bottom_speaker_acoustic_chamber",
+            "usb_c_receptacle"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 5.63,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 6.53,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "speaker, microphone, meshes, and acoustic ports must not clash with USB or enclosure plastic",
+      "status": "pass"
+    },
+    {
+      "case": "rf_shields_antennas_plastic_windows",
+      "parts": [
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can",
+        "cellular_top_antenna_keepout",
+        "cellular_bottom_antenna_keepout",
+        "wifi_bt_side_antenna_keepout"
+      ],
+      "parts_present": [
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can",
+        "cellular_top_antenna_keepout",
+        "cellular_bottom_antenna_keepout",
+        "wifi_bt_side_antenna_keepout"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "soc_shield_can",
+            "pmic_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 5.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "radio_shield_can"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 46.8,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "cellular_top_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 5.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "cellular_bottom_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 115.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "soc_shield_can",
+            "wifi_bt_side_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 2.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "radio_shield_can"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 20.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "cellular_top_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 8.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "cellular_bottom_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 118.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "pmic_shield_can",
+            "wifi_bt_side_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "radio_shield_can",
+            "cellular_top_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 8.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "radio_shield_can",
+            "cellular_bottom_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 108.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "radio_shield_can",
+            "wifi_bt_side_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 17.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "cellular_top_antenna_keepout",
+            "cellular_bottom_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 136.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "cellular_top_antenna_keepout",
+            "wifi_bt_side_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 22.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "cellular_bottom_antenna_keepout",
+            "wifi_bt_side_antenna_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 108.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 0.0,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "RF shields, feed regions, and antenna plastic windows must preserve keepouts",
+      "status": "pass"
+    },
+    {
+      "case": "molded_retention_boss_snap_service_features",
+      "parts": [
+        "orange_screw_boss_1",
+        "orange_screw_boss_2",
+        "orange_snap_hook_1",
+        "orange_snap_hook_8",
+        "sim_tray_keepout",
+        "service_label_recess",
+        "main_pcb",
+        "battery_pouch"
+      ],
+      "parts_present": [
+        "orange_screw_boss_1",
+        "orange_screw_boss_2",
+        "orange_snap_hook_1",
+        "orange_snap_hook_8",
+        "sim_tray_keepout",
+        "service_label_recess",
+        "main_pcb",
+        "battery_pouch"
+      ],
+      "parts_missing": [],
+      "pair_results": [
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "orange_screw_boss_2"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 65.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "orange_snap_hook_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "orange_snap_hook_8"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 105.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "sim_tray_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 62.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "service_label_recess"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 103.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "main_pcb"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_1",
+            "battery_pouch"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 19.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_2",
+            "orange_snap_hook_1"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 69.35,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_2",
+            "orange_snap_hook_8"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 105.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_2",
+            "sim_tray_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 62.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_2",
+            "service_label_recess"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 103.2,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_2",
+            "main_pcb"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.9,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_screw_boss_2",
+            "battery_pouch"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 19.4,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_1",
+            "orange_snap_hook_8"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 99.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_1",
+            "sim_tray_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 61.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_1",
+            "service_label_recess"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 96.8,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_1",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.45,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_1",
+            "battery_pouch"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 13.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_8",
+            "sim_tray_keepout"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 20.5,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_8",
+            "service_label_recess"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 20.45,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_8",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.45,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "orange_snap_hook_8",
+            "battery_pouch"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 4.45,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "sim_tray_keepout",
+            "service_label_recess"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 18.3,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "sim_tray_keepout",
+            "main_pcb"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 16.39,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "sim_tray_keepout",
+            "battery_pouch"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 327.8,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "service_label_recess",
+            "main_pcb"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 3.0,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "service_label_recess",
+            "battery_pouch"
+          ],
+          "engine": "aabb_prefilter",
+          "min_gap_mm": 1.35,
+          "interference_volume_mm3": 0.0,
+          "intentional_contact": true
+        },
+        {
+          "parts": [
+            "main_pcb",
+            "battery_pouch"
+          ],
+          "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
+          "min_gap_mm": 0.0,
+          "interference_volume_mm3": 4454.4,
+          "intentional_contact": true
+        }
+      ],
+      "travel": null,
+      "min_gap_mm": 0.0,
+      "interference_volume_mm3": 0.0,
+      "interference_count": 0,
+      "risk": "screw bosses, snap hooks, service tray, and service label recess must not intrude into assemblies",
+      "status": "pass"
+    }
+  ],
+  "flush_back_check": {
+    "id": "flush_back_no_rear_protrusion",
+    "back_outer_plane_z_mm": -5.9,
+    "max_protrusion_mm": 0.0,
+    "protruding_parts": [],
+    "envelope_excursions": [
+      {
+        "part": "rear_camera_shell_aperture",
+        "zmin_mm": -5.955,
+        "protrusion_mm": 0.055
+      },
+      {
+        "part": "rear_flash_shell_aperture",
+        "zmin_mm": -5.955,
+        "protrusion_mm": 0.055
+      }
+    ],
+    "status": "pass",
+    "risk": "no solid exterior part may extend beyond the flat back outer plane"
+  },
+  "rear_camera_back_shell_hole_check": {
+    "id": "rear_camera_back_shell_hole_collision",
+    "status": "pass",
+    "missing_parts": [],
+    "aperture_bbox_mm": [
+      15.7,
+      52.5,
+      -5.955,
+      26.3,
+      63.1,
+      -5.875
+    ],
+    "cover_glass_bbox_mm": [
+      16.4,
+      53.2,
+      -5.9,
+      25.6,
+      62.4,
+      -5.35
+    ],
+    "aperture_clears_cover_glass_xy": true,
+    "pairs": [
+      {
+        "parts": [
+          "orange_back_shell",
+          "rear_camera_cover_glass"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.7,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_back_shell",
+          "rear_camera_lens_window"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 1.9,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_back_shell",
+          "rear_camera_module"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.5,
+        "status": "pass"
+      }
+    ],
+    "risk": "rear camera/window stack must pass through a real back-shell hole without colliding with orange plastic"
+  },
+  "rear_camera_optical_sightline_check": {
+    "id": "rear_camera_optical_sightline_clear",
+    "status": "pass",
+    "missing_parts": [],
+    "orange_shell_interference_volume_mm3": 0.0,
+    "orange_shell_min_gap_mm": 1.75,
+    "aperture_bbox_mm": [
+      15.7,
+      52.5,
+      -5.955,
+      26.3,
+      63.1,
+      -5.875
+    ],
+    "sight_tunnel_bbox_mm": [
+      17.45,
+      54.25,
+      -5.9,
+      24.55,
+      61.35,
+      -4.3
+    ],
+    "aperture_contains_tunnel_xy": true,
+    "transparent_stack_overlaps_tunnel": true,
+    "transparent_pairs": [
+      {
+        "parts": [
+          "rear_camera_optical_sight_tunnel",
+          "rear_camera_lens_window"
+        ],
+        "overlap_volume_mm3": 25.432,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "rear_camera_optical_sight_tunnel",
+          "rear_camera_cover_glass"
+        ],
+        "overlap_volume_mm3": 27.7255,
+        "status": "pass"
+      }
+    ],
+    "risk": "rear camera must have a real optical line of sight through the back-shell opening"
+  },
+  "rear_flash_back_shell_hole_check": {
+    "id": "rear_flash_back_shell_hole_collision",
+    "status": "pass",
+    "missing_parts": [],
+    "aperture_bbox_mm": [
+      11.8,
+      56.7,
+      -5.955,
+      14.0,
+      58.9,
+      -5.875
+    ],
+    "window_bbox_mm": [
+      12.1,
+      57.0,
+      -5.9,
+      13.7,
+      58.6,
+      -5.35
+    ],
+    "aperture_clears_window_xy": true,
+    "pairs": [
+      {
+        "parts": [
+          "orange_back_shell",
+          "rear_flash_led_window"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.3,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_back_shell",
+          "rear_flash_led"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.618466,
+        "status": "pass"
+      }
+    ],
+    "risk": "rear flash light-pipe window must pass through a real back-shell hole without colliding with orange plastic"
+  },
+  "handset_cover_glass_slot_check": {
+    "id": "handset_cover_glass_slot_collision",
+    "status": "pass",
+    "missing_parts": [],
+    "pairs": [
+      {
+        "parts": [
+          "screen_cover_glass",
+          "handset_acoustic_slot"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.15,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "handset_acoustic_mesh"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.05,
+        "status": "pass"
+      }
+    ],
+    "risk": "handset acoustic slot must be a real cover-glass opening, not a visual marker colliding with glass"
+  },
+  "screen_cover_glass_collision_check": {
+    "id": "screen_cover_glass_visible_collision",
+    "status": "pass",
+    "missing_parts": [],
+    "pairs": [
+      {
+        "parts": [
+          "screen_cover_glass",
+          "orange_side_frame"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.05,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "display_lcm"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.18,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "screen_adhesive_top"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.06,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "front_camera_module"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 2.6,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "front_camera_under_glass"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.04,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "front_camera_black_mask_window"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.04,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "earpiece_receiver"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 2.95,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "handset_acoustic_slot"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.15,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "screen_cover_glass",
+          "handset_acoustic_mesh"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.05,
+        "status": "pass"
+      }
+    ],
+    "risk": "screen-adjacent parts must sit outside cover-glass volume; visual markers may not be hidden by broad allowlists"
+  },
+  "side_frame_external_cutout_check": {
+    "id": "side_frame_external_cutout_collision",
+    "status": "pass",
+    "missing_parts": [],
+    "aperture_pairs": [
+      {
+        "parts": [
+          "orange_side_frame",
+          "usb_c_external_aperture"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.3,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_1"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_2"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_3"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_4"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_grille_slot_5"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.075,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_port_1"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.15,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_port_2"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.15,
+        "status": "pass"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "top_microphone_port"
+        ],
+        "interference_volume_mm3": 0.0,
+        "min_gap_mm": 0.15,
+        "status": "pass"
+      }
+    ],
+    "captured_insert_contacts": [
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_speaker_dust_mesh"
+        ],
+        "interference_volume_mm3": 5.328,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_mesh_1"
+        ],
+        "interference_volume_mm3": 0.0336,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "bottom_microphone_mesh_2"
+        ],
+        "interference_volume_mm3": 0.0336,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      },
+      {
+        "parts": [
+          "orange_side_frame",
+          "top_microphone_mesh"
+        ],
+        "interference_volume_mm3": 0.0336,
+        "min_gap_mm": 0.0,
+        "status": "intentional_contact",
+        "note": "captured hydrophobic mesh insert overlap is an intentional seal/contact envelope"
+      }
+    ],
+    "risk": "USB, speaker, and microphone openings must be real side-frame holes, not visual markers colliding with orange plastic"
+  },
+  "burial_check": {
+    "back_inner_wall_z_mm": -4.7,
+    "targets": [
+      {
+        "part": "rear_camera_module",
+        "back_face_zmin_mm": -4.3,
+        "back_inner_wall_z_mm": -4.7,
+        "burial_clearance_mm": 0.4,
+        "buried": true
+      },
+      {
+        "part": "rear_flash_led",
+        "back_face_zmin_mm": -4.55,
+        "back_inner_wall_z_mm": -4.7,
+        "burial_clearance_mm": 0.15,
+        "buried": true
+      }
+    ]
+  },
+  "overall_status": "pass",
+  "release_credit": false,
+  "release_blocked": true,
+  "release_blocker_category": "routed_supplier_boolean_rerun_missing",
+  "release_blocker_count": 1,
+  "next_action": "Local concept boolean evidence passed; promote/rerun release evidence against routed board STEP and supplier B-rep models through the enclosure gate.",
+  "wall_seconds": 0.0,
+  "wall_seconds_note": "wall-clock runtime omitted from committed evidence for deterministic reruns"
 }

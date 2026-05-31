@@ -15,6 +15,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/dfm_yield_lithography_targets"
 CLAIM_BOUNDARY = "dfm_yield_lithography_target_capture_only_no_mask_yield_or_release_claim"
+FALSE_CLAIM_FLAGS = {
+    "claim_allowed": False,
+    "release_claim_allowed": False,
+    "training_claim_allowed": False,
+    "inference_claim_allowed": False,
+    "e1_optimization_claim_allowed": False,
+    "e1_signoff_claim_allowed": False,
+    "ppa_signoff_claim_allowed": False,
+}
 
 INPUT_ARTIFACTS = (
     "research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml",
@@ -116,6 +125,7 @@ def main() -> int:
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_NO_DFM_YIELD_LITHOGRAPHY_EXECUTION",
         "claim_boundary": CLAIM_BOUNDARY,
+        **FALSE_CLAIM_FLAGS,
         "source_ids": [
             "agentictcad",
             "tcadgpt",

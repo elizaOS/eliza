@@ -28,7 +28,7 @@
     "height": 0.5500002,
     "width": 2.4000002
   },
-  "local_discrete_step_bytes": 15547,
+  "local_discrete_step_bytes": 15572,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.0,
     "height": 0.55,
@@ -37,7 +37,7 @@
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step",
   "local_discrete_step_import_status": "pass",
   "local_discrete_step_imported_as_solid": true,
-  "local_discrete_step_sha256": "cc269890facc79c47668adc315ca5079f129630f7ffead8a617186a0c5344e63",
+  "local_discrete_step_sha256": "08d363a692d0daf091bc6c3175e3ea3f9e8e797fa28a5b8e3d31c3a2476ae8d7",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
