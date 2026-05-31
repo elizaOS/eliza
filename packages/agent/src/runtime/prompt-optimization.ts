@@ -54,6 +54,11 @@ import {
   toOptionalNumber,
   toText,
 } from "./trajectory-internals.ts";
+import {
+  getActiveViewContext,
+  validateViewActionMap,
+  viewScopedActionNames,
+} from "./view-action-affinity.ts";
 
 export {
   buildFullParamActionSet,
@@ -1241,7 +1246,10 @@ export function fitPromptToTokenBudget(
     };
   }
 
-  let nextPrompt = compactActionsForIntent(prompt);
+  let nextPrompt = compactActionsForIntent(
+    prompt,
+    viewScopedActionNames(getActiveViewContext()?.viewId),
+  );
   nextPrompt = compactCodingExamplesForIntent(nextPrompt);
   nextPrompt = compactConversationHistory(nextPrompt);
   nextPrompt = compactModelPrompt(nextPrompt);
@@ -1324,10 +1332,11 @@ export function installPromptOptimizations(
   if (installedRuntimes.has(runtime)) return;
   installedRuntimes.add(runtime);
 
-  // Validate intent-action map against registered actions
+  // Validate intent-action and view-action maps against registered actions
   const actionNames = runtime.actions.map((a) => a.name);
   if (actionNames.length > 0) {
     validateIntentActionMap(actionNames, runtime.logger);
+    validateViewActionMap(actionNames, runtime.logger);
   }
 
   const originalUseModel = runtime.useModel.bind(runtime);
@@ -1428,7 +1437,12 @@ export function installPromptOptimizations(
       // --- Context-aware action compaction (when enabled) ---
       // Strips param detail from actions not relevant to the user's intent.
       // All action names remain visible — only param detail is stripped.
-      let workingPrompt = compactActionsForIntent(originalPrompt);
+      // Actions scoped to the active view are kept full so the planner can act
+      // on whatever the user is currently looking at.
+      let workingPrompt = compactActionsForIntent(
+        originalPrompt,
+        viewScopedActionNames(getActiveViewContext()?.viewId),
+      );
       if (workingPrompt !== originalPrompt) {
         promptOptimizationTelemetry.transformations.push(
           `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
