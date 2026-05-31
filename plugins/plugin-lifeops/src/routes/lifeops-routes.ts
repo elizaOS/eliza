@@ -2348,6 +2348,7 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/activity-signals") {
     return runRoute(ctx, async (service) => {
+      await ensureRouteSchema(ctx.state.runtime);
       json(res, {
         signals: await service.listActivitySignals({
           sinceAt: parseOptionalIsoQuery(
@@ -2372,6 +2373,7 @@ export async function handleLifeOpsRoutes(
     );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
+      await ensureRouteSchema(ctx.state.runtime);
       json(res, { signal: await service.captureActivitySignal(body) }, 201);
     });
   }
